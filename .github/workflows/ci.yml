@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  host-build:
+    name: Host build and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+# Not present yet, and deliberately not faked:
+#
+#   * embedded build  — ESP-IDF version is not chosen (TASKS.md T-004)
+#   * simulator build — LVGL version is not chosen (TASKS.md T-008)
+#   * lint            — formatting rules are not agreed yet
+#   * hardware tests  — NOT EXECUTED, HARDWARE REQUIRED
+#
+# A green badge here means the host build and its tests passed. It means
+# nothing about firmware and nothing at all about hardware.
