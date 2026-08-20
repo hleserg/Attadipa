@@ -12,15 +12,24 @@ has been written yet, and that is deliberate: the specification requires the
 research gate before large-scale implementation, and the survey changed the
 architecture materially.
 
-Working on: mapping every peripheral on both boards to a place in the core
-(T-001), and the capability-model ADR that follows from it (T-002).
+Both are done: every part on both boards now has an owning core service in
+[`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) —
+including the parts the vendor BSPs ignore and the parts no application uses —
+and the capability model is settled in
+[ADR-0001](docs/adr/0001-capability-model.md).
+
+Working on: the host build and CI (T-003), and reading MeshCore upstream
+(T-006).
 
 ## Next ready
 
-- T-003 — host build and CI that genuinely runs
 - T-004 — pin ESP-IDF and LVGL versions
-- T-006 — read MeshCore upstream, especially whether it assumes exclusive
-  ownership of the radio
+- T-013 — ADR-0002, radio abstraction across the five possible T-Watch chips
+
+T-006 gates both. The question that matters most is whether MeshCore assumes
+exclusive, uninterrupted ownership of the radio: if it does, it cannot coexist
+with a coordinator that schedules around it, and that is worth knowing before
+anything is built on top.
 
 ## Lookahead research
 
@@ -68,7 +77,7 @@ Nothing in this repository may be described as hardware-tested.
 
 | Target | State |
 |---|---|
-| Host / native | skeleton smoke build only |
+| Host / native | builds; smoke test passes locally |
 | Simulator | not started — SDL2 not installed, LVGL version not chosen |
 | ESP32-S3 firmware | not started — ESP-IDF not installed, version not chosen |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED` |
@@ -89,7 +98,14 @@ None. Nothing runs yet, which is not the same as everything working.
 
 ## What changed most recently
 
-The board survey. Three findings reshaped the plan:
+Every peripheral on both boards now has an owner in the core design, and the
+capability model is decided. The argument for covering parts nothing uses
+turned out not to be "we might want them later" — it is that an unowned part
+still draws power, still raises interrupts nobody services, still contends for
+the shared bus, and still leaves its pin floating. The Waveshare vendor BSP,
+which ships with three unowned parts on the board it supports, is the evidence.
+
+Before that, the board survey. Three findings reshaped the plan:
 
 1. **The Waveshare board has no LoRa and no GNSS.** The two boards are not
    variants of one product; they share only the SoC and the PMU.

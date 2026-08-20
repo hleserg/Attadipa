@@ -21,35 +21,6 @@ status · implementation status · tests · hardware required.
 
 ## NOW
 
-### T-001 · Core coverage design for the full peripheral inventory
-- **Priority:** P0
-- **Dependencies:** board survey (done)
-- **Goal:** every part on both boards has a defined seat in the core — a
-  capability, an owner, and a state — whether or not an application uses it yet.
-  Includes the parts the vendor BSPs ignore (QMI8658, AXP2101, PCF85063 on
-  Waveshare) and the ones nobody uses at all (IR transmitter, PDM microphone).
-- **Acceptance:** `docs/architecture/ARCHITECTURE.md` maps every row of the
-  hardware matrix to a core service; no part is unaccounted for; the capability
-  model expresses variant and degree, not just presence.
-- **Research status:** complete for documentation; measurement pending
-- **Implementation status:** not started
-- **Tests:** n/a (design)
-- **Hardware required:** no
-
-### T-002 · ADR-0001: capability model
-- **Priority:** P0
-- **Dependencies:** T-001
-- **Goal:** decide how a capability carries variant (five LoRa chips) and
-  degree (accelerometer-only vs 6-axis) — a boolean `has()` cannot.
-- **Acceptance:** ADR written with alternatives and evidence; the plan's simple
-  `has(Capability::X)` example is explicitly addressed.
-- **Research status:** evidence gathered (see OPEN_QUESTIONS X1)
-- **Implementation status:** not started
-- **Tests:** n/a
-- **Hardware required:** no
-
-## NEXT
-
 ### T-003 · Host build and CI that actually runs
 - **Priority:** P0
 - **Dependencies:** none
@@ -58,9 +29,27 @@ status · implementation status · tests · hardware required.
 - **Acceptance:** `cmake -S . -B build && cmake --build build && ctest` passes
   locally and in CI; CI is green for a real reason.
 - **Research status:** n/a
-- **Implementation status:** skeleton in place
-- **Tests:** the build itself, plus a first unit test
+- **Implementation status:** host build and smoke test pass locally; CI workflow
+  added, first run not yet observed
+- **Tests:** the build itself, plus the smoke test
 - **Hardware required:** no
+
+### T-006 · Read MeshCore upstream
+- **Priority:** P0
+- **Dependencies:** none
+- **Goal:** answer OPEN_QUESTIONS M1–M9 from source, with commit hashes.
+- **Acceptance:** a reuse-ledger record for MeshCore; M1, M3, M4, M6, M9
+  answered with citations; a candidate revision named.
+- **Research status:** not started — only repository identity and license
+  established
+- **Implementation status:** not started
+- **Tests:** n/a
+- **Hardware required:** no
+- **Note:** M9 — does MeshCore assume exclusive radio ownership? — is the one
+  answer that can force an architecture change, and it also gates ADR-0002 on
+  the radio abstraction across five chips. Answer it before building on it.
+
+## NEXT
 
 ### T-004 · ESP-IDF and LVGL version decision
 - **Priority:** P0
@@ -68,10 +57,23 @@ status · implementation status · tests · hardware required.
 - **Goal:** pin ESP-IDF and LVGL versions with recorded reasoning.
 - **Acceptance:** rows in `docs/research/DEPENDENCIES.md` with source, version,
   license, rationale, upgrade strategy; ADR if the choice is contentious.
-- **Research status:** partial — Waveshare supports IDF v5.5.5 / v6.0.2, BSP
-  needs ≥5.3, LVGL `>=8,<10`. LilyGO side not yet checked for ESP-IDF.
+- **Research status:** partial — Waveshare supports IDF v5.5.5 / v6.0.2, its BSP
+  needs ≥5.3 and `lvgl >=8,<10`. LilyGO side not yet checked for ESP-IDF.
 - **Implementation status:** not started
 - **Tests:** a trivial ESP-IDF build for esp32s3
+- **Hardware required:** no
+
+### T-013 · ADR-0002: radio abstraction across five chips
+- **Priority:** P0
+- **Dependencies:** T-006 (M6, M9)
+- **Goal:** one radio interface that serves SX1262, SX1280, CC1101, LR1121 and
+  SI4432 — or an argued decision to support fewer.
+- **Acceptance:** ADR with alternatives; states explicitly what happens on a
+  board whose radio MeshCore does not support, and whether MeshCore permits a
+  coordinator to schedule around it.
+- **Research status:** blocked on T-006
+- **Implementation status:** not started
+- **Tests:** n/a
 - **Hardware required:** no
 
 ## READY
@@ -86,20 +88,6 @@ status · implementation status · tests · hardware required.
 - **Implementation status:** not started
 - **Tests:** the build
 - **Hardware required:** no
-
-### T-006 · Read MeshCore upstream
-- **Priority:** P0
-- **Dependencies:** none
-- **Goal:** answer OPEN_QUESTIONS M1–M9 from source, with commit hashes.
-- **Acceptance:** a reuse-ledger record for MeshCore; M1, M3, M4, M6, M9
-  answered with citations; a candidate revision named.
-- **Research status:** not started — only the repository identity and license
-  are established
-- **Implementation status:** not started
-- **Tests:** n/a
-- **Hardware required:** no
-- **Note:** M9 (does MeshCore assume exclusive radio ownership?) is the one
-  that can force an architecture change. Answer it early.
 
 ### T-007 · Reuse survey of existing firmware for these boards
 - **Priority:** P1
@@ -189,6 +177,23 @@ Recommended next action:
   two targets. Q3 (region) is a legal constraint, not a preference.
 
 ## DONE
+
+### T-001 · Core coverage design for the full peripheral inventory — 2026-08-21
+- `docs/architecture/ARCHITECTURE.md` maps every part on both boards to an
+  owning core service, including the parts the vendor BSPs ignore and the ones
+  no application uses.
+- Establishes *why* full coverage matters: an unowned part still costs power,
+  still raises interrupts, still contends for the bus, and still floats its pin.
+  "Maybe useful later" was never the argument.
+- Records the rail ownership map, the shared-rail problem (ALDO3 feeds display
+  **and** touch), the two incompatible touch sleep strategies, and the fact
+  that the specification's motivating coexistence example cannot occur on
+  either board.
+
+### T-002 · ADR-0001: capability model — 2026-08-21
+- Accepted shape: cheap `has()` for UI gating, typed descriptors for variant
+  and degree, and a separate four-state availability axis.
+- Four alternatives recorded with reasons for rejection.
 
 ### T-000 · Repository, research gate, and board survey — 2026-08-21
 - Repository created, MIT, public.

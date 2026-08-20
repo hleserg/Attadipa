@@ -35,4 +35,4 @@ What this makes easier, what it makes harder, and what it commits us to.
 
 | # | Title | Status |
 |---|---|---|
-| 0001 | Capability model — variant and degree | planned (TASKS T-002) |
+| [0001](0001-capability-model.md) | Capability model: presence, variant, degree, availability | proposed |
