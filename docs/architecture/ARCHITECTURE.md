@@ -38,6 +38,14 @@ diode conducts (S3 sheet 4). If nobody drives it low, its state is whatever the
 boot ROM left — on a part that can operate other people's equipment across a
 room.
 
+**Or driving it is the bug.** The rule above has at least one exception, and it
+has to be named rather than discovered. The radio's `DIO3` reaches GPIO 6, and on
+SX126x parts `DIO3` is frequently configured as the TCXO supply — a radio output.
+If that is the case here, GPIO 6 must stay an input and a well-meaning
+"initialise every pin to a defined level" pass would fight the radio for control
+of its own clock. Resolve D10 before writing the radio driver; until then GPIO 6
+is owned and left alone, which is not the same as unowned.
+
 **Or it is a strapping pin.** Three of the four ESP32-S3 strapping pins on the
 T-Watch carry live signals: GPIO3 is the LoRa clock, GPIO45 is the backlight and
 also selects `VDD_SPI` voltage at reset, GPIO46 is I2S data. A driver that
@@ -163,7 +171,7 @@ it to diagnostics.
 | SPM1423 PDM mic | `AudioService` | input path; `SELECT` is strapped, channel fixed in hardware |
 | MAX98357A amplifier | `AudioService` | I2S output. **`SD_MODE` is strapped — there is no shutdown pin.** Silence is a rail operation on `DLDO1` |
 | IR transmitter (GPIO2) | `InfraredService` | **no application uses it** — see §5 |
-| Radio `DIO3` (GPIO6) | `RadioService` | purpose unresolved (TCXO supply or second IRQ) — OPEN_QUESTIONS D10. Owned regardless, so it is not left floating next to a radio |
+| Radio `DIO3` (GPIO6) | `RadioService` | **may be a radio *output*.** On SX126x parts `DIO3` is commonly configured as the TCXO supply, in which case GPIO 6 must never be driven by the SoC. Unresolved — OPEN_QUESTIONS D10 |
 | Charge LED (`CHGLED`) | `PowerService` | a PMU register, not a GPIO. Owned so its blink pattern is a deliberate choice rather than a reset default |
 | USB device (GPIO19/20) | `UsbService` | native USB. Console today; enumerating as anything else is a decision, not a default |
 | RTC backup cell (MS412FE) | `PowerService` | charge path exists; whether to enable it is a policy with a standby-current cost |
@@ -186,11 +194,43 @@ it to diagnostics.
 | ES8311 codec | `AudioService` | output path |
 | ES7210 + 2 mics | `AudioService` | dual-microphone input |
 | Amplifier enable (GPIO46) | `AudioService` | must be low when audio is idle |
+| Buttons | `InputService` | at least two tactile keys exist; **the vendor BSP declares none** |
+| Expansion header J3 | `BoardService` | ≥ 29 pins; pinout unresolved (D3). Owned so nothing else claims those pins by accident |
+| 1.8 V rail (ALDO4) | `PowerService` | something on this board is 1.8 V; identify it before assuming any level |
 | SD card | `StorageService` | SDMMC 1-bit |
 | Wi-Fi / BLE | `ConnectivityService` | the only radio on this board |
 | LoRa | — | **absent** |
 | GNSS | — | **absent** |
-| Haptics | — | **none found** — see OPEN_QUESTIONS D4 |
+| Vibration motor | `HapticService` | **GPIO 18 + NPN, no driver IC.** Rail BLDO2. Same capability as the T-Watch, a fundamentally different degree — see below |
+
+### Two haptics, one capability, two degrees
+
+This is the clearest live example of why [ADR-0001](../adr/0001-capability-model.md)
+separates *presence* from *degree*, and it was found by reading the schematic
+after the capability model was already written:
+
+| | T-Watch S3 Plus | Waveshare AMOLED 2.06 |
+|---|---|---|
+| Part | DRV2605L haptic driver | none — a motor and a transistor |
+| Control | I2C, waveform library, closed-loop | one GPIO |
+| Expressible | named effects, ramps, sequences | on, off, and whatever PWM produces |
+| Latency | rail power-up before the driver responds | immediate |
+
+`has(Capability::Haptics)` is **true on both**. A UI that gated on that boolean
+and then asked for waveform 47 would compile, pass on the simulator, and do
+nothing on one of the two shipping targets. The typed descriptor is what makes
+the difference expressible:
+
+```cpp
+enum class HapticKind { None, DirectDrive, WaveformDriver };
+struct HapticInfo { HapticKind kind; bool waveform_library; uint16_t warmup_ms; };
+```
+
+Note what this corrects. The matrix previously recorded Waveshare haptics as
+"none found", on the strength of their absence from the vendor BSP — the same
+weak argument-from-absence the magnetometer claim used to rest on. The schematic
+says otherwise. Two rows in this document were wrong for the same reason, and
+both were found the same way.
 
 ### Parts with an owner but no application
 

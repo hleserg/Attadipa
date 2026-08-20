@@ -58,17 +58,19 @@ proceed; hardware work does not.
 
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| D1 | Waveshare flash and PSRAM size and type | UNKNOWN | `esptool flash_id` on hardware, or the schematic BOM |
+| ~~D1~~ | ~~Waveshare flash and PSRAM size~~ | **RESOLVED** | schematic: `GD25Q256EYIGR` = 32 MB quad flash; SoC is `ESP32-S3R8` = 8 MB PSRAM. Type of PSRAM rolls into D12 |
 | D2 | Waveshare battery capacity and charge path details | UNKNOWN | schematic + product page |
-| D3 | Waveshare expansion connector pinout and what it can carry | UNKNOWN | schematic page for the connector |
-| D4 | Does the Waveshare board have any haptic output at all? | UNKNOWN | schematic; none found in BSP or README |
-| D5 | Waveshare button/wake inputs — BSP declares none; is that the board or the BSP? | UNKNOWN | schematic |
+| D3 | Waveshare expansion connector pinout | PARTIAL | schematic shows header `J3` with ≥ 29 pins; the pinout needs the sheet read visually, not by text extraction |
+| ~~D4~~ | ~~Does the Waveshare board have any haptic output?~~ | **RESOLVED — and the earlier answer was wrong** | **Yes.** A vibration motor on connector J1, driven from GPIO 18 through R12 (4.7 kΩ) and Q1 (MMBT3904), supplied from BLDO2. No driver IC — which is why searching for a haptic part found nothing |
+| D5 | Waveshare button/wake inputs — BSP declares none; is that the board or the BSP? | **PARTIAL — it is the BSP** | schematic shows at least two tactile keys (`Key1` by `BOOT`, `Key3`) plus `PWRON`. Which GPIO each key uses is still unresolved |
 | D6 | T-Watch: which PMU rail powers GNSS on the *specific* unit (BLDO1 vs DC3) | UNKNOWN | inspect the unit for rear BOOT/RST buttons |
 | D7 | Exact ST7789V3 and CO5300 init sequences and their timing | UNKNOWN | vendor driver source |
 | D8 | Is the T-Watch main I2C bus shared with anything timing-sensitive? | PARTIAL | schematic read: five devices confirmed on SDA 10 / SCL 11, plus a possible sixth — see D9. Timing sensitivity still needs driver review |
 | D9 | **Does the GNSS daughterboard connect the `MIA-M10Q` `SDA`/`SCL` to the FPC?** If it does, the GNSS is a sixth device on the main I2C bus at 0x42 | UNKNOWN | trace the daughterboard FPC net list, or scan the bus on a board with the module fitted |
 | D10 | **What is radio `DIO3` (GPIO 6) for on this board — TCXO supply or a second interrupt?** | UNKNOWN | HPD16B3 module datasheet + the vendor radio driver's `setDio3AsTcxoCtrl` usage |
-| D12 | **Is the T-Watch PSRAM quad or octal?** The vendor doc says QSPI; the schematic's `ESP32-S3-R8` marking denotes octal. Different `sdkconfig`, ~2× bandwidth difference | **CONFLICTING** | `esptool.py flash_id` / `esp_psram` probe on hardware, or the SoC datasheet against the exact part marking. Blocks the LVGL buffer ADR — see [../architecture/RESOURCE_BUDGET.md](../architecture/RESOURCE_BUDGET.md) |
+| D12 | **Is the PSRAM quad or octal — on *both* boards?** Both carry an `ESP32-S3R8` marking, so this is one question with one answer. The T-Watch vendor doc says QSPI; Espressif's published part-numbering scheme is understood to use the `R8` suffix for octal PSRAM — **that last part is recollection and must itself be checked against the datasheet**. Different `sdkconfig`, ~2× bandwidth difference | **CONFLICTING** | `esptool.py flash_id` / `esp_psram` probe on hardware, or the SoC datasheet against the exact part marking. Blocks the LVGL buffer ADR — see [../architecture/RESOURCE_BUDGET.md](../architecture/RESOURCE_BUDGET.md) |
+| D13 | Waveshare: which loads sit on ALDO1, ALDO2 and ALDO3 — all three are 3.3 V — and **what runs on the 1.8 V ALDO4 rail**? | UNKNOWN | read the schematic sheets visually |
+| D14 | Waveshare SD card: the BSP uses SDMMC 1-bit on GPIO 1/2/3, but the schematic labels those nets `MOSI`/`SCK`/`MISO` and shows a chip-select near GPIO 17. Which mode is the board actually wired for? | UNKNOWN | schematic sheet + BSP source |
 | D11 | Which AXP2101 rail is the schematic's net `LDO5`? It feeds DRV2605 `EN`, and the vendor rail map says BLDO2 — consistent but not proven | UNKNOWN | PMU register read on hardware |
 
 ## MeshCore

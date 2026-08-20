@@ -300,3 +300,77 @@ is sourced to the drawing itself.
   nameplate rather than the wrong document. But it means the drawing cannot be
   used to establish which board revision anything applies to. Revision still
   comes from inspecting a physical unit — OPEN_QUESTIONS A1.
+
+---
+
+## Read from the Waveshare schematic (S6)
+
+The same gap the T-Watch had: the schematic was cited but not read, while the
+Waveshare part inventory rested entirely on the vendor README and BSP — the same
+BSP already demonstrated to be an incomplete description of its own board.
+
+### The Waveshare board **does** have haptics — the earlier entry was wrong
+
+- **Claim:** a vibration motor on connector `J1`, driven from **GPIO 18** through
+  R12 (4.7 kΩ) into Q1 (MMBT3904, NPN), with the motor supplied from **BLDO2**.
+- **Source:** S6, net `MOTOR`.
+- **Correction:** the matrix previously recorded "Haptics — none found", because
+  a search for haptic *driver parts* found none. There is no driver IC — the
+  motor is switched directly by a GPIO. Searching for the wrong noun produced a
+  false negative, and it was recorded with the same weak argument-from-absence
+  that the magnetometer claim used to rest on.
+- **Impact:** both boards have haptics and the two implementations are not
+  interchangeable. The T-Watch has a DRV2605L with a waveform library, an I2C
+  interface and a rail-warmup latency; the Waveshare board has on, off and PWM.
+  `has(Capability::Haptics)` is true on both and means materially different
+  things — the clearest live justification for the typed descriptors in
+  [ADR-0001](../adr/0001-capability-model.md).
+
+### Waveshare memory: 32 MB flash, 8 MB PSRAM
+
+- **Claim:** external flash is `GD25Q256EYIGR` (U3) — 256 Mbit quad SPI, i.e.
+  **32 MB**. The SoC is a bare `ESP32-S3R8`, not a module.
+- **Source:** S6.
+- **Impact:** resolves D1. Twice the T-Watch's flash, on the board with 3.57×
+  the pixels. Also means **both** boards carry the `R8` marking, so the quad-vs-
+  octal PSRAM question (D12) is one question with one answer for both targets.
+
+### The Waveshare board has buttons; its BSP does not
+
+- **Claim:** at least two tactile keys on the drawing (`Key1` adjacent to `BOOT`,
+  and `Key3`), plus `PWRON` on the PMU.
+- **Source:** S6.
+- **Impact:** the vendor BSP declares no buttons. This is now a fourth item in
+  the same pattern as `BSP_CAPS_IMU 0` — the BSP describes what the BSP drives,
+  never what the board carries. Which GPIO each key uses is not resolved from
+  text extraction and remains D5.
+
+### Waveshare AXP2101 rail map, and a 1.8 V rail
+
+- **Claim:** ALDO1 → `VL1_3.3V`, ALDO2 → `VL2_3.3V`, ALDO3 → `VCC3V`,
+  ALDO4 → **`VL3_1.8V`**, BLDO2 → the vibration motor.
+- **Source:** S6.
+- **Impact:** the vendor BSP does not configure the PMU at all, so this map is
+  the only description of the board's power topology that exists. The 1.8 V rail
+  matters: something on this board is not 3.3 V, and identifying it is a
+  prerequisite for any level assumption — D13.
+
+### A conflict about the SD card interface
+
+- **Claim:** the BSP configures SDMMC 1-bit on GPIO 1/2/3. The schematic labels
+  those same nets `MOSI`, `SCK` and `MISO`, and shows a chip-select near GPIO 17.
+- **Source:** S7 (BSP) vs S6 (schematic).
+- **Status:** **CONFLICTING** — or, more likely, one board wiring that supports
+  both modes with the BSP choosing one. Either way the chip-select on GPIO 17 is
+  a pin the pin map did not have. D14.
+
+### What is still not resolved from this schematic
+
+Text extraction from a schematic PDF recovers part numbers and net names
+reliably and pin-to-net adjacency only sometimes. Two things need the sheets read
+visually rather than greped:
+
+- the `J3` expansion header pinout — at least 29 pins (D3);
+- which loads sit on which of the three 3.3 V rails (D13).
+
+Recorded as PARTIAL rather than left blank, so the gap is visible.

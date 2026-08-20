@@ -61,9 +61,9 @@ the arbiter is being built for the contention that actually exists here.
 
 | # | Question | Status |
 |---|---|---|
-| A5 | Is an external magnetometer intended at all — a variant board, a daughterboard, a different unit? | **owner decision** — OPEN_QUESTIONS |
-| A6 | If yes: which part, on which bus, at what address, on which rail? | depends on A5 |
-| A7 | If yes: is it on the same I2C bus as the PMU and RTC? | decides whether G-08–G-10 are even measurable |
+| A5 | Is an external magnetometer intended at all — a variant board, a daughterboard, a different unit? | **owner decision** — [OPEN_QUESTIONS A5](../research/OPEN_QUESTIONS.md) |
+| G-14 | If yes: which part, on which bus, at what address, on which rail? | conditional on A5; local to this backlog |
+| G-15 | If yes: is it on the same I2C bus as the PMU and RTC? | conditional on A5. Decides whether G-08–G-10 are even measurable |
 
 Until A5 has an answer, the honest state of this backlog is: **five epics can be
 designed usefully, three are research, five are blocked on hardware that does not

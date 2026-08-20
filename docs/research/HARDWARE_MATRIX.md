@@ -30,7 +30,7 @@ Sources are listed at the bottom.
 | IMU | BMA423 — accelerometer only | QMI8658 — 6-axis |
 | Magnetometer | **absent** | **absent** |
 | RTC | PCF8563 | PCF85063 |
-| Haptic | DRV2605 | **none found** |
+| Haptic | DRV2605L — waveform library over I2C | **bare motor on a GPIO** — no driver IC |
 | Audio in | 1× PDM mic | 2× mics via ES7210 ADC |
 | Audio out | MAX98357A (I2S class-D) | ES8311 codec |
 | IR transmitter | yes (GPIO2) | **absent** |
@@ -225,16 +225,25 @@ as a target to reproduce — not as evidence about Firefly's own firmware.
 
 ## Waveshare ESP32-S3-Touch-AMOLED-2.06
 
-Revision: schematic `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0`; pin map from
-vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0.
+Revision: schematic `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**,
+3 sheets; pin map from vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0.
+Where the two differ, the schematic wins on *what exists* and the BSP wins on
+*which pin firmware should use* — the BSP was demonstrably written to a subset
+of the board.
 
 ### Core
 
 | Item | Value | Status |
 |---|---|---|
-| SoC | ESP32-S3, dual-core LX7 | VERIFIED |
-| Flash / PSRAM | not stated by the vendor BSP or README | UNKNOWN |
-| Battery | present (AXP2101 charge path); capacity not stated | UNKNOWN |
+| SoC | **ESP32-S3R8** — bare chip, not a module | VERIFIED |
+| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3) | VERIFIED |
+| PSRAM | 8 MB (the `R8` suffix) — **quad or octal is unresolved, see D12** | CONFLICTING |
+| Battery | present, on connector `BAT1` via the AXP2101 charge path; capacity not stated | UNKNOWN |
+
+The SoC marking is `ESP32-S3R8` on **both** target boards, so D12 — quad or octal
+PSRAM — is a single question with a single answer that unblocks both. The flash
+is twice the T-Watch's 16 MB, which makes dual-OTA-slot arithmetic comfortable on
+the board with 3.57× the pixels. That is a convenient coincidence, not a plan.
 
 ### Peripherals
 
@@ -248,12 +257,32 @@ vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0.
 | Audio codec | ES8311 | I2S | VERIFIED |
 | Mic ADC | ES7210, **dual** digital microphones | I2S | VERIFIED |
 | Amplifier enable | — | GPIO 46 | VERIFIED |
+| **Vibration motor** | **no driver IC** — GPIO 18 → R12 (4.7 kΩ) → Q1 (MMBT3904, NPN) → motor on connector J1 | net `MOTOR`; motor supply from **BLDO2** | VERIFIED |
+| Buttons | at least two tactile keys on the board (`Key1` adjacent to `BOOT`, `Key3`) plus `PWRON` on the PMU. **The vendor BSP declares none** | specific GPIO assignment not resolved from the extraction — D5 | PARTIAL |
 | SD card | — | SDMMC 1-bit: CLK 2, CMD 1, D0 3 | VERIFIED |
 | Main I2C bus | — | SDA 15, SCL 14 | VERIFIED |
 | I2S bus | — | MCLK 16, SCLK 41, LCLK/WS 45, DOUT 40, DSIN 42 | VERIFIED |
-| Expansion connector | mentioned in the specification | — | UNKNOWN |
+| Expansion connector | header `J3`, at least 29 pins on the drawing | pinout not resolved from text extraction — D3 | PARTIAL |
+| USB | `USB_N` / `USB_P` through 22 Ω series resistors (R19, R20) to the SoC native USB pins | — | VERIFIED |
 | LoRa | — | **not present** | VERIFIED |
 | GNSS | — | **not present** | VERIFIED |
+
+### AXP2101 rail map
+
+Read from the schematic; the vendor BSP does not configure the PMU at all.
+
+| Rail | Net | Feeds |
+|---|---|---|
+| ALDO1 | `VL1_3.3V` | 3.3 V rail |
+| ALDO2 | `VL2_3.3V` | 3.3 V rail |
+| ALDO3 | `VCC3V` | 3.3 V rail |
+| ALDO4 | `VL3_1.8V` | **1.8 V** rail |
+| BLDO2 | — | **vibration motor** |
+
+Which load sits on which of the three 3.3 V rails is not resolved from the text
+extraction and needs the sheet read visually. The 1.8 V rail on ALDO4 is worth
+noting: something on this board runs at 1.8 V, and identifying it is a
+prerequisite for any level-shifting assumption.
 
 ### What the vendor BSP leaves unhandled
 
@@ -310,7 +339,7 @@ because that is a real configuration, not a degraded one.
 | `MAGNETOMETER` | ❌ | ❌ | simulated |
 | `LORA` | ✅ one of five chips | ❌ | simulated |
 | `GNSS` | ✅ one of two modules | ❌ | simulated |
-| `HAPTICS` | ✅ DRV2605 (rail-gated) | ❌ | logged |
+| `HAPTICS` | ✅ DRV2605L, rail-gated, waveform library | ✅ **bare motor, GPIO 18 + transistor** — on/off and PWM only | logged |
 | `AUDIO_OUT` | ✅ MAX98357A | ✅ ES8311 | host audio |
 | `AUDIO_IN` | ✅ 1× PDM | ✅ 2× via ES7210 | simulated |
 | `IR_TRANSMIT` | ✅ IR12-21C | ❌ | logged |
@@ -333,7 +362,7 @@ and degree is an architectural decision — see `docs/adr/`.
 | S3 | `Xinyuan-LilyGO/LilyGoLib`, `schematic/T_WATCH-S3 25-03-24.pdf` — **read**, 6 sheets; internal title block says `T_WATCH-2020&GPS_V08` Rev V1.4 |
 | S4 | `Xinyuan-LilyGO/LilyGoLib`, `schematic/T-Watch-S3-Plus-GPS V1.0 2025-04-29.pdf` — **read**, 1 sheet (GNSS daughterboard) |
 | S5 | `waveshareteam/ESP32-S3-Touch-AMOLED-2.06`, `README.md` — Apache-2.0 |
-| S6 | `waveshareteam/ESP32-S3-Touch-AMOLED-2.06`, `Schematic/…-V1.0.pdf` |
+| S6 | `waveshareteam/ESP32-S3-Touch-AMOLED-2.06`, `Schematic/…-V1.0.pdf` — **read**, 3 sheets, by text extraction; pin-to-net adjacency partially recoverable, see D3 and D13 |
 | S7 | ESP Component Registry, `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0 — Apache-2.0 |
 | S8 | arduino-esp32 variant `lilygo_twatch_s3/pins_arduino.h` (referenced by S1) |
 

@@ -44,15 +44,22 @@ designed to support several watch models from one codebase.
 The second board has no LoRa radio and no GNSS receiver. That is not an
 oversight in the plan — it is the reason the capability layer exists. Mesh and
 navigation are unavailable there and the UI must say so plainly rather than
-offer a feature the hardware cannot deliver. What each board actually carries
+offer a feature the hardware cannot deliver.
+
+Presence is not the whole story either. Both boards have haptics, and they are
+not the same haptics: one has a driver chip with a waveform library, the other
+has a motor on a transistor. A capability that is merely present or absent
+cannot express that, which is why it is a typed descriptor here rather than a
+boolean. What each board actually carries
 is in [`docs/research/HARDWARE_MATRIX.md`](docs/research/HARDWARE_MATRIX.md).
 
 Both boards have been surveyed component by component, down to the pin map and
 the power rails. The T-Watch is sourced from the vendor hardware document, the
 vendor board header and **both published schematics, read sheet by sheet**. The
 Waveshare board is sourced from the vendor README and its board-support package;
-its schematic has been obtained but not yet read, and the rows that depend on it
-say so. Where the schematic and the vendor document disagree — and on the
+its schematic has also been read, by text extraction — which recovers part
+numbers and nets reliably and pin adjacency only sometimes, so the rows that
+still need the sheets read visually say so. Where the schematic and the vendor document disagree — and on the
 T-Watch power rails they do — the disagreement is recorded as a conflict rather
 than resolved by preference. Those findings are in
 [`docs/research/HARDWARE_MATRIX.md`](docs/research/HARDWARE_MATRIX.md), each

@@ -18,13 +18,18 @@ including the parts the vendor BSPs ignore and the parts no application uses —
 and the capability model is settled in
 [ADR-0001](docs/adr/0001-capability-model.md).
 
-Working on: the host build and CI (T-003), and reading MeshCore upstream
-(T-006).
+Since the survey, all four vendor schematic PDFs have been read rather than
+merely cited. That corrected two rows that had been wrong, resolved four open
+questions, and produced two documented conflicts between the vendor documents
+and their own drawings.
+
+Working on: reading MeshCore upstream (T-006). Host build and CI (T-003) are
+green.
 
 ## Next ready
 
 - T-004 — pin ESP-IDF and LVGL versions
-- T-013 — ADR-0002, radio abstraction across the five possible T-Watch chips
+- T-013 — ADR-0003, radio abstraction across the five possible T-Watch chips
 
 T-006 gates both. The question that matters most is whether MeshCore assumes
 exclusive, uninterrupted ownership of the radio: if it does, it cannot coexist
@@ -58,7 +63,8 @@ Nothing in this repository may be described as hardware-tested.
 - **T-010 board bring-up** — no physical board; exact variant unknown
 - **T-011 interference measurement** — same, and neither board has a
   magnetometer, so the headline haptics-vs-compass concern cannot be measured
-  on current hardware at all
+  on current hardware at all. Four rows of the interference matrix are now
+  marked NOT MEASURABLE rather than pending
 
 ## Waiting on the project owner
 
@@ -68,10 +74,18 @@ Nothing in this repository may be described as hardware-tested.
    much as a driver one.
 3. Is there a second radio device, so mesh can be tested at all?
 4. Which regulatory region governs LoRa here?
-5. **What should the Waveshare board be?** It has neither LoRa nor GNSS, so
+5. **Is an external magnetometer intended at all?** Neither board has one, so
+   every compass feature in the plan currently has no hardware to run on. The
+   answer decides whether five §67 epics are dormant or dead.
+6. **What should the Waveshare board be?** It has neither LoRa nor GNSS, so
    mesh and navigation — two headline features — cannot exist on it. It can
-   still be a watch, an audio device, and the UI development platform. That is
-   a product decision, not an engineering one.
+   still be a watch, an audio device, a haptic device, and the UI development
+   platform. That is a product decision, not an engineering one — it cannot be
+   settled by writing code.
+
+Question 4 is not a preference. Which frequencies, power levels and duty cycles
+are lawful follows from the region, and it must be settled before anything
+transmits.
 
 ## Build and test status
 
@@ -89,16 +103,44 @@ clang-format or ccache.
 
 - The LilyGO PlatformIO pin to IDF 4.4.7 does not constrain Firefly, which is
   ESP-IDF-native and does not use the Arduino layer. Flagged, not proven.
-- Both boards' SoC is an ESP32-S3 — from product naming and vendor BSP targets,
-  not yet from a chip readback.
+- Both boards' SoC is an ESP32-S3 — now also from both schematics
+  (`ESP32-S3-R8` and `ESP32-S3R8`), but not yet from a chip readback.
 
 ## Known failures
 
 None. Nothing runs yet, which is not the same as everything working.
 
+## Open conflicts
+
+Recorded rather than resolved by preference. Both need a powered board.
+
+| # | Conflict |
+|---|---|
+| H8 | The T-Watch vendor document calls ALDO1 unused; the schematic drives the `+3V3` rail from it. If the schematic is right, `+3V3` is switchable and carries five parts |
+| D12 | PSRAM documented as quad; the `R8` part marking is understood to mean octal. Affects both boards, and blocks the LVGL buffer decision |
+
 ## What changed most recently
 
-Every peripheral on both boards now has an owner in the core design, and the
+**The schematics were read, not just cited.** The sources table listed all four
+PDFs while the board data actually rested on vendor documents and BSP headers.
+Reading them confirmed the important negatives from primary evidence — no
+magnetometer, no GNSS PPS reaching the SoC — and corrected two rows that were
+wrong:
+
+- **The Waveshare board does have a vibration motor** (GPIO 18 through a
+  transistor, no driver IC). It was recorded as "none found" on the strength of
+  its absence from the vendor BSP — the same weak argument-from-absence that the
+  magnetometer claim used to rest on. Two boards, two very different haptic
+  degrees, one capability: the clearest live justification for ADR-0001.
+- **The IR emitter's inactive level is LOW**, which the architecture had asserted
+  without a source.
+
+It also found parts that had no row at all: the radio's `DIO3` on GPIO 6, an
+amplifier whose shutdown pin is strapped so firmware cannot mute it, a power
+button that reaches the PMU rather than a GPIO, and three of four strapping pins
+carrying live signals. Waveshare flash is 32 MB.
+
+Before that: every peripheral on both boards got an owner in the core design, and the
 capability model is decided. The argument for covering parts nothing uses
 turned out not to be "we might want them later" — it is that an unowned part
 still draws power, still raises interrupts nobody services, still contends for

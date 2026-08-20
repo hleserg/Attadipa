@@ -34,14 +34,17 @@ That is the only conclusion this document is currently entitled to draw.
 
 | Resource | T-Watch S3 Plus | Waveshare AMOLED 2.06 | Status |
 |---|---|---|---|
-| Flash | 16 MB (`W25Q128JW`) | not established | CEILING / UNKNOWN (D1) |
-| PSRAM | 8 MB — **but see below** | not established | CONFLICTING / UNKNOWN (D1) |
+| Flash | 16 MB (`W25Q128JW`) | **32 MB** (`GD25Q256EYIGR`, quad) | CEILING |
+| PSRAM | 8 MB — **but see below** | 8 MB — same caveat | CONFLICTING |
 | Internal SRAM | 512 KB (ESP32-S3) | 512 KB (ESP32-S3) | CEILING |
 | Display | 240 × 240 | 410 × 502 | CEILING |
 
-**The PSRAM conflict.** The vendor document describes 8 MB **QSPI** PSRAM. The
-schematic's SoC part marking is `ESP32-S3-R8`, and Espressif's `R8` suffix
-denotes **octal** SPI PSRAM. Quad and octal differ by roughly a factor of two in
+**The PSRAM conflict.** The T-Watch vendor document describes 8 MB **QSPI**
+PSRAM. Both schematics mark the SoC `ESP32-S3R8`, and the `R8` suffix is
+*understood* to denote **octal** SPI PSRAM — that understanding is recollection,
+not something established here, and checking it against Espressif's published
+part-numbering scheme is part of D12 rather than an assumption this document
+gets to make. Quad and octal differ by roughly a factor of two in
 bandwidth and they need different `sdkconfig` settings; getting it wrong is not
 a performance nuance, it is a board that does not boot or a framebuffer that
 cannot keep up. Resolve before pinning any display or LVGL configuration —
@@ -98,9 +101,10 @@ gets a number, the method it came from goes next to it.
 | NVS, littlefs / SPIFFS partitions | partition table — an ADR, not an accident |
 | OTA slots — does the image fit twice? | partition table arithmetic against the flash ceiling |
 
-Firmware update needs two application slots plus the data partitions. On a 16 MB
-part that is unlikely to bind; on the Waveshare board it cannot even be checked
-until D1 is answered.
+Firmware update needs two application slots plus the data partitions. Neither
+board looks tight: 16 MB on the T-Watch and 32 MB on the Waveshare board — which
+is, conveniently, the board with 3.57× the pixels and therefore the larger asset
+burden. Convenient, not planned; do the arithmetic once there is an image.
 
 ### Internal RAM
 
@@ -169,7 +173,8 @@ failure, and it is invisible in a free-heap total.
 
 This file stops being a plan and becomes a budget when:
 
-1. D1 and D12 are answered — the ceilings are real for both boards.
+1. D12 is answered — quad or octal decides PSRAM bandwidth on both boards.
+   (D1 is resolved: 16 MB and 32 MB of flash respectively.)
 2. An embedded image has been built for at least one target and `idf.py size`
    has produced flash and static-RAM numbers.
 3. Every task has a declared stack and a measured high-water mark.
