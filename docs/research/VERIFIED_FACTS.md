@@ -170,3 +170,133 @@ is verified.
   Firefly, and must never be reported as Firefly's measured consumption.
   Note that waking on touch costs roughly twice waking on button — a real
   design trade-off, once confirmed.
+
+---
+
+## Read from the T-Watch schematics (S3, S4)
+
+Until this pass the T-Watch rows rested on the vendor's hardware document (S1)
+and its board header (S2). Both schematics have now been read. Everything below
+is sourced to the drawing itself.
+
+### The T-Watch has no magnetometer — now from the schematic, not from a feature list
+
+- **Claim:** the board carries exactly one motion part, the BMA423.
+- **Source:** S3. An exhaustive search of all six sheets for magnetometer part
+  families (`BMM*`, `QMC*`, `MMC*`, `AK[0-9]{4}`, `HMC*`, `LIS*M*`, `LSM*`,
+  `IST*`) returns nothing. The full active-part inventory of the drawing is
+  ESP32-S3-R8, W25Q128JW, AXP2101, PCF8563, BMA423, DRV2605L, HPD16B3,
+  SPM1423HM4H-B, MAX98357A, IR12-21C.
+- **Impact:** this was previously an argument from absence in a vendor feature
+  table, which is weak. It is now an argument from the schematic, which is the
+  right kind of evidence for a negative. All compass work stays architectural.
+
+### The GNSS PPS signal never reaches the SoC
+
+- **Claim:** `PPS` exists as a net on the daughterboard and appears nowhere in
+  the main-board schematic.
+- **Source:** S4 (net present), S3 (string absent from all six sheets).
+- **Impact:** no hardware-disciplined time reference. Any design that wanted
+  microsecond time alignment — mesh slotting, timestamped logging — must get it
+  from the UART sentence and wear the jitter, or not claim it.
+
+### The IR emitter is active-high and idles low
+
+- **Claim:** GPIO 2 → R64 (0 Ω) → base of Q15, an MMBT3904 NPN low-side switch,
+  with the IR12-21C anode at +3V3. Conduction requires GPIO 2 high.
+- **Source:** S3 sheet 4.
+- **Impact:** the inactive level is **LOW**, and the pin is safe at reset. This
+  was previously written into the architecture as an unsourced assumption about
+  LED polarity; it is now a fact. It is also the one easter-egg-adjacent
+  peripheral that can affect other people's equipment, so its idle state being
+  provably off matters more than the pin count suggests.
+
+### The audio amplifier cannot be shut down in firmware
+
+- **Claim:** the MAX98357A `SD_MODE` pin is set by R14 = 1 MΩ with R74 and R76
+  not fitted. No GPIO is connected to it.
+- **Source:** S3 sheet 6.
+- **Impact:** the amplifier is enabled whenever `SPK_VDD` is up. "Mute" is a
+  rail operation, not a pin operation. Any power state that wants the amplifier
+  off must own the rail — which makes the rail service load-bearing rather than
+  a convenience.
+
+### The power button never reaches a GPIO
+
+- **Claim:** SW7 wires to the AXP2101 `PWRON` pin.
+- **Source:** S3 sheet 1.
+- **Impact:** button presses arrive as PMU interrupts over I2C, not as GPIO
+  edges. Press duration, long-press and power-off behaviour are PMU register
+  policy. An input service that only knows about GPIO edges cannot see the most
+  important button on the watch.
+
+### The radio has an eighth line the vendor header omits
+
+- **Claim:** the module fitted on the drawing is an `HPD16B3` with an
+  SX1262-class pinout, and `DIO3` is wired to **GPIO 6**.
+- **Source:** S3 sheet 5, pin by pin: 1 `VCC`←`GPS_VDD`, 3 `NRESET`←IO8,
+  4 `BUSY`←IO7, 5 `DIO1`←IO9, 6 `DIO3`←IO6, 7 `MISO`←IO4, 8 `MOSI`←IO1,
+  9 `SCK`←IO3, 10 `NSS`←IO5, 12 `ANT`.
+- **Impact:** GPIO 6 was entirely absent from the pin map. On SX1262 designs
+  `DIO3` is commonly the TCXO supply and sometimes a second interrupt; which one
+  it is here decides whether the radio will get a clock at all. Do not write a
+  radio driver before answering it — OPEN_QUESTIONS D10.
+
+### Unplugging the GNSS module removes the BOOT and RESET buttons
+
+- **Claim:** the 13-pin FPC carries `IO0` (pin 2) and `RST/EN` (pin 6) in
+  addition to the GNSS UART, `GPS_LDO` and `IO10`.
+- **Source:** S3 sheet 2, S4.
+- **Impact:** bring-up instructions that say "hold BOOT" are false for a board
+  running without the daughterboard. Also puts main-I2C `SDA` on a detachable
+  connector.
+
+### Three of four strapping pins carry functional signals
+
+- **Claim:** GPIO 0 = BOOT button, GPIO 3 = LoRa `SCK`, GPIO 45 = display
+  backlight, GPIO 46 = I2S `DIN`.
+- **Source:** S3 sheets 2, 4, 5, 6.
+- **Impact:** GPIO 45 selects `VDD_SPI` voltage at reset. It is currently safe
+  because the backlight is active-high through an NPN, so it is dark at reset —
+  but the safety is a consequence of the circuit, not of anything the firmware
+  does. It belongs in the board file as a constraint.
+
+### Two rails the vendor calls unused are loaded on the schematic
+
+- **Claim:** S1 lists ALDO1 and DLDO1 as unused. S3 shows ALDO1 (pin 18) driving
+  the `+3V3` net and the `DLDO1/DC1SW` pin (pin 20) driving `SPK_VDD`.
+- **Source:** S1 vs S3 sheet 1.
+- **Status:** **CONFLICTING.** The `DLDO1/DC1SW` half is reconcilable — one pin,
+  two selectable functions. The ALDO1 half is not.
+- **Impact:** if the schematic is right, `+3V3` is switchable and carries the
+  accelerometer, RTC, haptic driver, microphone and IR emitter. That is the
+  difference between a deep-sleep state that works and one that silently keeps
+  five parts alive. Resolve on hardware — OPEN_QUESTIONS H8.
+
+### Smaller findings
+
+- BMA423 `INT2` is bonded out but not routed (R12, R15 not fitted). Only `INT1`
+  → GPIO 14 exists, so all accelerometer events share one line.
+- The PMU drives a charge-indicator LED on `CHGLED` through R182 (100 Ω). It is
+  configured over I2C, not by a GPIO.
+- USB `D−`/`D+` land on GPIO 19 / GPIO 20 — the S3 native USB pins — so
+  USB-Serial-JTAG and USB-OTG are both physically available.
+- An `MS412FE` rechargeable cell backs the RTC through D14 (1N4148) and 10 kΩ;
+  the GNSS daughterboard carries a second one for hot start.
+- A `MSK12C02-HB` slide switch sits in series with the battery. Firmware can
+  neither sense nor override it.
+- The microphone `SELECT` pin is strapped (R80, R81 not fitted).
+- The backlight is one series × three parallel LEDs, I_F = 3 × 15 mA →
+  **45 mA at full brightness**, V_F 3.0–3.3 V. Panel is `QT154C2408`.
+- The touch `RESET` pull-up R39 is marked `4K7/NC` — not fitted. This is the
+  mechanism behind the vendor's warning that a slept touch panel never wakes.
+
+### The schematic's own title block is wrong
+
+- **Claim:** the file published as the S3 schematic has a title block reading
+  `T_WATCH-2020&GPS_V08`, Rev V1.4, Friday 8 January 2021.
+- **Source:** S3, all six sheets.
+- **Impact:** the contents are unambiguously S3-class, so this is a stale
+  nameplate rather than the wrong document. But it means the drawing cannot be
+  used to establish which board revision anything applies to. Revision still
+  comes from inspecting a physical unit — OPEN_QUESTIONS A1.

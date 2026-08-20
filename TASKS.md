@@ -46,7 +46,7 @@ status · implementation status · tests · hardware required.
 - **Tests:** n/a
 - **Hardware required:** no
 - **Note:** M9 — does MeshCore assume exclusive radio ownership? — is the one
-  answer that can force an architecture change, and it also gates ADR-0002 on
+  answer that can force an architecture change, and it also gates ADR-0003 on
   the radio abstraction across five chips. Answer it before building on it.
 
 ## NEXT
@@ -63,7 +63,7 @@ status · implementation status · tests · hardware required.
 - **Tests:** a trivial ESP-IDF build for esp32s3
 - **Hardware required:** no
 
-### T-013 · ADR-0002: radio abstraction across five chips
+### T-013 · ADR-0003: radio abstraction across five chips
 - **Priority:** P0
 - **Dependencies:** T-006 (M6, M9)
 - **Goal:** one radio interface that serves SX1262, SX1280, CC1101, LR1121 and
@@ -170,11 +170,33 @@ Recommended next action:
 ### T-012 · Answers from the project owner
 - **Priority:** P0
 - **Waiting on:** the project owner
-- **Questions:** OPEN_QUESTIONS A1–A4 (hardware availability, radio and GNSS
-  variant, a second mesh device, regulatory region) and Q1 (what the Waveshare
-  board should be, given it can do neither mesh nor navigation).
-- **Impact:** A1–A2 gate all hardware work. Q1 shapes the product on one of the
-  two targets. Q3 (region) is a legal constraint, not a preference.
+- **Questions:** OPEN_QUESTIONS A1–A5 (hardware availability and revision, radio
+  and GNSS variant, a second mesh device, regulatory region, whether an external
+  magnetometer is intended at all) and Q1 (what the Waveshare board should be,
+  given it can do neither mesh nor navigation).
+- **Impact:** A1–A2 gate all hardware work. **A4 is a legal constraint, not a
+  preference** — the lawful frequencies, power and duty cycle follow from the
+  region, and must be settled before anything transmits. A5 decides whether five
+  §67 epics are dormant or dead. Q1 is a product decision that cannot be made by
+  writing code.
+
+### T-014 · Mandatory backlogs from the specification
+- **Priority:** P2
+- **State:** written, not started as work.
+- **What:** master plan §66 (mobile, 13 epics), §67 (magnetometer, 13 epics) and
+  §68 (coexistence, 13 epics) are recorded as backlogs with a per-epic gate:
+  [COMPANION_BACKLOG](docs/mobile/COMPANION_BACKLOG.md),
+  [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md),
+  [COEXISTENCE_BACKLOG](docs/hardware/COEXISTENCE_BACKLOG.md).
+- **What the exercise surfaced:** two §68 epics — haptic/magnetometer and
+  audio/magnetometer interference — **cannot be run on either target board**,
+  because neither has a magnetometer. They are marked NOT POSSIBLE rather than
+  left looking pending. Five §67 epics are blocked on hardware that does not
+  exist yet (A5).
+- **Startable now without hardware:** C-02 bus ownership, C-03 rail arbitration
+  and C-12 diagnostic trace. The trace in particular should be finished *while*
+  waiting for hardware — every blocked coexistence test needs it to produce
+  anything more than an anecdote.
 
 ## DONE
 

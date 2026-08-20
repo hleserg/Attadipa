@@ -33,8 +33,17 @@ Bus ownership has to be decided once, centrally, not by whoever writes the
 second driver.
 
 **It floats.** An unconfigured GPIO is in an undefined state. The T-Watch IR
-transmitter on GPIO2 is a diode connected to a pin — if nobody drives that pin
-low, its state is whatever the boot ROM left.
+transmitter on GPIO2 drives an NPN low-side switch, so the pin high means the
+diode conducts (S3 sheet 4). If nobody drives it low, its state is whatever the
+boot ROM left — on a part that can operate other people's equipment across a
+room.
+
+**Or it is a strapping pin.** Three of the four ESP32-S3 strapping pins on the
+T-Watch carry live signals: GPIO3 is the LoRa clock, GPIO45 is the backlight and
+also selects `VDD_SPI` voltage at reset, GPIO46 is I2S data. A driver that
+asserts one of those early enough does not misbehave — the board stops booting.
+That is not a peripheral concern; it is a board concern, and it needs an owner
+above the driver layer.
 
 **And the evidence that this is a real failure mode is already in the repo.**
 The Waveshare vendor BSP declares `BSP_CAPS_IMU 0` while a QMI8658 sits on the
@@ -151,9 +160,15 @@ it to diagnostics.
 | DRV2605 haptic | `HapticService` | **enable is PMU rail BLDO2** — see §6 |
 | LoRa radio (1 of 5) | `RadioService` → `MeshService` | rail ALDO4; chip is a variant |
 | GNSS (1 of 2) | `LocationService` | rail BLDO1 (+DC4 for LS550G); **PPS not connected** |
-| SPM1423 PDM mic | `AudioService` | input path |
-| MAX98357A amplifier | `AudioService` | I2S output path |
+| SPM1423 PDM mic | `AudioService` | input path; `SELECT` is strapped, channel fixed in hardware |
+| MAX98357A amplifier | `AudioService` | I2S output. **`SD_MODE` is strapped — there is no shutdown pin.** Silence is a rail operation on `DLDO1` |
 | IR transmitter (GPIO2) | `InfraredService` | **no application uses it** — see §5 |
+| Radio `DIO3` (GPIO6) | `RadioService` | purpose unresolved (TCXO supply or second IRQ) — OPEN_QUESTIONS D10. Owned regardless, so it is not left floating next to a radio |
+| Charge LED (`CHGLED`) | `PowerService` | a PMU register, not a GPIO. Owned so its blink pattern is a deliberate choice rather than a reset default |
+| USB device (GPIO19/20) | `UsbService` | native USB. Console today; enumerating as anything else is a decision, not a default |
+| RTC backup cell (MS412FE) | `PowerService` | charge path exists; whether to enable it is a policy with a standby-current cost |
+| Battery slide switch | — | **mechanical, unobservable.** Recorded so nobody writes code that assumes the battery is always connected |
+| Strapping pins (0, 3, 45, 46) | `BoardService` | reserved and documented; no driver may reconfigure them at will |
 | Internal flash 16 MB | `StorageService` | partition layout is an ADR |
 | PSRAM 8 MB | platform | LVGL buffers, mesh state — budgeted in RESOURCE_BUDGET |
 | Wi-Fi / BLE | `ConnectivityService` | shares RF with LoRa — coordinator concern |
@@ -185,7 +200,10 @@ fine is leaving them unowned.
 
 | Part | Board | Defined state when unused |
 |---|---|---|
-| IR transmitter | T-Watch | pin driven low, never floating; never transmits without an explicit user action |
+| IR transmitter | T-Watch | pin driven **low** — the inactive level, confirmed from the schematic, not assumed from LED convention. Never transmits without an explicit user action |
+| Radio `DIO3` | T-Watch | configured per D10's answer; until then, left in the state the radio driver's own init demands and not repurposed |
+| Charge LED | T-Watch | set to an explicit mode at boot, off by default |
+| USB device | both | console only; no storage or HID class exposed without a decision |
 | PDM microphone | T-Watch | clock stopped, not sampling |
 | ES7210 dual mics | Waveshare | codec in standby |
 | Gyroscope (QMI8658) | Waveshare | disabled at the sensor, not just ignored |

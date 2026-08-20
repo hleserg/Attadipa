@@ -29,15 +29,31 @@ is known to exist.
 
 | Subsystem A | Subsystem B | Suspected effect | Evidence | Severity | Method | Mitigation | Board | Firmware |
 |---|---|---|---|---|---|---|---|---|
-| Haptic motor | Magnetometer | magnetic field distorts heading | THEORETICAL RISK | — | — | — | — | — |
+| Haptic motor | Magnetometer | magnetic field distorts heading | **NOT MEASURABLE** | — | — | — | — | — |
 | Haptic motor | IMU | vibration corrupts accelerometer | THEORETICAL RISK | — | — | — | — | — |
 | LoRa TX | GNSS acquisition | RF desensitisation | THEORETICAL RISK | — | — | — | — | — |
-| LoRa TX | Magnetometer | supply current transient | THEORETICAL RISK | — | — | — | — | — |
+| LoRa TX | Magnetometer | supply current transient | **NOT MEASURABLE** | — | — | — | — | — |
 | Display DMA | GNSS | broadband EMI | THEORETICAL RISK | — | — | — | — | — |
 | High brightness | Battery / GNSS | supply droop | THEORETICAL RISK | — | — | — | — | — |
-| Audio amplifier | Magnetometer | speaker magnet and coil current | THEORETICAL RISK | — | — | — | — | — |
+| Audio amplifier | Magnetometer | speaker magnet and coil current | **NOT MEASURABLE** | — | — | — | — | — |
 | Battery charging | GNSS | switching noise | THEORETICAL RISK | — | — | — | — | — |
-| Battery charging | Magnetometer | charge current field | THEORETICAL RISK | — | — | — | — | — |
+| Battery charging | Magnetometer | charge current field | **NOT MEASURABLE** | — | — | — | — | — |
+
+**On the four `NOT MEASURABLE` rows.** Every magnetometer pair in this matrix is
+untestable on the boards this project targets, because **neither board has a
+magnetometer** — the T-Watch carries only a BMA423 accelerometer and the
+Waveshare board only a QMI8658 six-axis IMU
+([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)). They are kept in the table
+rather than deleted, because the day an external sensor is added
+(OPEN_QUESTIONS A5) they become the first four tests to run. They are marked
+distinctly so that "not yet measured" and "cannot be measured here" never look
+like the same state.
+
+Note that this includes the pair the master plan uses to motivate the whole
+coexistence architecture. The architecture is still justified — by the shared
+I2C bus, the shared ALDO3 rail and the amplifier's missing shutdown pin, all of
+which are real on these boards — but not by this example. See
+[COEXISTENCE_BACKLOG](COEXISTENCE_BACKLOG.md).
 | Wi-Fi | GNSS | in-band harmonics | THEORETICAL RISK | — | — | — | — | — |
 | BLE | GNSS | duty-cycled RF | THEORETICAL RISK | — | — | — | — | — |
 | SD transfer | GNSS | bus EMI | THEORETICAL RISK | — | — | — | — | — |

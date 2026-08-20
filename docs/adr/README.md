@@ -36,3 +36,4 @@ What this makes easier, what it makes harder, and what it commits us to.
 | # | Title | Status |
 |---|---|---|
 | [0001](0001-capability-model.md) | Capability model: presence, variant, degree, availability | proposed |
+| [0002](0002-companion-is-optional.md) | The phone companion is optional, and the watch never depends on it | proposed |

@@ -25,10 +25,17 @@ will close it.
 | A2 | If a T-Watch is present: which of the five radio chips, and which of the two GNSS modules? | **UNKNOWN** | inspect the unit / order details |
 | A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner |
 | A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN** | ask the project owner |
+| A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **UNKNOWN** | ask the project owner — see [../hardware/MAGNETOMETER_BACKLOG.md](../hardware/MAGNETOMETER_BACKLOG.md) |
 
 A1 and A2 gate all bring-up, the entire interference matrix, and every power
 number. A2 in particular decides whether the radio is sub-GHz or 2.4 GHz —
 which changes region rules and mesh interoperability, not just a driver.
+
+A4 is not a preference. Which frequencies, power levels and duty cycles are
+lawful is set by the region the device operates in, and the answer changes what
+the radio may legally do. It has to be settled before anything transmits.
+
+A5 decides whether five epics in §67 are dormant or dead.
 
 Until these are answered: simulator, architecture, host tests and protocol work
 proceed; hardware work does not.
@@ -44,6 +51,8 @@ proceed; hardware work does not.
 | H5 | Which wake sources are usable in practice, and what does each cost? | UNKNOWN | measurement; vendor table gives the shape |
 | H6 | AMOLED brightness vs power on the Waveshare board | UNKNOWN | measurement |
 | H7 | Achievable LVGL frame rate and redraw cost on each panel | UNKNOWN | benchmark on hardware |
+| H8 | **Is ALDO1 the `+3V3` rail?** The vendor doc says ALDO1 is unused; the schematic shows it driving `+3V3` | **CONFLICTING** | read the AXP2101 rail-enable and voltage registers on a powered board, then cut one rail at a time and watch which parts drop off the I2C scan |
+| H9 | Real backlight current vs brightness, against the schematic's 45 mA at full | UNKNOWN | measurement; the 45 mA figure is a datasheet-level I_F, not a measured draw |
 
 ## Hardware — documentary gaps
 
@@ -56,7 +65,11 @@ proceed; hardware work does not.
 | D5 | Waveshare button/wake inputs — BSP declares none; is that the board or the BSP? | UNKNOWN | schematic |
 | D6 | T-Watch: which PMU rail powers GNSS on the *specific* unit (BLDO1 vs DC3) | UNKNOWN | inspect the unit for rear BOOT/RST buttons |
 | D7 | Exact ST7789V3 and CO5300 init sequences and their timing | UNKNOWN | vendor driver source |
-| D8 | Is the T-Watch main I2C bus shared with anything timing-sensitive? | UNKNOWN | schematic + driver review |
+| D8 | Is the T-Watch main I2C bus shared with anything timing-sensitive? | PARTIAL | schematic read: five devices confirmed on SDA 10 / SCL 11, plus a possible sixth — see D9. Timing sensitivity still needs driver review |
+| D9 | **Does the GNSS daughterboard connect the `MIA-M10Q` `SDA`/`SCL` to the FPC?** If it does, the GNSS is a sixth device on the main I2C bus at 0x42 | UNKNOWN | trace the daughterboard FPC net list, or scan the bus on a board with the module fitted |
+| D10 | **What is radio `DIO3` (GPIO 6) for on this board — TCXO supply or a second interrupt?** | UNKNOWN | HPD16B3 module datasheet + the vendor radio driver's `setDio3AsTcxoCtrl` usage |
+| D12 | **Is the T-Watch PSRAM quad or octal?** The vendor doc says QSPI; the schematic's `ESP32-S3-R8` marking denotes octal. Different `sdkconfig`, ~2× bandwidth difference | **CONFLICTING** | `esptool.py flash_id` / `esp_psram` probe on hardware, or the SoC datasheet against the exact part marking. Blocks the LVGL buffer ADR — see [../architecture/RESOURCE_BUDGET.md](../architecture/RESOURCE_BUDGET.md) |
+| D11 | Which AXP2101 rail is the schematic's net `LDO5`? It feeds DRV2605 `EN`, and the vendor rail map says BLDO2 — consistent but not proven | UNKNOWN | PMU register read on hardware |
 
 ## MeshCore
 

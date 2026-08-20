@@ -47,9 +47,14 @@ navigation are unavailable there and the UI must say so plainly rather than
 offer a feature the hardware cannot deliver. What each board actually carries
 is in [`docs/research/HARDWARE_MATRIX.md`](docs/research/HARDWARE_MATRIX.md).
 
-Both boards have been surveyed from vendor documentation, vendor board-support
-code, and the published schematics — component by component, down to the pin
-map and the power rails. Those findings are in
+Both boards have been surveyed component by component, down to the pin map and
+the power rails. The T-Watch is sourced from the vendor hardware document, the
+vendor board header and **both published schematics, read sheet by sheet**. The
+Waveshare board is sourced from the vendor README and its board-support package;
+its schematic has been obtained but not yet read, and the rows that depend on it
+say so. Where the schematic and the vendor document disagree — and on the
+T-Watch power rails they do — the disagreement is recorded as a conflict rather
+than resolved by preference. Those findings are in
 [`docs/research/HARDWARE_MATRIX.md`](docs/research/HARDWARE_MATRIX.md), each
 with its source, and in
 [`docs/research/VERIFIED_FACTS.md`](docs/research/VERIFIED_FACTS.md).
