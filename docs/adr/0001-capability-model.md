@@ -1,7 +1,25 @@
 # 0001 — Capability model: presence, variant, degree, availability
 
-Status: proposed
+Status: **proposed — amended 2026-08-21 by [ADR-0004](0004-capability-sources.md)**
 Date: 2026-08-21
+
+> **Amendment notice.** Two claims in this ADR were stated more broadly than the
+> evidence supported, and a product decision the same day
+> ([OWNER_DECISIONS OD-1](../research/OWNER_DECISIONS.md)) made both of them
+> false:
+>
+> - *"The descriptors are produced by the BSP. Nothing above the platform layer
+>   constructs them."* A capability may now be provided by a separate Firefly
+>   node, which the BSP cannot know about at build time.
+> - `Availability::Absent` — *"not on this board; the feature does not exist
+>   here."* Absence is no longer permanent. A board with no GNSS acquires GNSS
+>   when a node is attached.
+>
+> The three-questions structure below — *is it there*, *which one*, *can I use
+> it right now* — survives intact and is the reason the change costs an
+> amendment rather than a rewrite. ADR-0004 extends the availability enum and
+> adds a provider axis. Read this ADR for the reasoning; read ADR-0004 for the
+> enum that is actually in force.
 
 ## Context
 
@@ -79,6 +97,12 @@ enum class Availability {
 `Absent` and `Failed` must never render identically. "This watch has no
 compass" and "the compass is broken" are different sentences to a user.
 
+> **Amended.** That principle — one state per sentence a user would be told —
+> is right, and applying it to node-provided capabilities forces the enum wider.
+> "This watch has no compass", "Maps needs a Firefly node" and "your node is out
+> of range" are three sentences, and `Absent` was carrying all three.
+> [ADR-0004](0004-capability-sources.md) splits it.
+
 Capabilities are enumerated per sensing axis rather than per part:
 `Accelerometer` and `Gyroscope` are separate entries, and `Magnetometer`
 exists in the enum even though neither board has one — so that adding one later
@@ -86,6 +110,12 @@ changes an answer, not an interface.
 
 The descriptors are produced by the BSP. Nothing above the platform layer
 constructs them, and nothing above it may branch on board identity.
+
+> **Amended.** The second clause holds; the first does not. A descriptor may
+> also be produced by an attached provider — a Firefly node — and registered at
+> runtime. What does not change is that *applications* never construct or branch
+> on descriptors, and never learn where one came from. See
+> [ADR-0004](0004-capability-sources.md).
 
 ## Alternatives considered
 
@@ -132,5 +162,13 @@ availability states, including `Absent`, without crashing or lying. Diagnostics
 must be able to show declared-versus-detected, because a descriptor that
 disagrees with the hardware is worse than no descriptor.
 
-**Open.** Whether `traits` should be extensible at runtime for external sensors
-over the expansion connector — deferred until such a sensor exists.
+**Open.** ~~Whether `traits` should be extensible at runtime for external
+sensors over the expansion connector — deferred until such a sensor exists.~~
+
+**Closed, sooner than expected.** That question arrived within the day, and not
+over the expansion connector: a Firefly node provides LoRa and GNSS over a link.
+Deferring it "until such a sensor exists" was the wrong instinct — the cost of
+runtime-extensible capabilities is almost entirely in the *contracts* around
+them (who may register, what happens to a running app when one vanishes), and
+those are cheap to decide with no code and expensive to retrofit into a system
+that assumed a fixed set. Resolved in [ADR-0004](0004-capability-sources.md).

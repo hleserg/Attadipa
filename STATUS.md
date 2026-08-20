@@ -23,8 +23,17 @@ merely cited. That corrected two rows that had been wrong, resolved four open
 questions, and produced two documented conflicts between the vendor documents
 and their own drawings.
 
-Working on: reading MeshCore upstream (T-006). Host build and CI (T-003) are
-green.
+Then the product changed shape. A **separate Firefly node** — LoRa, GNSS and an
+ESP32 in its own box — is part of the plan, and a watch attached to one runs the
+same applications a watch with its own radio runs. Which means a capability can
+now be provided by something that is not on the board, and can appear and
+disappear while an application is open. Two ADRs written the same morning said
+the opposite; both have been corrected rather than left contradicting, and
+[ADR-0004](docs/adr/0004-capability-sources.md) carries the model that is
+actually in force.
+
+Working on: reading MeshCore upstream (T-006), and reuse reconnaissance across
+the eight subsystems about to be designed. Host build and CI (T-003) are green.
 
 ## Next ready
 
@@ -48,7 +57,20 @@ Running ahead of implementation, so the next task is never waiting on a search:
 
 ## Long-running operations
 
-None.
+Started ahead of need, so that nothing below stalls waiting for a download.
+Progress is in `/root/upstream/clone.log` and `/root/upstream/toolchain.log`.
+
+| Operation | Purpose | Gates |
+|---|---|---|
+| Ten upstream clones into `/root/upstream` — MeshCore, Meshtastic, InfiniTime, RadioLib, LVGL, LilyGO T-Watch, esp-bsp, Gadgetbridge, Watchy | full history, so commit hashes and closed issues can be cited rather than paraphrased | T-006, T-007, and every reuse-ledger record |
+| ESP-IDF `release/v5.5` clone with submodules, then `install.sh esp32s3` | the target toolchain; the download is large and would otherwise block the first firmware build | T-004, T-005 |
+| `ninja-build`, `libsdl2-dev`, `libsdl2-image-dev`, `ccache` | the simulator is a first-class target (§35) and SDL2 was not installed | T-008 |
+| Reuse reconnaissance across eight subsystems, in parallel | the addendum requires open-source recon *before* each subsystem is designed, not after | T-006, T-007, and ADR-0004 through ADR-0006 |
+
+These were started on 2026-08-21 in response to the addendum's rule that long
+operations be started before their result is needed. They were overdue: the
+reuse ledger had a template and no records, which is the state the ledger exists
+to prevent.
 
 ## Verified hardware
 
@@ -77,27 +99,41 @@ Nothing in this repository may be described as hardware-tested.
 5. **Is an external magnetometer intended at all?** Neither board has one, so
    every compass feature in the plan currently has no hardware to run on. The
    answer decides whether five §67 epics are dormant or dead.
-6. **What should the Waveshare board be?** It has neither LoRa nor GNSS, so
-   mesh and navigation — two headline features — cannot exist on it. It can
-   still be a watch, an audio device, a haptic device, and the UI development
-   platform. That is a product decision, not an engineering one — it cannot be
-   settled by writing code.
+6. **Does the Firefly node carry a magnetometer?** This is question 5 asked
+   about the node instead of the watch, and it is the one that decides what
+   "компас" can mean. If the node has one, a compass works standing still. If
+   not, a compass is GNSS course-over-ground — it needs the user to be moving
+   and shows nothing at all when they stop. Those are different products and
+   the difference is visible in the first ten seconds of use.
+
+**What the Waveshare board should be** was question 6 here until 2026-08-21.
+It is answered: the board is not a lesser device needing a purpose found for
+it, it is a device whose mesh and navigation arrive over a link instead of over
+a bus. See [OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md) OD-1.
 
 Question 4 is not a preference. Which frequencies, power levels and duty cycles
 are lawful follows from the region, and it must be settled before anything
-transmits.
+transmits. It became concrete the same day: the owner's own MeshCore node runs
+868.731 MHz at 22 dBm — 158 mW — and whether that is lawful on that frequency
+in the region of operation is unestablished. Firefly is not responsible for
+that node, but the numbers it ships as *defaults* are its own responsibility.
+Note that §52 of the specification already forbids hardcoding RF settings, so
+the honest default for frequency is not a number at all: it is `Unset`, and
+`Unset` closes the transmit path.
 
 ## Build and test status
 
 | Target | State |
 |---|---|
-| Host / native | builds; smoke test passes locally |
-| Simulator | not started — SDL2 not installed, LVGL version not chosen |
-| ESP32-S3 firmware | not started — ESP-IDF not installed, version not chosen |
+| Host / native | builds; smoke test passes locally and in CI |
+| Simulator | not started — SDL2 and ninja now installed; LVGL version still not chosen |
+| ESP32-S3 firmware | not started — ESP-IDF `release/v5.5` installing; version not yet pinned by decision |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED` |
 
-The development host has cmake and gcc. It does not have ESP-IDF, ninja, SDL2,
-clang-format or ccache.
+The development host now has cmake, gcc, ninja, SDL2 and ccache. ESP-IDF is
+being installed for `esp32s3` — see "Long-running operations". Note that having
+ESP-IDF v5.5 on disk is not the same as having decided on it (T-004); the clone
+was started early so that the decision is not what waits for the download.
 
 ## Assumptions currently in force
 

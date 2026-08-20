@@ -24,7 +24,7 @@ will close it.
 | A1 | Does the developer have either board physically, and which revision? | **UNKNOWN** | ask the project owner |
 | A2 | If a T-Watch is present: which of the five radio chips, and which of the two GNSS modules? | **UNKNOWN** | inspect the unit / order details |
 | A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner |
-| A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN** | ask the project owner |
+| A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN — now concrete** | ask the project owner. The owner's existing MeshCore node runs 868.731 MHz at 22 dBm ([OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-2). 22 dBm is 158 mW; whether that is lawful on that frequency in the region of operation is unestablished |
 | A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **UNKNOWN** | ask the project owner — see [../hardware/MAGNETOMETER_BACKLOG.md](../hardware/MAGNETOMETER_BACKLOG.md) |
 
 A1 and A2 gate all bring-up, the entire interference matrix, and every power
@@ -34,6 +34,14 @@ which changes region rules and mesh interoperability, not just a driver.
 A4 is not a preference. Which frequencies, power levels and duty cycles are
 lawful is set by the region the device operates in, and the answer changes what
 the radio may legally do. It has to be settled before anything transmits.
+
+A4 stopped being theoretical on 2026-08-21. The owner's own node is already on
+air at 868.731 MHz and 22 dBm. Firefly is not responsible for that node — but
+the numbers it ships as *defaults* are Firefly's responsibility, and a default
+cannot be chosen before A4 is answered. Note also that A4 no longer decides what
+the core is built to do: per OD-2 these are settings, so the core is built to
+carry a bounded, user-settable value either way. A4 decides the bounds and the
+default, which is a smaller question than it was — but a legal one still.
 
 A5 decides whether five epics in §67 are dormant or dead.
 
@@ -117,14 +125,24 @@ quiet windows around it. That is an integration constraint, not a detail.
 
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| Q1 | What should the Waveshare board *be*, given it cannot do mesh or navigation? | UNKNOWN | product decision by the owner |
+| ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With a Firefly node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
 | Q2 | Is a magnetometer expected to be added externally, or is heading GNSS-only for good? | UNKNOWN | product decision by the owner |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
 
-Q1 is a genuine product question, not an engineering one. The specification
-describes a mesh-and-navigation wearable; on this board neither exists. It can
-still be a watch, an audio device, a development and UI platform — but somebody
-has to decide, and it is not a decision to make by writing code.
+Q1 was a genuine product question, not an engineering one, and it was answered
+on 2026-08-21 in a way that reframed it. The board is not a lesser device that
+needs a purpose found for it; it is a device whose mesh and navigation arrive
+over a link instead of over a bus. What was a gap in the product is now the
+strongest argument for the capability model: two boards that share almost no
+hardware run the same applications, because applications ask what the device can
+do and never which device it is.
+
+Q2 is the part of the compass question that OD-1 did *not* answer, and it got
+sharper. The owner named "компас" among the applications the node enables. No
+board has a magnetometer. Either the node carries one — which would answer both
+Q2 and A5 — or "compass" means GNSS course-over-ground, which only works while
+moving and shows nothing at all when the user stands still. Those are different
+products and the difference is visible to the user in the first ten seconds.
 
 ---
 

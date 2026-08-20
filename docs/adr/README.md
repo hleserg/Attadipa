@@ -35,5 +35,16 @@ What this makes easier, what it makes harder, and what it commits us to.
 
 | # | Title | Status |
 |---|---|---|
-| [0001](0001-capability-model.md) | Capability model: presence, variant, degree, availability | proposed |
-| [0002](0002-companion-is-optional.md) | The phone companion is optional, and the watch never depends on it | proposed |
+| [0001](0001-capability-model.md) | Capability model: presence, variant, degree, availability | proposed — amended by 0004 |
+| [0002](0002-companion-is-optional.md) | The phone companion is optional, and the watch never depends on it | proposed — scope corrected by 0004 |
+| [0004](0004-capability-sources.md) | Where a capability comes from, and what happens when it leaves | proposed |
+
+0003 is reserved for the radio abstraction across the five possible T-Watch
+chips ([TASKS](../../TASKS.md) T-013). It is blocked on reading MeshCore, not on
+a decision — writing it before knowing whether MeshCore assumes exclusive
+ownership of the radio would be guessing.
+
+An ADR that amends another does not replace it. 0001 keeps its reasoning and
+carries an amendment notice; 0004 carries the enum that is actually in force.
+Deleting the superseded text would delete the record of why the first answer
+looked right, which is the part a later reader needs most.

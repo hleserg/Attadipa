@@ -44,6 +44,35 @@ Tests required:
 Copy it whole. A half-filled record is worse than none — it looks like the
 question was answered.
 
+## Upstream sources examined, and at which revision
+
+The addendum forbids writing "taken from Meshtastic" or "similar to Zephyr". It
+requires repository, tag or version, **commit hash**, the relevant source files
+and the licence — so that it is possible to return to the specific
+implementation. These were cloned in full, with history, on 2026-08-21; the
+records below cite them by hash.
+
+Full history rather than a shallow clone is deliberate: the addendum also
+requires reading issues, pull requests, changelogs and bug fixes, because closed
+bugs show which obvious-looking solutions already broke for other people. We
+want to inherit the experience, not only the code.
+
+| Project | Repository | Commit at examination | Last commit | Why it is here |
+|---|---|---|---|---|
+| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Firefly builds on; T-006 |
+| `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API |
+| `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
+| `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
+| `lvgl` | github.com/lvgl/lvgl | `7cc13aafaa2e7acab6cf3c1977ab6ca70b6c2ed7` | 2026-08-20 | the UI toolkit; version choice is open question T2 |
+| `T-Watch-S3` | github.com/Xinyuan-LilyGO/TTGO_TWatch_Library | `e5a0f825a21198f97d2bafee03ea853766483d20` | 2025-02-28 | LilyGO vendor library for one of the two target boards |
+| `waveshare-bsp` | github.com/espressif/esp-bsp | `2f519317d5375f7bbb0190b29a4988c2ea2453e2` | 2026-08-13 | Espressif BSP collection, including the Waveshare board; compile-time BSP_CAPS_* |
+| `Gadgetbridge` | codeberg.org/Freeyourgadget/Gadgetbridge | `40326980ca871989961ba2442e7cabd4d204b1b6` | 2026-08-21 | host side of many watch protocols; companion protocol prior art |
+| `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
+| `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
+
+Licences are recorded per record below, not here — a licence that is convenient
+to look up is a licence that gets assumed.
+
 ## Rules
 
 - License is checked **before** the code is depended on, never after. Anything

@@ -109,8 +109,11 @@ So a capability answers three questions, not one:
 
 **Can I use it right now?** — an availability state, for both.
 
+There is a fourth question, and it arrived with the Firefly node: **where does
+it come from, and what happens when that goes away?**
+
 ```cpp
-// Cheap, for deciding whether a feature exists at all on this board.
+// Cheap, for deciding whether a feature exists at all on this device.
 if (!caps.has(Capability::Gnss)) { /* the app is not offered */ }
 
 // Typed, for code that must know the part.
@@ -118,20 +121,36 @@ if (auto lora = caps.lora()) {
     // lora->chip, lora->band, lora->max_tx_dbm
 }
 
-// Availability is a separate axis from presence.
-enum class Availability {
-    Absent,       // not on this board — the feature does not exist here
-    Failed,       // on the board, but initialisation failed
-    Off,          // deliberately powered down; can be brought up
-    Ready,        // usable now
+// Availability is a separate axis from presence: one state per remedy.
+enum class Availability : uint8_t {
+    Unsupported,    // no configuration of this device can provide it
+    Unprovisioned,  // a supported provider would give it; none is bound
+    Unreachable,    // a provider is bound, but is not reachable now
+    Incompatible,   // reachable, but no protocol version can be agreed
+    Failed,         // bound and reachable; it did not come up
+    Off,            // deliberately powered down; can be brought up
+    Ready,          // usable now
 };
+
+// Where it comes from is an orthogonal axis, read only below the app layer.
+enum class Origin : uint8_t { Local, Node };
 ```
 
-`Absent` and `Failed` must never render the same way. "This watch has no
-compass" and "the compass is broken" are different sentences to a user, and
-only one of them is worth a diagnostics screen.
+No two of these may render the same way. "This watch has no compass", "Maps
+needs a Firefly node", "your node is out of range" and "the compass is broken"
+are four different sentences to a user, and each has a different thing the user
+can do about it. That is the rule that sets the state count: **one state per
+remedy; different wording for the same remedy is a reason code, not a state.**
 
-The decision and its alternatives belong in ADR-0001.
+`Ready` means the source can be asked. It does not mean it has an answer — a
+GNSS that is powered and healthy and has no fix is `Ready`. Availability and
+validity are different questions, and a datum that crossed a link has **two**
+ages: how old it was at the source, and how long ago it reached us. The UI shows
+the larger.
+
+The decision and its alternatives belong in ADR-0001 and, for everything on this
+page about sources and runtime lifecycle,
+[ADR-0004](../adr/0004-capability-sources.md).
 
 ### Capabilities
 
@@ -141,8 +160,20 @@ IrTransmit · SdCard · Wifi · Ble`
 
 Note `Accelerometer` and `Gyroscope` are separate. Neither board has a
 magnetometer, but `Magnetometer` exists in the enum — so the day one is added
-externally, the answer changes from `Absent` to `Ready` and nothing above the
-BSP needs rewriting. That is the whole point of the layer.
+externally, the answer changes from `Unsupported` to `Ready` and nothing above
+the BSP needs rewriting. That is the whole point of the layer, and the Firefly
+node turned it from an argument into a requirement within a day: on the
+Waveshare board `Lora` and `Gnss` change exactly that way when a node is
+attached.
+
+**Capabilities are not data feeds.** §32 lists what a node may provide and mixes
+the two: mesh connectivity and additional GNSS are capabilities; weather, Home
+Assistant events, quest events and telemetry are feeds. A capability has an
+availability state and gates whether an application is offered. A feed has a
+source and an age, and nothing else. `has(Capability::Weather)` would be a
+category error — it produces a screen that cannot tell "no weather source" from
+"the weather is four hours old". The test: *can an application be written that is
+useless without it?*
 
 ---
 
@@ -261,16 +292,33 @@ is *silent* by default, not to make it useful.
 On the Waveshare board, two of the product's headline features — mesh messaging
 and navigation — have no hardware. This is not a degraded mode to paper over.
 
+On the Waveshare board those two features have no *local* hardware — and since
+2026-08-21 that is a different statement from having no hardware at all, because
+a Firefly node provides both. Absence is still first-class; it is no longer
+permanent.
+
 The rules:
 
-- An application whose capability is `Absent` is **not offered**. No greyed-out
-  icon that promises something the board can never do.
-- A service whose capability is `Absent` still exists and still answers. It
+- An application whose capability is `Unsupported` is **not offered**. No
+  greyed-out icon that promises something the device can never do.
+- An application whose capability is merely `Unprovisioned`, `Unreachable`,
+  `Incompatible`, `Off` or `Failed` **is** offered, with the remedy stated. An
+  application that vanishes from the launcher when the node walks out of range
+  teaches the user that the device is unreliable, rather than that the node is
+  away. The dividing line is not "on the board or not" — it is **whether the
+  user has an action available**.
+- A service whose capability is unavailable still exists and still answers. It
   returns `NOT_SUPPORTED`, not `false`, and never crashes a caller.
-- The UI says which of the four states it is in, in human language.
-  "This watch has no radio" is a complete, honest answer.
-- The simulator can present a board with no radio and no GNSS, because that is
-  a real configuration and it must be testable.
+- The UI says which of the seven states it is in, in human language.
+  "This watch has no radio" is a complete, honest answer; so is "your node is out
+  of range, last seen four minutes ago".
+- Values are three-valued where they can be unknown. *Known* · *known to be
+  none* · *not known* are three facts, and rendering the third as the second —
+  "0 nodes nearby" when we have no idea — is a lie the interface tells
+  confidently.
+- The simulator can present a device with no radio and no GNSS, **and one that
+  gains and loses both while an application is open**, because those are real
+  configurations and all of them must be testable without hardware.
 
 Error vocabulary — services return these, never a bare boolean:
 `NOT_SUPPORTED · BUSY · TIMEOUT · NO_FIX · RADIO_UNAVAILABLE ·
@@ -349,11 +397,41 @@ interrupt lines.
 
 ---
 
-## 9. Concurrency
+## 9. Concurrency, and applications that outlive their hardware
 
 Applications and UI code do not create FreeRTOS tasks. Services own their tasks;
 applications receive events. An application that needs work done off the UI
 thread asks a service for it.
+
+§33 gives applications create · open · pause · resume · close · event. None of
+those is *the GNSS you were navigating with has just left the building* — and
+with a detachable node that is an ordinary Tuesday. It arrives through `event`
+rather than as a seventh verb, so that applications which do not care do not
+implement a handler for it:
+
+```cpp
+struct CapabilityChanged {
+    Capability   capability;
+    Availability from;
+    Availability to;
+    ProviderRef  provider;
+};
+```
+
+An application declares what it needs and the framework enforces it, because an
+application cannot be trusted to enforce it on itself:
+
+```cpp
+struct AppManifest {
+    std::span<const Capability> required;     // cannot run without these
+    std::span<const Capability> enhanced_by;  // better with, fine without
+};
+```
+
+A `required` capability leaving while the application is open drives it to a
+framework-owned screen that states the remedy. It does not crash, and it does not
+keep drawing a position that is no longer arriving. This contract is being
+written while there are zero applications, which is the only time it is cheap.
 
 This is what keeps stack usage countable, and stack usage is part of the memory
 budget on a device where internal RAM is the scarce resource.
@@ -370,6 +448,11 @@ budget on a device where internal RAM is the scarce resource.
 | 4 | Partition layout and OTA scheme | ADR |
 | 5 | ESP-IDF and LVGL versions | DEPENDENCIES (TASKS T-004) |
 | 6 | Whether to depend on the vendor BSPs or take only their pin facts | REUSE_LEDGER (OPEN_QUESTIONS T6) |
+| 7 | Capability sources and their runtime lifecycle | [ADR-0004](../adr/0004-capability-sources.md) (TASKS T-015) |
+| 8 | The node application protocol — §32 mandates the ADR and its five axes | ADR-0005 (TASKS T-016), blocked on T-006 |
+| 9 | Settings, and values bounded by a regulatory profile — §52 already required this | ADR-0006 (TASKS T-017) |
+| 10 | The event bus and the concurrency model | ADR (TASKS T-024) |
+| 11 | Partitions, NVS and OTA — now across two independently updated devices | ADR (TASKS T-025) |
 
 Decision 3 is the one that can force a redesign. If MeshCore assumes exclusive,
 uninterrupted ownership of the radio, it cannot coexist with a coordinator that

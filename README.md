@@ -35,16 +35,29 @@ designed to support several watch models from one codebase.
 
 ## Target hardware
 
-| Board | Role | Radio / GNSS |
+| Board | Role | Radio / GNSS on board |
 |---|---|---|
 | LilyGO T-Watch S3 Plus | first target — the full product | LoRa + GNSS |
 | Waveshare ESP32-S3 Touch AMOLED 2.06 | second target | **neither** |
-| Desktop simulator | first-class development target | simulated |
+| Firefly node | separate device — LoRa, GNSS, ESP32 | provides both, over a link |
+| Desktop simulator | first-class development target | simulated, including the node |
 
 The second board has no LoRa radio and no GNSS receiver. That is not an
-oversight in the plan — it is the reason the capability layer exists. Mesh and
-navigation are unavailable there and the UI must say so plainly rather than
-offer a feature the hardware cannot deliver.
+oversight in the plan — it is the reason the capability layer exists. Nor does
+it make that board a lesser device: a **Firefly node** is a separate box
+carrying LoRa, GNSS and an ESP32, and a watch attached to one runs the same
+applications a watch with its own radio runs. Mesh and navigation are
+unavailable there *without a node*, and the interface says which of those two
+situations it is in — "this watch has no radio" and "your node is out of range"
+are different sentences with different things the user can do about them.
+
+That is the point where the capability layer stops being decorative. An
+application asks for a position; whether it came from a receiver on the board,
+from a node over a link, or from nowhere at all is the location service's
+business and never the application's. It is also why capabilities here are not
+booleans fixed at boot: one can appear and disappear while an application is
+open, and every application has to survive that. See
+[ADR-0004](docs/adr/0004-capability-sources.md).
 
 Presence is not the whole story either. Both boards have haptics, and they are
 not the same haptics: one has a driver chip with a waveform library, the other
