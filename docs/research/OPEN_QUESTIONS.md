@@ -83,21 +83,53 @@ proceed; hardware work does not.
 
 ## MeshCore
 
-| # | Question | Status | Resolved by |
-|---|---|---|---|
-| M1 | Current architecture and integration points, with commit hashes | UNKNOWN | read upstream source |
-| M2 | Which revision to pin | UNKNOWN | M1 + release history |
-| M3 | Actual crypto primitives and byte-level format | UNKNOWN | read upstream source, not the plan document |
-| M4 | Threading and concurrency assumptions | UNKNOWN | read upstream source |
-| M5 | Memory footprint on ESP32-S3 | UNKNOWN | build and measure |
-| M6 | How it abstracts the radio — and whether it supports all five T-Watch chips | UNKNOWN | read upstream source |
-| M7 | Companion protocol shape | UNKNOWN | read upstream source |
-| M8 | Can Firefly's needs be upstreamed rather than forked? | UNKNOWN | M1, then talk to upstream |
-| M9 | Does MeshCore assume it owns the radio exclusively? | UNKNOWN | M4, M6 |
+Answered on 2026-08-21 by reading the source at commit
+**`d92964352441e53b93e8667b802e04f6e072b39e`** (branch `main`; tags
+`companion-v1.17.1`, `repeater-v1.17.1`, `room-server-v1.17.1`). Every claim
+below cites the file it came from. Licence: **MIT**, `license.txt`.
 
-M9 matters more than it looks: if MeshCore assumes exclusive, uninterrupted
-control of the radio, it conflicts with a coordinator that wants to schedule
-quiet windows around it. That is an integration constraint, not a detail.
+| # | Question | Status | Answer |
+|---|---|---|---|
+| ~~M1~~ | Architecture and integration points | **RESOLVED** | Arduino/PlatformIO throughout. There is no `CMakeLists.txt` and no `idf_component.yml` anywhere in the tree; `BaseSerialInterface.h` and `ContactInfo.h` include `<Arduino.h>` directly, and helpers depend on `Stream`, `File` and `HardwareSerial`. Clean dependency injection at the core: `mesh::Radio` is a pure-virtual interface in `src/Dispatcher.h:20-79` |
+| ~~M2~~ | Which revision to pin | **RESOLVED — candidate** | `v1.17.1`. `origin/dev` is 29 commits ahead of `main` at that tag, and upstream asks for PRs against `dev`, so a pin to `main` at a release tag is the stable choice |
+| ~~M3~~ | Crypto primitives and byte-level format | **RESOLVED — and it needs a review of its own** | Payload encryption is **AES-128 in ECB mode with zero padding**, on both the hardware (`Utils.cpp:61,92`) and the software path (`Utils.cpp:108-122`, `aes.encryptBlock` per 16-byte block, no IV, no chaining). Authentication is HMAC-SHA256 **truncated to two bytes** — `CIPHER_MAC_SIZE 2` in `MeshCore.h:17`, applied in `Utils.cpp:127-145`. Wire constants: `PUB_KEY_SIZE 32`, `CIPHER_KEY_SIZE 16`, `MAX_PACKET_PAYLOAD 184`, `MAX_PATH_SIZE 64`. On-air layout is `Packet.cpp:55-85` |
+| ~~M4~~ | Threading and concurrency assumptions | **RESOLVED** | Cooperative single-loop, Arduino style. `CONTRIBUTING.md` requires no dynamic allocation outside `begin`/`setup`; fixed pools in `StaticPoolPacketManager.h`. The one FreeRTOS boundary is the BLE interface, guarded by a static queue (`src/helpers/esp32/SerialBLEInterface.h:24-35`, `FRAME_QUEUE_SIZE 4`) |
+| M5 | Memory footprint on ESP32-S3 | PARTIAL | Fixed pools and `MAX_PACKET_HASHES (128+32)` in `SimpleMeshTables.h` make it computable, but no figure is claimed here without a build. `NOT MEASURED` |
+| ~~M6~~ | How it abstracts the radio, and whether it covers all five T-Watch chips | **RESOLVED** | Through thin wrappers over RadioLib in `src/helpers/radiolib/`. **RadioLib itself supports every chip MeshCore does not** — its `idf_component.yml` tags include `sx1280`, `cc1101`, `si4432`, `lr1121`. So the gap is MeshCore's wrapper layer, which is small and plausibly upstreamable rather than a fork |
+| ~~M7~~ | Companion protocol shape | **RESOLVED — and it largely already exists** | A framed byte protocol, identical across every transport. `>`/`<` sentinel, 16-bit little-endian length, payload; `MAX_FRAME_SIZE 176` (`BaseSerialInterface.h:5`). Payload is `[opcode][data]`, little-endian. The opcode table is `examples/companion_radio/MyMesh.cpp:6-134`. **Version negotiation already exists**: `CMD_DEVICE_QUERY` (22) carries the client's protocol version, the firmware stores it as `app_target_ver` and adapts its replies (`MyMesh.cpp:1023-1024`, and see the `app_target_ver >= 3` branches at 435 and 548) |
+| M8 | Can Firefly's needs be upstreamed rather than forked? | **likely yes** | The radio-wrapper gap (M6) is the natural candidate. Requires talking to upstream, which has not happened |
+| ~~M9~~ | **Does MeshCore assume it owns the radio exclusively?** | **RESOLVED — effectively yes** | `src/helpers/radiolib/RadioLibWrappers.cpp:14` is `static volatile uint8_t state = STATE_IDLE;` — a **file-static** flag set from the ISR. One radio per firmware image, structurally. It also runs its own duty-cycle governor, `Dispatcher::updateTxBudget()` (`Dispatcher.cpp:38-53`), which a Firefly coexistence coordinator would have to reconcile with rather than override. The sanctioned extension points are the virtual hooks `getCADFailMaxDuration`, `getCADFailRetryDelay`, `getAirtimeBudgetFactor` in `Dispatcher.h`, and `isReceiving()` in `RadioLibWrappers.h:44-48` |
+
+**M9 turned out to matter less than expected, and only because of the node.**
+The concern was that a mesh stack owning the radio exclusively could not coexist
+with a coordinator scheduling quiet windows around Wi-Fi and BLE. It does own it
+exclusively. But the product now puts the LoRa radio in a **separate device**,
+so the watch never runs MeshCore at all — it speaks the companion protocol to a
+node that does. The conflict does not arise on the watch, and on the node there
+is nothing to coexist with. See [ADR-0005](../adr/0005-node-protocol.md).
+
+That is a case of a product decision dissolving an engineering problem rather
+than solving it, which is worth noticing: had the ADR been written a day earlier
+it would have designed a reconciliation nobody needs.
+
+### What reading MeshCore surfaced that nobody asked
+
+| # | Finding | Evidence | Status |
+|---|---|---|---|
+| M10 | **The payload cipher is AES-128-ECB.** Identical plaintext blocks under one key produce identical ciphertext blocks, so equality of messages leaks even when content does not | `src/Utils.cpp:61,92` (CC310 path) and `:108-122` (software path) | **read from source** — implications for Firefly not yet assessed |
+| M11 | **The message authentication tag is 2 bytes.** One in 65 536 per forgery attempt, so the security of the tag rests on limiting attempts rather than on the tag | `MeshCore.h:17`, `Utils.cpp:127-145` | **read from source.** The owner's own node exposes a "Request Rate Limiter" — the two facts may well be related, and that is worth confirming rather than assuming |
+| M12 | **`ed25519_verify` from the vendored `orlp/ed25519` is disabled upstream** with the comment *"memory corruption bug was found in this function!!"*. The active path uses `Ed25519::verify` from `rweather/Crypto` instead | `src/Identity.cpp:34-36` (`#elif 0` branch) | **read from source** |
+| M13 | **There is almost no test coverage of the parts Firefly depends on.** Seven test binaries, none touching crypto or wire format; `test/mocks/AES.h` is a no-op stub and `test/mocks/SHA256.h` is self-described as *"deterministic but not cryptographic"* | `test/` | **read from source.** Consequence: there are no reference vectors to port. The only usable one in the repository is the known-good keypair embedded in `Identity.cpp:68-110` |
+| M14 | **`rweather/Crypto` licence is unverified.** MeshCore resolves it through PlatformIO as `rweather/Crypto @ ^0.4.0`; it is not in this project's clones and its licence file has not been read | `platformio.ini:24` | **UNKNOWN — must be checked before anything depends on it** |
+
+M10 and M11 are recorded as facts, not as accusations. MeshCore is solving a
+different problem under tighter constraints, and a two-byte tag on a
+duty-cycle-limited sub-GHz link is a defensible trade against airtime. But
+Firefly's specification treats security as something that must be strengthenable
+without breaking the architecture (§74 item 24), and a protocol whose
+authentication rests on rate limiting is a protocol whose rate limiter is a
+security control rather than a convenience. That belongs in an ADR of its own,
+with someone competent reviewing it — not in a paragraph here.
 
 ## Architecture
 

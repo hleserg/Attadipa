@@ -67,7 +67,7 @@ M9 asks whether MeshCore assumes exclusive ownership of the radio, and a design
 that keeps node traffic off that radio is unaffected by the answer.
 
 That is an argument, not a decision. It belongs in
-ADR-0005 (not yet written — [TASKS](../../TASKS.md) T-016) with the alternatives stated. Recorded
+[ADR-0005](../adr/0005-node-protocol.md) with the alternatives stated. Recorded
 here so the reasoning is not rediscovered.
 
 ## What the node must not become
@@ -95,7 +95,7 @@ applications learn to ask instead.
 2. N2 decided in an ADR, with the alternatives recorded.
 3. A protocol version negotiated before any payload, because the watch and the
    node will be updated independently from the first release
-   (ADR-0005 (not yet written — [TASKS](../../TASKS.md) T-016)).
+   ([ADR-0005](../adr/0005-node-protocol.md)).
 4. The capability-source model in place, so a node-provided GNSS is an ordinary
    capability rather than a special case ([ADR-0004](../adr/0004-capability-sources.md)).
 
