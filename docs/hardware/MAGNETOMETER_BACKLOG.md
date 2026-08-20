@@ -13,7 +13,11 @@ The mandatory epics from master plan §67.
 - Waveshare AMOLED 2.06: QMI8658, a six-axis accelerometer plus gyroscope. No
   magnetometer.
 
-So there is no heading on either board today, and there is nothing to calibrate.
+So there is no *magnetic* heading on either board today, and there is nothing to
+calibrate. Heading from GNSS course-over-ground is a different thing and is
+available wherever GNSS is — which, since a Firefly node supplies GNSS, is no
+longer only the T-Watch. It also only works while the user is moving, which is
+the part that makes it a different product rather than a lesser one.
 
 This does not make the backlog pointless — it makes it **design-only, and
 honest about why**. The capability model already treats the magnetometer as a
@@ -47,7 +51,10 @@ fake-green result the project forbids.
 
 The master plan's motivating example for the whole coexistence architecture is
 **a vibration motor disturbing a compass**. On the T-Watch there is a vibration
-motor and no compass. On the Waveshare board there is neither. So G-08, G-09 and
+motor and no compass. On the Waveshare board there is *also* a vibration motor —
+a bare one on GPIO 18 through an NPN, with no driver IC
+([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — and also no compass. Both
+boards have the buzz; neither has the thing it would disturb. So G-08, G-09 and
 G-10 — the three interference tests — cannot be run on any hardware this project
 currently targets, in any configuration.
 

@@ -14,20 +14,36 @@ on Android platform behaviour are marked **NEEDS RESEARCH** and are listed in
 ## 1. The one decision that matters now
 
 **The watch must be fully useful with no phone, ever.** Not degraded-but-working
-— useful. The companion adds convenience, never capability.
+— useful. The phone adds convenience, never capability.
+
+> **Scope correction, 2026-08-21.** This document originally said "the
+> companion", and by that it meant the phone. A **Firefly node** is also an
+> external device, and it *does* provide capability — deliberately, and with the
+> owner's explicit acceptance that whole applications disappear when it is away
+> ([OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-1). Everywhere below,
+> read "companion" as "phone". The distinction and its reasoning are in
+> [ADR-0002](../adr/0002-companion-is-optional.md); the model for capabilities
+> that arrive from elsewhere is [ADR-0004](../adr/0004-capability-sources.md).
 
 This is a firmware constraint, not a phone-side design goal, and it is the
 reason to write this document before writing any watch code:
 
 - The clock is correct from the RTC. Phone time sync **improves** accuracy; it
   is not how the watch learns what time it is.
-- GNSS acquires a fix unaided. A-GNSS **shortens** time-to-first-fix; it is not
-  a prerequisite for a fix.
-- Mesh messaging is watch-to-watch over LoRa. The phone is not in that path and
-  must never become a required relay.
+- GNSS acquires a fix unaided — from the on-board receiver where there is one,
+  or from an attached node where there is not. A-GNSS **shortens**
+  time-to-first-fix; it is never a prerequisite for a fix. What the rule forbids
+  is needing the *phone*, not needing hardware.
+- Mesh messaging travels over LoRa — the watch's own, or an attached node's. The
+  phone is not in that path and must never become a required relay. A node in
+  that path is not a violation: it is the radio, not a detour around one.
 
 Anything that violates this is a design error however convenient it is. A
-companion that becomes load-bearing turns a standalone device into an accessory.
+**phone** that becomes load-bearing turns a standalone device into an accessory —
+because the phone is a general-purpose device this project does not control,
+whose failures it cannot observe, and which the user did not buy for this. A
+dedicated node is load-bearing by design and that is a different bargain,
+knowingly made.
 
 ## 2. Transport
 
@@ -80,7 +96,7 @@ The link has four states, and the UI must be able to render all four honestly:
 
 | State | Meaning | What the user sees |
 |---|---|---|
-| `Unpaired` | no companion has ever been bonded | features that need a phone are absent, not broken |
+| `Unpaired` | no phone has ever been bonded | features that need a phone are unavailable, not broken |
 | `Paired, disconnected` | bonded, phone not in range | last-sync age, not a spinner |
 | `Connected` | link up, authenticated | normal |
 | `Connected, degraded` | link up, a specific capability unavailable | the specific thing is unavailable, named |
@@ -100,8 +116,11 @@ has to justify itself in the power budget:
   own — it requests. **NEEDS RESEARCH**: what Android actually grants.
 - No polling. Everything the phone sends is a notification or a write; the watch
   does not wake to ask.
-- The link must be disableable entirely, and the watch must remain fully useful
-  with it off — which is §1 restated as a power feature.
+- The **phone** link must be disableable entirely, and the watch must remain
+  fully useful with it off — which is §1 restated as a power feature. The node
+  link is disableable too, but the consequence is different and intended:
+  turning it off removes the applications that depend on it, and the interface
+  says so rather than hiding it.
 
 ## 6. What this buys us later
 

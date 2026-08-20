@@ -171,7 +171,11 @@ status · implementation status · tests · hardware required.
 - **Priority:** P0
 - **Dependencies:** T-006 (M6, M9)
 - **Goal:** one radio interface that serves SX1262, SX1280, CC1101, LR1121 and
-  SI4432 — or an argued decision to support fewer.
+  SI4432 — or an argued decision to support fewer — **and a radio that is not on
+  this board at all**, because a Firefly node's LoRa reaches the same
+  `MeshService` through the same interface. The interface takes frequency,
+  bandwidth, spreading factor and TX power from settings rather than from
+  constants ([OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md) OD-2, §52).
 - **Acceptance:** ADR with alternatives; states explicitly what happens on a
   board whose radio MeshCore does not support, and whether MeshCore permits a
   coordinator to schedule around it.
@@ -459,13 +463,18 @@ Recommended next action:
 - **Waiting on:** the project owner
 - **Questions:** OPEN_QUESTIONS A1–A5 (hardware availability and revision, radio
   and GNSS variant, a second mesh device, regulatory region, whether an external
-  magnetometer is intended at all) and Q1 (what the Waveshare board should be,
-  given it can do neither mesh nor navigation).
+  magnetometer is intended at all) — plus one the node raised: **does the node
+  carry a magnetometer?** That is A5 asked about the node, and it decides whether
+  a compass works standing still or only while walking. Q1 (what the Waveshare
+  board should be) is **answered** — see
+  [OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md) OD-1.
 - **Impact:** A1–A2 gate all hardware work. **A4 is a legal constraint, not a
   preference** — the lawful frequencies, power and duty cycle follow from the
-  region, and must be settled before anything transmits. A5 decides whether five
-  §67 epics are dormant or dead. Q1 is a product decision that cannot be made by
-  writing code.
+  region. It does not gate the build: §52 and OD-2 make these runtime settings,
+  so the core carries a bounded value either way, and A4 decides the bound and
+  the default. It does gate *transmitting*: until it is answered the honest
+  default is `Unset`, and `Unset` keeps the transmit path closed. A5 decides
+  whether five §67 epics are dormant or dead.
 
 ### T-014 · Mandatory backlogs from the specification
 - **Priority:** P2
@@ -501,7 +510,9 @@ Recommended next action:
 
 ### T-002 · ADR-0001: capability model — 2026-08-21
 - Accepted shape: cheap `has()` for UI gating, typed descriptors for variant
-  and degree, and a separate four-state availability axis.
+  and degree, and a separate availability axis — four states as written, **seven
+  under [ADR-0004](docs/adr/0004-capability-sources.md)**, which amends this the
+  same day for the Firefly node.
 - Four alternatives recorded with reasons for rejection.
 
 ### T-000 · Repository, research gate, and board survey — 2026-08-21

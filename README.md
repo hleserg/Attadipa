@@ -13,9 +13,12 @@ designed to support several watch models from one codebase.
 
 ## What it is meant to be
 
-- **Independent of your phone.** Mesh messaging, navigation, and time keep
-  working with no companion app and no internet. A phone is an optional
-  companion, not the brain of the watch.
+- **Independent of your phone.** Mesh messaging, navigation, and time work with
+  no companion app and no internet. A phone is an optional companion, never the
+  brain of the watch. Where a capability needs hardware a particular watch does
+  not have, it comes from a **Firefly node** — a dedicated box built for this,
+  not a handset — and the interface says which situation it is in rather than
+  pretending.
 - **Mesh-native.** Long-range LoRa messaging built on
   [MeshCore](https://github.com/meshcore-dev/MeshCore), staying compatible with
   upstream rather than forking away from it.
@@ -90,14 +93,22 @@ somebody measures them. A datasheet number is not a measurement.
 **Capability-driven.** Applications ask
 `device.capabilities().has(Capability::GNSS)`. They never learn which GPIO
 powers the GNSS module or which SPI the radio sits on. Board differences stay
-inside the BSP.
+inside the BSP. Differences that are not the board's — a capability supplied by
+an attached node — arrive through a provider registry instead, because no BSP
+can know at build time what will be plugged in later.
 
 **Hardware coordination.** In a watch, subsystems interfere *physically*: the
 vibration motor disturbs the magnetometer, radio transmission disturbs GNSS
 acquisition. A central coordinator grants sensitive measurements quiet windows
 and schedules non-critical activity around them, so that no application has to
-know that a compass reading and a buzz should not overlap. Which combinations
-actually interfere is a question for measurement, tracked in
+know which two subsystems must not run at once.
+
+The specification's own example of that is a compass reading and a buzz, and it
+is worth saying plainly that **this particular pair cannot occur on either
+target board** — neither has a magnetometer. The coordinator's real first job
+here is more mundane and more certain: five devices sharing one I2C bus, power
+rails feeding two things at once, and three radios in one antenna environment.
+Which combinations actually interfere is a question for measurement, tracked in
 [`docs/hardware/INTERFERENCE_MATRIX.md`](docs/hardware/INTERFERENCE_MATRIX.md).
 
 **Reuse before writing.** Mature open-source work is preferred over new code,
@@ -109,7 +120,8 @@ with the decision and its reasoning recorded in
 ```
 docs/master-prompt.md          product specification (source of truth)
 docs/development-addendum.md   process doctrine: reuse-first, lookahead research
-docs/research/                 verified facts, open questions, deps, reuse ledger
+docs/research/                 verified facts, owner decisions, open questions, deps, reuse ledger
+docs/node/                     the Firefly node — mostly what is *not* known about it
 docs/hardware/                 interference matrix, board notes
 docs/architecture/             architecture, resource budget
 docs/adr/                      architecture decision records

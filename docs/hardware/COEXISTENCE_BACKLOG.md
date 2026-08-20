@@ -16,6 +16,7 @@ Established from the vendor documents and both schematics
 | **Shared I2C bus** | five devices on T-Watch SDA 10 / SCL 11 — PMU, RTC, accelerometer, haptic driver, and possibly the GNSS at 0x42 (D9) | A haptic pulse and a battery read are on the same wire. Bus ownership must be decided once, centrally |
 | **Shared rail: display + touch** | both on ALDO3 | The touch controller has **no reset line** (R39 not fitted), so recovering it means cycling a rail the display is on |
 | **Radio vs Wi-Fi/BLE** | LoRa on ALDO4; Wi-Fi/BLE in the same SoC | Two radios, one antenna environment, one power budget |
+| **The node link** | Wi-Fi or BLE, standing, on **both** boards | A continuous rather than occasional radio and power load — including on the board this table otherwise describes as having one radio. On a T-Watch it is a third transmitter in the same antenna environment; on a Waveshare it is how a second LoRa's traffic enters the power budget at all |
 | **Amplifier has no shutdown pin** | `SD_MODE` strapped, R14 = 1 MΩ | The only way to silence it is to drop `DLDO1`. Audio state *is* a rail state |
 | **`+3V3` may be switchable** | ALDO1 conflict, OPEN_QUESTIONS H8 | If it is, cutting it takes the accelerometer, RTC, haptic, mic and IR with it |
 | **Single accelerometer interrupt** | BMA423 `INT2` not routed (R12, R15 not fitted) | Every motion event shares one line — tilt, tap and step cannot be separated in hardware |

@@ -12,11 +12,14 @@ has been written yet, and that is deliberate: the specification requires the
 research gate before large-scale implementation, and the survey changed the
 architecture materially.
 
-Both are done: every part on both boards now has an owning core service in
+Every part on both boards has an owning core service in
 [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) —
-including the parts the vendor BSPs ignore and the parts no application uses —
-and the capability model is settled in
-[ADR-0001](docs/adr/0001-capability-model.md).
+including the parts the vendor BSPs ignore and the parts no application uses.
+The capability model was settled in
+[ADR-0001](docs/adr/0001-capability-model.md); it is now settled in
+[ADR-0004](docs/adr/0004-capability-sources.md), which amends it. And "every
+part on both boards" is no longer the whole scope: the core must also account
+for capabilities that are on no board at all.
 
 Since the survey, all four vendor schematic PDFs have been read rather than
 merely cited. That corrected two rows that had been wrong, resolved four open
@@ -111,9 +114,13 @@ It is answered: the board is not a lesser device needing a purpose found for
 it, it is a device whose mesh and navigation arrive over a link instead of over
 a bus. See [OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md) OD-1.
 
-Question 4 is not a preference. Which frequencies, power levels and duty cycles
-are lawful follows from the region, and it must be settled before anything
-transmits. It became concrete the same day: the owner's own MeshCore node runs
+Question 4 is not a preference, but it is also not a constant to be chosen once.
+Which frequencies, power levels and duty cycles are lawful follows from the
+region — and §52 of the specification, plus OD-2, require those values to be
+runtime settings rather than compiled-in numbers. So the answer does not gate
+the build; it bounds a settings profile. What it does gate is transmitting:
+until it is answered the honest default is `Unset`, and `Unset` keeps the
+transmit path closed. It became concrete the same day: the owner's own MeshCore node runs
 868.731 MHz at 22 dBm — 158 mW — and whether that is lawful on that frequency
 in the region of operation is unestablished. Firefly is not responsible for
 that node, but the numbers it ships as *defaults* are its own responsibility.

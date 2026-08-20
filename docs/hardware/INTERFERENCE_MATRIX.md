@@ -32,6 +32,8 @@ is known to exist.
 | Haptic motor | Magnetometer | magnetic field distorts heading | **NOT MEASURABLE** | — | — | — | — | — |
 | Haptic motor | IMU | vibration corrupts accelerometer | THEORETICAL RISK | — | — | — | — | — |
 | LoRa TX | GNSS acquisition | RF desensitisation | THEORETICAL RISK | — | — | — | — | — |
+| Watch↔node link TX | GNSS acquisition | RF desensitisation | THEORETICAL RISK | both | — | — | — | — |
+| Watch↔node link TX | LoRa RX (T-Watch) | RF desensitisation | THEORETICAL RISK | T-Watch | — | — | — | — |
 | LoRa TX | Magnetometer | supply current transient | **NOT MEASURABLE** | — | — | — | — | — |
 | Display DMA | GNSS | broadband EMI | THEORETICAL RISK | — | — | — | — | — |
 | High brightness | Battery / GNSS | supply droop | THEORETICAL RISK | — | — | — | — | — |
@@ -99,3 +101,24 @@ so it can be re-derived when the hardware changes.
 ## Results
 
 *Empty.* No hardware has been measured. No board is present.
+
+## The pairs this matrix cannot reach
+
+Every row above assumes both subsystems sit inside a device this project's
+firmware controls. Two situations break that assumption and need saying, because
+a matrix that silently omits them reads as coverage:
+
+**Interference inside the node.** On a node-provided setup, the LoRa transmitter
+and the GNSS receiver are both inside a third box whose firmware this project may
+not control ([NODE_PROFILE](../node/NODE_PROFILE.md) N8). The classic
+LoRa-TX-desenses-GNSS pair is then neither measurable nor mitigable *from the
+watch*. It does not stop being real; it stops being ours. What the watch can do
+is notice the symptom — a fix that degrades whenever the node transmits — and
+report it, which is a diagnostics requirement rather than a mitigation.
+
+**The link as an interferer.** Two rows have been added for the watch↔node link
+itself. They are marked THEORETICAL RISK rather than NOT MEASURABLE because they
+*are* measurable once both devices exist — unlike the magnetometer rows, which
+cannot be measured on any targeted hardware at all. Keeping that distinction
+visible is the whole point of this file: "not yet measured" and "cannot be
+measured here" must never look alike.

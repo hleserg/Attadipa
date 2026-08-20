@@ -1,7 +1,12 @@
 # Architecture
 
-This document has one job: make sure **every part soldered to the board has an
-owner in the core**, whether or not any application uses it yet.
+This document has one job: make sure **everything the device can do has an owner
+in the core** — every part soldered to the board, whether or not any application
+uses it yet, and every capability that reaches the device some other way.
+
+It began as the first of those. The second arrived with the Firefly node, and
+the widening matters: a capability that arrives over a link still costs power,
+still needs an owner, and still has to be somewhere when it goes away.
 
 It is a target, not a description. Nothing here is implemented. Where it
 disagrees with [`../master-prompt.md`](../master-prompt.md), the disagreement is
@@ -59,8 +64,10 @@ board, and it does not touch the AXP2101 or the PCF85063 either. That is a
 shipped, maintained, first-party BSP with three unowned parts on the board it
 supports. *Vendor-supported* and *handled* are different sets.
 
-So: the core owns the board. Applications own a subset of what the core offers.
-Those are different scopes, and conflating them is how peripherals get lost.
+So: the core owns the board, **and everything else the device can currently do**.
+Applications own a subset of what the core offers. Those are different scopes,
+and conflating them is how peripherals get lost — and, now, how a node-provided
+capability ends up owned by whichever application happened to need it first.
 
 What full coverage does **not** mean: writing a complete feature for every
 part. The IR transmitter needs an owner, an off state, and a diagnostics entry.
@@ -76,9 +83,23 @@ Application framework   lifecycle, navigation, focus
 Core services           time, location, mesh, power, audio, storage…
 Hardware coordination   arbitration: buses, rails, RF, quiet windows
 Platform / HAL          esp32s3 | native
-Board support package   pins, rails, parts, capability descriptor
+Board support package   pins, rails, parts, capability descriptors
 Hardware
 ```
+
+The BSP is not the only thing that declares a capability. A **provider
+registry** sits beside it at the platform layer and accepts descriptors from
+things that are not the board — today, a Firefly node; tomorrow, whatever else
+attaches. Registration is at runtime and is reversible, which the BSP's is not.
+
+```
+Board support package   ─┐
+                         ├─►  Capability registry  ─►  everything above
+Provider registry       ─┘    (the single answer to "what can this device do")
+```
+
+Without that second box an implementer has nowhere to put node code and will put
+it in the BSP, which is the layer defined as knowing the board.
 
 `#ifdef BOARD_X` is allowed inside `boards/` and `platform/`. It must not appear
 in `core/` or `apps/`. This is not stylistic: the two target boards share only
@@ -113,7 +134,8 @@ There is a fourth question, and it arrived with the Firefly node: **where does
 it come from, and what happens when that goes away?**
 
 ```cpp
-// Cheap, for deciding whether a feature exists at all on this device.
+// Cheap, for deciding whether a feature exists at all on this DEVICE — which
+// is not the same question as whether it is on this board.
 if (!caps.has(Capability::Gnss)) { /* the app is not offered */ }
 
 // Typed, for code that must know the part.
@@ -161,10 +183,17 @@ IrTransmit · SdCard · Wifi · Ble`
 Note `Accelerometer` and `Gyroscope` are separate. Neither board has a
 magnetometer, but `Magnetometer` exists in the enum — so the day one is added
 externally, the answer changes from `Unsupported` to `Ready` and nothing above
-the BSP needs rewriting. That is the whole point of the layer, and the Firefly
-node turned it from an argument into a requirement within a day: on the
-Waveshare board `Lora` and `Gnss` change exactly that way when a node is
+the capability registry needs rewriting. That is the whole point of the layer,
+and the Firefly node turned it from an argument into a requirement within a day:
+on the Waveshare board `Lora` and `Gnss` change exactly that way when a node is
 attached.
+
+One correction to how that used to be phrased. It was written as though adding a
+capability were a one-time event that flips an answer once and lands in the BSP.
+It is neither: the answer changes **repeatedly, in both directions**, and it
+arrives through the provider registry, which the BSP cannot see. A design that
+assumes "added later, then permanent" is wrong in the ordinary case rather than
+the exotic one.
 
 **Capabilities are not data feeds.** §32 lists what a node may provide and mixes
 the two: mesh connectivity and additional GNSS are capabilities; weather, Home
@@ -229,9 +258,9 @@ it to diagnostics.
 | Expansion header J3 | `BoardService` | ≥ 29 pins; pinout unresolved (D3). Owned so nothing else claims those pins by accident |
 | 1.8 V rail (ALDO4) | `PowerService` | something on this board is 1.8 V; identify it before assuming any level |
 | SD card | `StorageService` | SDMMC 1-bit |
-| Wi-Fi / BLE | `ConnectivityService` | the only radio on this board |
-| LoRa | — | **absent** |
-| GNSS | — | **absent** |
+| Wi-Fi / BLE | `ConnectivityService` | the only radio *on this board* — and, once a node is attached, the path by which a second one's traffic arrives |
+| LoRa | `MeshService` via the provider registry | **not on this board.** With a Firefly node attached the device has it; the service exists either way and reports which |
+| GNSS | `LocationService` via the provider registry | **not on this board.** A Firefly node supplies it; the service exists either way and reports which |
 | Vibration motor | `HapticService` | **GPIO 18 + NPN, no driver IC.** Rail BLDO2. Same capability as the T-Watch, a fundamentally different degree — see below |
 
 ### Two haptics, one capability, two degrees
@@ -308,7 +337,11 @@ The rules:
   away. The dividing line is not "on the board or not" — it is **whether the
   user has an action available**.
 - A service whose capability is unavailable still exists and still answers. It
-  returns `NOT_SUPPORTED`, not `false`, and never crashes a caller.
+  returns an error, never a bare `false`, and never crashes a caller. **The
+  error has to distinguish permanent from transient**: `NOT_SUPPORTED` is a
+  final answer and a caller is entitled to stop asking, which is exactly wrong
+  for a node that is briefly out of range. That is `PROVIDER_UNREACHABLE`, and
+  it means *try again*.
 - The UI says which of the seven states it is in, in human language.
   "This watch has no radio" is a complete, honest answer; so is "your node is out
   of range, last seen four minutes ago".
@@ -316,13 +349,24 @@ The rules:
   none* · *not known* are three facts, and rendering the third as the second —
   "0 nodes nearby" when we have no idea — is a lie the interface tells
   confidently.
-- The simulator can present a device with no radio and no GNSS, **and one that
-  gains and loses both while an application is open**, because those are real
-  configurations and all of them must be testable without hardware.
+- The simulator can present a device with no radio and no GNSS, one with a node
+  attached, and one that **loses the node while an application is open** —
+  because all three are real configurations, the third is the one that exercises
+  the hard contract, and none of them can be tested on hardware that does not
+  exist.
 
 Error vocabulary — services return these, never a bare boolean:
-`NOT_SUPPORTED · BUSY · TIMEOUT · NO_FIX · RADIO_UNAVAILABLE ·
-POWER_RESTRICTED · PERMISSION_DENIED · INTERNAL_ERROR`.
+`NOT_SUPPORTED · PROVIDER_UNREACHABLE · PROVIDER_INCOMPATIBLE · BUSY · TIMEOUT ·
+NO_FIX · STALE · RADIO_UNAVAILABLE · POWER_RESTRICTED · PERMISSION_DENIED ·
+INTERNAL_ERROR`.
+
+Three of those are new and each fills a hole the node opened. `NOT_SUPPORTED` is
+permanent — a caller may stop asking. `PROVIDER_UNREACHABLE` is transient and
+means *try again*; reporting an out-of-range node as `NOT_SUPPORTED` would show
+the user the wrong sentence and stop the retry that would have fixed it.
+`PROVIDER_INCOMPATIBLE` carries the version skew, which has opposite remedies
+depending on its direction. `STALE` is for a value that arrived but is too old
+to act on — distinct from `NO_FIX`, which means none ever arrived.
 
 ---
 
@@ -390,6 +434,12 @@ A vs A+B, and let the measurements decide what needs arbitrating. The
 coordinator's first real job on these boards is more mundane and more certain:
 shared-bus ownership, rail reference counting, and keeping Wi-Fi, BLE and LoRa
 from talking over each other on the T-Watch.
+
+A fourth item joins that list and applies to **both** boards: a standing link to
+a node is a continuous radio and power cost, not an occasional one. On the
+Waveshare board — the one this document keeps describing as having a single
+radio — the link is the mechanism by which a second radio's traffic enters the
+power budget. It is the coordinator's business from the day it exists.
 
 What is real and needs no measurement to justify: ALDO3 shared between display
 and touch, the main I2C bus shared by five devices, and three unserviced

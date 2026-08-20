@@ -45,8 +45,11 @@ peripheral set cannot run on the other.
 
 **Neither board has a magnetometer.** The magnetometer work the specification
 calls for is therefore architectural only — an API that can accept one later,
-not a driver. Heading on real hardware currently comes from GNSS course alone,
-and only the T-Watch has GNSS at all.
+not a driver. Heading on real hardware currently comes from GNSS course alone.
+Only the T-Watch has GNSS **on the board** — a Firefly node supplies it to
+either, so that is a statement about boards and not about what a device can do.
+Course-over-ground also only works while the user is moving, which is what makes
+it a different product from a compass rather than a lesser one.
 
 ---
 
@@ -322,7 +325,10 @@ Recorded so nobody later "fixes" the apparent mismatch.
 | Haptic / IR | logged, never emitted |
 
 The simulator must be able to present a board with **no** radio and **no** GNSS,
-because that is a real configuration, not a degraded one.
+because that is a real configuration, not a degraded one. It must also present
+that board **with a node attached**, and — the case that actually exercises the
+contract — **losing the node while an application is open**. None of the three
+can be tested on hardware that does not exist yet.
 
 ---
 
@@ -337,8 +343,8 @@ because that is a real configuration, not a degraded one.
 | `ACCELEROMETER` | ✅ BMA423 | ✅ QMI8658 | simulated |
 | `GYROSCOPE` | ❌ | ✅ QMI8658 | simulated |
 | `MAGNETOMETER` | ❌ | ❌ | simulated |
-| `LORA` | ✅ one of five chips | ❌ | simulated |
-| `GNSS` | ✅ one of two modules | ❌ | simulated |
+| `LORA` | ✅ one of five chips | ❌ on the board — a node supplies it | simulated, attached and detached |
+| `GNSS` | ✅ one of two modules | ❌ on the board — a node supplies it | simulated, attached and detached |
 | `HAPTICS` | ✅ DRV2605L, rail-gated, waveform library | ✅ **bare motor, GPIO 18 + transistor** — on/off and PWM only | logged |
 | `AUDIO_OUT` | ✅ MAX98357A | ✅ ES8311 | host audio |
 | `AUDIO_IN` | ✅ 1× PDM | ✅ 2× via ES7210 | simulated |

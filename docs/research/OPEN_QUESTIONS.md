@@ -105,7 +105,7 @@ quiet windows around it. That is an integration constraint, not a detail.
 |---|---|---|---|
 | X1 | How does a capability express **variant** (which of five radios) and **degree** (accel-only vs 6-axis)? | UNKNOWN | ADR — a boolean `has()` is demonstrably insufficient |
 | X2 | Who owns PMU rail sequencing — a rail service, or each driver? | UNKNOWN | ADR |
-| X3 | How does an application render a capability that is *absent* rather than merely idle? | UNKNOWN | UX + API design together |
+| X3 | How does an application render each of the seven availability states — and in particular tell *unsupported here*, *needs a node*, *node out of range* and *broken* apart? | **narrowed** | [ADR-0004](../adr/0004-capability-sources.md) sets one state per remedy; the screens themselves are still UX + API design together |
 | X4 | Two RTC parts, two IMU parts, two audio paths — one interface each, or per-board? | UNKNOWN | driver design |
 | X5 | Does the coexistence coordinator earn its complexity on boards with no measured interference? | UNKNOWN | H4 — build the measurement first, the mitigation second |
 

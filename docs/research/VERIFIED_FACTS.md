@@ -71,9 +71,15 @@ is verified.
   radio nor a GNSS receiver.
 - **Source:** vendor README hardware table and vendor BSP v2.0.0 pin
   definitions; no radio or GNSS net appears in either (S5, S7).
-- **Impact:** mesh messaging and navigation — two of the product's headline
-  features — cannot exist on this board. Both must degrade honestly rather
-  than fail, and the UI must not offer them.
+- **Impact:** mesh messaging and navigation have no hardware **on this board**.
+- **Amended 2026-08-21:** the claim above is sourced and stands; the inference
+  originally drawn from it did not. It read "cannot exist on this board … the UI
+  must not offer them". A Firefly node supplies both to the *device*
+  ([OWNER_DECISIONS](OWNER_DECISIONS.md) OD-1), so the UI offers them with the
+  remedy stated, and withholds only what no configuration of the device can do.
+  The lesson worth keeping is narrower than the correction: a fact about a board
+  and a fact about a device are different claims, and this line turned one into
+  the other without noticing.
 
 ### Neither board has a magnetometer
 
@@ -83,7 +89,12 @@ is verified.
 - **Source:** S1, S5, S6.
 - **Impact:** the specification's magnetometer requirements are **architectural
   only** for now — an API that can accept one later. On real hardware today,
-  heading can come only from GNSS course, and only on the T-Watch. The
+  magnetic heading exists nowhere. Heading from GNSS course-over-ground exists
+  wherever GNSS does — which, since OD-1, is not only the T-Watch — and only
+  while the user is moving. Whether the node carries a magnetometer is
+  unresolved and decides what a compass application can honestly be
+  ([OPEN_QUESTIONS](OPEN_QUESTIONS.md) A5/Q2,
+  [NODE_PROFILE](../node/NODE_PROFILE.md) N3). The
   "haptics disturb the compass" problem the plan is concerned about cannot be
   observed on either board, because there is no compass. It stays a design
   consideration, not a mitigation to implement.

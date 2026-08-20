@@ -47,8 +47,12 @@ the phone tells the watch what it can supply. This is the same capability model
 the firmware uses internally ([ADR-0001](../adr/0001-capability-model.md)) and
 for the same reason: the two boards are not the same device.
 
-A companion talking to the Waveshare board must learn that it has **no GNSS**,
-and therefore must never send assistance data — not send it and have it ignored.
+A companion must learn what the **device** has, not what its board has, and must
+never send assistance to a device that cannot use it — rather than sending it and
+having it ignored. A Waveshare board has no GNSS; a Waveshare with a Firefly node
+attached does. Which means the capability set **cannot be exchanged once at
+connect and then trusted**: it changes mid-session whenever a node attaches or
+leaves, and the protocol needs a re-exchange for that.
 Wasting a phone's data budget and a BLE window on a payload the watch cannot use
 is a bug, and it is only avoidable if capability exchange happens first.
 
@@ -69,6 +73,15 @@ notification access says so at connect, so the watch's settings screen can show
 | Diagnostic log | watch → phone | bulk, user-initiated |
 | Firmware image | phone → watch | bulk, user-initiated, signed |
 | Settings | both | the watch remains authoritative over its own configuration |
+
+Whose configuration, exactly, is a question this table does not yet answer and
+[OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-2 makes urgent. A node holds
+fourteen parameters of its own, two of them legally bounded (frequency, TX
+power). Three ownership models are possible — the node owns them, the watch owns
+them and pushes, or the watch proposes and the node ratifies — and they differ in
+what happens when a change breaks the very link used to make it. Changing the
+frequency will disconnect you. That belongs in ADR-0005
+([TASKS](../../TASKS.md) T-016, T-020), not here.
 
 ## 5. Trust
 

@@ -20,6 +20,21 @@ Date: 2026-08-21
 > amendment rather than a rewrite. ADR-0004 extends the availability enum and
 > adds a provider axis. Read this ADR for the reasoning; read ADR-0004 for the
 > enum that is actually in force.
+>
+> **Precisely what is superseded**, so that nothing below is copied by mistake:
+>
+> | In this ADR | Superseded because |
+> |---|---|
+> | "two headline features must be *absent* rather than merely unavailable" (Context) | on a node-equipped Waveshare they are neither — they are present and remote |
+> | "a typed, optional descriptor, defined by the BSP" (Decision) | a provider registered at runtime also defines descriptors |
+> | `Absent, // not on this board — the feature does not exist here` | conflates *board* with *device*, and absence is no longer permanent |
+> | "the day one is added externally, the answer changes … and nothing above the BSP needs rewriting" | the answer changes repeatedly, in both directions, and not through the BSP |
+> | "probing costs power and time at boot" (Alternatives) | for a remote provider, runtime discovery is the only mechanism, and it does not happen at boot |
+> | "the BSP carries more … concentrating the knowledge is the point" (Consequences) | the concentration point is now the capability registry, of which the BSP is one contributor |
+> | "Every service must handle all four availability states" (Consequences) | there are seven |
+>
+> Everything else in this ADR stands. In particular the four rejected
+> alternatives are still rejected, and for the same reasons.
 
 ## Context
 
@@ -86,6 +101,7 @@ if (auto lora = caps.lora()) { /* lora->chip, lora->band */ }
 **Availability** is a separate axis from presence:
 
 ```cpp
+// SUPERSEDED — do not implement this enum. See ADR-0004 for the one in force.
 enum class Availability {
     Absent,      // not on this board — the feature does not exist here
     Failed,      // on the board, initialisation failed
@@ -140,8 +156,13 @@ descriptors cost a little more code in the BSP and catch mistakes at compile
 time, in a codebase where a wrong radio assumption is a regulatory problem.
 
 **Runtime probing instead of a declared descriptor.** Rejected as the primary
-mechanism: an I2C address that answers does not prove which chip answered, and
-probing costs power and time at boot. Probing is still valuable as a
+mechanism *for parts on the board*: an I2C address that answers does not prove
+which chip answered, and probing costs power and time at boot. **This rejection
+does not extend to a remote provider** — for a node, runtime discovery is the
+only mechanism there is, it does not happen at boot, and it happens again every
+time the node comes and goes. What survives is the principle behind the
+rejection: a declared descriptor beats an inferred one, so a node *declares*
+what it provides in its capability exchange rather than being probed for it. Probing is still valuable as a
 *verification* step in diagnostics — declared and detected should be compared,
 and a mismatch is a finding worth surfacing.
 
@@ -153,12 +174,17 @@ magnetometer later changes an answer, not an interface. Absence becomes
 something the UI can state plainly instead of a failure it must hide.
 
 **Harder.** The BSP carries more: a descriptor per capability, per board, per
-variant. That is deliberate — it is the layer that is *allowed* to know these
-things, and concentrating the knowledge is the point.
+variant. That is deliberate — it is a layer that is *allowed* to know these
+things, and concentrating the knowledge is the point. *(Amended: the
+concentration point is the capability registry. The BSP is its largest
+contributor, not its only one — a provider registered at runtime contributes
+too. The principle is unchanged; the claim that the BSP is the sole source is
+not.)*
 
 **Committed to.** Every new peripheral needs a capability entry and a
-descriptor before an application can use it. Every service must handle all four
-availability states, including `Absent`, without crashing or lying. Diagnostics
+descriptor before an application can use it. Every service must handle every
+availability state without crashing or lying — *four when this was written,
+seven under [ADR-0004](0004-capability-sources.md)*. Diagnostics
 must be able to show declared-versus-detected, because a descriptor that
 disagrees with the hardware is worse than no descriptor.
 

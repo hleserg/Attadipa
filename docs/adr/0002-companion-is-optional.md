@@ -35,9 +35,13 @@ actually built, undoing them means touching every app that learned to ask.
 Three facts sharpen this:
 
 - **The two boards differ in what a companion could even serve.** The Waveshare
-  board has neither LoRa nor GNSS
-  ([HARDWARE_MATRIX](../research/HARDWARE_MATRIX.md)), so a companion talking to
-  it must not send GNSS assistance at all.
+  board has neither LoRa nor GNSS on it
+  ([HARDWARE_MATRIX](../research/HARDWARE_MATRIX.md)). *(Amended: the rule that
+  follows from this is about the **device**, not the board. A Waveshare with a
+  node attached does have GNSS and can use assistance. So the companion sends
+  assistance when the device's capability exchange says GNSS is available, and
+  the capability set must be re-exchanged when it changes mid-session — not
+  decided once from a board identity.)*
 - **Several companion features may be impossible.** Whether a companion app can
   override silent mode, read notifications, or obtain redistributable GNSS
   assistance are open Android and licensing questions
@@ -150,6 +154,13 @@ must not reference companion state — and, per ADR-0004, must not reference nod
 state either. And to an honest UI — `Paired, disconnected` is the normal state
 most of the time and must look boring, not broken.
 
-**Testable.** Every acceptance test for a companion-fed capability must have a
-companion-absent counterpart. If a feature cannot be tested with the phone
-switched off, it has already violated this ADR.
+**Testable.** Every acceptance test for a **phone**-fed capability must have a
+phone-absent counterpart. If a feature cannot be tested with the phone switched
+off, it has already violated this ADR.
+
+This does not extend to the node, and applying it there would forbid the
+product: a node-fed capability has no node-absent counterpart by design. The
+node's equivalent obligation is different and stricter in its own way — every
+node-fed capability must be testable **through** attach, detach and reattach
+while an application is open, and all of it in the simulator, because the node
+does not exist yet ([TASKS](../../TASKS.md) T-022, T-030).
