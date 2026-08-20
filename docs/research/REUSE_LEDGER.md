@@ -70,7 +70,46 @@ want to inherit the experience, not only the code.
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
 | `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
 
-Licences are recorded per record below, not here — a licence that is convenient
+### Licences, checked before anything was depended on
+
+Firefly is MIT. `CLAUDE.md` says anything incompatible with MIT does not enter
+this repository, and the licence is checked *before* the code is depended on,
+never after. Every licence below was read from the file in the clone, not from a
+badge or a recollection.
+
+| Project | Licence | Where it was read | What Firefly may do with it |
+|---|---|---|---|
+| MeshCore | **MIT** | `license.txt`, and the README's licence section | anything |
+| RadioLib | **MIT** | `license.txt`; `library.json` agrees | anything |
+| LVGL | **MIT** | `LICENCE.txt` | anything |
+| LilyGO T-Watch library | **MIT** | `LICENSE` | anything |
+| esp-bsp (Espressif) | **Apache-2.0** | README, "Copyrights and License" | use and modify, with attribution |
+| esp-brookesia | **Apache-2.0** | `license.txt` | use and modify, with attribution |
+| **Meshtastic** | **GPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
+| **InfiniTime** | **GPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
+| **Gadgetbridge** | **AGPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
+
+The bottom three matter more than the top six, because they are the projects
+that have already solved Firefly's hardest problems. Meshtastic ships worldwide
+and has therefore had to solve regulatory bounds on radio settings. InfiniTime
+is a mature LVGL watch firmware with a real application lifecycle running on far
+less RAM than either Firefly board has. They are the obvious places to look —
+and **GPL-3.0 with no linking exception forecloses every ledger verb with copy
+semantics**: not `USE AS DEPENDENCY`, not `PORT`, not `ADAPT`, and not
+`EXTRACT ALGORITHM`, which is copying with extra steps. It applies to their
+tests as much as their source, so "port the reference vectors" is not available
+either.
+
+What remains lawful is to read them, understand the shape of the solution, and
+write MIT code. That is `INSPIRE ARCHITECTURE`, and it is the honest verb for
+what several records below do.
+
+This is written out at length because it is the kind of constraint that gets
+quietly forgotten six months in, when a `DisplayApp` message loop or a region
+table looks eminently copyable. It is not. Recording it here means the next
+person does not have to rediscover it, and does not have to relitigate it.
+
+Individual records still state their own licence — a licence that is convenient
 to look up is a licence that gets assumed.
 
 ## Rules

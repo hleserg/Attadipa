@@ -133,14 +133,25 @@ the honest default for frequency is not a number at all: it is `Unset`, and
 | Target | State |
 |---|---|
 | Host / native | builds; smoke test passes locally and in CI |
-| Simulator | not started — SDL2 and ninja now installed; LVGL version still not chosen |
-| ESP32-S3 firmware | not started — ESP-IDF `release/v5.5` installing; version not yet pinned by decision |
+| Simulator | not started — SDL2 and ninja installed; LVGL version still not chosen |
+| ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`, `idf.py set-target esp32s3 && idf.py build` completes on a stock example, 162 KB image |
+| ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED` |
 
-The development host now has cmake, gcc, ninja, SDL2 and ccache. ESP-IDF is
-being installed for `esp32s3` — see "Long-running operations". Note that having
-ESP-IDF v5.5 on disk is not the same as having decided on it (T-004); the clone
-was started early so that the decision is not what waits for the download.
+The development host has cmake, gcc, ninja, SDL2, ccache and a working ESP-IDF
+`esp32s3` toolchain. The toolchain row says *verified* rather than *installed*
+because a build was actually run: a stock `hello_world` retargeted to esp32s3
+compiles and links. Installing something and having it work are different
+claims, and this repository does not let the first stand in for the second.
+
+Note that having ESP-IDF v5.5.5 on disk is still not the same as having decided
+on it (T-004). The clone was started early so that the decision would not be
+what waits for a 2 GB download.
+
+The first attempt failed and the reason is worth recording: `python3` on this
+host resolves into an unrelated virtualenv, and ESP-IDF's `install.sh` refuses
+to build a virtualenv from inside one. It succeeds with that path element
+removed.
 
 ## Assumptions currently in force
 
