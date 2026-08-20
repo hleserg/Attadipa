@@ -158,6 +158,43 @@ for.
 **Invariant:** `Unprovisioned`, `Unreachable` and `Incompatible` imply a remote
 provider. A local capability can never be in them. This is checkable in a test.
 
+### 2a. The enum is worthless without a transition table
+
+Two findings from Meshtastic's history, read from its commits rather than
+inferred, and together they are the strongest evidence for everything above.
+
+**They shipped GPS as a two-state boolean and had to retrofit a third.** Adding
+`NOT_PRESENT` was PR #3157, merged as `7f7c5cbd629e5188939926fd7c0a64280405df6f`
+on 2024-02-01, and it touched the firmware broadly — including screen text.
+Widening an availability enum later is not a header change. It is the argument
+for putting all seven states in on the first day, when there are no
+applications and the cost is a paragraph.
+
+**Adding the state did not stop code from leaving it.** Two years and one month
+later, commit `4a534f02a48626f2addf742dced2f9e8321d5e16` (2026-03-19) is
+*"fix(gps): prevent GPS re-enablement in NOT_PRESENT mode"* — a hardware switch
+could still drag a device out of the state that means *this device does not have
+one*.
+
+So the enum is only half the decision. The other half:
+
+```
+Unsupported     terminal. Nothing may leave it. Ever.
+Unprovisioned   -> Unreachable | Incompatible | Failed | Off | Ready   (a bind)
+Unreachable     -> Ready | Off | Failed | Incompatible | Unprovisioned (unbind)
+Incompatible    -> Unreachable | Unprovisioned                          (never Ready)
+Failed          -> Off | Ready | Unreachable | Unprovisioned
+Off             -> Ready | Failed | Unreachable | Unprovisioned
+Ready           -> anything except Unsupported
+```
+
+The table lives in one place, every transition goes through it, and an illegal
+one is a test failure rather than a screen that says the wrong thing. In
+particular `Incompatible` never reaches `Ready` without a renegotiation, and
+nothing ever reaches `Unsupported` — a device that never had a magnetometer does
+not acquire one because a node said so, it acquires a *provider*, and that is a
+different edge.
+
 ### 3. Availability is not validity — and a remote datum has two ages
 
 `Ready` means the source can be asked. It says nothing about whether it has an
@@ -249,6 +286,16 @@ written:
   rule 2 extends here unchanged: an application asks `LocationService` for a
   position and never learns where it came from. This is the rule that makes
   everything else checkable by review.
+- **The manifest is compulsory, and omitting a requirement is a compile error.**
+  InfiniTime's navigation app carried its availability as a plain `bool` copied
+  at one call site; an unrelated refactor silently disabled it and it stayed
+  broken for **nineteen months** (fixed by `9afc23cba9bcf938d8c49d6e15e7662ee8e6385d`,
+  2025-05-24). A requirement that can be forgotten will be forgotten, and it will
+  not announce itself when it is.
+- **A provider is a trust boundary, not a peripheral.** InfiniTime's
+  `MusicService` sized a variable-length array from the length of a peer's GATT
+  write (issue #825). Every length, count and index arriving from a node is
+  bounded at the link edge, before it reaches the capability layer.
 
 ### 6. When to offer an application you cannot currently run
 

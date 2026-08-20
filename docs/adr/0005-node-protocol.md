@@ -100,11 +100,16 @@ to BLE later changes no protocol byte.
 ### 3. Encoding: a Firefly-owned binary TLV. The reason is RAM, and it was measured
 
 §32 forbids choosing an encoding because it appears in a list, so here is the
-evidence rather than a preference. All figures below were compiled and run
-locally; nothing is estimated.
+evidence rather than a preference.
 
-**ESP32 memory — the decisive axis.** Meshtastic's top-level protobuf message,
-compiled here against nanopb:
+**Provenance, first.** Everything numeric below was compiled by this project on
+**`xtensa-esp32s3-elf-gcc` 14.2.0 at `-Os -ffreestanding`** — the actual target
+compiler for the actual target ISA, not a proxy. Sources: Meshtastic at
+`68bfe015e6ab9ec2ab8f1657066898b7880eaf63`, nanopb `0.4.x` from upstream. Where
+a number is not measured it says so.
+
+**ESP32 memory — the decisive axis.** Meshtastic's top-level protobuf messages,
+sizes taken from the compiled object:
 
 ```
 meshtastic_FromRadio :  wire maximum 510 bytes  ->  C struct 768 bytes
@@ -112,7 +117,7 @@ meshtastic_ToRadio   :  wire maximum 504 bytes  ->  C struct 508 bytes
 ```
 
 768 bytes of RAM to carry a 510-byte message, and roughly 1.3 kB of scratch per
-PhoneAPI instance before any transport buffer. **That is a nanopb
+`PhoneAPI` instance before any transport buffer. **That is a nanopb
 fixed-size-struct cost, not a protobuf wire-format cost** — every arm of every
 `oneof` is allocated at its maximum. The distinction decides the remedy: it means
 the answer is not "use CBOR instead", it is *do not materialise a union*. A TLV
@@ -125,14 +130,24 @@ MeshCore caps at 176 bytes, Meshtastic at 512 with a compile-time `#error` if th
 schema outgrows it. Firefly's real packet-size problem is **fragmentation**,
 which neither upstream provides and which no encoding choice solves.
 
-**Flash — real but not decisive.** A complete Firefly-shaped TLV codec with
-CRC-16, a bounds-checked writer, a skip-unknown reader and typed accessors is
-about 1.1 kB. The nanopb runtime is 8.9–10.5 kB plus 9.5 kB of descriptor tables;
-protobuf-c, which ESP-IDF actually bundles, is 14.6 kB. Nineteen kilobytes of
-flash is nothing on a 16 or 32 MB part. It is the **512 KB of internal SRAM**
-that rules — the same constraint that dominates
-[RESOURCE_BUDGET](../architecture/RESOURCE_BUDGET.md) — and protobuf-c's
-per-message `malloc` on top of it.
+**Flash — real, measured, and not decisive.** On the target compiler:
+
+| Component | `.text` |
+|---|---|
+| nanopb runtime — `pb_encode.c` + `pb_decode.c` + `pb_common.c` | 7 029 B |
+| Meshtastic's generated descriptor tables, all 24 units | 13 148 B |
+| — of which `mesh.pb` alone | 2 880 B |
+| **total** | **≈ 20.2 kB** |
+
+The Firefly TLV codec is **not written, so its size is UNKNOWN** and no number
+is quoted for it here. It would have to be implausibly large to change the
+conclusion, but that is an argument, not a measurement, and this repository does
+not let one stand in for the other.
+
+Twenty kilobytes of flash is in any case nothing on a 16 or 32 MB part. It is the
+**512 KB of internal SRAM** that rules — the same constraint that dominates
+[RESOURCE_BUDGET](../architecture/RESOURCE_BUDGET.md) — which is why the struct
+figure above is the one that decided this and the flash figure is context.
 
 **Backward compatibility — the one axis where protobuf genuinely wins, and it
 wins on enforcement rather than on format.** `buf breaking` in CI, plus
@@ -241,7 +256,14 @@ untrusted.
 **Protocol Buffers with nanopb.** Rejected on the measured RAM figure — 768
 bytes of struct for a 510-byte message, ~1.3 kB of scratch per instance, on a
 part with 512 KB of internal SRAM that LVGL already wants 804 KB of on the
-larger panel. Its genuine advantage, mechanically enforced schema evolution, is
+larger panel. A second, sharper reason emerged from upstream's own history:
+**nanopb's `max_size` is wire ABI, and nanopb halts on overflow rather than
+truncating.** Shrinking one field by fifteen bytes made peers built against the
+old schema undecodable, and the change was reverted within the hour. The lesson
+generalises past protobuf and is adopted below in §7: a field-width limit must be
+an *acceptance* property, never a *decode* property. Accept generously, clamp on
+store and on transmit, and never let a compiled-in width be the thing that
+rejects a peer. Its genuine advantage, mechanically enforced schema evolution, is
 real and is what §7's discipline has to substitute for by review. It also
 introduces a code-generation step between a developer and a build, which §32
 names as a debuggability concern.
