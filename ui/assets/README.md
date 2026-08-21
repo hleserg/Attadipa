@@ -50,10 +50,19 @@ python3 tools/assets/contact_sheet.py     # the review sheet, day and night, 1:1
 ```
 
 Nothing in the build runs any of them. The generated tree is committed and three
-tests notice when it goes stale: `ui_icon_drawings_are_current`,
-`ui_images_are_current` and `ui_image_pipeline_rejects_mistakes`. The inputs
-digest covers the **converter** as well as the art, because an encoder that
-changes its output is the asset changing.
+tests notice when it goes stale.
+
+`ui_images_are_current` is the primary gate and it **needs nothing installed** —
+it compares a digest. That digest covers the **converter** and the **drawings**
+as well as the art: an encoder that changes its output is the asset changing, and
+hashing `icon_drawings.py` means an edited stroke weight with nothing regenerated
+is caught by arithmetic rather than by a package.
+
+`ui_icon_drawings_are_current` and `ui_image_pipeline_rejects_mistakes` have to
+*draw* something, so they need **Pillow** — `apt install python3-pil`, or
+`pip install pillow`. Without it CMake registers a deliberately failing
+`ui_image_checks_unavailable` rather than skipping them, because a skipped check
+reads as a passing one in a summary. CI installs it.
 
 ## Cost
 

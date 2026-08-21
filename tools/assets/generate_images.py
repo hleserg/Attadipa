@@ -71,8 +71,16 @@ def inputs() -> list:
     The converter is in here as well as the art: an encoder that changes its
     output *is* the asset changing, and a digest that only covered the PNGs
     would call a re-encoded tree current.
+
+    So are the drawings, even though this stage never reads them. `draw_icons.py
+    --check` is the direct test of "the masks match their drawings", but it needs
+    Pillow, and a machine without Pillow should still be able to notice that
+    somebody edited a stroke weight and committed nothing. Hashing the drawing
+    module costs nothing and closes that hole with arithmetic instead of a
+    dependency.
     """
-    files = [HERE / "manifest.py", HERE / "generate_images.py", VENDOR]
+    files = [HERE / "manifest.py", HERE / "generate_images.py",
+             HERE / "icon_drawings.py", VENDOR]
     files += [SOURCE_DIR / manifest.source_name(n, s) for n, s in manifest.assets()]
     return files
 

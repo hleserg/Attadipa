@@ -131,17 +131,42 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME ui_images_are_current
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/assets/generate_images.py --check)
-    add_test(NAME ui_icon_drawings_are_current
-             COMMAND ${Python3_EXECUTABLE}
-                     ${CMAKE_SOURCE_DIR}/tools/assets/draw_icons.py --check)
-    add_test(NAME ui_image_pipeline_rejects_mistakes
-             COMMAND ${Python3_EXECUTABLE}
-                     ${CMAKE_SOURCE_DIR}/tools/assets/selftest.py)
     set_tests_properties(ui_no_raw_values ui_check_rejects_mistakes
                          ui_fonts_are_current ui_images_are_current
-                         ui_icon_drawings_are_current
-                         ui_image_pipeline_rejects_mistakes
                          PROPERTIES LABELS design)
+
+    # The other two asset checks have to *draw* something to know whether the
+    # drawing changed, so they need Pillow — which the digest check above
+    # deliberately does not, so that the primary staleness gate never depends on
+    # a package being installed.
+    #
+    # Absent Pillow, a failing test is registered rather than nothing. A skipped
+    # check reads as a passing one in a summary, and the whole point of a
+    # self-test is that somebody notices when it stops running.
+    execute_process(COMMAND ${Python3_EXECUTABLE} -c "import PIL"
+                    RESULT_VARIABLE _attadipa_pillow
+                    OUTPUT_QUIET ERROR_QUIET)
+    if(_attadipa_pillow EQUAL 0)
+        add_test(NAME ui_icon_drawings_are_current
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/assets/draw_icons.py --check)
+        add_test(NAME ui_image_pipeline_rejects_mistakes
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/assets/selftest.py)
+        set_tests_properties(ui_icon_drawings_are_current
+                             ui_image_pipeline_rejects_mistakes
+                             PROPERTIES LABELS design)
+    else()
+        add_test(NAME ui_image_checks_unavailable
+                 COMMAND ${CMAKE_COMMAND} -E false)
+        set_tests_properties(ui_image_checks_unavailable PROPERTIES LABELS design)
+        message(WARNING
+            "Pillow was not found, so the asset pipeline's self-test and its "
+            "drawing check cannot run. A deliberately failing test is registered "
+            "in their place — install it with `apt install python3-pil` or "
+            "`pip install pillow`. The digest check ui_images_are_current does "
+            "not need it and still runs.")
+    endif()
 else()
     add_test(NAME l10n_checks_unavailable
              COMMAND ${CMAKE_COMMAND} -E false)
