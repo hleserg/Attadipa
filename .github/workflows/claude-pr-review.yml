@@ -80,7 +80,7 @@ jobs:
             echo "::notice::No Anthropic credential configured; skipping the AI review."
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.auth.outputs.ok == 'true'
         with:
           fetch-depth: 0
