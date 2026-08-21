@@ -13,10 +13,51 @@
 # which is also what makes the table test possible.
 
 # attadipa_intake_decision ACTOR EVENT ACTION LABEL BODY LABELS STATE PERMISSION
+#                         [TRUSTED_PRODUCERS]
+#
+# TRUSTED_PRODUCERS is an optional comma-separated list of GitHub App logins,
+# supplied by the workflow from the repository variable ATTADIPA_TRUSTED_PRODUCERS.
+# It is empty by default, and empty behaves exactly as this gate did before it
+# existed.
 #
 # Prints `accept`, or `reject: <reason>`. Never exits.
 attadipa_intake_decision() {
   local actor="$1" event="$2" action="$3" label="$4" body="$5" labels="$6" state="$7" permission="$8"
+  local trusted_producers="${9:-}"
+
+  # 0. Is this actor a producing app the owner has named?
+  #
+  # A producing agent may hold no GitHub account of its own. ChatGPT reaches this
+  # repository through its GitHub App and arrives as
+  # `chatgpt-codex-connector[bot]` with author_association NONE — observed, not
+  # assumed: that is the login that reviewed pull request #11 on 2026-08-21. Rule
+  # 1 below refuses it, which is right by default and total by accident, because
+  # a producer that cannot file a task is a queue with no input.
+  #
+  # So an app login may be named in ATTADIPA_TRUSTED_PRODUCERS. Four things keep
+  # that from becoming a hole:
+  #
+  #   * EMPTY BY DEFAULT. No repository gains an exemption by taking this file.
+  #   * `issues` EVENTS ONLY. Never comments. The loop rule 1 exists to prevent
+  #     is an agent's own comment mentioning @claude, and no entry in this list
+  #     can exempt a comment.
+  #   * `claude` AND `github-actions` CAN NEVER BE LISTED. Checked here, after
+  #     the list rather than before it, so naming them in the variable does
+  #     nothing. Those two are this repository's own output, and letting our
+  #     writes drive our writer is the bill that grows until somebody notices.
+  #   * The owner editing a repository variable IS the human decision. An app is
+  #     not a collaborator and has no permission to look up, so being on the list
+  #     is the authorisation — which is why the list is the only way in.
+  local exempt=no
+  if [ "$event" = "issues" ] && [ -n "$trusted_producers" ]; then
+    case "$actor" in
+      claude|github-actions|"claude[bot]"|"github-actions[bot]") ;;
+      *)
+        case ",$trusted_producers," in
+          *",$actor,"*) exempt=yes ;;
+        esac ;;
+    esac
+  fi
 
   # 1. Never react to ourselves, or to any other bot.
   #
@@ -30,7 +71,7 @@ attadipa_intake_decision() {
   # actor with write access, and the only other way to produce one is a workflow
   # already in this repository. That is how the queue watchdog hands over a task
   # whose event was lost.
-  if [ "$event" != "workflow_dispatch" ]; then
+  if [ "$event" != "workflow_dispatch" ] && [ "$exempt" != "yes" ]; then
     case "$actor" in
       *"[bot]"|claude|github-actions)
         echo "reject: actor $actor is a bot"; return 0 ;;

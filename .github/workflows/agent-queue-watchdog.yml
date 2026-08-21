@@ -31,11 +31,32 @@ jobs:
     permissions:
       issues: read
       actions: write
+      contents: read
     steps:
+      # Pinned to the default branch, and sparse, for the same reason the intake
+      # gate's checkout is: this job can dispatch a write-capable agent, so the
+      # rules it applies come from `main` or from nowhere. A schedule event
+      # already runs from the default branch, but saying so here means a future
+      # trigger cannot quietly change that.
+      - name: Fetch the scan filter from the default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Look for a stranded task
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # An app is never OWNER, MEMBER or COLLABORATOR — issue #10 was filed
+          # with a valid marker and author_association NONE, and this scan
+          # skipped it while the intake gate refused it, so the task was
+          # invisible to both halves at once. A producer the owner has named in
+          # ATTADIPA_TRUSTED_PRODUCERS must be visible to the safety net too, or
+          # the net has a hole exactly where the queue's input is.
+          TRUSTED_PRODUCERS: ${{ vars.ATTADIPA_TRUSTED_PRODUCERS }}
         run: |
           set -euo pipefail
 
@@ -46,35 +67,10 @@ jobs:
           # A task is waiting if it is a real issue (not a pull request), it was
           # filed by somebody trusted, it carries a task marker or the
           # agent:ready label, and no state label says somebody already has it.
-          jq -r '
-            [ .[]
-              | select(.pull_request == null)
-              | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
-              | {
-                  number,
-                  labels: [.labels[].name],
-                  body: (.body // "")
-                }
-              | select((.labels | index("agent:ready")) != null
-                       or ((.body | test("attadipa-agent-task"))
-                           and (.body | test("@claude"))))
-              | select((.labels | index("agent:working")) == null)
-              | select((.labels | index("agent:review")) == null)
-              | select((.labels | index("agent:blocked")) == null)
-              | select((.labels | index("agent:done")) == null)
-              | select((.labels | index("agent:failed")) == null)
-              | {
-                  number,
-                  rank: (if   (.labels | index("priority:P0")) then 0
-                         elif (.labels | index("priority:P1")) then 1
-                         elif (.labels | index("priority:P2")) then 2
-                         elif (.labels | index("priority:P3")) then 3
-                         else 2 end)
-                }
-            ]
-            | sort_by(.rank, .number)
-            | .[0].number // ""
-          ' /tmp/open.json > /tmp/pick
+          # The filter lives in .github/scripts/queue-scan.jq so it can be run
+          # against fixtures. See the header of that file for why.
+          jq -r --arg trusted "${TRUSTED_PRODUCERS:-}" \
+             -f .github/scripts/queue-scan.jq /tmp/open.json > /tmp/pick
 
           PICK=$(cat /tmp/pick)
           if [ -z "$PICK" ]; then

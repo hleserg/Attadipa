@@ -114,6 +114,13 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body || github.event.review.body || '' }}
           LABEL_NAME: ${{ github.event.label.name || '' }}
           ACTION: ${{ github.event.action }}
+          # Comma-separated GitHub App logins the owner has named as producing
+          # agents, e.g. `chatgpt-codex-connector[bot]`. Empty by default, and
+          # empty is exactly the old behaviour. Read as a variable rather than
+          # hard-coded because which producer files the tasks is an operational
+          # decision, not a property of this code — and because changing it must
+          # not require a pull request that edits the security boundary.
+          TRUSTED_PRODUCERS: ${{ vars.ATTADIPA_TRUSTED_PRODUCERS }}
         run: |
           set -euo pipefail
 
@@ -140,7 +147,7 @@ jobs:
 
           VERDICT=$(bash .github/scripts/intake-decision.sh \
             "$ACTOR" "$EVENT_NAME" "$ACTION" "$LABEL_NAME" \
-            "$BODY" "$LABELS" "$STATE" "$PERMISSION")
+            "$BODY" "$LABELS" "$STATE" "$PERMISSION" "${TRUSTED_PRODUCERS:-}")
           if [ "$VERDICT" != "accept" ]; then
             say "#$ISSUE_NUMBER ${VERDICT#reject: }"
 

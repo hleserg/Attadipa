@@ -267,6 +267,25 @@ needs the owner, and one needs a ruler.
   workflow exists for. Found by an external review bot on #11, confirmed against
   the production runs where Dependabot's pull requests were skipped, and fixed by
   exempting `claude[bot]` alone.
+- **The producer's identity is established, and the queue has an input again.**
+  ChatGPT reaches this repository as `chatgpt-codex-connector[bot]` — a `Bot`,
+  `author_association: NONE`, and the login that reviewed
+  [#11](https://github.com/hleserg/Attadipa/pull/11). There is no user account
+  behind it to grant write to, so the gate refused every task it could ever file.
+  The owner's decision was the allowlist: `ATTADIPA_TRUSTED_PRODUCERS`, empty by
+  default, `issues` events only, `claude` and `github-actions` never listable,
+  exact login match. Thirteen tests cover those properties; the watchdog reads
+  the same list, because it filters on `author_association` and would otherwise
+  skip precisely these tasks.
+- **And the first draft of that allowlist had a hole, found in review.** The
+  watchdog hands over by `workflow_dispatch`, which the gate trusts by
+  construction and does not re-check the actor for — so a `claude[bot]` entry the
+  gate refuses to honour would have been honoured by the watchdog and dispatched
+  through the one door that no longer asks. The repository's own output starting
+  its own writer: the exact loop the allowlist was built to prevent. The
+  non-listable rule is now enforced in both places, the scan filter moved to
+  `.github/scripts/queue-scan.jq` so it can be executed, and 17 tests cover it in
+  CI. There was no test before, which is why review caught it and CI did not.
 - **The silent refusal was reproduced, not theorised.** A task with a valid
   marker filed through the GitHub API ([#10](https://github.com/hleserg/Attadipa/issues/10))
   arrived as `claude[bot]`, was refused by the bot guard — correctly — and was

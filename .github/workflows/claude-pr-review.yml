@@ -233,9 +233,18 @@ jobs:
             echo "<!-- attadipa-review-did-not-run -->"
             echo "**The independent review did not run on this commit, so there is no verdict.**"
             echo
-            echo "This says nothing about the diff. The usual cause is the Anthropic"
-            echo "credential: on the subscription path a spent quota fails immediately,"
-            echo "before the model is reached, and looks exactly like this."
+            echo "This says nothing about the diff. There are two usual causes:"
+            echo
+            echo "1. **This pull request edits \`.github/workflows/claude-*.yml\`.** The action"
+            echo "   refuses to run a version of itself that a pull request has modified —"
+            echo "   otherwise a pull request could supply the prompt that reviews it. That"
+            echo "   refusal is correct, and it means changes to those files are merged on"
+            echo "   ordinary CI and a human's reading, never on an AI review."
+            echo "2. **The Anthropic credential.** On the subscription path a spent quota"
+            echo "   fails immediately, before the model is reached, and looks like this too."
+            echo
+            echo "Check which by opening the run below: cause 1 says \"Workflow validation"
+            echo "failed\", cause 2 shows a result with \`is_error\` after a second or so."
             echo
             echo "Run: $RUN_URL"
             echo
