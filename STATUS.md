@@ -174,6 +174,25 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **Heading no longer reads accel+gyro fusion as an absolute reference.**
+  [#21](https://github.com/hleserg/Attadipa/issues/21): on the Waveshare
+  profile — QMI8658 accel+gyro, no magnetometer, no local GNSS —
+  `CapabilityRegistry` reported `Capability::Heading` as `Ready` from the IMU
+  alone, contradicting the same-day [ADR-0009](docs/adr/0009-heading.md),
+  which rejects accelerometer+gyroscope fusion by name: without a
+  magnetometer, yaw is unobservable, and gyro-only integration drifts without
+  bound
+  ([research-integration.md §9](docs/upstream/research-integration.md),
+  verdict `REJECT`). `tests/test_capability_registry.cpp` had locked the wrong
+  answer in as `test_heading_has_three_sources`, so a green CI could not have
+  caught it. Fixed in `core/src/capability_registry.cpp`: the local `Heading`
+  mapping now has two sources, magnetometer or local GNSS
+  course-over-ground, matching ADR-0007 §4 as corrected here and in
+  [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) §3.4. Waveshare with
+  no node now reports `Unprovisioned`, not `Ready`; a node that actually
+  offers `Heading` still lights it up as `Ready`/`Origin::Node`; the T-Watch
+  GNSS path is unaffected. Mutation-checked: reverting the fix turns five
+  checks red.
 - **The research integration, and the six test suites that came with it.** Core
   gained the types the GNSS integrity work needs — an observation that keeps
   both the normalized value and what the receiver actually said, ten separate
