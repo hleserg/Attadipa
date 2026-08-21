@@ -1,0 +1,46 @@
+scenario a good fix goes stale rather than staying good
+describe Freshness is decided before quality. An excellent fix from ten minutes
+describe ago is not a slightly worse fix: the wearer may have walked anywhere
+describe since, so it is a circle whose radius nobody measured.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3000
+  sats 12 15
+  hdop 80
+  jam none
+  spoof none
+  expect validity valid
+  expect trust trusted
+
+# The receiver goes quiet. The same observation, re-examined later, is a
+# different answer — nothing about the fix changed, only the time.
+at 29000
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3000
+  sats 12 15
+  hdop 80
+  jam none
+  spoof none
+  expect validity valid
+
+at 45000
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3000
+  sats 12 15
+  hdop 80
+  jam none
+  spoof none
+  expect validity valid            # the observation's own timestamp is current
+
+at 60000
+  fix none
+  sats 0 3
+  expect validity nofix
+  expect reason fix-lost

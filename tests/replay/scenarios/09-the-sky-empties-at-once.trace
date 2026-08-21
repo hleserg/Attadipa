@@ -1,0 +1,36 @@
+scenario every satellite disappears between two epochs
+describe From an open sky to nothing in one second. Physically that is a lid
+describe closing over the antenna; it is also what a transmitter capturing the
+describe receiver looks like from the outside. Either way it is not a normal
+describe reading, and the second step is the impossible one: more satellites
+describe used than are in view.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  expect trust trusted
+  expect no-reason constellation-anomaly
+
+at 1000
+  fix 3d
+  pos 5000010 10000010
+  alt 42000
+  acc 3500
+  sats 9 0
+  hdop 95
+  jam none
+  spoof none
+  expect reason constellation-anomaly
+
+at 2000
+  fix none
+  sats 0 0
+  expect validity nofix
+  expect reason fix-lost
+  expect trust degraded

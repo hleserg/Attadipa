@@ -196,3 +196,43 @@ add_executable(test_position test_position.cpp)
 target_link_libraries(test_position PRIVATE firefly_core)
 add_test(NAME position COMMAND test_position)
 set_tests_properties(position PROPERTIES LABELS gnss)
+
+# ---------------------------------------------------------------------------
+# The replayable navigation rig (docs/adr/0011-gnss-integrity.md §7).
+#
+# The interesting GNSS failures cannot be staged. Nobody can arrange to be
+# spoofed on a Tuesday afternoon, so a detector for an event that cannot be
+# produced on demand is one that gets written once and never verified again.
+# The rig replays timestamped observations into the same pure code the device
+# runs and asserts the verdict at every step rather than only at the end.
+#
+# Two targets, and the second is the one that matters. `replay` runs the
+# scenarios; `test_replay_rig` proves the runner can fail — a rig that passes
+# everything is indistinguishable from a rig that checks nothing.
+
+add_library(firefly_replay STATIC replay/replay.cpp)
+target_include_directories(firefly_replay PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(firefly_replay PUBLIC firefly_core)
+
+add_executable(replay replay/replay_main.cpp)
+target_link_libraries(replay PRIVATE firefly_replay)
+
+file(GLOB FIREFLY_REPLAY_SCENARIOS
+     "${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios/[0-9][0-9]-*.trace")
+# 13 is the deliberately-wrong fixture and belongs to the rig's own test.
+list(FILTER FIREFLY_REPLAY_SCENARIOS EXCLUDE REGEX "13-a-fixture-can-fail")
+list(LENGTH FIREFLY_REPLAY_SCENARIOS FIREFLY_REPLAY_COUNT)
+if(FIREFLY_REPLAY_COUNT LESS 10)
+    # A glob that silently matched nothing would produce a test that passes by
+    # running no scenarios at all.
+    message(FATAL_ERROR "only ${FIREFLY_REPLAY_COUNT} replay scenarios found")
+endif()
+
+add_test(NAME replay COMMAND replay ${FIREFLY_REPLAY_SCENARIOS})
+set_tests_properties(replay PROPERTIES LABELS gnss)
+
+add_executable(test_replay_rig test_replay_rig.cpp)
+target_link_libraries(test_replay_rig PRIVATE firefly_replay)
+add_test(NAME replay_rig
+         COMMAND test_replay_rig ${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios)
+set_tests_properties(replay_rig PROPERTIES LABELS gnss)

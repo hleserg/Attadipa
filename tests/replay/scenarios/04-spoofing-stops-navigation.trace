@@ -1,0 +1,62 @@
+scenario the receiver reports spoofing and navigation stops
+describe The receiver's spoofing alarm alone reaches Untrusted, because it is
+describe the one input that can see the correlator. Coming back is two holds,
+describe not one: Untrusted climbs through Degraded, because the intermediate
+describe state is what the interface shows while the evidence is re-earned.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  expect trust trusted
+
+at 3000
+  fix 3d
+  pos 5000005 10000005
+  alt 42000
+  acc 3600
+  sats 11 14
+  hdop 92
+  jam none
+  spoof critical
+  expect trust untrusted
+  expect reason receiver-spoofing
+  expect validity valid              # the fix is still a fix; it is not trusted
+
+at 8000
+  fix 3d
+  pos 5000010 10000010
+  alt 42000
+  acc 3500
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  expect trust untrusted
+
+at 13500
+  fix 3d
+  pos 5000015 10000015
+  alt 42000
+  acc 3500
+  sats 12 15
+  hdop 88
+  jam none
+  spoof none
+  expect trust degraded
+
+at 19000
+  fix 3d
+  pos 5000020 10000020
+  alt 42000
+  acc 3400
+  sats 12 15
+  hdop 87
+  jam none
+  spoof none
+  expect trust trusted

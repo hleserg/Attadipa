@@ -1,0 +1,17 @@
+scenario deliberately-wrong expectations, used only by the rig's self-test
+describe Not part of the suite. tests/test_replay_rig.cpp loads this file to
+describe check that the runner actually reports a mismatch — a rig that passes
+describe everything is indistinguishable from a rig that checks nothing, and
+describe that is the failure this whole directory exists to avoid.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  expect validity nofix
+  expect trust untrusted
+  expect reason receiver-spoofing

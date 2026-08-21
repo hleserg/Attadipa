@@ -1,0 +1,48 @@
+scenario the watch and the node it is paired with report different places
+describe ADR-0011 §4. The watch may have no receiver of its own at all — the
+describe Waveshare board has none — so a Firefly node supplies the position.
+describe When a second source disagrees, that is evidence about both of them
+describe and belongs to neither, so it is reported as its own reason rather
+describe than resolved by picking a favourite.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  expect trust trusted
+
+# The node agrees to within a few metres. Not evidence of anything.
+at 1000
+  fix 3d
+  pos 5000030 10000030
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect no-reason provider-disagreement
+
+at 2000
+  fix 3d
+  pos 5000010 10000010
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  expect trust trusted
+
+# And now half a kilometre apart, which two receivers in the same pocket
+# cannot be.
+at 3000
+  fix 3d
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect reason provider-disagreement
+  expect trust degraded

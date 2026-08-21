@@ -1,0 +1,75 @@
+scenario the receiver reports jamming, which is a caveat and not a refusal
+describe A jammed receiver is being denied, not lied to. The honest response is
+describe to keep showing the position with a caveat, and recovery has to be
+describe earned rather than granted on the first quiet epoch.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  expect trust trusted
+
+at 2000
+  fix 3d
+  pos 5000010 10000010
+  alt 42000
+  acc 9000
+  sats 8 14
+  hdop 180
+  jam warning
+  spoof none
+  expect trust degraded
+  expect reason receiver-jamming
+  expect validity valid
+
+at 4000
+  fix 3d
+  pos 5000020 10000020
+  alt 42000
+  acc 14000
+  sats 7 14
+  hdop 220
+  jam critical
+  spoof none
+  expect trust degraded
+  expect reason receiver-jamming
+
+# The all-clear arrives. Trust does not move on the strength of one epoch.
+at 6000
+  fix 3d
+  pos 5000030 10000030
+  alt 42000
+  acc 4000
+  sats 11 14
+  hdop 95
+  jam none
+  spoof none
+  expect trust degraded
+  expect no-reason receiver-jamming
+
+at 10000
+  fix 3d
+  pos 5000040 10000040
+  alt 42000
+  acc 3800
+  sats 11 14
+  hdop 92
+  jam none
+  spoof none
+  expect trust degraded            # 4 s of the 5 s hold
+
+at 11500
+  fix 3d
+  pos 5000050 10000050
+  alt 42000
+  acc 3700
+  sats 12 15
+  hdop 90
+  jam none
+  spoof none
+  expect trust trusted
