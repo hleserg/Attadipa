@@ -297,7 +297,8 @@ fixture.
 Watch for:
 
 - [ ] a branch `claude/issue-10-*` appears;
-- [ ] a **draft pull request** appears, with `Fixes #10` in the body;
+- [ ] a **draft pull request** appears, whose body carries a closing reference
+      back to this issue (the `Fixes` keyword and the issue number);
 - [ ] the independent reviewer posts a comment on it carrying
       `<!-- firefly-ai-review -->`, and sets exactly one of `ai-review:pass` or
       `ai-review:blocking`.
@@ -318,6 +319,16 @@ If the run still finishes green with nothing to show, the tool list is still
 wrong — read the run's **Step Summary**, which now carries Claude's own report
 (`display_report` is on), and check the `Run Claude` step for denied tools. Do not
 re-run hoping for a different result.
+
+> **A trap this document walked into once.** An earlier revision spelled that
+> closing reference out literally, as an example of what the agent's *future*
+> pull request should say. GitHub does not distinguish a quoted closing keyword
+> from a real one: the text reached a commit message and a pull request body, and
+> merging #11 closed issue #10 at the same second. The intake gate refuses a
+> closed issue — `reject: issue is closed` — so the verification below would have
+> done nothing, and looked like yet another silent failure with an entirely
+> different cause. Issue #10 has been reopened. **Never write a live closing
+> keyword into prose that describes one.**
 
 **Note:** commenting `@claude` yourself works because you have write access. It
 does not answer task 1 — that is still about ChatGPT's own account.
