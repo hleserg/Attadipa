@@ -67,9 +67,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # continue-on-error, and the reason is evidence rather than taste.
+      #
+      # On 2026-08-21 this job went red on pull request #9 after 373 ms, one
+      # turn and $0.00, with `is_error: true` and no output. That is not a
+      # review verdict — it is the Anthropic credential refusing before the
+      # model was ever reached, which on the subscription path means the quota
+      # is spent. The diff was irrelevant to it.
+      #
+      # A red check that means "we ran out of quota" is indistinguishable, in
+      # the checks list, from "the reviewer found something", and this file
+      # already states the principle for the other half of the same problem: a
+      # workflow that is red for a reason outside the code is a workflow people
+      # learn to ignore. So a reviewer that cannot run says so in a comment and
+      # leaves the check green, while a reviewer that CAN run still blocks
+      # through `ai-review:blocking` — which is the label, not the exit code.
       - name: Review
         if: steps.auth.outputs.ok == 'true'
         id: review
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -141,3 +157,39 @@ jobs:
             Finish by setting exactly one label on this pull request using the
             gh CLI: `ai-review:blocking` if anything must be fixed before merge,
             otherwise `ai-review:pass`. Remove the other one if present.
+
+      - name: Say that the review did not happen
+        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Neither label is set. `ai-review:pass` would be a lie and
+          # `ai-review:blocking` would be a finding nobody made.
+          {
+            echo "<!-- firefly-review-did-not-run -->"
+            echo "**The independent review did not run on this commit, so there is no verdict.**"
+            echo
+            echo "This says nothing about the diff. The usual cause is the Anthropic"
+            echo "credential: on the subscription path a spent quota fails immediately,"
+            echo "before the model is reached, and looks exactly like this."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "Neither \`ai-review:pass\` nor \`ai-review:blocking\` has been set. Push again,"
+            echo "or re-run the job, to get an actual review."
+          } > /tmp/no-review.md
+
+          # One per head commit, not one per push: re-running the job on the same
+          # commit should not stack identical notes.
+          if gh api "repos/$REPO/issues/$PR/comments" --paginate \
+               --jq '.[].body' | grep -q 'firefly-review-did-not-run'; then
+            echo "::notice::already said so on #$PR"
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/no-review.md
+          fi
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
+          echo "::warning::The independent review could not run; no verdict was recorded."
