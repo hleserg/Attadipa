@@ -274,8 +274,12 @@ Three tests hold the line. `tests/test_ui_tokens.cpp` asserts the properties —
 one token is one physical size on both panels, no gap rounds away, the night
 fall-through stays legible. `tools/ui/check_raw_values.py` refuses a colour, a
 pixel count or a duration written as a number anywhere under `ui/`, `sim/` or
-`apps/`, with two files exempted because holding numbers is their job.
-`tools/ui/selftest.py` proves that checker rejects what it claims to.
+`apps/` — including the channel-by-channel form `Rgb{0xFF, 0xF6, 0xE8}`, which is
+what somebody copying a line out of the palette would paste. Exactly one file is
+exempt, `ui/src/color.cpp`, because being the palette is its job; six other
+candidates were tried and removed on finding they were exempt from a rule they
+never broke. `tools/ui/selftest.py` proves the checker rejects nine real
+mistakes and accepts nine correct lines.
 
 ## 6. Sound and haptics are tokens too
 

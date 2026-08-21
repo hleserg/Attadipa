@@ -26,17 +26,15 @@ ROOT = Path(__file__).resolve().parents[2]
 # Where screens are written. Everything under these is checked.
 SCANNED = ("sim", "apps", "ui")
 
-# The two files that are *supposed* to contain numbers, and nothing else is.
-# Listed explicitly rather than by pattern, so that adding a third is a decision
-# somebody makes in this file rather than a file that quietly matches a glob.
+# The one file that is *supposed* to contain colour values, because being the
+# palette is its job. It is listed by name rather than matched by a pattern, so
+# that adding a second is a decision somebody makes in this file.
+#
+# Nothing else is exempted, and the list was pruned to get here: seven candidates
+# were tried and six turned out to be exempt from a rule they never broke, which
+# is not a courtesy but a hole. An exemption that is not load-bearing is removed.
 ALLOWED = {
-    "ui/src/color.cpp",                     # the palette, transcribed from final §42
-    "ui/include/attadipa/ui/tokens.h",      # the scale
-    "ui/include/attadipa/ui/metrics.h",     # the Dp-to-pixel arithmetic itself
-    "ui/include/attadipa/ui/color.h",       # documents the palette in prose
-    "sim/lv_conf_simulator.h",              # LVGL's own configuration, not ours
-    "sim/png_writer.cpp",                   # a file format, not a screen
-    "sim/options.cpp",                      # argv parsing
+    "ui/src/color.cpp",   # the palette, transcribed from final §42
 }
 
 SUFFIXES = {".c", ".cpp", ".h", ".hpp"}
@@ -53,9 +51,19 @@ class Offence:
         return f"{self.path}:{self.line_no}: {self.why}\n    {self.line}"
 
 
-# A colour, written as one. Six hex digits is a colour in every UI codebase that
-# has ever existed; four is usually a mask and is left alone.
-COLOUR = re.compile(r"0[xX][0-9a-fA-F]{6}\b")
+# A colour, written as one, in the three forms this codebase can produce it.
+#
+# Six hex digits is a colour in every UI codebase that has ever existed; four is
+# usually a mask and is left alone. `Rgb{0xFF, 0xF6, 0xE8}` is the form the
+# palette itself uses, and it is the form somebody copying a line out of
+# color.cpp would paste — so it has to be caught, or the exemption below is the
+# only thing the rule has ever been asked about. `lv_color_make` is LVGL's own
+# three-channel constructor and means exactly the same thing.
+COLOUR = re.compile(
+    r"0[xX][0-9a-fA-F]{6}\b"
+    r"|(?<!struct )(?<!class )\bRgb\b[^;{]*\{[^}]*\d"
+    r"|\blv_color_make\s*\("
+)
 
 # A length handed to LVGL as a bare number. The style setters take (obj, value,
 # selector), so the value is the second argument, and a literal there is a pixel

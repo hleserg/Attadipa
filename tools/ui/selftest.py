@@ -31,6 +31,10 @@ MUST_REJECT = {
         'lv_obj_set_width(row, 240);',
     "an animation duration":
         'lv_anim_set_time(&a, 200);',
+    "a colour built channel by channel":
+        'constexpr Rgb kPaper{0xFF, 0xF6, 0xE8};',
+    "LVGL's own three-channel constructor":
+        'lv_obj_set_style_bg_color(screen, lv_color_make(255, 246, 232), 0);',
 }
 
 MUST_ACCEPT = {
@@ -44,6 +48,10 @@ MUST_ACCEPT = {
         'lv_obj_set_height(row, LV_SIZE_CONTENT);',
     "a four-digit mask is not a colour":
         'if ((byte & 0xC0) != 0x80) { return 0; }',
+    "declaring the Rgb type is not writing a colour":
+        'struct Rgb { std::uint8_t r = 0; };',
+    "naming an Rgb without constructing one":
+        'const Rgb amber = *color(ColorRole::AccentGlow, theme);',
     "hex inside a comment":
         '// the old value was 0xFF8A40 and it is gone',
     "a codepoint range in a comment":
