@@ -119,11 +119,36 @@ than the finding list:
 |---|---|---|---|
 | `core/include/firefly/core/position.h` | value types | a fix that carries its own quality, and four validity states | `test_position` |
 | `core/include/firefly/core/trust.h` | the trust state | evidence, reasons, hysteresis, last-trusted position | `test_trust` |
-| `core/include/firefly/core/gnss_power.h` | receiver states | OFF / BACKUP / ACQUIRING / TRACKING / POWER_SAVE / DEGRADED and their legal transitions | `test_gnss_power` |
-| `core/include/firefly/core/power_state.h` | device states | the six states, their wake sources, and the rule a board cannot break | `test_power_state` |
+| `core/include/firefly/core/gnss_power.h` | receiver states | OFF / BACKUP / ACQUIRING / TRACKING / POWER_SAVE / DEGRADED and their legal transitions | `test_power` |
+| `core/include/firefly/core/power_state.h` | device states | the six states, their wake sources, and the rule a board cannot break | `test_power` |
 | `core/include/firefly/core/diagnostics.h` | the snapshot | every field optional, no serializer, no JSON | `test_diagnostics` |
 | `link/` | framing + link state | sync, CRC, resync, bounded queues, backpressure, the connection state machine | `test_link` |
-| `tests/replay/` | the rig | deterministic replay of timestamped fixtures into the trust engine | twelve scenarios |
+| `tests/replay/` | the rig | deterministic replay of timestamped fixtures into the trust engine | twelve scenarios, plus `test_replay_rig` |
+
+The two power state machines share one test file rather than two, because the
+check that matters most spans both: `next_state()` and `transition_is_legal()`
+are written separately, and a cross-check over every capability set, power state
+and flag combination is the only thing keeping them in agreement. It caught them
+disagreeing on the first run.
+
+### What the tests found
+
+Writing them was not a formality, and the results belong here rather than in a
+commit message nobody re-reads:
+
+| Where | What the test found |
+|---|---|
+| `core/src/gnss_power.cpp` | `next_state()` proposed `Off → Backup` when the device slept with the receiver already off — spending current to hold a domain with nothing in it, and a transition the legality table correctly refused |
+| `core/src/gnss_power.cpp` | `start_kind()` read *having* a backup domain as evidence the domain had been *powered*, reporting a warm start where the truth was cold: a caller told to expect a fix in thirty seconds that arrives in several minutes |
+| `core/src/trust.cpp` | the interval between epochs was read after the previous timestamp had been overwritten, so every `dt` was zero and both rate detectors silently did nothing. Found before this branch, and the reason `tests/test_trust.cpp` walks sequences rather than single calls |
+| `tests/replay/replay.cpp` | `-Werror` caught a comma operator where two statements were meant |
+
+Four of the author's own expectations were wrong and the code was right, which
+is recorded in the commits rather than quietly corrected: three were coordinate
+arithmetic an order of magnitude out — one unit of 1e-7 degrees of latitude is
+11 mm — and the fourth was a design not internalised, that at boot validity is
+`NoFix` and trust is `Degraded`, two separate answers about the same moment
+rather than one restated.
 
 ---
 
@@ -448,3 +473,29 @@ left as a wish.
 
 The honest summary: **everything in §3 of this document is `UNIT-TESTED` on a
 host, and nothing in it is `HARDWARE-VERIFIED`.**
+
+The ten plans, and the claim each one settles:
+
+| Plan | Settles |
+|---|---|
+| H-1 | which radio and which GNSS module are actually on the board — everything else depends on it |
+| H-2 | sleep current in each of the five power states |
+| H-3 | that deep sleep is deep and the radio really is off — the defect the MeshCore review found upstream |
+| H-4 | the front-end regression, as a measured noise floor rather than as somebody else's issue report |
+| H-5 | time to first fix, cold against warm against hot — the whole duty-cycling argument |
+| H-6 | which interference indications each receiver actually emits. The one that answers OD-5 for the LS550G |
+| H-7 | energy per fix, and therefore whether duty cycling pays at all |
+| H-8 | that USB survives a cable pulled mid-frame |
+| H-9 | that a bonded peer reconnects after a reboot |
+| H-10 | how far the battery reading sags during a transmission |
+
+Two of them are shaped by upstream's failures rather than by our expectations.
+H-3 **fails** if deep-sleep current is within 20 % of mesh-listen sleep, because
+that would mean the front end is still powered and the two states differ only in
+name. H-8 **fails** if a frame ever arrives with a valid checksum and wrong
+content.
+
+H-6 carries a safety line rather than a procedure alone: radiating on a GNSS
+band in open air is illegal in most jurisdictions, so it happens in a shielded
+enclosure or it does not happen, and spoofing detection stays `UNKNOWN` rather
+than being guessed at.
