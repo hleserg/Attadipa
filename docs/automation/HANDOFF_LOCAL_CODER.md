@@ -33,6 +33,11 @@ Note the project was renamed from Firefly OS to **Attadipa** on 2026-08-21. Old
 
 ## 0. Before anything
 
+**These commands are one line each, on purpose.** The owner's machine runs
+PowerShell, where a trailing `\` is not a line continuation — it becomes an extra
+argument and `gh` answers *"accepts at most 1 arg(s), received 2"*. Anything
+below that genuinely cannot fit on one line is marked as bash-only and says so.
+
 ```bash
 gh auth status          # must be a USER account, not an app
 gh api user --jq .login # expect: hleserg
@@ -94,8 +99,7 @@ available for the connector. The owner chose the allowlist, and it is built,
 tested and merged. What remains is to switch it on:
 
 ```bash
-gh variable set ATTADIPA_TRUSTED_PRODUCERS \
-  --body 'chatgpt-codex-connector[bot]' --repo hleserg/Attadipa
+gh variable set ATTADIPA_TRUSTED_PRODUCERS --body 'chatgpt-codex-connector[bot]' --repo hleserg/Attadipa
 gh variable list --repo hleserg/Attadipa
 ```
 
@@ -236,6 +240,10 @@ will see, English first and Russian below:
 
 Each file's first lines give its title and category. `createDiscussion` is
 GraphQL-only, hence this handoff.
+
+**This block is bash only** — it uses process substitution (`<(...)`), which
+PowerShell has no equivalent for. Run it in WSL, Git Bash, or macOS/Linux; or
+post the three discussions through the web UI, pasting each file's body.
 
 ```bash
 REPO_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"Attadipa"){id}}' --jq .data.repository.id)

@@ -77,31 +77,6 @@ stale silently. The protocol is
   removed from the loop.
 
 
-### T-009 · Design tokens in code
-- **Priority:** P0 — raised from P1; final §58 puts tokens in the first slice,
-  before the Clock
-- **Dependencies:** T-032 (**done**); T-008 (**done**)
-- **Goal:** the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md) — colour,
-  spacing, radius, typography, motion, icon size, image size, elevation, sound
-  cue, haptic pattern (final §54).
-- **Acceptance:** no raw RGB, pixel count, duration, font size or radius
-  anywhere in UI code; day and night variants; both geometries; spacing resolved
-  per board rather than in raw pixels, because 8 px is not the same physical
-  distance on a 1.54″ and a 2.06″ panel.
-- **Research status:** done — palette, typography direction and mascot usage
-  derived from the owner references ([docs/ui/reference](docs/ui/reference/README.md))
-- **Implementation status:** document written and marked *proposed*; no code
-  tokens; **no value has been shown on a panel**
-- **Tests:** reference screenshots once the simulator runs
-- **Hardware required:** for the final colour values, **yes** — final §55
-  forbids preserving a concept-board hex that fails on the real display
-- **Open inside this task:** `color.danger` has no value. There is no red in
-  either owner palette, and inventing one is an identity decision for the owner.
-- **Resumed:** 2026-08-21, after both owner amendments landed (T-041, T-042).
-  Final §58 puts tokens first in the M1 slice and §15 of the GNSS amendment says
-  the current milestone is not to be broken — so this is where the roadmap
-  picks back up.
-
 ## NEXT
 
 ### T-034 · Image asset pipeline
@@ -1081,6 +1056,51 @@ stale silently. The protocol is
 - **Tests:** the CI job is the test
 - **Hardware required:** no
 
+### T-084 · Deep research: design customisation on wearables
+- **Priority:** P1 — the owner asked for this **instead of** filing the animated
+  watch-face feature, and the sequencing is the point: *"забей на это задание а
+  вместо этого назначь в план исследование по кастомизации дизайна на носимых
+  смарт часах. Че кто и как делает, как реализует, какие-то удачные дизайнерские
+  и программные фишки поищи. Прям нормальный дип ресерч. А по результатам уже
+  назначишь задание себе че делать че не делать."* Tasks come out of the
+  research, not before it.
+- **Dependencies:** T-009 (**done** — it is the substrate that makes any of this
+  possible), and it feeds T-081, T-082 and T-034
+- **Goal:** a written survey, in `docs/research/`, of how wearables actually do
+  customisation — watch faces, themes, icon packs, animations — and what it costs
+  in the places it hurts on this hardware: flash, RAM, battery and the always-on
+  path.
+- **What must be covered**, because these are the questions the product has:
+  - **who does what** — Wear OS watch faces (the XML format and why Google moved
+    to it from executable ones), Apple's complications, Garmin Connect IQ, Fitbit,
+    Pebble's legacy and what its community formats got right, Amazfit/Zepp's
+    downloadable faces, Bangle.js, Flipper Zero's animation packs and its
+    manifest, InfiniTime and Wasp-OS as the LVGL/embedded-scale comparison;
+  - **the format question** — declarative versus executable. Every platform that
+    started with executable faces moved away from it, and the reasons (power,
+    security, review burden, and faces that brick the watch) are the reasons this
+    project would face too;
+  - **animation on a battery** — what an idle animation costs when the panel is
+    an AMOLED versus an IPS, how platforms bound it, and how "raise to wake, play
+    something, then show the time" is done without paying for it all day;
+  - **what stops the layout breaking**, which is the owner's explicit
+    requirement: constraint systems, safe areas, what a face is *not* allowed to
+    control, and what happens on a geometry it was not authored for;
+  - **distribution and trust** — signing, review, sandboxing, size limits, and
+    what a malicious or merely bad pack can do;
+  - **accessibility under customisation** — how, or whether, platforms keep
+    contrast and legibility guarantees when a user installs a stranger's palette.
+    Attadipa already computes contrast, so this is a live question rather than a
+    theoretical one.
+- **Acceptance:** every claim carries a source and a date. Where a platform's
+  behaviour is documented, cite it; where it is folklore, say so. A recommendation
+  section at the end that names the two or three approaches worth copying and the
+  ones worth avoiding, each with the reason. **Then** the follow-on tasks are
+  filed, which is the deliverable the owner actually asked for.
+- **This is a research task.** It produces documentation. A pull request full of
+  new subsystems has been guessed at, not done.
+- **Hardware required:** no
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1161,6 +1181,62 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-009 · Design tokens in code — **DONE** 2026-08-22
+- `ui/` is the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md): a `Dp`
+  type against a 160 dpi reference, twelve semantic colour roles across two
+  themes, and the spacing, radius, motion, size, elevation, typography-role,
+  haptic and sound-category scales. The library links `attadipa_headers` and
+  deliberately **not** `attadipa_platform` — a screen asks for `space.md` and
+  only the composition root knows which panel answered.
+- **Acceptance met.** `tools/ui/check_raw_values.py` refuses a colour, a pixel
+  count or a duration written as a number under `ui/`, `sim/` or `apps/`, with
+  two files exempted for holding the palette and the scale; `tools/ui/selftest.py`
+  proves the checker rejects seven real mistakes and accepts seven correct
+  lines. `sim/boot_screen.cpp` no longer contains a hex colour or a raw padding.
+- **Both themes are now switchable without a rebuild** — `T` at runtime,
+  `--theme day|night` for CI — for the same reason the locale is: a reviewer who
+  must rebuild to see the second one checks the first.
+- **Two measured findings, neither of them a proposal to change the palette.**
+  Every day accent is under 3:1 against the brightest background it will sit on
+  (Attadipa Orange 2.19, Glow Amber 1.44, Meadow Green 2.81, Sky Teal 2.15), so
+  on the day theme an accent is emphasis and the meaning is in the icon and the
+  word. And `color.text.muted` clears the threshold on the page (5.62) and on a
+  surface (4.95) and then fails on a **raised** card at 4.44 — six hundredths
+  under 4.5:1, on the most ordinary thing the system draws. Both are pinned in
+  `tests/test_ui_tokens.cpp`, both are tabulated in DESIGN_SYSTEM §3.2, and both
+  break a test if the palette moves. See also open question **A7**.
+- **Still hardware-blocked, as it always was:** final §55 forbids preserving a
+  concept-board value that fails on the real display. Every number in `ui/` is
+  **PROPOSED**; none has been shown on a panel. `color.danger` stays UNKNOWN.
+- **Mutation-tested**: five mutants — a background falling through to day, a
+  shrunken touch target, `radius.pill` resolved as a length, a hairline rounding
+  away, and contrast computed from a channel average instead of WCAG luminance.
+  All five red. The fourth was green on the first attempt and the test was wrong,
+  not the code: nothing exercised the guarantee below 80 dpi where it bites.
+
+### T-083 · No box characters in any build — **DONE** 2026-08-22
+- The owner saw a `□` in a screenshot and asked the obvious question. It was
+  real: the build drew with LVGL's stock Montserrat, generated from
+  `-r 0x20-0x7F,0xB0,0x2022`, so `×` (U+00D7) rendered as a box — and so did all
+  six Cyrillic codepoints in the **English** catalogue's own language names.
+- `assets/fonts/` now holds four generated subsets — 14, 16, 20 and 28 px, 4 bpp
+  — covering all 181 codepoints in `tools/font/charset.py`. They are committed
+  rather than generated during the build, for the reason the l10n catalogue is:
+  otherwise Node.js sits between a contributor and a green build.
+- **Not a typeface decision.** Montserrat is used because LVGL already ships it
+  under OFL-1.1 at the pinned revision and because it covers the whole charset.
+  D16 and final §51 are untouched: no candidate has been checked for licence,
+  coverage, legibility at real pixel size and generated flash size.
+- **The warning became a failure.** `report_undrawable_glyphs()` used to print
+  seven codepoints and continue, because the situation was unfixable. It is
+  fixable now, so the simulator exits non-zero — and it checks **both**
+  catalogues rather than whichever locale the reviewer started in.
+- **Measured:** 13.0 / 15.2 / 19.4 / 31.3 kB of `.rodata`, 78.9 kB for all four,
+  at `-Os` on the host compiler. `ESTIMATED` for the target until
+  `tools/font/measure.py` is run with the xtensa toolchain.
+- **Mutation-tested:** adding a line to `charset.py` turns `ui_fonts_are_current`
+  red; putting a Latin-only font back turns the simulator run red.
 
 ### T-059 · The trust state, tested as sequences — **DONE**
 - **Why sequences:** the detectors that matter are rate detectors, and a rate

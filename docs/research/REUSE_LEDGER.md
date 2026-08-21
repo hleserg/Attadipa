@@ -788,3 +788,85 @@ fixture nobody can read is a build failure. `tests/CMakeLists.txt` refuses to
 configure if the scenario glob matches fewer than ten files, because a glob that
 silently matched nothing would produce a test that passes by running no
 scenarios at all.
+
+### The agent queue's driver: `anthropics/claude-code-action`
+
+**Problem:** `claude-agent.yml`, `claude-pr-review.yml` and `claude-ci-repair.yml`
+— the whole agent queue `docs/automation/AI_TASK_PROTOCOL.md` describes — all
+invoke the same third-party GitHub Action to run Claude against an issue or
+pull request: it authenticates, invokes the Claude Code SDK headlessly, applies
+`--allowedTools`/`--permission-mode`, and (via `display_report`) posts the
+summary a human reads. Writing this by hand means reimplementing GitHub App
+authentication and the headless SDK invocation, and getting the same things
+wrong the workflow's own comments already record having gotten wrong once —
+agent mode setting no default `--allowedTools`, and `display_report` defaulting
+off, which together produced a 28-turn run in smoke test A that left no branch,
+no pull request and no comment.
+
+**Projects investigated:** `anthropics/claude-code-action` only. It is
+Anthropic's own action for running Claude Code inside a GitHub Actions job; no
+alternative was examined because none offers the same first-party GitHub-native
+integration (issue/PR events, labels, branches) for this specific product. That
+absence of a search is recorded here rather than implied.
+
+**Useful implementation:** the whole action — GitHub event parsing, agent-mode
+invocation of the Claude Code SDK, the `--allowedTools`/`--permission-mode`
+plumbing, and the `display_report`/`show_full_output` output controls that
+`claude-agent.yml`'s inline comments already describe verifying by reading the
+action's own source.
+
+**License:** **MIT**, read from `LICENSE` in the action's own repository
+(`github.com/anthropics/claude-code-action`, raw content confirmed via the
+GitHub API on 2026-08-21: "Copyright (c) 2025 Anthropic, PBC") — not from a
+badge, a marketplace listing or a recollection.
+
+**Strengths:** first-party, so it matches the product it drives; already
+load-bearing across all three workflows and observed working — `claude-agent.yml`
+records specific behavior (no default `--allowedTools` in agent mode, no
+label-setting feature at all) verified by reading `src/` at a pinned commit,
+not assumed from documentation.
+
+**Weaknesses:** consumed as a black box with nothing vendored, so a breaking
+upstream change reaches all three workflows at once with no local copy to fall
+back on; the pin is a floating major-version tag, not a commit (see *Source
+revision*), so "the same version" is not guaranteed between two runs unless
+something else fixes the commit.
+
+**Decision:** `USE AS DEPENDENCY`.
+
+**Reason:** it is the vendor's own action for running their own product inside
+GitHub Actions. `WRAP`, `PORT` or `ADAPT` would mean reimplementing and then
+hand-tracking Anthropic's own SDK invocation, for no benefit the action does
+not already provide. Alternatives were not examined beyond confirming none
+exist for this specific integration — an honest `REJECT`-free `Reason`, per the
+scope this record was opened to fill, rather than a claim that a comparison
+happened.
+
+**Source revision:** pinned in all three workflows as `@v1` — a **floating
+major-version tag, not a commit**. Resolved against the GitHub API on
+2026-08-21: `refs/tags/v1` is an annotated tag that peels to commit
+`3f854a8fb5146b39d5cbf8b57f70d80810e1366f`, currently identical to the
+`v1.0.198` release tag. This matches what `claude-agent.yml`'s own inline
+comments already record having verified source behavior against — but that
+comment answers "what was checked", and this record answers "why the
+dependency is trusted at all"; neither substitutes for the other. Floating
+means "verified against `@v1`" is a snapshot: the tag can move to a later patch
+between one workflow run and the next with no change in this repository,
+silently outdating both that comment and this record until someone re-checks.
+Whether to re-pin to a fixed commit SHA for reproducibility, trading it against
+picking up upstream fixes automatically, is not decided anywhere in
+`docs/automation/CLAUDE_AUTOMATION.md` — that trade is the owner's to make, not
+this record's, and is not a blocker on the record existing.
+
+**Firefly integration:** invoked as a `uses:` step in three workflow files,
+configured entirely through action inputs (`github_token`, `branch_prefix`,
+`allowed_bots`, `allowed_non_write_users`, `show_full_output`,
+`display_report`, `additional_permissions`, `--allowedTools`); no source is
+vendored or modified.
+
+**Tests required:** none host-testable — the action only runs inside GitHub
+Actions, and its behavior can only be observed by running an actual job, which
+is how `claude-agent.yml`'s existing comments arrived at their own findings
+(e.g. the `display_report` fix after smoke test A). Any future version bump
+past the resolved commit above should be re-verified the same way — read the
+source at the new commit — rather than assumed compatible from a changelog.

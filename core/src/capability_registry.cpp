@@ -78,13 +78,6 @@ Availability CapabilityRegistry::local_availability(Capability capability) const
         return hw.present(feature) ? from_state(hw.state(feature)) : Availability::Unsupported;
     };
 
-    // A capability served by two parts is only as available as the worse of
-    // them. Fusion needs both the accelerometer and the gyroscope, and half a
-    // fusion is not a degraded heading — it is no heading.
-    const auto worse_of = [](Availability a, Availability b) {
-        return remedy_rank(a) <= remedy_rank(b) ? a : b;
-    };
-
     switch (capability) {
         case Capability::Time:
             // Never Unsupported, and never Off either. A device with a dead RTC
@@ -98,18 +91,17 @@ Availability CapabilityRegistry::local_availability(Capability capability) const
             return by_feature(HardwareFeature::GnssReceiver);
 
         case Capability::Heading: {
-            // Three unrelated sources, in the order ADR-0007 §4 gives.
-            // Availability says only that *something* could produce a heading.
-            // Whether the answer means anything right now is validity, and a
-            // standing user with a GNSS fix is Ready and Invalid at the same
-            // time — docs/adr/0009-heading.md.
+            // Two local sources, in the order ADR-0007 §4 gives — and only
+            // two. Accelerometer+gyroscope fusion is not a third: without a
+            // magnetometer, yaw is unobservable, and integrating gyro alone
+            // drifts without bound (docs/adr/0009-heading.md §"Alternatives
+            // considered"; docs/upstream/research-integration.md §9,
+            // verdict REJECT). Availability says only that *something* could
+            // produce a heading. Whether the answer means anything right now
+            // is validity, and a standing user with a GNSS fix is Ready and
+            // Invalid at the same time — docs/adr/0009-heading.md.
             if (inventory_->present(HardwareFeature::MagnetometerSensor)) {
                 return by_feature(HardwareFeature::MagnetometerSensor);
-            }
-            if (inventory_->present(HardwareFeature::Accelerometer) &&
-                inventory_->present(HardwareFeature::Gyroscope)) {
-                return worse_of(by_feature(HardwareFeature::Accelerometer),
-                                by_feature(HardwareFeature::Gyroscope));
             }
             return by_feature(HardwareFeature::GnssReceiver);
         }

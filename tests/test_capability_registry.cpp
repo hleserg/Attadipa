@@ -270,22 +270,36 @@ void test_supports_is_stable()
     }
 }
 
-// ADR-0009: heading has three possible sources and neither board has the
-// obvious one.
-void test_heading_has_three_sources()
+// ADR-0009: Heading needs an absolute reference to north — a magnetometer, or
+// GNSS course-over-ground. Accelerometer+gyroscope fusion is not a third
+// source: without a magnetometer yaw is unobservable, and gyro-only
+// integration drifts without bound (ADR-0009 §"Alternatives considered";
+// docs/upstream/research-integration.md §9, verdict REJECT). This used to be
+// named test_heading_has_three_sources and asserted the fusion path as
+// Ready — that assertion was the bug (issue #21), not a spec.
+void test_heading_needs_an_absolute_reference()
 {
-    // Waveshare: no magnetometer, but a six-axis IMU, so fusion.
+    // Waveshare: a six-axis IMU (accel + gyro), but no magnetometer and no
+    // local GNSS. Local availability must not read the IMU as a heading
+    // source — there is no absolute reference here at all.
     platform::ProfileInventory waveshare_inventory(*platform::find_board_profile(
         "waveshare-amoled-206"));
     bring_up(waveshare_inventory);
     core::CapabilityRegistry waveshare_caps(waveshare_inventory);
+    CHECK(waveshare_inventory.present(platform::HardwareFeature::Accelerometer));
     CHECK(waveshare_inventory.present(platform::HardwareFeature::Gyroscope));
-    CHECK_AVAIL(waveshare_caps, core::Capability::Heading, core::Availability::Ready);
+    CHECK(!waveshare_inventory.present(platform::HardwareFeature::MagnetometerSensor));
+    CHECK(!waveshare_inventory.present(platform::HardwareFeature::GnssReceiver));
+    // Heading is still in kNodeProvidable, so with no node bound the honest
+    // answer is Unprovisioned, not Unsupported and not Ready.
+    CHECK_AVAIL(waveshare_caps, core::Capability::Heading, core::Availability::Unprovisioned);
+    CHECK(!waveshare_caps.is_available(core::Capability::Heading));
 
-    // T-Watch: an accelerometer with no gyroscope, so no fusion — but it has
-    // GNSS, so course-over-ground. Ready here means "something can produce a
-    // heading", not "the number means anything right now": a standing user is
-    // Ready and Invalid at once, and that is validity, not availability.
+    // T-Watch: an accelerometer with no gyroscope, so fusion was never even
+    // arguable here — but it has GNSS, so course-over-ground. Ready here
+    // means "something can produce a heading", not "the number means
+    // anything right now": a standing user is Ready and Invalid at once, and
+    // that is validity, not availability.
     platform::ProfileInventory twatch_inventory(*platform::find_board_profile("t-watch-s3-plus"));
     bring_up(twatch_inventory);
     core::CapabilityRegistry twatch_caps(twatch_inventory);
@@ -296,6 +310,33 @@ void test_heading_has_three_sources()
     twatch_inventory.set_state(platform::HardwareFeature::GnssReceiver,
                                platform::HardwareState::RailOff);
     CHECK_AVAIL(twatch_caps, core::Capability::Heading, core::Availability::Off);
+}
+
+// A node that actually offers Heading (course-over-ground from its own GNSS)
+// is a legitimate absolute reference, and must still light Heading up —
+// mirrors test_waveshare_position_comes_from_a_node. The bug this issue fixed
+// was the local IMU claiming Ready on its own; a real remote source claiming
+// it is the opposite failure mode and must keep working.
+void test_waveshare_heading_comes_from_a_node()
+{
+    platform::ProfileInventory inventory(*platform::find_board_profile("waveshare-amoled-206"));
+    bring_up(inventory);
+    core::CapabilityRegistry caps(inventory);
+
+    CHECK_AVAIL(caps, core::Capability::Heading, core::Availability::Unprovisioned);
+    CHECK(caps.supports(core::Capability::Heading));
+    CHECK(!caps.is_available(core::Capability::Heading));
+    const bool supported_before_bind = caps.supports(core::Capability::Heading);
+
+    caps.set_node_link(attached_node());
+    CHECK_AVAIL(caps, core::Capability::Heading, core::Availability::Ready);
+    CHECK(caps.is_available(core::Capability::Heading));
+    CHECK(caps.provider(core::Capability::Heading).origin == core::Origin::Node);
+
+    // supports() answers "could this device, ever" and must not move when the
+    // node attaches (test_supports_is_stable covers this generically over
+    // every capability; this is the specific case the issue named).
+    CHECK(caps.supports(core::Capability::Heading) == supported_before_bind);
 }
 
 // ADR-0001, carried into ADR-0007: no two availability states may render
@@ -369,7 +410,8 @@ int main()
     test_waveshare_position_comes_from_a_node();
     test_unsupported_is_terminal();
     test_supports_is_stable();
-    test_heading_has_three_sources();
+    test_heading_needs_an_absolute_reference();
+    test_waveshare_heading_comes_from_a_node();
     test_states_are_distinguishable();
     test_launcher_gating();
 

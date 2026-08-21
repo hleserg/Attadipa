@@ -92,4 +92,32 @@ struct WallTime {
     constexpr bool operator>(WallTime other) const { return unix_seconds > other.unix_seconds; }
 };
 
+// How far apart two wall clocks are, in seconds, as a magnitude.
+//
+// The paragraph above still holds: WallTime has no subtraction, because a gap
+// between two *absolute* instants is not a monotonic interval and must never be
+// used as one. This is not that subtraction. It answers one question — "how far
+// apart are these two clocks" — and it is here rather than at the call site
+// because the alternative was tried and it was wrong.
+//
+// What it replaces: a caller reached through `.unix_seconds`, wrote `a - b` and
+// then negated the result if it came out below zero. Both steps are undefined
+// behaviour for input this type deliberately admits. `a - b` overflows when the
+// two are at opposite ends of the range, and negating INT64_MIN has no
+// representable answer at all — which one hostile `receiver_time` field is
+// enough to reach, in the anti-spoofing detector, whose entire job is hostile
+// input.
+//
+// Unsigned is not a detail. The magnitude of the difference of two int64 values
+// does not fit in an int64 and does fit exactly in a uint64, so this is the only
+// integer type in which the question has a total answer. Nothing here can
+// overflow: unsigned wraparound is defined, and larger-minus-smaller is exact
+// for every pair.
+constexpr std::uint64_t seconds_between(WallTime a, WallTime b)
+{
+    const auto first  = static_cast<std::uint64_t>(a.unix_seconds);
+    const auto second = static_cast<std::uint64_t>(b.unix_seconds);
+    return a < b ? second - first : first - second;
+}
+
 }  // namespace attadipa::core

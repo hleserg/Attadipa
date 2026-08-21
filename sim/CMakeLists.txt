@@ -7,6 +7,7 @@ find_package(SDL2 REQUIRED)
 add_executable(attadipa_sim
     boot_screen.cpp
     main.cpp
+    labels.cpp
     options.cpp
     png_writer.cpp
 )
@@ -16,6 +17,8 @@ target_link_libraries(attadipa_sim PRIVATE
     attadipa_core
     attadipa_apps
     attadipa_l10n
+    attadipa_ui
+    attadipa_fonts
     lvgl
     SDL2::SDL2
 )

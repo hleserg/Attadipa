@@ -267,7 +267,7 @@ no component mutates availability on its own.
 |---|---|
 | `Time` | GNSS · companion · RTC · user |
 | `Position` | local `GnssReceiver` · node |
-| `Heading` | `MagnetometerSensor` (neither board has one) · accel+gyro fusion · GNSS course-over-ground |
+| `Heading` | `MagnetometerSensor` (neither board has one) · GNSS course-over-ground · node |
 | `MeshMessaging` | local `Radio`, *only if* the fitted chip and the pinned MeshCore support it · node |
 | `NotificationRelay` | companion only |
 

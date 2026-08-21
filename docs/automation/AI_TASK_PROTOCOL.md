@@ -178,7 +178,8 @@ a task whose event was lost.
                  ┌──▼──┐ │ ┌────▼─────────┐
                  │review│ │ │agent:blocked │ + needs-owner / needs-hardware
                  └──┬──┘ │ └──────────────┘
-      owner merges  │    │
+     CI green,     │    │
+     merged       │    │
                  ┌──▼───▼──┐
                  │agent:done│
                  └─────────┘
@@ -218,8 +219,9 @@ inconsistently with the marker it wrote.
 3. **Reuse before writing.** `CLAUDE.md`'s rule, and it applies to agents more
    than to people, because an agent will happily write four hundred lines that
    already exist under a licence we can use.
-4. **One branch, one draft pull request.** `claude/issue-<number>-<slug>`, and
-   the body carries `Fixes #<number>` so the issue closes when it merges.
+4. **One branch, one pull request.** Draft while it moves, ready when it does
+   not, and **merged by the orchestrator once CI is green** (owner decision,
+   2026-08-21). Nothing waits on a person for the merge itself.
 5. **Never a hardware claim.** Anything needing a board, an instrument or a
    measurement is `NOT EXECUTED — HARDWARE REQUIRED`.
 6. **Leave it continuable.** `STATUS.md` and `TASKS.md` updated in the same
