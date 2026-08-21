@@ -4,7 +4,7 @@
        width="820">
 </p>
 
-[English](README.md) · **Русский**
+[English](README.md) · **Русский** · [Страница проекта](https://hleserg.github.io/FireflyOS/)
 
 # Firefly OS
 
