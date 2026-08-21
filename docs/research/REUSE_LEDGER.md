@@ -68,6 +68,7 @@ want to inherit the experience, not only the code.
 | `waveshare-bsp` | github.com/espressif/esp-bsp | `2f519317d5375f7bbb0190b29a4988c2ea2453e2` | 2026-08-13 | Espressif BSP collection, including the Waveshare board; compile-time BSP_CAPS_* |
 | `Gadgetbridge` | codeberg.org/Freeyourgadget/Gadgetbridge | `40326980ca871989961ba2442e7cabd4d204b1b6` | 2026-08-21 | host side of many watch protocols; companion protocol prior art |
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
+| `lv_i18n` | github.com/lvgl/lv_i18n | `08944ec6dc2faed83121c53e9cf9ba05013a6686` | 2026-03-30 | LVGL's own localization generator — the closest existing answer to T-033 |
 | `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
 
 ### Licences, checked before anything was depended on
@@ -87,6 +88,8 @@ badge or a recollection.
 | esp-brookesia | **Apache-2.0** | `license.txt` | use and modify, with attribution |
 | **Meshtastic** | **GPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
 | **InfiniTime** | **GPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
+| `lv_i18n` | **MIT** | `LICENSE` in the clone | anything |
+| `cldr-core` (plural rules data) | **Unicode-DFS-2016** | npm registry metadata — **not** the file, because it is not vendored | permissive and MIT-compatible; read the file itself before vendoring any of it |
 | **Gadgetbridge** | **AGPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
 
 The bottom three matter more than the top six, because they are the projects
@@ -128,7 +131,8 @@ to look up is a licence that gets assumed.
 
 ## Records
 
-*Empty.* No decision has been made yet.
+Below, under the second `Records` heading. This one is kept because the file's
+own structure is quoted elsewhere; the records themselves are further down.
 
 ## Candidates identified, not yet evaluated
 
@@ -156,10 +160,10 @@ a project does not have to be usable to be useful.
 
 # Records
 
-Six subsystems, investigated on 2026-08-21 before any of them was designed —
-which is the order the addendum requires and the order this project was not
-previously following. Two more (power/PMU rails, simulator) are still in
-progress.
+Seven subsystems, investigated before any of them was designed — which is the
+order the addendum requires and the order this project was not previously
+following. Six on 2026-08-21; localization was added the same day, before the
+generator it decides was written.
 
 Each record cites a commit hash. Each names at least two lessons taken from
 upstream **issues and pull requests** rather than from source, because the
@@ -507,3 +511,100 @@ data from an MIT library and freely usable as reference vectors.
 fallback plan or the only plan ([NODE_PROFILE](../node/NODE_PROFILE.md) N3). The
 speed gate below which course-over-ground is not trustworthy is unresolved and
 every documented figure found so far was designed for a vehicle, not a wrist.
+
+---
+
+### Localization: the string catalogue, the generator and the plural rules
+
+**Problem:** ADR-0010 requires that no user-facing literal exists above the
+platform boundary, that both catalogues ship from the first screen, and that
+three checks — coverage, uniqueness, and *a catalogue glyph the font cannot
+draw* — fail the build rather than the wrist. Russian needs three plural forms
+selected by a rule on the last one and two digits.
+
+**Projects investigated:** `lvgl/lv_i18n` — LVGL's own localization tool, and
+therefore the first place to look; the CLDR cardinal plural data it is built on;
+`gettext`, considered and already rejected by name in ADR-0010.
+
+**Useful implementation:** `lv_i18n` at `08944ec6dc2faed83121c53e9cf9ba05013a6686`
+(v0.2.1, 2026-03-30). YAML source per locale, a Node CLI that extracts keys from
+source, and a C generator producing `src/lv_i18n.template.c` — per-locale
+`singulars[]`, `plurals[form][]` and a `locale_plural_fn`, with a `lv_i18n_lang_t`
+per locale and a NULL-terminated language pack.
+
+**License:** **MIT**, read from `LICENSE` in the clone. Its plural rules are
+compiled from `cldr-core`, **Unicode-DFS-2016** — permissive, MIT-compatible,
+and read from registry metadata rather than the file because nothing here
+vendors it.
+
+**Strengths:**
+
+- The **plural machinery is correct and generated from CLDR**, not hand-written.
+  The Russian function it emits is the CLDR cardinal rule verbatim:
+
+  ```c
+  if (v == 0 && i10 == 1 && i100 != 11)                      return ONE;
+  if (v == 0 && 2 <= i10 <= 4 && !(12 <= i100 <= 14))         return FEW;
+  if ((v == 0 && i10 == 0) || (v == 0 && 5 <= i10 <= 9)
+      || (v == 0 && 11 <= i100 <= 14))                        return MANY;
+  return OTHER;
+  ```
+
+  Reading it settles something a hand-written rule would have got wrong: for
+  **integers `OTHER` is unreachable in Russian**, so a Russian catalogue entry
+  needs exactly `one`, `few` and `many` — and a generator that lets someone
+  write `ru.other` is inviting a form that will never be shown.
+- The **table shape is right for an embedded target**: parallel `const char *`
+  arrays indexed by an integer id, one set per locale, no map and no allocation.
+- Separating the plural *category function* from the catalogue is the design
+  that makes a third language a data change.
+
+**Weaknesses:**
+
+- **The key is a string literal in the code** — `_("s_translated")` — resolved
+  at runtime by `strcmp`. This is precisely the `gettext` shape ADR-0010
+  rejects, and for the reason the ADR gives: a key that is a string literal
+  cannot be enumerated at build time, so *the coverage check cannot be static*.
+  `lv_i18n`'s own answer is `LV_I18N_OPTIMIZE`, a generated macro that is a
+  nested ternary of `strcmp` over **every key in the project** — O(n) string
+  compares per lookup, expanded inline at every call site.
+- It generates **C with a fixed API** (`_()`, `_p()`, `lv_i18n_set_locale`)
+  around a global current-locale. Firefly's `tr()` has to return something the
+  UI layer can hold, and that signature is T-033's to choose.
+- The toolchain is **Node plus a CLI that scrapes source files** for keys.
+  Firefly's source of truth is the catalogue, not the source scrape — the
+  direction is reversed, and reversing it is not a small edit.
+- **No font check.** The one check that is invisible without machine
+  enforcement — a Russian string the embedded font cannot draw — is not
+  something `lv_i18n` does or could do, because it does not know about the font
+  subset. That check only exists if it is written here.
+
+**Decision:** `EXTRACT ALGORITHM` for the plural rules · `INSPIRE ARCHITECTURE`
+for the table layout · `REJECT` as a dependency.
+
+**Reason:** the part that is hard to get right — the CLDR plural categories —
+is taken, as a rule re-expressed and tested against a vector, not as copied
+code. The part that does not fit is structural rather than cosmetic: ADR-0010
+freezes "the identifier is what the code holds", and `lv_i18n`'s identifier is a
+string. Adopting it would either break the frozen decision or require rewriting
+its generator, its runtime and its lookup — at which point the only thing left
+of it is the plural function, which is what is being taken anyway. Adding Node
+to the firmware build for that is a poor trade, and it would not deliver the
+font check regardless.
+
+**Source revision:** `lvgl/lv_i18n` `08944ec6dc2faed83121c53e9cf9ba05013a6686`;
+files read: `src/lv_i18n.template.h`, `src/lv_i18n.template.c`,
+`lib/plurals.js`, `package.json`, `LICENSE`.
+
+**Firefly integration:** a TOML catalogue as the single source of truth, a
+Python generator beside `tools/font/` emitting a `StringId` enum and parallel
+per-locale tables, and three checks wired as `ctest` entries so that a local run
+and CI enforce the same thing. The plural category function is Firefly's own
+code, in C++, tested against the vector ADR-0010 names.
+
+**Tests required:** the plural vector 0, 1, 2, 5, 11, 21, 101, 111, 1001
+asserting *categories* rather than rendered strings — `0→many, 1→one, 2→few,
+5→many, 11→many, 21→one, 101→one, 111→many, 1001→one` — plus English `1→one`
+and everything else `→other`; generator failure on a missing locale entry, on a
+duplicate identifier, and on `ru.other`; and the font check failing on a
+catalogue entry carrying a codepoint outside `charset.py`.
