@@ -62,9 +62,14 @@ Two further habits, both deliberate:
 - **Untrusted text never reaches a shell.** An issue body is passed through an
   `env:` variable, never interpolated into a `run:` block. `${{ github.event.issue.body }}`
   inside a script is a command injection with the attacker holding the pen.
-- **`show_full_output` and `display_report` are off.** Claude's full output
-  includes tool results, which can contain tokens, and Actions logs on a public
-  repository are world-readable.
+- **`show_full_output` is off; `display_report` is on.** They are different
+  things and only one of them is a leak. Full output prints every message
+  including tool results, which can contain tokens, into a world-readable log.
+  The report is Claude's own summary of what it did — and turning *that* off as
+  well was a mistake, found by smoke test A: the agent ran twenty-eight turns
+  successfully and left no branch, no pull request and no comment, so the only
+  evidence any work had happened was a green tick. An agent whose conclusions
+  nobody can read is not an agent, it is a bill.
 
 Permissions are per job. The top of every file is `permissions: {}` and each job
 asks for exactly what it needs; the reviewer gets `contents: read` and cannot
@@ -177,8 +182,14 @@ Verified against `anthropics/claude-code-action` at the `v1` tag (v1.0.198,
   prompt tells Claude to run `gh pr edit`, which needs `Bash(gh pr edit:*)`.
 - `display_report` writes the **GitHub Step Summary**, not a pull request
   comment, and `show_full_output` governs the **runner log**. Neither has ever
-  posted to a pull request. Both are correctly `false` here, and neither was
-  ever the reason nothing appeared.
+  posted to a pull request, in any version — `display_report`'s only consumer is
+  `src/entrypoints/run.ts`, which calls `writeStepSummary`.
+
+  This matters because both were changed at once while chasing the same symptom.
+  Turning `display_report` back on was right and is kept: a run whose reasoning
+  nobody can read is a bill. But it was not what stopped findings reaching the
+  pull request — that was the missing tool list above, and the two fixes are
+  independent. `show_full_output` stays off; it is the one that leaks.
 
 ### One live hazard
 

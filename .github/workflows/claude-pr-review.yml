@@ -97,7 +97,13 @@ jobs:
           allowed_bots: ""
           allowed_non_write_users: ""
           show_full_output: "false"
-          display_report: "false"
+          # display_report posts Claude's own summary to the run's Step Summary
+          # (src/entrypoints/run.ts writes to GITHUB_STEP_SUMMARY). It is on
+          # because a run whose conclusions nobody can read is a bill — but note
+          # what it is NOT: it has never posted a pull request comment, in any
+          # version. The reason findings did not reach the pull request is the
+          # tool list below, not this flag.
+          display_report: "true"
           # --allowedTools is not optional, and its absence is silent.
           #
           # Agent mode — which is what `prompt:` selects — sets no default

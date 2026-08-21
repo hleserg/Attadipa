@@ -238,7 +238,10 @@ jobs:
           allowed_bots: ""
           allowed_non_write_users: ""
           show_full_output: "false"
-          display_report: "false"
+          # On, for the same reason as the other two: a repair whose reasoning
+          # nobody can read is a bill. It writes the run's Step Summary, not a
+          # pull request comment — the comment comes from the prompt below.
+          display_report: "true"
           additional_permissions: |
             actions: read
           # --allowedTools is not optional, and its absence is silent.
