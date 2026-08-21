@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 
 #include "firefly/link/frame_codec.h"
 #include "firefly/link/frame_queue.h"
@@ -365,6 +366,86 @@ void test_an_over_long_frame_is_refused_not_truncated()
     CHECK(decoder.stats().frames == 0);
 }
 
+// THE TEST THAT SHOULD HAVE EXISTED FIRST.
+//
+// Corrupt every byte of a frame in turn, and demand that not one of them ever
+// produces a frame that is delivered with wrong content. A hand-picked byte is
+// not enough, and this is not a hypothetical: the CRC span was `length + 2`
+// where it had to be `length + 3`, so the last byte of every frame was
+// unprotected. The encoder and the decoder computed the same wrong span, agreed
+// with each other perfectly, and every round-trip test passed while a corrupted
+// final byte was delivered as good data — the upstream failure this format
+// exists to prevent, with a checksum on top.
+//
+// A sweep catches an off-by-one at either end. A single corrupted byte at
+// offset ten does not.
+void test_no_single_byte_corruption_is_ever_delivered()
+{
+    for (std::size_t size : {std::size_t{0}, std::size_t{1}, std::size_t{2},
+                             std::size_t{17}, std::size_t{kMaxPayload - 1},
+                             kMaxPayload}) {
+        std::uint8_t payload[kMaxPayload];
+        fill(payload, size, 0x33);
+
+        std::uint8_t wire[kMaxFrame];
+        const std::size_t encoded = encode(size ? payload : nullptr, size, wire, sizeof wire);
+        CHECK(encoded == size + kOverheadBytes);
+
+        for (std::size_t i = 0; i < encoded; ++i) {
+            // Every bit of every byte, not merely a flip of all eight: an XOR
+            // with 0xFF is a poor probe of a CRC, which is linear.
+            for (std::uint8_t mask : {std::uint8_t{0x01}, std::uint8_t{0x02},
+                                      std::uint8_t{0x40}, std::uint8_t{0x80},
+                                      std::uint8_t{0xFF}}) {
+                std::uint8_t corrupt[kMaxFrame];
+                std::memcpy(corrupt, wire, encoded);
+                corrupt[i] = static_cast<std::uint8_t>(corrupt[i] ^ mask);
+
+                Decoder decoder;
+                decoder.push(corrupt, encoded);
+                std::uint8_t out[kMaxPayload];
+                const std::size_t delivered = decoder.next(out, sizeof out);
+
+                // Delivering nothing is fine. Delivering the right thing is fine
+                // — a corrupted sync byte can resynchronise onto a frame that
+                // happens to still be intact. Delivering the WRONG thing is the
+                // failure, and it must be impossible.
+                if (delivered == size && size != 0 && !same(out, payload, size)) {
+                    std::fprintf(stderr,
+                                 "FAIL line %d: payload of %lu bytes, corrupting byte %lu with "
+                                 "mask 0x%02X, delivered wrong content\n",
+                                 __LINE__, static_cast<unsigned long>(size),
+                                 static_cast<unsigned long>(i),
+                                 static_cast<unsigned>(mask));
+                    ++failures;
+                }
+            }
+        }
+    }
+}
+
+// The checksum must cover the length-check byte too, which the sweep above
+// cannot show on its own: a corrupted length-check is normally caught by the
+// header test before the CRC is ever consulted. This pins the span directly.
+void test_the_checksum_covers_the_whole_header_after_the_sync()
+{
+    std::uint8_t payload[8];
+    fill(payload, sizeof payload);
+    std::uint8_t wire[kMaxFrame];
+    const std::size_t encoded = encode(payload, sizeof payload, wire, sizeof wire);
+
+    // The span is out[2] through out[4 + length] inclusive: two length bytes,
+    // the length check, and every payload byte.
+    const std::uint16_t over_the_whole_span = crc16_ccitt(wire + 2, sizeof payload + 3);
+    const std::uint16_t on_the_wire         = static_cast<std::uint16_t>(
+        wire[encoded - 2] | (wire[encoded - 1] << 8));
+    CHECK(over_the_whole_span == on_the_wire);
+
+    // One byte short would leave the last payload byte unprotected, and one byte
+    // long would read past the payload into the checksum itself.
+    CHECK(crc16_ccitt(wire + 2, sizeof payload + 2) != on_the_wire);
+}
+
 // Upstream's framing has no checksum at all, so a corrupted byte is delivered
 // as data. Ours has CRC-16/CCITT, and this pins the polynomial rather than
 // merely the presence of a field: a checksum that disagrees with the peer's is
@@ -595,6 +676,8 @@ int main()
     test_malformed_frame();
 
     // The upstream defects, held against our own code.
+    test_no_single_byte_corruption_is_ever_delivered();
+    test_the_checksum_covers_the_whole_header_after_the_sync();
     test_an_over_long_frame_is_refused_not_truncated();
     test_the_checksum_is_the_one_we_said_it_was();
     test_attached_is_not_ready();

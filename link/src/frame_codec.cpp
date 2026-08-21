@@ -60,9 +60,15 @@ std::size_t encode(const std::uint8_t* payload, std::size_t length, std::uint8_t
         std::memcpy(out + kHeaderBytes, payload, length);
     }
 
-    // The CRC covers the length bytes as well as the payload, so a header that
-    // survived its own check but was corrupted anyway still fails here.
-    const std::uint16_t crc = crc16_ccitt(out + 2, length + 2);
+    // The CRC covers the three header bytes after the sync pattern — the two
+    // length bytes and the length check — and then the whole payload. Three,
+    // not two: the span starts at out[2] and must reach out[4 + length], which
+    // is `length + 3` bytes. Getting this off by one leaves the LAST byte of
+    // every frame unprotected, and because the decoder computes the same span
+    // the two agree with each other and every round-trip test passes while a
+    // corrupted final byte is delivered as good data. That is precisely the
+    // upstream failure this format exists to avoid, with a checksum on top.
+    const std::uint16_t crc = crc16_ccitt(out + 2, length + 3);
     out[kHeaderBytes + length]     = static_cast<std::uint8_t>(crc & 0xFF);
     out[kHeaderBytes + length + 1] = static_cast<std::uint8_t>(crc >> 8);
 
@@ -142,7 +148,9 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
             return 0;  // a real frame, still arriving
         }
 
-        const std::uint16_t expected = crc16_ccitt(buffer_ + 2, declared + 2);
+        // `declared + 3`, matching encode(): two length bytes, the length check,
+        // and the whole payload. See the comment there.
+        const std::uint16_t expected = crc16_ccitt(buffer_ + 2, declared + 3);
         const std::uint16_t actual   = static_cast<std::uint16_t>(
             buffer_[kHeaderBytes + declared] | (buffer_[kHeaderBytes + declared + 1] << 8));
 
