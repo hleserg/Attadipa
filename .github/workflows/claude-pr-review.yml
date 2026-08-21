@@ -30,6 +30,16 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      # id-token: write is not optional, and the reason is easy to miss.
+      #
+      # github_token below is FIREFLY_AGENT_TOKEN, which is deliberately allowed
+      # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
+      # action authenticates as the Claude GitHub App by exchanging this
+      # workflow's GitHub OIDC token for an installation token, and without this
+      # permission that exchange fails with "Unable to get
+      # ACTIONS_ID_TOKEN_REQUEST_URL". The failure looks like an authentication
+      # problem with the Anthropic credential and is not one.
+      id-token: write
     # A fork's pull request runs without secrets on a public repository, so
     # there is no credential to review with. That is GitHub's protection, not an
     # oversight, and pull_request_target — which would grant them — is exactly
