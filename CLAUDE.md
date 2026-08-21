@@ -109,6 +109,16 @@ A screen with the right elements on it is not done. Design is part of Done.
 
 - Code, comments, and documentation in English. The two specification documents
   are the author's own and stay in Russian.
+- **The README exists twice, and the two are one document.** `README.md` is the
+  English original and [`README.ru.md`](README.ru.md) is its Russian version.
+  Any change to one is made in the other **in the same commit** — not "later",
+  not in a follow-up task. A README that is current in one language and stale in
+  the other is worse than one language alone, because a reader has no way to
+  tell which of the two they are looking at. This applies to every edit, down to
+  a corrected link or a changed number; if a change genuinely has no counterpart
+  (an English-only typo, say), say so in the commit message rather than leaving
+  it to be guessed. The pair of language links at the top of each file is part
+  of the contract: keep both pointing at each other.
 - Small logical commits, clear messages. No destructive git operations, no
   rewriting published history, no pushing anywhere that was not agreed.
 - Leave the repository in a state where the next person — or the next agent —

@@ -4,14 +4,18 @@
        width="820">
 </p>
 
+**English** · [Русский](README.ru.md)
+
 # Firefly OS
 
 A wearable firmware platform for ESP32-S3 smartwatches — mesh messaging,
 offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
-> **Status: pre-implementation.** The repository holds the product
-> specification, the research-gate documents, and the backlog. There is no
-> firmware yet. See [STATUS.md](STATUS.md) for exactly where things stand.
+> **Status: early implementation.** The host-testable layers exist and are
+> tested — the hardware inventory, the capability registry, the transport, the
+> GNSS trust evaluator, the desktop simulator, and 17 host tests. Nothing has
+> run on a physical board yet, and nothing here is written as if it had. See
+> [STATUS.md](STATUS.md) for exactly where things stand.
 
 Firefly OS is not a Linux-like OS. It is a single embedded
 firmware/application platform on top of ESP32-S3 and ESP-IDF/FreeRTOS,
@@ -130,9 +134,13 @@ with the decision and its reasoning recorded in
 ```
 platform/                      the hardware inventory — chips, pins, rails, board profiles
 core/                          services, and the capability registry that owns the mapping
+link/                          transport framing, the frame queue, the session state machine
+l10n/                          the string catalogue and the code generated from it
 apps/                          applications; links core and cannot reach platform
 sim/                           the desktop simulator, and its LVGL configuration
 tests/                         host tests, including the two that check the layer boundary
+tests/replay/                  the deterministic navigation rig, and its recorded traces
+tools/                         the font subsetter and the checks CI runs
 cmake/                         the pinned LVGL dependency
 
 docs/master-prompt-final.md    product specification (source of truth)
@@ -141,6 +149,7 @@ docs/node/                     the Firefly node — mostly what is *not* known a
 docs/hardware/                 interference matrix, board notes
 docs/architecture/             architecture, resource budget
 docs/adr/                      architecture decision records
+docs/testing/                  host test plans, and the hardware-in-the-loop plans
 docs/ui/                       the design system, and the owner's design references
 pics/                          brand assets — banner, icon, favicon
 TASKS.md                       backlog: NOW / NEXT / READY / BLOCKED / WAITING / DONE
