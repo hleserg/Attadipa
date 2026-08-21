@@ -219,7 +219,7 @@ jobs:
       # paths in FetchContent's sub-build cache, so a repository rename must
       # never restore a tree configured under the former checkout path.
       - name: Cache LVGL
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build-sim/_deps
           key: lvgl-v2-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('cmake/AttadipaLvgl.cmake') }}
