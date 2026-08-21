@@ -95,6 +95,46 @@ implementing anything non-trivial. Several open-source firmwares already target
 these exact boards. Record the decision either way — "we wrote our own" is
 allowed, undocumented is not. Check the license before depending on anything.
 
+## The agent queue
+
+Work arrives as a **GitHub issue**, and that issue is the canonical task —
+[`docs/automation/AI_TASK_PROTOCOL.md`](docs/automation/AI_TASK_PROTOCOL.md).
+The owner does not carry prompts between agents, does not turn review
+paragraphs into issues by hand, and does not remind anybody to check CI.
+
+If you are working from an issue:
+
+- **Read before writing.** The issue and its comments, this file, the
+  specification, `STATUS.md`, `TASKS.md`, the ADRs it touches, and the reuse
+  ledger. Then check the open issues and pull requests — solving the same
+  finding twice is the failure the queue exists to prevent.
+- **Research tasks do not produce implementations.** `next-task-research`,
+  `upstream-intelligence` and `readiness-audit` verify sources and write to
+  `docs/research/`. A research task that arrives as a pull request full of new
+  subsystems has been guessed at, not done.
+- **One writer.** Reading, reviewing and analysing in parallel is free; two
+  agents editing one branch is a merge conflict with a robot on both ends.
+- **A branch and a draft pull request**, never a push to `main`. The body
+  carries `Fixes #<issue>` and says what was tested and what was not.
+- **Hardware facts are verified or they are `UNKNOWN`.** Never a `PASS` for a
+  test that did not run on a board — the rule above, and it does not relax
+  because a workflow is watching.
+- **CI failing is yours.** Read the actual log and fix the cause. Changing
+  things until it goes green is a random walk with a budget attached.
+- **Blocked is a real outcome.** Use the format above, add `needs-owner` or
+  `needs-hardware`, and leave the owner one concrete action rather than the job
+  of reconstructing your reasoning. Do not ask what the specification,
+  `STATUS.md`, `TASKS.md`, an ADR or the issue already answers.
+- **Update `STATUS.md` and `TASKS.md`** in the same commit as the change they
+  describe, so the next agent can continue without this conversation.
+
+`TASKS.md` stays the roadmap; issues are the executable work packages. They
+reference each other and neither is a copy of the other.
+
+Everything about the workflows themselves — security model, authentication,
+cost control and the kill switch — is in
+[`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md).
+
 ## Definition of Done
 
 Compiles for every supported target · host tests pass, hardware tests honestly

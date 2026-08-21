@@ -1,0 +1,117 @@
+name: Agent queue watchdog
+
+# The event-driven path is the normal one. This exists for the times it does not
+# fire: a GitHub Actions outage, an auth failure, a runner that died, a workflow
+# that was disabled while a task arrived, or an issue opened during any of that.
+#
+# It is deliberately cheap. The scan is shell and the GitHub API; Claude is
+# invoked only when there is something to do, and on a quiet repository this
+# workflow costs a few seconds of a runner and nothing at all from Anthropic.
+# A watchdog that wakes an agent every hour to be told there is no work is not a
+# watchdog, it is a subscription.
+
+on:
+  schedule:
+    # Hourly, a few minutes off the hour. Every scheduled workflow on GitHub
+    # fires at :00 and queues behind everybody else's.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: firefly-agent-watchdog
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  scan:
+    name: Anything waiting
+    runs-on: ubuntu-latest
+    if: vars.CLAUDE_AUTOMATION_ENABLED != 'false'
+    permissions:
+      issues: read
+      actions: write
+    steps:
+      - name: Look for a stranded task
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Everything open, with its labels and its author's association. One
+          # request, and the whole decision is made locally.
+          gh api "repos/$REPO/issues?state=open&per_page=100" --paginate > /tmp/open.json
+
+          # A task is waiting if it is a real issue (not a pull request), it was
+          # filed by somebody trusted, it carries a task marker or the
+          # agent:ready label, and no state label says somebody already has it.
+          jq -r '
+            [ .[]
+              | select(.pull_request == null)
+              | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+              | {
+                  number,
+                  labels: [.labels[].name],
+                  body: (.body // "")
+                }
+              | select((.labels | index("agent:ready")) != null
+                       or ((.body | test("firefly-agent-task"))
+                           and (.body | test("@claude"))))
+              | select((.labels | index("agent:working")) == null)
+              | select((.labels | index("agent:review")) == null)
+              | select((.labels | index("agent:blocked")) == null)
+              | select((.labels | index("agent:done")) == null)
+              | select((.labels | index("agent:failed")) == null)
+              | {
+                  number,
+                  rank: (if   (.labels | index("priority:P0")) then 0
+                         elif (.labels | index("priority:P1")) then 1
+                         elif (.labels | index("priority:P2")) then 2
+                         elif (.labels | index("priority:P3")) then 3
+                         else 2 end)
+                }
+            ]
+            | sort_by(.rank, .number)
+            | .[0].number // ""
+          ' /tmp/open.json > /tmp/pick
+
+          PICK=$(cat /tmp/pick)
+          if [ -z "$PICK" ]; then
+            echo "::notice::Queue is empty. Nothing to do, nothing spent."
+            exit 0
+          fi
+
+          # One task per tick, highest priority first. The agent workflow's own
+          # concurrency group means a second one would queue behind this anyway,
+          # and dispatching several would only make the queue harder to read.
+          echo "::notice::Handing issue #$PICK to the agent workflow."
+          gh workflow run claude-agent.yml --repo "$REPO" -f "issue_number=$PICK"
+
+  stuck:
+    name: Anything stuck
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Unstick tasks whose agent never came back
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # agent:working is a claim, and a claim with nobody behind it is worse
+          # than no claim: the watchdog skips it forever and the task is lost in
+          # plain sight. Two hours is comfortably longer than the 60-minute
+          # timeout on the agent job, so anything older is genuinely orphaned.
+          CUTOFF=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          gh api "repos/$REPO/issues?state=open&labels=agent:working&per_page=100" --paginate \
+            --jq ".[] | select(.updated_at < \"$CUTOFF\") | .number" > /tmp/stuck || true
+
+          while read -r n; do
+            [ -n "$n" ] || continue
+            echo "::warning::Issue #$n has been agent:working since before $CUTOFF; returning it to the queue."
+            gh issue comment "$n" --repo "$REPO" --body \
+              "The agent that claimed this did not come back within two hours, so the task has been returned to the queue. If it was mid-flight, its branch is still there."
+            gh issue edit "$n" --repo "$REPO" --remove-label agent:working --add-label agent:ready || true
+          done < /tmp/stuck

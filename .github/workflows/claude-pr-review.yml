@@ -1,0 +1,133 @@
+name: Claude PR review
+
+# An independent reviewer, in a context that did not write the code.
+#
+# This is a separate workflow rather than another step in claude-agent.yml for
+# one reason: an author reviewing their own work re-derives the same
+# assumptions. A fresh context reads what is actually in the diff.
+#
+# It cannot push. `contents: read` is the whole safety argument — this workflow
+# has an opinion and no hands.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  # Per pull request, and cancellable: a review of an old head is worse than no
+  # review, because somebody will read it as current.
+  group: firefly-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  review:
+    name: Independent review
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    # A fork's pull request runs without secrets on a public repository, so
+    # there is no credential to review with. That is GitHub's protection, not an
+    # oversight, and pull_request_target — which would grant them — is exactly
+    # the pattern that leaks tokens to untrusted code.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.CLAUDE_AUTOMATION_ENABLED != 'false' &&
+      !endsWith(github.actor, '[bot]')
+    steps:
+      - name: Check that an Anthropic credential exists
+        id: auth
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ] || [ "$HAS_OAUTH" = "true" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Anthropic credential configured; skipping the AI review."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.auth.outputs.ok == 'true'
+        with:
+          fetch-depth: 0
+
+      - name: Review
+        if: steps.auth.outputs.ok == 'true'
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          # One comment, edited in place. A new wall of text on every push is how
+          # a review becomes something people scroll past.
+          use_sticky_comment: "true"
+          allowed_bots: ""
+          allowed_non_write_users: ""
+          show_full_output: "false"
+          display_report: "false"
+          claude_args: |
+            --max-turns 40
+          prompt: |
+            You are reviewing pull request #${{ github.event.pull_request.number }}
+            in ${{ github.repository }}. You did not write this code. Read the
+            diff, and read CLAUDE.md, docs/master-prompt-final.md and the ADRs
+            under docs/adr/ that it touches.
+
+            You may not change any file. Review only.
+
+            The question to answer is not "does this compile" — assume it does,
+            and assume every existing test is green. The question is:
+
+              **How can this still break FireflyOS?**
+
+            Work through the ones that apply, and say plainly when one does not:
+
+            architecture — layer boundaries, the board abstraction, the
+            capability registry, `#ifdef BOARD_*` anywhere in core/ or apps/,
+            an application learning which chip answered, core learning which
+            language will be read.
+
+            lifetime and memory — ownership, dangling references, leaks, stack
+            depth, heap growth, fragmentation, largest-free-block over a soak.
+
+            concurrency — races, FreeRTOS task and ISR context, blocking calls
+            on the wrong thread, deadlocks, watchdog starvation, LVGL being
+            touched from anywhere but its own task.
+
+            power — sleep and wake correctness, a wake source armed in a state
+            that must not have it, a rail powered down under another user of it,
+            regressions in current draw.
+
+            persistence — crash safety, a structure overwritten in place,
+            migrations, backward compatibility of stored data, recovery from a
+            corrupted file.
+
+            protocol — radio and node-link compatibility, framing, BLE and USB
+            backpressure, bounded queues, resynchronisation, hostile input.
+
+            GNSS and navigation — fix age and quality, stale peer positions,
+            trust state, heading and calibration, a confident arrow drawn from
+            an unobservable quantity.
+
+            product — offline and degraded modes, Child Mode, localisation,
+            loading, empty, offline and error states, errors written in human
+            language.
+
+            evidence — a hardware claim with no measurement behind it, a `PASS`
+            for a test that did not run on a board, an estimate that reads as a
+            measurement, a missing regression test for the bug being fixed.
+
+            For each finding give the file and line, why it breaks, and how it
+            reproduces. Rank by severity. Say explicitly if you found nothing
+            blocking — a review that always finds something is noise.
+
+            Finish by setting exactly one label on this pull request using the
+            gh CLI: `ai-review:blocking` if anything must be fixed before merge,
+            otherwise `ai-review:pass`. Remove the other one if present.

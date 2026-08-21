@@ -1,0 +1,25 @@
+# Dependency updates, for the one ecosystem this repository actually has.
+#
+# GitHub Actions is it. The C++ dependencies here are not packages: LVGL is
+# pinned by commit in cmake/FireflyLvgl.cmake and fetched by CMake, SDL2 comes
+# from the runner's apt, and neither is an ecosystem Dependabot understands.
+# Pointing it at them would produce a permanently silent config that looks like
+# coverage — see docs/research/DEPENDENCIES.md for how those pins are actually
+# maintained, which is by hand and on purpose.
+#
+# Actions are different, and they matter more than they look: a workflow here
+# can drive a write-capable agent, so a stale action with a known problem is a
+# security issue rather than a housekeeping one.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - source:owner
+    commit-message:
+      prefix: "ci"

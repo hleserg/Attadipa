@@ -5,6 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  # One run per ref. A push that supersedes an earlier one cancels it: the older
+  # result is about code nobody is looking at any more, and on an agent branch
+  # a stale failure would trigger a repair for a problem already replaced.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   host-build:
     name: Host build and tests
@@ -20,6 +30,152 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  strict-warnings:
+    name: Strict warnings (GCC, -Werror)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # -Werror is only defensible because the debt is zero, and that was
+      # measured rather than assumed: this set — including -Wshadow and
+      # -Wconversion, the two that usually produce hundreds — produced no
+      # warnings at all on the tree this job was added to. If it ever does, the
+      # right response is to fix the warning, not to trim the list.
+      #
+      # It is a separate job from host-build on purpose. A new compiler release
+      # with a new warning should fail one clearly named job, not the build
+      # everyone else is waiting on.
+      #
+      # The simulator is deliberately not built here: LVGL is a vendored
+      # dependency with its own warning profile, and holding somebody else's
+      # code to our flags produces noise rather than quality.
+      - name: Configure
+        run: >
+          cmake -S . -B build-strict -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wcast-qual -Wold-style-cast -Werror"
+
+      - name: Build
+        run: cmake --build build-strict
+
+      - name: Test
+        run: ctest --test-dir build-strict --output-on-failure
+
+  clang:
+    name: Clang build and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A second front end catches what one does not: different template
+      # diagnostics, different UB detection, different opinions about what is
+      # conforming. This costs one runner and has caught real portability bugs
+      # in every project that has tried it.
+      - name: Install Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang
+
+      - name: Configure
+        run: cmake -S . -B build-clang -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+
+      - name: Build
+        run: cmake --build build-clang
+
+      - name: Test
+        run: ctest --test-dir build-clang --output-on-failure
+
+  sanitizers:
+    name: AddressSanitizer and UndefinedBehaviorSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The host tests are where the logic lives, so this is where memory and
+      # UB bugs are cheapest to find. On the device there is no sanitizer and a
+      # buffer overrun is a reboot with no message.
+      #
+      # halt_on_error=1 matters: without it UBSan prints and continues, the test
+      # passes, and the report scrolls past in a green job.
+      - name: Configure
+        run: >
+          cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all -g"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build-asan
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-asan --output-on-failure
+
+  coverage:
+    name: Host coverage report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gcovr
+        run: pipx install gcovr
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-cov -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="--coverage -O0 -g"
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
+      - name: Build
+        run: cmake --build build-cov
+
+      - name: Test
+        run: ctest --test-dir build-cov --output-on-failure
+
+      # An artifact, not a gate. A coverage threshold enforced before anybody
+      # has looked at what is covered produces tests written for the number.
+      # The report is here so the number can be looked at.
+      - name: Report
+        run: |
+          gcovr --root . --exclude 'tests/.*' --exclude 'sim/.*' \
+                --html-details build-cov/coverage.html \
+                --txt build-cov/coverage.txt --print-summary
+          cat build-cov/coverage.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: host-coverage
+          path: |
+            build-cov/coverage.html
+            build-cov/coverage*.html
+            build-cov/coverage.txt
+          if-no-files-found: warn
+
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The automation in .github/workflows/ is now load-bearing: it decides who
+      # may drive a write-capable agent. A typo in an `if:` there fails open, and
+      # a YAML file that is never compiled has nothing else to catch it.
+      # actionlint also runs shellcheck over every `run:` block, which is where
+      # the guards actually live.
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+        run: |
+          set -euo pipefail
+          curl -sSLo actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf actionlint.tar.gz actionlint
+          sudo mv actionlint /usr/local/bin/
+
+      - name: Lint
+        run: actionlint -color
 
   simulator:
     name: Simulator build and headless run
@@ -73,14 +229,39 @@ jobs:
           # bury the real message under an artifact-step error.
           if-no-files-found: warn
 
-# Not present yet, and deliberately not faked:
+  evidence:
+    name: What this run did not prove
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [host-build, strict-warnings, clang, sanitizers, simulator]
+    steps:
+      # CLAUDE.md's rule, made visible where people actually look. A green badge
+      # on this repository means host builds and a simulator render. It is not
+      # evidence about firmware and it is not evidence about hardware, and the
+      # only reliable way to stop that being forgotten is to write it down on
+      # every single run.
+      - name: Say so
+        run: |
+          {
+            echo "### Evidence level of this run"
+            echo
+            echo "| Target | Status |"
+            echo "|---|---|"
+            echo "| Host build, GCC and Clang | UNIT-TESTED |"
+            echo "| Strict warnings, sanitizers | UNIT-TESTED |"
+            echo "| Simulator, both geometries | SIMULATED |"
+            echo "| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |"
+            echo "| Anything on a physical board | **NOT EXECUTED — HARDWARE REQUIRED** |"
+            echo
+            echo "Power, timing and RF numbers are \`ESTIMATED\` or \`UNKNOWN\` until"
+            echo "a hardware-in-the-loop plan in \`docs/testing/HIL_PLANS.md\` has been run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# Still not present, and still deliberately not faked:
 #
-#   * embedded build  — ESP-IDF version is not chosen (TASKS.md T-004)
-#   * lint            — formatting rules are not agreed yet (TASKS.md T-039)
-#   * localization    — the catalogue and font-coverage checks land with
-#                       T-033; see docs/adr/0010-localization.md §3
-#   * hardware tests  — NOT EXECUTED, HARDWARE REQUIRED
-#
-# A green badge here means two host builds and their tests passed, and that the
-# simulator rendered a frame at both geometries. It means nothing about firmware
-# and nothing at all about hardware.
+#   * embedded build  — ESP-IDF version is not chosen (TASKS.md T-004). When it
+#                       is, this becomes a matrix job beside the host builds.
+#   * formatting      — rules are not agreed yet (TASKS.md T-039)
+#   * hardware tests  — NOT EXECUTED, HARDWARE REQUIRED. There is no HIL runner,
+#                       and a job that pretended otherwise would be worse than
+#                       no job at all.

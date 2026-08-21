@@ -1,0 +1,128 @@
+# CI, and the review that follows it
+
+What runs, what each result actually proves, and what none of it proves.
+
+## The pipeline
+
+```
+push / pull request
+        │
+        ├── CI ─────────────────────────────────────────────────┐
+        │     host build + tests            GCC, Release        │
+        │     strict warnings               GCC, -Werror        │
+        │     clang build + tests           second front end    │
+        │     sanitizers                    ASan + UBSan        │
+        │     host coverage                 artifact, not gate  │
+        │     workflow lint                 actionlint          │
+        │     simulator                     both geometries     │
+        │     evidence summary              what was NOT proved │
+        │                                                        │
+        ├── CodeQL             security-and-quality, host build │
+        │                                                        │
+        └── Claude PR review   independent, read-only ───────────┘
+                  │
+        CI failed on a claude/* branch?
+                  └── Claude CI repair, at most twice
+```
+
+## The jobs, and why each exists
+
+| Job | Catches | Cost |
+|---|---|---|
+| **host build and tests** | the obvious | one runner |
+| **strict warnings** | shadowing, narrowing conversions, sign conversions, old-style casts | one runner |
+| **clang** | what GCC does not diagnose, and non-conforming code GCC accepts | one runner + apt |
+| **sanitizers** | out-of-bounds, use-after-free, leaks, undefined behaviour | one runner |
+| **coverage** | which of the logic has never been executed by a test | one runner |
+| **workflow lint** | a typo in the automation that decides who may drive an agent | seconds |
+| **simulator** | that LVGL still renders at 240×240 and 410×502 | one runner + SDL2 |
+| **CodeQL** | patterns a compiler does not look for | weekly plus per push |
+
+Three notes on choices that could reasonably have gone the other way:
+
+**`-Werror` is a separate job, and it is defensible only because the debt is
+zero.** That was measured before the job was added, not assumed: the full set,
+including `-Wshadow`, `-Wconversion`, `-Wsign-conversion` and
+`-Wold-style-cast` — the ones that usually produce hundreds of warnings on an
+existing codebase — produced **none**. It is a separate job so that a new
+compiler release with a new warning fails one clearly named check rather than
+the build everybody is waiting on.
+
+**The simulator is not built with the strict flags.** It pulls LVGL, and holding
+somebody else's vendored library to our warning set produces noise, not quality.
+
+**Coverage is an artifact, not a gate.** A threshold enforced before anybody has
+looked at what is covered produces tests written for the number.
+
+## What a green run means
+
+Exactly this, and the `evidence` job prints it on every run so it cannot quietly
+stop being said:
+
+| Target | Status |
+|---|---|
+| host build, GCC and Clang | `UNIT-TESTED` |
+| strict warnings, sanitizers | `UNIT-TESTED` |
+| simulator, both geometries | `SIMULATED` |
+| ESP32-S3 firmware build | `NOT EXECUTED` — the ESP-IDF version is undecided (`TASKS.md` T-004) |
+| anything on a physical board | **`NOT EXECUTED — HARDWARE REQUIRED`** |
+
+There is no hardware-in-the-loop runner and no fake one. When a physical check
+is needed it is written up as a plan — equipment, procedure, measured quantity,
+pass and fail criteria — in `docs/testing/HIL_PLANS.md`, so that somebody with a
+board can execute it and record a real result.
+
+## The independent review
+
+`claude-pr-review.yml` runs in a context that did not write the code, because an
+author reviewing their own work re-derives the same assumptions that produced it.
+
+It cannot push: `contents: read`. It has an opinion and no hands.
+
+The question it is asked is deliberately not "does this compile":
+
+> Assume it compiles and every existing test is green. **How can it still break
+> FireflyOS?**
+
+and the checklist is the one this project has actually been bitten by —
+architecture boundaries, lifetime and memory, concurrency and ISR context,
+power state and wake sources, crash-safe persistence and migrations, protocol
+framing and backpressure, GNSS fix age and trust, offline and degraded modes,
+Child Mode, localisation, and — the recurring one — a hardware claim with no
+measurement behind it.
+
+It finishes by setting exactly one of `ai-review:pass` or `ai-review:blocking`,
+and it is asked to say plainly when it found nothing. A reviewer that always
+finds something is noise, and noise is how a review stops being read.
+
+## Automatic CI repair
+
+Only on a `claude/*` branch of this repository, only with an open pull request
+labelled `agent:claude`, and never on `main` or a fork.
+
+It is given the actual failing log (`gh run view --log-failed`, trimmed) and
+told to find the root cause before changing anything. Two attempts per problem
+chain; then `ci:failed`, `agent:blocked` and a comment saying what it could not
+work out. `/ci-repair reset` clears the counter.
+
+The failure mode being designed against is *`CI failed → change something →
+rerun`*, which is a random walk with a budget attached. The attempt marker is
+written **before** the attempt for the same reason: a counter that only
+increments on success counts to two forever.
+
+## Smoke tests
+
+The workflows were exercised, not merely read. What was verified, and how:
+
+| # | What | How |
+|---|---|---|
+| A | intake accepts a trusted task and applies labels | a real issue with a `firefly-agent-task` marker |
+| B | the reviewer runs on a pull request and changes no file | this pull request |
+| C | repair triggers only on an agent branch | a deliberate, temporary test failure on a `claude/*` branch |
+| D | the watchdog finds a task whose event was missed | an issue labelled `agent:ready` with no trigger event |
+| E | an external user cannot drive a write-capable agent | the permission gate, and `actionlint`'s parse of every `if:` |
+
+Results are recorded in the pull request that introduced these files. Where a
+test could not complete because no Anthropic credential was configured, that is
+stated rather than glossed: the gate, the labels and the no-op path were
+exercised; the Claude step itself was not.
