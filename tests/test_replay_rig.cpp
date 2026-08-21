@@ -1,5 +1,10 @@
 #include <cstdio>
+#include <cstdlib>
 #include <string>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "replay/replay.h"
 
@@ -26,6 +31,60 @@ void check(bool condition, const char* what, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 std::string fixtures;
+
+// Where this file puts the fixtures it writes by hand.
+//
+// Not a fixed name under a shared directory, which was wrong twice over: two
+// runs of this test on one machine — a CI matrix, two people on a build host —
+// race for the same path, and in a world-writable directory whoever gets there
+// first decides what that path points at. mkdtemp settles both in one syscall:
+// the name is one nobody else has and the directory is 0700 before it exists
+// to anybody, so there is no window between picking the path and owning it.
+class Scratch
+{
+public:
+    Scratch()
+    {
+        const char* base = std::getenv("TMPDIR");
+        path_ = std::string(base != nullptr && base[0] != '\0' ? base : "/tmp")
+                + "/firefly-replay-XXXXXX";
+        ok_ = ::mkdtemp(&path_[0]) != nullptr;
+    }
+
+    ~Scratch()
+    {
+        if (ok_) {
+            ::rmdir(path_.c_str());   // best effort; each test removes its own file
+        }
+    }
+
+    Scratch(const Scratch&)            = delete;
+    Scratch& operator=(const Scratch&) = delete;
+
+    bool        ok() const { return ok_; }
+    std::string file(const char* name) const { return path_ + "/" + name; }
+
+private:
+    std::string path_;
+    bool        ok_ = false;
+};
+
+// Create the file 0600 outright rather than letting fopen create it 0666 and
+// trusting the umask to narrow it afterwards. The umask is inherited from
+// whoever started the process and is not ours to assume; a mode argument is.
+std::FILE* create_private(const std::string& path)
+{
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_EXCL,
+                          S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        return nullptr;
+    }
+    std::FILE* file = ::fdopen(fd, "w");
+    if (file == nullptr) {
+        ::close(fd);
+    }
+    return file;
+}
 
 // The negative fixture: a perfectly good fix with expectations that say
 // otherwise. The runner must report three mismatches, not zero.
@@ -93,9 +152,16 @@ void test_malformed_fixtures_are_refused()
          "at 1000\n  hold\n",                          "a hold after nothing but a provider's answer"},
     };
 
+    Scratch scratch;
+    if (!scratch.ok()) {
+        std::fprintf(stderr, "FAIL: cannot make a private directory for the fixtures\n");
+        ++failures;
+        return;
+    }
+
     for (const Case& one : cases) {
-        const std::string path = "/tmp/firefly-replay-malformed.trace";
-        std::FILE*        file = std::fopen(path.c_str(), "w");
+        const std::string path = scratch.file("malformed.trace");
+        std::FILE*        file = create_private(path);
         if (file == nullptr) {
             std::fprintf(stderr, "FAIL: cannot write a temporary fixture\n");
             ++failures;
@@ -166,8 +232,15 @@ void test_a_fixture_explains_itself()
 // keywords existed, and why 02-fix-goes-stale asserted `valid` three times.
 void test_age_and_hold_parse_into_what_they_claim()
 {
-    const std::string path = "/tmp/firefly-replay-freshness.trace";
-    std::FILE*        file = std::fopen(path.c_str(), "w");
+    Scratch scratch;
+    if (!scratch.ok()) {
+        std::fprintf(stderr, "FAIL: cannot make a private directory for the fixture\n");
+        ++failures;
+        return;
+    }
+
+    const std::string path = scratch.file("freshness.trace");
+    std::FILE*        file = create_private(path);
     if (file == nullptr) {
         std::fprintf(stderr, "FAIL: cannot write a temporary fixture\n");
         ++failures;

@@ -38,6 +38,12 @@ push / pull request
 | **simulator** | that LVGL still renders at 240×240 and 410×502 | one runner + SDL2 |
 | **CodeQL** | patterns a compiler does not look for | weekly plus per push |
 
+CodeQL is the one of these whose output needs a person. Every alert it
+raises is either fixed or written down in
+[`CODE_SCANNING.md`](CODE_SCANNING.md) with the reason it does not apply —
+there is no third option where it is dismissed in the web UI and the
+reasoning lives nowhere.
+
 Three notes on choices that could reasonably have gone the other way:
 
 **`-Werror` is a separate job, and it is defensible only because the debt is
