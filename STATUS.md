@@ -209,6 +209,15 @@ needs the owner, and one needs a ruler.
   which files changed, with an instruction to verify a finding before
   implementing it. The expensive failure of a review queue is not a wrong
   finding, it is a stale one.
+- **The silent refusal was reproduced, not theorised.** A task with a valid
+  marker filed through the GitHub API ([#10](https://github.com/hleserg/FireflyOS/issues/10))
+  arrived as `claude[bot]`, was refused by the bot guard — correctly — and was
+  simultaneously invisible to the watchdog, which filters on
+  `author_association` and saw `NONE`. The run went green and nothing was
+  written anywhere. The route decides this, not the marker: issue #5, filed by
+  `hleserg` as a `User`, was accepted the same day. Whether ChatGPT hits this
+  depends on how it authenticates, which is
+  [still open](docs/research/OPEN_QUESTIONS.md) and is the owner's decision.
 - **A refused task is no longer silent.** An issue carrying a task marker that
   the gate rejects now gets one comment naming the guard and the actor, plus
   `needs-owner`. This is aimed at the likeliest silent failure in the loop: a

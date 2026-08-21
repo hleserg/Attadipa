@@ -204,8 +204,9 @@ products and the difference is visible to the user in the first ten seconds.
 
 ### How does a producing agent authenticate when it files a task?
 
-**Status: UNKNOWN.** This is the one thing standing between the queue working
-and the owner still being in the loop, and it cannot be settled by reading.
+**Status: the failure is REPRODUCED; the route ChatGPT will use is still UNKNOWN.**
+This is the one thing standing between the queue working and the owner still
+being in the loop.
 
 The intake gate trusts the **actor**, not the marker — `producer: chatgpt` is a
 data field anybody can type, and write access is not. It rejects, by design, any
@@ -221,8 +222,47 @@ whether the loop closes:
 | a GitHub App | `something[bot]` | rejected — correctly, by the bot guard |
 | an account with only `read` or `triage` | that login | rejected on permission |
 
-Until an issue has actually been filed the way ChatGPT will file it, which of
-these applies is a guess, and guessing is what this file exists to prevent.
+Until an issue has actually been filed the way ChatGPT will file it, which row
+applies is a guess. But **the middle row is no longer hypothetical.**
+
+### The reproduction, 2026-08-21
+
+[Issue #10](https://github.com/hleserg/FireflyOS/issues/10) was filed with a
+valid marker through the GitHub API by an agent session. Gate log, run
+`32475652479`:
+
+```
+EVENT_NAME: issues
+ACTOR: claude[bot]
+ACTION: opened
+##[notice]#10 actor claude[bot] is a bot
+```
+
+The credential was a **GitHub App installation token**, so GitHub attributed the
+issue to `claude[bot]` regardless of which account it was issued for. Issue #5,
+opened by `hleserg` as a `User` with association `OWNER`, was accepted the same
+day. The difference is the route, not the marker and not the content.
+
+What makes it worse than a refusal: `author_association` on #10 is `NONE`, so
+`agent-queue-watchdog.yml` skips it too — it filters on `OWNER`, `MEMBER` or
+`COLLABORATOR`. **The task was invisible to every part of the pipeline at once,
+and the workflow run went green.**
+
+### The decision this needs
+
+| | Option A | Option B |
+|---|---|---|
+| **Route** | ChatGPT files through a user account with `write` or better | ChatGPT files through a GitHub App |
+| **Change needed** | none; works as built | the gate grows an owner-controlled allowlist of trusted producer apps, empty by default |
+| **Cost** | a second GitHub account, or the owner's own | configuration surface on the one boundary the security model rests on |
+
+**Recommended: A.** The gate's entire argument is that write access cannot be
+typed, and an allowlist replaces that with a name that can. If B is chosen, the
+allowlist must apply to `issues` events only — never comments, which is where
+the loop lives — and `claude` and `github-actions` must never be listable,
+because those are this repository's own output.
+
+**Not decided by an agent.** Widening this boundary is the owner's call.
 
 **What has been done about it:** a refusal of a marked task is no longer silent.
 The gate comments once on the issue naming the guard that rejected it and the
