@@ -194,6 +194,14 @@ jobs:
       - name: Intake gate
         run: bash .github/tests/intake-gate-test.sh
 
+      # The watchdog hands over by workflow_dispatch, which the intake gate
+      # trusts by construction and does not re-check the actor for. So this
+      # filter is the last refusal before a billable writer starts, and it
+      # reached review once in a state where the repository's own output could
+      # have driven its own agent. There was no test; now there is.
+      - name: Watchdog queue scan
+        run: bash .github/tests/watchdog-filter-test.sh
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest

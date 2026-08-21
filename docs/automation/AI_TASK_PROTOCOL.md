@@ -76,7 +76,7 @@ Four properties keep that from being a hole, and each has a test:
 |---|---|
 | **empty by default** | no repository gains an exemption by taking this file |
 | **`issues` events only** | the loop is an agent's own comment mentioning `@claude`; no entry can exempt a comment |
-| **`claude` and `github-actions` can never be listed** | checked *after* the list, so naming them does nothing. They are this repository's own output |
+| **`claude` and `github-actions` can never be listed** | checked *after* the list in the gate **and again in the watchdog's scan**, so naming them does nothing in either place |
 | **exact login match** | `codex-connector[bot]` does not match `chatgpt-codex-connector[bot]` |
 
 Being on the list *is* the authorisation — an app is not a collaborator and has
@@ -88,6 +88,20 @@ The list is also read by `agent-queue-watchdog.yml`, which filters on
 `author_association` and would otherwise skip exactly these tasks — issue #10 was
 refused by the gate *and* invisible to the watchdog at the same time, which is
 how a task disappears completely.
+
+**The non-listable rule is repeated there rather than inherited, and that is not
+duplication.** The watchdog hands over by `workflow_dispatch`, which the gate
+trusts by construction and does not re-check the actor for. A `claude[bot]` entry
+that the gate refuses to honour would therefore have been honoured by the
+watchdog and dispatched into the one door that no longer asks — the repository's
+own output starting a billable writer, which is the loop the whole allowlist
+exists to avoid. Caught in review on #19, and now covered by
+`.github/tests/watchdog-filter-test.sh`, which CI runs.
+
+The scan filter lives in `.github/scripts/queue-scan.jq` for the same reason the
+gate lives in a script: a filter inside a YAML block cannot be executed, and a
+security boundary that has never been executed against a hostile input is a
+hypothesis.
 
 ### `reviewed_head` is checked
 
