@@ -782,7 +782,109 @@ actually refusing — a source over the dimension cap, a source under `docs/` or
 `pics/`, a size with no drawing, a filename that disagrees with its pixels; and,
 in C++, that every linked descriptor is `A8` with `stride == width` and carries
 a drawing rather than a blank rectangle.
+---
 
+### Speaking the vanilla MeshCore companion protocol
+
+**Problem:** a watch must talk to a MeshCore node that is running **stock**
+firmware — one the owner did not build and cannot be asked to reflash
+([OD-7](OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)).
+Send and receive mesh messages, request telemetry, and take positions from it.
+
+**Projects investigated:** MeshCore `companion_radio` at
+`d92964352441e53b93e8667b802e04f6e072b39e` (MIT) — the protocol itself · its
+first-party JavaScript and Python client libraries, **identified and not read**
+· Gadgetbridge as prior art for a host-side companion protocol (AGPL-3.0, read
+only).
+
+**Useful implementation:** the protocol, not the code. The dispatch is a flat
+`if/else if` chain over `#define`s in one 2 000-line `.cpp`, inseparable from
+the firmware's own state; there is no client library in the firmware repository
+to depend on. The transport interfaces are Arduino-typed throughout.
+
+**Licence:** MIT. Anything is permitted; nothing is *useful* to take.
+
+**Strengths:** small, flat, legible in an afternoon; 58 commands with no
+schema compiler and no code generation; framing that fits on a page.
+
+**Weaknesses**, all of them ours to absorb rather than fix: `MAX_FRAME_SIZE 176`
+is a bare `#define` with no `#ifndef` guard, so a peer cannot raise it; no
+checksum on any transport; the byte-stream receiver **truncates** an over-long
+frame and delivers it as complete (the same defect already recorded under
+*Transport framing*); a defined command with a malformed argument returns
+`ERR_CODE_UNSUPPORTED_CMD`, indistinguishable from an unknown opcode; the BLE
+path requests a 176-byte MTU and never checks the negotiated one; and a stock
+build answers `CMD_EXPORT_PRIVATE_KEY`.
+
+**Decision:** `REIMPLEMENT` — an Attadipa-side **client**, written fresh against
+the documented protocol, behind [ADR-0008](../adr/0008-mesh-service-providers.md)'s
+provider interface. Explicitly **not** `PORT`, **not** `USE AS DEPENDENCY`, and
+**not** a second code path in `core/`.
+
+**Reason.** There is nothing to port: the firmware's client-facing side *is* the
+firmware. Depending on the first-party JS or Python clients is not available to
+an ESP-IDF image. The protocol is small enough that reimplementation costs less
+than adapting anything, and reimplementing is what lets our own framing rules —
+refuse an over-long frame, never deliver a truncated one — apply to a link whose
+peer has neither.
+
+**Source revision:** `d92964352441e53b93e8667b802e04f6e072b39e`
+(`companion-v1.17.1`). Read on 2026-08-22. **The full reading is
+[MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md)**, which states
+which of its claims were independently verified against the clone and which
+rest on a single reading.
+
+**Attadipa integration:** a provider behind ADR-0008, over any of the transports
+the node exposes. LAN/TCP first — it needs no BLE stack and no pairing, and it
+is testable from a host long before an ESP32 is involved.
+
+**Tests required:** the framing pair against a recorded stock-node exchange;
+`CMD_DEVICE_QUERY` re-sent on every connection (the `app_target_ver` hazard);
+an over-long frame refused rather than truncated; a malformed argument **not**
+reported to the user as an unsupported node; a telemetry response whose
+`LPP_GPS` record is absent because permission was denied, which is a normal
+outcome and not an error; and a position from a companion carrying no better
+provenance than "arrived at time T from key K".
+
+---
+
+### Meshtastic's protocol definitions — the licence gate
+
+**Problem:** OD-7 asks for Meshtastic as a companion alternative to, or
+alongside, MeshCore. A client needs the wire format.
+
+**Projects investigated:** `meshtastic/protobufs` at submodule commit `aca181b`,
+under firmware `68bfe015e`.
+
+**Useful implementation:** the `.proto` definitions, which are the whole
+protocol.
+
+**Licence:** **GPL-3.0.** The definitions live in their own repository with their
+own `LICENSE` file — and that file is the same licence as the firmware.
+`packages/ts/package.json:10` declares `"license": "GPLV3"`;
+`packages/rust/Cargo.toml:7` points `license-file` at the same `LICENSE`. No
+exception paragraph, no SPDX identifier in any `.proto`, no dual licensing.
+
+**Decision:** `REJECT` — and since 2026-08-22 the rejection is the owner's, not
+a holding position. [OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence).
+
+**Reason.** Generating code from those definitions and linking it into an MIT
+firmware image is the thing this ledger's rule about GPL-3.0 exists to prevent.
+The separate repository was the hypothesis worth testing and it did not survive
+contact with the file. The alternatives — a clean-room from published
+documentation, separate distribution, or asking upstream for an exception — are
+put to the owner as four options, and the owner chose the last of them:
+Meshtastic is not supported. The licence closed the cheap path; the *decision*
+is that the expensive one is not worth taking.
+
+**Source revision:** `protobufs` `aca181b`; firmware
+`68bfe015e6ab9ec2ab8f1657066898b7880eaf63`. Read on 2026-08-22.
+
+**Attadipa integration:** none. MeshCore alone answers what OD-7 asked for.
+
+**Tests required:** none — there is nothing to test and, per OD-12, there will
+not be. If this is ever revisited, only the product decision needs to change:
+the licence question is answered and stays answered.
 ---
 
 ### GNSS integrity and trust
