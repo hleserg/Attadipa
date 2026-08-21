@@ -29,6 +29,17 @@ LV_FONT_DECLARE(attadipa_montserrat_16)
 LV_FONT_DECLARE(attadipa_montserrat_20)
 LV_FONT_DECLARE(attadipa_montserrat_28)
 
+// The clock's own faces: **numerals only** — digits, colon, the dashes the
+// unknown-time placeholder uses, and the degree sign a bearing will want.
+//
+// A watch face needs a time that dominates the screen, which is 64 px on a
+// 240 px panel and more on a 410 px one. At the full charset that would be
+// about 160 kB and 360 kB of .rodata for a string that is only ever "09:41" or
+// "--:--"; six characters cost a fraction of it. Asking for a letter from one
+// of these draws nothing, which is why they are named for what they contain.
+LV_FONT_DECLARE(attadipa_montserrat_num_64)
+LV_FONT_DECLARE(attadipa_montserrat_num_96)
+
 #ifdef __cplusplus
 }
 #endif

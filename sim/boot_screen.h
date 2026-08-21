@@ -39,6 +39,10 @@ void toggle_theme();
 // first build; after that, T.
 void set_theme(ui::Theme theme);
 
+// Which palette is in force. Every screen resolves its own colours, so they all
+// need to be able to ask.
+ui::Theme current_theme();
+
 // How many codepoints of a locale's catalogue the given font cannot draw.
 // Prints each one it finds.
 //

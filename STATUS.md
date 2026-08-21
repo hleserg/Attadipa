@@ -14,8 +14,8 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
-simulator and twenty tests, and has a font pipeline whose output has been
+**Attadipa has code, and a first product screen.** As of 2026-08-22 the
+repository builds eight libraries, a simulator and thirty-nine tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -25,6 +25,8 @@ compiled for the target and measured.
 | `attadipa_apps` | `AppManifest` and the launcher gating rule | core only |
 | `attadipa_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
 | `attadipa_ui` | the design tokens: `Dp` against a 160 dpi reference, twelve colour roles across two themes with WCAG contrast arithmetic, and the spacing, radius, motion, size and feedback scales | `attadipa_headers` only — **deliberately not platform** |
+| `attadipa_fonts` | four generated Montserrat subsets over the whole 181-codepoint charset, plus two numerals-only display faces for the clock | lvgl |
+| `attadipa_app_clock` | **the Clock** — the first product screen. Draws a `ClockModel` and nothing else | apps, ui, fonts, lvgl — **not platform** |
 | `attadipa_replay` | the deterministic navigation replay rig, in `tests/` | core |
 | `attadipa_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
 
@@ -44,6 +46,26 @@ value back in. Since T-083 it also draws every character: it links four generate
 Montserrat subsets covering all 181 codepoints of `charset.py`, so `×` and
 Cyrillic render rather than showing boxes, and an undrawable codepoint now
 **fails the run** instead of printing a warning.
+
+**The Clock is the first screen that is not a diagnostic** (T-037). It requires
+`Capability::Time` and nothing else — a watch with no mesh, no position and no
+node is still a watch — and it is enhanced by the rest. It draws a `ClockModel`
+filled by the composition root, so it cannot learn which board it is on even by
+accident, and it shows `--:--` rather than `00:00` when the time is not known,
+which is ADR-0011's rule about a value nobody observed arriving where a person
+meets it first.
+
+It also made the contrast API load-bearing rather than decorative. Text is
+painted through `legible_as_body_text()`: on the day theme every accent measures
+below 4.5:1 against Warm Ivory, so an accent **is not used for a word** and the
+ink colour is used instead; at night the same roles clear 5:1 and the colour
+comes back. That is a rule that cannot be broken by writing the wrong line,
+because it is arithmetic evaluated where the colour is chosen.
+
+**The visual matrix is now a command rather than a claim.** Sixteen ctest
+entries: two geometries × two locales × two themes × Child Mode on and off, each
+rendering a real frame headlessly and each failing if any codepoint of either
+catalogue cannot be drawn.
 
 **Two contrast findings came out of that migration and neither is a proposal to
 repaint anything.** On the day page every accent is under the 3:1 that a glyph

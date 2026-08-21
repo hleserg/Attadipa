@@ -13,6 +13,8 @@ add_library(attadipa_fonts STATIC
     generated/attadipa_montserrat_16.c
     generated/attadipa_montserrat_20.c
     generated/attadipa_montserrat_28.c
+    generated/attadipa_montserrat_num_64.c
+    generated/attadipa_montserrat_num_96.c
 )
 
 target_include_directories(attadipa_fonts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

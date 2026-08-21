@@ -44,6 +44,9 @@ if(ATTADIPA_BUILD_SIMULATOR)
     # when it is present. Firmware will link the same target for the same reason
     # the simulator does: LVGL's built-in Montserrat cannot draw Cyrillic.
     add_subdirectory(assets/fonts)
+    # Applications that draw. They need LVGL, so they come after it — and they
+    # link attadipa_apps, which still cannot see attadipa_platform.
+    add_subdirectory(apps/clock)
     add_subdirectory(sim)
 endif()
 

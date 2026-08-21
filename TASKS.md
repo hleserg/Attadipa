@@ -95,20 +95,6 @@ stale silently. The protocol is
 - **Tests:** regeneration reproducibility; per-board asset budget
 - **Hardware required:** for decode and render cost, yes
 
-### T-037 · The first Clock
-- **Priority:** P0
-- **Dependencies:** T-008, T-009, T-033, T-034
-- **Goal:** the first real screen. Time, date, battery, a good watchface, day and
-  night, EN and RU, a Child variant, and one purposeful use of the owner's art
-  (final §58, §88).
-- **Acceptance:** it looks like Attadipa and not like debug UI (final §96), at
-  both geometries, in both locales, in both themes.
-- **Research status:** not started — mature wearable watchface patterns
-  (final §85); interaction lessons only, never someone else's visual identity
-- **Implementation status:** not started
-- **Tests:** reference screenshots across the visual matrix
-- **Hardware required:** no
-
 ### T-038 · The first Settings
 - **Priority:** P0
 - **Dependencies:** T-037, T-017 (ADR-0006, **done**)
@@ -1470,6 +1456,38 @@ Recommended next action:
   `tools/font/measure.py` is run with the xtensa toolchain.
 - **Mutation-tested:** adding a line to `charset.py` turns `ui_fonts_are_current`
   red; putting a Latin-only font back turns the simulator run red.
+
+### T-037 · The first Clock — **DONE** 2026-08-22
+- `apps/clock/` — the first screen that is not a diagnostic. Time, date,
+  battery, one status line, day and night, EN and RU, and a Child variant.
+- **It is an application and the link line proves it.** `attadipa_app_clock`
+  links `attadipa_apps`, `attadipa_ui`, `attadipa_fonts` and LVGL, and **not**
+  `attadipa_platform`. It draws a `ClockModel` filled by the composition root, so
+  it cannot learn which board it is on, which RTC ticks, or whether the time came
+  from a receiver or a phone.
+- **`--:--`, never `00:00`.** A watch that does not know the time says so. Same
+  for the battery: `BatterySense` being present is not the same as having read
+  it. ADR-0011's rule about a value nobody observed, in the place a person meets
+  it first.
+- **The contrast API is now load-bearing.** Text is painted through
+  `legible_as_body_text()`, so on the day theme — where every accent measures
+  1.44:1 to 2.81:1 against Warm Ivory — an accent is not used for a word, and at
+  night, where the same roles clear 5:1, the colour comes back. A rule that
+  cannot be broken by writing the wrong line.
+- **Two numerals-only display faces**, 64 px and 96 px, chosen by density rather
+  than by board. At the full 181-codepoint charset those would be about 160 kB
+  and 360 kB of `.rodata` for a string that is only ever `09:41` or `--:--`;
+  digits, colon, dashes and the degree sign cost 56 kB and 116 kB of source.
+- **The visual matrix is a command now:** sixteen ctest entries, two geometries ×
+  two locales × two themes × Child Mode on and off, each rendering a real frame
+  and each failing if a codepoint cannot be drawn.
+- **Not done, and split out rather than quietly dropped:** *"one purposeful use
+  of the owner's art"* needs T-034's asset pipeline, which has not started. The
+  screen is deliberately typographic until then rather than decorated with a
+  placeholder.
+- **Not tested on hardware.** `NOT EXECUTED — HARDWARE REQUIRED`. Every size,
+  colour and spacing is still `PROPOSED`; final §55 forbids keeping a value that
+  fails on the real display.
 
 ### T-059 · The trust state, tested as sequences — **DONE**
 - **Why sequences:** the detectors that matter are rate detectors, and a rate
