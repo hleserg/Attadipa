@@ -69,43 +69,41 @@ and the workflow run went green.** Issue #5, filed by `hleserg` as a `User`, was
 accepted the same day with the same shape of marker. The route decides this, not
 the content.
 
-### The decision
+### The answer, and the one command it needs
 
-| | **Option A — recommended** | Option B |
-|---|---|---|
-| ChatGPT files through | a user account with `write`/`maintain`/`admin` | a GitHub App |
-| Change needed | none, works as built | widen the gate with an allowlist |
-| Cost | one GitHub account | configuration on the one boundary the security model rests on |
+**ChatGPT's identity in this repository is now known.** It reaches GitHub through
+its App and acts as `chatgpt-codex-connector[bot]` — a `Bot`, association `NONE`.
+That is the login that reviewed pull request #11. Running the real gate function
+against it:
 
-**Option A is recommended and needs no code.** Confirm which account ChatGPT's
-GitHub connector authenticates as, and give it write access:
-
-```bash
-gh api user                                    # ...as ChatGPT, to learn the login
-gh api -X PUT repos/hleserg/FireflyOS/collaborators/<login> -f permission=push
+```
+$ .github/scripts/intake-decision.sh 'chatgpt-codex-connector[bot]' issues opened ...
+reject: actor chatgpt-codex-connector[bot] is a bot
 ```
 
-Then verify by filing one issue *as ChatGPT* and watching what happens. Either an
-agent starts, or a refusal comment names the actual actor. Either way the answer
-lands on the issue — that is what PR #9's refusal-comment change is for.
+So there is no user account to grant write to — the earlier "Option A" is not
+available for the connector. The owner chose the allowlist, and it is built,
+tested and merged. What remains is to switch it on:
 
-**If Option B turns out to be forced** — ChatGPT can only file as an App — then
-the gate needs an allowlist, and it must be built to these constraints, which
-are not negotiable:
+```bash
+gh variable set FIREFLY_TRUSTED_PRODUCERS \
+  --body 'chatgpt-codex-connector[bot]' --repo hleserg/FireflyOS
+gh variable list --repo hleserg/FireflyOS
+```
 
-- a new repository variable `FIREFLY_TRUSTED_PRODUCERS`, **empty by default**;
-- it applies to **`issues` events only, never comments**. The loop this guards
-  against lives in comments;
-- `claude` and `github-actions` can **never** be listable, checked *after* the
-  allowlist so the list cannot override them. Those are this repository's own
-  output;
-- `.github/tests/intake-gate-test.sh` gains cases for: an allowlisted app opening
-  an issue (accept), the same app commenting (reject), `claude[bot]` present in
-  the list anyway (reject), and an empty list behaving exactly as today (reject).
-  It is currently 16/16; it must stay green and grow.
+Then have ChatGPT file one issue and watch it be accepted rather than refused.
 
-A cloud agent deliberately did **not** implement this. Widening the intake
-gate's trust boundary is the owner's decision, and the recommendation above is A.
+**Confirm the login first.** `chatgpt-codex-connector[bot]` is what reviews pull
+requests here; that it is the same identity used to *create issues* is a strong
+inference, not an observation. If the first task is still refused, the gate's
+refusal comment now names the actual actor on the issue — put that login in the
+variable instead. That is the whole diagnostic loop, and it needs no code change.
+
+The variable is empty by default, applies to `issues` events only, can never
+list `claude` or `github-actions`, and matches logins exactly. Thirteen tests in
+`.github/tests/intake-gate-test.sh` cover those properties, including a comment
+from a listed producer (refused) and a login that merely contains a listed one
+(refused).
 
 ---
 

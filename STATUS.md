@@ -228,6 +228,16 @@ needs the owner, and one needs a ruler.
   workflow exists for. Found by an external review bot on #11, confirmed against
   the production runs where Dependabot's pull requests were skipped, and fixed by
   exempting `claude[bot]` alone.
+- **The producer's identity is established, and the queue has an input again.**
+  ChatGPT reaches this repository as `chatgpt-codex-connector[bot]` — a `Bot`,
+  `author_association: NONE`, and the login that reviewed
+  [#11](https://github.com/hleserg/FireflyOS/pull/11). There is no user account
+  behind it to grant write to, so the gate refused every task it could ever file.
+  The owner's decision was the allowlist: `FIREFLY_TRUSTED_PRODUCERS`, empty by
+  default, `issues` events only, `claude` and `github-actions` never listable,
+  exact login match. Thirteen tests cover those properties; the watchdog reads
+  the same list, because it filters on `author_association` and would otherwise
+  skip precisely these tasks.
 - **The silent refusal was reproduced, not theorised.** A task with a valid
   marker filed through the GitHub API ([#10](https://github.com/hleserg/FireflyOS/issues/10))
   arrived as `claude[bot]`, was refused by the bot guard — correctly — and was

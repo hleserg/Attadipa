@@ -36,6 +36,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # An app is never OWNER, MEMBER or COLLABORATOR — issue #10 was filed
+          # with a valid marker and author_association NONE, and this scan
+          # skipped it while the intake gate refused it, so the task was
+          # invisible to both halves at once. A producer the owner has named in
+          # FIREFLY_TRUSTED_PRODUCERS must be visible to the safety net too, or
+          # the net has a hole exactly where the queue's input is.
+          TRUSTED_PRODUCERS: ${{ vars.FIREFLY_TRUSTED_PRODUCERS }}
         run: |
           set -euo pipefail
 
@@ -46,10 +53,12 @@ jobs:
           # A task is waiting if it is a real issue (not a pull request), it was
           # filed by somebody trusted, it carries a task marker or the
           # agent:ready label, and no state label says somebody already has it.
-          jq -r '
+          jq -r --arg trusted "${TRUSTED_PRODUCERS:-}" '
             [ .[]
               | select(.pull_request == null)
-              | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+              | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR"
+                       or (.user.login as $login
+                           | $trusted | split(",") | index($login) != null))
               | {
                   number,
                   labels: [.labels[].name],

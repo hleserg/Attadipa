@@ -54,6 +54,41 @@ genuinely made — and do **not** write speculative implementation code. A
 research task that arrives as a pull request full of new subsystems has not
 been done, it has been guessed at.
 
+### A producing app may be named, and only named
+
+The trust boundary above is the actor's write access. A producing agent may hold
+no GitHub account at all: **ChatGPT reaches this repository through its GitHub
+App and arrives as `chatgpt-codex-connector[bot]` with `author_association:
+NONE`** — observed, not assumed; that is the login that reviewed pull request #11
+on 2026-08-21. The bot rule refuses it, correctly, and leaves the queue with no
+input.
+
+So the owner may name app logins in the repository variable
+**`FIREFLY_TRUSTED_PRODUCERS`**, comma-separated:
+
+```bash
+gh variable set FIREFLY_TRUSTED_PRODUCERS --body 'chatgpt-codex-connector[bot]'
+```
+
+Four properties keep that from being a hole, and each has a test:
+
+| Property | Why |
+|---|---|
+| **empty by default** | no repository gains an exemption by taking this file |
+| **`issues` events only** | the loop is an agent's own comment mentioning `@claude`; no entry can exempt a comment |
+| **`claude` and `github-actions` can never be listed** | checked *after* the list, so naming them does nothing. They are this repository's own output |
+| **exact login match** | `codex-connector[bot]` does not match `chatgpt-codex-connector[bot]` |
+
+Being on the list *is* the authorisation — an app is not a collaborator and has
+no permission to look up. The owner editing that variable is the human decision,
+and it is deliberately a variable rather than a code change, so choosing a
+producer never requires a pull request against the security boundary.
+
+The list is also read by `agent-queue-watchdog.yml`, which filters on
+`author_association` and would otherwise skip exactly these tasks — issue #10 was
+refused by the gate *and* invisible to the watchdog at the same time, which is
+how a task disappears completely.
+
 ### `reviewed_head` is checked
 
 The gate compares `reviewed_head` against the tip of the default branch through
