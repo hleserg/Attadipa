@@ -22,6 +22,7 @@ target_include_directories(firefly_headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
 #
 #   firefly_platform   chips, pins, rails, buses      — apps/ does not link it
 #   firefly_core       services and the capability registry
+#   firefly_link       framing, queues and link state — below core, links core
 #   firefly_l10n       the string catalogues          — core does not link it
 #   firefly_apps       applications                   — links core and l10n
 #
@@ -32,6 +33,7 @@ target_include_directories(firefly_headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
 # tests/boundary/ asserts both, by compiling a fixture that must not build.
 add_subdirectory(platform)
 add_subdirectory(core)
+add_subdirectory(link)
 add_subdirectory(l10n)
 add_subdirectory(apps)
 

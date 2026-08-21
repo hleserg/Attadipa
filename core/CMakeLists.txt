@@ -9,6 +9,12 @@ add_library(firefly_core
     src/availability.cpp
     src/capability.cpp
     src/capability_registry.cpp
+    src/diagnostics.cpp
+    src/geo.cpp
+    src/gnss_power.cpp
+    src/position.cpp
+    src/power_state.cpp
+    src/trust.cpp
 )
 add_library(firefly::core ALIAS firefly_core)
 
