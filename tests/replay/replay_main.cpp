@@ -30,9 +30,6 @@ int main(int argc, char** argv)
 
         attadipa::replay::Scenario scenario;
         std::string               error;
-        // codeql[cpp/path-injection]: This is a developer-only replay CLI. It
-        // deliberately opens the explicitly supplied local trace and performs
-        // no privileged operation with its contents.
         if (!attadipa::replay::load(path, scenario, error)) {
             std::fprintf(stderr, "FAIL %s: %s\n", path.c_str(), error.c_str());
             ++total_failures;
