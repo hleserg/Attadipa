@@ -155,6 +155,16 @@ jobs:
       pull-requests: write
       issues: write
       actions: read
+      # id-token: write is not optional, and the reason is easy to miss.
+      #
+      # github_token below is FIREFLY_AGENT_TOKEN, which is deliberately allowed
+      # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
+      # action authenticates as the Claude GitHub App by exchanging this
+      # workflow's GitHub OIDC token for an installation token, and without this
+      # permission that exchange fails with "Unable to get
+      # ACTIONS_ID_TOKEN_REQUEST_URL". The failure looks like an authentication
+      # problem with the Anthropic credential and is not one.
+      id-token: write
     steps:
       - name: Check that an Anthropic credential exists
         id: auth

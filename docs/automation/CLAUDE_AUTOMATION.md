@@ -70,6 +70,15 @@ Permissions are per job. The top of every file is `permissions: {}` and each job
 asks for exactly what it needs; the reviewer gets `contents: read` and cannot
 push, whatever its opinion.
 
+One grant in that list is not about least privilege and is easy to mistake for
+a mistake: **`id-token: write`** on every job that runs the action. When
+`FIREFLY_AGENT_TOKEN` is empty — the supported default — the action authenticates
+as the Claude GitHub App by exchanging this workflow's GitHub OIDC token for an
+installation token, and without the permission that exchange fails with
+`Unable to get ACTIONS_ID_TOKEN_REQUEST_URL`. The error surfaces as *"Could not
+fetch an OIDC token"* and reads like a problem with the Anthropic credential,
+which it is not.
+
 ## Authentication
 
 Two credentials matter and they do different things.
