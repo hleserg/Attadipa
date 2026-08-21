@@ -1,8 +1,8 @@
-#include "firefly/l10n/tr.h"
+#include "attadipa/l10n/tr.h"
 
 #include <cstdio>
 
-namespace firefly::l10n {
+namespace attadipa::l10n {
 
 const char* find(const Catalogue& catalogue, StringId id)
 {
@@ -128,4 +128,4 @@ int format_plural(char* out, std::size_t size, PluralId id, std::uint32_t count)
     return format_plural(out, size, id, count, g_locale);
 }
 
-}  // namespace firefly::l10n
+}  // namespace attadipa::l10n

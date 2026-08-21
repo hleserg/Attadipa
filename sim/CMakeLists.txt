@@ -4,18 +4,19 @@
 # main() on a device is. Every other target in this build sees one of them.
 find_package(SDL2 REQUIRED)
 
-add_executable(firefly_sim
+add_executable(attadipa_sim
     boot_screen.cpp
     main.cpp
     options.cpp
     png_writer.cpp
 )
 
-target_link_libraries(firefly_sim PRIVATE
-    firefly_platform
-    firefly_core
-    firefly_apps
-    firefly_l10n
+target_link_libraries(attadipa_sim PRIVATE
+    attadipa_platform
+    attadipa_core
+    attadipa_apps
+    attadipa_l10n
+    attadipa_ui
     lvgl
     SDL2::SDL2
 )

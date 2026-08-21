@@ -25,7 +25,7 @@ path, which is an assumption about arm position that this project has not
 measured. So course-over-ground is carried in frame `CourseOverGround`, never in
 `WatchBody`, and it may not drive a wrist-relative arrow.
 
-It is available wherever GNSS is — which, since a Firefly node supplies GNSS, is
+It is available wherever GNSS is — which, since an Attadipa node supplies GNSS, is
 no longer only the T-Watch. And it only exists while the user is moving, which
 is the part that makes this a different product rather than a lesser one:
 **standing still is the normal condition of someone reading their watch**, and
@@ -88,7 +88,7 @@ the arbiter is being built for the contention that actually exists here.
 | # | Question | Status |
 |---|---|---|
 | A5 | Is an external magnetometer intended at all — a variant board, a daughterboard, a different unit? | **owner decision** — [OPEN_QUESTIONS A5](../research/OPEN_QUESTIONS.md) |
-| A6 | Does the Firefly node carry one? If it does, it is a *node* compass, not a watch compass — see [ADR-0009](../adr/0009-heading.md) §3 | **owner decision** — [OPEN_QUESTIONS A6](../research/OPEN_QUESTIONS.md) |
+| A6 | Does the Attadipa node carry one? If it does, it is a *node* compass, not a watch compass — see [ADR-0009](../adr/0009-heading.md) §3 | **owner decision** — [OPEN_QUESTIONS A6](../research/OPEN_QUESTIONS.md) |
 | G-14 | If yes: which part, on which bus, at what address, on which rail? | conditional on A5; local to this backlog |
 | G-15 | If yes: is it on the same I2C bus as the PMU and RTC? | conditional on A5. Decides whether G-08–G-10 are even measurable |
 

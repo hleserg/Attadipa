@@ -88,7 +88,7 @@ watch is new work rather than selecting an existing target.
 | **Si4432** | **no** — FSK/OOK | 240 – 930 MHz | −1 … +20 dBm | **absent** |
 
 So of the five: **one** works today, **one** is plausible with driver work,
-**one** would form a separate 2.4 GHz network that no sub-GHz Firefly can hear,
+**one** would form a separate 2.4 GHz network that no sub-GHz Attadipa can hear,
 and **two** cannot join a LoRa mesh in any configuration.
 
 ### Evidence quality — read this before quoting the table
@@ -167,8 +167,8 @@ supports(MeshMessaging) =
 ```
 
 A CC1101 T-Watch with no node reports `Unsupported` — terminal, honest, and
-with a sentence the user can act on ("this watch's radio cannot join a Firefly
-mesh; a Firefly node adds it"). It does **not** report a mesh that silently
+with a sentence the user can act on ("this watch's radio cannot join an Attadipa
+mesh; an Attadipa node adds it"). It does **not** report a mesh that silently
 fails, which is what the old model produced.
 
 `MeshCoreSupport::NeedsWork` is deliberately distinct from `Untested`. The
@@ -227,7 +227,7 @@ regardless.
 **A generic modulation-agnostic mesh over FSK, so CC1101 and Si4432 can join.**
 Rejected, and worth recording because it sounds appealing. It means abandoning
 MeshCore wire compatibility, which is a headline product requirement (final §3,
-§14) — a Firefly-only FSK network cannot talk to any MeshCore device in
+§14) — an Attadipa-only FSK network cannot talk to any MeshCore device in
 existence. It is also years of routing behaviour to re-derive. If the owner ever
 prioritises "works on every T-Watch" above "interoperates with MeshCore", this
 is the shape of that decision, and it is the owner's to make.

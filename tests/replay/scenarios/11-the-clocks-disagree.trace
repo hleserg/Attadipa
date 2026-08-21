@@ -1,0 +1,46 @@
+scenario the receiver's idea of the time drifts away from the device's
+describe Two absolute instants compared, which is what a wall clock is for.
+describe This is also the detector clock.h protects: a spoofer able to step the
+describe clock we measure timeouts against would switch off the detector meant
+describe to catch it, so elapsed time is never measured this way.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  rtime 1700000000 valid
+  dtime 1700000002
+  expect trust trusted
+  expect no-reason clock-disagreement
+
+# Ten minutes apart. One of the two is wrong and this cannot say which.
+at 2000
+  fix 3d
+  pos 5000010 10000010
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  rtime 1700000602 valid
+  dtime 1700000004
+  expect reason clock-disagreement
+  expect trust degraded
+
+# A receiver that says its own time is not to be trusted is not evidence about
+# anything, and must not keep the alarm standing on its own.
+at 4000
+  fix 3d
+  pos 5000020 10000020
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  rtime 1700000604 invalid
+  dtime 1700000006
+  expect no-reason clock-disagreement

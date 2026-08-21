@@ -30,7 +30,7 @@ from catalogue import (  # noqa: E402
     singulars,
 )
 
-HEADER_PATH = REPO_ROOT / "l10n" / "include" / "firefly" / "l10n" / "string_id.h"
+HEADER_PATH = REPO_ROOT / "l10n" / "include" / "attadipa" / "l10n" / "string_id.h"
 SOURCE_PATH = REPO_ROOT / "l10n" / "src" / "catalogues.cpp"
 
 # The order here is the order of PluralCategory in locale.h. The two must agree,
@@ -76,8 +76,8 @@ def cpp_string(text):
 def render_header(entries):
     sing = singulars(entries)
     plur = plurals(entries)
-    lines = [BANNER, "#ifndef FIREFLY_L10N_STRING_ID_H", "#define FIREFLY_L10N_STRING_ID_H", "",
-             "#include <cstdint>", "", "namespace firefly::l10n {", ""]
+    lines = [BANNER, "#ifndef ATTADIPA_L10N_STRING_ID_H", "#define ATTADIPA_L10N_STRING_ID_H", "",
+             "#include <cstdint>", "", "namespace attadipa::l10n {", ""]
 
     lines += [
         "// Every user-facing string, as an identifier. UI code holds one of these and",
@@ -105,9 +105,9 @@ def render_header(entries):
         "const char* string_id_name(StringId id);",
         "const char* plural_id_name(PluralId id);",
         "",
-        "}  // namespace firefly::l10n",
+        "}  // namespace attadipa::l10n",
         "",
-        "#endif  // FIREFLY_L10N_STRING_ID_H",
+        "#endif  // ATTADIPA_L10N_STRING_ID_H",
     ]
     return "\n".join(lines) + "\n"
 
@@ -116,13 +116,13 @@ def render_source(entries):
     sing = singulars(entries)
     plur = plurals(entries)
     lines = [BANNER,
-             '#include "firefly/l10n/catalogue.h"',
-             '#include "firefly/l10n/string_id.h"',
+             '#include "attadipa/l10n/catalogue.h"',
+             '#include "attadipa/l10n/string_id.h"',
              "",
              "// The literals below are UTF-8 and are written as themselves. See",
              "// tools/l10n/gen_strings.py for why they are not escaped.",
              "",
-             "namespace firefly::l10n {",
+             "namespace attadipa::l10n {",
              "namespace {",
              ""]
 
@@ -196,7 +196,7 @@ def render_source(entries):
         '    return index < kPluralIdCount ? kPluralIdNames[index] : "<out of range>";',
         "}",
         "",
-        "}  // namespace firefly::l10n",
+        "}  // namespace attadipa::l10n",
     ]
     return "\n".join(lines) + "\n"
 

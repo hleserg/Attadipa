@@ -1,4 +1,4 @@
-# The Firefly node — what is known, and what is not
+# The Attadipa node — what is known, and what is not
 
 The node is a separate device carrying LoRa, GNSS and an ESP32. A watch attaches
 to it and runs the same applications a watch with its own LoRa would run
@@ -26,12 +26,12 @@ from absence as a fact.
 | N-a | A separate node exists in the product plan, carrying LoRa, GNSS and an ESP32 | owner, 2026-08-21 | **product decision** — not a hardware fact |
 | N-b | The watch runs the *same applications* against it as against on-board LoRa | owner, 2026-08-21 | product decision |
 | N-c | With no node attached, the watch is a watch, an audio device, and whatever the installed applications make it | owner, 2026-08-21 | product decision |
-| N-d | The specification anticipated it: §32 requires the architecture to account for a Firefly/Doctor node, and lists "additional GNSS" among what it provides | `docs/master-prompt.md` §32 | **specification** |
+| N-d | The specification anticipated it: §32 requires the architecture to account for an Attadipa/Doctor node, and lists "additional GNSS" among what it provides | `docs/master-prompt.md` §32 | **specification** |
 | N-e | The owner operates a MeshCore node today, whose exposed data model is recorded in OD-2 | owner screenshots, 2026-08-21 | observed, second-hand |
 
 N-e is the closest thing to evidence about a real node that this project has,
 and it is evidence about *somebody's MeshCore installation*, not about the
-Firefly node's hardware. It is useful for the shape of the data, not for the
+Attadipa node's hardware. It is useful for the shape of the data, not for the
 shape of the board.
 
 ## What is unknown, and why each matters
@@ -45,7 +45,7 @@ shape of the board.
 | N5 | **How many watches per node?** One, or several? A shared node is a contended resource with a scheduling problem and a privacy problem | protocol, arbitration |
 | N6 | **Does the node have its own display, or a headless one?** Decides whether the node has an error UI of its own or must report every fault over the link | diagnostics |
 | N7 | **Node power source and expected runtime.** A node on mains and a node on a cell are different products. OD-2 shows a battery-powered one | the link duty cycle, the "node battery low" states |
-| N8 | **Does the node run MeshCore, Firefly firmware, or both?** §32 forbids mixing the Doctor application protocol with MeshCore internals — but does not say the node cannot run MeshCore underneath | the protocol ADR, T-006 |
+| N8 | **Does the node run MeshCore, Attadipa firmware, or both?** §32 forbids mixing the Doctor application protocol with MeshCore internals — but does not say the node cannot run MeshCore underneath | the protocol ADR, T-006 |
 | N9 | **Is the node in the same regulatory situation as the watch?** A node with a better antenna and a mains supply may be allowed different power. A4 currently asks one question; it may be two | A4, the settings bounds |
 | N10 | **What is the intended range and link budget watch↔node?** "In range" is a state the UI must render; nobody has said what distance it means | UX, the reachability model |
 

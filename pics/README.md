@@ -7,20 +7,20 @@ they are.
 
 | File | Format | SHA-256 | Intended use |
 |---|---|---|---|
-| `Banner.png` | PNG, 1774 × 887, RGB (no alpha) | `9ce6d6e09164ffb99f53a96d1f9a397fa1a19d466617cbba4868adbe5706c8b4` | repository banner — in use at the top of [`../README.md`](../README.md) |
+| `AttadipaBanner.png` | PNG, 1788 × 894, RGB (no alpha) | regenerated for Attadipa | repository banner — in use at the top of [`../README.md`](../README.md) |
 | `Ikon.png` | PNG, 1254 × 1254, RGB (no alpha) | `6e1fa8e735eff4aa2008c6dd01403adf2bcf20a9e01e65af6f3cbefc66969676` | application / launcher icon — **not yet used** |
 | `Favicon.png` | PNG, 1254 × 1254, RGB (no alpha) | `9605119b0a297352004ca18c918c5336cdf256e759d3966af1e178e7d2debfac` | site favicon — **not yet used** |
 
 ## What the banner establishes
 
-- **A tagline: `GLOW · GUIDE · CONNECT`.** It did not exist before this file and
-  is not in the master prompt. Three words that happen to name the three things
-  the product claims to be: a light, a navigator, and a mesh.
-- **The mark.** A firefly seen from above — olive head and thorax, two antennae,
+- **A motto: `INDEPENDENT BY DESIGN`.** It expresses the meaning of *attadīpa*:
+  useful core capabilities should work locally, without a mandatory phone,
+  cloud, or Internet connection.
+- **The mark.** Lumar, a firefly seen from above — olive head and thorax, two antennae,
   two orange-red wings, and an amber abdomen with a real glow behind it. The
   glow is the only light source in the composition, which is worth knowing
   before anybody re-draws it smaller.
-- **The wordmark.** "Firefly" in orange, "os" in olive, both in a rounded
+- **The wordmark.** "Attadipa" in orange, in a rounded
   geometric sans consistent with the Nunito Sans direction in
   [`../docs/ui/DESIGN_SYSTEM.md`](../docs/ui/DESIGN_SYSTEM.md). The typeface has
   **not** been identified from the file and no font here is pinned.
@@ -45,7 +45,7 @@ because everything here is gradient-filled and carries a paper texture:
 
 | Role | Sampled from the art | Canonical token (final §42) | Same? |
 |---|---|---|---|
-| wordmark / wings | `#E16439` … `#EC552A` | Firefly Orange `#FF8A40` | **no** — the art is deeper and redder |
+| wordmark / wings | `#E16439` … `#EC552A` | Attadipa Orange `#FF8A40` | **no** — the art is deeper and redder |
 | glow | `#FECD5C`, `#FDBC29` | Glow Amber `#FFC857` | close |
 | head, thorax, tagline | `#595E3A` … `#666A46` | Ink Olive `#2F3A2E` | **no** — the art is much lighter |
 | hills, leaves | `#9BB4A7`, `#BBC7B6` | Leaf Sage `#A7B49C` / Meadow Green `#6FA07A` | between the two |

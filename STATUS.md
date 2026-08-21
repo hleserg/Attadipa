@@ -14,16 +14,19 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Firefly has code.** As of 2026-08-21 the repository builds three libraries, a
-simulator and six tests, and has a font pipeline whose output has been compiled
-for the target and measured.
+**Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
+simulator and twenty tests, and has a font pipeline whose output has been
+compiled for the target and measured.
 
 | Library | What it is | Links |
 |---|---|---|
-| `firefly_platform` | the hardware inventory: `HardwareFeature`, `HardwareState`, `RadioInfo`, and the two board profiles transcribed from the schematics | — |
-| `firefly_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
-| `firefly_apps` | `AppManifest` and the launcher gating rule | core only |
-| `firefly_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
+| `attadipa_platform` | the hardware inventory: `HardwareFeature`, `HardwareState`, `RadioInfo`, and the two board profiles transcribed from the schematics | — |
+| `attadipa_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
+| `attadipa_apps` | `AppManifest` and the launcher gating rule | core only |
+| `attadipa_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
+| `attadipa_ui` | the design tokens: `Dp` against a 160 dpi reference, twelve colour roles across two themes with WCAG contrast arithmetic, and the spacing, radius, motion, size and feedback scales | `attadipa_headers` only — **deliberately not platform** |
+| `attadipa_replay` | the deterministic navigation replay rig, in `tests/` | core |
+| `attadipa_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
 
 The `PRIVATE` in the second row is the enforcement mechanism for
 [ADR-0007](docs/adr/0007-two-capability-layers.md) §5, and two tests compile one
@@ -34,7 +37,21 @@ The simulator renders at 240 × 240 and 410 × 502 from one binary, selected by
 `--board`, and fits any of the five candidate T-Watch radios with `--radio`
 without recompiling. Its first screen is a diagnostic that shows the two
 capability layers side by side — deliberately not a product screen, and it says
-so in its own source.
+so in its own source. Since T-009 it draws entirely through the tokens: no hex
+colour and no pixel padding remain in it, `--theme day|night` and the `T` key
+switch palettes without a rebuild, and a checker in CI refuses to let a raw
+value back in.
+
+**Two contrast findings came out of that migration and neither is a proposal to
+repaint anything.** On the day page every accent is under the 3:1 that a glyph
+or an outline needs — Attadipa Orange 2.19:1, Glow Amber 1.44:1 — so a day accent
+is emphasis and the meaning lives in the icon and the word. And
+`color.text.muted` passes on the page and on a surface and then fails on a
+*raised* card at 4.44:1, six hundredths under the threshold, which is the kind of
+thing a review by eye does not find. Both are tabulated in
+[DESIGN_SYSTEM §3.2](docs/ui/DESIGN_SYSTEM.md) and pinned by tests. The colours
+are the owner's; open question **A7** already records that the published brand
+art disagrees with the palette text.
 
 ## Next ready
 
@@ -111,7 +128,7 @@ been the expensive order.
 | A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
 | A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
-| A6 | Does the Firefly node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
+| A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
 None of these blocks M1. All of them block hardware work.
@@ -120,12 +137,14 @@ None of these blocks M1. All of them block hardware work.
 
 | Target | State |
 |---|---|
-| Host / native | builds; ten tests pass locally and in CI — smoke, capability registry, and the two halves of the layer-boundary check. The negative half is checked against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
-| Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DFIREFLY_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
+| Host / native | builds; **twenty tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+design-token suite and the two checks that keep raw colours and pixel counts out
+of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+| Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
-| ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
-| Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED` |
-| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 16-case hostile-input test passes. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
+| ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
+| Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
+| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 16-case hostile-input test passes. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
@@ -135,6 +154,18 @@ that decision no longer blocks M1, because M1 is the simulator.
 All of them. No board has been powered on by this project and no measurement
 has been taken. Nothing here may be described as hardware-tested.
 
+What changed is that they are now *specified*.
+[HIL_PLANS](docs/testing/HIL_PLANS.md) holds ten of them — which parts are
+actually on the board, sleep current per state, whether deep sleep is deep and
+the radio really off, the front-end regression as a measured noise floor, time
+to first fix cold against hot, which interference indications each receiver
+emits, energy per fix, USB surviving a cable pulled mid-frame, bonded reconnect
+after a reboot, and the battery sag during a transmission — each with equipment,
+a procedure, a pass/fail criterion and a place to write the result.
+
+Every one is marked `NOT EXECUTED — HARDWARE REQUIRED`, and the file's own rule
+is that a result is appended rather than written over the plan.
+
 ## Open conflicts
 
 Recorded rather than resolved by preference. Two need a powered board, one
@@ -143,13 +174,13 @@ needs the owner, and one needs a ruler.
 | # | Conflict |
 |---|---|
 | D15 | **The T-Watch panel's physical diagonal.** LilyGoLib's spec tables say 1.3" for the S3 and the S3 Plus by name; the schematic's LCD sheet says `QT154C2408` / `LCD_1.54-TOUCH`, and that vendor's sibling part `QT154H2201` is published as 1.54", 240×240, ST7789V — so the part number decodes. 240 × 240 is not in doubt; 261 dpi against 220 is. The code holds 1.3" as the **conservative** reading, not the confident one ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md#display-diagonal--conflicting)) |
-| A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Firefly Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
+| A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Attadipa Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
 | H8 | The T-Watch vendor document calls ALDO1 unused; the schematic drives the `+3V3` rail from it. If the schematic is right, `+3V3` is switchable and carries five parts |
 | D12 | PSRAM documented as quad; the `R8` part marking is understood to mean octal. Affects both boards, and blocks the LVGL buffer decision |
 
 ## Assumptions in force
 
-- The LilyGO PlatformIO pin to IDF 4.4.7 does not constrain Firefly, which is
+- The LilyGO PlatformIO pin to IDF 4.4.7 does not constrain Attadipa, which is
   ESP-IDF-native and does not use the Arduino layer. Flagged, not proven.
 - Both boards' SoC is an ESP32-S3 — from both schematics (`ESP32-S3-R8`,
   `ESP32-S3R8`), but not from a chip readback.
@@ -160,6 +191,31 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **The research integration, and the six test suites that came with it.** Core
+  gained the types the GNSS integrity work needs — an observation that keeps
+  both the normalized value and what the receiver actually said, ten separate
+  state axes rather than one `quality`, a trust state with weighted evidence,
+  hysteresis and kept reason codes — plus a link layer and a deterministic
+  replay rig. Writing the tests found four real defects rather than confirming
+  what was already believed: `next_state()` proposed moving an already-off GNSS
+  receiver into backup, spending current to hold a domain with nothing in it;
+  `start_kind()` read *having* a backup domain as evidence it had been
+  *powered*, promising a warm start where the truth was cold; the trust
+  evaluator read the interval between epochs after overwriting the timestamp it
+  came from, so every rate detector silently did nothing; and `-Werror` caught a
+  comma operator in the replay reader. Four of the author's own expectations
+  were wrong where the code was right, and are recorded as such.
+- **The automation loop, and what running it actually found.** Four workflows,
+  an intake gate extracted into a script with sixteen tested cases, and a CI
+  upgrade — strict warnings with zero debt, Clang, ASan+UBSan, coverage,
+  actionlint. Then it was run rather than reasoned about, which produced three
+  defects a green YAML lint could not: the agent could not authenticate because
+  `id-token: write` was missing, so the action could not exchange its OIDC token
+  for a Claude App installation token; `display_report` had been turned off
+  beside `show_full_output` as if they were the same precaution, so a
+  twenty-eight-turn run left nothing anybody could read; and the hand-over step
+  could leave an issue labelled both `agent:working` and `agent:review`, which
+  is invisible to the watchdog and finished-looking to a person.
 - **The specimen sheets showed a bar that is in no font.** `lv_font_conv`'s
   dump writer marks every pixel outside the advance width in pink, and reading
   those PNGs as luminance turns the mark into ink. The sheets now read the red
@@ -170,7 +226,7 @@ needs the owner, and one needs a ruler.
   slightly smaller letter, so the two are not comparable at equal size.
 - **T-033 — localization, and the checks that make it a mechanism.**
   `l10n/strings.toml` is the source of truth; a generator emits the `StringId`
-  enum and the per-locale tables; `firefly_l10n` sits beside core and is linked
+  enum and the per-locale tables; `attadipa_l10n` sits beside core and is linked
   by apps and the simulator but **not** by core, which a second boundary test
   enforces the way the first one enforces ADR-0007. The Russian plural vector
   asserts categories rather than strings, and a sweep proves `other` is
@@ -196,7 +252,7 @@ needs the owner, and one needs a ruler.
   it: gate → claim → Claude → draft pull request → independent review → CI →
   repair, with an hourly watchdog for lost events and a daily backstop routine
   for the case the watchdog itself is not running. Exercising it on
-  [#5](https://github.com/hleserg/FireflyOS/issues/5) proved four of its five
+  [#5](https://github.com/hleserg/Attadipa/issues/5) proved four of its five
   claims and broke on the fifth: a second run on an already-claimed issue left
   `agent:working` and `agent:review` set together, because `claim` removed only
   `agent:ready` and `Hand over` then matched the leftover `agent:review` and
@@ -215,21 +271,40 @@ needs the owner, and one needs a ruler.
   nothing; the agent on issue #5 finished green with no branch and no pull
   request. Both had read everything and had no way to say so. Fixed and merged
   (#9, `b1a3dca`), and **the reviewer half is now observed working**: on
-  [#11](https://github.com/hleserg/FireflyOS/pull/11) the independent reviewer
-  posted a full review carrying the `firefly-ai-review` marker and set
+  [#11](https://github.com/hleserg/Attadipa/pull/11) the independent reviewer
+  posted a full review carrying the `attadipa-ai-review` marker and set
   `ai-review:blocking`, which had never happened before in this repository. The
   writer half — a branch and a draft pull request from an agent run — is still
   unobserved; the open item is
-  [#10](https://github.com/hleserg/FireflyOS/issues/10).
+  [#10](https://github.com/hleserg/Attadipa/issues/10).
 - **And the reviewer would have been skipped on every agent pull request.** With
-  `FIREFLY_AGENT_TOKEN` unset — the documented default — the agent opens its pull
+  `ATTADIPA_AGENT_TOKEN` unset — the documented default — the agent opens its pull
   request as `claude[bot]`, and `claude-pr-review.yml` excluded every actor ending
   in `[bot]`. The guard was aimed at Dependabot and caught the one case the
   workflow exists for. Found by an external review bot on #11, confirmed against
   the production runs where Dependabot's pull requests were skipped, and fixed by
   exempting `claude[bot]` alone.
+- **The producer's identity is established, and the queue has an input again.**
+  ChatGPT reaches this repository as `chatgpt-codex-connector[bot]` — a `Bot`,
+  `author_association: NONE`, and the login that reviewed
+  [#11](https://github.com/hleserg/Attadipa/pull/11). There is no user account
+  behind it to grant write to, so the gate refused every task it could ever file.
+  The owner's decision was the allowlist: `ATTADIPA_TRUSTED_PRODUCERS`, empty by
+  default, `issues` events only, `claude` and `github-actions` never listable,
+  exact login match. Thirteen tests cover those properties; the watchdog reads
+  the same list, because it filters on `author_association` and would otherwise
+  skip precisely these tasks.
+- **And the first draft of that allowlist had a hole, found in review.** The
+  watchdog hands over by `workflow_dispatch`, which the gate trusts by
+  construction and does not re-check the actor for — so a `claude[bot]` entry the
+  gate refuses to honour would have been honoured by the watchdog and dispatched
+  through the one door that no longer asks. The repository's own output starting
+  its own writer: the exact loop the allowlist was built to prevent. The
+  non-listable rule is now enforced in both places, the scan filter moved to
+  `.github/scripts/queue-scan.jq` so it can be executed, and 17 tests cover it in
+  CI. There was no test before, which is why review caught it and CI did not.
 - **The silent refusal was reproduced, not theorised.** A task with a valid
-  marker filed through the GitHub API ([#10](https://github.com/hleserg/FireflyOS/issues/10))
+  marker filed through the GitHub API ([#10](https://github.com/hleserg/Attadipa/issues/10))
   arrived as `claude[bot]`, was refused by the bot guard — correctly — and was
   simultaneously invisible to the watchdog, which filters on
   `author_association` and saw `NONE`. The run went green and nothing was

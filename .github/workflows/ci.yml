@@ -194,6 +194,14 @@ jobs:
       - name: Intake gate
         run: bash .github/tests/intake-gate-test.sh
 
+      # The watchdog hands over by workflow_dispatch, which the intake gate
+      # trusts by construction and does not re-check the actor for. So this
+      # filter is the last refusal before a billable writer starts, and it
+      # reached review once in a state where the repository's own output could
+      # have driven its own agent. There was no test; now there is.
+      - name: Watchdog queue scan
+        run: bash .github/tests/watchdog-filter-test.sh
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest
@@ -214,15 +222,18 @@ jobs:
       # download cost, not a correctness one -- the commit is verified after
       # the clone either way -- so it is fixed here rather than by inventing
       # another fetch mechanism in CMake. The key is the pin file: change the
-      # pinned commit and the cache misses, which is the behaviour we want.
+      # pinned commit and the cache misses, which is the behaviour we want. The
+      # repository is deliberately part of the key: CMake stores absolute
+      # paths in FetchContent's sub-build cache, so a repository rename must
+      # never restore a tree configured under the former checkout path.
       - name: Cache LVGL
         uses: actions/cache@v4
         with:
           path: build-sim/_deps
-          key: lvgl-${{ runner.os }}-${{ hashFiles('cmake/FireflyLvgl.cmake') }}
+          key: lvgl-v2-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('cmake/AttadipaLvgl.cmake') }}
 
       - name: Configure
-        run: cmake -S . -B build-sim -DCMAKE_BUILD_TYPE=Release -DFIREFLY_BUILD_SIMULATOR=ON
+        run: cmake -S . -B build-sim -DCMAKE_BUILD_TYPE=Release -DATTADIPA_BUILD_SIMULATOR=ON
 
       - name: Build
         run: cmake --build build-sim

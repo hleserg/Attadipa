@@ -11,10 +11,10 @@ issue it names the number and whether that pull request is *merged*. Those two
 are not the same thing and this review keeps them apart, because the owner's §3
 is right: the latest release is not automatically the best firmware.
 
-**What Firefly has in its hands.** No Heltec board of any revision, and no
+**What Attadipa has in its hands.** No Heltec board of any revision, and no
 MeshCore device at all. **Nothing below has been executed on hardware by this
 project.** Every performance or power number quoted here is upstream's, and is
-attributed. Firefly's own status for all of it is `NOT EXECUTED — HARDWARE
+attributed. Attadipa's own status for all of it is `NOT EXECUTED — HARDWARE
 REQUIRED`.
 
 ## Revisions read
@@ -24,13 +24,13 @@ REQUIRED`.
 | `companion-v1.16.0` | `24fe7d4b2d17a4d6b23eb13931346aebd681014c` | 2026-06-06 |
 | `companion-v1.17.0` | `2af6126cfba734d9502368d8a9b3fba049385886` | 2026-08-09 |
 | `companion-v1.17.1` | `8fe15c89ed5ac7d0096931b6d609f7b48f51272a` | 2026-08-14 |
-| `origin/main` — **Firefly's pin** | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 |
+| `origin/main` — **Attadipa's pin** | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 |
 | `origin/dev` at review time | `e0031870f6e94657765a77e5f7676654d465dd86` | 2026-08-20 |
 
 367 commits between v1.16.0 and v1.17.1; 29 more on `dev`.
 
 One housekeeping fact first, because [DEPENDENCIES](../research/DEPENDENCIES.md)
-asserts it: Firefly's pin `d929643` and the tag `companion-v1.17.1` are
+asserts it: Attadipa's pin `d929643` and the tag `companion-v1.17.1` are
 *different commit objects with identical trees* — `git diff 8fe15c8 d929643` is
 empty and `git describe` returns `companion-v1.17.1` for both. The pin is
 therefore the released tree, and the ledger's claim stands.
@@ -39,7 +39,7 @@ therefore the released tree, and the ledger's claim stands.
 
 ## The short version
 
-Five things matter to Firefly, in this order:
+Five things matter to Attadipa, in this order:
 
 1. **`MultiSerialInterface` (#3049, merged) is the right idea with a
    broadcast-shaped implementation.** Adopt the idea, not the semantics: it
@@ -47,7 +47,7 @@ Five things matter to Firefly, in this order:
    across them, so one stalled transport stalls the others. `ADAPT`.
 2. **The USB transport has no connection state, no backpressure and
    unresynchronisable framing** — verified in source, not only in #3214. This is
-   the single most useful thing in the review, because Firefly's watch↔node link
+   the single most useful thing in the review, because Attadipa's watch↔node link
    is the same kind of link and can simply not be built that way. `ADAPT` the
    requirements, `REJECT` the implementation.
 3. **1.17.x turned the Heltec V4.3 external LNA on by default and then removed
@@ -60,10 +60,10 @@ Five things matter to Firefly, in this order:
    ends at the next packet. Verified in source. The fix (#3168) is open. The
    lesson is the power-state taxonomy the owner asked for. `ADOPT` the taxonomy.
 5. **MeshCore already separates wall clock from monotonic clock** — `RTCClock`
-   and `MillisecondClock` are distinct interfaces in `src/MeshCore.h`. Firefly
+   and `MillisecondClock` are distinct interfaces in `src/MeshCore.h`. Attadipa
    should copy that separation outright. `ADOPT`.
 
-And one thing that is *not* true of upstream and should be true of Firefly: **on
+And one thing that is *not* true of upstream and should be true of Attadipa: **on
 ESP32, MeshCore does not use the hardware RNG and has no hardware AES/SHA.**
 
 ---
@@ -89,7 +89,7 @@ The shape, from `src/helpers/MultiSerialInterface.h` at `d929643`:
 ### Why it is the right idea
 
 It is exactly the owner's requirement — the transport is not nailed to BLE, and
-a node can carry several at once. Firefly's `Firefly Watch ↔ BLE/USB ↔ Firefly
+a node can carry several at once. Attadipa's `Attadipa Watch ↔ BLE/USB ↔ Attadipa
 Node ↔ LoRa mesh` needs the same freedom, plus UART and possibly ESP-NOW, and
 designing against a single BLE assumption now would cost a rewrite later.
 
@@ -97,10 +97,10 @@ designing against a single BLE assumption now would cost a rewrite later.
 
 Read from the source, not inferred:
 
-| Behaviour | Line | Consequence for Firefly |
+| Behaviour | Line | Consequence for Attadipa |
 |---|---|---|
-| `writeFrame()` writes the frame to **every enabled interface** | `MultiSerialInterface.h` | A reply to a USB request is also pushed over BLE. With two clients attached, each sees the other's traffic. Firefly's node link must reply **to the interface the request arrived on**, or be genuinely session-less by design — not by accident |
-| `isWriteBusy()` is the **OR** across interfaces | same | One transport that nobody is draining marks the whole stack busy and stalls every paced stream. #3214 hits precisely this and works around it by *dropping* writes while no client is connected. The structural answer is a queue per interface, which is what Firefly should build |
+| `writeFrame()` writes the frame to **every enabled interface** | `MultiSerialInterface.h` | A reply to a USB request is also pushed over BLE. With two clients attached, each sees the other's traffic. Attadipa's node link must reply **to the interface the request arrived on**, or be genuinely session-less by design — not by accident |
+| `isWriteBusy()` is the **OR** across interfaces | same | One transport that nobody is draining marks the whole stack busy and stalls every paced stream. #3214 hits precisely this and works around it by *dropping* writes while no client is connected. The structural answer is a queue per interface, which is what Attadipa should build |
 | `checkRecvFrame()` returns the **first** interface with a frame, in registration order | same | Fixed priority, no fairness. A chatty USB client starves BLE |
 | `writeFrame()` returns `len` only if **all** writes succeeded, else `0` | same | A partial multicast is indistinguishable from a total failure, and a caller that checks the return cannot tell which interface failed |
 
@@ -108,12 +108,12 @@ Read from the source, not inferred:
 the generic manager, and `isBluetoothEnabled()` returns the first BLE child's
 state rather than any aggregate. Transport-specific methods on a
 transport-agnostic manager are the seam where the abstraction starts leaking;
-Firefly should express "turn the radio-bearing transports off" as a policy over
+Attadipa should express "turn the radio-bearing transports off" as a policy over
 interface *properties*, not as a method named after one of them.
 
 **Status: `ADAPT`.** Take the registry-of-interfaces shape and the
 `InterfaceType` tag. Do not take the broadcast write, the OR'd busy flag or the
-first-come read. Firefly's version needs: per-interface bounded queues, a reply
+first-come read. Attadipa's version needs: per-interface bounded queues, a reply
 routed to its originating interface, round-robin service, and a per-interface
 error rather than a boolean.
 
@@ -186,11 +186,11 @@ queue and a four-frame FreeRTOS receive queue, and logs and drops on overflow
 problem is not that upstream does not know how; it is that the USB path never
 got the same treatment.
 
-### What Firefly takes
+### What Attadipa takes
 
 **Status: `ADAPT` the requirements, `REJECT` the implementation.**
 
-Firefly's node link is the same kind of link — a small MCU streaming structured
+Attadipa's node link is the same kind of link — a small MCU streaming structured
 records to a host that can stall — so these are requirements from day one, and
 they belong in the node protocol ADR rather than in a driver:
 
@@ -264,7 +264,7 @@ too low to accept normal samples, so it re-reinforces itself.
 *"Не реализовывай собственный LBT, пока не станет понятно, что можно безопасно
 взять из MeshCore"* — is correct and this review's answer is: take the *scheme*,
 including both watchdog deadlines and the airtime-derived timeouts, and take the
-noise-floor reset reasoning. Firefly's radio path is not written yet
+noise-floor reset reasoning. Attadipa's radio path is not written yet
 ([ADR-0003](../adr/0003-radio-not-lora.md) is still about which chip is even
 fitted), so nothing is being replaced.
 
@@ -290,7 +290,7 @@ KCT8103L CSD: internal pull-up  → reads HIGH → V4.3
 
 and only the KCT8103L branch calls `setLnaCanControl(true)`. So on the *same
 product name*, one revision can switch its external LNA and the other cannot,
-and the firmware finds out by probing a pin. Firefly readers should recognise
+and the firmware finds out by probing a pin. Attadipa readers should recognise
 the shape: it is the T-Watch radio problem in a different package
 ([ADR-0003](../adr/0003-radio-not-lora.md)), and it is the reason the owner is
 right that FEM control must be a **board capability**, never an assumption
@@ -323,11 +323,11 @@ and there is no way to turn it off.** Two open issues report the symptom:
 
 | Item | Status |
 |---|---|
-| "FEM/LNA control is a board capability, expressed per board" | **`ADOPT`** — as a rule, immediately, in Firefly's capability model |
+| "FEM/LNA control is a board capability, expressed per board" | **`ADOPT`** — as a rule, immediately, in Attadipa's capability model |
 | "the same product name can carry two different front-ends, detected at runtime" | **`ADOPT`** — it is direct support for [ADR-0003](../adr/0003-radio-not-lora.md)'s stance |
 | Upstream's current FEM default and pref plumbing | **`REJECT`** — do not port. It is a released regression with the user's control removed |
 | #2713 (*"Enable LNA by default t096, tracker v2, heltec v4"*, open, body: *"Not sure why it was disabled again"*) | **`REJECT`** — a default-on LNA proposed with no measurement, against two issues that have one |
-| #3137's merged fix | **`MONITOR`** — correct, and a good example of a *pref key changing meaning on upgrade*, which is a migration hazard Firefly must design for |
+| #3137's merged fix | **`MONITOR`** — correct, and a good example of a *pref key changing meaning on upgrade*, which is a migration hazard Attadipa must design for |
 | Recommending a Heltec V4/V4.3 firmware upgrade to anyone | **not recommended today**, on the strength of #3010 and #3232 |
 
 One documentation error, worth knowing before quoting the blog: the v1.17.1
@@ -367,7 +367,7 @@ their wake sources were given one function name.**
 
 ### The taxonomy, which is the real deliverable
 
-The owner's list is right and this review adopts it verbatim as Firefly's power
+The owner's list is right and this review adopts it verbatim as Attadipa's power
 model:
 
 | State | Radio | Wake sources | Notes |
@@ -380,7 +380,7 @@ model:
 | `POWER_OFF` | off | external only | PMU-level where the hardware allows it |
 
 The distinction that upstream lost is between the fourth and fifth rows.
-Firefly's `PowerState` must make it a type error rather than a naming
+Attadipa's `PowerState` must make it a type error rather than a naming
 convention, and the board layer must not be able to satisfy `HIBERNATE` by
 arming a radio wake.
 
@@ -388,10 +388,10 @@ arming a radio wake.
 
 All **open**, none released. Read for their reasoning, not for their code:
 
-| PR | What it says | Status for Firefly |
+| PR | What it says | Status for Attadipa |
 |---|---|---|
 | **#1347** *Powersaving on companion when serial is off* | 30-minute ESP32-S3 light sleep when the serial interface is off and GPS is off; wake on LoRa ext1, timer or button. Also finds that `SerialWifiInterface::disable()` *only set a flag* — the Wi-Fi radio stayed powered. And that a button and DIO1 **cannot share an ext1 mask** because they need opposite trigger levels | `ADAPT`. The ext1-polarity fact is a hardware fact worth carrying; the "disable() did not disable" bug is the general lesson that a power API must be verified by measurement, not by reading its name |
-| **#1686** *Short sleeps when phone disconnects* | 12 s sleep / 3 s awake once no phone has connected for 60 s, restarting BLE advertising each wake because light sleep powers the BLE radio down | `MONITOR`. Directly relevant to a watch↔node link that idles most of the day, but the duty cycle has to be chosen against Firefly's own reconnect latency budget, not inherited |
+| **#1686** *Short sleeps when phone disconnects* | 12 s sleep / 3 s awake once no phone has connected for 60 s, restarting BLE advertising each wake because light sleep powers the BLE radio down | `MONITOR`. Directly relevant to a watch↔node link that idles most of the day, but the duty cycle has to be chosen against Attadipa's own reconnect latency budget, not inherited |
 | **#2627** *power brownout causing early shutdown* | Battery poll every 8 s with no awareness of transmit; on a Heltec V4 below ~50 % the sag during TX trips the low-battery shutdown. Also: `shutdown()`/`reboot()` do not flush the 5-second lazy contact write | `ADOPT` both rules: **never sample the battery during transmit**, and **flush dirty state on every shutdown path** |
 | **#2689** *HeltecV4 battery ADC accuracy* | `ADC_MULTIPLIER` 5.42 → 4.9, from the R27/R28 divider `(390k+100k)/100k`, and `analogReadMilliVolts()` at 12-bit instead of `analogRead()` × 3.3/1024 | `ADOPT` the method. Note the V4-R8 board **already** uses `4.9f * 1.035f` with `analogReadMilliVolts` at 12-bit while plain V4 still uses the 10-bit path — so upstream disagrees with itself across two files for the same divider |
 
@@ -412,7 +412,7 @@ The legacy loader is worth reading once as a cautionary tale. It is a
 fixed-offset byte stream with hand-written offsets in comments, and it already
 contains the scar of one migration: at offset 79, *"1 byte unused (was
 rx_boosted_gain in v1.14.1, moved to end for upgrade compat)"*. After load, every
-field is `constrain()`-ed to a sane range — which Firefly should copy, since
+field is `constrain()`-ed to a sane range — which Attadipa should copy, since
 [ADR-0006](../adr/0006-settings-and-bounded-values.md) already says bounded
 values are the settings model.
 
@@ -440,7 +440,7 @@ the `"w", true` branch instead, so it is a hypothesis rather than a diagnosis an
 is recorded as such.
 
 **Status: `ADOPT` the pattern from #1447, and apply it more widely than upstream
-does.** Firefly's rule, for every persistent structure and not only contacts:
+does.** Attadipa's rule, for every persistent structure and not only contacts:
 
 ```
 write temp → flush → fsync/close → rename old to backup → atomic rename temp into place → drop backup
@@ -473,7 +473,7 @@ v1.17.0 also fixed **#2937**, *"GPS time sync stall on long uptime nodes"* — t
 classic 32-bit `millis()` wrap or an absolute-deadline comparison that stops
 being true after enough uptime.
 
-**Status: `ADOPT`.** Firefly takes the two-clock separation as an architectural
+**Status: `ADOPT`.** Attadipa takes the two-clock separation as an architectural
 rule, and the rule the owner states with it: **timers, timeouts, retries,
 connection expiry and the scheduler use the monotonic clock; RTC and GNSS time
 are used only where absolute time is genuinely required.** A GNSS fix that steps
@@ -523,7 +523,7 @@ potentially biased (modulo arithmetic) … 'shake & pray'"*.
 | ESP32 must use `esp_fill_random()` as its entropy source | **`ADOPT`**, and it is a *gap* rather than a port: upstream does not do this on the LoRa path |
 | ESP32-S3 hardware AES/SHA | **`ADAPT` — and verify first.** Nothing in MeshCore uses it, so there is nothing to copy. Whether the S3's accelerators help here has to be *measured* against the software path before any of it is designed around. Recorded as UNKNOWN, not as an opportunity |
 | #2280's ascon-XOF construction | **`MONITOR`** — unmerged. The idea (seed once from hardware, squeeze thereafter, persist entropy) is sound and cheap; the code is not upstream |
-| A crypto API bound to one backend | **`REJECT`.** Firefly's crypto interface must admit `software`, `ESP32-S3 HW` and `nRF52 CC310` behind one seam, exactly as the owner specifies — which is what upstream's `USE_CC310_HW_CRYPTO` `#ifdef` sprawl in `src/Utils.cpp` argues *against* by example |
+| A crypto API bound to one backend | **`REJECT`.** Attadipa's crypto interface must admit `software`, `ESP32-S3 HW` and `nRF52 CC310` behind one seam, exactly as the owner specifies — which is what upstream's `USE_CC310_HW_CRYPTO` `#ifdef` sprawl in `src/Utils.cpp` argues *against* by example |
 
 **Never do this before it is measured:** claim hardware acceleration is faster.
 On these parts a hardware AES block can lose to software for short messages once
@@ -546,10 +546,10 @@ connection fix*) is **still open**, and its root-cause list is the useful part:
    in `begin()`, so RAM state survived a reset.
 
 All three are the same mistake: **connection state that is not owned by one
-place and not reset at one point.** Firefly's link state must be a single state
+place and not reset at one point.** Attadipa's link state must be a single state
 machine with an explicit reset, not a set of booleans updated from callbacks.
 
-What upstream's BLE path already does right, and Firefly should copy: bounded
+What upstream's BLE path already does right, and Attadipa should copy: bounded
 queues in both directions with explicit overflow drops (§2 above), and a
 `writeFrame()` that returns 0 rather than blocking when the queue is full.
 
@@ -558,7 +558,7 @@ queues in both directions with explicit overflow drops (§2 above), and a
 
 ---
 
-## 10. What Firefly already does right
+## 10. What Attadipa already does right
 
 Recorded because the owner asked for it, and because it is short:
 
@@ -574,14 +574,14 @@ Recorded because the owner asked for it, and because it is short:
   [ADR-0003](../adr/0003-radio-not-lora.md) exists because the T-Watch ships one
   of five radios; the Heltec V4's two front-ends are the same lesson from a
   different vendor, and it means the FEM rule the owner asks for is a
-  *confirmation* of Firefly's model rather than a change to it.
+  *confirmation* of Attadipa's model rather than a change to it.
 - **The layer boundary is enforced by the build**
   ([ADR-0007](../adr/0007-two-capability-layers.md) §5), and the second boundary
   — the core does not speak English — landed with T-033. Upstream's equivalent
   boundary is a convention, which is how `powerOff()` came to mean
   wake-on-LoRa sleep on exactly one board.
 
-## 11. What Firefly must change
+## 11. What Attadipa must change
 
 Each of these is filed as its own small task in [TASKS.md](../../TASKS.md); none
 of them is code today, because none of the affected subsystems exists yet, and
@@ -596,16 +596,16 @@ that is the cheapest moment to get them right.
 | T-047 | **Monotonic vs wall clock rule**, written into the architecture and enforced by review | §7 |
 | T-048 | **Crypto and RNG seam** with three backends named, ESP32 hardware RNG as the entropy source, and no performance claim before measurement | §8 |
 | T-049 | **FEM/front-end control as a board capability** in the hardware model, never inferred from the radio chip | §4 |
-| T-050 | **`MeshCore Adapter` boundary** — the layer diagram in §12, so MeshCore can be bumped without touching Firefly's UI or HAL | owner §4 |
+| T-050 | **`MeshCore Adapter` boundary** — the layer diagram in §12, so MeshCore can be bumped without touching Attadipa's UI or HAL | owner §4 |
 
 ## 12. The compatibility boundary
 
-The owner's requirement, as Firefly's layer diagram:
+The owner's requirement, as Attadipa's layer diagram:
 
 ```
-Firefly UI / Apps
+Attadipa UI / Apps
         ↓                      knows StringId and Capability. Nothing else.
-Firefly Services
+Attadipa Services
         ↓                      LocationService, MeshService, SettingsService
 Mesh Service API               ← the boundary MeshCore may not cross
         ↓
@@ -618,7 +618,7 @@ HAL
 ESP32-S3 / SX1262 / BLE / USB / sensors
 ```
 
-The rule is the one Firefly already enforces twice: **a layer may not learn
+The rule is the one Attadipa already enforces twice: **a layer may not learn
 where its answer came from.** An application asks for `Capability::MeshMessaging`
 and never learns that MeshCore answered, exactly as it never learns which GPIO
 powers the GNSS module and never learns which language it will be rendered in.
@@ -633,7 +633,7 @@ is that test, written before there is an adapter to break.
 
 ## Summary table
 
-| Item | Upstream state | Firefly |
+| Item | Upstream state | Attadipa |
 |---|---|---|
 | `MultiSerialInterface` / multi-transport (#3049) | merged, released 1.17.0 | `ADAPT` — idea yes, broadcast/OR semantics no |
 | USB connection state + backpressure (#3214) | **open**, AI-prepared, unmerged | `ADAPT` requirements · `REJECT` code |
@@ -657,7 +657,7 @@ is that test, written before there is an adapter to break.
 | ascon-XOF PRNG (#2280) | **open** | `MONITOR` |
 | BLE bonded reconnect / rx queue (#3005, #3007) | merged, released | `ADOPT` the queue discipline |
 | BLE ghost connection (#2333) | **open** | `MONITOR` — take the state-ownership lesson |
-| `dev` since 1.17.1 (29 commits) | new boards, display, sensors, LR2021 TX-power fix `114093ee` | nothing architectural for Firefly |
+| `dev` since 1.17.1 (29 commits) | new boards, display, sensors, LR2021 TX-power fix `114093ee` | nothing architectural for Attadipa |
 
 ## Evidence and honesty
 
@@ -667,7 +667,7 @@ on a pull request that is not merged, it says so, and the pull request's *code*
 is not proposed for use.
 
 **No part of this review has been executed on hardware by this project.** No
-Heltec board of any revision is in Firefly's hands, and no MeshCore device has
+Heltec board of any revision is in Attadipa's hands, and no MeshCore device has
 been powered on here. Upstream's measurements are attributed to upstream. The
-Firefly status for every item in the summary table remains `NOT EXECUTED —
+Attadipa status for every item in the summary table remains `NOT EXECUTED —
 HARDWARE REQUIRED` until it is not.

@@ -14,7 +14,7 @@ $ curl -X POST .../graphql -d '{"query":"{repository(...){issueCreationPolicy}}"
 {"message":"This GraphQL query is not enabled for this session — only the pinned
 set of PR-review operations is served."}
 
-$ curl -X PATCH .../repos/hleserg/FireflyOS -d '{"has_discussions":true}'
+$ curl -X PATCH .../repos/hleserg/Attadipa -d '{"has_discussions":true}'
 403  Repository settings writes are not permitted through this proxy.
 ```
 
@@ -22,8 +22,12 @@ A local session has none of those limits. Everything below is one command or
 one file away there.
 
 Run them in order. **1 and 7 are the ones that matter** — until 1 is done the
-agent queue does not close, and until 7 is observed nobody knows whether the
-biggest fix in #9 actually works. The rest is housekeeping.
+agent queue has no input, and until 7 is observed nobody has seen an agent
+produce a branch and a pull request. The rest is housekeeping.
+
+Note the project was renamed from Firefly OS to **Attadipa** on 2026-08-21. Old
+`hleserg/FireflyOS` URLs redirect, but the identifiers did not: the variables are
+`ATTADIPA_*` and the task marker is `attadipa-agent-task`.
 
 ---
 
@@ -32,7 +36,7 @@ biggest fix in #9 actually works. The rest is housekeeping.
 ```bash
 gh auth status          # must be a USER account, not an app
 gh api user --jq .login # expect: hleserg
-cd /path/to/FireflyOS && git fetch origin && git checkout main && git pull
+cd /path/to/Attadipa && git fetch origin && git checkout main && git pull
 ```
 
 If `gh api user` reports anything ending in `[bot]`, stop — the whole point of
@@ -40,9 +44,13 @@ task 1 is that bots and users are different here.
 
 ---
 
-## 1. Decide how ChatGPT files issues — the one real blocker
+## 1. Switch on the producer allowlist — the one thing that unblocks the queue
 
 **Nothing else on this list changes whether the automation works. This does.**
+
+This item used to read "decide how ChatGPT files issues". It is decided: the
+observation below settled it, the owner chose the allowlist, and the code is
+merged. What is left is one `gh variable set`.
 
 ### What was proven, not guessed
 
@@ -52,7 +60,7 @@ Claude comment mentioning `@claude` would otherwise start a Claude run that
 comments, and the bill grows until somebody notices.
 
 On 2026-08-21 that guard was demonstrated against a real, correctly-marked task.
-[Issue #10](https://github.com/hleserg/FireflyOS/issues/10), gate log from run
+[Issue #10](https://github.com/hleserg/Attadipa/issues/10), gate log from run
 `32475652479`:
 
 ```
@@ -69,43 +77,41 @@ and the workflow run went green.** Issue #5, filed by `hleserg` as a `User`, was
 accepted the same day with the same shape of marker. The route decides this, not
 the content.
 
-### The decision
+### The answer, and the one command it needs
 
-| | **Option A — recommended** | Option B |
-|---|---|---|
-| ChatGPT files through | a user account with `write`/`maintain`/`admin` | a GitHub App |
-| Change needed | none, works as built | widen the gate with an allowlist |
-| Cost | one GitHub account | configuration on the one boundary the security model rests on |
+**ChatGPT's identity in this repository is now known.** It reaches GitHub through
+its App and acts as `chatgpt-codex-connector[bot]` — a `Bot`, association `NONE`.
+That is the login that reviewed pull request #11. Running the real gate function
+against it:
 
-**Option A is recommended and needs no code.** Confirm which account ChatGPT's
-GitHub connector authenticates as, and give it write access:
-
-```bash
-gh api user                                    # ...as ChatGPT, to learn the login
-gh api -X PUT repos/hleserg/FireflyOS/collaborators/<login> -f permission=push
+```
+$ .github/scripts/intake-decision.sh 'chatgpt-codex-connector[bot]' issues opened ...
+reject: actor chatgpt-codex-connector[bot] is a bot
 ```
 
-Then verify by filing one issue *as ChatGPT* and watching what happens. Either an
-agent starts, or a refusal comment names the actual actor. Either way the answer
-lands on the issue — that is what PR #9's refusal-comment change is for.
+So there is no user account to grant write to — the earlier "Option A" is not
+available for the connector. The owner chose the allowlist, and it is built,
+tested and merged. What remains is to switch it on:
 
-**If Option B turns out to be forced** — ChatGPT can only file as an App — then
-the gate needs an allowlist, and it must be built to these constraints, which
-are not negotiable:
+```bash
+gh variable set ATTADIPA_TRUSTED_PRODUCERS \
+  --body 'chatgpt-codex-connector[bot]' --repo hleserg/Attadipa
+gh variable list --repo hleserg/Attadipa
+```
 
-- a new repository variable `FIREFLY_TRUSTED_PRODUCERS`, **empty by default**;
-- it applies to **`issues` events only, never comments**. The loop this guards
-  against lives in comments;
-- `claude` and `github-actions` can **never** be listable, checked *after* the
-  allowlist so the list cannot override them. Those are this repository's own
-  output;
-- `.github/tests/intake-gate-test.sh` gains cases for: an allowlisted app opening
-  an issue (accept), the same app commenting (reject), `claude[bot]` present in
-  the list anyway (reject), and an empty list behaving exactly as today (reject).
-  It is currently 16/16; it must stay green and grow.
+Then have ChatGPT file one issue and watch it be accepted rather than refused.
 
-A cloud agent deliberately did **not** implement this. Widening the intake
-gate's trust boundary is the owner's decision, and the recommendation above is A.
+**Confirm the login first.** `chatgpt-codex-connector[bot]` is what reviews pull
+requests here; that it is the same identity used to *create issues* is a strong
+inference, not an observation. If the first task is still refused, the gate's
+refusal comment now names the actual actor on the issue — put that login in the
+variable instead. That is the whole diagnostic loop, and it needs no code change.
+
+The variable is empty by default, applies to `issues` events only, can never
+list `claude` or `github-actions`, and matches logins exactly. Thirteen tests in
+`.github/tests/intake-gate-test.sh` cover those properties, including a comment
+from a listed producer (refused) and a login that merely contains a listed one
+(refused).
 
 ---
 
@@ -117,8 +123,8 @@ kill switch works either way; setting it explicitly is what makes
 `docs/automation/RECOVERY.md`'s first command meaningful.
 
 ```bash
-gh variable set CLAUDE_AUTOMATION_ENABLED --body true --repo hleserg/FireflyOS
-gh variable list --repo hleserg/FireflyOS
+gh variable set CLAUDE_AUTOMATION_ENABLED --body true --repo hleserg/Attadipa
+gh variable list --repo hleserg/Attadipa
 ```
 
 Set it to `false` instead if you want the loop parked while PR #9 is reviewed.
@@ -137,7 +143,7 @@ Two facts already established from run logs, so do not re-derive them:
   the intended path.
 
 ```bash
-gh secret list --repo hleserg/FireflyOS
+gh secret list --repo hleserg/Attadipa
 ```
 
 Expect `CLAUDE_CODE_OAUTH_TOKEN`. If `ANTHROPIC_API_KEY` is also present, it is
@@ -145,14 +151,14 @@ an unused metered fallback — deleting it removes a way to bill an API account 
 accident:
 
 ```bash
-gh secret delete ANTHROPIC_API_KEY --repo hleserg/FireflyOS
+gh secret delete ANTHROPIC_API_KEY --repo hleserg/Attadipa
 ```
 
 The workflows accept whichever exists, so deleting the unused one changes no
 behaviour. **Do not remove the `ANTHROPIC_API_KEY` lines from the workflow
 files** — they are the documented fallback.
 
-`FIREFLY_AGENT_TOKEN` is intentionally unset. Empty means the action
+`ATTADIPA_AGENT_TOKEN` is intentionally unset. Empty means the action
 authenticates as the Claude GitHub App, whose installation token *does* trigger
 workflow runs. `secrets.GITHUB_TOKEN` would not, which is why it appears nowhere.
 The app is installed — `claude[bot]` has been posting all day.
@@ -168,7 +174,7 @@ cloud session could not do it.
 ```bash
 # Read first
 gh api graphql -f query='
-{ repository(owner:"hleserg", name:"FireflyOS") {
+{ repository(owner:"hleserg", name:"Attadipa") {
     id hasIssuesEnabled issueCreationPolicy viewerCanCreateIssues
     hasDiscussionsEnabled } }'
 
@@ -202,7 +208,7 @@ read, because that is GraphQL too.
 
 ```bash
 gh api graphql -f query='
-{ repository(owner:"hleserg", name:"FireflyOS") {
+{ repository(owner:"hleserg", name:"Attadipa") {
     discussionCategories(first:30) {
       nodes { id name slug description emoji isAnswerable } } } }'
 ```
@@ -232,8 +238,8 @@ Each file's first lines give its title and category. `createDiscussion` is
 GraphQL-only, hence this handoff.
 
 ```bash
-REPO_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"FireflyOS"){id}}' --jq .data.repository.id)
-CAT_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"FireflyOS"){discussionCategories(first:30){nodes{id slug}}}}' \
+REPO_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"Attadipa"){id}}' --jq .data.repository.id)
+CAT_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"Attadipa"){discussionCategories(first:30){nodes{id slug}}}}' \
            --jq '.data.repository.discussionCategories.nodes[]|select(.slug=="ideas")|.id')
 
 # per file: strip the four header lines, post the rest as the body
@@ -277,15 +283,15 @@ and posted nothing, and why the agent on issue #5 finished green with no branch
 and no pull request.
 
 **The reviewer half is now observed working.** On
-[#11](https://github.com/hleserg/FireflyOS/pull/11) the independent reviewer
-posted a full review carrying `<!-- firefly-ai-review -->` and set
+[#11](https://github.com/hleserg/Attadipa/pull/11) the independent reviewer
+posted a full review carrying `<!-- attadipa-ai-review -->` and set
 `ai-review:blocking` — the first time that has happened in this repository.
 
 **The writer half has not been.** No agent run has yet produced a branch or a
 pull request. That is the job:
 
 ```bash
-gh issue comment 10 --repo hleserg/FireflyOS --body "@claude"
+gh issue comment 10 --repo hleserg/Attadipa --body "@claude"
 gh run watch   # or: gh run list --workflow=claude-agent.yml --limit 3
 ```
 
@@ -300,7 +306,7 @@ Watch for:
 - [ ] a **draft pull request** appears, whose body carries a closing reference
       back to this issue (the `Fixes` keyword and the issue number);
 - [ ] the independent reviewer posts a comment on it carrying
-      `<!-- firefly-ai-review -->`, and sets exactly one of `ai-review:pass` or
+      `<!-- attadipa-ai-review -->`, and sets exactly one of `ai-review:pass` or
       `ai-review:blocking`.
 
 The third one now depends on a fix made after #11: the agent opens its pull

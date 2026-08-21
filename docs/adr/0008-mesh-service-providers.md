@@ -45,7 +45,7 @@ product's flagship configuration to tidy up an architecture diagram.
                     └───────────┬───────────┘
                     ┌───────────┴───────────┐
         LocalMeshProvider            NodeMeshProvider
-     on-board Radio, when the      Firefly node over the
+     on-board Radio, when the      Attadipa node over the
      matrix says it can            companion link
 ```
 
@@ -69,7 +69,7 @@ supports the chip.
 
 At the pinned revision that is **one of the five candidate T-Watch chips**. A
 CC1101 or Si4432 watch has no local provider and never will; an SX1280 watch
-would form a 2.4 GHz network that no sub-GHz Firefly can hear. Final §13 says
+would form a 2.4 GHz network that no sub-GHz Attadipa can hear. Final §13 says
 this out loud: *"do not promise local MeshCore on every T-Watch radio variant …
 If a hardware variant cannot support MeshCore, report that honestly."*
 

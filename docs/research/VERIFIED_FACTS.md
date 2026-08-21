@@ -74,7 +74,7 @@ is verified.
 - **Impact:** mesh messaging and navigation have no hardware **on this board**.
 - **Amended 2026-08-21:** the claim above is sourced and stands; the inference
   originally drawn from it did not. It read "cannot exist on this board … the UI
-  must not offer them". A Firefly node supplies both to the *device*
+  must not offer them". An Attadipa node supplies both to the *device*
   ([OWNER_DECISIONS](OWNER_DECISIONS.md) OD-1), so the UI offers them with the
   remedy stated, and withholds only what no configuration of the device can do.
   The lesson worth keeping is narrower than the correction: a fact about a board
@@ -160,7 +160,7 @@ is verified.
   and PCF85063 present on the board are handled only in standalone examples.
 - **Source:** S7, `include/bsp/esp32_s3_touch_amoled_2_06.h`.
 - **Impact:** "the vendor supports this board" does not mean the board's parts
-  are usable. Firefly cannot take the BSP as a complete abstraction; it must
+  are usable. Attadipa cannot take the BSP as a complete abstraction; it must
   cover the remaining parts itself.
 
 ### The Waveshare panel is a CO5300 driven by an SH8601-family driver
@@ -180,7 +180,7 @@ is verified.
 - **Source:** S5, S7, S1.
 - **Impact:** feeds the ESP-IDF and LVGL version decisions in
   [DEPENDENCIES.md](DEPENDENCIES.md). Nothing is pinned yet. The LilyGO
-  PlatformIO constraint likely does not bind Firefly, which is ESP-IDF-native
+  PlatformIO constraint likely does not bind Attadipa, which is ESP-IDF-native
   and does not use the Arduino layer.
 
 ### Vendor-published power figures exist for the T-Watch
@@ -191,7 +191,7 @@ is verified.
 - **Source:** S1.
 - **Impact:** these are **vendor numbers under vendor firmware**, useful as an
   order of magnitude and as a target to reproduce. They are not evidence about
-  Firefly, and must never be reported as Firefly's measured consumption.
+  Attadipa, and must never be reported as Attadipa's measured consumption.
   Note that waking on touch costs roughly twice waking on button — a real
   design trade-off, once confirmed.
 

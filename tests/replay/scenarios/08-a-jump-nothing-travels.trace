@@ -1,0 +1,43 @@
+scenario two consecutive fixes imply a speed nothing on a wrist reaches
+describe About 5.5 km between epochs one second apart. Nothing the device is
+describe strapped to travels at 5.5 km/s, so either the receiver is wrong or
+describe somebody is lying to it, and both are reasons not to navigate by it.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  motion moving
+  expect trust trusted
+
+at 1000
+  fix 3d
+  pos 5500000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  motion moving
+  expect reason position-jump
+  expect trust degraded
+
+# The receiver's own speed field agreeing makes it worse, not better: now two
+# independent numbers say the impossible thing.
+at 2000
+  fix 3d
+  pos 5990000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  speed 5400000
+  jam none
+  spoof none
+  motion moving
+  expect reason position-jump
+  expect reason implausible-speed
+  expect trust untrusted

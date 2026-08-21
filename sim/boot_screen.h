@@ -2,11 +2,12 @@
 
 #include "lvgl.h"
 
-#include "firefly/core/capability_registry.h"
-#include "firefly/l10n/locale.h"
-#include "firefly/platform/hardware_inventory.h"
+#include "attadipa/core/capability_registry.h"
+#include "attadipa/l10n/locale.h"
+#include "attadipa/platform/hardware_inventory.h"
+#include "attadipa/ui/color.h"
 
-namespace firefly::sim {
+namespace attadipa::sim {
 
 // The simulator's first screen.
 //
@@ -26,6 +27,18 @@ void build_boot_screen(const platform::HardwareInventory& inventory,
 // reboot" gets demonstrated rather than asserted.
 void rebuild_boot_screen();
 
+// Switch between the day and night palettes and redraw.
+//
+// Bound to a key rather than to a light sensor because the point of it here is
+// review: "day and night themes checked" is in the Definition of Done, and a
+// reviewer who has to rebuild with a different constant to see the other one
+// will check it once.
+void toggle_theme();
+
+// The palette this run starts in. Called by the composition root before the
+// first build; after that, T.
+void set_theme(ui::Theme theme);
+
 // How many codepoints of a locale's catalogue the given font cannot draw.
 // Prints each one it finds.
 //
@@ -36,4 +49,4 @@ void rebuild_boot_screen();
 // loudly — see the note where main() calls it.
 int report_undrawable_glyphs(const lv_font_t* font, l10n::Locale locale);
 
-}  // namespace firefly::sim
+}  // namespace attadipa::sim

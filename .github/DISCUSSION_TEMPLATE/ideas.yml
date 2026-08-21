@@ -7,13 +7,13 @@ body:
         ## What should a smartwatch actually do?
 
         Most smartwatch software is built by copying features from phones and
-        other watches. Firefly is open, and would rather ask.
+        other watches. Attadipa is open, and would rather ask.
 
         Tell us what would genuinely be useful on your wrist: something you can
         understand or act on in seconds, something that still matters when your
         phone has no signal, or simply something nobody has built properly yet.
 
-        You do not need to know anything about how Firefly is built. Answer as a
+        You do not need to know anything about how Attadipa is built. Answer as a
         person who would wear this. Short answers are welcome — this is a
         conversation, not a specification.
 
@@ -22,14 +22,14 @@ body:
         ## Что на самом деле должны уметь умные часы?
 
         Большинство приложений для умных часов — это перенос функций с телефона
-        или с других часов. Firefly предпочитает спросить.
+        или с других часов. Attadipa предпочитает спросить.
 
         Расскажите, что было бы по-настоящему полезно именно на запястье: то,
         что понимаешь или делаешь за несколько секунд; то, что не перестаёт
         работать, когда у телефона нет сети; или просто то, что до сих пор никто
         не сделал как следует.
 
-        Разбираться в устройстве Firefly не нужно. Отвечайте как человек,
+        Разбираться в устройстве Attadipa не нужно. Отвечайте как человек,
         который будет это носить. Короткие ответы — нормально: это разговор, а
         не техническое задание.
 
@@ -129,7 +129,7 @@ body:
         - label: Audio / звук
         - label: IMU — motion sensors / датчики движения
         - label: Wi-Fi / BLE
-        - label: Firefly Node
+        - label: Attadipa Node
         - label: Home Assistant
         - label: Storage / хранение данных
         - label: Something else, described below / Что-то ещё, опишу ниже

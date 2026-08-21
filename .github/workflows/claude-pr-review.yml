@@ -16,7 +16,7 @@ on:
 concurrency:
   # Per pull request, and cancellable: a review of an old head is worse than no
   # review, because somebody will read it as current.
-  group: firefly-pr-review-${{ github.event.pull_request.number }}
+  group: attadipa-pr-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions: {}
@@ -32,7 +32,7 @@ jobs:
       issues: write
       # id-token: write is not optional, and the reason is easy to miss.
       #
-      # github_token below is FIREFLY_AGENT_TOKEN, which is deliberately allowed
+      # github_token below is ATTADIPA_AGENT_TOKEN, which is deliberately allowed
       # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
       # action authenticates as the Claude GitHub App by exchanging this
       # workflow's GitHub OIDC token for an installation token, and without this
@@ -48,7 +48,7 @@ jobs:
     # claude[bot] is exempted from the bot guard, and the guard would otherwise
     # defeat this workflow's entire purpose.
     #
-    # When FIREFLY_AGENT_TOKEN is unset — the documented default — the
+    # When ATTADIPA_AGENT_TOKEN is unset — the documented default — the
     # implementation agent opens its pull request through the Claude GitHub App,
     # so `github.actor` on that pull_request event is `claude[bot]`. A blanket
     # `!endsWith(actor, '[bot]')` therefore skipped the review on exactly the
@@ -108,7 +108,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
           # One comment, edited in place. A new wall of text on every push is how
           # a review becomes something people scroll past.
           use_sticky_comment: "true"
@@ -160,7 +160,7 @@ jobs:
             The question to answer is not "does this compile" — assume it does,
             and assume every existing test is green. The question is:
 
-              **How can this still break FireflyOS?**
+              **How can this still break Attadipa?**
 
             Work through the ones that apply, and say plainly when one does not:
 
@@ -208,7 +208,7 @@ jobs:
             reaches the pull request otherwise; the action leaves it in the run
             log, where nobody reads it.
 
-            Begin the comment with the exact line `<!-- firefly-ai-review -->`,
+            Begin the comment with the exact line `<!-- attadipa-ai-review -->`,
             and before posting, check with `gh pr view` whether a comment
             carrying that marker already exists. If one does, edit it rather
             than adding another — a fresh wall of text on every push is how a
@@ -230,12 +230,21 @@ jobs:
           # Neither label is set. `ai-review:pass` would be a lie and
           # `ai-review:blocking` would be a finding nobody made.
           {
-            echo "<!-- firefly-review-did-not-run -->"
+            echo "<!-- attadipa-review-did-not-run -->"
             echo "**The independent review did not run on this commit, so there is no verdict.**"
             echo
-            echo "This says nothing about the diff. The usual cause is the Anthropic"
-            echo "credential: on the subscription path a spent quota fails immediately,"
-            echo "before the model is reached, and looks exactly like this."
+            echo "This says nothing about the diff. There are two usual causes:"
+            echo
+            echo "1. **This pull request edits \`.github/workflows/claude-*.yml\`.** The action"
+            echo "   refuses to run a version of itself that a pull request has modified —"
+            echo "   otherwise a pull request could supply the prompt that reviews it. That"
+            echo "   refusal is correct, and it means changes to those files are merged on"
+            echo "   ordinary CI and a human's reading, never on an AI review."
+            echo "2. **The Anthropic credential.** On the subscription path a spent quota"
+            echo "   fails immediately, before the model is reached, and looks like this too."
+            echo
+            echo "Check which by opening the run below: cause 1 says \"Workflow validation"
+            echo "failed\", cause 2 shows a result with \`is_error\` after a second or so."
             echo
             echo "Run: $RUN_URL"
             echo
@@ -246,7 +255,7 @@ jobs:
           # One per head commit, not one per push: re-running the job on the same
           # commit should not stack identical notes.
           if gh api "repos/$REPO/issues/$PR/comments" --paginate \
-               --jq '.[].body' | grep -q 'firefly-review-did-not-run'; then
+               --jq '.[].body' | grep -q 'attadipa-review-did-not-run'; then
             echo "::notice::already said so on #$PR"
           else
             gh pr comment "$PR" --repo "$REPO" --body-file /tmp/no-review.md

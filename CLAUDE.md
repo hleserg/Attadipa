@@ -1,4 +1,4 @@
-# Working on Firefly OS
+# Working on Attadipa
 
 ## Read first
 
@@ -74,7 +74,7 @@ commit private keys.
 Applications ask what the device can do, never which device it is. Board
 differences live in `boards/` and `platform/`; `#ifdef BOARD_X` must not appear
 in `core/` or `apps/`. Differences that are **not** the board's — a capability
-supplied by an attached Firefly node — live in the provider registry beside the
+supplied by an attached Attadipa node — live in the provider registry beside the
 BSP, because no BSP can know at build time what will be plugged in later. Same
 rule, one more source: nothing above the capability registry learns where an
 answer came from. An application never learns which GPIO powers the GNSS
@@ -84,7 +84,7 @@ is the only thing keeping one codebase viable.
 
 Every part on the board gets a seat in the core — including the ones no
 application uses yet, and the ones the vendor's own BSP ignores. So does every
-capability that reaches the device *without* being on the board: a Firefly node
+capability that reaches the device *without* being on the board: an Attadipa node
 supplies LoRa and GNSS to a watch that has neither, and those need an owner,
 a power story and a state to be in when the node walks away.
 
@@ -149,6 +149,16 @@ A screen with the right elements on it is not done. Design is part of Done.
 
 - Code, comments, and documentation in English. The two specification documents
   are the author's own and stay in Russian.
+- **The README exists twice, and the two are one document.** `README.md` is the
+  English original and [`README.ru.md`](README.ru.md) is its Russian version.
+  Any change to one is made in the other **in the same commit** — not "later",
+  not in a follow-up task. A README that is current in one language and stale in
+  the other is worse than one language alone, because a reader has no way to
+  tell which of the two they are looking at. This applies to every edit, down to
+  a corrected link or a changed number; if a change genuinely has no counterpart
+  (an English-only typo, say), say so in the commit message rather than leaving
+  it to be guessed. The pair of language links at the top of each file is part
+  of the contract: keep both pointing at each other.
 - Small logical commits, clear messages. No destructive git operations, no
   rewriting published history, no pushing anywhere that was not agreed.
 - Leave the repository in a state where the next person — or the next agent —

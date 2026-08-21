@@ -40,7 +40,7 @@ blocks the change is a `BLOCKED` outcome, in the format `CLAUDE.md` gives, with
 - The GNSS power rail differs between T-Watch revisions. The wrong guess means
   GNSS silently never starts, which presents as a bad antenna or bad sky view.
 - The Waveshare board has **no LoRa and no GNSS at all**. A capability may still
-  reach it from an attached Firefly node — that is the provider registry, not
+  reach it from an attached Attadipa node — that is the provider registry, not
   the BSP, and the distinction is the whole architecture.
 - **Neither board has a magnetometer.** Any heading claim must say what it is
   derived from.

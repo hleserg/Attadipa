@@ -18,7 +18,7 @@ on:
     types: [completed]
 
 concurrency:
-  group: firefly-ci-repair-${{ github.event.workflow_run.head_branch }}
+  group: attadipa-ci-repair-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 permissions: {}
@@ -84,9 +84,9 @@ jobs:
           COMMENTS=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body')
           RESET_AT=$(printf '%s\n' "$COMMENTS" | grep -n '/ci-repair reset' | tail -1 | cut -d: -f1 || true)
           if [ -n "${RESET_AT:-}" ]; then
-            COUNT=$(printf '%s\n' "$COMMENTS" | tail -n "+$RESET_AT" | grep -c 'firefly-ci-repair' || true)
+            COUNT=$(printf '%s\n' "$COMMENTS" | tail -n "+$RESET_AT" | grep -c 'attadipa-ci-repair' || true)
           else
-            COUNT=$(printf '%s\n' "$COMMENTS" | grep -c 'firefly-ci-repair' || true)
+            COUNT=$(printf '%s\n' "$COMMENTS" | grep -c 'attadipa-ci-repair' || true)
           fi
           COUNT=${COUNT:-0}
           if [ "$COUNT" -ge 2 ]; then
@@ -157,7 +157,7 @@ jobs:
       actions: read
       # id-token: write is not optional, and the reason is easy to miss.
       #
-      # github_token below is FIREFLY_AGENT_TOKEN, which is deliberately allowed
+      # github_token below is ATTADIPA_AGENT_TOKEN, which is deliberately allowed
       # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
       # action authenticates as the Claude GitHub App by exchanging this
       # workflow's GitHub OIDC token for an installation token, and without this
@@ -194,7 +194,7 @@ jobs:
           # halfway still counts. A counter that only increments on success
           # counts to two forever.
           {
-            echo "<!-- firefly-ci-repair sha=$SHA job=$JOB attempt=$ATTEMPT -->"
+            echo "<!-- attadipa-ci-repair sha=$SHA job=$JOB attempt=$ATTEMPT -->"
             echo "Automatic CI repair, attempt $ATTEMPT of 2, on failing job \`$JOB\`."
           } > /tmp/attempt.md
           gh pr comment "$PR" --repo "$REPO" --body-file /tmp/attempt.md
@@ -234,7 +234,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
           allowed_bots: ""
           allowed_non_write_users: ""
           show_full_output: "false"

@@ -6,7 +6,7 @@ draw".
 
 | | What it is for |
 |---|---|
-| [`charset.py`](charset.py) | **the** definition of what Firefly's fonts must be able to draw. 181 codepoints, 18 ranges, a recorded reason per range |
+| [`charset.py`](charset.py) | **the** definition of what Attadipa's fonts must be able to draw. 181 codepoints, 18 ranges, a recorded reason per range |
 | [`check_coverage.py`](check_coverage.py) | does this font file have a glyph for every one of them? The check that eliminates a font |
 | [`instantiate.py`](instantiate.py) | pin a variable font to one weight — and refuse to rewrite it when it is already at that weight |
 | [`measure.py`](measure.py) | generate, compile for ESP32-S3, and report `.rodata`. The flash cost, measured |
@@ -33,7 +33,7 @@ both would mean carrying 1.4 MB to answer a question that has not been asked of
 the owner. Fetch them from the canonical source:
 
 ```bash
-mkdir -p /tmp/firefly-fonts && cd /tmp/firefly-fonts
+mkdir -p /tmp/attadipa-fonts && cd /tmp/attadipa-fonts
 curl -sLO 'https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz,wght%5D.ttf'
 curl -sLo Inter-OFL.txt 'https://raw.githubusercontent.com/google/fonts/main/ofl/inter/OFL.txt'
 curl -sLO 'https://raw.githubusercontent.com/google/fonts/main/ofl/nunitosans/NunitoSans%5BYTLC,opsz,wdth,wght%5D.ttf'
@@ -47,7 +47,7 @@ instances of either — which is the reason `instantiate.py` exists.
 ## The whole run
 
 ```bash
-FONTS=/tmp/firefly-fonts
+FONTS=/tmp/attadipa-fonts
 CONV=./node_modules/.bin/lv_font_conv
 
 python3 tools/font/check_coverage.py "$FONTS"/*.ttf
@@ -65,7 +65,7 @@ python3 tools/font/measure.py --fonts "$FONTS/measured" --lv-font-conv "$CONV" \
 for theme in day night; do
   python3 tools/font/contact_sheet.py --font "$FONTS/measured/Inter-400.ttf" \
       --lv-font-conv "$CONV" --bpp 4 --sizes 14,16,20,28 --theme "$theme" \
-      --text "Привет Ёжик 12:34 Firefly" \
+      --text "Привет Ёжик 12:34 Attadipa" \
       --out "docs/ui/specimens/sheet-Inter-400-$theme.png"
 done
 ```

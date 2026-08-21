@@ -1,6 +1,6 @@
 # Resource budget
 
-**Nothing in this document has been measured.** No Firefly firmware has been
+**Nothing in this document has been measured.** No Attadipa firmware has been
 built for either target, so every figure here is one of three things, and each
 is labelled:
 

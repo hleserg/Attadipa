@@ -17,7 +17,7 @@ So a task is a GitHub issue, and everything an agent needs to start is in it.
 A producing agent puts a machine-readable block at the top of the issue body:
 
 ```html
-<!-- firefly-agent-task
+<!-- attadipa-agent-task
 producer: chatgpt
 task_type: continuous-review
 reviewed_head: 53f8cea
@@ -53,6 +53,55 @@ A research-only type means exactly that: verify sources, write to
 genuinely made — and do **not** write speculative implementation code. A
 research task that arrives as a pull request full of new subsystems has not
 been done, it has been guessed at.
+
+### A producing app may be named, and only named
+
+The trust boundary above is the actor's write access. A producing agent may hold
+no GitHub account at all: **ChatGPT reaches this repository through its GitHub
+App and arrives as `chatgpt-codex-connector[bot]` with `author_association:
+NONE`** — observed, not assumed; that is the login that reviewed pull request #11
+on 2026-08-21. The bot rule refuses it, correctly, and leaves the queue with no
+input.
+
+So the owner may name app logins in the repository variable
+**`ATTADIPA_TRUSTED_PRODUCERS`**, comma-separated:
+
+```bash
+gh variable set ATTADIPA_TRUSTED_PRODUCERS --body 'chatgpt-codex-connector[bot]'
+```
+
+Four properties keep that from being a hole, and each has a test:
+
+| Property | Why |
+|---|---|
+| **empty by default** | no repository gains an exemption by taking this file |
+| **`issues` events only** | the loop is an agent's own comment mentioning `@claude`; no entry can exempt a comment |
+| **`claude` and `github-actions` can never be listed** | checked *after* the list in the gate **and again in the watchdog's scan**, so naming them does nothing in either place |
+| **exact login match** | `codex-connector[bot]` does not match `chatgpt-codex-connector[bot]` |
+
+Being on the list *is* the authorisation — an app is not a collaborator and has
+no permission to look up. The owner editing that variable is the human decision,
+and it is deliberately a variable rather than a code change, so choosing a
+producer never requires a pull request against the security boundary.
+
+The list is also read by `agent-queue-watchdog.yml`, which filters on
+`author_association` and would otherwise skip exactly these tasks — issue #10 was
+refused by the gate *and* invisible to the watchdog at the same time, which is
+how a task disappears completely.
+
+**The non-listable rule is repeated there rather than inherited, and that is not
+duplication.** The watchdog hands over by `workflow_dispatch`, which the gate
+trusts by construction and does not re-check the actor for. A `claude[bot]` entry
+that the gate refuses to honour would therefore have been honoured by the
+watchdog and dispatched into the one door that no longer asks — the repository's
+own output starting a billable writer, which is the loop the whole allowlist
+exists to avoid. Caught in review on #19, and now covered by
+`.github/tests/watchdog-filter-test.sh`, which CI runs.
+
+The scan filter lives in `.github/scripts/queue-scan.jq` for the same reason the
+gate lives in a script: a filter inside a YAML block cannot be executed, and a
+security boundary that has never been executed against a hostile input is a
+hypothesis.
 
 ### `reviewed_head` is checked
 

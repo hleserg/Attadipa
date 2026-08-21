@@ -1,4 +1,4 @@
-# Firefly design system
+# Attadipa design system
 
 Required by [final §54](../master-prompt-final.md). This is the written half;
 the other half is code tokens, which land with the first simulator screen
@@ -37,7 +37,7 @@ final §42:
 
 | Name | Hex |
 |---|---|
-| Firefly Orange | `#FF8A40` |
+| Attadipa Orange | `#FF8A40` |
 | Glow Amber | `#FFC857` |
 | Meadow Green | `#6FA07A` |
 | Leaf Sage | `#A7B49C` |
@@ -77,10 +77,10 @@ Semantic names. A screen asks for `color.accent.primary`, never for orange.
 | `color.background.raised` | Soft Clay `#E9DCC2` | the layer above a surface |
 | `color.text.primary` | Ink Olive `#2F3A2E` | body and headings |
 | `color.text.muted` | Cocoa Brown `#7A5E3A` | secondary, units, timestamps |
-| `color.accent.primary` | Firefly Orange `#FF8A40` | the one thing on screen that acts |
-| `color.accent.glow` | Glow Amber `#FFC857` | the firefly light; highlights, focus |
+| `color.accent.primary` | Attadipa Orange `#FF8A40` | the one thing on screen that acts |
+| `color.accent.glow` | Glow Amber `#FFC857` | the attadipa light; highlights, focus |
 | `color.success` | Meadow Green `#6FA07A` | delivered, connected, fix acquired |
-| `color.warning` | Firefly Orange `#FF8A40` | needs attention, not yet wrong |
+| `color.warning` | Attadipa Orange `#FF8A40` | needs attention, not yet wrong |
 | `color.danger` | **UNKNOWN** | not in either palette — see §3.1 |
 | `color.navigation` | Sky Teal `#6FB7B5` | bearing, route, target |
 | `color.border.subtle` | Leaf Sage `#A7B49C` | dividers, inactive outlines |
@@ -108,7 +108,7 @@ trade against final §47's "warm and calm, not harsh blue-black". It is
 
 ### 3.1 The gap
 
-There is **no red** in either owner palette. Firefly's warmest accent, Firefly
+There is **no red** in either owner palette. Attadipa's warmest accent, Attadipa
 Orange, is doing duty as both "acts" and "warning", which is one job too many,
 and there is nothing left for danger — SOS, critical battery, transmit blocked
 by an unknown region. Inventing a red is a visual-identity decision and belongs
@@ -118,6 +118,71 @@ Meanwhile: no state may be signalled by colour alone (final §55). SOS carries a
 icon and a word; delivery success carries a mascot pose; a warning carries text.
 That is required for red/green colour-blindness regardless, and it is what makes
 the missing red survivable in the interim.
+
+### 3.2 Contrast, measured
+
+Not an opinion and not a review note: WCAG 2.1 relative luminance, computed from
+the seeds above by `ui/src/color.cpp` and asserted in `tests/test_ui_tokens.cpp`.
+AA wants **4.5:1** for body text and **3:1** for large text, icons and the
+boundary of a control. Every number below is a ratio against the background
+named in the column, in the theme named in the section.
+
+**Day**
+
+| Foreground | on the page | on a surface | on a raised card |
+|---|---|---|---|
+| `color.text.primary` | 11.10 | 9.78 | 8.77 |
+| `color.text.muted` | 5.62 | 4.95 | **4.44** |
+| `color.accent.primary` | **2.19** | **1.93** | **1.73** |
+| `color.accent.glow` | **1.44** | **1.27** | **1.13** |
+| `color.success` | **2.81** | **2.47** | **2.22** |
+| `color.warning` | **2.19** | **1.93** | **1.73** |
+| `color.navigation` | **2.15** | **1.89** | **1.70** |
+| `color.border.subtle` | **2.03** | **1.79** | **1.60** |
+
+**Night** — there is no raised layer; §3.1 records that gap.
+
+| Foreground | on the page | on a surface |
+|---|---|---|
+| `color.text.primary` | 11.10 | 9.93 |
+| `color.text.muted` | 5.47 | 4.89 |
+| `color.accent.primary` | 7.73 | 6.92 |
+| `color.accent.glow` | 7.73 | 6.92 |
+| `color.success` | 3.96 | 3.54 |
+| `color.warning` | 5.08 | 4.54 |
+| `color.navigation` | 5.16 | 4.62 |
+| `color.border.subtle` | 5.47 | 4.89 |
+
+Two things follow, and both are consequences rather than complaints.
+
+**The day accents cannot carry meaning on their own.** Every accent in the day
+palette is under 3:1 even against the brightest background it will ever sit on.
+A thin glyph, a one-pixel outline, a word in Sky Teal — none of them is legible
+to the standard, and the shortfall is large rather than marginal: Glow Amber at
+1.44:1 is very nearly the same luminance as Warm Ivory. So on the day theme an
+accent is **emphasis**, and the meaning travels in the icon and the word beside
+it. §3.1 already required that for colour-blindness; it turns out to be
+load-bearing for everyone. Where an accent must be read — a value, a status
+word — it is drawn on a dark chip rather than tinted, or it is drawn in
+`color.text.primary` with the accent as its background.
+
+**Muted text fails on a raised card, and only there.** 4.44:1 against Soft Clay,
+six hundredths under the threshold, having passed on the page and on a surface.
+This is exactly the failure a review by eye does not catch, and it lands on the
+most ordinary thing in the system — a timestamp or a unit under a list row. The
+remedy is local and needs no new colour: muted text does not go on
+`color.background.raised`, or the thing it sits on is not raised.
+
+The night palette holds up throughout. Its tightest case is `color.success` on a
+card at 3.54:1 — fine as a graphic, not enough for a word — and the four roles
+the night table does not define fall through to their day values and stay
+legible doing it, which is the condition that makes the fall-through in
+`color()` defensible at all.
+
+None of this is a proposal to change the palette. The colours are the owner's
+(final §42) and open question **A7** already records that the published brand art
+disagrees with the text. What changed here is that the numbers now exist, are
+computed rather than eyeballed, and break a test if they move.
 
 ## 4. Typography
 
@@ -166,11 +231,55 @@ Seeded from the style board's generous spacing and rounded forms; all values are
 | `elevation` | `flat` · `raised` · `overlay` — realised as a border and a tint, not a blurred shadow, which costs fill rate |
 
 Spacing is expressed in **density-independent units resolved per board**, not in
-raw pixels. 8 px on a 240 × 240 1.54-inch panel and 8 px on a 410 × 502 2.06-inch
-panel are not the same physical distance, and touch targets are physical.
+raw pixels, against a 160 dpi reference — the density the touch-target guidance
+is already written in, so that "44" means the ~7 mm it is meant to mean rather
+than a number this project invented.
 
+What that buys, at the two densities the board profiles compute (261 dpi for the
+T-Watch, taking the conservative 1.3-inch reading of a diagonal
+[HARDWARE_MATRIX](../research/HARDWARE_MATRIX.md) records as CONFLICTING; 315 dpi
+for the Waveshare):
+
+| Token | T-Watch | Waveshare | physical |
+|---|---|---|---|
+| `space.sm` (8) | 13 px | 16 px | 1.27 mm both |
+| `space.lg` (16) | 26 px | 31 px | 2.51 mm / 2.49 mm |
+| `touch.min` adult (44) | 72 px | 87 px | 7.01 mm / 7.02 mm |
+| `touch.min` child (56) | 91 px | 110 px | 8.86 mm / 8.86 mm |
+
+Written as pixels instead, a 44 would be 4.3 mm on the Waveshare and 5.1 mm on
+the T-Watch — under the guidance on both boards, by different amounts, from one
+source line. That is the failure the `Dp` type exists to make unwritable.
+
+**`radius.pill` is not a length.** 999 is the CSS idiom for "round the ends
+completely"; resolved as a measurement at 261 dpi it is 1630 px, larger than
+either panel. In code it is a *rule* — half the shorter side of the thing being
+drawn — and `is_pill()` says so in the type system rather than leaving a magic
+number to be multiplied by accident.
+
+**Durations are not scaled.** A denser panel does not make time pass differently.
 `motion.duration.instant` exists so that "reduce motion" and low-power modes have
 somewhere to go without an `if` in every animation.
+
+### 5.1 Where this lives in code
+
+`ui/` — `metrics.h` (the `Dp` type and the per-board resolution), `color.h` /
+`color.cpp` (the palette and the contrast arithmetic), `tokens.h` / `tokens.cpp`
+(everything above). The library links `attadipa_headers` and **not**
+`attadipa_platform`: a screen asks for `space.md`, and only the composition root
+knows which panel answered. That is [ADR-0007](../adr/0007-two-capability-layers.md)
+applied to pixels.
+
+Three tests hold the line. `tests/test_ui_tokens.cpp` asserts the properties —
+one token is one physical size on both panels, no gap rounds away, the night
+fall-through stays legible. `tools/ui/check_raw_values.py` refuses a colour, a
+pixel count or a duration written as a number anywhere under `ui/`, `sim/` or
+`apps/` — including the channel-by-channel form `Rgb{0xFF, 0xF6, 0xE8}`, which is
+what somebody copying a line out of the palette would paste. Exactly one file is
+exempt, `ui/src/color.cpp`, because being the palette is its job; six other
+candidates were tried and removed on finding they were exempt from a rule they
+never broke. `tools/ui/selftest.py` proves the checker rejects nine real
+mistakes and accepts nine correct lines.
 
 ## 6. Sound and haptics are tokens too
 

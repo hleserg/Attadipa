@@ -1,4 +1,4 @@
-# Every user-facing string in Firefly, in both locales.
+# Every user-facing string in Attadipa, in both locales.
 #
 # This file is the single source of truth. `tools/l10n/gen_strings.py` turns it
 # into the StringId enum and the per-locale tables under `l10n/`, and those
@@ -27,8 +27,8 @@
 # --- Product ---------------------------------------------------------------
 
 [product_name]
-en = "Firefly OS"
-ru = "Firefly OS"           # a name, not a word: transliterating it would be wrong
+en = "Attadipa"
+ru = "Attadipa"           # a name, not a word: transliterating it would be wrong
 
 # --- The diagnostic boot screen --------------------------------------------
 #

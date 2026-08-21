@@ -1,4 +1,4 @@
-"""Does this font file actually have a glyph for everything Firefly draws?
+"""Does this font file actually have a glyph for everything Attadipa draws?
 
 Coverage is the check that eliminates a font outright, so it runs against the
 font file that would be embedded rather than against a foundry's claim. A
