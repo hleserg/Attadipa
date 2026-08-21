@@ -314,13 +314,12 @@ void test_a_hold_with_nothing_held_is_reported()
 
 }  // namespace
 
-int main(int argc, char** argv)
+int main()
 {
-    if (argc < 2) {
-        std::fprintf(stderr, "usage: test_replay_rig <scenario directory>\n");
-        return 2;
-    }
-    fixtures = argv[1];
+    // This executable owns its fixtures.  Keeping the directory in the build
+    // definition prevents a test invocation from selecting an arbitrary file
+    // tree while still letting an out-of-tree build locate the source fixtures.
+    fixtures = ATTADIPA_REPLAY_FIXTURE_DIR;
 
     test_a_wrong_expectation_is_reported();
     test_a_missing_fixture_is_a_failure();

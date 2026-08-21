@@ -233,8 +233,9 @@ set_tests_properties(replay PROPERTIES LABELS gnss)
 
 add_executable(test_replay_rig test_replay_rig.cpp)
 target_link_libraries(test_replay_rig PRIVATE attadipa_replay)
-add_test(NAME replay_rig
-         COMMAND test_replay_rig ${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios)
+target_compile_definitions(test_replay_rig PRIVATE
+    ATTADIPA_REPLAY_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios")
+add_test(NAME replay_rig COMMAND test_replay_rig)
 set_tests_properties(replay_rig PROPERTIES LABELS gnss)
 
 # ---------------------------------------------------------------------------
