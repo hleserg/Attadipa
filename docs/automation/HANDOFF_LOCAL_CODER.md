@@ -22,8 +22,12 @@ A local session has none of those limits. Everything below is one command or
 one file away there.
 
 Run them in order. **1 and 7 are the ones that matter** — until 1 is done the
-agent queue does not close, and until 7 is observed nobody knows whether the
-biggest fix in #9 actually works. The rest is housekeeping.
+agent queue has no input, and until 7 is observed nobody has seen an agent
+produce a branch and a pull request. The rest is housekeeping.
+
+Note the project was renamed from Firefly OS to **Attadipa** on 2026-08-21. Old
+`hleserg/FireflyOS` URLs redirect, but the identifiers did not: the variables are
+`ATTADIPA_*` and the task marker is `attadipa-agent-task`.
 
 ---
 
@@ -40,9 +44,13 @@ task 1 is that bots and users are different here.
 
 ---
 
-## 1. Decide how ChatGPT files issues — the one real blocker
+## 1. Switch on the producer allowlist — the one thing that unblocks the queue
 
 **Nothing else on this list changes whether the automation works. This does.**
+
+This item used to read "decide how ChatGPT files issues". It is decided: the
+observation below settled it, the owner chose the allowlist, and the code is
+merged. What is left is one `gh variable set`.
 
 ### What was proven, not guessed
 
