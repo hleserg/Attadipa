@@ -1,3 +1,27 @@
+> # ⛔ SUPERSEDED — 2026-08-21
+>
+> **Этот документ больше не является действующей спецификацией.**
+> Действующая — [`master-prompt-final.md`](master-prompt-final.md).
+>
+> This file is **history**, kept for the same reason as
+> [`master-prompt.md`](master-prompt.md): ADRs and the reuse ledger quote it.
+>
+> Its content was not dropped — it was absorbed. The reuse-first rule is final
+> §64–§67, the lookahead research pipeline is final §68, latency hiding is
+> final §69, subagent discipline is final §70, task management is final §71,
+> and "continue while work exists" is final §72. Where the wording differs, the
+> final prompt wins.
+>
+> Two of this document's rules were followed loosely enough that the owner
+> called it out on 2026-08-21, and the final prompt now states them with teeth:
+> the reuse ledger must contain records rather than a template (final §67), and
+> task/status consistency is a deliverable checked in the same commit as the
+> change (final §73).
+>
+> **Do not fix anything in this file.**
+
+---
+
 # ДОПОЛНЕНИЕ: REUSE-FIRST DEVELOPMENT, LOOKAHEAD RESEARCH И CONTINUOUS EXECUTION
 
 ## REUSE FIRST — НЕ ИЗОБРЕТАЙ УЖЕ РЕШЁННОЕ

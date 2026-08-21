@@ -40,6 +40,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0004](0004-capability-sources.md) | Where a capability comes from, and what happens when it leaves | proposed |
 | [0005](0005-node-protocol.md) | The watch↔node protocol | proposed |
 | [0006](0006-settings-and-bounded-values.md) | Settings, and values the law bounds | proposed |
+| [0010](0010-localization.md) | English and Russian from the first screen | **accepted** |
 
 0003 was reserved for the radio abstraction across the five possible T-Watch
 chips ([TASKS](../../TASKS.md) T-013), blocked on reading MeshCore. MeshCore has

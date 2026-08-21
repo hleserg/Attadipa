@@ -2,13 +2,20 @@
 
 ## Read first
 
-- [`docs/master-prompt.md`](docs/master-prompt.md) — the product specification.
-  Product requirements there are binding. Technical claims there are **not** —
-  the document says so itself, and the board survey has already contradicted
-  several of them.
-- [`docs/development-addendum.md`](docs/development-addendum.md) — process:
-  reuse before writing, research ahead of implementation, keep working while
-  one task is blocked.
+- [`docs/master-prompt-final.md`](docs/master-prompt-final.md) — **the
+  specification in force.** Owner-supplied, 2026-08-21. Product requirements
+  there are binding. Technical claims there are **not**, and it says so itself
+  in §1: *"Technical claims are not automatically facts, including claims in
+  this file."* The board survey has already contradicted several.
+- [`docs/master-prompt.md`](docs/master-prompt.md) and
+  [`docs/development-addendum.md`](docs/development-addendum.md) — **superseded
+  history.** Kept because ADRs quote them. Do not fix anything in them, and do
+  not take a requirement from them without checking the final prompt first.
+  Section numbers in the two do not correspond: a bare "§NN" in older text
+  means the old master prompt, and newer text says *final §NN*.
+- [`docs/research/OWNER_DECISIONS.md`](docs/research/OWNER_DECISIONS.md) —
+  decisions the owner gave us directly, which neither document contains and
+  which are not ours to overturn.
 - [`STATUS.md`](STATUS.md) — where things actually are.
 - [`TASKS.md`](TASKS.md) — what to pick up.
 

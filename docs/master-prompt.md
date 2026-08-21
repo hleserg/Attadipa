@@ -1,3 +1,38 @@
+> # ⛔ SUPERSEDED — 2026-08-21
+>
+> **Этот документ больше не является действующей спецификацией.**
+> Действующая — [`master-prompt-final.md`](master-prompt-final.md).
+>
+> This file is **history**. It is kept because the reasoning in several ADRs
+> quotes it, and deleting it would leave those quotations pointing at nothing.
+>
+> The current operating specification is
+> [`docs/master-prompt-final.md`](master-prompt-final.md) — *Firefly OS — Final
+> Master Prompt*, supplied by the owner on 2026-08-21. Its own preamble says
+> so: *"This file supersedes the previous `docs/master-prompt.md` +
+> `docs/development-addendum.md` as the primary operating specification for the
+> coding agent. The older documents are useful history, but if they conflict
+> with this document, this document wins unless a later explicit owner decision
+> says otherwise."*
+>
+> **Do not fix anything in this file.** Not the section numbers, not the
+> `has(Capability::GNSS)` examples in §66 that the final prompt §7 rejects, not
+> the ownership definition that final §32 calls too strong. Correcting a
+> superseded document is how a repository ends up with two documents that both
+> read as current — the exact failure final §67 names. Corrections go in the
+> current documents; this one records what was asked for at the time.
+>
+> Section numbers in this file and in the final prompt **do not correspond**.
+> Where an ADR cites "§NN" without saying which document, it predates
+> 2026-08-21 and means this one. Newer text says *final §NN*.
+>
+> Requirements that came from here and are still binding were carried into the
+> final prompt, and the ones that came from the owner in conversation rather
+> than from either document live in
+> [`research/OWNER_DECISIONS.md`](research/OWNER_DECISIONS.md).
+
+---
+
 # Firefly OS — MASTER PROMPT FOR AUTONOMOUS CODING AGENT
 
 Ты — ведущий архитектор и основной разработчик проекта **Firefly OS**.

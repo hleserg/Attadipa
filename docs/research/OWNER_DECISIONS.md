@@ -166,6 +166,59 @@ default that assumes it.
 
 ---
 
+## OD-3 — A new master specification, and a review of the work so far
+
+**Decided:** 2026-08-21.
+
+**As stated:** the owner supplied `FireflyOS_Master_Prompt_Final_Bundle.zip`
+containing a 3 125-line specification and three PNGs, with the instruction
+«так, в архиве ревью, сделай все по промту от туда» — *the archive contains a
+review; do everything according to the prompt in it.*
+
+**What arrived:**
+
+| File | Now at | SHA-256 |
+|---|---|---|
+| `FIREFLY_OS_MASTER_PROMPT_FINAL.md` | [`../master-prompt-final.md`](../master-prompt-final.md) | `65675d49604ba217e5ca7288621ab33d8655f0659e61f2ce795eec27b42312ed` |
+| `design_refs/firefly_brand_identity.png` | [`../ui/reference/`](../ui/reference/) | `d9a51f7b69b3566d366e9f9c2d27d375579152e2fdf5c3a46c46ec16112c880e` |
+| `design_refs/firefly_visual_style_board.png` | [`../ui/reference/`](../ui/reference/) | `4e66f2a4b09038bb4e94f2dd097733a987a714c13572df68766900f75b84c2b9` |
+| `design_refs/firefly_mascot_sheet.png` | [`../ui/reference/`](../ui/reference/) | `175f7cfd9343973e65242843ad697bc9646b4ba2a312f78c42de8e6f2024684a` |
+
+All four are committed byte-identical to what was supplied. The hashes are
+recorded so that a later edit is visible as one.
+
+**What it obliges:**
+
+1. **It supersedes both earlier specification documents.** Its own preamble
+   says so. `docs/master-prompt.md` and `docs/development-addendum.md` are now
+   history and carry supersession notices.
+2. **Eight P0 corrections must land before large new core implementation**
+   (final §75 A–H). They are not suggestions; §75 is titled *"do this before
+   large new core implementation"*, and the review that produced them found
+   real contradictions in what this repository had already written.
+3. **The three images are canonical project art**, not decoration, and must
+   materially influence the design system and the asset pipeline (final §40,
+   §44, §45). §41 is equally binding in the other direction: what they depict
+   is not a product fact.
+4. **English and Russian from the first real screen** (final §50). This is
+   stated as a binding product requirement, in the same register as MeshCore
+   compatibility and standalone operation — not as later polish.
+5. **Research stops after the reconciliation.** §75 closes: *"Do not spend
+   another week in research after this reconciliation. Move into M1."*
+
+**What it invalidates:** eight things this repository had written, listed in
+[the reconciliation record](RECONCILIATION_2026-08-21.md). The largest are that
+capabilities were modelled in one flat layer mixing silicon with product
+features, that all five T-Watch radios were called LoRa, and that
+[ADR-0005](../adr/0005-node-protocol.md) asserted the watch never runs MeshCore.
+
+**What it does not change:** every hardware fact in
+[VERIFIED_FACTS](VERIFIED_FACTS.md) still stands — the review corrected the
+*model*, not the measurements. And [OD-1](#od-1--there-is-a-separate-firefly-node-and-the-watch-uses-it)
+is untouched: final §3 and §9 restate it almost word for word.
+
+---
+
 ## Still with the owner
 
 Nothing here answers A1–A3, A5 or the compass question. Those remain in

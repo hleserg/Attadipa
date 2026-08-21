@@ -224,16 +224,59 @@ status · implementation status · tests · hardware required.
 - **Hardware required:** no
 
 ### T-009 · Design system and tokens
-- **Priority:** P1
-- **Dependencies:** T-008
-- **Goal:** `docs/ui/DESIGN_SYSTEM.md` plus the token definitions — colour,
-  spacing, radius, typography, motion timing, icon sizes, haptic patterns.
-- **Acceptance:** no raw RGB or magic size anywhere in UI code, enforced by
-  review; day and night variants defined; both geometries considered.
-- **Research status:** not started
-- **Implementation status:** not started
+- **Priority:** **P0** — raised from P1. Final §58 puts design tokens in the
+  first vertical slice, before the Clock.
+- **Dependencies:** T-032 (LVGL pin) for the code half; the document half is done
+- **Goal:** `docs/ui/DESIGN_SYSTEM.md` plus the token definitions in code —
+  colour, spacing, radius, typography, motion timing, icon sizes, image sizes,
+  elevation, sound cues, haptic patterns (final §54).
+- **Acceptance:** no raw RGB, pixel count, duration, font size or radius
+  anywhere in UI code; day and night variants defined; both geometries;
+  EN and RU exercised.
+- **Research status:** done for the written half — palette, typography
+  direction and mascot usage derived from the three owner-provided references
+  ([docs/ui/reference](docs/ui/reference/README.md))
+- **Implementation status:** [`docs/ui/DESIGN_SYSTEM.md`](docs/ui/DESIGN_SYSTEM.md)
+  written and marked *proposed*; no code tokens yet, and no value has been shown
+  on a panel
 - **Tests:** screenshot references once the simulator exists
+- **Hardware required:** for the final colour values, **yes** — final §55
+  forbids preserving a concept-board hex that fails on the real display, and
+  that cannot be judged from a desktop monitor
+- **Open inside this task:** `color.danger` has no value — there is no red in
+  either owner palette, and inventing one is an identity decision for the owner
+
+### T-033 · Localization mechanism: `tr()`, catalogues, and the CI that guards them
+- **Priority:** P0
+- **Dependencies:** T-032 (the font pipeline is LVGL-version-specific)
+- **Goal:** implement [ADR-0010](docs/adr/0010-localization.md) — the
+  `StringId` enum, the generator, both catalogues, runtime switching, and the
+  three CI checks.
+- **Acceptance:** a screen can be written with no user-facing literal; switching
+  language at runtime redraws without a reboot; CI fails on a missing key, a
+  duplicate key, or a catalogue glyph absent from the font subset; the Russian
+  plural rule passes a vector covering 0, 1, 2, 5, 11, 21, 101, 111, 1001.
+- **Research status:** decision made (ADR-0010); the API shape is open
+- **Implementation status:** not started
+- **Tests:** host unit tests for plural categories and fallback; CI checks
 - **Hardware required:** no
+- **Note:** this is the task final §50 means by *"localization is architecture,
+  not later polish"*. It precedes the first screen rather than following it.
+
+### T-034 · Image asset pipeline
+- **Priority:** P0
+- **Dependencies:** T-032
+- **Goal:** reproducible conversion from cleaned source art to board-appropriate
+  LVGL assets — `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`
+  (final §45). Flash size and decode cost measured per asset, per board.
+- **Acceptance:** a script regenerates every asset deterministically; CI reports
+  sizes and detects stale generated output; no hand-maintained C arrays; the
+  2 K reference PNGs are never shipped as watch assets.
+- **Research status:** not started — LVGL image conversion, RGB565A8, and
+  whatever compression the pinned version supports
+- **Implementation status:** not started
+- **Tests:** regeneration reproducibility; asset budget per board
+- **Hardware required:** for decode/render cost, yes
 
 ### T-019 · The node as a documented profile
 - **Priority:** P1
