@@ -10,7 +10,7 @@ draw".
 | [`check_coverage.py`](check_coverage.py) | does this font file have a glyph for every one of them? The check that eliminates a font |
 | [`instantiate.py`](instantiate.py) | pin a variable font to one weight — and refuse to rewrite it when it is already at that weight |
 | [`measure.py`](measure.py) | generate, compile for ESP32-S3, and report `.rodata`. The flash cost, measured |
-| [`contact_sheet.py`](contact_sheet.py) | render the glyphs LVGL will actually draw, at the size it will draw them, in both themes |
+| [`contact_sheet.py`](contact_sheet.py) | render the glyphs LVGL will actually draw, at the size it will draw them, with the advance, side bearings and kerning it will use, in both themes |
 
 Results: [FONT_MEASUREMENTS](../../docs/research/FONT_MEASUREMENTS.md).
 

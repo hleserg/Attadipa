@@ -60,7 +60,7 @@ arguably icons — rotatable, scalable, owned by the image pipeline (T-034) —
 rather than text glyphs. But it is a decision, not an oversight, and it belongs
 to whoever picks the font.
 
-## Two traps found by running the pipeline rather than reading about it
+## Three traps found by running the pipeline rather than reading about it
 
 ### 1. The default instance is not the weight you think
 
@@ -101,6 +101,28 @@ when the requested location is already the default**, and says so out loud.
 Note also that Nunito Sans's kerning is a **fixed 5 236 bytes at every size** —
 at 14 px bpp 1 that is 64 % of the entire font (8 225 B with, 2 989 B without).
 Kerning is not a rounding error in an embedded font; it is a budget line.
+
+### 3. The dump's luminance is not the glyph's coverage
+
+`lv_font_conv --format dump` writes one PNG per glyph, and those PNGs are the
+only way to see what the firmware will actually draw. They are not plain
+greyscale. `lib/writers/dump.js` stores every pixel as
+`(255 - value) * colour / 255`, where `colour` is white inside the advance width
+and the typo ascent/descent band and **pink — (255, 127, 184) — outside it**.
+
+A glyph whose ink overhangs its advance therefore carries a full-height pink
+column. Read the file with `convert("L")` and that column becomes mid-grey ink:
+a vertical bar down the specimen that exists in no font. The first four sheets
+generated here had them — Nunito Sans's `к`, `т`, `l` and `y` all overhang, so
+its sheet had six.
+
+Both colours have red = 255, so `255 - value` **is** the red channel, for every
+pixel of every glyph. The specimen script reads that channel and the annotation
+disappears without a single pixel of coverage being touched.
+
+The general shape of the mistake is worth more than the fix: a tool's debug
+output is drawn for a human, and a human-facing rendering may carry marks that
+are about the glyph rather than in it.
 
 ## Generated size
 
@@ -166,10 +188,32 @@ other.
 | Inter | [14/16/20/28 px](../ui/specimens/sheet-Inter-400-day.png) | [14/16/20/28 px](../ui/specimens/sheet-Inter-400-night.png) |
 | Nunito Sans | [14/16/20/28 px](../ui/specimens/sheet-NunitoSans-400-day.png) | [14/16/20/28 px](../ui/specimens/sheet-NunitoSans-400-night.png) |
 
+The lines are laid out with the metrics the firmware will use, not with the
+tiles butted together: advance width, left side bearing and kerning all come out
+of the `font_info.json` written beside the dump. Letter spacing is half of
+whether 14 px Cyrillic is readable, so a specimen that invents its own spacing
+answers a question nobody asked. The vertical alignment is the dump's own — each
+PNG spans the typo ascent/descent band, so the glyphs sit on a common baseline.
+
 Both render Cyrillic legibly at 14 px at bpp 4, including the Ё diaeresis, which
-is the first thing to collapse. The sheets are bottom-aligned rather than
-baseline-aligned — they are a legibility check, not a metrics proof, and the
-image says so on itself.
+is the first thing to collapse.
+
+**One size is not one size.** MEASURED from the same `font_info.json`, in
+pixels, at the same `--size`:
+
+| Font | 14 px | 16 px | 20 px | 28 px |
+|---|---:|---:|---:|---:|
+| Inter — ascent … descent | 14 … −3 | 15 … −3 | 19 … −4 | 27 … −6 |
+| Inter — **line band** (typo asc − desc + gap) | **17** | **20** | **24** | **34** |
+| Nunito Sans — ascent … descent | 13 … −3 | 15 … −3 | 18 … −4 | 26 … −5 |
+| Nunito Sans — **line band** | **19** | **22** | **27** | **38** |
+
+Nunito Sans asks for 2–4 px more vertical room per line and draws a slightly
+smaller letter while doing it — 12 % more line height at 28 px, on a screen
+240 px tall. So the two families cannot be compared at equal `--size`: matching
+apparent size means Nunito Sans at a larger number, which moves every figure in
+the size table above with it. That is a fact the D16 decision needs and the byte
+counts alone do not carry.
 
 ## Not measured
 

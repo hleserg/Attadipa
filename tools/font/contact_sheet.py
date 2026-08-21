@@ -4,7 +4,9 @@ Final section 51 asks for legibility verified "at actual pixel sizes". A font
 specimen from a foundry is rendered by a desktop rasteriser at a size nobody
 ships; what reaches the wrist is lv_font_conv's own 1/2/4-bpp bitmap. So this
 uses lv_font_conv's `dump` format -- the same rasterisation the firmware gets --
-and tiles it into one image a person can look at.
+and lays it out with the same metrics the firmware will: advance width, left
+side bearing and kerning, all read from the `font_info.json` the dump writes
+beside the images.
 
 Nearest-neighbour zoom, never smooth: the question is what the pixels are, and
 a smoothing filter answers a different one.
@@ -13,7 +15,7 @@ Usage:
   python3 tools/font/contact_sheet.py --font F.ttf --lv-font-conv PATH \\
       --sizes 14,16,20 --bpp 4 --text "Привет Firefly 12:34" --out sheet.png
 """
-import argparse, os, subprocess, tempfile
+import argparse, json, math, os, subprocess, tempfile
 from PIL import Image, ImageChops, ImageDraw
 
 ZOOM = 4
@@ -31,40 +33,85 @@ def dump_glyphs(conv, font, size, bpp, text, workdir):
     return out
 
 
-def row_for(conv, font, size, bpp, text, workdir):
-    """One rendered line of `text`, laid out in codepoint order of the string."""
-    d = dump_glyphs(conv, font, size, bpp, text, workdir)
-    tiles = []
-    for ch in text:
-        if ch == " ":
-            tiles.append(None)
-            continue
-        # lv_font_conv names the dump files by lowercase hex codepoint, no
-        # padding and no "U+" -- 41f.png, not U+041F.png.
-        path = os.path.join(d, f"{ord(ch):x}.png")
-        if not os.path.exists(path):
-            raise RuntimeError(f"no glyph rendered for U+{ord(ch):04X} {ch!r} at {size} px")
-        # The dump PNGs are RGBA with a constant-255 alpha and the coverage in
-        # the colour channels, so the alpha channel is not the glyph -- reading
-        # it gives solid rectangles. Luminance is the glyph.
-        tiles.append(Image.open(path).convert("L"))
+def coverage(path):
+    """The glyph's ink as 8-bit ink-on-paper, with the dump's annotation removed.
 
-    space = max(2, size // 3)
-    width = sum(space if t is None else t.width + 1 for t in tiles)
-    height = max(t.height for t in tiles if t is not None)
-    # 255, not 0: the dump is dark ink on light paper, so the gaps between
-    # words have to be paper too. Filling with 0 leaves black gaps that turn
-    # into bright bars the moment the night sheet inverts the row.
-    row = Image.new("L", (max(width, 1), height), 255)
-    x = 0
-    for t in tiles:
-        if t is None:
-            x += space
+    lv_font_conv's dump writer (lib/writers/dump.js) stores each pixel as
+    `(255 - value) * colour / 255`, where `colour` is white inside the advance
+    width and the typo ascent/descent band, and PINK -- (255, 127, 184) -- for
+    every pixel outside it. A glyph whose bounding box overhangs its advance
+    therefore gets a full-height pink column, and `convert("L")` reads that
+    column as mid-grey ink: a bar through the specimen that is not in the font.
+
+    Both colours have red = 255, so the red channel is exactly `255 - value`
+    for every pixel of every glyph. Take it, and the annotation disappears
+    without touching a single pixel of coverage.
+    """
+    return Image.open(path).convert("RGB").split()[0]
+
+
+def row_for(conv, font, size, bpp, text, workdir):
+    """One line of `text`, laid out the way LVGL will lay it out.
+
+    Not a row of tiles with a gap between them. The dump crops each PNG to the
+    ink bounding box, so pasting them end to end throws away the side bearings
+    and reports spacing the firmware will never draw -- and letter spacing is
+    half of whether 14 px Cyrillic is readable at all. Advance width, left side
+    bearing and kerning all come out of font_info.json.
+    """
+    d = dump_glyphs(conv, font, size, bpp, text, workdir)
+    info = json.load(open(os.path.join(d, "font_info.json"), encoding="utf-8"))
+    glyphs = {g["code"]: g for g in info["glyphs"]}
+    typo_asc, typo_desc = info["typoAscent"], info["typoDescent"]
+
+    # The dump's PNG spans y = max(bbox top, typoAscent) down to
+    # y = min(bbox bottom, typoDescent), so every glyph inside the typo band is
+    # already the same height and aligned on the same baseline. Glyphs that
+    # exceed it -- an accented capital at a small size -- make the row taller,
+    # which is why the extent is computed rather than assumed.
+    top = typo_asc
+    bottom = typo_desc
+    for ch in text:
+        g = glyphs.get(ord(ch))
+        if g is None or g["bbox"]["width"] == 0:
             continue
-        # Bottom-align: the dump has no baseline, so this is a legibility
-        # sheet and not a metrics proof. It says so on the image.
-        row.paste(t, (x, height - t.height))
-        x += t.width + 1
+        b = g["bbox"]
+        top = max(top, b["y"] + b["height"] - 1)
+        bottom = min(bottom, b["y"])
+    height = top - bottom + 1
+
+    placed = []          # (x, y, tile)
+    pen = 0.0            # fractional, because adv_w is fractional in the font
+    for i, ch in enumerate(text):
+        g = glyphs.get(ord(ch))
+        if g is None:
+            raise RuntimeError(f"no glyph rendered for U+{ord(ch):04X} {ch!r} at {size} px")
+        b = g["bbox"]
+        if b["width"] > 0:
+            path = os.path.join(d, f"{ord(ch):x}.png")
+            if not os.path.exists(path):
+                raise RuntimeError(f"font_info has U+{ord(ch):04X} but {path} is missing")
+            tile = coverage(path)
+            glyph_top = max(b["y"] + b["height"] - 1, typo_asc)
+            placed.append((int(round(pen)) + b["x"], top - glyph_top, tile))
+        pen += g["advanceWidth"]
+        if i + 1 < len(text):
+            # Kerning is keyed by the *next* codepoint, in pixels, and it is
+            # fractional. LVGL applies it; a specimen that does not is a
+            # specimen of a font nobody ships.
+            pen += g.get("kerning", {}).get(str(ord(text[i + 1])), 0.0)
+
+    width = max([math.ceil(pen)] + [x + t.width for x, _y, t in placed] + [1])
+    # 255, not 0: the dump is dark ink on light paper, so the space between
+    # words has to be paper too. Filling with 0 leaves black gaps that turn
+    # into bright bars the moment the night sheet inverts the row.
+    row = Image.new("L", (width, height), 255)
+    for x, y, tile in placed:
+        # Darken rather than paste: side bearings can be negative and two
+        # glyphs can legitimately overlap, and a paste would rub out the ink
+        # of the one underneath.
+        box = (x, y, x + tile.width, y + tile.height)
+        row.paste(ImageChops.darker(row.crop(box), tile), box)
     return row
 
 
@@ -90,14 +137,18 @@ def main():
     # stroke that survives one does not automatically survive the other.
     if a.theme == "night":
         rows = [(s, ImageChops.invert(r)) for s, r in rows]
-    paper, label, sub = (255, 60, 110) if a.theme == "day" else (16, 200, 150)
+    # Night paper is 0, not a dark grey: the row itself inverts to 0, and a
+    # page one shade off it would frame every line in a rectangle that is an
+    # artefact of this script rather than anything the panel does.
+    paper, label, sub = (255, 60, 110) if a.theme == "day" else (0, 190, 140)
 
     W = LABEL_W + PAD * 2 + max(r.width for _s, r in rows) * ZOOM
     H = PAD * 2 + sum(r.height * ZOOM + PAD for _s, r in rows) + 22
     sheet = Image.new("L", (W, H), paper)
     draw = ImageDraw.Draw(sheet)
     draw.text((PAD, PAD), f"{os.path.basename(a.font)}  bpp {a.bpp}  {a.theme}  "
-                          f"lv_font_conv dump, {ZOOM}x nearest neighbour, bottom-aligned", fill=sub)
+                          f"lv_font_conv dump, {ZOOM}x nearest neighbour, "
+                          f"advance + kerning from font_info.json", fill=sub)
 
     y = PAD + 22
     for size, row in rows:
