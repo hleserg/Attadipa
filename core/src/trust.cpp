@@ -339,12 +339,8 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     bool clock_disagrees = false;
     if (observation.receiver_time.has_value() && observation.receiver_time_valid &&
         device_time.has_value()) {
-        std::int64_t difference =
-            observation.receiver_time->unix_seconds - device_time->unix_seconds;
-        if (difference < 0) {
-            difference = -difference;
-        }
-        clock_disagrees = static_cast<std::uint64_t>(difference) > policy.clock_disagreement_s;
+        clock_disagrees = seconds_between(*observation.receiver_time, *device_time) >
+                          policy.clock_disagreement_s;
     }
     set(engine_, TrustReason::ClockDisagreement, clock_disagrees, now);
 

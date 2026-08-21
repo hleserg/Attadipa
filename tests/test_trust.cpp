@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <limits>
 
 #include "attadipa/core/trust.h"
 
@@ -347,6 +348,94 @@ void test_receiver_time_is_compared_against_device_time()
     CHECK_NO_REASON(honest.engine(), TrustReason::ClockDisagreement);
 }
 
+// The same detector, given the input it exists for.
+//
+// A receiver's reported time is a field on the wire. clock.h says so in as many
+// words — WallTime is signed "because dates before 1970 are representable in a
+// corrupted or hostile input and clamping them to zero would hide the
+// corruption" — so the whole int64 range is in-domain here by design, not by
+// oversight.
+//
+// It was computed with `a - b` and then `-difference`, both of which are
+// undefined for the ends of that range: the subtraction overflows when the two
+// timestamps are far apart, and negating INT64_MIN has no representable answer
+// at all. One hostile field was enough. The tests were green because every
+// fixture supplied a plausible timestamp, which is the one kind of input this
+// detector is not for.
+void test_a_hostile_receiver_time_is_still_a_disagreement()
+{
+    constexpr std::int64_t lowest  = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t highest = std::numeric_limits<std::int64_t>::max();
+
+    // The magnitude itself, first, because that is where the arithmetic lives
+    // and a wrong answer here is invisible at the call site.
+    CHECK(seconds_between(WallTime{0}, WallTime{0}) == 0);
+    CHECK(seconds_between(WallTime{100}, WallTime{40}) == 60);
+    CHECK(seconds_between(WallTime{40}, WallTime{100}) == 60);   // symmetric
+    CHECK(seconds_between(WallTime{-40}, WallTime{20}) == 60);   // across the epoch
+
+    // The two that used to be undefined. The gap between the ends of the range
+    // is 2^64 - 1, which is exactly what a uint64 holds and what an int64
+    // cannot — the reason the answer is unsigned.
+    CHECK(seconds_between(WallTime{lowest}, WallTime{0}) ==
+          static_cast<std::uint64_t>(highest) + 1U);
+    CHECK(seconds_between(WallTime{lowest}, WallTime{highest}) == 0xFFFFFFFFFFFFFFFFULL);
+    CHECK(seconds_between(WallTime{highest}, WallTime{lowest}) == 0xFFFFFFFFFFFFFFFFULL);
+
+    // And through the detector, which is the part a caller sees. Each of these
+    // is a receiver claiming a time no receiver can honestly claim, and each
+    // must raise the reason rather than trap or quietly wrap into agreement.
+    const struct {
+        std::int64_t receiver;
+        std::int64_t device;
+        const char*  what;
+    } hostile[] = {
+        {lowest,       0,             "the receiver reports the lowest representable instant"},
+        {lowest + 30,  highest,       "both clocks at opposite ends of the range"},
+        {highest,      1'700'000'000, "the receiver reports the highest representable instant"},
+        {-1,           1'700'000'000, "the receiver reports a date before the epoch"},
+    };
+
+    for (const auto& one : hostile) {
+        TrustEvaluator  evaluator;
+        GnssObservation o     = good_fix(0);
+        o.receiver_time       = WallTime{one.receiver};
+        o.receiver_time_valid = true;
+        evaluator.observe(o, PositionValidity::Valid, MotionEvidence{}, WallTime{one.device},
+                          at(0));
+        if (!evaluator.engine().holds(TrustReason::ClockDisagreement)) {
+            std::fprintf(stderr, "FAIL: no disagreement when %s\n", one.what);
+            ++failures;
+        }
+    }
+
+    // The threshold is `>`, so exactly clock_disagreement_s apart is agreement.
+    // Pinned here because the rewrite moved the comparison and a rewrite that
+    // moves a boundary by one is the quiet kind of regression.
+    const TrustPolicy policy = default_trust_policy();
+    const struct {
+        std::uint32_t apart;
+        bool          disagrees;
+    } boundary[] = {
+        {policy.clock_disagreement_s,      false},
+        {policy.clock_disagreement_s + 1U, true},
+    };
+
+    for (const auto& one : boundary) {
+        TrustEvaluator  evaluator;
+        GnssObservation o     = good_fix(0);
+        o.receiver_time       = WallTime{1'700'000'000};
+        o.receiver_time_valid = true;
+        evaluator.observe(o, PositionValidity::Valid, MotionEvidence{},
+                          WallTime{1'700'000'000 + static_cast<std::int64_t>(one.apart)}, at(0));
+        if (evaluator.engine().holds(TrustReason::ClockDisagreement) != one.disagrees) {
+            std::fprintf(stderr, "FAIL: %u seconds apart should%s disagree\n", one.apart,
+                         one.disagrees ? "" : " not");
+            ++failures;
+        }
+    }
+}
+
 // ADR-0011 §5: down is immediate, up is earned.
 void test_recovery_is_held_and_descent_is_not()
 {
@@ -674,6 +763,7 @@ int main()
     test_a_still_wrist_is_evidence_and_an_unasked_one_is_not();
     test_satellites_used_cannot_exceed_satellites_in_view();
     test_receiver_time_is_compared_against_device_time();
+    test_a_hostile_receiver_time_is_still_a_disagreement();
     test_recovery_is_held_and_descent_is_not();
     test_untrusted_climbs_through_degraded();
     test_the_band_between_the_thresholds_does_not_move();
