@@ -1,0 +1,53 @@
+scenario the receiver publishes a protection level and then disowns it
+describe A protection level is the receiver's own statement about how wrong it
+describe could be. Two failures are possible and they are different: a bound so
+describe wide it is useless, and a bound the receiver marks invalid — which is
+describe the receiver saying it cannot bound its own error at all.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  plevel valid 8000 12000
+  expect trust trusted
+  expect no-reason protection-level-exceeded
+  expect no-reason protection-level-invalid
+
+# Still valid, and now wider than anything worth navigating by.
+at 3000
+  fix 3d
+  pos 5000010 10000010
+  alt 42000
+  acc 9000
+  sats 9 14
+  jam none
+  spoof none
+  plevel valid 120000 180000
+  expect reason protection-level-exceeded
+  expect no-reason protection-level-invalid
+  # Recorded, and on its own not enough to move the state: a wide bound is
+  # worth 25 against a degrade threshold of 30. That is deliberate — a bound
+  # that is merely wide is a caveat about precision, and it becomes a caveat
+  # about trust the moment anything else agrees with it.
+  expect trust trusted
+
+# And now it will not stand behind the number at all.
+at 6000
+  fix 3d
+  pos 5000020 10000020
+  alt 42000
+  acc 11000
+  sats 8 14
+  jam none
+  spoof none
+  plevel invalid 0 0
+  expect reason protection-level-invalid
+  expect no-reason protection-level-exceeded
+  # A receiver that will not bound its own error is worth 30, and 30 is the
+  # threshold. "I cannot tell you how wrong I am" is a different statement from
+  # "I could be quite wrong".
+  expect trust degraded

@@ -17,7 +17,7 @@ So a task is a GitHub issue, and everything an agent needs to start is in it.
 A producing agent puts a machine-readable block at the top of the issue body:
 
 ```html
-<!-- firefly-agent-task
+<!-- attadipa-agent-task
 producer: chatgpt
 task_type: continuous-review
 reviewed_head: 53f8cea
@@ -64,10 +64,10 @@ on 2026-08-21. The bot rule refuses it, correctly, and leaves the queue with no
 input.
 
 So the owner may name app logins in the repository variable
-**`FIREFLY_TRUSTED_PRODUCERS`**, comma-separated:
+**`ATTADIPA_TRUSTED_PRODUCERS`**, comma-separated:
 
 ```bash
-gh variable set FIREFLY_TRUSTED_PRODUCERS --body 'chatgpt-codex-connector[bot]'
+gh variable set ATTADIPA_TRUSTED_PRODUCERS --body 'chatgpt-codex-connector[bot]'
 ```
 
 Four properties keep that from being a hole, and each has a test:

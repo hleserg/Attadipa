@@ -20,7 +20,7 @@ You may not change any file.
 The question is not "does this compile". Assume it compiles and that every
 existing test is green. The question is:
 
-**How can this still break FireflyOS?**
+**How can this still break Attadipa?**
 
 Work the dimensions that apply, and say plainly when one does not. A review that
 finds something in every category is noise.

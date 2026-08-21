@@ -2,10 +2,10 @@
 
 #include <cstdint>
 
-#include "firefly/l10n/locale.h"
-#include "firefly/platform/board_profile.h"
+#include "attadipa/l10n/locale.h"
+#include "attadipa/platform/board_profile.h"
 
-namespace firefly::sim {
+namespace attadipa::sim {
 
 // What the simulator was asked to present.
 //
@@ -27,7 +27,7 @@ struct Options {
     // question rather than a translation one (ADR-0010).
     l10n::Locale locale = l10n::Locale::En;
 
-    bool node_attached = false;   // a paired, reachable, compatible Firefly node
+    bool node_attached = false;   // a paired, reachable, compatible Attadipa node
     bool bring_up      = true;    // pretend every present part came up
 
     bool help        = false;
@@ -42,4 +42,4 @@ ParseResult parse_options(int argc, char** argv, Options& out);
 void print_usage(const char* argv0);
 void print_boards();
 
-}  // namespace firefly::sim
+}  // namespace attadipa::sim

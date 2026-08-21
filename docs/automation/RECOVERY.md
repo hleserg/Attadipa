@@ -80,7 +80,7 @@ In order of likelihood:
 4. **The issue already has a state label.** `agent:working`, `agent:review`,
    `agent:blocked` and `agent:done` all suppress a second pickup. Comment
    `@claude` to override deliberately.
-5. **The marker is missing.** An issue needs `firefly-agent-task` *and*
+5. **The marker is missing.** An issue needs `attadipa-agent-task` *and*
    `@claude` in the body, or the `agent:ready` label.
 
 **Look at the issue first.** If it carries a task marker and was refused anyway,
@@ -98,7 +98,7 @@ guard rejected it and why. That is what those notices are for.
 The classic symptom of the wrong GitHub credential. GitHub does not start
 workflow runs for events created with the built-in `GITHUB_TOKEN`, so a pull
 request opened with it looks fine and has no checks. Fix by installing
-<https://github.com/apps/claude> or by setting `FIREFLY_AGENT_TOKEN` — see
+<https://github.com/apps/claude> or by setting `ATTADIPA_AGENT_TOKEN` — see
 [CLAUDE_AUTOMATION](CLAUDE_AUTOMATION.md#2-the-github-credential--and-why-it-is-not-github_token).
 
 ### An agent branch needs removing

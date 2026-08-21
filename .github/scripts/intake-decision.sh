@@ -12,16 +12,16 @@
 # permission on this repository — is looked up by the caller and passed in,
 # which is also what makes the table test possible.
 
-# firefly_intake_decision ACTOR EVENT ACTION LABEL BODY LABELS STATE PERMISSION
+# attadipa_intake_decision ACTOR EVENT ACTION LABEL BODY LABELS STATE PERMISSION
 #                         [TRUSTED_PRODUCERS]
 #
 # TRUSTED_PRODUCERS is an optional comma-separated list of GitHub App logins,
-# supplied by the workflow from the repository variable FIREFLY_TRUSTED_PRODUCERS.
+# supplied by the workflow from the repository variable ATTADIPA_TRUSTED_PRODUCERS.
 # It is empty by default, and empty behaves exactly as this gate did before it
 # existed.
 #
 # Prints `accept`, or `reject: <reason>`. Never exits.
-firefly_intake_decision() {
+attadipa_intake_decision() {
   local actor="$1" event="$2" action="$3" label="$4" body="$5" labels="$6" state="$7" permission="$8"
   local trusted_producers="${9:-}"
 
@@ -34,7 +34,7 @@ firefly_intake_decision() {
   # 1 below refuses it, which is right by default and total by accident, because
   # a producer that cannot file a task is a queue with no input.
   #
-  # So an app login may be named in FIREFLY_TRUSTED_PRODUCERS. Four things keep
+  # So an app login may be named in ATTADIPA_TRUSTED_PRODUCERS. Four things keep
   # that from becoming a hole:
   #
   #   * EMPTY BY DEFAULT. No repository gains an exemption by taking this file.
@@ -107,7 +107,7 @@ firefly_intake_decision() {
         assigned) wanted=yes ;;
         *)
           case "$body" in
-            *"firefly-agent-task"*) case "$body" in *"@claude"*) wanted=yes ;; esac ;;
+            *"attadipa-agent-task"*) case "$body" in *"@claude"*) wanted=yes ;; esac ;;
           esac ;;
       esac ;;
   esac
@@ -131,5 +131,5 @@ firefly_intake_decision() {
 # Callable as a script as well as sourceable, so the workflow can run it
 # without worrying about shell inheritance.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  firefly_intake_decision "$@"
+  attadipa_intake_decision "$@"
 fi

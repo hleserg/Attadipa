@@ -1,4 +1,4 @@
-# Firefly design system
+# Attadipa design system
 
 Required by [final §54](../master-prompt-final.md). This is the written half;
 the other half is code tokens, which land with the first simulator screen
@@ -37,7 +37,7 @@ final §42:
 
 | Name | Hex |
 |---|---|
-| Firefly Orange | `#FF8A40` |
+| Attadipa Orange | `#FF8A40` |
 | Glow Amber | `#FFC857` |
 | Meadow Green | `#6FA07A` |
 | Leaf Sage | `#A7B49C` |
@@ -77,10 +77,10 @@ Semantic names. A screen asks for `color.accent.primary`, never for orange.
 | `color.background.raised` | Soft Clay `#E9DCC2` | the layer above a surface |
 | `color.text.primary` | Ink Olive `#2F3A2E` | body and headings |
 | `color.text.muted` | Cocoa Brown `#7A5E3A` | secondary, units, timestamps |
-| `color.accent.primary` | Firefly Orange `#FF8A40` | the one thing on screen that acts |
-| `color.accent.glow` | Glow Amber `#FFC857` | the firefly light; highlights, focus |
+| `color.accent.primary` | Attadipa Orange `#FF8A40` | the one thing on screen that acts |
+| `color.accent.glow` | Glow Amber `#FFC857` | the attadipa light; highlights, focus |
 | `color.success` | Meadow Green `#6FA07A` | delivered, connected, fix acquired |
-| `color.warning` | Firefly Orange `#FF8A40` | needs attention, not yet wrong |
+| `color.warning` | Attadipa Orange `#FF8A40` | needs attention, not yet wrong |
 | `color.danger` | **UNKNOWN** | not in either palette — see §3.1 |
 | `color.navigation` | Sky Teal `#6FB7B5` | bearing, route, target |
 | `color.border.subtle` | Leaf Sage `#A7B49C` | dividers, inactive outlines |
@@ -108,7 +108,7 @@ trade against final §47's "warm and calm, not harsh blue-black". It is
 
 ### 3.1 The gap
 
-There is **no red** in either owner palette. Firefly's warmest accent, Firefly
+There is **no red** in either owner palette. Attadipa's warmest accent, Attadipa
 Orange, is doing duty as both "acts" and "warning", which is one job too many,
 and there is nothing left for danger — SOS, critical battery, transmit blocked
 by an unknown region. Inventing a red is a visual-identity decision and belongs

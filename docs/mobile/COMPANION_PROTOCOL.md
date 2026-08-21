@@ -49,7 +49,7 @@ for the same reason: the two boards are not the same device.
 
 A companion must learn what the **device** has, not what its board has, and must
 never send assistance to a device that cannot use it — rather than sending it and
-having it ignored. A Waveshare board has no GNSS; a Waveshare with a Firefly node
+having it ignored. A Waveshare board has no GNSS; a Waveshare with an Attadipa node
 attached does. Which means the capability set **cannot be exchanged once at
 connect and then trusted**: it changes mid-session whenever a node attaches or
 leaves, and the protocol needs a re-exchange for that.

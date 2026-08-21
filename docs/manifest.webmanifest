@@ -1,6 +1,6 @@
 {
-  "name": "Firefly OS",
-  "short_name": "Firefly OS",
+  "name": "Attadipa",
+  "short_name": "Attadipa",
   "description": "Open-source wearable platform for ESP32-S3.",
   "start_url": "./",
   "display": "standalone",

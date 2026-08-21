@@ -26,8 +26,8 @@ will close it.
 | A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner |
 | A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN — now concrete** | ask the project owner. The owner's existing MeshCore node runs 868.731 MHz at 22 dBm ([OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-2). 22 dBm is 158 mW; whether that is lawful on that frequency in the region of operation is unestablished |
 | A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **UNKNOWN** | ask the project owner — see [../hardware/MAGNETOMETER_BACKLOG.md](../hardware/MAGNETOMETER_BACKLOG.md) |
-| A6 | **Does the Firefly node carry a magnetometer?** | **UNKNOWN** | ask the project owner. Note that "yes" does *not* give the watch a compass: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform. The ADR exists so that this answer does not arrive before the model does |
-| A7 | **Which orange, and which olive?** The published brand art (`pics/`) and the canonical palette in final §42 disagree: the wordmark and wings sample at `#E16439`…`#EC552A` against Firefly Orange `#FF8A40`, and the head and tagline at `#595E3A`…`#666A46` against Ink Olive `#2F3A2E` | **UNKNOWN — conflict recorded** | the project owner. This is identity, not engineering. [`../../pics/README.md`](../../pics/README.md) holds the sampled values; [`../ui/DESIGN_SYSTEM.md`](../ui/DESIGN_SYSTEM.md) keeps the §42 values until this is answered. Whichever wins, the loser's values must leave the repository rather than sit beside them |
+| A6 | **Does the Attadipa node carry a magnetometer?** | **UNKNOWN** | ask the project owner. Note that "yes" does *not* give the watch a compass: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform. The ADR exists so that this answer does not arrive before the model does |
+| A7 | **Which orange, and which olive?** The published brand art (`pics/`) and the canonical palette in final §42 disagree: the wordmark and wings sample at `#E16439`…`#EC552A` against Attadipa Orange `#FF8A40`, and the head and tagline at `#595E3A`…`#666A46` against Ink Olive `#2F3A2E` | **UNKNOWN — conflict recorded** | the project owner. This is identity, not engineering. [`../../pics/README.md`](../../pics/README.md) holds the sampled values; [`../ui/DESIGN_SYSTEM.md`](../ui/DESIGN_SYSTEM.md) keeps the §42 values until this is answered. Whichever wins, the loser's values must leave the repository rather than sit beside them |
 | A8 | **May the icon and favicon be re-exported with transparent corners?** Both are RGB with no alpha, so the area outside the rounded square is opaque black — visible on any non-black page or launcher background | **UNKNOWN** | the project owner. A mechanical conversion, but it alters supplied art, so it has not been done |
 
 A1 and A2 gate all bring-up, the entire interference matrix, and every power
@@ -39,8 +39,8 @@ lawful is set by the region the device operates in, and the answer changes what
 the radio may legally do. It has to be settled before anything transmits.
 
 A4 stopped being theoretical on 2026-08-21. The owner's own node is already on
-air at 868.731 MHz and 22 dBm. Firefly is not responsible for that node — but
-the numbers it ships as *defaults* are Firefly's responsibility, and a default
+air at 868.731 MHz and 22 dBm. Attadipa is not responsible for that node — but
+the numbers it ships as *defaults* are Attadipa's responsibility, and a default
 cannot be chosen before A4 is answered. Note also that A4 no longer decides what
 the core is built to do: per OD-2 these are settings, so the core is built to
 carry a bounded, user-settable value either way. A4 decides the bounds and the
@@ -55,7 +55,7 @@ proceed; hardware work does not.
 
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| H1 | Real power draw of Firefly firmware per state, per board | UNKNOWN | measurement; vendor figures are a target, not evidence |
+| H1 | Real power draw of Attadipa firmware per state, per board | UNKNOWN | measurement; vendor figures are a target, not evidence |
 | H2 | Can the AXP2101 measure current/energy on these boards, or only voltage? | UNKNOWN | AXP2101 datasheet + schematic sense-resistor check |
 | H3 | Real TTFF and fix quality for the fitted GNSS module | UNKNOWN | outdoor measurement |
 | H4 | Does any of the suspected interference actually occur? | UNKNOWN | the measurement procedure in [../hardware/INTERFERENCE_MATRIX.md](../hardware/INTERFERENCE_MATRIX.md) |
@@ -72,7 +72,7 @@ proceed; hardware work does not.
 |---|---|---|---|
 | R1 | **Confirm every modulation, band and conducted-power figure in the radio matrix against the manufacturer datasheet.** The current values come from RadioLib 7.7.1's driver range checks and MeshCore's build config, not from TI, Silicon Labs or Semtech | **PARTIAL** | `ti.com` returns HTTP 403 and the Silicon Labs document host timed out under automated retrieval. Needs a manual fetch, or the PDFs obtained another way. Nothing may transmit on the strength of a number in that table until this is closed — [ADR-0003](../adr/0003-radio-not-lora.md) |
 | R2 | Does the LR1121 work through MeshCore's `CustomLR1110Wrapper` plus `LR11x0Reset.h`? RadioLib's `LR1121` derives from `LR1120`, which derives from `LR11x0`, so it is plausible | **UNKNOWN** | a spike, not a reading. Decides whether `MeshCoreSupport::NeedsWork` for that chip is a week or a month |
-| R3 | Which radios MeshCore supports **at the revision Firefly actually pins**, re-checked rather than assumed | tracked | the matrix is a `grep` over `RADIO_CLASS` across `variants/`; it is a task (T-013), not a hope, because upstream adds radios |
+| R3 | Which radios MeshCore supports **at the revision Attadipa actually pins**, re-checked rather than assumed | tracked | the matrix is a `grep` over `RADIO_CLASS` across `variants/`; it is a task (T-013), not a hope, because upstream adds radios |
 
 ## Hardware — documentary gaps
 
@@ -112,8 +112,8 @@ below cites the file it came from. Licence: **MIT**, `license.txt`.
 | M5 | Memory footprint on ESP32-S3 | PARTIAL | Fixed pools and `MAX_PACKET_HASHES (128+32)` in `SimpleMeshTables.h` make it computable, but no figure is claimed here without a build. `NOT MEASURED` |
 | ~~M6~~ | How it abstracts the radio, and whether it covers all five T-Watch chips | **RESOLVED — and the answer was worse than expected** | Through thin wrappers over RadioLib in `src/helpers/radiolib/`. Across 87 upstream variants the `RADIO_CLASS` set is `CustomLR1110 · CustomLR2021 · CustomSTM32WLx · CustomSX1262 · CustomSX1268 · CustomSX1276` — of the five T-Watch candidates, **only the SX1262**. CC1101 is compiled out entirely (`platformio.ini:35`, `-D RADIOLIB_EXCLUDE_CC1101=1`). **Correction to an earlier version of this row**, which said RadioLib supports every chip MeshCore does not and concluded the gap is a small wrapper layer: RadioLib *drives* CC1101 and Si4432, but as **FSK/OOK** parts. Neither has a LoRa modulator, so no wrapper makes them mesh-capable. The gap is a wrapper for SX1280 and LR1121 only. [ADR-0003](../adr/0003-radio-not-lora.md) |
 | ~~M7~~ | Companion protocol shape | **RESOLVED — and it largely already exists** | A framed byte protocol, identical across every transport. `>`/`<` sentinel, 16-bit little-endian length, payload; `MAX_FRAME_SIZE 176` (`BaseSerialInterface.h:5`). Payload is `[opcode][data]`, little-endian. The opcode table is `examples/companion_radio/MyMesh.cpp:6-134`. **Version negotiation already exists**: `CMD_DEVICE_QUERY` (22) carries the client's protocol version, the firmware stores it as `app_target_ver` and adapts its replies (`MyMesh.cpp:1023-1024`, and see the `app_target_ver >= 3` branches at 435 and 548) |
-| M8 | Can Firefly's needs be upstreamed rather than forked? | **likely yes** | The radio-wrapper gap (M6) is the natural candidate. Requires talking to upstream, which has not happened |
-| ~~M9~~ | **Does MeshCore assume it owns the radio exclusively?** | **RESOLVED — effectively yes** | `src/helpers/radiolib/RadioLibWrappers.cpp:14` is `static volatile uint8_t state = STATE_IDLE;` — a **file-static** flag set from the ISR. One radio per firmware image, structurally. It also runs its own duty-cycle governor, `Dispatcher::updateTxBudget()` (`Dispatcher.cpp:38-53`), which a Firefly coexistence coordinator would have to reconcile with rather than override. The sanctioned extension points are the virtual hooks `getCADFailMaxDuration`, `getCADFailRetryDelay`, `getAirtimeBudgetFactor` in `Dispatcher.h`, and `isReceiving()` in `RadioLibWrappers.h:44-48` |
+| M8 | Can Attadipa's needs be upstreamed rather than forked? | **likely yes** | The radio-wrapper gap (M6) is the natural candidate. Requires talking to upstream, which has not happened |
+| ~~M9~~ | **Does MeshCore assume it owns the radio exclusively?** | **RESOLVED — effectively yes** | `src/helpers/radiolib/RadioLibWrappers.cpp:14` is `static volatile uint8_t state = STATE_IDLE;` — a **file-static** flag set from the ISR. One radio per firmware image, structurally. It also runs its own duty-cycle governor, `Dispatcher::updateTxBudget()` (`Dispatcher.cpp:38-53`), which an Attadipa coexistence coordinator would have to reconcile with rather than override. The sanctioned extension points are the virtual hooks `getCADFailMaxDuration`, `getCADFailRetryDelay`, `getAirtimeBudgetFactor` in `Dispatcher.h`, and `isReceiving()` in `RadioLibWrappers.h:44-48` |
 
 **M9 matters less on one path and exactly as much as feared on the other.**
 The concern was that a mesh stack owning the radio exclusively could not coexist
@@ -131,23 +131,23 @@ decision dissolving an engineering problem rather than solving it.
 > [ADR-0008](../adr/0008-mesh-service-providers.md).
 
 Also relevant on the local path: MeshCore runs its own duty-cycle governor,
-`Dispatcher::updateTxBudget()`, which Firefly's airtime accounting must
+`Dispatcher::updateTxBudget()`, which Attadipa's airtime accounting must
 reconcile with rather than override.
 
 ### What reading MeshCore surfaced that nobody asked
 
 | # | Finding | Evidence | Status |
 |---|---|---|---|
-| M10 | **The payload cipher is AES-128-ECB.** Identical plaintext blocks under one key produce identical ciphertext blocks, so equality of messages leaks even when content does not | `src/Utils.cpp:61,92` (CC310 path) and `:108-122` (software path) | **read from source** — implications for Firefly not yet assessed |
+| M10 | **The payload cipher is AES-128-ECB.** Identical plaintext blocks under one key produce identical ciphertext blocks, so equality of messages leaks even when content does not | `src/Utils.cpp:61,92` (CC310 path) and `:108-122` (software path) | **read from source** — implications for Attadipa not yet assessed |
 | M11 | **The message authentication tag is 2 bytes.** One in 65 536 per forgery attempt, so the security of the tag rests on limiting attempts rather than on the tag | `MeshCore.h:17`, `Utils.cpp:127-145` | **read from source.** The owner's own node exposes a "Request Rate Limiter" — the two facts may well be related, and that is worth confirming rather than assuming |
 | M12 | **`ed25519_verify` from the vendored `orlp/ed25519` is disabled upstream** with the comment *"memory corruption bug was found in this function!!"*. The active path uses `Ed25519::verify` from `rweather/Crypto` instead | `src/Identity.cpp:34-36` (`#elif 0` branch) | **read from source** |
-| M13 | **There is almost no test coverage of the parts Firefly depends on.** Seven test binaries, none touching crypto or wire format; `test/mocks/AES.h` is a no-op stub and `test/mocks/SHA256.h` is self-described as *"deterministic but not cryptographic"* | `test/` | **read from source.** Consequence: there are no reference vectors to port. The only usable one in the repository is the known-good keypair embedded in `Identity.cpp:68-110` |
+| M13 | **There is almost no test coverage of the parts Attadipa depends on.** Seven test binaries, none touching crypto or wire format; `test/mocks/AES.h` is a no-op stub and `test/mocks/SHA256.h` is self-described as *"deterministic but not cryptographic"* | `test/` | **read from source.** Consequence: there are no reference vectors to port. The only usable one in the repository is the known-good keypair embedded in `Identity.cpp:68-110` |
 | M14 | **`rweather/Crypto` licence is unverified.** MeshCore resolves it through PlatformIO as `rweather/Crypto @ ^0.4.0`; it is not in this project's clones and its licence file has not been read | `platformio.ini:24` | **UNKNOWN — must be checked before anything depends on it** |
 
 M10 and M11 are recorded as facts, not as accusations. MeshCore is solving a
 different problem under tighter constraints, and a two-byte tag on a
 duty-cycle-limited sub-GHz link is a defensible trade against airtime. But
-Firefly's specification treats security as something that must be strengthenable
+Attadipa's specification treats security as something that must be strengthenable
 without breaking the architecture (§74 item 24), and a protocol whose
 authentication rests on rate limiting is a protocol whose rate limiter is a
 security control rather than a convenience. That belongs in an ADR of its own,
@@ -173,13 +173,13 @@ with someone competent reviewing it — not in a paragraph here.
 | T4 | Simulator display backend | UNKNOWN | follows T2; SDL2 not currently installed |
 | T5 | Host test framework | UNKNOWN | small decision, no ADR needed |
 | T6 | Use the Waveshare BSP as a dependency, or take only its pin facts? | UNKNOWN | it is Apache-2.0 and incomplete — a reuse-ledger decision |
-| T7 | Does the LilyGO PlatformIO pin to IDF 4.4.7 constrain Firefly? | ASSUMPTION: no | Firefly is ESP-IDF-native and does not use the Arduino layer |
+| T7 | Does the LilyGO PlatformIO pin to IDF 4.4.7 constrain Attadipa? | ASSUMPTION: no | Attadipa is ESP-IDF-native and does not use the Arduino layer |
 
 ## Product
 
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With a Firefly node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
+| ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
 | Q2 | Is a magnetometer expected to be added externally, or is heading GNSS-only for good? | UNKNOWN | product decision by the owner |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
 
@@ -227,7 +227,7 @@ applies is a guess. But **the middle row is no longer hypothetical.**
 
 ### The reproduction, 2026-08-21
 
-[Issue #10](https://github.com/hleserg/FireflyOS/issues/10) was filed with a
+[Issue #10](https://github.com/hleserg/Attadipa/issues/10) was filed with a
 valid marker through the GitHub API by an agent session. Gate log, run
 `32475652479`:
 

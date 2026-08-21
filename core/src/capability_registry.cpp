@@ -1,20 +1,20 @@
-#include "firefly/core/capability_registry.h"
+#include "attadipa/core/capability_registry.h"
 
-#include "firefly/platform/hardware_inventory.h"
+#include "attadipa/platform/hardware_inventory.h"
 
 // The single place availability is computed.
 //
 // This file is the only one in core/ that includes a platform header, and
-// firefly_core links firefly_platform PRIVATE so that the include does not
+// attadipa_core links attadipa_platform PRIVATE so that the include does not
 // travel any further. docs/adr/0007-two-capability-layers.md §4 and §5.
 
-namespace firefly::core {
+namespace attadipa::core {
 namespace {
 
 using platform::HardwareFeature;
 using platform::HardwareState;
 
-// What *a* Firefly node can provide, as a matter of the node's design rather
+// What *a* Attadipa node can provide, as a matter of the node's design rather
 // than of any particular node being attached.
 //
 // This constant is what makes Unprovisioned distinguishable from Unsupported
@@ -242,4 +242,4 @@ bool CapabilityRegistry::is_available(Capability capability) const
     return availability(capability) == Availability::Ready;
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

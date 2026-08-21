@@ -5,7 +5,7 @@
 # workflow_dispatch by construction — it skips the actor check entirely. So this
 # filter is not a convenience: it is the last place an untrusted author can be
 # refused before a billable writer starts. It reached review in a state where
-# naming `claude[bot]` in FIREFLY_TRUSTED_PRODUCERS would have let the
+# naming `claude[bot]` in ATTADIPA_TRUSTED_PRODUCERS would have let the
 # repository's own output drive its own agent, and no test existed to catch it.
 # This is that test.
 #
@@ -28,7 +28,7 @@ issue() {
       body: $body }'
 }
 
-MARKER='<!-- firefly-agent-task
+MARKER='<!-- attadipa-agent-task
 producer: chatgpt
 -->
 
@@ -74,7 +74,7 @@ check "" "an app whose login merely contains a listed one" "$CHATGPT" -- \
 
 echo
 echo "  Our own output can never drive our own writer"
-# The gate refuses to honour these in FIREFLY_TRUSTED_PRODUCERS. It must be
+# The gate refuses to honour these in ATTADIPA_TRUSTED_PRODUCERS. It must be
 # refused here too and not merely there, because the dispatch this produces
 # enters the gate through the one door that does not check the actor.
 check "" "claude[bot] named in the list anyway" "claude[bot],$CHATGPT" -- \

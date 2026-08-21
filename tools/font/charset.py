@@ -1,4 +1,4 @@
-"""The exact set of characters Firefly's embedded fonts must be able to draw.
+"""The exact set of characters Attadipa's embedded fonts must be able to draw.
 
 This file is the single definition. The font build reads it to subset, and the
 localization check (ADR-0010 section 3) reads it to refuse a catalogue entry

@@ -3,7 +3,7 @@
 # This lives in a file rather than inside the workflow's YAML for the same reason
 # .github/scripts/intake-decision.sh does: a filter that cannot be executed cannot
 # be tested, and this one is part of the security boundary. It reached `main` in a
-# state where naming `claude[bot]` in FIREFLY_TRUSTED_PRODUCERS would have let the
+# state where naming `claude[bot]` in ATTADIPA_TRUSTED_PRODUCERS would have let the
 # repository's own output start a billable writer — caught by review, not by a
 # test, because there was no test to catch it.
 #
@@ -11,7 +11,7 @@
 #
 # Input:  the GitHub issues API response, as an array.
 # Arg:    $trusted — comma-separated producer app logins, from
-#         FIREFLY_TRUSTED_PRODUCERS. May be empty.
+#         ATTADIPA_TRUSTED_PRODUCERS. May be empty.
 # Output: one issue number, or an empty line when nothing is waiting.
 
 [ .[]
@@ -25,7 +25,7 @@
                # The watchdog hands over by workflow_dispatch, and the
                # gate trusts workflow_dispatch by construction — it
                # skips the actor check entirely. So a `claude[bot]`
-               # entry in FIREFLY_TRUSTED_PRODUCERS, which the gate
+               # entry in ATTADIPA_TRUSTED_PRODUCERS, which the gate
                # refuses to honour, would be honoured here and then
                # dispatched into a gate that no longer asks. Our own
                # output would start a billable writer: exactly the loop
@@ -39,7 +39,7 @@
       body: (.body // "")
     }
   | select((.labels | index("agent:ready")) != null
-           or ((.body | test("firefly-agent-task"))
+           or ((.body | test("attadipa-agent-task"))
                and (.body | test("@claude"))))
   | select((.labels | index("agent:working")) == null)
   | select((.labels | index("agent:review")) == null)

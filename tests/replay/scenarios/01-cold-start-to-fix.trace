@@ -1,0 +1,71 @@
+scenario a cold start walks up to a usable fix
+describe The ordinary case, and the one every other trace is a deviation from.
+describe A receiver comes up knowing nothing, sees satellites before it can use
+describe them, solves a poor fix and then a good one. Each stage is a different
+describe answer and the interface says something different about each.
+
+# Coordinates throughout this directory are synthetic and obviously nowhere:
+# half a degree north, one degree east, in the Gulf of Guinea. No real location
+# belonging to anybody appears in this repository.
+
+# Two separate answers about the same moment, which is ADR-0011 §2's whole
+# point. Validity says there is no position. Trust says how much the evidence
+# argues against one — and "no fix, no satellites" is 35 against a degrade
+# threshold of 30, so the trust axis is Degraded while the validity axis is
+# NoFix. Neither is a restatement of the other, and an application that showed
+# a single `quality` here would have to pick one and lose the other.
+at 0
+  fix none
+  sats 0 0
+  expect validity nofix
+  expect trust degraded
+  expect reason fix-lost
+  expect reason insufficient-satellites
+
+at 5000
+  fix none
+  sats 0 6
+  expect validity nofix
+  expect trust degraded
+  expect reason fix-lost
+
+# First solution: two-dimensional, so no altitude. A caveat, not a refusal.
+at 21000
+  fix 2d
+  pos 5000000 10000000
+  acc 42000
+  sats 4 9
+  hdop 640
+  jam none
+  spoof none
+  expect validity degraded
+  expect no-reason fix-lost
+  expect no-reason insufficient-satellites   # four is the minimum, and it is enough
+  # The evidence is gone and the state does not move yet. Down is immediate and
+  # up is earned: the score has to stay clean for the recovery hold, which is
+  # five seconds. The next step is six seconds later and that is where it goes.
+  expect trust degraded
+
+at 27000
+  fix 3d
+  pos 5000100 10000050
+  alt 42000
+  acc 28000
+  sats 6 11
+  hdop 310
+  jam none
+  spoof none
+  expect validity degraded          # accuracy still outside the policy
+  expect trust trusted
+
+at 34000
+  fix 3d
+  pos 5000140 10000070
+  alt 42500
+  acc 4200
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  expect validity valid
+  expect trust trusted

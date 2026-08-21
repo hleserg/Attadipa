@@ -19,7 +19,7 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$here/../scripts/intake-decision.sh"
 
 pass=0; fail=0
-MARKER='<!-- firefly-agent-task
+MARKER='<!-- attadipa-agent-task
 producer: chatgpt
 task_type: continuous-review
 priority: P1
@@ -32,7 +32,7 @@ Please look at the thing.'
 # check WANT DESCRIPTION -- ARGS...
 check() {
   local want="$1" desc="$2"; shift 3
-  local got; got=$(firefly_intake_decision "$@")
+  local got; got=$(attadipa_intake_decision "$@")
   case "$want" in
     accept) [ "$got" = "accept" ] && ok=yes || ok=no ;;
     reject) case "$got" in reject:*) ok=yes ;; *) ok=no ;; esac ;;
@@ -73,7 +73,7 @@ check accept "the watchdog handing over a missed task" -- \
 check reject "an ordinary issue with no marker and no mention" -- \
       hleserg issues opened "" "Just a bug report." "" open admin
 check reject "a marker with no @claude in it" -- \
-      hleserg issues opened "" "<!-- firefly-agent-task -->" "" open admin
+      hleserg issues opened "" "<!-- attadipa-agent-task -->" "" open admin
 check reject "a closed issue" -- \
       hleserg issues opened "" "$MARKER" "" closed admin
 
@@ -97,7 +97,7 @@ check reject "some other label being added" -- \
 # chatgpt-codex-connector[bot] with author_association NONE — observed on
 # 2026-08-21, when that login reviewed pull request #11. The bot rule refuses it,
 # which is correct by default and leaves the queue with no input, so the owner
-# may name an app in FIREFLY_TRUSTED_PRODUCERS. These are the cases that decide
+# may name an app in ATTADIPA_TRUSTED_PRODUCERS. These are the cases that decide
 # whether that list is a door or a hole.
 CHATGPT='chatgpt-codex-connector[bot]'
 TRUSTED="$CHATGPT,some-other-producer[bot]"

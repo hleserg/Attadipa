@@ -34,7 +34,7 @@ on:
 # cancel-in-progress is false on purpose: cancelling a writer mid-run leaves a
 # half-pushed branch and an issue labelled agent:working forever.
 concurrency:
-  group: firefly-agent-writer
+  group: attadipa-agent-writer
   cancel-in-progress: false
 
 # Nothing at the top level. Each job asks for exactly what it needs.
@@ -120,7 +120,7 @@ jobs:
           # hard-coded because which producer files the tasks is an operational
           # decision, not a property of this code — and because changing it must
           # not require a pull request that edits the security boundary.
-          TRUSTED_PRODUCERS: ${{ vars.FIREFLY_TRUSTED_PRODUCERS }}
+          TRUSTED_PRODUCERS: ${{ vars.ATTADIPA_TRUSTED_PRODUCERS }}
         run: |
           set -euo pipefail
 
@@ -163,7 +163,7 @@ jobs:
             # comment per comment. This costs nothing from Anthropic either way —
             # it is a gh call in the gate, not an agent run.
             case "$BODY" in
-              *firefly-agent-task*)
+              *attadipa-agent-task*)
                 if [ "$EVENT_NAME" = "issues" ]; then
                   {
                     echo "refused_marker=true"
@@ -256,14 +256,14 @@ jobs:
           # deliberately does not use to start workflow runs — so this cannot
           # start another gate run and cannot loop.
           EXISTING=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
-                       --jq '[.[] | select(.body | test("firefly-intake-refused"))] | length')
+                       --jq '[.[] | select(.body | test("attadipa-intake-refused"))] | length')
           if [ "$EXISTING" != "0" ]; then
             echo "::notice::already explained on #$ISSUE"; exit 0
           fi
 
           {
-            echo "<!-- firefly-intake-refused -->"
-            echo "**This issue carries a \`firefly-agent-task\` marker, and the intake gate refused it.**"
+            echo "<!-- attadipa-intake-refused -->"
+            echo "**This issue carries a \`attadipa-agent-task\` marker, and the intake gate refused it.**"
             echo
             echo "> $REFUSAL"
             echo
@@ -358,7 +358,7 @@ jobs:
       actions: read
       # id-token: write is not optional, and the reason is easy to miss.
       #
-      # github_token below is FIREFLY_AGENT_TOKEN, which is deliberately allowed
+      # github_token below is ATTADIPA_AGENT_TOKEN, which is deliberately allowed
       # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
       # action authenticates as the Claude GitHub App by exchanging this
       # workflow's GitHub OIDC token for an installation token, and without this
@@ -429,9 +429,9 @@ jobs:
           # never run CI, and the whole point of this loop is that CI runs
           # without anybody asking. Left empty, the action uses the Claude GitHub
           # App instead, whose installation token does trigger workflows; set
-          # FIREFLY_AGENT_TOKEN to a fine-grained PAT to use that instead.
+          # ATTADIPA_AGENT_TOKEN to a fine-grained PAT to use that instead.
           # docs/automation/CLAUDE_AUTOMATION.md explains both.
-          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
           branch_prefix: "claude/issue-"
           # Empty means no bot may trigger this action. On a public repository
           # '*' would let any GitHub App drive a write-capable agent.
@@ -480,7 +480,7 @@ jobs:
           claude_args: |
             --max-turns 60 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task"
           prompt: |
-            You are the implementation agent for FireflyOS, working from GitHub
+            You are the implementation agent for Attadipa, working from GitHub
             issue #${{ needs.gate.outputs.issue }} in ${{ github.repository }}.
 
             Read these before doing anything, in this order:

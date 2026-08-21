@@ -46,7 +46,7 @@ peripheral set cannot run on the other.
 **Neither board has a magnetometer.** The magnetometer work the specification
 calls for is therefore architectural only — an API that can accept one later,
 not a driver. Heading on real hardware currently comes from GNSS course alone.
-Only the T-Watch has GNSS **on the board** — a Firefly node supplies it to
+Only the T-Watch has GNSS **on the board** — an Attadipa node supplies it to
 either, so that is a statement about boards and not about what a device can do.
 Course-over-ground also only works while the user is moving, which is what makes
 it a different product from a compass rather than a lesser one.
@@ -260,8 +260,8 @@ budget needs.
 
 ### Vendor-published power figures
 
-Vendor numbers, not Firefly measurements. Useful as an order of magnitude and
-as a target to reproduce — not as evidence about Firefly's own firmware.
+Vendor numbers, not Attadipa measurements. Useful as an order of magnitude and
+as a target to reproduce — not as evidence about Attadipa's own firmware.
 
 | Mode | Wake source | Current |
 |---|---|---|
@@ -358,7 +358,7 @@ those appear only in standalone examples.
 
 This is the single clearest argument for the approach this project takes:
 *shipped on the board* and *handled by software* are different sets, and the
-gap is where capability silently becomes unavailable. Firefly's core is
+gap is where capability silently becomes unavailable. Attadipa's core is
 responsible for every part on the board, whether or not an application asks
 for it yet.
 
@@ -418,7 +418,7 @@ is not what an application sees. An application asks for a product capability
 (`Position`, `MeshMessaging`, `Haptics`) and gets an availability state; the
 mapping between the two columns and that answer is
 [ADR-0007](../adr/0007-two-capability-layers.md), and it is not one-to-one. A
-Waveshare board with a Firefly node attached has ❌ in the `LORA` row and can
+Waveshare board with an Attadipa node attached has ❌ in the `LORA` row and can
 still send a mesh message.
 
 A plain boolean also cannot express "a radio is present, but which of five

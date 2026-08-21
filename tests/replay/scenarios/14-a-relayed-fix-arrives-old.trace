@@ -1,0 +1,55 @@
+scenario a position relayed by a node can be stale on arrival
+describe The second route to Stale, and the one that has nothing to do with a
+describe receiver going quiet: an observation that was already old when it got
+describe here. An Attadipa node carries the GNSS for a watch that has none, and
+describe the position crosses a link that can queue, retry and reconnect.
+describe
+describe `age` is the fixture's way of saying the observation's own timestamp
+describe is older than the moment it is being judged at — which is exactly what
+describe the wire gives us, because observed_at travels with the observation
+describe and is not the time of arrival.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3000
+  sats 11 14
+  jam none
+  spoof none
+  expect validity valid
+  expect trust trusted
+
+# Two seconds in flight. Well inside the window; nothing to say about it.
+at 10000
+  fix 3d
+  age 2000
+  pos 5000180 10000000
+  alt 42000
+  acc 3000
+  sats 11 14
+  expect validity valid
+  expect no-reason stale-position
+
+# The link stalled and delivered a backlog. This one was taken forty seconds
+# ago, and the fact that it arrived a moment ago does not make it current.
+at 60000
+  fix 3d
+  age 40000
+  pos 5000400 10000000
+  alt 42000
+  acc 3000
+  sats 11 14
+  expect validity stale
+  expect reason stale-position
+
+# Fresh again the moment a current one arrives. Staleness is a property of the
+# observation, not a mood the device gets into.
+at 61000
+  fix 3d
+  pos 5000420 10000000
+  alt 42000
+  acc 3000
+  sats 11 14
+  expect validity valid
+  expect no-reason stale-position

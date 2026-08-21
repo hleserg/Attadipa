@@ -10,14 +10,14 @@ Amends: [ADR-0001](0001-capability-model.md) · scopes [ADR-0002](0002-companion
 
 ## Context
 
-A separate **Firefly node** carrying LoRa, GNSS and an ESP32 exists in the
+A separate **Attadipa node** carrying LoRa, GNSS and an ESP32 exists in the
 product plan. A watch attached to one runs the same applications a watch with
 its own LoRa runs; with no node attached it is a watch, an audio device, and
 whatever the installed applications make it
 ([OWNER_DECISIONS OD-1](../research/OWNER_DECISIONS.md)).
 
 This is not a new direction. §32 requires the architecture to account for a
-Firefly/Doctor node and lists "additional GNSS" among what it may provide. §74
+Attadipa/Doctor node and lists "additional GNSS" among what it may provide. §74
 item 23 — in the list of product requirements §73 forbids changing without
 explicit grounds — says the node must be integrable **without rewriting the
 system**. And §1 says *nodes*, plural: the design must not assume there is one.
@@ -108,7 +108,7 @@ Seven states, seven remedies: *nothing* · *get a node* · *go to your node* ·
 *update something* · *service it* · *switch it on* · *none needed*.
 
 `Absent` is gone, and deliberately. It was carrying three different sentences —
-"this watch has no compass", "Maps needs a Firefly node" and "your node is out
+"this watch has no compass", "Maps needs an Attadipa node" and "your node is out
 of range" — and only the first of them is permanent. `Unsupported` says what
 `Absent` was meant to say and cannot be misread as the other two.
 

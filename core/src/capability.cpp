@@ -1,6 +1,6 @@
-#include "firefly/core/capability.h"
+#include "attadipa/core/capability.h"
 
-namespace firefly::core {
+namespace attadipa::core {
 
 // Log and diagnostics strings. User-facing capability names go through tr()
 // and exist in both catalogues — docs/adr/0010-localization.md. The core does
@@ -25,4 +25,4 @@ const char* to_string(Capability capability)
     return "?";
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

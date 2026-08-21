@@ -92,9 +92,9 @@ between devices over mesh, device to device, with no tower and no account.
 
 ### Useful capabilities / Возможности
 
-Mesh · GNSS / position · heading · haptics · Firefly Node.
+Mesh · GNSS / position · heading · haptics · Attadipa Node.
 
-**Возможности.** Меш · координаты · направление · вибрация · Firefly Node.
+**Возможности.** Меш · координаты · направление · вибрация · Attadipa Node.
 
 ### Existing alternatives / Что уже существует?
 
@@ -128,7 +128,7 @@ tree", which in a forest is not an answer.
 The honesty constraints matter more than the feature here, and getting them
 wrong would make this worse than nothing:
 
-- Position may come from the watch's own GNSS or from an attached Firefly node,
+- Position may come from the watch's own GNSS or from an attached Attadipa node,
   and the mesh capability may likewise be local or supplied by a node. The
   interface should not care, and neither should the user.
 - **A heading source may simply not exist.** Neither current board has a
@@ -145,7 +145,7 @@ says it cannot. Both are useful. A confident wrong answer is not.
 их нарушить, получится хуже, чем ничего:
 
 - координаты могут приходить от собственного GNSS часов или от подключённого
-  Firefly node, и меш точно так же может быть локальным или от node. Интерфейсу
+  Attadipa node, и меш точно так же может быть локальным или от node. Интерфейсу
   это должно быть безразлично, пользователю — тем более;
 - **источника направления может просто не быть.** Ни на одной из плат нет
   магнитометра. Если направление нельзя получить честно, приложение не должно

@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: firefly-agent-watchdog
+  group: attadipa-agent-watchdog
   cancel-in-progress: false
 
 permissions: {}
@@ -54,9 +54,9 @@ jobs:
           # with a valid marker and author_association NONE, and this scan
           # skipped it while the intake gate refused it, so the task was
           # invisible to both halves at once. A producer the owner has named in
-          # FIREFLY_TRUSTED_PRODUCERS must be visible to the safety net too, or
+          # ATTADIPA_TRUSTED_PRODUCERS must be visible to the safety net too, or
           # the net has a hole exactly where the queue's input is.
-          TRUSTED_PRODUCERS: ${{ vars.FIREFLY_TRUSTED_PRODUCERS }}
+          TRUSTED_PRODUCERS: ${{ vars.ATTADIPA_TRUSTED_PRODUCERS }}
         run: |
           set -euo pipefail
 

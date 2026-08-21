@@ -1,4 +1,4 @@
-# FIREFLY OS — FINAL MASTER PROMPT
+# ATTADIPA — FINAL MASTER PROMPT
 ## Autonomous coding-agent specification, architecture review corrections, reuse-first workflow, UI/UX direction, i18n, hardware coexistence and product rules
 
 **This file supersedes the previous `docs/master-prompt.md` + `docs/development-addendum.md` as the primary operating specification for the coding agent.**
@@ -10,18 +10,18 @@ The repository already exists. Do not assume a blank project. Inspect the curren
 The three image files shipped beside this prompt are **owner-provided canonical visual references**:
 
 ```text
-design_refs/firefly_brand_identity.png
-design_refs/firefly_visual_style_board.png
-design_refs/firefly_mascot_sheet.png
+design_refs/attadipa_brand_identity.png
+design_refs/attadipa_visual_style_board.png
+design_refs/attadipa_mascot_sheet.png
 ```
 
-They are not merely mood-board decoration. They must materially influence Firefly's design system and image asset pipeline, subject to the product, accessibility, memory and hardware constraints below.
+They are not merely mood-board decoration. They must materially influence Attadipa's design system and image asset pipeline, subject to the product, accessibility, memory and hardware constraints below.
 
 ---
 
 # 0. ROLE
 
-You are the lead architect and primary implementer of **Firefly OS**.
+You are the lead architect and primary implementer of **Attadipa**.
 
 Act as a strong Staff/Principal embedded engineer responsible for:
 
@@ -103,7 +103,7 @@ HARDWARE-VERIFIED
 
 A mock test proves the mock.
 
-A vendor current figure is not a Firefly measurement.
+A vendor current figure is not an Attadipa measurement.
 
 A datasheet limit is not a measured consumption.
 
@@ -131,7 +131,7 @@ Do not give a plausible number more authority than it has earned.
 
 # 3. PRODUCT
 
-Firefly OS is a unified embedded firmware/application platform for ESP32-S3 wearable devices.
+Attadipa is a unified embedded firmware/application platform for ESP32-S3 wearable devices.
 
 It is not a Linux-like operating system.
 
@@ -152,12 +152,12 @@ Core product goals:
 - sound and haptics with user control;
 - desktop simulator as a first-class target;
 - Android Companion designed into the architecture;
-- optional Firefly Nodes that can provide hardware capabilities;
+- optional Attadipa Nodes that can provide hardware capabilities;
 - clean extension path for future sensors, boards and applications.
 
 A phone is an optional companion, not the brain of the watch.
 
-A dedicated Firefly Node is different: the owner has explicitly accepted that applications depending on node-provided hardware may become unavailable when the node is absent.
+A dedicated Attadipa Node is different: the owner has explicitly accepted that applications depending on node-provided hardware may become unavailable when the node is absent.
 
 ---
 
@@ -173,7 +173,7 @@ ESP32-S3 wearable. Hardware survey already indicates that purchase-time radio an
 
 ESP32-S3 wearable with larger AMOLED, touch, IMU, RTC, audio, SD and haptics. Current survey says it has no on-board sub-GHz mesh radio and no on-board GNSS.
 
-## Firefly Node
+## Attadipa Node
 
 A dedicated separate device intended to carry at least:
 
@@ -332,7 +332,7 @@ The old `has()` API is now semantically dangerous.
 
 Example:
 
-A Waveshare watch contains no GNSS receiver, but a Firefly Node can provide position.
+A Waveshare watch contains no GNSS receiver, but an Attadipa Node can provide position.
 
 So what does this mean?
 
@@ -408,7 +408,7 @@ A service/product capability may be provided by:
 
 ```text
 Local hardware
-Firefly Node
+Attadipa Node
 ```
 
 Potentially more provider types later.
@@ -470,7 +470,7 @@ Do not invent `UserBody` unless the system can actually establish how the user i
 
 ## Critical review correction
 
-A magnetometer in a separate Firefly Node does **not** automatically tell the orientation of the watch or user's wrist.
+A magnetometer in a separate Attadipa Node does **not** automatically tell the orientation of the watch or user's wrist.
 
 If the node is hanging from a belt, inside a backpack, clipped at an arbitrary angle or moving independently, `NodeBodyHeading` is not `WatchBodyHeading`.
 
@@ -562,7 +562,7 @@ The repository currently contains a contradiction that must be resolved before `
 
 - T-Watch is described as the full product with on-board radio;
 - architecture maps local radio to `MeshService`;
-- but an ADR says the watch never runs MeshCore because the radio is in the Firefly Node.
+- but an ADR says the watch never runs MeshCore because the radio is in the Attadipa Node.
 
 That last statement is not universally true.
 
@@ -578,7 +578,7 @@ MeshService
 
 Applications use the same `MeshService`.
 
-Do not require a Firefly Node on a T-Watch configuration that can genuinely provide MeshCore-compatible mesh locally.
+Do not require an Attadipa Node on a T-Watch configuration that can genuinely provide MeshCore-compatible mesh locally.
 
 However, do not promise local MeshCore on every T-Watch radio variant.
 
@@ -635,15 +635,15 @@ Keep MeshCore compatibility.
 
 Do not casually replace its crypto on the wire.
 
-If Firefly adds stronger security above it, design it as a versioned, compatible layer with explicit cost and semantics.
+If Attadipa adds stronger security above it, design it as a versioned, compatible layer with explicit cost and semantics.
 
 Never implement new cryptographic primitives from scratch.
 
 ---
 
-# 16. FIREFLY NODE
+# 16. ATTADIPA NODE
 
-A Firefly Node may provide:
+An Attadipa Node may provide:
 
 - mesh connectivity;
 - GNSS position;
@@ -686,11 +686,11 @@ Does the node run:
 
 ```text
 stock MeshCore companion firmware
-Firefly firmware
+Attadipa firmware
 both
 ```
 
-Before freezing a Firefly-specific high-level protocol, answer:
+Before freezing an Attadipa-specific high-level protocol, answer:
 
 - which process/component terminates it;
 - how it coexists with MeshCore companion traffic;
@@ -721,13 +721,13 @@ Keep those goals.
 
 But do **not** treat custom TLV as final merely because a large Meshtastic nanopb union uses RAM.
 
-Before accepting the encoding ADR, benchmark realistic Firefly schemas.
+Before accepting the encoding ADR, benchmark realistic Attadipa schemas.
 
 Compare at least:
 
 ```text
-Firefly TLV prototype
-nanopb with Firefly-specific streaming/callback schema
+Attadipa TLV prototype
+nanopb with Attadipa-specific streaming/callback schema
 one other mature compact option if reasonable
 ```
 
@@ -745,7 +745,7 @@ fragmentation interaction
 test burden
 ```
 
-Do not compare a tiny Firefly TLV to Meshtastic's whole enormous `FromRadio` union and call the encoding question solved.
+Do not compare a tiny Attadipa TLV to Meshtastic's whole enormous `FromRadio` union and call the encoding question solved.
 
 If TLV still wins, accept it with stronger evidence.
 
@@ -753,7 +753,7 @@ If TLV still wins, accept it with stronger evidence.
 
 # 19. PHYSICAL MULTIPLEXING OF NODE PROTOCOLS
 
-If MeshCore Companion and Firefly Node Protocol use the same physical relationship, state exactly how they coexist.
+If MeshCore Companion and Attadipa Node Protocol use the same physical relationship, state exactly how they coexist.
 
 Examples:
 
@@ -763,7 +763,7 @@ Examples:
 
 Do not leave “two protocols layered on the same transport” as a diagram with no demultiplexing rule.
 
-A parser must never mistake log text, MeshCore frames and Firefly frames for one another.
+A parser must never mistake log text, MeshCore frames and Attadipa frames for one another.
 
 ---
 
@@ -1298,7 +1298,7 @@ Never assume duty-cycle compliance from TX power alone.
 
 # 39. BEAUTY IS A PRODUCT REQUIREMENT
 
-Firefly must not look like an engineering demo.
+Attadipa must not look like an engineering demo.
 
 Every screen is judged on:
 
@@ -1329,7 +1329,7 @@ They establish a direction:
 - approachable;
 - flat/minimal rather than glossy 3D;
 - adult-friendly cartoon character;
-- insect-first firefly mascot;
+- insect-first attadipa mascot;
 - restrained glow;
 - cream/ivory surfaces;
 - orange/amber emphasis;
@@ -1364,7 +1364,7 @@ The style-board contains illustrative UI content such as:
 - example navigation distance;
 - Wi-Fi/Bluetooth statuses;
 - sample dates;
-- `fireflyos.org`.
+- `attadipa.org`.
 
 These are **mock visual content**, not product facts.
 
@@ -1400,7 +1400,7 @@ Use them to create design tokens, not scattered literal RGB values.
 A reasonable initial canonical palette derived from the owner-provided board is:
 
 ```text
-Firefly Orange   #FF8A40
+Attadipa Orange   #FF8A40
 Glow Amber       #FFC857
 Meadow Green     #6FA07A
 Leaf Sage        #A7B49C
@@ -1448,14 +1448,14 @@ No raw RGB scattered through UI code.
 
 # 43. WORDMARK AND BRAND
 
-Use the supplied Firefly wordmark direction.
+Use the supplied Attadipa wordmark direction.
 
 Brand text:
 
 ```text
-Firefly
-Firefly OS
-GLOW • GUIDE • CONNECT
+Attadipa
+Attadipa
+INDEPENDENT BY DESIGN
 ```
 
 Use the tagline only where contextually appropriate.
@@ -1515,9 +1515,9 @@ Recommended repository structure:
 
 ```text
 docs/ui/reference/
-    firefly_brand_identity.png
-    firefly_visual_style_board.png
-    firefly_mascot_sheet.png
+    attadipa_brand_identity.png
+    attadipa_visual_style_board.png
+    attadipa_mascot_sheet.png
 
 ui/assets/source/
     owner-provided / cleaned source art
@@ -1672,7 +1672,7 @@ Hide dangerous/complex settings behind parent/advanced controls.
 
 Do not make Child Mode patronizing or visually cheap.
 
-The same Firefly identity should be recognizable.
+The same Attadipa identity should be recognizable.
 
 ---
 
@@ -1680,7 +1680,7 @@ The same Firefly identity should be recognizable.
 
 This is a binding product requirement.
 
-Firefly must support at least:
+Attadipa must support at least:
 
 ```text
 English
@@ -1985,7 +1985,7 @@ Simulator
 → Settings
 ```
 
-It should look like Firefly, not debug UI.
+It should look like Attadipa, not debug UI.
 
 Include at least one purposeful use of the owner-provided visual assets/mascot.
 
@@ -2186,7 +2186,7 @@ Closed bugs often contain more engineering value than happy-path source.
 
 Where an upstream bug is relevant, turn the lesson into:
 
-- a Firefly design rule;
+- an Attadipa design rule;
 - a test;
 - a bound;
 - a failure mode.
@@ -2637,7 +2637,7 @@ Before major UI subsystem/pattern work, also review mature open-source wearable 
 
 Reuse interaction lessons, not someone else's visual identity.
 
-Firefly must keep its own warm visual character.
+Attadipa must keep its own warm visual character.
 
 Do not clone Apple Watch/Wear OS/Garmin assets or proprietary design.
 
@@ -2825,7 +2825,7 @@ Architecture should already exist; implementation may be a separate agent/projec
 
 At every major milestone confirm the project still preserves:
 
-1. One Firefly framework for multiple ESP32-S3 wearables.
+1. One Attadipa framework for multiple ESP32-S3 wearables.
 2. Hardware-specific differences stay below app layer.
 3. Hardware inventory is distinct from product capabilities.
 4. MeshCore compatibility.
@@ -2838,7 +2838,7 @@ At every major milestone confirm the project still preserves:
 11. Good battery life.
 12. HardwareCoordinator/coexistence.
 13. Beautiful adult-first UI.
-14. Warm Firefly visual identity based on supplied references.
+14. Warm Attadipa visual identity based on supplied references.
 15. Actual use of imagery/mascot where appropriate.
 16. Day/Night.
 17. Sound/haptics controllable.
@@ -2952,7 +2952,7 @@ Do not leave it stale.
 
 # 94. STARTING INSTRUCTIONS FOR THIS FINAL PROMPT
 
-When you receive this prompt in the existing FireflyOS repository:
+When you receive this prompt in the existing Attadipa repository:
 
 ### Step 1
 Inspect current HEAD, git status and repository structure.
@@ -3022,13 +3022,13 @@ Be cautious with:
 - universal event buses;
 - generic serialization frameworks.
 
-Firefly should be extensible and understandable.
+Attadipa should be extensible and understandable.
 
 ---
 
 # 96. DO NOT CONFUSE “MVP” WITH “UGLY”
 
-A first Clock with only a few features should still feel like Firefly.
+A first Clock with only a few features should still feel like Attadipa.
 
 MVP means reduced scope.
 
@@ -3085,7 +3085,7 @@ This ordering only means beauty cannot override emergency correctness.
 
 ---
 
-# 99. FIREFLY PHILOSOPHY
+# 99. ATTADIPA PHILOSOPHY
 
 For every subsystem ask:
 
@@ -3095,7 +3095,7 @@ For every subsystem ask:
 ## Human
 > Is this pleasant, understandable and honest?
 
-Firefly is a wearable object used every day.
+Attadipa is a wearable object used every day.
 
 It should feel warm and alive without becoming a toy.
 
@@ -3117,7 +3117,7 @@ Separate silicon from product capability.
 Never call a radio LoRa unless it is.  
 Never call a remote compass the watch's heading unless the reference frames agree.  
 Localize from the first screen.  
-Use the supplied Firefly art deliberately.  
+Use the supplied Attadipa art deliberately.
 Measure asset, memory, power and RF costs.  
 If one task blocks, take another.  
 While useful safe work remains, keep going.  

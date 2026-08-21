@@ -1,4 +1,4 @@
-"""Measure what an embedded Firefly font actually costs in flash.
+"""Measure what an embedded Attadipa font actually costs in flash.
 
 Final section 51 asks for a *measured* generated font size, not an estimate, so
 this compiles the generated C with the ESP32-S3 compiler and reads .rodata out
@@ -109,7 +109,7 @@ def main():
         sys.exit("No xtensa-esp32s3-elf-gcc found. This measures the target, not the host.")
     size_tool = gcc.replace("-gcc", "-size")
 
-    work = tempfile.mkdtemp(prefix="firefly-font-")
+    work = tempfile.mkdtemp(prefix="attadipa-font-")
     conf_dir = os.path.join(work, "conf")
     os.makedirs(os.path.join(conf_dir, "lvgl"))
     shutil.copy(a.lv_conf, os.path.join(conf_dir, "lv_conf.h"))

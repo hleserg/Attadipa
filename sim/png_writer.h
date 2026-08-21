@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace firefly::sim {
+namespace attadipa::sim {
 
 // A minimal PNG writer: 8-bit truecolour, no compression.
 //
@@ -18,4 +18,4 @@ namespace firefly::sim {
 bool write_png_rgb(const char* path, const std::uint8_t* pixels, std::uint32_t width,
                    std::uint32_t height);
 
-}  // namespace firefly::sim
+}  // namespace attadipa::sim
