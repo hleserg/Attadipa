@@ -24,21 +24,6 @@ research status · implementation status · tests · hardware required.
 
 ## NOW
 
-### T-042 · Owner amendment: GNSS integrity and receiver-native protection
-- **Priority:** P0 for the *architecture and task* half; the navigation stack
-  itself is explicitly out of scope now (owner §15).
-- **Goal:** record the decision, fix the generic-RTCM assumption, add the GNSS
-  receiver capability descriptor, put trust/integrity state into the
-  `LocationService` architecture, and add the simulator's GNSS-fault scenarios
-  to the backlog.
-- **Acceptance:** OWNER_DECISIONS carries the amendment; no interface loses
-  integrity or diagnostic information; MIA-M10Q and LS550G have a research task
-  each; RTCM is a per-provider capability rather than a property of GNSS.
-- **Implementation status:** in progress — the amendment is recorded as
-  [OD-5](docs/research/OWNER_DECISIONS.md)
-
-## NEXT
-
 ### T-009 · Design tokens in code
 - **Priority:** P0 — raised from P1; final §58 puts tokens in the first slice,
   before the Clock
@@ -59,6 +44,12 @@ research status · implementation status · tests · hardware required.
   forbids preserving a concept-board hex that fails on the real display
 - **Open inside this task:** `color.danger` has no value. There is no red in
   either owner palette, and inventing one is an identity decision for the owner.
+- **Resumed:** 2026-08-21, after both owner amendments landed (T-041, T-042).
+  Final §58 puts tokens first in the M1 slice and §15 of the GNSS amendment says
+  the current milestone is not to be broken — so this is where the roadmap
+  picks back up.
+
+## NEXT
 
 ### T-034 · Image asset pipeline
 - **Priority:** P0
@@ -108,6 +99,70 @@ research status · implementation status · tests · hardware required.
 ---
 
 ## READY
+
+### T-051 · What the MIA-M10Q actually does, from u-blox's own documents
+- **Priority:** P1 — it gates the GNSS driver, and nothing before it
+- **Dependencies:** [ADR-0011](docs/adr/0011-gnss-integrity.md)
+- **Goal:** fill in the receiver capability descriptor for the u-blox MIA-M10Q
+  from primary sources only, in the order the owner gives: datasheet →
+  integration manual → interface/protocol specification → vendor examples →
+  official library source.
+- **What to answer, at minimum:** `UBX-SEC-SIG` and `UBX-SEC-SIGLOG` — what
+  they report and on which firmware; the jamming and spoofing indications and
+  what each state means; `CFG-ITFM-*`; `UBX-NAV-PL` and whether a protection
+  level is produced at all on this part; fix and time validity flags; per-signal
+  C/N0; constellation control; Super-S; AssistNow Autonomous and what the
+  official assistance mechanism is; backup and hot start, and what the MS412FE
+  on the daughterboard actually backs up; configuration lockdown; message
+  integrity; secure boot. **And: does it accept RTCM corrections?** — OD-5 says
+  no, and the owner's technical claims are not automatically facts.
+- **Acceptance:** every descriptor entry is `SUPPORTED`, `UNSUPPORTED` or
+  `UNKNOWN`, each with the document and section it came from. `UNKNOWN` is a
+  valid answer and an unsourced `SUPPORTED` is not.
+- **Research status:** not started
+- **Implementation status:** not started — no code comes out of this task
+- **Tests:** none. It produces a research record in `docs/research/`.
+- **Hardware required:** no for the documents. Confirming any of it on a fitted
+  module is a separate line, and until then nothing here is `HARDWARE-VERIFIED`.
+
+### T-052 · What the Quectel LS550G actually does, and what it only claims
+- **Priority:** P1
+- **Dependencies:** [ADR-0011](docs/adr/0011-gnss-integrity.md)
+- **Goal:** the same descriptor for the second variant. The vendor advertises
+  jamming detection, active anti-jamming, a multi-tone interference canceller,
+  an internal LNA, multi-constellation operation, EPOC and power saving.
+- **Acceptance:** each advertised feature is either traced to a primary source
+  or recorded as a **claim**. **Anti-spoofing stays `UNKNOWN` until a primary
+  source or a real device says otherwise** (OD-5 §2) — the marketing page is
+  not a source. The two rails this variant needs (DC4 at 850 mV *and* BLDO1) are
+  re-confirmed against the datasheet, because getting that wrong means GNSS
+  silently never starts.
+- **Research status:** not started
+- **Implementation status:** not started
+- **Tests:** none — a research record.
+- **Hardware required:** no for the documents; yes to close anything the
+  documents do not answer, which on this part is expected to be most of it.
+
+### T-053 · The simulator can fail at GNSS twelve different ways
+- **Priority:** P2 — after the descriptor research, before the trust engine
+- **Dependencies:** [ADR-0011](docs/adr/0011-gnss-integrity.md), T-051, T-052
+- **Goal:** injectable GNSS scenarios in the simulator, so the trust state and
+  every screen that reads it can be developed and reviewed without a sky.
+- **The twelve, from OD-5:** normal · weak signal · fix loss · poor accuracy ·
+  stale position · a large jump while the accelerometer says stationary ·
+  receiver-reported jamming · receiver-reported spoofing · an invalid protection
+  level · two providers disagreeing · `Ready` with `NO_FIX` · `Ready` with a
+  valid fix and `Untrusted`.
+- **Acceptance:** each is selectable from the command line and reproducible;
+  each produces a different visible outcome, and none of them renders as another
+  one; a captured trace can be replayed into the trust engine offline
+  (ADR-0011 §7).
+- **Research status:** not started
+- **Implementation status:** not started
+- **Tests:** host — each scenario asserts the trust state and the reason codes
+  it must produce.
+- **Hardware required:** no. This is the task that exists *because* the
+  interesting failures cannot be staged on hardware.
 
 ### T-043 · The node link is not a BLE link
 - **Priority:** P0 — it is the shape of the transport, and the shape is cheapest
@@ -635,6 +690,37 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-042 · Owner amendment: GNSS integrity and receiver-native protection — **DONE**
+- **Closed:** 2026-08-21
+- **Scope, and it is deliberately small:** the owner's §15 forbids building the
+  navigation stack now. This task did the eight things §15 *does* list, and
+  stopped.
+- **What was delivered:**
+  - the amendment recorded as
+    [OD-5](docs/research/OWNER_DECISIONS.md#od-5--gnss-integrity-and-the-receivers-own-protection-comes-first);
+  - [ADR-0011](docs/adr/0011-gnss-integrity.md) — eight rules: the observation
+    keeps both a normalized form and the receiver's native values; ten state
+    axes that may not be collapsed; the receiver capability descriptor and where
+    it may **not** be read; differential corrections as a provider capability;
+    trust as a state with hysteresis, weighted evidence, reason codes and a
+    bounded transition log; the receiver's verdict as the strongest input rather
+    than the truth; a bounded, replayable trace before any field testing; and a
+    list of what is not being built.
+  - T-051, T-052 and T-053 filed.
+- **The RTCM assumption:** it was never written down here. A grep of every ADR,
+  architecture document, research file, header and source found `RTCM` in none
+  of them, and the specification in force does not mention it either. So the
+  correction is a *fence*, stated in ADR-0011 §4 before the path was worn, and
+  the fact that the MIA-M10Q rejects corrections is recorded as the **owner's
+  claim, to be confirmed** in T-051 — CLAUDE.md's rule about technical claims
+  applies to the amendment as much as to the specification.
+- **What did not change:** no code. No GNSS driver, no `LocationService`, no
+  observation type exists yet, which is exactly why the amendment was cheap to
+  absorb and why absorbing it now was the point.
+- **Hardware required:** no. Every descriptor entry starts `UNKNOWN` and stays
+  there until a primary source or a fitted module says otherwise.
+
 
 ### T-041 · Owner amendment: MeshCore 1.17 upstream review — **DONE**
 - **Closed:** 2026-08-21

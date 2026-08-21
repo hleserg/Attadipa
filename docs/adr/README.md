@@ -45,6 +45,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0008](0008-mesh-service-providers.md) | One `MeshService`, two providers, and the local path is real | **accepted** for the shape; the local mechanism is an open spike |
 | [0009](0009-heading.md) | Heading is three quantities, and one of them belongs to a different body | **accepted** |
 | [0010](0010-localization.md) | English and Russian from the first screen | **accepted** |
+| [0011](0011-gnss-integrity.md) | GNSS integrity: the receiver's own defences, and a trust state with reasons | **accepted** |
 
 ### What the statuses mean here
 

@@ -38,9 +38,10 @@ so in its own source.
 
 ## Next ready
 
-Two owner amendments arrived on 2026-08-21 and both outrank the remaining M1
-slice. They are recorded in
-[OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md).
+Both owner amendments of 2026-08-21 are **closed**. They are recorded as
+[OD-4 and OD-5](docs/research/OWNER_DECISIONS.md), and between them they filed
+eleven small tasks rather than one large one, which is what the owner asked for
+in both cases.
 
 - **T-041 — MeshCore 1.17 upstream review — done.**
   [`docs/upstream/meshcore-1.17-review.md`](docs/upstream/meshcore-1.17-review.md).
@@ -49,20 +50,26 @@ slice. They are recorded in
   were confirmed by reading the shipped tree: the Heltec V4.3 external LNA is on
   by default with the companion's control removed (#3010, #3232 — noise floor up
   13–22 dB, unfixed), and `HeltecV4R8Board::powerOff()` is wake-on-LoRa deep
-  sleep, so "off" ends at the next packet (#3165). It filed **T-043 … T-050**.
-- **T-042 — GNSS integrity — next.** The architecture and task half only; the owner's
-  §15 is explicit that the navigation stack is *not* to be built now. It fixes
-  a wrong assumption (RTCM is not a property of GNSS, and the MIA-M10Q has
-  none), adds a receiver capability descriptor, and puts a trust state into the
-  `LocationService` architecture before either exists as stable code.
-- **T-043 … T-050** — the eight small tasks the MeshCore review filed: the node
-  link that is not a BLE link, resynchronisable framing, the `PowerState`
+  sleep, so "off" ends at the next packet (#3165). Filed **T-043 … T-050**.
+- **T-042 — GNSS integrity — done**, in its architecture-only scope.
+  [ADR-0011](docs/adr/0011-gnss-integrity.md): the observation keeps the
+  receiver's native values as well as a normalized form, ten state axes that may
+  not collapse into one `quality`, a receiver capability descriptor that
+  `LocationService` is the last layer allowed to read, differential corrections
+  as a provider capability rather than a property of GNSS, and trust as a state
+  with hysteresis and reason codes. The RTCM assumption turned out to be written
+  **nowhere** in this repository, so the fix is a fence rather than a
+  correction. Filed **T-051 … T-053**.
+- **T-009 — design tokens in code**, resumed. The M1 slice continues in the
+  order final §58 gives: tokens, then the image asset pipeline (T-034), the
+  first Clock (T-037) and the first Settings (T-038).
+- **T-043 … T-053** — the eleven the amendments produced, sitting in READY: the
+  node link that is not a BLE link, resynchronisable framing, the `PowerState`
   taxonomy that cannot call a wake-on-LoRa sleep "hibernate", crash-safe
   persistence, two clocks, the crypto/RNG seam, the front end as a board
-  capability, and the adapter boundary test written before there is an adapter.
-- **T-009 · T-034 · T-037 · T-038** — design tokens in code, the image asset
-  pipeline, the first Clock and the first Settings. The rest of the M1 slice,
-  in the order final §58 gives, resumed after the above.
+  capability, the adapter boundary test written before there is an adapter, and
+  the three GNSS ones — MIA-M10Q, LS550G, and a simulator that can fail at GNSS
+  twelve different ways.
 
 ## Lookahead research
 

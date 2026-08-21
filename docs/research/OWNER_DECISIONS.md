@@ -339,7 +339,14 @@ add the descriptor, add the trust state, add the simulator's fault scenarios,
 fix the RTCM assumption — and then carry on.
 
 **What it invalidates:** the assumption that RTCM belongs to a generic GNSS
-driver, wherever this repository has written it.
+driver, wherever this repository has written it. A grep at the time of recording
+found it written **nowhere** — no ADR, no architecture document, no research
+file, no header — so this is a fence built before the path was worn rather than
+a correction.
+
+**Status:** the architecture half is
+[ADR-0011](../adr/0011-gnss-integrity.md); it filed T-051 (MIA-M10Q), T-052
+(LS550G) and T-053 (the simulator's GNSS-fault scenarios).
 
 ---
 
