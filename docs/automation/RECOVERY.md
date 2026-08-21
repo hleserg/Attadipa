@@ -3,6 +3,12 @@
 Everything here is meant to be done by one person, quickly, without reading the
 rest of this directory first.
 
+> **Blocked on a credential?** Everything that needs the owner's own `gh`
+> login — the issue-creation policy, the repository variable, the seed
+> discussions — is written up as an executable checklist in
+> [HANDOFF_LOCAL_CODER](HANDOFF_LOCAL_CODER.md). A cloud session cannot do those;
+> a local one can do all of them.
+
 ## Stop all Anthropic spending, now
 
 ```bash
