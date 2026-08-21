@@ -128,6 +128,11 @@ bool load(const std::string& path, Scenario& out, std::string& error)
     Parser parser;
     out = Scenario{};
 
+    // How many observation-describing keywords the current step has seen. Used
+    // only to keep `hold` honest: a step where nothing arrived cannot also
+    // describe what arrived.
+    int  fields_in_step = 0;
+
     std::string text;
     while (std::getline(file, text)) {
         ++parser.line;
@@ -178,8 +183,11 @@ bool load(const std::string& path, Scenario& out, std::string& error)
             Step step;
             step.at   = MonotonicTime{static_cast<std::uint64_t>(ms)};
             step.line = parser.line;
+            // By default an observation is as fresh as the moment it is judged
+            // at. `age` is how a fixture says otherwise.
             step.observation.observed_at = step.at;
             out.steps.push_back(step);
+            fields_in_step = 0;
             continue;
         }
 
@@ -191,7 +199,65 @@ bool load(const std::string& path, Scenario& out, std::string& error)
         Step&            step = out.steps.back();
         GnssObservation& o    = step.observation;
 
-        if (keyword == "fix") {
+        // Everything except `expect` describes what arrived, and in a `hold`
+        // step nothing did. Rejecting the combination rather than quietly
+        // preferring one of them is the same rule as the rest of this reader:
+        // a contradiction in a fixture is a bug in the fixture, and a rig that
+        // resolves it silently tests something nobody wrote down.
+        if (keyword != "expect") {
+            if (step.is_hold) {
+                parser.fail("`" + keyword + "` in a `hold` step — a step where nothing "
+                            "arrived cannot describe what arrived");
+                error = parser.error;
+                return false;
+            }
+            ++fields_in_step;
+        }
+
+        if (keyword == "hold") {
+            // Must come first, so that the check above catches every field in
+            // the step regardless of the order they were written in.
+            if (fields_in_step != 1) {
+                parser.fail("`hold` must be the first line of its step");
+                error = parser.error;
+                return false;
+            }
+            bool anything_to_hold = false;
+            // All but the last, which is this step — a hold cannot be its own
+            // antecedent.
+            for (std::size_t i = 0; i + 1 < out.steps.size(); ++i) {
+                // A provider's answer is compared and never adopted, so there
+                // is nothing of it to hold on to.
+                const Step& earlier = out.steps[i];
+                if (!earlier.is_hold && !earlier.is_other_provider) {
+                    anything_to_hold = true;
+                }
+            }
+            if (!anything_to_hold) {
+                parser.fail("`hold` before any observation — there is nothing to hold");
+                error = parser.error;
+                return false;
+            }
+            step.is_hold = true;
+        } else if (keyword == "age") {
+            std::int64_t ms = 0;
+            if (!number(ms) || ms < 0) {
+                parser.fail("`age` needs a non-negative millisecond age");
+                error = parser.error;
+                return false;
+            }
+            // Monotonic time has no before-zero. Wrapping a uint64 here would
+            // turn "forty seconds old" into "584 million years in the future",
+            // and every freshness test downstream would pass for the wrong
+            // reason.
+            if (static_cast<std::uint64_t>(ms) > step.at.ms) {
+                parser.fail("`age` is larger than the step's own time — the observation "
+                            "would predate the start of the trace");
+                error = parser.error;
+                return false;
+            }
+            o.observed_at = MonotonicTime{step.at.ms - static_cast<std::uint64_t>(ms)};
+        } else if (keyword == "fix") {
             std::string kind;
             if (!word(kind) || !fix_type(kind, o.fix_type)) {
                 parser.fail("`fix` needs one of unknown none time 2d 3d dr");
@@ -347,6 +413,13 @@ Result run(const Scenario& scenario, const TrustPolicy& policy,
 
     TrustEvaluator evaluator(policy);
 
+    // What a location service would be holding: the most recent observation
+    // that actually arrived. A provider's answer never becomes this — it is
+    // compared and discarded — and a `hold` step re-reads it without replacing
+    // it, which is the entire difference between the two.
+    GnssObservation held{};
+    bool            have_held = false;
+
     for (const Step& step : scenario.steps) {
         PositionValidity validity = PositionValidity::NoFix;
 
@@ -356,9 +429,27 @@ Result run(const Scenario& scenario, const TrustPolicy& policy,
             // belongs to neither.
             evaluator.compare_provider(step.observation, step.at);
             evaluator.engine().update(step.at);
+        } else if (step.is_hold) {
+            // The reader rejects a hold with nothing to hold, but run() also
+            // takes hand-built scenarios, and a rig that would dereference a
+            // default-constructed observation there would report a confident
+            // NoFix for a step that never had an input.
+            if (!have_held) {
+                result.failures.push_back(
+                    Failure{step.line, "`hold` with no observation held"});
+                ++result.steps_run;
+                continue;
+            }
+            // Nothing arrived. The retained fix is re-judged against a later
+            // clock and nothing else changes — in particular the detectors are
+            // not re-run against an observation they have already seen.
+            validity = classify(held, step.at, validity_policy);
+            evaluator.refresh(validity, step.at);
         } else {
             validity = classify(step.observation, step.at, validity_policy);
             evaluator.observe(step.observation, validity, step.motion, step.device_time, step.at);
+            held      = step.observation;
+            have_held = true;
         }
 
         ++result.steps_run;

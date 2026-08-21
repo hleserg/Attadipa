@@ -2,6 +2,13 @@ scenario a good fix goes stale rather than staying good
 describe Freshness is decided before quality. An excellent fix from ten minutes
 describe ago is not a slightly worse fix: the wearer may have walked anywhere
 describe since, so it is a circle whose radius nobody measured.
+describe
+describe The receiver going quiet is what `hold` means here — no observation
+describe arrives, the retained one is re-judged against a later clock, and
+describe nothing else about the device changes. That is the only route by which
+describe a real device reaches Stale from its own receiver, and until the rig
+describe had `hold` this fixture asserted `valid` three times and proved
+describe nothing about staleness at all.
 
 at 0
   fix 3d
@@ -15,32 +22,42 @@ at 0
   expect validity valid
   expect trust trusted
 
-# The receiver goes quiet. The same observation, re-examined later, is a
-# different answer — nothing about the fix changed, only the time.
+# Nothing arrives from here on. stale_after is 30 s, so one second short of it
+# the answer is still current.
 at 29000
-  fix 3d
-  pos 5000000 10000000
-  alt 42000
-  acc 3000
-  sats 12 15
-  hdop 80
-  jam none
-  spoof none
+  hold
   expect validity valid
+  expect no-reason stale-position
 
-at 45000
-  fix 3d
-  pos 5000000 10000000
-  alt 42000
-  acc 3000
-  sats 12 15
-  hdop 80
-  jam none
-  spoof none
-  expect validity valid            # the observation's own timestamp is current
+# And at it, it is not: the test is `>=`, so thirty seconds exactly is
+# already too old.
+at 30000
+  hold
+  expect validity stale
+  expect reason stale-position
+  expect no-reason fix-lost
 
-at 60000
+at 90000
+  hold
+  expect validity stale
+  expect reason stale-position
+
+# StalePosition weighs 20 against a degrade_at of 30, so age alone does not
+# move trust. That is deliberate and it is the two-axis design: validity
+# already carries the whole freshness story, and trust is about whether the
+# numbers can be believed, not about when they were taken. An interface that
+# shows a stale position must say so from the validity, not from the trust
+# state.
+at 91000
+  hold
+  expect validity stale
+  expect trust trusted
+
+# The receiver comes back with no solution at all. Now there are two different
+# things wrong and only one of them is age.
+at 120000
   fix none
   sats 0 3
   expect validity nofix
   expect reason fix-lost
+  expect no-reason stale-position

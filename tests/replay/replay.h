@@ -53,6 +53,17 @@ struct Step {
     core::MotionEvidence        motion{};
     std::optional<core::WallTime> device_time;
     bool                        is_other_provider = false;
+
+    // Nothing arrived. The step re-examines the observation already held, at a
+    // later `now`, through TrustEvaluator::refresh() — which is what a location
+    // service does on its own tick when the receiver has gone quiet.
+    //
+    // This is the only way the rig can reach PositionValidity::Stale by the
+    // route a device reaches it. The other route is an observation that was
+    // already old when it arrived, which is `age` on a normal step and is what
+    // a position relayed from a Firefly node over a slow link looks like.
+    bool                        is_hold = false;
+
     Expectation                 expect{};
     int                         line = 0;
 };

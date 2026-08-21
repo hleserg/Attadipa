@@ -78,6 +78,19 @@ void test_malformed_fixtures_are_refused()
         {"at 0\n  fix 3d\n",                            "no scenario line"},
         {"scenario x\n",                                "no steps"},
         {"scenario x\nat -5\n",                         "a negative timestamp"},
+
+        // The two keywords that let a fixture reach Stale, and the ways of
+        // writing them that mean nothing.
+        {"scenario x\nat 1000\n  age 5000\n",         "an age older than the trace itself"},
+        {"scenario x\nat 1000\n  age\n",              "an age with no number"},
+        {"scenario x\nat 1000\n  age -1\n",           "a negative age"},
+        {"scenario x\nat 0\n  fix 3d\n  pos 5000000 10000000\n"
+         "at 1000\n  fix 3d\n  hold\n",               "a hold that is not the first line of its step"},
+        {"scenario x\nat 0\n  fix 3d\n  pos 5000000 10000000\n"
+         "at 1000\n  hold\n  fix 3d\n",               "a hold that then describes what arrived"},
+        {"scenario x\nat 0\n  hold\n",                "a hold with nothing yet to hold"},
+        {"scenario x\nat 0\n  provider other\n  pos 5000000 10000000\n"
+         "at 1000\n  hold\n",                          "a hold after nothing but a provider's answer"},
     };
 
     for (const Case& one : cases) {
@@ -146,6 +159,82 @@ void test_a_fixture_explains_itself()
     }
 }
 
+// The positive half of the same story: the two keywords have to mean what the
+// fixtures assume they mean, and neither is observable from the outside except
+// through the verdict. A silent no-op here would leave every stale scenario
+// passing for the wrong reason — which is precisely what happened before these
+// keywords existed, and why 02-fix-goes-stale asserted `valid` three times.
+void test_age_and_hold_parse_into_what_they_claim()
+{
+    const std::string path = "/tmp/firefly-replay-freshness.trace";
+    std::FILE*        file = std::fopen(path.c_str(), "w");
+    if (file == nullptr) {
+        std::fprintf(stderr, "FAIL: cannot write a temporary fixture\n");
+        ++failures;
+        return;
+    }
+    std::fputs("scenario freshness\n"
+               "at 1000\n  fix 3d\n  pos 5000000 10000000\n"
+               "at 5000\n  hold\n"
+               "at 9000\n  fix 3d\n  age 4000\n  pos 5000000 10000000\n",
+               file);
+    std::fclose(file);
+
+    firefly::replay::Scenario scenario;
+    std::string               error;
+    if (!firefly::replay::load(path, scenario, error)) {
+        std::fprintf(stderr, "FAIL: %s\n", error.c_str());
+        ++failures;
+        std::remove(path.c_str());
+        return;
+    }
+    std::remove(path.c_str());
+
+    CHECK(scenario.steps.size() == 3);
+    if (scenario.steps.size() != 3) {
+        return;
+    }
+
+    // Without `age`, an observation is exactly as fresh as the moment it is
+    // judged at — the default the rig had, and the reason it could not produce
+    // a stale one.
+    CHECK(scenario.steps[0].observation.observed_at.ms == 1000);
+    CHECK(!scenario.steps[0].is_hold);
+
+    // A hold carries no observation of its own. run() supplies the held one.
+    CHECK(scenario.steps[1].is_hold);
+    CHECK(scenario.steps[1].at.ms == 5000);
+    CHECK(!scenario.steps[1].observation.position.has_value());
+
+    // And `age` moves the observation's own clock backwards, not the step's.
+    CHECK(scenario.steps[2].at.ms == 9000);
+    CHECK(scenario.steps[2].observation.observed_at.ms == 5000);
+}
+
+// run() also takes scenarios nobody parsed, and a hold with nothing behind it
+// would otherwise classify a default-constructed observation and report a
+// confident NoFix for a step that never had an input. It says so instead.
+void test_a_hold_with_nothing_held_is_reported()
+{
+    firefly::replay::Scenario scenario;
+    scenario.name = "hand-built";
+
+    firefly::replay::Step step;
+    step.at      = firefly::core::MonotonicTime{1000};
+    step.line    = 7;
+    step.is_hold = true;
+    scenario.steps.push_back(step);
+
+    const firefly::replay::Result result = firefly::replay::run(
+        scenario, firefly::core::default_trust_policy(), firefly::core::ValidityPolicy{});
+
+    CHECK(result.failures.size() == 1);
+    CHECK(result.steps_run == 1);
+    if (result.failures.size() == 1) {
+        CHECK(result.failures[0].line == 7);
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv)
@@ -161,6 +250,8 @@ int main(int argc, char** argv)
     test_malformed_fixtures_are_refused();
     test_replay_is_deterministic();
     test_a_fixture_explains_itself();
+    test_age_and_hold_parse_into_what_they_claim();
+    test_a_hold_with_nothing_held_is_reported();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

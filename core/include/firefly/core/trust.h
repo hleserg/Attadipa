@@ -244,6 +244,25 @@ public:
                  MotionEvidence motion, std::optional<WallTime> device_time,
                  MonotonicTime now);
 
+    // Time passed and nothing arrived.
+    //
+    // The evaluator learns only by being told, so a receiver that simply stops
+    // talking would otherwise leave the last verdict standing indefinitely: the
+    // engine can *name* StalePosition and could never reach it. A state a
+    // machine can print and cannot enter is worse than one it does not have,
+    // because a reader of the diagnostics assumes its absence means something.
+    // This is the call that closes it, and a location service makes it on its
+    // own tick with `classify(retained_observation, now)`.
+    //
+    // Deliberately *not* observe() with the observation already held. That
+    // would re-run every detector against a fix they have already seen — it
+    // would compare the position with itself, and, worse, re-stamp the epoch
+    // the next real fix is measured from. A minute of silence followed by an
+    // ordinary five-hundred-metre walk would then read as five hundred metres
+    // per second. Only the two conclusions that change with the clock alone
+    // are touched here.
+    void refresh(PositionValidity validity, MonotonicTime now);
+
     // A second provider's position for the same moment. Kept separate because
     // disagreement is evidence about both of them and belongs to neither.
     void compare_provider(const GnssObservation& other, MonotonicTime now);

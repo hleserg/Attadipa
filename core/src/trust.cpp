@@ -428,6 +428,16 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     }
 }
 
+void TrustEvaluator::refresh(PositionValidity validity, MonotonicTime now)
+{
+    // Exactly the two conclusions that follow from the clock rather than from
+    // any new measurement. Nothing that remembers a position is touched, which
+    // is the whole point — see the header.
+    set(engine_, TrustReason::FixLost, validity == PositionValidity::NoFix, now);
+    set(engine_, TrustReason::StalePosition, validity == PositionValidity::Stale, now);
+    engine_.update(now);
+}
+
 void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTime now)
 {
     if (!have_latest_position_ || !other.position.has_value() || !in_range(*other.position)) {
