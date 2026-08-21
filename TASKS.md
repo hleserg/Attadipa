@@ -146,6 +146,14 @@ research status · implementation status · tests · hardware required.
 ### T-053 · The simulator can fail at GNSS twelve different ways
 - **Priority:** P2 — after the descriptor research, before the trust engine
 - **Dependencies:** [ADR-0011](docs/adr/0011-gnss-integrity.md), T-051, T-052
+- **Half of this is built.** The offline half of the acceptance criterion — *"a
+  captured trace can be replayed into the trust engine offline (ADR-0011 §7)"* —
+  exists: `tests/replay/` with twelve traces covering the twelve failures below,
+  a runner, and a test proving the runner can fail. What remains is the
+  *simulator* half: making each of the twelve selectable from the command line
+  so a screen can be developed against them, and confirming that none of them
+  renders as another one. The traces are the specification for that work — the
+  same twelve, in a format the simulator can read.
 - **Goal:** injectable GNSS scenarios in the simulator, so the trust state and
   every screen that reads it can be developed and reviewed without a sky.
 - **The twelve, from OD-5:** normal · weak signal · fix loss · poor accuracy ·
@@ -690,6 +698,82 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-059 · The trust state, tested as sequences — **DONE**
+- **Why sequences:** the detectors that matter are rate detectors, and a rate
+  needs two epochs. A suite of single-observation tests passes cheerfully while
+  every one of them is switched off — which is exactly how the interval bug
+  survived being written, with `dt` read after the previous timestamp had been
+  overwritten so every interval was zero.
+- **Mutation-checked** rather than merely green: re-introducing that bug turns
+  three checks red; treating an `Unknown` spoofing verdict as an all-clear turns
+  two red (OD-5 §2); granting recovery without the hold, two; collapsing the
+  hysteresis band to one threshold, one.
+- **Also pinned:** `MotionEvidence{known=false}` is not evidence of stillness; an
+  absent last-trusted position reads as no answer rather than as certainty; the
+  transition log is bounded and reports how much it dropped.
+- **Tests:** `tests/test_trust.cpp`.
+- **Note:** its commit is prefixed `T-053`, which was already taken by the
+  simulator task above. The number here is the correct one; the commit is left
+  alone rather than rewritten.
+
+### T-058 · The diagnostics snapshot, tested structurally — **DONE**
+- **What it proved:** the snapshot survives a `memcpy` from a crash handler that
+  has no allocator (asserted statically *and* exercised), is 384 bytes against a
+  1 KiB bound so it can live in RTC memory beside everything else that wants to
+  survive a deep sleep, carries no serializer — §14, core is not tied to JSON —
+  and defaults every unread value to absent rather than to zero.
+- **Tests:** `tests/test_diagnostics.cpp`. Host only; nothing was sampled.
+
+### T-057 · The replayable navigation rig — **DONE**
+- **Why it exists:** the interesting GNSS failures cannot be staged. A detector
+  for an event nobody can produce on demand is one that gets written once and
+  never verified again.
+- **What landed:** `tests/replay/` — a strict fixture reader, a deterministic
+  runner, twelve traces, and `tests/test_replay_rig.cpp`, which is the part that
+  matters: it feeds the runner a deliberately-wrong fixture and demands three
+  mismatches, ten malformed fixtures and demands each be refused with a reason,
+  and a missing file, which is a failure and never a skip. CMake refuses to
+  configure if the scenario glob matches fewer than ten files.
+- **Reuse:** `INSPIRE ARCHITECTURE` from gpsd's regression framework — see
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
+- **Feeds:** the simulator half of T-053, which the traces specify.
+
+### T-056 · Position, validity and integer distance, tested — **DONE**
+- **What it pinned:** freshness is decided before quality; `TimeOnly` is `NoFix`
+  rather than a bad position; a coordinate off the globe lands in `NoFix` rather
+  than being clamped into something plausible; an unasked receiver reports
+  `Unknown` for jamming and spoofing and never `None` (OD-5 §2).
+- **Distance:** tolerances stated as percentages of a hand-computed answer rather
+  than borrowed from the implementation. A degree of longitude shrinks with the
+  cosine of the latitude, and the antimeridian is 111 m rather than forty
+  thousand kilometres.
+- **Tests:** `tests/test_position.cpp`.
+
+### T-055 · The two power state machines, tested exhaustively — **DONE**
+- **Method:** every `(from, to)` pair in both tables, because a suite that only
+  walks the legal paths passes against a `transition_is_legal` that returns true
+  for everything.
+- **Found two real defects:** `next_state()` proposed `Off → Backup` when the
+  device slept with the receiver already off — current spent holding a domain
+  with nothing in it; and `start_kind()` read *having* a backup domain as
+  evidence the domain had been *powered*, reporting a warm start where the truth
+  was cold. `GnssContext` gained `backup_retained`, the fact that was missing.
+- **Also pinned:** no wake source that exists only while the radio is powered may
+  be armed in `DeepSleep` — the rule the MeshCore review found broken upstream.
+- **Tests:** `tests/test_power.cpp`.
+
+### T-054 · The transport, tested against the brief and against upstream — **DONE**
+- **First half:** the owner's §6 list, one function per item — fragmented input,
+  several frames in one read, partial writes, a full queue, a disconnect
+  mid-frame, a reconnect, a large payload, a malformed frame — so coverage
+  against the brief can be read rather than asserted.
+- **Second half:** the defects
+  [the MeshCore review](docs/upstream/meshcore-1.17-review.md) verified at source
+  in the upstream serial transport, held against our own code. An over-long frame
+  is refused rather than truncated and delivered as complete; the checksum is
+  pinned against published vectors; `Attached` and `Ready` are separate phases.
+- **Tests:** `tests/test_link.cpp`.
 
 ### T-042 · Owner amendment: GNSS integrity and receiver-native protection — **DONE**
 - **Closed:** 2026-08-21
