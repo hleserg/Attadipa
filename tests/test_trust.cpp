@@ -175,6 +175,78 @@ void test_the_interval_is_taken_before_it_is_overwritten()
     CHECK_STATE(evaluator.state(), TrustState::Degraded);
 }
 
+// A fix dropout is the most ordinary event there is — a bridge, a tunnel, a
+// doorway — and it must not read as a teleport.
+//
+// This was a real defect, and a bad one: the interval was taken from a single
+// shared "previous epoch" which no-fix observations kept advancing while the
+// last known position stood still. A minute under a bridge followed by a
+// five-hundred-metre walk was therefore divided by one second instead of sixty
+// and reported five hundred metres per second. A detector that fires on walking
+// out of a tunnel is worse than no detector, because it teaches the wearer to
+// ignore the warning that matters.
+void test_a_fix_dropout_is_not_a_teleport()
+{
+    TrustEvaluator evaluator;
+    const MotionEvidence walking{true, true};
+
+    evaluator.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
+
+    // Sixty seconds with no fix at all. Each one still arrives.
+    for (std::uint64_t t = 1000; t <= 60000; t += 1000) {
+        GnssObservation lost = good_fix(t);
+        lost.fix_type        = FixType::NoFix;
+        lost.position.reset();
+        lost.satellites_used    = 0;
+        lost.satellites_in_view = 2;
+        evaluator.observe(lost, PositionValidity::NoFix, walking, {}, at(t));
+    }
+
+    // 45000 units of latitude is about 500 m: 8.2 m/s over the true 61 seconds,
+    // and 500 m/s over the one second since the last observation.
+    evaluator.observe(good_fix(61000, kLat + 45000), PositionValidity::Valid, walking, {},
+                      at(61000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+
+    // And the detector is still alive: the same gap followed by something
+    // nothing travels must still fire.
+    TrustEvaluator other;
+    other.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
+    for (std::uint64_t t = 1000; t <= 60000; t += 1000) {
+        GnssObservation lost = good_fix(t);
+        lost.fix_type        = FixType::NoFix;
+        lost.position.reset();
+        other.observe(lost, PositionValidity::NoFix, walking, {}, at(t));
+    }
+    // 500 km in the same sixty seconds.
+    other.observe(good_fix(61000, kLat + 45000000), PositionValidity::Valid, walking, {},
+                  at(61000));
+    CHECK_REASON(other.engine(), TrustReason::PositionJump);
+}
+
+// The altitude rate has its own timestamp for the same reason, and needs its own
+// witness: an observation can carry a position and no altitude, or the reverse.
+void test_the_altitude_rate_has_its_own_clock()
+{
+    TrustEvaluator evaluator;
+    GnssObservation start = good_fix(0);
+    evaluator.observe(start, PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+    // A minute of fixes that carry no altitude at all.
+    for (std::uint64_t t = 1000; t <= 60000; t += 1000) {
+        GnssObservation flat = good_fix(t, kLat + static_cast<std::int32_t>(t / 10));
+        flat.altitude_msl_mm.reset();
+        evaluator.observe(flat, PositionValidity::Valid, MotionEvidence{}, {}, at(t));
+    }
+
+    // 60 m higher than the last altitude anybody reported, which was a minute
+    // ago: 1 m/s, a gentle slope. Divided by one second it would be 60 m/s.
+    GnssObservation higher = good_fix(61000, kLat + 6100);
+    higher.altitude_msl_mm = 150000 + 60000;
+    evaluator.observe(higher, PositionValidity::Valid, MotionEvidence{}, {}, at(61000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::ImplausibleAltitudeRate);
+}
+
 // The other half of the same property: the detector must also stay quiet when
 // the same distance is covered over a plausible interval. A detector that fires
 // on distance rather than on speed would pass the test above and fail this one.
@@ -441,6 +513,28 @@ void test_the_last_trusted_position_becomes_a_circle()
     CHECK(remembered->latitude_e7 == kLat);
 }
 
+// A receiver that did not publish an accuracy has not published a good one.
+// Falling back to zero would turn silence into a claim of exactness — the same
+// mistake as reading an Unknown spoofing verdict as an all-clear, in the one
+// number an application would draw a circle from.
+void test_an_unstated_accuracy_is_not_a_perfect_one()
+{
+    TrustEvaluator evaluator;
+    GnssObservation quiet = good_fix(0);
+    quiet.horizontal_accuracy_mm.reset();
+    // Still a clean, valid fix — this receiver simply does not publish the
+    // field, which several do not.
+    evaluator.observe(quiet, PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    CHECK(evaluator.engine().has_last_trusted());
+
+    const std::uint32_t immediately = evaluator.engine().uncertainty_mm(at(0));
+    CHECK(immediately > 0);
+    CHECK(immediately == default_trust_policy().assumed_accuracy_mm);
+
+    // And it still grows, from that starting radius rather than from nothing.
+    CHECK(evaluator.engine().uncertainty_mm(at(60000)) == immediately + 90000);
+}
+
 // The header warns callers about this and the warning deserves a witness: zero
 // uncertainty with no remembered position means "no answer", not "certain".
 void test_no_remembered_position_is_not_a_precise_one()
@@ -468,6 +562,39 @@ void test_only_a_trusted_and_valid_fix_is_remembered()
         CHECK_STATE(evaluator.state(), TrustState::Degraded);
         CHECK(!evaluator.engine().has_last_trusted());
     }
+}
+
+// Two providers can only disagree about the same moment. A node's position
+// arriving after the watch's own fix has aged is measured against wherever the
+// wearer was standing several minutes ago, and reporting disagreement there
+// would be reporting that somebody walked.
+//
+// The absence of a comparison is silence, not an all-clear: a live
+// ProviderDisagreement must be left standing rather than cleared, which is the
+// same rule OD-5 applies to a receiver that stops reporting.
+void test_two_providers_must_be_talking_about_the_same_moment()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+    // Half a kilometre apart, but the watch's fix is four minutes old.
+    GnssObservation late = good_fix(240000, kLat + 50000);
+    late.source          = PositionSource::NodeGnss;
+    evaluator.compare_provider(late, at(240000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+
+    // A live disagreement is not cleared by a comparison that could not be made.
+    TrustEvaluator standing;
+    standing.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    GnssObservation elsewhere = good_fix(0, kLat + 50000);
+    elsewhere.source          = PositionSource::NodeGnss;
+    standing.compare_provider(elsewhere, at(0));
+    CHECK_REASON(standing.engine(), TrustReason::ProviderDisagreement);
+
+    GnssObservation stale_other = good_fix(240000, kLat);
+    stale_other.source          = PositionSource::NodeGnss;
+    standing.compare_provider(stale_other, at(240000));
+    CHECK_REASON(standing.engine(), TrustReason::ProviderDisagreement);
 }
 
 // Disagreement between two providers is evidence about both of them and belongs
@@ -540,6 +667,8 @@ int main()
     test_the_receiver_alarms_are_weighted_differently();
     test_unknown_is_not_an_all_clear();
     test_the_interval_is_taken_before_it_is_overwritten();
+    test_a_fix_dropout_is_not_a_teleport();
+    test_the_altitude_rate_has_its_own_clock();
     test_the_same_distance_over_a_longer_interval_is_a_walk();
     test_the_altitude_rate_uses_that_same_interval();
     test_a_still_wrist_is_evidence_and_an_unasked_one_is_not();
@@ -551,8 +680,10 @@ int main()
     test_silence_expires_but_only_after_the_ttl();
     test_the_log_is_bounded_and_admits_it();
     test_the_last_trusted_position_becomes_a_circle();
+    test_an_unstated_accuracy_is_not_a_perfect_one();
     test_no_remembered_position_is_not_a_precise_one();
     test_only_a_trusted_and_valid_fix_is_remembered();
+    test_two_providers_must_be_talking_about_the_same_moment();
     test_provider_disagreement_is_evidence_about_both();
     test_reset_leaves_nothing_behind();
     test_everything_has_a_name();

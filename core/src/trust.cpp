@@ -191,8 +191,13 @@ void TrustEngine::remember(const GnssObservation& observation, MonotonicTime now
     has_last_trusted_ = true;
     last_trusted_     = *observation.position;
     last_trusted_at_  = now;
-    last_trusted_accuracy_mm_ =
-        observation.horizontal_accuracy_mm.has_value() ? *observation.horizontal_accuracy_mm : 0;
+    // A receiver that did not publish an accuracy has not published a good one.
+    // Falling back to zero would turn silence into a claim of exactness, which
+    // is the same mistake as reading an Unknown spoofing verdict as an
+    // all-clear — see policy_.assumed_accuracy_mm.
+    last_trusted_accuracy_mm_ = observation.horizontal_accuracy_mm.has_value()
+                                    ? *observation.horizontal_accuracy_mm
+                                    : policy_.assumed_accuracy_mm;
 }
 
 std::optional<Position> TrustEngine::last_trusted_position() const
@@ -345,18 +350,26 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
 
     // --- physics, which needs the previous fix --------------------------------
     //
-    // The interval is taken once, before anything is overwritten. Reading it
-    // after updating previous_at_ would make every dt zero and silently switch
-    // both rate detectors off — a bug that no test of a single observation can
-    // see, which is why the replay fixtures walk several epochs.
-    const bool   have_interval = have_previous_epoch_;
-    const Millis dt            = have_interval ? elapsed(previous_epoch_at_, now) : Millis{0};
-
+    // Each interval is taken from the timestamp paired with the value it is
+    // being compared against, and is read before anything is overwritten.
+    //
+    // Both halves of that sentence are bugs this code has had. Reading the
+    // interval after updating the timestamp made every dt zero and switched
+    // both rate detectors silently off. Sharing one timestamp between them made
+    // a fix dropout look like a teleport: no-fix observations kept advancing it
+    // while the last known position stood still, so the first fix after a
+    // minute under a bridge was divided by one second instead of sixty.
+    //
+    // Neither is visible to a test of a single observation, which is why the
+    // replay fixtures walk several epochs and why one of them walks through a
+    // dropout.
     bool jumped         = false;
     bool moved_at_rest  = false;
     bool climbed_absurd = false;
 
     if (observation.position.has_value() && in_range(*observation.position)) {
+        const Millis dt = have_previous_ ? elapsed(previous_position_at_, now) : Millis{0};
+
         if (have_previous_) {
             const std::uint32_t moved = distance_mm(*observation.position, previous_position_);
 
@@ -375,14 +388,18 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
             // not be on a device that cannot tell.
             moved_at_rest = motion.known && !motion.moving && moved > policy.jump_while_still_mm;
         }
-        previous_position_ = *observation.position;
-        have_previous_     = true;
+        previous_position_    = *observation.position;
+        previous_position_at_ = now;
+        have_previous_        = true;
 
         latest_position_      = *observation.position;
+        latest_position_at_   = now;
         have_latest_position_ = true;
     }
 
     if (observation.altitude_msl_mm.has_value()) {
+        const Millis dt =
+            have_previous_altitude_ ? elapsed(previous_altitude_at_, now) : Millis{0};
         if (have_previous_altitude_ && dt.value > 0) {
             std::int64_t delta =
                 static_cast<std::int64_t>(*observation.altitude_msl_mm) - previous_altitude_mm_;
@@ -393,11 +410,9 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
             climbed_absurd           = rate > policy.implausible_altitude_rate_mm_s;
         }
         previous_altitude_mm_   = *observation.altitude_msl_mm;
+        previous_altitude_at_   = now;
         have_previous_altitude_ = true;
     }
-
-    previous_epoch_at_  = now;
-    have_previous_epoch_ = true;
 
     set(engine_, TrustReason::PositionJump, jumped, now);
     set(engine_, TrustReason::MotionDisagreement, moved_at_rest, now);
@@ -418,6 +433,19 @@ void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTim
     if (!have_latest_position_ || !other.position.has_value() || !in_range(*other.position)) {
         return;
     }
+
+    // Only a comparison of two roughly simultaneous answers means anything. If
+    // either side is older than the window, this is not evidence of
+    // disagreement and must not be recorded as such — but neither is it
+    // evidence of agreement, so any live reason is left standing rather than
+    // cleared. Silence, not an all-clear: the same rule OD-5 applies to a
+    // receiver that stops reporting.
+    const Millis window = engine_.policy().provider_comparison_window;
+    if (elapsed(latest_position_at_, now) > window ||
+        elapsed(other.observed_at, now) > window) {
+        return;
+    }
+
     const std::uint32_t apart = distance_mm(latest_position_, *other.position);
     set(engine_, TrustReason::ProviderDisagreement,
         apart > engine_.policy().provider_disagreement_mm, now);
@@ -428,7 +456,6 @@ void TrustEvaluator::reset()
 {
     engine_.reset();
     have_previous_          = false;
-    have_previous_epoch_    = false;
     have_previous_altitude_ = false;
     have_previous_in_view_  = false;
     have_latest_position_   = false;

@@ -110,7 +110,23 @@ struct TrustPolicy {
     std::uint32_t clock_disagreement_s            = 60;
     std::uint32_t protection_level_limit_mm       = 50000;  // 50 m
     std::uint32_t provider_disagreement_mm        = 250000; // 250 m between sources
+
+    // Two providers can only be compared if they are talking about the same
+    // moment. Without this, a node's position arriving after the watch's own
+    // fix went stale is measured against wherever the wearer was standing
+    // several minutes ago, and disagreement is reported for two answers that
+    // were both correct when they were given.
+    Millis        provider_comparison_window{5000};
     std::uint32_t accuracy_poor_mm                = 50000;  // 50 m
+
+    // What to assume when the receiver did not publish an accuracy at all.
+    //
+    // Not zero. Zero is a number and a number is an answer: it would make
+    // "nobody said how good this is" read as "this position is exact", and
+    // uncertainty_mm() would then report a point where the truth is a circle
+    // of unknown radius. Erring wide is the only safe direction, so the default
+    // is the widest accuracy still considered usable.
+    std::uint32_t assumed_accuracy_mm            = 50000;
     std::uint8_t  min_satellites                  = 4;
 };
 
@@ -242,22 +258,30 @@ public:
 private:
     TrustEngine engine_;
 
-    bool     have_previous_ = false;
-    Position previous_position_{};
+    // Each remembered value carries the time it was remembered, and every rate
+    // is computed against its own.
+    //
+    // A single shared "previous epoch" looks tidier and is wrong: an
+    // observation with no fix still arrives, so a minute spent under a bridge
+    // advances the shared timestamp while the last known position stays where
+    // it was. The next real fix is then divided by one second instead of by
+    // sixty, and a five-hundred-metre walk reads as five hundred metres per
+    // second. That is a detector firing on the most ordinary event there is,
+    // which trains the wearer to ignore it.
+    bool          have_previous_    = false;
+    Position      previous_position_{};
+    MonotonicTime previous_position_at_{};
 
-    // The interval between epochs, kept separately from the position history
-    // so that an observation carrying altitude but no fix still advances it.
-    bool          have_previous_epoch_ = false;
-    MonotonicTime previous_epoch_at_{};
-
-    bool         have_previous_altitude_ = false;
-    std::int32_t previous_altitude_mm_   = 0;
+    bool          have_previous_altitude_ = false;
+    std::int32_t  previous_altitude_mm_   = 0;
+    MonotonicTime previous_altitude_at_{};
 
     bool        have_previous_in_view_ = false;
     std::uint8_t previous_in_view_     = 0;
 
-    bool     have_latest_position_ = false;
-    Position latest_position_{};
+    bool          have_latest_position_ = false;
+    Position      latest_position_{};
+    MonotonicTime latest_position_at_{};
 };
 
 }  // namespace firefly::core
