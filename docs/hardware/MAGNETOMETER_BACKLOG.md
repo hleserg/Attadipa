@@ -14,16 +14,35 @@ The mandatory epics from master plan §67.
   magnetometer.
 
 So there is no *magnetic* heading on either board today, and there is nothing to
-calibrate. Heading from GNSS course-over-ground is a different thing and is
-available wherever GNSS is — which, since a Firefly node supplies GNSS, is no
-longer only the T-Watch. It also only works while the user is moving, which is
-the part that makes it a different product rather than a lesser one.
+calibrate.
+
+Course-over-ground from GNSS is not a substitute for it — it is a **different
+quantity in a different reference frame**, and saying so precisely is the whole
+of [ADR-0009](../adr/0009-heading.md). A magnetometer answers *which way is this
+body pointing*; course-over-ground answers *which way is this body moving*. They
+coincide only when the user walks forwards with the watch face aligned to their
+path, which is an assumption about arm position that this project has not
+measured. So course-over-ground is carried in frame `CourseOverGround`, never in
+`WatchBody`, and it may not drive a wrist-relative arrow.
+
+It is available wherever GNSS is — which, since a Firefly node supplies GNSS, is
+no longer only the T-Watch. And it only exists while the user is moving, which
+is the part that makes this a different product rather than a lesser one:
+**standing still is the normal condition of someone reading their watch**, and
+it is therefore a designed UI state rather than an absence. It never renders as
+0°.
+
+If A6 comes back *the node has a magnetometer*, that still does not give the
+watch a compass. A node in a backpack or clipped to a belt measures its own
+orientation, related to the watch's by a transform nobody has measured and which
+changes every time the node is set down. ADR-0009 §3 refuses the conversion
+unless a calibrated, still-valid transform exists, and none does.
 
 This does not make the backlog pointless — it makes it **design-only, and
 honest about why**. The capability model already treats the magnetometer as a
-first-class absence ([ADR-0001](../adr/0001-capability-model.md)), which is what
-lets the rest of the system be written now and a sensor be added later without
-reshaping anything.
+first-class absence ([ADR-0007](../adr/0007-two-capability-layers.md)), which is
+what lets the rest of the system be written now and a sensor be added later
+without reshaping anything.
 
 What it does mean: **no epic below that requires a physical magnetic reading can
 start.** Marking any of them "done" from simulated data would be exactly the
@@ -44,7 +63,7 @@ fake-green result the project forbids.
 | G-09 | Speaker interference test | BLOCKED | same |
 | G-10 | Charging interference test | BLOCKED | same |
 | G-11 | Quiet-window scheduling | DESIGN | **Yes** — and it is worth doing, because the mechanism is not magnetometer-specific |
-| G-12 | Heading confidence | DESIGN | **Yes** — how uncertainty is represented and shown; useful whatever the source |
+| G-12 | Heading confidence | DESIGN | **done in principle** — [ADR-0009](../adr/0009-heading.md) carries source, frame, confidence and validity; the *rendering* of low confidence is still UI work |
 | G-13 | Sensor fusion evaluation | RESEARCH | reading and evaluation only; no data to fuse |
 
 ## The consequence nobody should skip past
@@ -69,6 +88,7 @@ the arbiter is being built for the contention that actually exists here.
 | # | Question | Status |
 |---|---|---|
 | A5 | Is an external magnetometer intended at all — a variant board, a daughterboard, a different unit? | **owner decision** — [OPEN_QUESTIONS A5](../research/OPEN_QUESTIONS.md) |
+| A6 | Does the Firefly node carry one? If it does, it is a *node* compass, not a watch compass — see [ADR-0009](../adr/0009-heading.md) §3 | **owner decision** — [OPEN_QUESTIONS A6](../research/OPEN_QUESTIONS.md) |
 | G-14 | If yes: which part, on which bus, at what address, on which rail? | conditional on A5; local to this backlog |
 | G-15 | If yes: is it on the same I2C bus as the PMU and RTC? | conditional on A5. Decides whether G-08–G-10 are even measurable |
 

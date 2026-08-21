@@ -1,6 +1,11 @@
 # 0002 — The phone companion is optional, and the watch never depends on it
 
-Status: **proposed — scope corrected 2026-08-21**
+Status: **accepted** — scope corrected 2026-08-21 by [ADR-0004](0004-capability-sources.md)
+
+<!-- Accepted per final §74: the rule "no capability may require a phone" is
+     load-bearing for M1 and for every service signature, and leaving it
+     nominally provisional while building on it is the failure that section
+     names. The correction below narrows its scope; it does not reopen it. -->
 Date: 2026-08-21
 
 > **Correction notice.** The decision below was stated about "the companion" and

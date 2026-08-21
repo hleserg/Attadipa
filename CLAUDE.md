@@ -30,8 +30,11 @@ datasheet, a schematic for the specific board revision, or vendor source.
 
 The consequences here are not hypothetical. On these boards:
 
-- the T-Watch ships with **one of five** LoRa chips and **one of two** GNSS
-  modules — the product name does not tell you which;
+- the T-Watch ships with **one of five** radio chips and **one of two** GNSS
+  modules — the product name does not tell you which. **Two of the five are not
+  LoRa transceivers at all**, and of the remaining three the pinned MeshCore
+  revision supports exactly one. "It has a radio" and "it can join the mesh" are
+  different sentences ([ADR-0003](docs/adr/0003-radio-not-lora.md));
 - its GNSS power rail differs between revisions, so the wrong guess means GNSS
   silently never starts;
 - the Waveshare board has **no LoRa and no GNSS at all**;

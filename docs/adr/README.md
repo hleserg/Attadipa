@@ -35,24 +35,57 @@ What this makes easier, what it makes harder, and what it commits us to.
 
 | # | Title | Status |
 |---|---|---|
-| [0001](0001-capability-model.md) | Capability model: presence, variant, degree, availability | proposed — amended by 0004 |
-| [0002](0002-companion-is-optional.md) | The phone companion is optional, and the watch never depends on it | proposed — scope corrected by 0004 |
-| [0004](0004-capability-sources.md) | Where a capability comes from, and what happens when it leaves | proposed |
-| [0005](0005-node-protocol.md) | The watch↔node protocol | proposed |
-| [0006](0006-settings-and-bounded-values.md) | Settings, and values the law bounds | proposed |
+| [0001](0001-capability-model.md) | Capability model: presence, variant, degree, availability | **superseded by 0007** |
+| [0002](0002-companion-is-optional.md) | The phone companion is optional, and the watch never depends on it | **accepted** — scope corrected by 0004 |
+| [0003](0003-radio-not-lora.md) | The part is a `Radio`. Whether it can do LoRa is a fact about it | **accepted** |
+| [0004](0004-capability-sources.md) | Where a capability comes from, and what happens when it leaves | **accepted** |
+| [0005](0005-node-protocol.md) | The watch↔node protocol | **provisional** — encoding pending benchmark; three further corrections open |
+| [0006](0006-settings-and-bounded-values.md) | Settings, and values the law bounds | **accepted** |
+| [0007](0007-two-capability-layers.md) | Two capability layers, and the end of `has()` | **accepted** |
+| [0008](0008-mesh-service-providers.md) | One `MeshService`, two providers, and the local path is real | **accepted** for the shape; the local mechanism is an open spike |
+| [0009](0009-heading.md) | Heading is three quantities, and one of them belongs to a different body | **accepted** |
 | [0010](0010-localization.md) | English and Russian from the first screen | **accepted** |
 
-0003 was reserved for the radio abstraction across the five possible T-Watch
-chips ([TASKS](../../TASKS.md) T-013), blocked on reading MeshCore. MeshCore has
-now been read, and the answer changed the question: its RadioLib wrapper keeps
-radio state in a file-static variable set from an ISR, so one firmware image
-drives one radio. That would have been a problem for a watch running mesh — and
-the watch does not run mesh, because the radio is in the node. 0003 is still
-needed, but it is now about the *node's* radio and about the five chips only in
-so far as a T-Watch with its own LoRa is also a valid configuration. See
-OPEN_QUESTIONS M9.
+### What the statuses mean here
+
+Final §74: *"Do not build dozens of layers on an allegedly provisional decision
+while treating it as immutable. Before M1 core APIs rely on a decision, accept
+it or state why it remains intentionally provisional."*
+
+Everything M1 depends on is now **accepted**. Two documents are deliberately not:
+
+- **0005** is `provisional` because its encoding choice compared a hypothetical
+  Firefly TLV against Meshtastic's entire `FromRadio` union, which is not a
+  comparison. It stays provisional until benchmarked (T-016). Its *goals* —
+  versioning, bounded parser, session reset, fragmentation, hostile-frame
+  corpus — are endorsed by final §18 and are not in question.
+- **0008** accepts the service shape and explicitly refuses to decide the local
+  MeshCore integration mechanism, because final §14 forbids choosing between the
+  options without a measured spike, and this project has already made that
+  mistake once.
 
 An ADR that amends another does not replace it. 0001 keeps its reasoning and
-carries an amendment notice; 0004 carries the enum that is actually in force.
+carries a supersession notice; 0007 carries the model that is actually in force.
 Deleting the superseded text would delete the record of why the first answer
 looked right, which is the part a later reader needs most.
+
+### 0003, and the sentence that used to be here
+
+This index said, for a day:
+
+> *"the watch does not run mesh, because the radio is in the node"*
+
+It was wrong, it was in the index rather than in an ADR where it would have been
+argued, and final §13 corrects it. The reasoning behind it was sound as far as it
+went — MeshCore keeps radio state in a file-static variable set from an ISR
+(OPEN_QUESTIONS M9), so one image drives one radio; and a node with the radio in
+it makes that stop mattering. The error was concluding that because the problem
+disappears on *one* path, the other path does not exist.
+
+0003 is now written, and reading MeshCore changed what it had to say. It was
+reserved for "one radio interface across five chips". It turns out that at the
+pinned revision MeshCore supports exactly **one** of those five, two of them
+have no LoRa modulator at all, and there is no T-Watch variant upstream. So 0003
+is less about abstracting five drivers than about not claiming a mesh the
+hardware cannot join. [ADR-0008](0008-mesh-service-providers.md) carries the
+service that consumes it.

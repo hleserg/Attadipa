@@ -1,7 +1,11 @@
 # 0004 — Where a capability comes from, and what happens when it leaves
 
-Status: proposed
+Status: **accepted** (2026-08-21)
 Date: 2026-08-21
+
+<!-- Accepted per final §74. Final §8 endorses the seven-state model by name and
+     adds one requirement it already met: that the transition model be
+     centralized and tested (§2a). Extended, not replaced, by ADR-0007. -->
 Amends: [ADR-0001](0001-capability-model.md) · scopes [ADR-0002](0002-companion-is-optional.md)
 
 ## Context
@@ -236,7 +240,7 @@ events, object coordinates, telemetry. They must not share a model.
 | Has staleness and a source label | yes, on its data | **this is all it has** |
 | Absence means | the feature cannot run | there is nothing to show yet |
 
-`has(Capability::Weather)` would be a category error. It produces a screen that
+A `Capability::Weather` would be a category error. It produces a screen that
 cannot tell "no weather source configured" from "the weather is four hours old",
 which are not the same problem and do not have the same fix.
 

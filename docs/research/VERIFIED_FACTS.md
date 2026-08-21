@@ -99,17 +99,30 @@ is verified.
   observed on either board, because there is no compass. It stays a design
   consideration, not a mitigation to implement.
 
-### The T-Watch LoRa chip is a purchase-time variant
+### The T-Watch radio chip is a purchase-time variant, and two of the five are not LoRa
 
 - **Claim:** the T-Watch S3 Plus ships with one of **five** radio chips —
   SX1262 (default), SX1280, CC1101, LR1121, or SI4432 — selected as a board
   revision at build time. The SPI pin assignment is shared across them.
+  **CC1101 and Si4432 have no LoRa modulator**; they are FSK/OOK-family parts.
+  **SX1280 is LoRa at 2.4 GHz only.** At MeshCore `d929643` exactly one of the
+  five — the SX1262 — is a supported radio.
 - **Source:** vendor documentation build table (S1) and the conditional
-  compilation in `src/LilyGoWatchS3.h` (S2).
-- **Impact:** "T-Watch S3 Plus" does not identify the radio. The radio must be
-  a variant *within* a capability, and the frequency band differs
-  fundamentally between them (sub-GHz vs 2.4 GHz), which affects region
-  configuration and mesh interoperability.
+  compilation in `src/LilyGoWatchS3.h` (S2) for the variant list. For the
+  modulation and support claims: RadioLib 7.7.1 (`510e00c`) — the `setSpreadingFactor`
+  API is absent from `CC1101` and `Si443x`, and the module list calls them FSK
+  parts — and MeshCore `d929643`, whose `RADIO_CLASS` set across 87 variants
+  contains only `SX1262` of the five, with `RADIOLIB_EXCLUDE_CC1101=1` in the
+  root `platformio.ini`.
+- **Evidence level: PARTIAL.** The modulation, band and power figures are read
+  from driver source, not from the TI and Silicon Labs datasheets, which refused
+  automated retrieval. Confirming them from primary sources is **R1**.
+- **Impact:** "T-Watch S3 Plus" does not identify the radio, and "it has a
+  radio" does not mean "it can join the mesh". The product capability
+  `MeshMessaging` is derived from the fitted chip's modulation, band and
+  upstream support — never asserted from presence
+  ([ADR-0003](../adr/0003-radio-not-lora.md),
+  [ADR-0007](../adr/0007-two-capability-layers.md)).
 
 ### The T-Watch GNSS module is also a variant, with different power needs
 
@@ -333,9 +346,10 @@ BSP already demonstrated to be an incomplete description of its own board.
 - **Impact:** both boards have haptics and the two implementations are not
   interchangeable. The T-Watch has a DRV2605L with a waveform library, an I2C
   interface and a rail-warmup latency; the Waveshare board has on, off and PWM.
-  `has(Capability::Haptics)` is true on both and means materially different
-  things — the clearest live justification for the typed descriptors in
-  [ADR-0001](../adr/0001-capability-model.md).
+  the product capability `Haptics` is available on both and means materially
+  different things at the hardware layer — the clearest live justification for
+  keeping a typed descriptor below the service boundary
+  ([ADR-0007](../adr/0007-two-capability-layers.md)).
 
 ### Waveshare memory: 32 MB flash, 8 MB PSRAM
 

@@ -1,9 +1,36 @@
 # 0001 — Capability model: presence, variant, degree, availability
 
-Status: **proposed — amended 2026-08-21 by [ADR-0004](0004-capability-sources.md)**
+Status: **superseded by [ADR-0007](0007-two-capability-layers.md)**
 Date: 2026-08-21
 
-> **Amendment notice.** Two claims in this ADR were stated more broadly than the
+> **Superseded, later the same day.** Everything under **Decision** below has
+> been replaced. Read this ADR for its **Context** — the board survey that
+> forced a capability model at all — and for its **Alternatives**, all four of
+> which are still rejected for the reasons given. Do not implement anything
+> under Decision.
+>
+> Two rounds of correction landed on it, which is one more than a document this
+> size can carry legibly, and final §67 warns about exactly that: documentation
+> that preserves mutually incompatible current truths. So rather than a third
+> layer of inline notices:
+>
+> | What it decided | Now |
+> |---|---|
+> | `has(Capability::X)` for cheap UI gating | **gone.** `supports()` / `is_available()` / `availability()` — [ADR-0007](0007-two-capability-layers.md) §3 |
+> | one capability set, listing parts | **two layers** — hardware inventory and product capability — ADR-0007 §1–§2 |
+> | `LoraInfo{ LoraChip, RadioBand, max_tx_dbm }` | `RadioInfo`, and the part is a **`Radio`** — [ADR-0003](0003-radio-not-lora.md) |
+> | four-state `Availability` | seven states — [ADR-0004](0004-capability-sources.md) |
+> | descriptors produced by the BSP alone | the BSP is one contributor to a registry — ADR-0004 |
+>
+> What survived, and is why this is a supersession rather than a deletion: the
+> three-questions framing (*is it there · which one · can I use it right now*),
+> the per-sensing-axis enumeration, and the rule that no two availability states
+> may render identically. All three are carried into ADR-0007 by name.
+>
+> The amendment notice from the first round follows, kept because it records
+> what the Firefly node broke and when.
+
+> **Amendment notice (first round, 2026-08-21).** Two claims in this ADR were stated more broadly than the
 > evidence supported, and a product decision the same day
 > ([OWNER_DECISIONS OD-1](../research/OWNER_DECISIONS.md)) made both of them
 > false:
@@ -74,6 +101,7 @@ A capability answers all three, through two access paths and one state enum.
 **Presence** stays cheap, because most callers only gate UI with it:
 
 ```cpp
+// SUPERSEDED — has() no longer exists. See ADR-0007 §3.
 if (!caps.has(Capability::Gnss)) { /* the app is never offered */ }
 ```
 
@@ -81,6 +109,7 @@ if (!caps.has(Capability::Gnss)) { /* the app is never offered */ }
 BSP and consumed by drivers and services:
 
 ```cpp
+// SUPERSEDED — the part is a Radio, not a LoRa. See ADR-0003 for RadioInfo.
 struct LoraInfo {
     LoraChip chip;          // Sx1262 | Sx1280 | Cc1101 | Lr1121 | Si4432
     RadioBand band;         // SubGhz | Ghz24

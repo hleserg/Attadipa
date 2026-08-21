@@ -108,42 +108,108 @@ every layer above it.
 
 ---
 
-## 3. The capability model
+## 3. The capability model — two layers
 
-The specification suggests `device.capabilities().has(Capability::GNSS)`. The
-board survey shows that is not sufficient, because presence is not the only
-question the code has:
+Applications ask what the device can **do**. They never ask what is on it.
+Those are different questions with different answers, and the review that
+arrived with the final specification found this document asking the second one
+and calling it the first.
 
-- The T-Watch LoRa radio is **one of five chips** — SX1262, SX1280, CC1101,
-  LR1121 or SI4432 — chosen at purchase. Sub-GHz and 2.4 GHz are not
-  interchangeable; the region rules and the mesh interoperability differ.
+The application-facing set used to be this:
+
+```
+Display · Touch · Buttons · Pmu · BatterySense · Rtc · Accelerometer ·
+Gyroscope · Magnetometer · Lora · Gnss · Haptics · AudioOut · AudioIn ·
+IrTransmit · SdCard · Wifi · Ble
+```
+
+Every entry is a part. `Pmu`. `Rtc`. Nothing named `Position`. An application
+asking `Gnss` was asking about a chip — and on a Waveshare board with a Firefly
+node attached, that chip is absent while a position is on screen. So there are
+two layers, and only one of them is visible to an application.
+[ADR-0007](../adr/0007-two-capability-layers.md) carries the decision and its
+alternatives.
+
+### 3.1 Hardware inventory — below the service boundary only
+
+```cpp
+enum class HardwareFeature : uint8_t {
+    Display, Touch, Buttons,
+    Pmu, BatterySense, Rtc,
+    Accelerometer, Gyroscope, MagnetometerSensor,
+    Radio, GnssReceiver,
+    HapticActuator, AudioOutDevice, AudioInDevice,
+    IrTransmitter, SdCard,
+    Wifi, Ble, Usb,
+};
+
+bool             present(HardwareFeature) const;   // is the part here
+const RadioInfo* radio() const;                    // which part, typed
+HardwareState    state(HardwareFeature) const;     // is the driver up
+```
+
+This layer knows chips, pins, rails, buses, addresses, IRQ topology and
+modulation families. It is contributed by the BSP for the local board and by a
+provider for a node's own inventory. It is a fact about a **board**, it does not
+change while running, and no node ever makes `present()` true.
+
+The board survey is why it exists, and why a boolean is not enough on its own:
+
+- The T-Watch radio is **one of five chips** — SX1262, SX1280, CC1101, LR1121,
+  SI4432 — chosen at purchase. Two of the five have no LoRa modulator at all
+  ([ADR-0003](../adr/0003-radio-not-lora.md)), so "a radio is present" and "this
+  device can join the mesh" are different sentences.
 - The T-Watch GNSS is **one of two modules**, with different power-up sequences
   and different assistance mechanisms.
 - The T-Watch IMU is an accelerometer. The Waveshare IMU is six-axis. Both are
   "IMU present"; only one can report rotation.
+- A part can be present and broken. The Waveshare vendor BSP does not initialise
+  the QMI8658, AXP2101 or PCF85063 that are on the board.
 
-So a capability answers three questions, not one:
+`Lora` is not in the list. The part is a `Radio`; whether it can do LoRa is a
+fact *about* it, not the name of the slot. `MagnetometerSensor` and
+`AudioOutDevice` carry the suffix so no hardware name can be mistaken for the
+product capability of similar name — the compiler catches the confusion this
+section is about.
 
-**Is it there?** — a cheap boolean, for gating UI.
-
-**Which one is it?** — a typed descriptor, for drivers.
-
-**Can I use it right now?** — an availability state, for both.
-
-There is a fourth question, and it arrived with the Firefly node: **where does
-it come from, and what happens when that goes away?**
+### 3.2 Product capabilities — what applications see
 
 ```cpp
-// Cheap, for deciding whether a feature exists at all on this DEVICE — which
-// is not the same question as whether it is on this board.
-if (!caps.has(Capability::Gnss)) { /* the app is not offered */ }
+enum class Capability : uint8_t {
+    Time, Position, Heading, MotionSensing,
+    MeshMessaging,
+    Haptics, AudioPlayback, AudioCapture,
+    NotificationRelay, InfraredBlast,
+    PersistentStorage, RemovableStorage,
+    CompanionLink,
+};
+```
 
-// Typed, for code that must know the part.
-if (auto lora = caps.lora()) {
-    // lora->chip, lora->band, lora->max_tx_dbm
-}
+Thirteen, argued in ADR-0007 §2 rather than copied. `Navigation` is deliberately
+not among them — it is an application built on `Position` and `Heading`, and a
+capability that gated the Navigator on its own existence would be circular.
+`Position` and `Heading` are deliberately separate: a watch standing still with
+a good fix has one valid and the other not.
 
-// Availability is a separate axis from presence: one state per remedy.
+### 3.3 The three questions, and why `has()` is gone
+
+```cpp
+bool         supports(Capability) const;      // could this device, ever?
+bool         is_available(Capability) const;  // right now?
+Availability availability(Capability) const;  // and what do we tell the user?
+```
+
+`has()` does not exist — not renamed, not deprecated, absent, so that no call
+site survives the change by accident. It had become unanswerable: on a Waveshare
+board `has(Gnss)` is false by hardware and true by product, and whichever answer
+it gave was wrong for half its callers.
+
+The replacement gives the behaviour that was actually wanted:
+`supports(Position) == true` puts the Navigator in the launcher on every device,
+and `availability(Position) == Unprovisioned` is what the Navigator says when it
+opens on a Waveshare board with no node attached.
+
+```cpp
 enum class Availability : uint8_t {
     Unsupported,    // no configuration of this device can provide it
     Unprovisioned,  // a supported provider would give it; none is bound
@@ -160,9 +226,9 @@ enum class Origin : uint8_t { Local, Node };
 
 No two of these may render the same way. "This watch has no compass", "Maps
 needs a Firefly node", "your node is out of range" and "the compass is broken"
-are four different sentences to a user, and each has a different thing the user
-can do about it. That is the rule that sets the state count: **one state per
-remedy; different wording for the same remedy is a reason code, not a state.**
+are four different sentences, and each has a different thing the user can do
+about it. That is the rule that sets the state count: **one state per remedy;
+different wording for the same remedy is a reason code, not a state.**
 
 `Ready` means the source can be asked. It does not mean it has an answer — a
 GNSS that is powered and healthy and has no fix is `Ready`. Availability and
@@ -170,47 +236,79 @@ validity are different questions, and a datum that crossed a link has **two**
 ages: how old it was at the source, and how long ago it reached us. The UI shows
 the larger.
 
-The decision and its alternatives belong in ADR-0001 and, for everything on this
-page about sources and runtime lifecycle,
-[ADR-0004](../adr/0004-capability-sources.md).
+`Unsupported` is terminal. The full transition table is
+[ADR-0004](../adr/0004-capability-sources.md) §2a, and it is centrally owned:
+no component mutates availability on its own.
 
-### Capabilities
+### 3.4 The mapping is many-to-many and nobody above the service sees it
 
-`Display · Touch · Buttons · Pmu · BatterySense · Rtc · Accelerometer ·
-Gyroscope · Magnetometer · Lora · Gnss · Haptics · AudioOut · AudioIn ·
-IrTransmit · SdCard · Wifi · Ble`
+| Capability | Providers, in preference order |
+|---|---|
+| `Time` | GNSS · companion · RTC · user |
+| `Position` | local `GnssReceiver` · node |
+| `Heading` | `MagnetometerSensor` (neither board has one) · accel+gyro fusion · GNSS course-over-ground |
+| `MeshMessaging` | local `Radio`, *only if* the fitted chip and the pinned MeshCore support it · node |
+| `NotificationRelay` | companion only |
 
-Note `Accelerometer` and `Gyroscope` are separate. Neither board has a
-magnetometer, but `Magnetometer` exists in the enum — so the day one is added
-externally, the answer changes from `Unsupported` to `Ready` and nothing above
-the capability registry needs rewriting. That is the whole point of the layer,
-and the Firefly node turned it from an argument into a requirement within a day:
-on the Waveshare board `Lora` and `Gnss` change exactly that way when a node is
-attached.
+A capability is `Unsupported` only when no row can ever be satisfied.
+Applications never see this table and never name a provider. Diagnostics and
+Settings do, because inspecting and configuring providers is what they are for.
 
-One correction to how that used to be phrased. It was written as though adding a
-capability were a one-time event that flips an answer once and lands in the BSP.
-It is neither: the answer changes **repeatedly, in both directions**, and it
-arrives through the provider registry, which the BSP cannot see. A design that
-assumes "added later, then permanent" is wrong in the ordinary case rather than
-the exotic one.
+### 3.5 The boundary is a link boundary
 
-**Capabilities are not data feeds.** §32 lists what a node may provide and mixes
-the two: mesh connectivity and additional GNSS are capabilities; weather, Home
-Assistant events, quest events and telemetry are feeds. A capability has an
-availability state and gates whether an application is offered. A feed has a
-source and an age, and nothing else. `has(Capability::Weather)` would be a
-category error — it produces a screen that cannot tell "no weather source" from
-"the weather is four hours old". The test: *can an application be written that is
-useless without it?*
+`HardwareFeature`, `present()`, `state()` and the typed descriptors live in a
+library that `apps/` does not link against. An application that tries to ask
+about a chip fails to build. `#ifdef BOARD_X` was already forbidden in `core/`
+and `apps/` and was already unenforced; this makes the stronger version of the
+same rule mechanical, and lets a reviewer answer *does this application touch
+hardware* by reading the link line instead of the diff.
+
+### 3.6 Capabilities are not data feeds
+
+A node may supply weather, Home Assistant events, quest events and telemetry.
+Those are **feeds**, not capabilities. A capability has an availability state and
+gates whether an application is offered. A feed has a source and an age, and
+nothing else. A capability called `Weather` would produce a screen that cannot
+tell "no weather source" from "the weather is four hours old". The test: *can an
+application be written that is useless without it?*
 
 ---
 
 ## 4. Ownership — every part on both boards
 
-Every row has exactly one owning service. "Owns" means: initialises it, holds
-its power state, services its interrupt, arbitrates access to it, and reports
-it to diagnostics.
+Every row has exactly one owning service.
+
+**"Owns" does not mean "initialises".** This document used to define it that
+way, and final §32 names that definition as too strong — correctly, and this
+board gives the example:
+
+> Radio `DIO3` (GPIO 6) — on SX126x parts `DIO3` is commonly configured as the
+> TCXO supply, in which case GPIO 6 is driven by the *radio* and must never be
+> driven by the SoC.
+
+Under "ownership means initialisation", `RadioService` owns that pin and so
+should configure it, and configuring it is how the oscillator gets shorted.
+An ownership checklist that produces that outcome is worse than no checklist.
+
+So: **owning a part means being the one component responsible for its
+lifecycle, its safe default, its power state, access arbitration to it,
+diagnostics for it, and policy about it.** Several perfectly valid owned states
+involve touching nothing:
+
+| Owned state | When it is right |
+|---|---|
+| intentionally untouched until first use | a part whose power-up costs more than idle leakage |
+| left as an input / high-Z | another chip drives the line — GPIO 6 above; the strapping pins |
+| rail off, driver not instantiated | the GNSS module until a navigation app opens |
+| register read, never written | a strapped pin whose state is a fact to report, not a setting |
+
+What is *not* allowed is a part with **no** owner. An unowned part still draws
+power, still raises interrupts nobody services, still contends for the shared
+bus, and still leaves its pin floating. The Waveshare vendor BSP, which ships
+with three unowned parts on the board it supports, is the evidence — and is why
+§1 of this document exists.
+
+The tables below therefore say who is responsible, not who calls `init()`.
 
 ### LilyGO T-Watch S3 Plus
 
@@ -226,7 +324,7 @@ it to diagnostics.
 | PCF8563 RTC | `TimeService` | INT on GPIO17 — serviced even with no alarm set |
 | BMA423 accelerometer | `MotionService` | INT on GPIO14; **no gyroscope** |
 | DRV2605 haptic | `HapticService` | **enable is PMU rail BLDO2** — see §6 |
-| LoRa radio (1 of 5) | `RadioService` → `MeshService` | rail ALDO4; chip is a variant |
+| Radio (1 of 5 chips) | `RadioService` → `MeshService` | rail ALDO4; chip is a purchase-time variant. **Not necessarily LoRa** — two of the five candidates are FSK-only, and only one is supported by the pinned MeshCore ([ADR-0003](../adr/0003-radio-not-lora.md)) |
 | GNSS (1 of 2) | `LocationService` | rail BLDO1 (+DC4 for LS550G); **PPS not connected** |
 | SPM1423 PDM mic | `AudioService` | input path; `SELECT` is strapped, channel fixed in hardware |
 | MAX98357A amplifier | `AudioService` | I2S output. **`SD_MODE` is strapped — there is no shutdown pin.** Silence is a rail operation on `DLDO1` |
@@ -265,9 +363,11 @@ it to diagnostics.
 
 ### Two haptics, one capability, two degrees
 
-This is the clearest live example of why [ADR-0001](../adr/0001-capability-model.md)
-separates *presence* from *degree*, and it was found by reading the schematic
-after the capability model was already written:
+This is the clearest live example of why the hardware layer keeps a typed
+descriptor rather than a boolean, and it was found by reading the schematic
+after the capability model was already written. It is also a small argument for
+the two-layer split: one product capability, two very different parts, and the
+application should not have to know which:
 
 | | T-Watch S3 Plus | Waveshare AMOLED 2.06 |
 |---|---|---|
@@ -276,10 +376,12 @@ after the capability model was already written:
 | Expressible | named effects, ramps, sequences | on, off, and whatever PWM produces |
 | Latency | rail power-up before the driver responds | immediate |
 
-`has(Capability::Haptics)` is **true on both**. A UI that gated on that boolean
-and then asked for waveform 47 would compile, pass on the simulator, and do
-nothing on one of the two shipping targets. The typed descriptor is what makes
-the difference expressible:
+`is_available(Capability::Haptics)` is **true on both**, and correctly so — the
+product capability is real on both devices. A UI that stopped there and asked
+for waveform 47 would compile, pass on the simulator, and do nothing on one of
+the two shipping targets. The capability is not where the difference lives; the
+hardware descriptor is, and it sits below the service boundary where
+`HapticService` can read it and applications cannot:
 
 ```cpp
 enum class HapticKind { None, DirectDrive, WaveformDriver };
@@ -490,21 +592,30 @@ budget on a device where internal RAM is the scarce resource.
 
 ## 10. What must be decided before implementation
 
-| # | Decision | Where |
-|---|---|---|
-| 1 | Capability model — variant and degree | ADR-0001 (TASKS T-002) |
-| 2 | Rail ownership and reference counting | ADR |
-| 3 | Radio abstraction across five chips — and whether MeshCore permits it | ADR, blocked on OPEN_QUESTIONS M6, M9 |
-| 4 | Partition layout and OTA scheme | ADR |
-| 5 | ESP-IDF and LVGL versions | DEPENDENCIES (TASKS T-004) |
-| 6 | Whether to depend on the vendor BSPs or take only their pin facts | REUSE_LEDGER (OPEN_QUESTIONS T6) |
-| 7 | Capability sources and their runtime lifecycle | [ADR-0004](../adr/0004-capability-sources.md) (TASKS T-015) |
-| 8 | The node application protocol — §32 mandates the ADR and its five axes | ADR-0005 (TASKS T-016), blocked on T-006 |
-| 9 | Settings, and values bounded by a regulatory profile — §52 already required this | ADR-0006 (TASKS T-017) |
-| 10 | The event bus and the concurrency model | ADR (TASKS T-024) |
-| 11 | Partitions, NVS and OTA — now across two independently updated devices | ADR (TASKS T-025) |
+| # | Decision | Where | State |
+|---|---|---|---|
+| 1 | Capability model — presence, variant, degree | [ADR-0001](../adr/0001-capability-model.md) | superseded by 7 |
+| 2 | Rail ownership and reference counting | ADR (TASKS T-035) | open |
+| 3 | Radio abstraction, and what MeshCore actually supports | [ADR-0003](../adr/0003-radio-not-lora.md) (TASKS T-013) | **accepted** |
+| 4 | Partition layout and OTA scheme | ADR (TASKS T-025) | open |
+| 5 | ESP-IDF and LVGL versions | DEPENDENCIES (TASKS T-004, T-032) | open — **blocks M1** |
+| 6 | Whether to depend on the vendor BSPs or take only their pin facts | REUSE_LEDGER (OPEN_QUESTIONS T6) | open |
+| 7 | Capability sources and their runtime lifecycle | [ADR-0004](../adr/0004-capability-sources.md) (TASKS T-015) | **accepted** |
+| 8 | The watch↔node protocol | [ADR-0005](../adr/0005-node-protocol.md) (TASKS T-016) | **provisional** — encoding pending benchmark |
+| 9 | Settings, and values bounded by a regulatory profile | [ADR-0006](../adr/0006-settings-and-bounded-values.md) (TASKS T-017) | **accepted** |
+| 10 | The event bus and the concurrency model | ADR (TASKS T-024) | open |
+| 11 | Two capability layers, and the end of `has()` | [ADR-0007](../adr/0007-two-capability-layers.md) | **accepted** |
+| 12 | `MeshService` with a local and a node provider | [ADR-0008](../adr/0008-mesh-service-providers.md) (TASKS T-013) | **accepted** |
+| 13 | Heading: quantities, sources and reference frames | [ADR-0009](../adr/0009-heading.md) (TASKS T-026) | **accepted** |
+| 14 | English and Russian from the first screen | [ADR-0010](../adr/0010-localization.md) (TASKS T-033) | **accepted** |
 
-Decision 3 is the one that can force a redesign. If MeshCore assumes exclusive,
-uninterrupted ownership of the radio, it cannot coexist with a coordinator that
-wants to schedule around it — and that is worth knowing before anything is
-built on top.
+Decision 3 was the one expected to force a redesign, and it did — just not in
+the direction anyone was watching. The question was whether MeshCore assumes
+exclusive ownership of the radio. It does, and that turns out to matter less
+than what the same reading found: at the pinned revision, MeshCore supports
+**none** of the five T-Watch radio chips except the SX1262, and two of those
+chips cannot do LoRa at all. See [ADR-0003](../adr/0003-radio-not-lora.md).
+
+Decision 5 is now the one on the critical path. Nothing in M1 — the font
+subset, the image pipeline, the design tokens — can be built before LVGL is
+pinned.

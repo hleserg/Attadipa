@@ -45,7 +45,7 @@ designed to support several watch models from one codebase.
 | Firefly node | separate device — LoRa, GNSS, ESP32 | provides both, over a link |
 | Desktop simulator | first-class development target | simulated, including the node |
 
-The second board has no LoRa radio and no GNSS receiver. That is not an
+The second board has no sub-GHz radio and no GNSS receiver. That is not an
 oversight in the plan — it is the reason the capability layer exists. Nor does
 it make that board a lesser device: a **Firefly node** is a separate box
 carrying LoRa, GNSS and an ESP32, and a watch attached to one runs the same
@@ -90,12 +90,16 @@ somebody measures them. A datasheet number is not a measurement.
 
 ## Design ideas worth knowing about
 
-**Capability-driven.** Applications ask
-`device.capabilities().has(Capability::GNSS)`. They never learn which GPIO
-powers the GNSS module or which SPI the radio sits on. Board differences stay
-inside the BSP. Differences that are not the board's — a capability supplied by
-an attached node — arrive through a provider registry instead, because no BSP
-can know at build time what will be plugged in later.
+**Capability-driven, in two layers.** Applications ask what the device can
+*do* — `availability(Capability::Position)` — and never what is on it. They do
+not learn which GPIO powers the GNSS module, which SPI the radio sits on, or
+whether there is a GNSS module at all: a Firefly node supplies one over a link,
+and the answer is the same shape either way. The hardware inventory is a
+separate layer that lives below the service boundary and is not linked into
+applications, so asking a chip a question is a build error rather than a review
+comment. Board differences stay inside the BSP; differences that are not the
+board's arrive through a provider registry, because no BSP can know at build
+time what will be plugged in later.
 
 **Hardware coordination.** In a watch, subsystems interfere *physically*: the
 vibration motor disturbs the magnetometer, radio transmission disturbs GNSS

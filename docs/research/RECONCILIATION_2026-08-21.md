@@ -41,15 +41,28 @@ one rather than reading as a plan.
 
 | | Closed by | Status |
 |---|---|---|
-| **A** | ADR-0007 · `ARCHITECTURE.md` §3 | pending |
-| **B** | ADR-0007 | pending |
-| **C** | ADR-0003 · `RADIO_MATRIX.md` | pending |
-| **D** | ADR-0008 · notice on ADR-0005 · `adr/README.md` | pending |
-| **E** | ADR-0009 | pending |
-| **F** | ADR-0010 · `DESIGN_SYSTEM.md` | pending |
-| **G** | every commit in this pass | pending |
-| **H** | `adr/README.md` index | pending |
-| **I** | `ARCHITECTURE.md` §4 | pending |
+| **A** | [ADR-0007](../adr/0007-two-capability-layers.md) §1–§2 · `ARCHITECTURE.md` §3.1–§3.2 | **closed** |
+| **B** | [ADR-0007](../adr/0007-two-capability-layers.md) §3 · every call site in the repository | **closed** |
+| **C** | [ADR-0003](../adr/0003-radio-not-lora.md) · `HARDWARE_MATRIX.md` · `VERIFIED_FACTS.md` · `CLAUDE.md` | **closed**, with the matrix marked PARTIAL and R1 open |
+| **D** | [ADR-0008](../adr/0008-mesh-service-providers.md) · correction notice on ADR-0005 · `adr/README.md` · `REUSE_LEDGER.md` | **closed** for the model; the local mechanism is an open spike, by instruction |
+| **E** | [ADR-0009](../adr/0009-heading.md) · `MAGNETOMETER_BACKLOG.md` | **closed** |
+| **F** | [ADR-0010](../adr/0010-localization.md) · [`DESIGN_SYSTEM.md`](../ui/DESIGN_SYSTEM.md) | **closed** |
+| **G** | `TASKS.md` · `STATUS.md` · `DEPENDENCIES.md` | **closed** |
+| **H** | `adr/README.md` index · a status line on every ADR | **closed** |
+| **I** | `ARCHITECTURE.md` §4 | **closed** |
+
+Two are closed with something still open inside them, and that is deliberate
+rather than a shortfall:
+
+- **C** — the radio matrix is **PARTIAL**. Its modulation, band and power
+  figures come from RadioLib's driver source and MeshCore's build config, not
+  from the TI and Silicon Labs datasheets, which refused automated retrieval
+  (HTTP 403; timeout). Recorded as **R1**. Nothing may transmit on the strength
+  of a number in that table until it is closed.
+- **D** — the *mechanism* by which a watch runs a local mesh stack is
+  undecided, because final §14 forbids choosing between the options without a
+  measured spike. Deciding it from taste is precisely what produced the sentence
+  item D exists to correct.
 
 ## G in detail — what was actually stale
 

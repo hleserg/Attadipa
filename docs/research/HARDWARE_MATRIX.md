@@ -25,7 +25,7 @@ Sources are listed at the bottom.
 
 | | T-Watch S3 Plus | Waveshare AMOLED 2.06 |
 |---|---|---|
-| LoRa radio | yes — **five possible chips** | **absent** |
+| Sub-GHz radio | yes — **five possible chips, and only some of them do LoRa** ([ADR-0003](../adr/0003-radio-not-lora.md)) | **absent** |
 | GNSS | yes — **two possible modules** | **absent** |
 | IMU | BMA423 — accelerometer only | QMI8658 — 6-axis |
 | Magnetometer | **absent** | **absent** |
@@ -85,7 +85,7 @@ unit is still unknown — see OPEN_QUESTIONS A1.
 | RTC | PCF8563 | main I2C, INT 17 | 0x51 | VBACKUP (coin cell) | VERIFIED |
 | Accelerometer | BMA423 — **no gyroscope** | main I2C, INT1 → GPIO 14. **INT2 is bonded out but not routed** (R12, R15 not fitted) | 0x19 | +3V3 | VERIFIED |
 | Haptic | DRV2605 | main I2C | 0x5A | **BLDO2 (enable)** | VERIFIED |
-| LoRa | Schematic fits **HPD16B3** (SX1262-class pinout); vendor header builds **SX1280 / CC1101 / LR1121 / SI4432** variants by order | SPI: SCK 3, MISO 4, MOSI 1, CS 5, RST 8, BUSY 7, DIO1 9, **DIO3 6** | — | ALDO4 via R61 0 Ω (net `GPS_VDD`) | VERIFIED |
+| Radio | Schematic fits **HPD16B3** (SX1262-class pinout); vendor header builds **SX1280 / CC1101 / LR1121 / SI4432** variants by order. Only the SX1262 path is MeshCore-supported at the pinned revision, and CC1101/SI4432 cannot do LoRa at all — [ADR-0003](../adr/0003-radio-not-lora.md) | SPI: SCK 3, MISO 4, MOSI 1, CS 5, RST 8, BUSY 7, DIO1 9, **DIO3 6** | — | ALDO4 via R61 0 Ω (net `GPS_VDD`) | VERIFIED |
 | GNSS | **u-blox MIA-M10Q or Quectel LS550G**, on a 13-pin 0.3 mm FPC daughterboard | UART: TX 42, RX 41; **PPS not connected** — the net exists on the daughterboard but `PPS` appears nowhere in the main-board schematic | — | BLDO1 (+ DC4 @850 mV for LS550G); enable net `GPS_LDO` on FPC pin 3 | VERIFIED |
 | Microphone | SPM1423HM4H-B, PDM | CLK 44, DATA 47. **`SELECT` is resistor-strapped (R80, R81 not fitted)** — channel fixed in hardware | — | +3V3 | VERIFIED |
 | Amplifier | MAX98357A, 3.2 W class-D | I2S: BCLK 48, WCLK 15, DIN 46. **`SD_MODE` is resistor-strapped (R14 = 1 MΩ; R74, R76 not fitted) — no GPIO reaches it** | — | `DLDO1` pin (DLDO1/DC1SW) via R18 0 Ω → `SPK_VDD` | VERIFIED |
@@ -98,6 +98,31 @@ unit is still unknown — see OPEN_QUESTIONS A1.
 | Battery disconnect | MSK12C02-HB slide switch in series between the cell and `BAT` | mechanical only — firmware cannot sense or override it | — | — | VERIFIED |
 | Buttons | BOOT (GPIO 0) and RST both sit **on the GNSS daughterboard**, reaching the main board on FPC pins 2 and 6. PWR (SW7) wires to the AXP2101 `PWRON` pin — **it never reaches a GPIO**, so every press arrives as a PMU interrupt | — | — | — | VERIFIED |
 
+### The radio is one of five chips, and they are not equivalent
+
+The vendor header builds five variants by order. Recording them as "five LoRa
+chips" was wrong in a way that reached five documents, and
+[ADR-0003](../adr/0003-radio-not-lora.md) carries the correction and the
+evidence. The short version, because this is the table people will look at:
+
+| Chip | LoRa? | Bands (RadioLib 7.7.1 driver limits) | MeshCore `d929643` |
+|---|---|---|---|
+| **SX1262** | yes | 150 – 960 MHz | **supported** |
+| **SX1280** | yes, **2.4 GHz only** | 2400 – 2500 MHz | absent |
+| **LR1121** | yes | 150 – 960 · 1900 – 2200 · 2400 – 2500 MHz | needs driver work |
+| **CC1101** | **no** — FSK/OOK family | 300 – 348 · 387 – 464 · 779 – 928 MHz | compiled out (`RADIOLIB_EXCLUDE_CC1101=1`) |
+| **Si4432** | **no** — FSK/OOK | 240 – 930 MHz | absent |
+
+There is also **no T-Watch variant in MeshCore** — 87 upstream board variants,
+several LilyGO, not one T-Watch.
+
+Status **PARTIAL**, not VERIFIED: the modulation, band and power figures are read
+from RadioLib's drivers and MeshCore's build configuration, not from the TI and
+Silicon Labs datasheets, which refused automated retrieval. Confirming them from
+primary sources is open question **R1**. The schematic itself fits an
+SX1262-class module (HPD16B3), so the most likely fitted part is also the one
+that works — but "most likely" is not A2 answered.
+
 ### AXP2101 rail map
 
 | Rail | Feeds |
@@ -107,7 +132,7 @@ unit is still unknown — see OPEN_QUESTIONS A1.
 | DC4 | LS550G GNSS variant only, 850 mV |
 | ALDO2 | display backlight |
 | ALDO3 | display and touch |
-| ALDO4 | LoRa |
+| ALDO4 | Radio |
 | BLDO1 | GNSS, 3300 mV |
 | BLDO2 | DRV2605 enable |
 | VBACKUP | RTC coin cell (MS412FE) |
@@ -267,7 +292,7 @@ the board with 3.57× the pixels. That is a convenient coincidence, not a plan.
 | I2S bus | — | MCLK 16, SCLK 41, LCLK/WS 45, DOUT 40, DSIN 42 | VERIFIED |
 | Expansion connector | header `J3`, at least 29 pins on the drawing | pinout not resolved from text extraction — D3 | PARTIAL |
 | USB | `USB_N` / `USB_P` through 22 Ω series resistors (R19, R20) to the SoC native USB pins | — | VERIFIED |
-| LoRa | — | **not present** | VERIFIED |
+| Sub-GHz radio | — | **not present** | VERIFIED |
 | GNSS | — | **not present** | VERIFIED |
 
 ### AXP2101 rail map
@@ -343,7 +368,7 @@ can be tested on hardware that does not exist yet.
 | `ACCELEROMETER` | ✅ BMA423 | ✅ QMI8658 | simulated |
 | `GYROSCOPE` | ❌ | ✅ QMI8658 | simulated |
 | `MAGNETOMETER` | ❌ | ❌ | simulated |
-| `LORA` | ✅ one of five chips | ❌ on the board — a node supplies it | simulated, attached and detached |
+| `Radio` | ✅ one of five chips — **mesh-capable only for some of them** | ❌ on the board — a node supplies mesh | simulated, attached and detached |
 | `GNSS` | ✅ one of two modules | ❌ on the board — a node supplies it | simulated, attached and detached |
 | `HAPTICS` | ✅ DRV2605L, rail-gated, waveform library | ✅ **bare motor, GPIO 18 + transistor** — on/off and PWM only | logged |
 | `AUDIO_OUT` | ✅ MAX98357A | ✅ ES8311 | host audio |
@@ -353,9 +378,17 @@ can be tested on hardware that does not exist yet.
 | `BATTERY_SENSE` | ✅ via AXP2101 | ✅ via AXP2101 | simulated |
 | `WIFI` / `BLE` | ✅ ESP32-S3 | ✅ ESP32-S3 | simulated |
 
-A plain boolean `has(Capability::X)` cannot express "LoRa present, but which of
-five chips" or "IMU present, but no gyroscope". How capability carries variant
-and degree is an architectural decision — see `docs/adr/`.
+This table is the **hardware inventory** — what is physically on each board. It
+is not what an application sees. An application asks for a product capability
+(`Position`, `MeshMessaging`, `Haptics`) and gets an availability state; the
+mapping between the two columns and that answer is
+[ADR-0007](../adr/0007-two-capability-layers.md), and it is not one-to-one. A
+Waveshare board with a Firefly node attached has ❌ in the `LORA` row and can
+still send a mesh message.
+
+A plain boolean also cannot express "a radio is present, but which of five
+chips" or "IMU present, but no gyroscope", which is why the hardware layer keeps
+a typed descriptor rather than a flag.
 
 ---
 

@@ -26,6 +26,7 @@ will close it.
 | A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner |
 | A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN — now concrete** | ask the project owner. The owner's existing MeshCore node runs 868.731 MHz at 22 dBm ([OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-2). 22 dBm is 158 mW; whether that is lawful on that frequency in the region of operation is unestablished |
 | A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **UNKNOWN** | ask the project owner — see [../hardware/MAGNETOMETER_BACKLOG.md](../hardware/MAGNETOMETER_BACKLOG.md) |
+| A6 | **Does the Firefly node carry a magnetometer?** | **UNKNOWN** | ask the project owner. Note that "yes" does *not* give the watch a compass: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform. The ADR exists so that this answer does not arrive before the model does |
 
 A1 and A2 gate all bring-up, the entire interference matrix, and every power
 number. A2 in particular decides whether the radio is sub-GHz or 2.4 GHz —
@@ -61,6 +62,15 @@ proceed; hardware work does not.
 | H7 | Achievable LVGL frame rate and redraw cost on each panel | UNKNOWN | benchmark on hardware |
 | H8 | **Is ALDO1 the `+3V3` rail?** The vendor doc says ALDO1 is unused; the schematic shows it driving `+3V3` | **CONFLICTING** | read the AXP2101 rail-enable and voltage registers on a powered board, then cut one rail at a time and watch which parts drop off the I2C scan |
 | H9 | Real backlight current vs brightness, against the schematic's 45 mA at full | UNKNOWN | measurement; the 45 mA figure is a datasheet-level I_F, not a measured draw |
+| H10 | **The speed gate below which GNSS course-over-ground is not trustworthy** | UNKNOWN | measurement on the fitted module. It depends on the update rate and on whether the module reports Doppler-derived velocity or differenced positions, so it is per-module and cannot be chosen. [ADR-0009](../adr/0009-heading.md) §4; final §26 forbids inventing settling intervals |
+
+## Radio
+
+| # | Question | Status | Resolved by |
+|---|---|---|---|
+| R1 | **Confirm every modulation, band and conducted-power figure in the radio matrix against the manufacturer datasheet.** The current values come from RadioLib 7.7.1's driver range checks and MeshCore's build config, not from TI, Silicon Labs or Semtech | **PARTIAL** | `ti.com` returns HTTP 403 and the Silicon Labs document host timed out under automated retrieval. Needs a manual fetch, or the PDFs obtained another way. Nothing may transmit on the strength of a number in that table until this is closed — [ADR-0003](../adr/0003-radio-not-lora.md) |
+| R2 | Does the LR1121 work through MeshCore's `CustomLR1110Wrapper` plus `LR11x0Reset.h`? RadioLib's `LR1121` derives from `LR1120`, which derives from `LR11x0`, so it is plausible | **UNKNOWN** | a spike, not a reading. Decides whether `MeshCoreSupport::NeedsWork` for that chip is a week or a month |
+| R3 | Which radios MeshCore supports **at the revision Firefly actually pins**, re-checked rather than assumed | tracked | the matrix is a `grep` over `RADIO_CLASS` across `variants/`; it is a task (T-013), not a hope, because upstream adds radios |
 
 ## Hardware — documentary gaps
 
@@ -95,22 +105,29 @@ below cites the file it came from. Licence: **MIT**, `license.txt`.
 | ~~M3~~ | Crypto primitives and byte-level format | **RESOLVED — and it needs a review of its own** | Payload encryption is **AES-128 in ECB mode with zero padding**, on both the hardware (`Utils.cpp:61,92`) and the software path (`Utils.cpp:108-122`, `aes.encryptBlock` per 16-byte block, no IV, no chaining). Authentication is HMAC-SHA256 **truncated to two bytes** — `CIPHER_MAC_SIZE 2` in `MeshCore.h:17`, applied in `Utils.cpp:127-145`. Wire constants: `PUB_KEY_SIZE 32`, `CIPHER_KEY_SIZE 16`, `MAX_PACKET_PAYLOAD 184`, `MAX_PATH_SIZE 64`. On-air layout is `Packet.cpp:55-85` |
 | ~~M4~~ | Threading and concurrency assumptions | **RESOLVED** | Cooperative single-loop, Arduino style. `CONTRIBUTING.md` requires no dynamic allocation outside `begin`/`setup`; fixed pools in `StaticPoolPacketManager.h`. The one FreeRTOS boundary is the BLE interface, guarded by a static queue (`src/helpers/esp32/SerialBLEInterface.h:24-35`, `FRAME_QUEUE_SIZE 4`) |
 | M5 | Memory footprint on ESP32-S3 | PARTIAL | Fixed pools and `MAX_PACKET_HASHES (128+32)` in `SimpleMeshTables.h` make it computable, but no figure is claimed here without a build. `NOT MEASURED` |
-| ~~M6~~ | How it abstracts the radio, and whether it covers all five T-Watch chips | **RESOLVED** | Through thin wrappers over RadioLib in `src/helpers/radiolib/`. **RadioLib itself supports every chip MeshCore does not** — its `idf_component.yml` tags include `sx1280`, `cc1101`, `si4432`, `lr1121`. So the gap is MeshCore's wrapper layer, which is small and plausibly upstreamable rather than a fork |
+| ~~M6~~ | How it abstracts the radio, and whether it covers all five T-Watch chips | **RESOLVED — and the answer was worse than expected** | Through thin wrappers over RadioLib in `src/helpers/radiolib/`. Across 87 upstream variants the `RADIO_CLASS` set is `CustomLR1110 · CustomLR2021 · CustomSTM32WLx · CustomSX1262 · CustomSX1268 · CustomSX1276` — of the five T-Watch candidates, **only the SX1262**. CC1101 is compiled out entirely (`platformio.ini:35`, `-D RADIOLIB_EXCLUDE_CC1101=1`). **Correction to an earlier version of this row**, which said RadioLib supports every chip MeshCore does not and concluded the gap is a small wrapper layer: RadioLib *drives* CC1101 and Si4432, but as **FSK/OOK** parts. Neither has a LoRa modulator, so no wrapper makes them mesh-capable. The gap is a wrapper for SX1280 and LR1121 only. [ADR-0003](../adr/0003-radio-not-lora.md) |
 | ~~M7~~ | Companion protocol shape | **RESOLVED — and it largely already exists** | A framed byte protocol, identical across every transport. `>`/`<` sentinel, 16-bit little-endian length, payload; `MAX_FRAME_SIZE 176` (`BaseSerialInterface.h:5`). Payload is `[opcode][data]`, little-endian. The opcode table is `examples/companion_radio/MyMesh.cpp:6-134`. **Version negotiation already exists**: `CMD_DEVICE_QUERY` (22) carries the client's protocol version, the firmware stores it as `app_target_ver` and adapts its replies (`MyMesh.cpp:1023-1024`, and see the `app_target_ver >= 3` branches at 435 and 548) |
 | M8 | Can Firefly's needs be upstreamed rather than forked? | **likely yes** | The radio-wrapper gap (M6) is the natural candidate. Requires talking to upstream, which has not happened |
 | ~~M9~~ | **Does MeshCore assume it owns the radio exclusively?** | **RESOLVED — effectively yes** | `src/helpers/radiolib/RadioLibWrappers.cpp:14` is `static volatile uint8_t state = STATE_IDLE;` — a **file-static** flag set from the ISR. One radio per firmware image, structurally. It also runs its own duty-cycle governor, `Dispatcher::updateTxBudget()` (`Dispatcher.cpp:38-53`), which a Firefly coexistence coordinator would have to reconcile with rather than override. The sanctioned extension points are the virtual hooks `getCADFailMaxDuration`, `getCADFailRetryDelay`, `getAirtimeBudgetFactor` in `Dispatcher.h`, and `isReceiving()` in `RadioLibWrappers.h:44-48` |
 
-**M9 turned out to matter less than expected, and only because of the node.**
+**M9 matters less on one path and exactly as much as feared on the other.**
 The concern was that a mesh stack owning the radio exclusively could not coexist
 with a coordinator scheduling quiet windows around Wi-Fi and BLE. It does own it
-exclusively. But the product now puts the LoRa radio in a **separate device**,
-so the watch never runs MeshCore at all — it speaks the companion protocol to a
-node that does. The conflict does not arise on the watch, and on the node there
-is nothing to coexist with. See [ADR-0005](../adr/0005-node-protocol.md).
+exclusively. When the radio is in a **separate device**, the watch speaks the
+companion protocol to a node and the conflict does not arise — a product
+decision dissolving an engineering problem rather than solving it.
 
-That is a case of a product decision dissolving an engineering problem rather
-than solving it, which is worth noticing: had the ADR been written a day earlier
-it would have designed a reconciliation nobody needs.
+> **Corrected 2026-08-21.** What stood here went one step further and concluded
+> that the watch therefore *never* runs MeshCore. That does not follow. A
+> T-Watch with a supported radio is a local mesh device (final §13), and on that
+> path M9 is a live constraint: whether `HardwareCoordinator` can schedule
+> around MeshCore's radio ownership, or must stay out of its way, is part of the
+> integration spike rather than an assumption. See
+> [ADR-0008](../adr/0008-mesh-service-providers.md).
+
+Also relevant on the local path: MeshCore runs its own duty-cycle governor,
+`Dispatcher::updateTxBudget()`, which Firefly's airtime accounting must
+reconcile with rather than override.
 
 ### What reading MeshCore surfaced that nobody asked
 
@@ -135,7 +152,7 @@ with someone competent reviewing it — not in a paragraph here.
 
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| X1 | How does a capability express **variant** (which of five radios) and **degree** (accel-only vs 6-axis)? | UNKNOWN | ADR — a boolean `has()` is demonstrably insufficient |
+| X1 | How does a capability express **variant** (which of five radios) and **degree** (accel-only vs 6-axis)? | **RESOLVED** | It does not — that is the wrong layer to ask. Variant and degree are facts about a *part* and live in the hardware inventory, below the service boundary; a product capability carries only an availability state. [ADR-0007](../adr/0007-two-capability-layers.md) |
 | X2 | Who owns PMU rail sequencing — a rail service, or each driver? | UNKNOWN | ADR |
 | X3 | How does an application render each of the seven availability states — and in particular tell *unsupported here*, *needs a node*, *node out of range* and *broken* apart? | **narrowed** | [ADR-0004](../adr/0004-capability-sources.md) sets one state per remedy; the screens themselves are still UX + API design together |
 | X4 | Two RTC parts, two IMU parts, two audio paths — one interface each, or per-board? | UNKNOWN | driver design |
@@ -182,7 +199,7 @@ products and the difference is visible to the user in the first ten seconds.
 
 Moved to [VERIFIED_FACTS.md](VERIFIED_FACTS.md) on 2026-08-21: both boards'
 complete peripheral inventory, pin maps, I2C addresses and PMU rail map; the
-absence of LoRa and GNSS on the Waveshare board; the absence of a magnetometer
-on both; the five LoRa and two GNSS variants of the T-Watch; the missing touch
+absence of a sub-GHz radio and GNSS on the Waveshare board; the absence of a
+magnetometer on both; the five radio and two GNSS variants of the T-Watch; the missing touch
 reset line; the haptic rail gating; the incomplete vendor BSP; and the
 CO5300 / SH8601 driver nuance.

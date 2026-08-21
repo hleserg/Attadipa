@@ -1,8 +1,13 @@
 # 0006 — Settings, and values the law bounds
 
-Status: proposed
+Status: **accepted** (2026-08-21)
 Date: 2026-08-21
-Relates to: [ADR-0004](0004-capability-sources.md) · amends the `LoraInfo` descriptor in [ADR-0001](0001-capability-model.md)
+Relates to: [ADR-0004](0004-capability-sources.md) · the radio descriptor it constrains is now `RadioInfo` in [ADR-0003](0003-radio-not-lora.md)
+
+<!-- Accepted per final §74. Final §34-§38 restate this ADR's decisions
+     independently: integer Hz, three distinct power ceilings, region as runtime
+     data, transmit closed while the region is unknown, and a network contract
+     applied as one atomic preset. -->
 
 ## Context
 
@@ -210,8 +215,12 @@ is about to destroy *before* it happens.
 
 ### 7. What this changes elsewhere
 
-**`LoraInfo` is wrong and this is the cheapest moment to fix it.** ADR-0001 is
-still `proposed`, and its descriptor has three defects:
+**`LoraInfo` was wrong, and it has since been replaced.** This section identified
+three defects while ADR-0001 was still `proposed`; all three are fixed in
+`RadioInfo` ([ADR-0003](0003-radio-not-lora.md)), which also corrects the
+larger error this section did not catch — the part is a `Radio`, and two of the
+five candidate chips have no LoRa modulator at all. The three defects, kept
+because they are the reasoning behind the replacement:
 
 - `max_tx_dbm` conflates the chip's PA ceiling, the regulatory ceiling and the
   user's setting into one integer. Those are a hardware fact, a legal fact and a

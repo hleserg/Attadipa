@@ -1,8 +1,47 @@
 # 0005 — The watch↔node protocol
 
-Status: proposed
+Status: **provisional — scope corrected, encoding not yet accepted** (2026-08-21)
 Date: 2026-08-21
 Required by: master plan §32 · builds on [ADR-0004](0004-capability-sources.md) · constrained by [ADR-0006](0006-settings-and-bounded-values.md)
+
+> **Correction notice.** The final master specification reviews this ADR
+> directly, in four places. Nothing below is deleted; four things are scoped or
+> downgraded, and the ADR may not be treated as settled until they are closed.
+>
+> **1 — §2 is about the node path only** (final §13). *"The watch links no
+> MeshCore code at all"* is a good decision for the watch-as-companion-client,
+> and false as a statement about the product: a T-Watch with a supported radio
+> is a local mesh device. [ADR-0008](0008-mesh-service-providers.md) carries the
+> corrected model — one `MeshService`, a local provider and a node provider —
+> and explicitly leaves the local integration *mechanism* to a measured spike,
+> because deciding it from taste is what produced the sentence being corrected.
+>
+> **2 — the encoding is provisional** (final §18). The TLV *goals* are endorsed
+> by name: versioning, request IDs, a bounded parser, session reset, capability
+> re-announcement, fragmentation, a hostile-frame corpus, freshness and validity,
+> and separation from MeshCore internals. The *choice* is not, and the reason is
+> a fair hit: this ADR compared a hypothetical small Firefly TLV against
+> Meshtastic's entire `meshtastic_FromRadio` union and called the question
+> settled. That is not a comparison. Before acceptance, benchmark a Firefly TLV
+> prototype against nanopb with a Firefly-specific streaming/callback schema and
+> at least one other compact option, on the target compiler, measuring peak
+> internal RAM, static RAM, flash, encoded bytes, malformed-input behaviour,
+> schema-evolution cost, tooling, fragmentation interaction and test burden. If
+> TLV still wins, accept it with the evidence. **T-016.**
+>
+> **3 — the node's software architecture must be settled before the protocol is
+> frozen** (final §17). Whether the node runs stock MeshCore, Firefly firmware,
+> or both decides which component terminates this protocol, how it coexists with
+> companion traffic, who owns pairing and identity, and what happens when the two
+> firmwares are upgraded independently. Recorded in
+> [NODE_PROFILE](../node/NODE_PROFILE.md). **T-019.**
+>
+> **4 — the demultiplexing rule must be explicit** (final §19). Two protocols on
+> one physical relationship is a diagram, not a design, until it says how a
+> parser tells them apart — separate GATT characteristics, separate UART
+> channels, or an outer mux frame. *"A parser must never mistake log text,
+> MeshCore frames and Firefly frames for one another"*, and a node's serial port
+> emits all three. **T-016.**
 
 ## Context
 
@@ -31,8 +70,14 @@ of the problem ([OPEN_QUESTIONS](../research/OPEN_QUESTIONS.md), M1–M14):
   an ISR, so one firmware image drives one radio (M9).
 
 The last point used to be the scariest open question in the project. The node
-dissolves it: the LoRa radio lives in a separate device, so the watch never runs
-MeshCore and never needs to coexist with it.
+dissolves it **for the node path**: when the radio lives in a separate device,
+nothing in the watch contends for it.
+
+> **Corrected.** The sentence that stood here concluded that the watch therefore
+> *never* runs MeshCore. That does not follow — it dissolves M9 on one path and
+> says nothing about the other. On a T-Watch with a supported radio, M9 is a
+> live constraint on a local mesh stack. See
+> [ADR-0008](0008-mesh-service-providers.md).
 
 ## Decision
 
@@ -72,7 +117,12 @@ The practical test: **it must be possible to replace the mesh stack under the
 node without touching the Firefly protocol.** If that is true, they are not
 mixed.
 
-### 2. The watch links no MeshCore code at all
+### 2. On the node path, the watch links no MeshCore code at all
+
+> **Scope corrected.** As written this heading claimed the whole product. It is
+> true of the node path and only of the node path — see the correction notice
+> above and [ADR-0008](0008-mesh-service-providers.md). A T-Watch with a
+> supported radio may well link mesh code; how, and how much, is an open spike.
 
 The node's firmware consumes MeshCore unmodified as a PlatformIO library in its
 `companion_radio` role. The watch — ESP-IDF, `core/` — implements a

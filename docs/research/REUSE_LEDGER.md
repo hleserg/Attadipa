@@ -181,14 +181,31 @@ tags `companion-v1.17.1`) · RadioLib (MIT, `510e00cfb05bbc3c2b7b524262785454944
 **Useful implementation:** MeshCore's `companion_radio` role, and its transport
 abstraction in `src/helpers/BaseSerialInterface.h` / `MultiSerialInterface.h`.
 
-**Decision:** `USE AS DEPENDENCY` — **for the node firmware image only.** The
-watch links no MeshCore code at all.
+**Decision:** `USE AS DEPENDENCY` for the node firmware image — settled. **For
+the watch's local mesh path: undecided, deliberately.**
 
-**Reason:** MeshCore is Arduino/PlatformIO throughout — no `CMakeLists.txt`, no
-`idf_component.yml`, `<Arduino.h>` in its interface headers. Porting it to
-ESP-IDF means an indefinitely divergent tree, which the addendum forbids. It is
-also unnecessary: the radio is in a separate device, so the watch never
-originates or routes a mesh packet. `REIMPLEMENT` fails the addendum's test —
+> **Corrected 2026-08-21.** This record said *"the watch links no MeshCore code
+> at all"*, full stop. That is right for the node path and wrong as a statement
+> about the product: a T-Watch with a supported radio is a local mesh device
+> (final §13, [ADR-0008](../adr/0008-mesh-service-providers.md)). Final §14
+> additionally forbids deciding the local integration mechanism — direct
+> component integration, an isolated compatibility layer, upstreamable ESP-IDF
+> work, a narrow Arduino island, or supporting only viable combinations —
+> without a **measured spike**. So the local decision is `UNDECIDED — SPIKE
+> REQUIRED` (T-013), and the one constraint that is fixed is that `Arduino.h`
+> does not enter `core/`.
+>
+> A second correction, to the same record's radio claim: MeshCore's supported
+> radio set does **not** cover the T-Watch's five variants. Across 87 upstream
+> variants it is `SX1262 · SX1268 · SX1276 · LR1110 · LR2021 · STM32WLx`, with
+> CC1101 compiled out. Exactly one of the five. See
+> [ADR-0003](../adr/0003-radio-not-lora.md).
+
+**Reason (node path):** MeshCore is Arduino/PlatformIO throughout — no
+`CMakeLists.txt`, no `idf_component.yml`, `<Arduino.h>` in its interface
+headers. Porting it to ESP-IDF means an indefinitely divergent tree, which the
+addendum forbids. On the node path it is also unnecessary: the radio is in a
+separate device, so the watch never originates or routes a mesh packet. `REIMPLEMENT` fails the addendum's test —
 MeshCore's routing, duplicate suppression, airtime budgeting and path-hash
 scheme are years of field tuning across 87 board variants, and nothing in
 Firefly's requirements is unmet by them. What Firefly *does* write is a

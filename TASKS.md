@@ -14,293 +14,360 @@ Sections are states, not folders. A task moves; it is not copied.
 `READY` means **genuinely ready**. If the critical research is not done, it is
 not READY — it is a research task. Priorities are `P0`–`P3`.
 
-Every task carries: priority · dependencies · acceptance criteria · research
-status · implementation status · tests · hardware required.
+Every task carries: priority · dependencies · goal · acceptance criteria ·
+research status · implementation status · tests · hardware required.
+
+**Task state is updated in the same commit as the change it describes**
+(final §73). A status file several commits behind is not a status file.
 
 ---
 
 ## NOW
 
-### T-003 · Host build and CI that actually runs
+### T-008 · Simulator skeleton with both geometries
 - **Priority:** P0
-- **Dependencies:** none
-- **Goal:** plain-CMake host build plus a test target, running in GitHub Actions
-  on every push.
-- **Acceptance:** `cmake -S . -B build && cmake --build build && ctest` passes
-  locally and in CI; CI is green for a real reason.
-- **Research status:** n/a
-- **Implementation status:** host build and smoke test pass locally; CI workflow
-  added, first run not yet observed
-- **Tests:** the build itself, plus the smoke test
-- **Hardware required:** no
-
-### T-006 · Read MeshCore upstream
-- **Priority:** P0
-- **Dependencies:** none
-- **Goal:** answer OPEN_QUESTIONS M1–M9 from source, with commit hashes.
-- **Acceptance:** a reuse-ledger record for MeshCore; M1, M3, M4, M6, M9
-  answered with citations; a candidate revision named.
-- **Research status:** not started — only repository identity and license
-  established
+- **Dependencies:** T-032 (LVGL pin — **done**)
+- **Goal:** a desktop window that renders LVGL at 240 × 240 and 410 × 502, mouse
+  as touch, keyboard as buttons. The simulator is a first-class target
+  (final §57), not a convenience.
+- **Acceptance:** both presets run; switching between them needs no rebuild;
+  the build is part of CI.
+- **Research status:** done — LVGL 9.5.0 carries SDL2 display, mouse and
+  keyboard drivers in-tree ([DEPENDENCIES](docs/research/DEPENDENCIES.md)); SDL2
+  is installed on the host
 - **Implementation status:** not started
-- **Tests:** n/a
-- **Hardware required:** no
-- **Note:** M9 — does MeshCore assume exclusive radio ownership? — is the one
-  answer that can force an architecture change, and it also gates ADR-0003 on
-  the radio abstraction across five chips. Answer it before building on it.
-
-
-### T-015 · ADR-0004: capability sources and their runtime lifecycle
-- **Priority:** P0
-- **Dependencies:** none — but it amends ADR-0001, so nothing else should be
-  built on the capability model until it lands
-- **Goal:** a capability may now be provided by a detached Firefly node, and may
-  appear and disappear while an application is running
-  ([OWNER_DECISIONS OD-1](docs/research/OWNER_DECISIONS.md)). ADR-0001 assumed
-  the BSP is the only producer and that `Absent` is permanent. Both are false.
-- **Acceptance:** the availability enum settled with one state per sentence a
-  user would actually be told; provider modelled as an axis or as enum values,
-  with the choice argued from counted call sites rather than taste; the
-  invariant that a remote-only state implies a remote provider stated; ADR-0001
-  and ADR-0002 amended rather than left contradicting.
-- **Research status:** recon running — `recon:capability-hal` is answering the
-  axis-versus-enum question from Zephyr, Meshtastic variants, esp-bsp and BLE
-  GATT service discovery
-- **Implementation status:** ADR-0001 and ADR-0002 amended; ADR-0004 not written
-- **Tests:** host tests over the state machine, including every transition a
-  node attach/detach can cause
+- **Tests:** it builds in CI; headless run or an explicit, stated skip
 - **Hardware required:** no
 
-### T-023 · Reuse-ledger records for the eight subsystems being designed
+### T-032 · Pin LVGL, and the font toolchain that comes with it
 - **Priority:** P0
 - **Dependencies:** none
-- **Goal:** the addendum requires open-source reconnaissance **before** each
-  significant subsystem is written, and a ledger record with a decision from the
-  ten-verb vocabulary. The ledger currently holds a template and no records —
-  the exact state it exists to prevent.
-- **Scope:** MeshCore · node protocol · application framework · settings ·
-  capability HAL · GNSS and heading · power and PMU rails · simulator.
-- **Acceptance:** one record per subsystem in
-  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md), each carrying repository, tag,
-  **commit hash**, licence, exact source files, a decision, a reason, the tests
-  worth porting, and at least two lessons drawn from upstream *issues or pull
-  requests* rather than from the source alone.
-- **Research status:** eight investigators running in parallel against full
-  local clones in `/root/upstream`
-- **Implementation status:** not started
-- **Tests:** n/a — but each record must name the upstream tests to port
+- **Goal:** remove the one dependency decision that blocks all of M1 — final
+  §51, §76 and §77 make the LVGL pin a prerequisite for both the Cyrillic font
+  subset and the image assets.
+- **Acceptance:** LVGL pinned with reasoning and rejected alternatives; the font
+  converter pinned with a checked licence; a Latin + Cyrillic subset generated
+  at the design system's sizes and its flash cost **measured**, not estimated.
+- **Research status:** done for the library
+- **Implementation status:** **LVGL v9.5.0 pinned** (`85aa60d`, MIT) — see
+  [DEPENDENCIES](docs/research/DEPENDENCIES.md). `lv_font_conv` is **not**
+  pinned: it is a separate npm tool, its licence is unchecked, and it is the
+  only supported way to generate a subset font.
+- **Tests:** the subset builds; the generated size is recorded in
+  [RESOURCE_BUDGET](docs/architecture/RESOURCE_BUDGET.md)
 - **Hardware required:** no
+- **Note:** the library was the easy half. The font toolchain is the half that
+  can still surprise, because Cyrillic coverage can eliminate a font outright.
+
+---
 
 ## NEXT
 
-### T-016 · ADR-0005: the node application protocol
-- **Priority:** P0
-- **Dependencies:** T-006 (MeshCore internals), T-015 (the capability model the
-  protocol serves)
-- **Goal:** master plan §32 requires a **versioned high-level protocol over the
-  transport**, explicitly not mixed with MeshCore internals, and an ADR
-  analysing packet size, ESP32 memory, versioning, backward compatibility and
-  debuggability. §32 also forbids choosing JSON, protobuf or CBOR merely because
-  they are listed there.
-- **Acceptance:** all five mandated axes analysed with real numbers where they
-  exist and UNKNOWN where they do not; an encoding chosen with the trade-off
-  stated; version negotiation before any payload; the behaviour when the node
-  disappears mid-request specified; transport decided with alternatives recorded.
-- **Research status:** recon running — `recon:node-protocol` is measuring nanopb
-  cost in Meshtastic's own build and reading MeshCore's companion frame format
-- **Implementation status:** not started
-- **Tests:** encode/decode round-trip vectors, and a version-mismatch test that
-  must be written before the first release, not after
-- **Hardware required:** no
-- **Note:** the watch and the node will be updated independently from day one.
-  A protocol with no version field is a compatibility problem with a scheduled
-  arrival date.
-
-### T-017 · ADR-0006: settings, and values bounded by law
-- **Priority:** P0
-- **Dependencies:** none
-- **Goal:** the owner requires that MeshCore RF parameters never be compiled
-  into the core ([OWNER_DECISIONS OD-2](docs/research/OWNER_DECISIONS.md)).
-  Frequency, bandwidth, spreading factor and TX power are runtime-settable,
-  persisted, validated values. §34 lists a Settings application.
-- **Acceptance:** typed settings with ranges, defaults, persistence across
-  reboot **and across firmware update**, factory reset, and a bounded-value type
-  that expresses "user-settable, bounded by a regulatory profile" without the
-  core knowing which region it is in; migration behaviour on schema change
-  specified rather than discovered.
-- **Research status:** recon running — `recon:settings` is reading how
-  Meshtastic constrains frequency, power and duty cycle per region, since it
-  ships worldwide and has had to solve exactly this
-- **Implementation status:** not started
-- **Tests:** round-trip persistence, out-of-range rejection, migration from an
-  older schema, factory reset
-- **Hardware required:** no — NVS behaviour on real flash is a later measurement
-
-### T-018 · Application framework: surviving the loss of a capability
-- **Priority:** P0
-- **Dependencies:** T-015
-- **Goal:** §33 gives applications create/open/pause/resume/close/event. None of
-  those is "the GNSS you were navigating with has just left the building". With
-  a detachable node this is an ordinary Tuesday, and it touches every
-  application that consumes a node capability.
-- **Acceptance:** the contract written while there are zero applications; an
-  application declares required and optional capabilities; the framework
-  guarantees delivery of a capability change to open applications; the launcher
-  rule settled for "installed when the capability existed, opened when it does
-  not"; no application queries node state directly.
-- **Research status:** recon running — `recon:app-framework` is reading
-  InfiniTime's real app model, which is the closest mature comparable
-- **Implementation status:** not started
-- **Tests:** an application must be driveable through attach → open → detach →
-  reattach in host tests, with no hardware
-- **Hardware required:** no
-
-### T-004 · ESP-IDF and LVGL version decision
-- **Priority:** P0
-- **Dependencies:** T-006
-- **Goal:** pin ESP-IDF and LVGL versions with recorded reasoning.
-- **Acceptance:** rows in `docs/research/DEPENDENCIES.md` with source, version,
-  license, rationale, upgrade strategy; ADR if the choice is contentious.
-- **Research status:** partial — Waveshare supports IDF v5.5.5 / v6.0.2, its BSP
-  needs ≥5.3 and `lvgl >=8,<10`. LilyGO side not yet checked for ESP-IDF.
-- **Implementation status:** not started
-- **Tests:** a trivial ESP-IDF build for esp32s3
-- **Hardware required:** no
-
-### T-013 · ADR-0003: radio abstraction across five chips
-- **Priority:** P0
-- **Dependencies:** T-006 (M6, M9)
-- **Goal:** one radio interface that serves SX1262, SX1280, CC1101, LR1121 and
-  SI4432 — or an argued decision to support fewer — **and a radio that is not on
-  this board at all**, because a Firefly node's LoRa reaches the same
-  `MeshService` through the same interface. The interface takes frequency,
-  bandwidth, spreading factor and TX power from settings rather than from
-  constants ([OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md) OD-2, §52).
-- **Acceptance:** ADR with alternatives; states explicitly what happens on a
-  board whose radio MeshCore does not support, and whether MeshCore permits a
-  coordinator to schedule around it.
-- **Research status:** blocked on T-006
-- **Implementation status:** not started
-- **Tests:** n/a
-- **Hardware required:** no
-
-## READY
-
-### T-005 · Install and verify the embedded toolchain
-- **Priority:** P0
-- **Dependencies:** T-004 for the version
-- **Goal:** ESP-IDF installed and building for esp32s3; ninja, SDL2 and
-  clang-format present.
-- **Acceptance:** `idf.py build` succeeds for an empty esp32s3 project.
-- **Research status:** host probed — none of these are currently installed
-- **Implementation status:** not started
-- **Tests:** the build
-- **Hardware required:** no
-
-### T-007 · Reuse survey of existing firmware for these boards
-- **Priority:** P1
-- **Dependencies:** none
-- **Goal:** several open-source firmwares already target these exact boards.
-  Examine them before writing equivalents.
-- **Candidates:** `MarcoRR/S3NTRY`, `joaquimorg/OLEDS3Watch` (ESP-Brookesia),
-  `infinition/waveshare-watch-rs` (Rust), the LilyGoLib examples, Meshtastic's
-  T-Watch support.
-- **Acceptance:** a reuse-ledger record each, with a decision from the ledger
-  vocabulary and a license check.
-- **Research status:** candidates identified only
-- **Implementation status:** not started
-- **Tests:** n/a
-- **Hardware required:** no
-
-### T-008 · Simulator skeleton with both geometries
-- **Priority:** P1
-- **Dependencies:** T-004, T-005
-- **Goal:** a desktop window that renders LVGL at 240×240 and 410×502, mouse as
-  touch, keyboard as buttons.
-- **Acceptance:** both presets run; switching between them needs no rebuild.
-- **Research status:** SDL2 not installed; LVGL version not chosen
-- **Implementation status:** not started
-- **Tests:** it launches in CI headless, or CI skips it explicitly and says so
-- **Hardware required:** no
-
-### T-009 · Design system and tokens
-- **Priority:** **P0** — raised from P1. Final §58 puts design tokens in the
-  first vertical slice, before the Clock.
-- **Dependencies:** T-032 (LVGL pin) for the code half; the document half is done
-- **Goal:** `docs/ui/DESIGN_SYSTEM.md` plus the token definitions in code —
-  colour, spacing, radius, typography, motion timing, icon sizes, image sizes,
-  elevation, sound cues, haptic patterns (final §54).
+### T-009 · Design tokens in code
+- **Priority:** P0 — raised from P1; final §58 puts tokens in the first slice,
+  before the Clock
+- **Dependencies:** T-032, T-008
+- **Goal:** the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md) — colour,
+  spacing, radius, typography, motion, icon size, image size, elevation, sound
+  cue, haptic pattern (final §54).
 - **Acceptance:** no raw RGB, pixel count, duration, font size or radius
-  anywhere in UI code; day and night variants defined; both geometries;
-  EN and RU exercised.
-- **Research status:** done for the written half — palette, typography
-  direction and mascot usage derived from the three owner-provided references
-  ([docs/ui/reference](docs/ui/reference/README.md))
-- **Implementation status:** [`docs/ui/DESIGN_SYSTEM.md`](docs/ui/DESIGN_SYSTEM.md)
-  written and marked *proposed*; no code tokens yet, and no value has been shown
-  on a panel
-- **Tests:** screenshot references once the simulator exists
+  anywhere in UI code; day and night variants; both geometries; spacing resolved
+  per board rather than in raw pixels, because 8 px is not the same physical
+  distance on a 1.54″ and a 2.06″ panel.
+- **Research status:** done — palette, typography direction and mascot usage
+  derived from the owner references ([docs/ui/reference](docs/ui/reference/README.md))
+- **Implementation status:** document written and marked *proposed*; no code
+  tokens; **no value has been shown on a panel**
+- **Tests:** reference screenshots once the simulator runs
 - **Hardware required:** for the final colour values, **yes** — final §55
-  forbids preserving a concept-board hex that fails on the real display, and
-  that cannot be judged from a desktop monitor
-- **Open inside this task:** `color.danger` has no value — there is no red in
-  either owner palette, and inventing one is an identity decision for the owner
+  forbids preserving a concept-board hex that fails on the real display
+- **Open inside this task:** `color.danger` has no value. There is no red in
+  either owner palette, and inventing one is an identity decision for the owner.
 
-### T-033 · Localization mechanism: `tr()`, catalogues, and the CI that guards them
+### T-033 · Localization: `tr()`, catalogues, and the CI that guards them
 - **Priority:** P0
-- **Dependencies:** T-032 (the font pipeline is LVGL-version-specific)
-- **Goal:** implement [ADR-0010](docs/adr/0010-localization.md) — the
-  `StringId` enum, the generator, both catalogues, runtime switching, and the
-  three CI checks.
-- **Acceptance:** a screen can be written with no user-facing literal; switching
-  language at runtime redraws without a reboot; CI fails on a missing key, a
-  duplicate key, or a catalogue glyph absent from the font subset; the Russian
-  plural rule passes a vector covering 0, 1, 2, 5, 11, 21, 101, 111, 1001.
-- **Research status:** decision made (ADR-0010); the API shape is open
+- **Dependencies:** T-032
+- **Goal:** implement [ADR-0010](docs/adr/0010-localization.md) — the `StringId`
+  enum, the generator, both catalogues, runtime switching, three CI checks.
+- **Acceptance:** a screen can be written with no user-facing literal; language
+  switches at runtime without a reboot; CI fails on a missing key, a duplicate
+  key, or a catalogue glyph absent from the font subset; the Russian plural rule
+  passes a vector covering 0, 1, 2, 5, 11, 21, 101, 111, 1001.
+- **Research status:** decided; the API shape is open
 - **Implementation status:** not started
-- **Tests:** host unit tests for plural categories and fallback; CI checks
+- **Tests:** host tests for plural categories and fallback; the three CI checks
 - **Hardware required:** no
-- **Note:** this is the task final §50 means by *"localization is architecture,
-  not later polish"*. It precedes the first screen rather than following it.
+- **Note:** this is what final §50 means by *"localization is architecture, not
+  later polish"*. It precedes the first screen rather than following it.
 
 ### T-034 · Image asset pipeline
 - **Priority:** P0
 - **Dependencies:** T-032
 - **Goal:** reproducible conversion from cleaned source art to board-appropriate
   LVGL assets — `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`
-  (final §45). Flash size and decode cost measured per asset, per board.
+  (final §45), using LVGL 9.5.0's `scripts/LVGLImage.py`.
 - **Acceptance:** a script regenerates every asset deterministically; CI reports
-  sizes and detects stale generated output; no hand-maintained C arrays; the
-  2 K reference PNGs are never shipped as watch assets.
-- **Research status:** not started — LVGL image conversion, RGB565A8, and
-  whatever compression the pinned version supports
+  sizes and detects stale output; no hand-maintained C arrays; the 1448-pixel
+  reference PNGs are never shipped as watch assets; small sizes are drawn
+  deliberately rather than scaled down (final §86).
+- **Research status:** partial — `LVGLImage.py` and `LV_COLOR_FORMAT_RGB565A8`
+  confirmed present at the pinned version
 - **Implementation status:** not started
-- **Tests:** regeneration reproducibility; asset budget per board
-- **Hardware required:** for decode/render cost, yes
+- **Tests:** regeneration reproducibility; per-board asset budget
+- **Hardware required:** for decode and render cost, yes
 
-### T-019 · The node as a documented profile
+### T-037 · The first Clock
+- **Priority:** P0
+- **Dependencies:** T-008, T-009, T-033, T-034
+- **Goal:** the first real screen. Time, date, battery, a good watchface, day and
+  night, EN and RU, a Child variant, and one purposeful use of the owner's art
+  (final §58, §88).
+- **Acceptance:** it looks like Firefly and not like debug UI (final §96), at
+  both geometries, in both locales, in both themes.
+- **Research status:** not started — mature wearable watchface patterns
+  (final §85); interaction lessons only, never someone else's visual identity
+- **Implementation status:** not started
+- **Tests:** reference screenshots across the visual matrix
+- **Hardware required:** no
+
+### T-038 · The first Settings
+- **Priority:** P0
+- **Dependencies:** T-037, T-017 (ADR-0006, **done**)
+- **Goal:** language, theme, brightness, sound, haptics, power profile, Child
+  Mode, diagnostics (final §88). Language comes first in the list, because a
+  user who cannot read the settings screen cannot change the language from it.
+- **Acceptance:** every control is backed by `SettingsService`, not by local
+  state; values validated on write **and read**; a Russian layout that survives
+  longer strings.
+- **Research status:** decided in [ADR-0006](docs/adr/0006-settings-and-bounded-values.md)
+- **Implementation status:** not started
+- **Tests:** round-trip persistence; out-of-range rejection; layout at both
+  geometries in both locales
+- **Hardware required:** no
+
+---
+
+## READY
+
+### T-013 · The local mesh integration spike
+- **Priority:** P0
+- **Dependencies:** T-006 (**done**), [ADR-0003](docs/adr/0003-radio-not-lora.md),
+  [ADR-0008](docs/adr/0008-mesh-service-providers.md)
+- **Goal:** [ADR-0008](docs/adr/0008-mesh-service-providers.md) §5 deliberately
+  does **not** choose how a watch runs a local mesh stack, because final §14
+  forbids choosing without a measured spike — and this project already made that
+  mistake once. Produce the numbers.
+- **Options to measure:** direct component integration · an isolated
+  compatibility layer · upstreamable ESP-IDF work · a narrow Arduino
+  compatibility island · supporting only the combinations that are viable.
+- **Acceptance:** for each option — flash cost, internal RAM cost, what an
+  Arduino shim actually pulls in, whether MeshCore's file-static radio state
+  (M9) can be tolerated under `HardwareCoordinator`, and how much routing
+  behaviour would have to be re-derived. Plus the standing obligation: re-run
+  `grep RADIO_CLASS variants/` against the pinned revision, because upstream
+  adds radios and the matrix is wrong the moment it stops being checked.
+- **Research status:** the compatibility matrix is done
+  ([ADR-0003](docs/adr/0003-radio-not-lora.md)); the cost spike is not
+- **Implementation status:** not started
+- **Tests:** the spike's own builds
+- **Hardware required:** for a working link, yes — and **two** radio devices
+  (A3). For the cost numbers, no.
+- **Constraint that is already fixed:** `Arduino.h` does not enter `core/`.
+
+### T-016 · Benchmark the node protocol encoding, then accept or replace it
+- **Priority:** P1
+- **Dependencies:** [ADR-0005](docs/adr/0005-node-protocol.md) (**provisional**)
+- **Goal:** final §18 endorses ADR-0005's *goals* and rejects its *evidence*: it
+  compared a hypothetical small Firefly TLV against Meshtastic's entire
+  `meshtastic_FromRadio` union and called the question settled. That is not a
+  comparison.
+- **Acceptance:** a Firefly TLV prototype, nanopb with a Firefly-specific
+  streaming/callback schema, and at least one other compact option, measured on
+  `xtensa-esp32s3-elf-gcc` for peak internal RAM, static RAM, flash, encoded
+  bytes, malformed-input behaviour, schema-evolution cost, tooling, fragmentation
+  interaction and test burden. If TLV still wins, accept ADR-0005 with the
+  evidence.
+- **Also required before ADR-0005 can be accepted:** the demultiplexing rule
+  (final §19) — how a parser distinguishes log text, MeshCore companion frames
+  and Firefly frames on one physical link. Separate GATT characteristics,
+  separate UART channels, or an explicit outer mux frame. A diagram is not a
+  design.
+- **Research status:** nanopb measured in isolation; the Firefly-schema
+  comparison is the missing half
+- **Implementation status:** ADR written, provisional
+- **Tests:** round-trip vectors; a hostile-frame corpus; a version-mismatch test
+- **Hardware required:** no
+
+### T-035 · ADR: rail ownership and reference counting
 - **Priority:** P1
 - **Dependencies:** none
-- **Goal:** record what is known about the node and — more importantly — what is
-  not, so that no code is written against a device described in a chat message.
-- **Acceptance:** [NODE_PROFILE](docs/node/NODE_PROFILE.md) lists every open
-  question with what it blocks; the node stays out of
-  [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) until a part number exists.
-- **Research status:** n/a — this is a discipline document, not a search
-- **Implementation status:** **written**; N1–N10 open
+- **Goal:** ALDO3 feeds the display **and** the touch controller on the T-Watch;
+  BLDO2 gates the haptic driver's enable. A rail with two consumers needs an
+  owner and a discipline, or the second consumer turns the first one off.
+- **Acceptance:** who may request a rail; reference counting or another argued
+  mechanism; what happens when a rail is requested during a sensitive operation;
+  how ownership interacts with final §32's rule that a valid owned state can be
+  "untouched".
+- **Research status:** not started
+- **Implementation status:** not started
+- **Tests:** host tests over a simulated PMU
+- **Hardware required:** for real sequencing timing, yes
+
+### T-018 · Application framework: surviving the loss of a capability
+- **Priority:** P0
+- **Dependencies:** T-015 (**done**)
+- **Goal:** the lifecycle verbs (final §59) do not include *"the GNSS you were
+  navigating with has just left the building"*. With a detachable node that is an
+  ordinary Tuesday.
+- **Acceptance:** an application declares required and optional capabilities;
+  the framework guarantees delivery of a capability change to open applications;
+  the launcher rule settled for "installed when the capability existed, opened
+  when it does not"; no application queries provider state directly.
+- **Research status:** partial — InfiniTime's app model is the closest mature
+  comparable
+- **Implementation status:** the contract is sketched in
+  [ADR-0004](docs/adr/0004-capability-sources.md) §5; the framework is not built
+- **Tests:** attach → open → detach → reattach, in host tests, with no hardware
+- **Hardware required:** no
+
+### T-024 · ADR: the event bus and the concurrency model
+- **Priority:** P1
+- **Dependencies:** T-018
+- **Goal:** final §60 and §61 — who owns which task, what may block, how events
+  are delivered, back-pressure, queue bounds, UI-thread rules, interrupt handoff.
+  Choosing late means choosing several.
+- **Acceptance:** one mechanism; bounded queues; defined behaviour for a slow
+  consumer; stack usage countable, because it is a memory-budget line.
+- **Research status:** partial
+- **Implementation status:** not started
+- **Tests:** host tests
+- **Hardware required:** no
+
+### T-025 · ADR: partitions, NVS and OTA — for two devices
+- **Priority:** P1
+- **Dependencies:** T-004, T-017 (**done**)
+- **Goal:** flash layout, settings storage and firmware update. The node makes
+  OTA a compatibility question rather than a delivery one: two devices updated
+  independently that must keep talking.
+- **Acceptance:** a partition table per board (16 MB T-Watch, 32 MB Waveshare,
+  both VERIFIED); rollback; settings survival across update; behaviour when the
+  two firmware versions differ by more than the protocol allows.
+- **Research status:** not started
+- **Implementation status:** not started
+- **Tests:** host tests for the version-compatibility matrix
+- **Hardware required:** for the flashing path yes; for the compatibility logic no
+
+### T-026 · Implement the honest heading model
+- **Priority:** P1
+- **Dependencies:** [ADR-0009](docs/adr/0009-heading.md) (**done**), A5/A6
+- **Goal:** the *decision* is made — three quantities, explicit reference frames,
+  no `UserBody`, a node's compass is the node's. What remains is building it and
+  designing the states this hardware is actually in.
+- **Acceptance:** the `Heading` structure and its validity states; the Navigator
+  state table from ADR-0009 §5 rendered, including *standing still* as a
+  designed screen rather than a blank dial; **no configuration of inputs draws a
+  wrist-relative arrow from a `NodeBody` or `CourseOverGround` source.**
+- **Research status:** done
+- **Implementation status:** not started
+- **Tests:** host tests over recorded NMEA including stationary traces; a
+  simulator scenario per state
+- **Hardware required:** no for the logic; yes for a real fix, and **H10** (the
+  speed gate) is a measurement on the fitted module, not a number to choose
+
+### T-027 · Airtime and duty-cycle accounting
+- **Priority:** P1
+- **Dependencies:** T-006 (**done**), T-017 (**done**)
+- **Goal:** the regulated settings are bounded by rules that constrain
+  **airtime**, and the reference data model measures none of it
+  ([OD-2](docs/research/OWNER_DECISIONS.md)). A device that cannot measure its
+  own duty cycle cannot demonstrate compliance (final §38).
+- **Acceptance:** airtime computed per transmission and accumulated per band;
+  the limit part of the regulatory profile, not a constant; visible in
+  diagnostics; the arithmetic tested against reference time-on-air formulas.
+- **Research status:** MeshCore's own governor found — `Dispatcher::updateTxBudget()`
+  — which Firefly must reconcile with rather than override on a local mesh path
+- **Implementation status:** not started
+- **Tests:** host tests against known LoRa time-on-air arithmetic
+- **Hardware required:** no
+
+### T-028 · Three-valued telemetry, and staleness on everything
+- **Priority:** P1
+- **Dependencies:** T-015 (**done**)
+- **Goal:** the reference model shows `Node count: Unknown` — neither a number
+  nor zero — and carries **no timestamp on anything**, so a four-hour-old
+  coordinate and a two-second-old one are the same two numbers.
+- **Acceptance:** a shared vocabulary for *known* · *known to be none* · *not
+  known*; every datum crossing the link carrying its two ages and, where it is a
+  measurement, its validity; a UI rule that never renders "not known" as "none".
+- **Research status:** not started
+- **Implementation status:** the model is in
+  [ADR-0004](docs/adr/0004-capability-sources.md) §3; nothing is built
+- **Tests:** host tests that a stale value cannot render as fresh
+- **Hardware required:** no
+
+### T-029 · Data feeds are not capabilities
+- **Priority:** P1
+- **Dependencies:** T-015 (**done**)
+- **Goal:** final §16 lists what a node may provide and mixes two kinds of thing
+  — capabilities (mesh connectivity, position) and feeds (weather, Home
+  Assistant events, quest events, telemetry). A `Capability::Weather` would be a
+  category error.
+- **Acceptance:** the two modelled separately, with the boundary stated and the
+  test that decides which side a new thing falls on.
+- **Research status:** decided in
+  [ADR-0004](docs/adr/0004-capability-sources.md) §4 and
+  [ADR-0007](docs/adr/0007-two-capability-layers.md) §2
+- **Implementation status:** not started
+- **Tests:** host tests
+- **Hardware required:** no
+
+### T-030 · Adversarially break the capability model before building on it
+- **Priority:** P0
+- **Dependencies:** T-015 (**done**), T-007
+- **Goal:** the model is about to become load-bearing for every application.
+  Find where it gives a *wrong answer*, not where it is merely incomplete.
+- **Scenarios that must each produce a defensible answer:** the link drops
+  mid-navigation · the node's battery dies during an SOS · two watches share one
+  node · a fix arrives ninety seconds stale · an application is installed when a
+  capability exists and opened when it does not · the node is connected but its
+  own GNSS has no fix · the node's firmware is too old to speak our version ·
+  the user disables the node's radio from the watch and thereby cuts the link ·
+  **a T-Watch whose radio is a CC1101** · **a node attached to a watch that
+  already has a working local mesh**.
+- **Acceptance:** every scenario resolved in the model or recorded as a defect.
+  The sharpest remains: "node connected" and "node has data" are different
+  states, and a model that collapses them reports a position the device does not
+  have.
+- **Research status:** n/a
+- **Implementation status:** not started — the six adversarial agents allocated
+  to this terminated on an account spend limit and returned nothing
+- **Tests:** each scenario becomes a host test
+- **Hardware required:** no
+
+### T-007 · Reuse survey of existing firmware for these boards
+- **Priority:** P1
+- **Dependencies:** none
+- **Goal:** several open-source firmwares already target these exact boards.
+  Examine them before writing equivalents (final §64).
+- **Candidates:** `MarcoRR/S3NTRY`, `joaquimorg/OLEDS3Watch` (ESP-Brookesia),
+  `infinition/waveshare-watch-rs` (Rust), the LilyGoLib examples, Meshtastic's
+  T-Watch support.
+- **Acceptance:** a reuse-ledger record each, with a decision from the ledger
+  vocabulary and a licence check.
+- **Research status:** candidates identified; clones in `/root/upstream`
+- **Implementation status:** not started
 - **Tests:** n/a
 - **Hardware required:** no
 
 ### T-020 · Node pairing, identity and trust
 - **Priority:** P1
 - **Dependencies:** T-016
-- **Goal:** the watch↔node link carries position and mesh identity. Whether the
-  watch has its own mesh identity that the node merely carries, or is a client
-  of the node's identity, is question N4 — and the two produce different
-  security models, different message histories and different privacy exposure.
+- **Goal:** whether the watch has its own mesh identity that the node merely
+  carries, or is a client of the node's identity, is question N4 — and the two
+  produce different security models, message histories and privacy exposure.
 - **Acceptance:** pairing flow specified; the trust boundary stated; node input
   treated as untrusted exactly as companion input is (ADR-0002 rule 4); what a
-  stolen or hostile node can and cannot do written down plainly.
+  stolen or hostile node can and cannot do, written plainly.
 - **Research status:** not started
 - **Implementation status:** not started
 - **Tests:** the hostile-node cases must be host-testable
@@ -308,12 +375,12 @@ status · implementation status · tests · hardware required.
 
 ### T-021 · The backlog the node creates
 - **Priority:** P2
-- **Dependencies:** T-015, T-016
-- **Goal:** the node adds work across most of the system — power, coexistence,
-  UI states, diagnostics, settings, simulator. Record it as a gated backlog in
-  the style of §66/§67/§68 rather than letting it arrive as surprises.
-- **Acceptance:** one backlog file with a gate per item, and every item that
-  cannot be done without hardware marked so.
+- **Dependencies:** T-015 (**done**), T-016
+- **Goal:** the node adds work across power, coexistence, UI states, diagnostics,
+  settings and the simulator. Record it as a gated backlog rather than letting it
+  arrive as surprises.
+- **Acceptance:** one backlog file, a gate per item, everything hardware-bound
+  marked so.
 - **Research status:** not started
 - **Implementation status:** not started
 - **Tests:** n/a
@@ -321,145 +388,34 @@ status · implementation status · tests · hardware required.
 
 ### T-022 · Simulator: node attach and detach as a first-class state
 - **Priority:** P1
-- **Dependencies:** T-008, T-015
+- **Dependencies:** T-008, T-015 (**done**)
 - **Goal:** the node is a product state that cannot be tested on hardware that
-  does not exist. §35 already requires simulated sensors, GNSS, mesh and battery;
-  this adds simulated attach, detach, staleness and a node whose own GNSS has no
-  fix.
+  does not exist. Final §57 requires simulated provider attach and detach,
+  simulated stale data and a provider that is `Ready` with no fix.
 - **Acceptance:** every state in the ADR-0004 model reachable from the simulator
   without a rebuild, including the ones a real node would make hard to produce
   on demand.
-- **Research status:** recon running — `recon:simulator`
+- **Research status:** not started
 - **Implementation status:** not started
 - **Tests:** this *is* test infrastructure
 - **Hardware required:** no
 
-### T-024 · ADR: the event bus and the concurrency model
-- **Priority:** P1
-- **Dependencies:** T-018
-- **Goal:** §33 requires that UI and business logic not create FreeRTOS tasks
-  uncontrolled, and a clear concurrency model. Capability changes, node events,
-  mesh messages and sensor data all need a delivery mechanism, and choosing one
-  late means choosing several.
-- **Acceptance:** one mechanism; who owns a task; what a service may block on;
-  how an event reaches an application; back-pressure behaviour when a consumer
-  is slower than a producer.
-- **Research status:** partial — folded into the app-framework recon
-- **Implementation status:** not started
-- **Tests:** host tests; stack usage countable, because it is part of the memory
-  budget
+### T-004 · ESP-IDF version decision
+- **Priority:** P1 — lowered from P0. It blocks embedded work; it does not block
+  M1, which is the simulator.
+- **Dependencies:** none
+- **Goal:** pin ESP-IDF with recorded reasoning.
+- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
+  source, version, licence, rationale and upgrade strategy.
+- **Research status:** narrowed — Waveshare supports v5.5.5 and v6.0.2, its BSP
+  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 probably does not bind
+  Firefly (T7)
+- **Implementation status:** `v5.5.5-496-gc197d718bcc` installed and **verified**
+  by a real `idf.py set-target esp32s3 && idf.py build`. Verified is not decided.
+- **Tests:** a trivial esp32s3 build — **passed**
 - **Hardware required:** no
 
-### T-025 · ADR: partitions, NVS and OTA — now for two devices
-- **Priority:** P1
-- **Dependencies:** T-004, T-017
-- **Goal:** flash layout, settings storage and firmware update. The node changes
-  this: two independently updated devices that must keep talking to each other,
-  which turns OTA into a compatibility question rather than a delivery one.
-- **Acceptance:** partition table per board (16 MB T-Watch, 32 MB Waveshare —
-  both VERIFIED); rollback behaviour; settings survival across update; what
-  happens when watch and node firmware versions differ by more than the protocol
-  allows.
-- **Research status:** not started
-- **Implementation status:** not started
-- **Tests:** host tests for the version-compatibility matrix
-- **Hardware required:** for the flashing path, yes — for the compatibility
-  logic, no
-
-### T-026 · What a compass can honestly be on this hardware
-- **Priority:** P1
-- **Dependencies:** OPEN_QUESTIONS A5/Q2, node question N3
-- **Goal:** neither board has a magnetometer (VERIFIED, from all six T-Watch
-  schematic sheets and the Waveshare schematic). The owner has named "компас"
-  among the node's applications. Either the node carries a magnetometer, or a
-  compass means GNSS course-over-ground — which needs motion and shows nothing
-  when the user stands still.
-- **Acceptance:** the honest capability written down, with the speed threshold
-  below which course-over-ground is not trustworthy and a source for it; the UI
-  state for "standing still" designed rather than left as a blank dial.
-- **Research status:** recon running — `recon:gnss-heading` is looking at what
-  hiking devices and flight controllers actually display
-- **Implementation status:** not started
-- **Tests:** host tests over recorded NMEA, including stationary traces
-- **Hardware required:** no for the logic; yes for a real fix
-
-### T-027 · Airtime and duty-cycle accounting
-- **Priority:** P1
-- **Dependencies:** T-006, T-017
-- **Goal:** the two regulated settings — frequency and TX power — are bounded by
-  rules that constrain **airtime**, and nothing in the reference data model
-  measures it ([OWNER_DECISIONS OD-2](docs/research/OWNER_DECISIONS.md)). A
-  device that cannot measure its own duty cycle cannot demonstrate compliance.
-- **Acceptance:** airtime computed per transmission and accumulated per band;
-  the limit expressed as part of the regulatory profile, not as a constant;
-  visible in diagnostics.
-- **Research status:** not started
-- **Implementation status:** not started
-- **Tests:** host tests against known LoRa time-on-air arithmetic
-- **Hardware required:** no
-
-### T-028 · Three-valued telemetry, and staleness on everything
-- **Priority:** P1
-- **Dependencies:** T-015
-- **Goal:** the reference model shows `Node count: Unknown` — a value that is
-  neither a number nor zero — and carries **no timestamp on anything**, so a
-  four-hour-old coordinate and a two-second-old one are the same two numbers.
-- **Acceptance:** a shared vocabulary for *known* · *known to be none* · *not
-  known*; every datum crossing the link carrying its age and, where it is a
-  measurement, its validity; a UI rule that never renders "not known" as "none".
-- **Research status:** not started
-- **Implementation status:** not started
-- **Tests:** host tests that a stale value cannot be rendered as fresh
-- **Hardware required:** no
-
-### T-029 · Data feeds are not capabilities
-- **Priority:** P1
-- **Dependencies:** T-015
-- **Goal:** §32 lists what the node provides and mixes two different kinds of
-  thing — capabilities (mesh connectivity, additional GNSS) and data feeds
-  (weather, Home Assistant events, quest events, object coordinates, telemetry).
-  A capability gets an availability state and gates UI. A feed gets staleness and
-  a source label. `has(Capability::Weather)` would be a category error.
-- **Acceptance:** the two modelled separately, with the boundary stated and the
-  test that decides which side a new thing falls on.
-- **Research status:** not started
-- **Implementation status:** not started
-- **Tests:** host tests
-- **Hardware required:** no
-
-### T-030 · Adversarially break the capability model before building on it
-- **Priority:** P0
-- **Dependencies:** T-015
-- **Goal:** the model is about to become load-bearing for every application. Find
-  where it gives a *wrong answer*, not where it is merely incomplete.
-- **Scenarios that must each produce a defensible answer:** the link drops
-  mid-navigation · the node's battery dies during an SOS · two watches share one
-  node · a fix arrives ninety seconds stale · an application is installed when a
-  capability exists and opened when it does not · the node is connected but its
-  own GNSS has no fix · the node's firmware is too old to speak our version ·
-  the user disables the node's LoRa from the watch and thereby cuts the link.
-- **Acceptance:** every scenario resolved in the model or recorded as a defect
-  in it; the last one is the sharp one — "node connected" and "node has data"
-  are different states and a model that collapses them will report a position
-  the device does not have.
-- **Research status:** n/a
-- **Implementation status:** not started
-- **Tests:** each scenario becomes a host test
-- **Hardware required:** no
-
-### T-031 · Verify the toolchain that is installing now
-- **Priority:** P0
-- **Dependencies:** the running install
-- **Goal:** ESP-IDF `release/v5.5` and the esp32s3 toolchain are being installed
-  ahead of need; SDL2 and ninja are already in. Confirm they work rather than
-  assuming.
-- **Acceptance:** `idf.py --version` reports the pinned version and an empty
-  esp32s3 project builds; an SDL2 window opens or the reason it cannot is
-  recorded.
-- **Research status:** n/a
-- **Implementation status:** running — see STATUS "Long-running operations"
-- **Tests:** the builds themselves
-- **Hardware required:** no
+---
 
 ## BLOCKED
 
@@ -488,83 +444,146 @@ BLOCKED:
 Reason:         Requires physical hardware.
 Evidence:       T-010.
 Impact:         The coexistence layer cannot be justified or tuned. Settling
-                intervals would be invented numbers.
+                intervals would be invented numbers, which final §26 forbids.
 Possible options:
                 1. Build the diagnostic tooling now, run it later.
                 2. Defer entirely.
 Recommended next action:
-                Option 1 — the tooling is host-testable, and it is what turns
-                a theory into a measurement. Note that neither board has a
-                magnetometer, so the haptics-vs-compass case cannot be measured
-                on current hardware at all.
+                Option 1 — the tooling is host-testable, and it is what turns a
+                theory into a measurement. Note that neither board has a
+                magnetometer, so the haptics-versus-compass case cannot be
+                measured on current hardware in any configuration.
 ```
+
+---
 
 ## WAITING
 
 ### T-012 · Answers from the project owner
 - **Priority:** P0
 - **Waiting on:** the project owner
-- **Questions:** OPEN_QUESTIONS A1–A5 (hardware availability and revision, radio
-  and GNSS variant, a second mesh device, regulatory region, whether an external
-  magnetometer is intended at all) — plus one the node raised: **does the node
-  carry a magnetometer?** That is A5 asked about the node, and it decides whether
-  a compass works standing still or only while walking. Q1 (what the Waveshare
-  board should be) is **answered** — see
-  [OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md) OD-1.
-- **Impact:** A1–A2 gate all hardware work. **A4 is a legal constraint, not a
-  preference** — the lawful frequencies, power and duty cycle follow from the
-  region. It does not gate the build: §52 and OD-2 make these runtime settings,
-  so the core carries a bounded value either way, and A4 decides the bound and
-  the default. It does gate *transmitting*: until it is answered the honest
-  default is `Unset`, and `Unset` keeps the transmit path closed. A5 decides
-  whether five §67 epics are dormant or dead.
+- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1–A6 —
+  hardware availability and revision · which radio and GNSS variant · a second
+  mesh device · the regulatory region · whether an external magnetometer is
+  intended · whether the node carries one.
+- **Impact:** A1–A2 gate all hardware work, and A2 got sharper: of the five
+  candidate radios, two cannot do LoRa at all and only one is supported by the
+  pinned MeshCore ([ADR-0003](docs/adr/0003-radio-not-lora.md)), so the answer
+  decides whether the watch has a local mesh path at all. **A4 is a legal
+  constraint, not a preference.** It does not gate the build — the values are
+  runtime settings either way — but it gates *transmitting*: while the region
+  profile is `Unknown` the transmit path stays closed. A5 and A6 decide whether
+  five magnetometer epics are dormant or dead, and A6 does **not** give the watch
+  a compass even if the answer is yes ([ADR-0009](docs/adr/0009-heading.md) §3).
+- **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification
 - **Priority:** P2
 - **State:** written, not started as work.
-- **What:** master plan §66 (mobile, 13 epics), §67 (magnetometer, 13 epics) and
-  §68 (coexistence, 13 epics) are recorded as backlogs with a per-epic gate:
+- **What:** the three mandated backlogs exist with a per-epic gate —
   [COMPANION_BACKLOG](docs/mobile/COMPANION_BACKLOG.md),
   [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md),
   [COEXISTENCE_BACKLOG](docs/hardware/COEXISTENCE_BACKLOG.md).
-- **What the exercise surfaced:** two §68 epics — haptic/magnetometer and
+- **What the exercise surfaced:** two coexistence epics — haptic/magnetometer and
   audio/magnetometer interference — **cannot be run on either target board**,
   because neither has a magnetometer. They are marked NOT POSSIBLE rather than
-  left looking pending. Five §67 epics are blocked on hardware that does not
-  exist yet (A5).
+  left looking pending. Five magnetometer epics are blocked on hardware that does
+  not exist (A5).
 - **Startable now without hardware:** C-02 bus ownership, C-03 rail arbitration
   and C-12 diagnostic trace. The trace in particular should be finished *while*
   waiting for hardware — every blocked coexistence test needs it to produce
   anything more than an anecdote.
 
+---
+
 ## DONE
 
-### T-001 · Core coverage design for the full peripheral inventory — 2026-08-21
-- `docs/architecture/ARCHITECTURE.md` maps every part on both boards to an
-  owning core service, including the parts the vendor BSPs ignore and the ones
-  no application uses.
-- Establishes *why* full coverage matters: an unowned part still costs power,
-  still raises interrupts, still contends for the bus, and still floats its pin.
-  "Maybe useful later" was never the argument.
-- Records the rail ownership map, the shared-rail problem (ALDO3 feeds display
-  **and** touch), the two incompatible touch sleep strategies, and the fact
-  that the specification's motivating coexistence example cannot occur on
-  either board.
+### T-039 · M0.5 — reconcile with the final master prompt — 2026-08-21
+- All eight §75 P0 items re-checked, all eight found still present, all eight
+  closed. Record: [RECONCILIATION](docs/research/RECONCILIATION_2026-08-21.md).
+- Old master prompt and addendum marked superseded; the final prompt is in the
+  repository at [`docs/master-prompt-final.md`](docs/master-prompt-final.md);
+  the three owner design references are in
+  [`docs/ui/reference/`](docs/ui/reference/README.md), hashed.
+- Five ADRs written: 0003 radio · 0007 two capability layers · 0008 mesh
+  providers · 0009 heading · 0010 localization. Three earlier ADRs accepted,
+  one superseded, one made explicitly provisional.
+- One further P0-grade correction the review did not list: *"ownership means
+  initialises it"* is too strong (final §32), and the ownership tables were built
+  on it.
+
+### T-006 · Read MeshCore upstream — 2026-08-21
+- M1–M9 answered from source at `d92964352441e53b93e8667b802e04f6e072b39e`,
+  with file and line citations. Frame format, crypto, threading and radio
+  ownership all read rather than inferred.
+- **M9: yes, effectively** — `RadioLibWrappers.cpp:14` keeps radio state in a
+  file-static flag set from an ISR. One radio per firmware image, structurally.
+- **M6 corrected during the reconciliation:** MeshCore supports exactly one of
+  the T-Watch's five candidate radios, and CC1101 is compiled out. An earlier
+  version of that answer conflated RadioLib *driving* a chip with the chip being
+  able to do LoRa.
+
+### T-015 · ADR-0004: capability sources and their runtime lifecycle — 2026-08-21
+- Seven availability states, one per user remedy; `Origin` as an orthogonal
+  axis argued from a nine-row call-site table; a centrally-owned transition
+  table; two ages on every datum that crosses a link; capabilities separated
+  from data feeds. **Accepted** — final §8 endorses the model by name.
+
+### T-017 · ADR-0006: settings, and values bounded by law — 2026-08-21
+- Frequency is `uint32` Hz, never float — measured: `868.731f` round-trips to
+  868 731 018 Hz, and one ULP at that magnitude is 64 Hz. Three scopes, three
+  distinct power ceilings, a network contract applied as one atomic preset,
+  stage→confirm→auto-revert for remote writes, layered factory reset, and an
+  `Unknown` region profile that closes the transmit path. **Accepted** — final
+  §34–§38 restate it independently.
+
+### T-023 · Reuse-ledger records — 2026-08-21
+- Six full records with commit hashes, licence checks and lessons drawn from
+  upstream issues and reverts rather than from happy-path source. The ledger no
+  longer says "Records: Empty" above actual records, which is the state final §67
+  names.
+
+### T-019 · The node as a documented profile — 2026-08-21
+- [NODE_PROFILE](docs/node/NODE_PROFILE.md): five established facts, ten open
+  questions, each with what it blocks. The node stays out of
+  [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) until a part number exists.
+
+### T-003 · Host build and CI — 2026-08-21
+- Plain-CMake host build plus a test target, green in GitHub Actions.
+  `cmake -S . -B build && cmake --build build && ctest` passes.
+
+### T-005 / T-031 · Toolchain installed and verified — 2026-08-21
+- ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build`
+  completes on a stock example. `ninja`, `SDL2`, `ccache` present.
+- The first install attempt failed and the reason is worth keeping: `python3` on
+  this host resolves into an unrelated virtualenv, and ESP-IDF's `install.sh`
+  refuses to build a virtualenv from inside one. It succeeds with that path
+  element removed.
+
+### T-001 · Core coverage for the full peripheral inventory — 2026-08-21
+- Every part on both boards has an owning core service, including the parts the
+  vendor BSPs ignore and the ones no application uses.
+- Established *why*: an unowned part still costs power, still raises interrupts,
+  still contends for the bus, and still floats its pin. "Maybe useful later" was
+  never the argument.
+- **Amended 2026-08-21:** "owns" no longer means "initialises". Final §32 names
+  that definition as too strong, and this board proves it — GPIO 6 may be driven
+  by the radio as a TCXO supply, so configuring it to satisfy a checklist is how
+  the oscillator gets shorted.
 
 ### T-002 · ADR-0001: capability model — 2026-08-21
-- Accepted shape: cheap `has()` for UI gating, typed descriptors for variant
-  and degree, and a separate availability axis — four states as written, **seven
-  under [ADR-0004](docs/adr/0004-capability-sources.md)**, which amends this the
-  same day for the Firefly node.
-- Four alternatives recorded with reasons for rejection.
+- Delivered the first capability model: presence, typed descriptors for variant
+  and degree, a separate availability axis. Four alternatives recorded with
+  reasons, all four still rejected.
+- **Its Decision has since been superseded twice in one day** — by
+  [ADR-0004](docs/adr/0004-capability-sources.md) for the Firefly node, then
+  wholesale by [ADR-0007](docs/adr/0007-two-capability-layers.md). The task
+  stays DONE: it produced a decision, a review found it wrong, and that is the
+  process working rather than failing.
 
 ### T-000 · Repository, research gate, and board survey — 2026-08-21
 - Repository created, MIT, public.
-- Both target boards surveyed from vendor documentation, vendor BSP source and
-  published schematics: complete peripheral inventory, pin maps, I2C addresses,
-  PMU rail map, vendor power figures.
-- Research-gate documents established and populated.
-- Key findings: the Waveshare board has no LoRa and no GNSS; neither board has
-  a magnetometer; the T-Watch radio and GNSS are purchase-time variants; the
-  T-Watch touch panel has no reset line; the Waveshare vendor BSP does not
-  drive the IMU, PMU or RTC that are on the board.
+- Both boards surveyed from vendor documentation, vendor BSP source and
+  published schematics — then the schematics were **read** rather than cited,
+  which corrected two rows and produced two documented conflicts with the vendor
+  documents.
