@@ -329,7 +329,18 @@ Rules that follow from final §41, §86 and §97:
 
 Every reusable component defines wrap, max lines, ellipsis, flexible width,
 minimum touch size and overflow behaviour before it is used
-(final §52). Russian strings are commonly 15–30 % longer than English, and a
+(final §52). **The two-column row is the worked example, and it earned the rule
+twice.** With two content-sized labels and `SPACE_BETWEEN`, a long name and a
+long state are pushed to opposite edges and then drawn straight through each
+other — nothing clips, nothing warns, and the screenshot shows two unreadable
+words on top of one another. Giving the left label `flex_grow` fixes that and
+produces the next bug: LVGL's ellipsis mode cannot shorten a label whose height
+is content-sized, so it wraps to a second line and the row grows into the one
+below it. The rule that survives both: **the value column is content-sized and
+never shrinks** — a state that reads "не настроено" instead of "не наст…" is the
+entire point of the row — **the label column takes the remainder, is exactly one
+line tall, and ellipsizes.** Which is also why labels are chosen short: the
+fallback should be rare, not routine. Russian strings are commonly 15–30 % longer than English, and a
 layout that is correct only because an English word fit is a layout that is
 broken in the other locale and nobody noticed.
 

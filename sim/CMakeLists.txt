@@ -7,6 +7,7 @@ find_package(SDL2 REQUIRED)
 add_executable(attadipa_sim
     boot_screen.cpp
     main.cpp
+    labels.cpp
     options.cpp
     png_writer.cpp
 )

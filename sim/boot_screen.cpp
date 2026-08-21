@@ -14,6 +14,7 @@
 #include "attadipa/ui/color.h"
 #include "attadipa/ui/tokens.h"
 #include "attadipa_fonts.h"
+#include "labels.h"
 
 namespace attadipa::sim {
 namespace {
@@ -129,6 +130,27 @@ ColorRole role_for(Availability availability)
     }
 }
 
+// A two-column row: a name on the left, a state on the right.
+//
+// DESIGN_SYSTEM §8 says a reusable component defines its wrap, max lines,
+// ellipsis, flexible width and overflow **before** it is used, and this row is
+// why that rule is in the document. Two earlier versions of it broke on the
+// 240 px panel in two different ways, and both were visible in a screenshot
+// before anybody read the code:
+//
+//   1. `SPACE_BETWEEN` with two content-sized labels pushes them to opposite
+//      edges and then draws them through each other. Nothing clips, nothing
+//      warns, and the result is two unreadable words on top of one another.
+//   2. Giving the left label `flex_grow` fixes the overlap and produces the
+//      next bug: `LV_LABEL_LONG_DOT` cannot ellipsize a label whose height is
+//      content-sized, so it wraps to a second line instead, and the row grows
+//      into the one below it.
+//
+// So the rule is stated rather than hoped for. The **right** column is sized to
+// its content and never shrinks — a state that says "не настроено" instead of
+// "не наст…" is the whole point of the row. The **left** column takes what is
+// left, is exactly one line tall, and ellipsizes. Which is also why the labels
+// in labels.cpp are chosen short: the fallback should be rare, not routine.
 lv_obj_t* make_row(lv_obj_t* parent, const char* left, const char* right, ColorRole role,
                    const lv_font_t* font)
 {
@@ -137,27 +159,30 @@ lv_obj_t* make_row(lv_obj_t* parent, const char* left, const char* right, ColorR
     lv_obj_set_width(row, lv_pct(100));
     lv_obj_set_height(row, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
-    // The left label grows and the right one does not. Without this, a long
-    // name and a long state — "MeshMessaging" against "unprovisioned" — are
-    // pushed to opposite edges by SPACE_BETWEEN and drawn straight through each
-    // other on the 240 px panel. Truncating the name is a loss; overlapping two
-    // words is two unreadable words.
     lv_obj_t* left_label = lv_label_create(row);
     lv_label_set_text(left_label, left);
-    lv_label_set_long_mode(left_label, LV_LABEL_LONG_DOT);
-    lv_obj_set_flex_grow(left_label, 1);
-    lv_obj_set_style_pad_right(left_label, px(Space::Xs), 0);
     lv_obj_set_style_text_font(left_label, font, 0);
     lv_obj_set_style_text_color(left_label, paint(ColorRole::TextPrimary), 0);
+    lv_obj_set_flex_grow(left_label, 1);
+    // One line, and the height comes from the font rather than from a constant:
+    // the four generated sizes have four different line heights, and a number
+    // here would be right for one of them.
+    lv_obj_set_height(left_label, lv_font_get_line_height(font));
+    lv_label_set_long_mode(left_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_pad_right(left_label, px(Space::Sm), 0);
 
     lv_obj_t* right_label = lv_label_create(row);
     lv_label_set_text(right_label, right);
     lv_obj_set_style_text_font(right_label, font, 0);
     lv_obj_set_style_text_color(right_label, paint(role), 0);
+    lv_obj_set_style_text_align(right_label, LV_TEXT_ALIGN_RIGHT, 0);
+    // Content-sized and it stays that way. `flex_grow` on the left already
+    // takes the remainder, so this one is only ever asked for what it needs.
+    lv_obj_set_flex_grow(right_label, 0);
 
     return row;
 }
@@ -247,7 +272,7 @@ void build_boot_screen(const platform::HardwareInventory& inventory,
     for (std::uint8_t i = 0; i < core::kCapabilityCount; ++i) {
         const auto capability = static_cast<Capability>(i);
         const Availability availability = caps.availability(capability);
-        make_row(screen, core::to_string(capability), core::to_string(availability),
+        make_row(screen, tr(label_of(capability)), tr(label_of(availability)),
                  role_for(availability), font);
     }
 
@@ -260,20 +285,21 @@ void build_boot_screen(const platform::HardwareInventory& inventory,
                 ? ColorRole::Success
                 : (state == platform::HardwareState::Absent ? ColorRole::TextMuted
                                                             : ColorRole::Warning);
-        make_row(screen, platform::to_string(feature), platform::to_string(state), role, font);
+        make_row(screen, tr(label_of(feature)), tr(label_of(state)), role, font);
     }
 
     if (const platform::RadioInfo* radio = inventory.radio()) {
         make_heading(screen, tr(StringId::DiagnosticRadio), font);
-        make_row(screen, tr(StringId::DiagnosticRadioChip), platform::to_string(radio->chip),
-                 radio->chip == platform::RadioChip::Unknown ? ColorRole::Warning
-                                                            : ColorRole::TextPrimary,
-                 font);
+        // A part number is not translated; only the absence of one is a word.
+        const char* chip = chip_name(radio->chip);
+        make_row(screen, tr(StringId::DiagnosticRadioChip),
+                 chip != nullptr ? chip : tr(StringId::RadioChipUnknown),
+                 chip != nullptr ? ColorRole::TextPrimary : ColorRole::Warning, font);
         make_row(screen, tr(StringId::DiagnosticRadioLora),
                  tr(radio->can_do_lora() ? StringId::Yes : StringId::No),
                  radio->can_do_lora() ? ColorRole::Success : ColorRole::TextMuted, font);
         make_row(screen, tr(StringId::DiagnosticRadioMeshcore),
-                 platform::to_string(radio->meshcore),
+                 tr(label_of(radio->meshcore)),
                  radio->meshcore == platform::MeshCoreSupport::Supported ? ColorRole::Success
                                                                         : ColorRole::Warning,
                  font);
