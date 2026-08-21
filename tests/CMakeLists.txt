@@ -236,3 +236,16 @@ target_link_libraries(test_replay_rig PRIVATE firefly_replay)
 add_test(NAME replay_rig
          COMMAND test_replay_rig ${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios)
 set_tests_properties(replay_rig PROPERTIES LABELS gnss)
+
+# ---------------------------------------------------------------------------
+# The diagnostics snapshot.
+#
+# Mostly a plain structure, so the tests are about its structural properties
+# rather than its behaviour: it must survive a memcpy from a crash handler that
+# has no allocator, it must stay small enough to keep in RTC memory, it must
+# carry no format — §14, do not tie core to JSON — and every number nobody has
+# measured must say so.
+
+add_executable(test_diagnostics test_diagnostics.cpp)
+target_link_libraries(test_diagnostics PRIVATE firefly_core)
+add_test(NAME diagnostics COMMAND test_diagnostics)
