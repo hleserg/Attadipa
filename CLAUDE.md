@@ -114,7 +114,12 @@ If you are working from an issue:
   subsystems has been guessed at, not done.
 - **One writer.** Reading, reviewing and analysing in parallel is free; two
   agents editing one branch is a merge conflict with a robot on both ends.
-- **A branch and a draft pull request**, never a push to `main`. The body
+- **A branch and a pull request**, never a push to `main`. Open it as a draft
+  while it is still moving; mark it ready when it is not. **The orchestrator
+  merges it once CI is green** — owner decision 2026-08-21, replacing the
+  earlier rule that merging was the owner's. The owner reviews after the fact
+  and reverts anything they disagree with; `main` is protected by CI and the
+  independent reviewer, not by a person waiting. The body
   carries `Fixes #<issue>` and says what was tested and what was not.
 - **Hardware facts are verified or they are `UNKNOWN`.** Never a `PASS` for a
   test that did not run on a board — the rule above, and it does not relax

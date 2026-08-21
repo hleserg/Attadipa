@@ -14,8 +14,8 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Attadipa has code.** As of 2026-08-21 the repository builds five libraries, a
-simulator and seventeen tests, and has a font pipeline whose output has been
+**Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
+simulator and twenty tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -24,6 +24,7 @@ compiled for the target and measured.
 | `attadipa_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
 | `attadipa_apps` | `AppManifest` and the launcher gating rule | core only |
 | `attadipa_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
+| `attadipa_ui` | the design tokens: `Dp` against a 160 dpi reference, twelve colour roles across two themes with WCAG contrast arithmetic, and the spacing, radius, motion, size and feedback scales | `attadipa_headers` only — **deliberately not platform** |
 | `attadipa_replay` | the deterministic navigation replay rig, in `tests/` | core |
 | `attadipa_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
 
@@ -36,7 +37,24 @@ The simulator renders at 240 × 240 and 410 × 502 from one binary, selected by
 `--board`, and fits any of the five candidate T-Watch radios with `--radio`
 without recompiling. Its first screen is a diagnostic that shows the two
 capability layers side by side — deliberately not a product screen, and it says
-so in its own source.
+so in its own source. Since T-009 it draws entirely through the tokens: no hex
+colour and no pixel padding remain in it, `--theme day|night` and the `T` key
+switch palettes without a rebuild, and a checker in CI refuses to let a raw
+value back in. Since T-083 it also draws every character: it links four generated
+Montserrat subsets covering all 181 codepoints of `charset.py`, so `×` and
+Cyrillic render rather than showing boxes, and an undrawable codepoint now
+**fails the run** instead of printing a warning.
+
+**Two contrast findings came out of that migration and neither is a proposal to
+repaint anything.** On the day page every accent is under the 3:1 that a glyph
+or an outline needs — Attadipa Orange 2.19:1, Glow Amber 1.44:1 — so a day accent
+is emphasis and the meaning lives in the icon and the word. And
+`color.text.muted` passes on the page and on a surface and then fails on a
+*raised* card at 4.44:1, six hundredths under the threshold, which is the kind of
+thing a review by eye does not find. Both are tabulated in
+[DESIGN_SYSTEM §3.2](docs/ui/DESIGN_SYSTEM.md) and pinned by tests. The colours
+are the owner's; open question **A7** already records that the published brand
+art disagrees with the palette text.
 
 ## Next ready
 
@@ -153,15 +171,20 @@ because a fact that lives only in a chat log does not exist.
 | A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
+| A7 | [#33](https://github.com/hleserg/Attadipa/issues/33) — **Three features asked for in conversation and absent from the specification — how big is each?** (a) is "the watch can be found by a crowd-sourced network" a requirement, and which one; (b) how long is a track; (c) how far must a reckoned path stay useful. | they compete for one antenna, one coexistence arbiter and one 940 mAh cell, so they are one question in three parts. Every sizing decision in [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is parameterised by these. T-064, T-065 and T-071 are blocked or unsized until answered |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
-None of these blocks M1. All of them block hardware work.
+None of these blocks M1. All of them block hardware work — except A7, which
+blocks three features that are not in the specification and cannot be sized
+until it is answered.
 
 ## Build and test state
 
 | Target | State |
 |---|---|
-| Host / native | builds; **seventeen tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+| Host / native | builds; **twenty-one tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+design-token suite and the two checks that keep raw colours and pixel counts out
+of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
@@ -213,6 +236,52 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **Heading no longer reads accel+gyro fusion as an absolute reference.**
+  [#21](https://github.com/hleserg/Attadipa/issues/21): on the Waveshare
+  profile — QMI8658 accel+gyro, no magnetometer, no local GNSS —
+  `CapabilityRegistry` reported `Capability::Heading` as `Ready` from the IMU
+  alone, contradicting the same-day [ADR-0009](docs/adr/0009-heading.md),
+  which rejects accelerometer+gyroscope fusion by name: without a
+  magnetometer, yaw is unobservable, and gyro-only integration drifts without
+  bound
+  ([research-integration.md §9](docs/upstream/research-integration.md),
+  verdict `REJECT`). `tests/test_capability_registry.cpp` had locked the wrong
+  answer in as `test_heading_has_three_sources`, so a green CI could not have
+  caught it. Fixed in `core/src/capability_registry.cpp`: the local `Heading`
+  mapping now has two sources, magnetometer or local GNSS
+  course-over-ground, matching ADR-0007 §4 as corrected here and in
+  [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) §3.4. Waveshare with
+  no node now reports `Unprovisioned`, not `Ready`; a node that actually
+  offers `Heading` still lights it up as `Ready`/`Origin::Node`; the T-Watch
+  GNSS path is unaffected. Mutation-checked: reverting the fix turns five
+  checks red.
+- **Smart tags, tracks and dead reckoning, researched rather than guessed at.**
+  Three owner asks from 2026-08-21, none of which is in the specification —
+  recorded in
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md), with nine
+  tasks (T-063…T-071) and owner question A7. Thirteen agents, every claim that
+  would become a design commitment put through an adversarial refutation, four
+  claims downgraded as a result. The load-bearing answers: of the three tag
+  ecosystems only Apple is reachable at all, and only outside its own app —
+  Google needs registration, an email allowlist and a third-party lab, and its
+  one readable implementation is licensed for Nordic silicon; Samsung's SDK
+  ships for no Espressif part and an unregistered advertisement is inert.
+  OpenHaystack and macless-haystack are AGPL-3.0 and cannot be copied here. An
+  uncalibrated gyroscope offset of ±10 dps is a full 360° of heading error in
+  36 seconds, so a reckoned path is a **disk**, not a line — and on the T-Watch,
+  which has no gyroscope, a turn is not observable at all. A 1000-point track
+  costs 16.5 s of originator airtime over LoRa at 4 bytes a point, which is what
+  makes an online simplifier a requirement rather than an optimisation. Also
+  corrected: the Waveshare carries a **QMI8658C**, whose `CTRL8` is "Reserved:
+  Not Used" — the A's step-counter registers describe a part that is not on this
+  board.
+- **The clock-disagreement detector no longer relies on undefined behaviour.**
+  `WallTime` is signed on purpose and has no subtraction on purpose; the
+  anti-spoofing detector reached through `.unix_seconds` and derived one anyway,
+  which is UB for the range the type deliberately admits — one hostile
+  `receiver_time` reaches `-INT64_MIN`. `clock.h` gains `seconds_between`, and
+  `unix_seconds` is now referenced nowhere outside it. Verified red: the old
+  arithmetic fails the ASan/UBSan build.
 - **The research integration, and the six test suites that came with it.** Core
   gained the types the GNSS integrity work needs — an observation that keeps
   both the normalized value and what the receiver actually said, ten separate
