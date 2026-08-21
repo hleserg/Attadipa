@@ -76,10 +76,25 @@ Two credentials matter and they do different things.
 
 ### 1. The Anthropic credential — required
 
-Either works:
+Either works, and **they are billed differently** — which is the first thing to
+decide, not the last:
 
-- `ANTHROPIC_API_KEY` — an API key. Simple, and what these workflows assume.
-- `CLAUDE_CODE_OAUTH_TOKEN` — from `claude setup-token`.
+| Secret | Billed to | Get it |
+|---|---|---|
+| **`CLAUDE_CODE_OAUTH_TOKEN`** | a Claude **Pro or Max subscription**. No per-token charge; it consumes the subscription's quota | `claude setup-token` on your own machine |
+| `ANTHROPIC_API_KEY` | an **API account, per token**. A separate bill from the subscription | console.anthropic.com |
+
+The action's own setup guide is explicit that the OAuth path is the
+subscription one: *"Pro and Max users can generate this by running
+`claude setup-token` locally"*. If the point of this loop is to remove courier
+work rather than to open a metered account, that is the secret to add.
+
+Set it without the value passing through a terminal history or a chat log:
+
+```bash
+claude setup-token                                     # prints the token
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <owner>/<repo>   # paste; input is not echoed
+```
 
 Every workflow checks for one before doing anything and, if neither is present,
 **comments once on the issue and exits green**. A workflow that is red because
@@ -88,8 +103,9 @@ a secret was never added is a workflow people learn to ignore.
 A caution about OAuth: tokens produced by `claude setup-token` have not always
 worked with the action. Do not assume the path works because the secret exists
 — the smoke test in [CI_AND_REVIEW_PIPELINE](CI_AND_REVIEW_PIPELINE.md#smoke-tests)
-is how you find out. If OAuth fails, add `ANTHROPIC_API_KEY` instead; the
-workflows accept whichever is present.
+is how you find out. If OAuth fails, `ANTHROPIC_API_KEY` is the fallback and
+the workflows accept whichever is present — but it is a fallback with a meter
+on it, so try the subscription path first and find out rather than assume.
 
 ### 2. The GitHub credential — and why it is *not* `GITHUB_TOKEN`
 
@@ -119,6 +135,13 @@ Ordinary bookkeeping — adding labels, posting the "no credential" comment — 
 use `github.token`, because a label change is not supposed to start a workflow.
 
 ## Cost control
+
+What "cost" means depends on which credential is in use. With
+`ANTHROPIC_API_KEY` it is money, per token. With `CLAUDE_CODE_OAUTH_TOKEN` it is
+the subscription's quota — a runaway loop does not produce an invoice, it
+produces a rate limit at the moment you wanted to use Claude yourself. Every
+control below applies either way, and the reason they exist is the second case
+as much as the first.
 
 | Control | Where |
 |---|---|
@@ -165,7 +188,9 @@ hardware-in-the-loop runner. CI prints
 ## Setting it up from nothing
 
 1. `gh variable set CLAUDE_AUTOMATION_ENABLED --body true`
-2. Add `ANTHROPIC_API_KEY` under Settings → Secrets and variables → Actions.
+2. Add `CLAUDE_CODE_OAUTH_TOKEN` (subscription) or `ANTHROPIC_API_KEY` (metered
+   API account) under Settings → Secrets and variables → Actions. See
+   [Authentication](#authentication) — the difference is a bill.
 3. Either install <https://github.com/apps/claude> on the repository, or add a
    fine-grained PAT as `FIREFLY_AGENT_TOKEN`.
 

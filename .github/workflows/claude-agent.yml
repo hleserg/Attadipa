@@ -259,8 +259,10 @@ jobs:
             echo "in this repository's Actions secrets."
             echo "Impact: every Claude workflow will accept tasks and then stop here."
             echo "What can be done automatically: nothing — a workflow cannot create a secret."
-            echo "Owner action required: Settings → Secrets and variables → Actions →"
-            echo "New repository secret → ANTHROPIC_API_KEY."
+            echo "Owner action required: run \`claude setup-token\` locally, then"
+            echo "\`gh secret set CLAUDE_CODE_OAUTH_TOKEN\`. That credential draws on a"
+            echo "Claude Pro or Max subscription. ANTHROPIC_API_KEY also works and bills"
+            echo "an API account per token, which is a separate bill from the subscription."
             echo "How to resume: comment @claude on this issue."
           } > /tmp/blocked.md
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/blocked.md
