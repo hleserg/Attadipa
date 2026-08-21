@@ -608,3 +608,183 @@ asserting *categories* rather than rendered strings — `0→many, 1→one, 2→
 and everything else `→other`; generator failure on a missing locale entry, on a
 duplicate identifier, and on `ru.other`; and the font check failing on a
 catalogue entry carrying a codepoint outside `charset.py`.
+
+---
+
+### Attitude and heading filters — examined before writing nothing
+
+**Problem:** the research report recommends Madgwick fusion for heading. §10 of
+the owner's brief requires studying `xioTechnologies/Fusion` before writing our
+own rather than reaching for the first paper.
+
+**Projects investigated:** `xioTechnologies/Fusion` (**MIT**, the reference C
+implementation of the algorithm, with the magnetic-rejection and acceleration-
+rejection logic the original paper leaves out) · Madgwick's own release
+(GPL/other, ambiguous) · Mahony's complementary filter (widely reimplemented) ·
+Bosch's BSX fusion for the BMA/BMI family (proprietary, licensed per part) ·
+`RTIMULib2` (MIT, unmaintained since 2016).
+
+**Decision:** `REJECT` — and not "later", **not on this hardware**.
+
+**Reason:** the decision is settled by the parts list, not by the algorithms.
+Madgwick and Mahony fuse a gyroscope with an accelerometer and a *magnetometer*.
+The accelerometer gives roll and pitch because gravity is a fixed reference; the
+magnetometer gives yaw because the field is another one. Remove it and yaw has
+no observable reference at all — the filter still runs, still converges, and
+converges to an arbitrary heading that then drifts.
+
+The parts:
+
+| Board | IMU | Magnetometer |
+|---|---|---|
+| T-Watch S3 | BMA423 — **accelerometer only**, no gyroscope | **none** |
+| Waveshare 2.06 | QMI8658 — accelerometer + gyroscope | **none** |
+
+So on one board there is not even a gyroscope to fuse, and on neither is there a
+magnetometer. Running Fusion on the Waveshare would produce a confidently drawn
+arrow carrying no information about which way the wearer is facing, which is
+worse than no arrow: a compass that is wrong is used, and a compass that is
+absent is not.
+
+What Fusion *is* worth reading for, and what was taken as
+`INSPIRE ARCHITECTURE` rather than as code: its separation of the filter from
+the rejection logic, and its explicit `FusionAhrsFlags` reporting when the
+filter does not trust its own output. That shape — a filter that says when it is
+unsure rather than always producing a number — is the same shape ADR-0011 uses
+for GNSS trust, and it is why `HeadingSource` in
+[ADR-0009](../adr/0009-heading.md) has a value for `Unknown` that is not a
+synonym for north.
+
+**Revisit when:** an external magnetometer is decided
+([OPEN_QUESTIONS](OPEN_QUESTIONS.md) A5), or a node with one is specified and
+[ADR-0009](../adr/0009-heading.md)'s `NodeBody`→`WatchBody` transform is
+resolved. Until then this is not a backlog item, it is a part that does not
+exist.
+
+**Tests that would be required if it were ever taken:** Fusion's own repository
+carries no test suite. The vectors would have to come from a recorded IMU
+capture with a known ground truth, which is a hardware plan
+([HIL_PLANS](../testing/HIL_PLANS.md)) and not a host test.
+
+---
+
+### Transport framing over USB, BLE and the node link
+
+**Problem:** frame a byte stream that arrives in arbitrary fragments, over a
+transport that can disconnect mid-frame, with bounded memory and no allocation.
+
+**Projects investigated:** MeshCore's `ArduinoSerialInterface` framing (MIT,
+readable, and the source of the defects below) · SLIP, RFC 1055 · COBS, and
+`bakercp/PacketSerial` (MIT) · HDLC-style byte stuffing as used by Nanopb
+examples · ESP-IDF's `esp_serial_slave_link` (Apache-2.0) · TinyFrame (MIT).
+
+**Decision:** `REIMPLEMENT`, with the framing shape taken from COBS-adjacent
+prior art and the *failure* requirements taken from MeshCore's bugs.
+
+**Reason.** The requirement that decided it is in
+[the MeshCore review](../upstream/meshcore-1.17-review.md), verified at source:
+upstream truncates an over-long frame to `MAX_FRAME_SIZE` and **delivers it as
+though it were complete**. That is the one failure a protocol cannot recover
+from, because the receiver believes the corrupted message. Its framing also
+carries no checksum, no escape and no resynchronisation, and `isConnected()`
+returns `true` unconditionally with the comment *"no way of knowing, so assume
+yes"*.
+
+None of that is fixable by wrapping it, because the defects are in what the
+format *is*. Firefly's frame is therefore a sync pattern, a length with a check
+byte so a corrupted length is caught before the decoder waits for bytes that
+will never arrive, and a CRC-16/CCITT over length and payload. An over-long
+frame is refused, and `tests/test_link.cpp` asserts that specifically.
+
+COBS was the strongest alternative and was not taken because its cost is a
+variable-length encoding — a payload's on-wire size depends on its content,
+which makes a fixed-size queue slot either wasteful or occasionally too small.
+A length-prefixed frame with a checksum has the same recovery properties for
+this traffic and a constant overhead of seven bytes.
+
+**What was *not* invented:** CRC-16/CCITT-FALSE is a standard, and
+`tests/test_link.cpp` pins it against published vectors (`123456789` → `0x29B1`)
+computed independently rather than read out of our own implementation. A
+checksum that quietly disagrees with the peer's is a link that never carries
+anything.
+
+**Numbers, and where they come from.** `kMaxPayload = 192` is not copied from
+anywhere: it is the largest MeshCore packet plus the node-link header, rounded
+up to a multiple of 32 so a queue slot aligns. `kDefaultQueueDepth = 4` is one
+frame in flight, one being built, and two of slack. Both are stated in
+`link/include/firefly/link/frame_codec.h` beside the constants, because §6 of
+the brief forbids magic numbers copied from another project.
+
+**Tests required, and present:** the owner's §6 list one function per item —
+fragmented input, several frames in one read, partial writes, a full queue, a
+disconnect mid-frame, a reconnect, a large payload, a malformed frame — plus the
+upstream defects held against our own code.
+
+---
+
+### GNSS integrity and trust
+
+**Problem:** decide whether a position is worth navigating by, and keep the
+reasons.
+
+**Projects investigated:** u-blox's own `UBX-SEC-SIG` and `UBX-NAV-STATUS`
+jamming and spoofing indicators (a receiver feature, not code we can take) ·
+RTKLIB (**BSD-2-Clause**, and a full RTK/PPP engine — orders of magnitude beyond
+this problem) · GNSS-SDR (GPL-3.0, read-only, and a software-defined receiver) ·
+Meshtastic's position handling (GPL-3.0, read-only) · Android's
+`GnssMeasurement` API model (not code, but a data model worth studying).
+
+**Decision:** `REIMPLEMENT` for the trust engine; `INSPIRE ARCHITECTURE` from
+Android's separation of raw measurement from derived location.
+
+**Reason:** there is no existing embedded library for this, and the reason is
+that the problem is mostly *policy*. The detectors are arithmetic; what makes
+the subsystem worth having is that the policy — weights, hysteresis, what counts
+as evidence — is explicit and separable, and that the receiver's own verdict is
+the strongest single input without being the only one. Taking a general library
+would mean taking somebody else's policy for a wrist in a forest.
+
+RTKLIB was examined and rejected on scale rather than on licence: it is a
+correct and permissively-licensed geodesy engine, and §15 of the owner's GNSS
+amendment explicitly rules out building the navigation stack now — no Kalman, no
+RTS, no PDR, no RTK, no DGNSS. Reaching for RTKLIB would be building it by
+accident.
+
+**What was taken from the receiver rather than reimplemented:** everything the
+receiver can see and we cannot — per-signal carrier-to-noise, the correlator,
+the RF front end. `ReceiverIndication` and `ProtectionLevel` exist so that the
+receiver's own verdict enters the model as the heaviest single input, and OD-5
+is why `Unknown` and `Unsupported` are distinct from `None`.
+
+**Tests required, and present:** `tests/test_trust.cpp`, mutation-checked
+against four real regressions, plus the twelve replay traces.
+
+---
+
+### The replayable navigation rig
+
+**Problem:** verify detectors for events that cannot be staged.
+
+**Projects investigated:** `gpsd`'s regression framework (BSD-2-Clause; replays
+recorded sentences against expected output) · RTKLIB's RINEX-driven tests
+(BSD-2-Clause) · u-blox u-center's log playback (proprietary, and a desktop GUI)
+· Google's `gnss_analysis` tooling (Apache-2.0, Python, for raw measurements).
+
+**Decision:** `INSPIRE ARCHITECTURE` from gpsd's regression framework;
+`REIMPLEMENT` the rig itself.
+
+**Reason:** gpsd's design is the right one and its shape is what was taken — a
+directory of recorded inputs, each with its expected output, replayed by a
+runner that fails loudly on a mismatch and treats an unreadable fixture as a
+failure rather than a skip. What could not be taken is the level: gpsd replays
+*sentences* to test a *parser*, and Firefly has no parser yet (minmea is a `WRAP`
+decision above and is not vendored). The rig therefore replays normalized
+observations to test the trust and validity model, and the fixture format is
+shaped so that an NMEA, GPX or vendor-binary front end later adds a reader
+rather than a second rig.
+
+**The one thing worth copying deliberately:** gpsd's rule that a regression
+fixture nobody can read is a build failure. `tests/CMakeLists.txt` refuses to
+configure if the scenario glob matches fewer than ten files, because a glob that
+silently matched nothing would produce a test that passes by running no
+scenarios at all.
