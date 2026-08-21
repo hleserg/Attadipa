@@ -216,6 +216,8 @@ target_link_libraries(attadipa_replay PUBLIC attadipa_core)
 
 add_executable(replay replay/replay_main.cpp)
 target_link_libraries(replay PRIVATE attadipa_replay)
+target_compile_definitions(replay PRIVATE
+    ATTADIPA_REPLAY_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios")
 
 file(GLOB ATTADIPA_REPLAY_SCENARIOS
      "${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios/[0-9][0-9]-*.trace")
@@ -228,7 +230,7 @@ if(ATTADIPA_REPLAY_COUNT LESS 10)
     message(FATAL_ERROR "only ${ATTADIPA_REPLAY_COUNT} replay scenarios found")
 endif()
 
-add_test(NAME replay COMMAND replay ${ATTADIPA_REPLAY_SCENARIOS})
+add_test(NAME replay COMMAND replay)
 set_tests_properties(replay PROPERTIES LABELS gnss)
 
 add_executable(test_replay_rig test_replay_rig.cpp)
