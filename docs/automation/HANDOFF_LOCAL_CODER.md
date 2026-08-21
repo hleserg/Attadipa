@@ -256,10 +256,19 @@ different scenario; do not pad the section.
 
 ## 7. Verify the merged fix actually works
 
-**#9 is merged** (`b1a3dca`, 2026-08-21). Everything in it is on `main` now, which
-means the workflow changes are finally live — `issues` and `pull_request` events
-run the workflow file from the default branch, so until the merge none of it was
-in effect.
+**#9 is merged** (`b1a3dca`, 2026-08-21) and so is #11. Everything is on `main`.
+
+An earlier draft of this file said `pull_request` events run the workflow file
+from the default branch. **That was wrong and is corrected here**, because this
+repository's own record runs the other way: `docs/automation/CI_AND_REVIEW_PIPELINE.md`
+records, as an observed result, that the action refuses to run when the workflow
+file differs from the default branch's copy — a guard that would be meaningless
+if `pull_request` did not source the workflow from the pull request's own ref.
+`pull_request_target` is the one that runs from the base branch, which is exactly
+why `claude-pr-review.yml` avoids it.
+
+`issues` and `issue_comment` **do** run from the default branch, and those are
+the triggers that matter for item 7.
 
 The single most important fix in it was that **every Claude step was running with
 no tools at all**. Agent mode grants no default `--allowedTools`, and the headless
@@ -267,8 +276,13 @@ SDK denies anything that would prompt, silently. That is why the reviewer ran 41
 and posted nothing, and why the agent on issue #5 finished green with no branch
 and no pull request.
 
-**That fix has never been observed working.** It could not be, before the merge.
-Verifying it is the first job:
+**The reviewer half is now observed working.** On
+[#11](https://github.com/hleserg/FireflyOS/pull/11) the independent reviewer
+posted a full review carrying `<!-- firefly-ai-review -->` and set
+`ai-review:blocking` — the first time that has happened in this repository.
+
+**The writer half has not been.** No agent run has yet produced a branch or a
+pull request. That is the job:
 
 ```bash
 gh issue comment 10 --repo hleserg/FireflyOS --body "@claude"
@@ -280,13 +294,24 @@ Issue #10's task is real and unfinished — three workflows depend on
 of it, which `CLAUDE.md` requires. So this is a genuine first task, not a test
 fixture.
 
-Watch for three things that have never yet happened in this repository:
+Watch for:
 
 - [ ] a branch `claude/issue-10-*` appears;
-- [ ] a **draft pull request** appears, with `Fixes #10` in the body;
+- [ ] a **draft pull request** appears, whose body carries a closing reference
+      back to this issue (the `Fixes` keyword and the issue number);
 - [ ] the independent reviewer posts a comment on it carrying
       `<!-- firefly-ai-review -->`, and sets exactly one of `ai-review:pass` or
       `ai-review:blocking`.
+
+The third one now depends on a fix made after #11: the agent opens its pull
+request as `claude[bot]`, and the review workflow excluded every `[bot]` actor,
+so it would have skipped the agent's own pull requests — the exact case it exists
+for. `claude[bot]` is now exempted and every other bot still excluded.
+
+**Two cases where the reviewer is silent by design, so the silence is not a
+failure:** a pull request from a fork (no secrets, hence no credential), and a
+pull request that edits `.github/workflows/claude-*.yml` (the action refuses to
+run a version of itself that a pull request has modified). Issue #10 is neither.
 
 If a branch and a PR appear, the loop closes end to end for the first time.
 
@@ -294,6 +319,16 @@ If the run still finishes green with nothing to show, the tool list is still
 wrong — read the run's **Step Summary**, which now carries Claude's own report
 (`display_report` is on), and check the `Run Claude` step for denied tools. Do not
 re-run hoping for a different result.
+
+> **A trap this document walked into once.** An earlier revision spelled that
+> closing reference out literally, as an example of what the agent's *future*
+> pull request should say. GitHub does not distinguish a quoted closing keyword
+> from a real one: the text reached a commit message and a pull request body, and
+> merging #11 closed issue #10 at the same second. The intake gate refuses a
+> closed issue — `reject: issue is closed` — so the verification below would have
+> done nothing, and looked like yet another silent failure with an entirely
+> different cause. Issue #10 has been reopened. **Never write a live closing
+> keyword into prose that describes one.**
 
 **Note:** commenting `@claude` yourself works because you have write access. It
 does not answer task 1 — that is still about ChatGPT's own account.

@@ -44,10 +44,28 @@ jobs:
     # there is no credential to review with. That is GitHub's protection, not an
     # oversight, and pull_request_target — which would grant them — is exactly
     # the pattern that leaks tokens to untrusted code.
+    #
+    # claude[bot] is exempted from the bot guard, and the guard would otherwise
+    # defeat this workflow's entire purpose.
+    #
+    # When FIREFLY_AGENT_TOKEN is unset — the documented default — the
+    # implementation agent opens its pull request through the Claude GitHub App,
+    # so `github.actor` on that pull_request event is `claude[bot]`. A blanket
+    # `!endsWith(actor, '[bot]')` therefore skipped the review on exactly the
+    # pull requests this workflow exists to review: the agent's own. Every other
+    # bot stays excluded, which is what the guard was actually for — Dependabot
+    # opens four pull requests at a time and none of them wants an architecture
+    # review.
+    #
+    # This does not create a loop. The review's output is a comment and a label;
+    # a comment cannot raise a `pull_request` event, and the intake gate rejects
+    # claude[bot] comments separately (.github/scripts/intake-decision.sh). The
+    # job also holds `contents: read`, so the widest thing it can do is have an
+    # opinion twice.
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.CLAUDE_AUTOMATION_ENABLED != 'false' &&
-      !endsWith(github.actor, '[bot]')
+      (!endsWith(github.actor, '[bot]') || github.actor == 'claude[bot]')
     steps:
       - name: Check that an Anthropic credential exists
         id: auth

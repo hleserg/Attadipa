@@ -253,10 +253,20 @@ needs the owner, and one needs a ruler.
   denies anything that would prompt, silently. The reviewer ran 41 s and posted
   nothing; the agent on issue #5 finished green with no branch and no pull
   request. Both had read everything and had no way to say so. Fixed and merged
-  (#9, `b1a3dca`) — **and not yet observed working**, because workflow changes
-  only take effect from the default branch. The first run that produces a branch
-  and a pull request is the one that proves it; the open item is
+  (#9, `b1a3dca`), and **the reviewer half is now observed working**: on
+  [#11](https://github.com/hleserg/FireflyOS/pull/11) the independent reviewer
+  posted a full review carrying the `firefly-ai-review` marker and set
+  `ai-review:blocking`, which had never happened before in this repository. The
+  writer half — a branch and a draft pull request from an agent run — is still
+  unobserved; the open item is
   [#10](https://github.com/hleserg/FireflyOS/issues/10).
+- **And the reviewer would have been skipped on every agent pull request.** With
+  `FIREFLY_AGENT_TOKEN` unset — the documented default — the agent opens its pull
+  request as `claude[bot]`, and `claude-pr-review.yml` excluded every actor ending
+  in `[bot]`. The guard was aimed at Dependabot and caught the one case the
+  workflow exists for. Found by an external review bot on #11, confirmed against
+  the production runs where Dependabot's pull requests were skipped, and fixed by
+  exempting `claude[bot]` alone.
 - **The silent refusal was reproduced, not theorised.** A task with a valid
   marker filed through the GitHub API ([#10](https://github.com/hleserg/FireflyOS/issues/10))
   arrived as `claude[bot]`, was refused by the bot guard — correctly — and was
