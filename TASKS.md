@@ -100,6 +100,88 @@ research status · implementation status · tests · hardware required.
 
 ## READY
 
+### T-062 · The branch audit's remaining findings
+- **Priority:** P1. These are defects in code that already exists and that other
+  work is about to build on, which makes them cheaper now than later.
+- **Dependencies:** none
+- **Goal:** close, or consciously decline with reasons, each finding below.
+  Every one of them was read in the source before being written here; none is a
+  report taken on trust. Four from the same audit are already fixed —
+  `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
+  evaluator) and `7e4c4f9` (the replay rig could not produce Stale) — and the
+  rule from the research prompt applies: **do not stop after the first fix.**
+
+- **A state that cannot say "nobody has checked".** `GnssCapabilities`
+  (`core/include/firefly/core/gnss_power.h:51`) is four plain `bool`s defaulting
+  to `false`, so "this receiver has no backup domain" and "nobody has read the
+  datasheet yet" are the same value. T-051 and T-052 exist precisely because
+  those answers are not yet known, and the type cannot hold the state the
+  project is actually in. Compare `ReceiverIndication`, which gets this right
+  with `Unknown` and `Unsupported` as distinct values, and OD-5, which is the
+  decision saying they must be.
+
+- **A default-constructed snapshot claims to be trusted.** `GnssStatus::trust`
+  (`core/include/firefly/core/diagnostics.h:116`) defaults to
+  `TrustState::Trusted`. A snapshot nobody filled in therefore reports the most
+  reassuring answer available. `validity` on the line above defaults to `NoFix`,
+  which is the right instinct; `trust` should be `Untrusted` for the same
+  reason, or the field should be optional so that "not evaluated" is sayable.
+
+- **Rates for a relayed fix are divided by the wrong interval.**
+  `TrustEvaluator::observe` sets `previous_position_at_ = now` rather than
+  `observation.observed_at`. For a receiver on the board the two are equal. For
+  a position relayed by a Firefly node over a link that queues and retries they
+  are not, so the interval is measured from *arrival* and the implied speed is
+  overstated — the same shape as the bug `f46578c` fixed, by a different door.
+  The fix is one line and the reasoning is not: it has to say what happens when
+  observations arrive out of order, which the current code cannot express.
+
+- **`holds()` and `reasons()` can report evidence that has expired.** Both read
+  `live_`, which only `update()` prunes, and both are `const`. A caller that
+  reads without having called `update(now)` first gets past-TTL evidence and has
+  no way to tell. Either the readers take `now`, or the class documents that a
+  reader must update first and something enforces it.
+
+- **Zero means two things in the transport.** `Decoder::next()` returns 0 for
+  "nothing ready" and for "a zero-length frame was delivered", and
+  `FrameQueue::pop()` has the same ambiguity. A zero-length frame is legal —
+  `encode()` accepts it and the round-trip tests cover it — so a caller
+  draining until zero silently drops one.
+
+- **`Attach` while `Faulted` reports the wrong refusal.** It returns `Redundant`
+  where `Ignored` is the truth: nothing about a faulted link makes a new attach
+  redundant, and the two words tell an operator different things.
+
+- **`Detach` hardcodes `PeerClosed`.** A detach the *device* initiated is
+  recorded as one the peer initiated. That is the field-report evidence for the
+  most common question about a node link — who let go first.
+
+- **Recovery can complete with no observation at all.** The clean-hold window
+  can elapse while nothing whatever has been reported, so silence promotes the
+  state. OD-5's rule is that silence is not an all-clear; this is the one place
+  the code still treats it as one.
+
+- **`FixLost` and `StalePosition` both weigh 20 against a `degrade_at` of 30.**
+  So neither, alone, moves trust. That may be the intended two-axis design —
+  validity already carries the whole freshness story, and trust is about whether
+  numbers can be believed rather than when they were taken — and
+  `02-fix-goes-stale.trace` now asserts the current behaviour either way. What
+  is missing is the decision, written down, rather than a number nobody chose.
+
+- **Resync costs a full CRC per candidate offset.** Correct and O(n·m) on a
+  noisy link. Worth measuring before optimising, and worth a note either way:
+  the frame is at most 192 bytes and the link is slow, so this may be entirely
+  affordable. `ESTIMATED`, not measured.
+
+- **Acceptance:** each item either fixed with a test that fails without the fix
+  — mutation-verified, as the four already closed were — or declined in writing
+  with the reason. A silent decline is not one.
+- **Research status:** n/a
+- **Implementation status:** not started
+- **Tests:** host, per item
+- **Hardware required:** no, except the resync measurement, which is a HIL note
+  rather than a HIL plan.
+
 ### T-060 · What each IMU actually does about steps
 - **Priority:** P1 — [OD-6](docs/research/OWNER_DECISIONS.md#od-6--the-watch-counts-steps-and-that-is-not-optional)
   makes the pedometer mandatory, and everything about how it is built depends on
