@@ -56,10 +56,16 @@ void check_reason(const TrustEngine& engine, TrustReason reason, bool expected, 
 
 MonotonicTime at(std::uint64_t ms) { return MonotonicTime{ms}; }
 
-// Moscow-ish, and arbitrary. The numbers below are round so that the distances
-// between them can be checked by hand; they are not anybody's location.
-constexpr std::int32_t kLat = 556000000;   // 55.6°N
-constexpr std::int32_t kLon = 376000000;   // 37.6°E
+// Synthetic, and deliberately obviously nowhere: half a degree north, one
+// degree east, in the Gulf of Guinea. The same place every replay trace uses.
+//
+// The first draft of this file used a coordinate picked as "arbitrary" that
+// resolved to a real city. That is exactly what must not be committed to a
+// public repository in a file about somebody's location, and "arbitrary" is not
+// a defence. The habit that prevents it is choosing numbers that could not be
+// anybody's, rather than numbers that probably are not.
+constexpr std::int32_t kLat =  5000000;   // 0.5°N
+constexpr std::int32_t kLon = 10000000;   // 1.0°E
 
 // A fix a receiver would be pleased with: enough satellites, tight accuracy,
 // nothing to report about its own signals.

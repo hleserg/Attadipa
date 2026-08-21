@@ -21,6 +21,13 @@
 
 using namespace firefly::core;
 
+// Every coordinate in this file is synthetic and deliberately obviously
+// nowhere — half a degree north, one degree east, in the Gulf of Guinea, the
+// same place the replay traces use. No real location belonging to anybody
+// appears in this repository, and "arbitrary" is not a defence: a number that
+// resolves to a city where somebody lives is exactly what must not be
+// committed to a public repository, whatever the intention behind picking it.
+
 namespace {
 
 int failures = 0;
@@ -73,7 +80,7 @@ GnssObservation fix_at(std::uint64_t ms)
     GnssObservation o;
     o.observed_at            = at(ms);
     o.fix_type               = FixType::ThreeD;
-    o.position               = Position{556000000, 376000000};
+    o.position               = Position{5000000, 10000000};
     o.horizontal_accuracy_mm = 4000;
     o.satellites_used        = 10;
     o.hdop_centi             = 110;
@@ -247,7 +254,7 @@ void test_a_degree_of_latitude_is_the_same_everywhere()
     const std::uint64_t expected = 111320000ULL;  // 111.32 km in mm
 
     CHECK_NEAR(distance_mm(Position{0, 0}, Position{10000000, 0}), expected, 1);
-    CHECK_NEAR(distance_mm(Position{550000000, 300000000}, Position{560000000, 300000000}),
+    CHECK_NEAR(distance_mm(Position{450000000, 300000000}, Position{460000000, 300000000}),
                expected, 1);
     CHECK_NEAR(distance_mm(Position{-600000000, -300000000}, Position{-590000000, -300000000}),
                expected, 1);
@@ -291,10 +298,10 @@ void test_the_antimeridian_is_not_a_wall()
 
 void test_distance_is_zero_symmetric_and_bounded()
 {
-    const Position p{556000000, 376000000};
+    const Position p{5000000, 10000000};
     CHECK(distance_mm(p, p) == 0);
 
-    const Position q{557000000, 377000000};
+    const Position q{6000000, 11000000};
     CHECK(distance_mm(p, q) == distance_mm(q, p));
 
     // Antipodes saturate rather than overflow. A number that wrapped would be a
@@ -334,7 +341,7 @@ void test_the_cosine_table_is_monotonic_and_ends_where_it_should()
 // resolution down there rather than only at continental scale.
 void test_short_distances_keep_their_resolution()
 {
-    const Position origin{556000000, 376000000};
+    const Position origin{5000000, 10000000};
 
     // About 1.1 m north.
     CHECK_NEAR(distance_mm(origin, Position{origin.latitude_e7 + 100, origin.longitude_e7}),
