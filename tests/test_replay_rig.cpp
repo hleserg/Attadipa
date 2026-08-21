@@ -1,5 +1,4 @@
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 
 #include <fcntl.h>
@@ -40,15 +39,20 @@ std::string fixtures;
 // first decides what that path points at. mkdtemp settles both in one syscall:
 // the name is one nobody else has and the directory is 0700 before it exists
 // to anybody, so there is no window between picking the path and owning it.
+//
+// `/tmp` is deliberately literal and TMPDIR is deliberately not read. Honouring
+// it would be a nicety — nothing here needs it — and it would make this the one
+// place in the repository where a path comes out of the environment, which is a
+// taint source the static analysis is right to follow and which would then have
+// to be argued away rather than simply not created. If /tmp is not writable the
+// test says so and fails, which is the correct outcome and not a silent one.
 class Scratch
 {
 public:
     Scratch()
     {
-        const char* base = std::getenv("TMPDIR");
-        path_ = std::string(base != nullptr && base[0] != '\0' ? base : "/tmp")
-                + "/firefly-replay-XXXXXX";
-        ok_ = ::mkdtemp(&path_[0]) != nullptr;
+        path_ = "/tmp/firefly-replay-XXXXXX";
+        ok_   = ::mkdtemp(&path_[0]) != nullptr;
     }
 
     ~Scratch()

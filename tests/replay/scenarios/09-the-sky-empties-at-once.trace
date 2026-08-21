@@ -1,36 +1,87 @@
-scenario every satellite disappears between two epochs
-describe From an open sky to nothing in one second. Physically that is a lid
-describe closing over the antenna; it is also what a transmitter capturing the
-describe receiver looks like from the outside. Either way it is not a normal
-describe reading, and the second step is the impossible one: more satellites
-describe used than are in view.
+scenario the sky empties at once, and the boundary that decides when that counts
+describe From an open sky to nothing between two epochs. Physically that is a
+describe lid closing over the antenna; it is also what a transmitter capturing
+describe the receiver looks like from the outside. Neither is a normal reading.
+describe
+describe There are two separate detectors behind ConstellationAnomaly and this
+describe fixture exists to keep them apart, because until it did they were not.
+describe The earlier version of this trace asserted the blackout with `sats 9 0`
+describe — nine satellites used out of none in view — which is the *impossible
+describe reading* detector, a different branch that fires first. Deleting the
+describe blackout branch entirely left this scenario green. A trace that passes
+describe for a reason unrelated to its name is worse than no trace, because it
+describe is counted.
+describe
+describe So each step below is arranged so that exactly one branch can explain
+describe it, and the mutation that removes that branch fails this file.
 
 at 0
   fix 3d
   pos 5000000 10000000
   alt 42000
   acc 3500
-  sats 11 14
+  sats 10 12
   hdop 90
   jam none
   spoof none
+  expect validity valid
   expect trust trusted
   expect no-reason constellation-anomaly
 
+# The blackout, on its own. Nought used out of nought in view: `used > in_view`
+# is false, so the impossible-reading branch cannot be what raises this. Twelve
+# satellites one second ago and none now is the only thing left.
 at 1000
   fix 3d
-  pos 5000010 10000010
+  pos 5000000 10000000
   alt 42000
   acc 3500
-  sats 9 0
-  hdop 95
+  sats 0 0
+  hdop 90
   jam none
   spoof none
   expect reason constellation-anomaly
 
+# The sky comes back, poor but real. The anomaly is retracted rather than left
+# to age out — evidence is cleared the moment the condition stops holding.
 at 2000
-  fix none
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 5 7
+  hdop 180
+  jam none
+  spoof none
+  expect no-reason constellation-anomaly
+
+# The boundary, and the reason there is one. Seven satellites is not an open
+# sky, so seven going to nought is a bad sky getting worse — an ordinary thing
+# under a bridge or a roof — and calling it an anomaly would fire this detector
+# on half of everyday indoor use. The threshold is `previous >= 8`; this pins
+# the side of it that must stay quiet.
+at 3000
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
   sats 0 0
-  expect validity nofix
-  expect reason fix-lost
-  expect trust degraded
+  hdop 180
+  jam none
+  spoof none
+  expect no-reason constellation-anomaly
+
+# And the other detector on its own. Six in view, so the blackout branch cannot
+# fire; nine of them used, which no receiver can do. This is the impossible
+# reading, and it is the strongest form of the check available without
+# per-signal carrier-to-noise data.
+at 4000
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 9 6
+  hdop 120
+  jam none
+  spoof none
+  expect reason constellation-anomaly
