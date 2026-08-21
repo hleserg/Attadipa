@@ -115,6 +115,45 @@ Node matters more than it looks: `lv_font_conv` is an npm tool, and finding out
 it could not be run *after* designing the font pipeline around it would have
 been the expensive order.
 
+## Owner decisions of 2026-08-22, recorded and not yet started
+
+Five messages in one session, all filed as
+[OD-7 to OD-11](docs/research/OWNER_DECISIONS.md) with the research questions in
+[COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+and twelve tasks, T-072 to T-083. **Nothing is implemented.** Recorded here
+because a fact that lives only in a chat log does not exist.
+
+- **The companion is any node, not only ours** — vanilla MeshCore over BLE or
+  LAN, Meshtastic alongside or instead, several providers at once with a local
+  radio, and telemetry as a request/response feed. It fits
+  [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape; what it needs is
+  the protocol facts, which are `UNKNOWN` (T-072, T-073, T-074).
+- **Every source of position, with the watch as the instrument** — the watch's
+  receiver, a node's, a phone's, a coordinate inside somebody else's message,
+  telemetry, dead reckoning, cell towers. Selection and fusion are different
+  features and only the first has a shape (T-075, T-076).
+- **AGPS is a payload, not a transport** — internet, BLE, LoRa, whatever is
+  available. Blocked on what the receivers accept (T-077).
+- **The node may carry a cellular modem** — tower positioning from a downloaded
+  database, plus a route off the mesh. Blocked on a part that does not exist, and
+  on four separate answers about the database (T-078, T-079).
+- **A standing person does not need a new fix** — duty-cycle GNSS against motion,
+  without turning the next fix into a cold start. The largest continuous draw on
+  a watch that has GNSS, and the whole feature is a claim about a specific
+  module's low-power behaviour (T-080).
+- **Themes are installable, like applications** — user colours, fonts and icons,
+  without the layout breaking. T-009 turns out to be the substrate: a screen
+  already names a role rather than a value, so swapping the table is the feature.
+  What is missing is themes as data, an installation gate built from the contrast
+  and glyph checks that already exist, and a way back from a theme that makes the
+  screen unreadable (T-081, T-082).
+- **And one defect, not a feature.** The simulator draws with LVGL's stock
+  Latin-only Montserrat, so `×` renders as `□` and so do the Cyrillic letters in
+  the English catalogue's own language names. The check already reports seven
+  undrawable codepoints on every run; what is missing is that it is a warning
+  rather than a failure, and that nothing consumes the font pipeline T-032 built.
+  Filed as **T-083, P1**.
+
 ## Blocked
 
 - **T-010 board bring-up** — no physical board; exact variant unknown.
@@ -132,9 +171,12 @@ been the expensive order.
 | A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
+| A7 | [#33](https://github.com/hleserg/Attadipa/issues/33) — **Three features asked for in conversation and absent from the specification — how big is each?** (a) is "the watch can be found by a crowd-sourced network" a requirement, and which one; (b) how long is a track; (c) how far must a reckoned path stay useful. | they compete for one antenna, one coexistence arbiter and one 940 mAh cell, so they are one question in three parts. Every sizing decision in [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is parameterised by these. T-064, T-065 and T-071 are blocked or unsized until answered |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
-None of these blocks M1. All of them block hardware work.
+None of these blocks M1. All of them block hardware work — except A7, which
+blocks three features that are not in the specification and cannot be sized
+until it is answered.
 
 ## Build and test state
 
@@ -194,6 +236,52 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **Heading no longer reads accel+gyro fusion as an absolute reference.**
+  [#21](https://github.com/hleserg/Attadipa/issues/21): on the Waveshare
+  profile — QMI8658 accel+gyro, no magnetometer, no local GNSS —
+  `CapabilityRegistry` reported `Capability::Heading` as `Ready` from the IMU
+  alone, contradicting the same-day [ADR-0009](docs/adr/0009-heading.md),
+  which rejects accelerometer+gyroscope fusion by name: without a
+  magnetometer, yaw is unobservable, and gyro-only integration drifts without
+  bound
+  ([research-integration.md §9](docs/upstream/research-integration.md),
+  verdict `REJECT`). `tests/test_capability_registry.cpp` had locked the wrong
+  answer in as `test_heading_has_three_sources`, so a green CI could not have
+  caught it. Fixed in `core/src/capability_registry.cpp`: the local `Heading`
+  mapping now has two sources, magnetometer or local GNSS
+  course-over-ground, matching ADR-0007 §4 as corrected here and in
+  [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) §3.4. Waveshare with
+  no node now reports `Unprovisioned`, not `Ready`; a node that actually
+  offers `Heading` still lights it up as `Ready`/`Origin::Node`; the T-Watch
+  GNSS path is unaffected. Mutation-checked: reverting the fix turns five
+  checks red.
+- **Smart tags, tracks and dead reckoning, researched rather than guessed at.**
+  Three owner asks from 2026-08-21, none of which is in the specification —
+  recorded in
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md), with nine
+  tasks (T-063…T-071) and owner question A7. Thirteen agents, every claim that
+  would become a design commitment put through an adversarial refutation, four
+  claims downgraded as a result. The load-bearing answers: of the three tag
+  ecosystems only Apple is reachable at all, and only outside its own app —
+  Google needs registration, an email allowlist and a third-party lab, and its
+  one readable implementation is licensed for Nordic silicon; Samsung's SDK
+  ships for no Espressif part and an unregistered advertisement is inert.
+  OpenHaystack and macless-haystack are AGPL-3.0 and cannot be copied here. An
+  uncalibrated gyroscope offset of ±10 dps is a full 360° of heading error in
+  36 seconds, so a reckoned path is a **disk**, not a line — and on the T-Watch,
+  which has no gyroscope, a turn is not observable at all. A 1000-point track
+  costs 16.5 s of originator airtime over LoRa at 4 bytes a point, which is what
+  makes an online simplifier a requirement rather than an optimisation. Also
+  corrected: the Waveshare carries a **QMI8658C**, whose `CTRL8` is "Reserved:
+  Not Used" — the A's step-counter registers describe a part that is not on this
+  board.
+- **The clock-disagreement detector no longer relies on undefined behaviour.**
+  `WallTime` is signed on purpose and has no subtraction on purpose; the
+  anti-spoofing detector reached through `.unix_seconds` and derived one anyway,
+  which is UB for the range the type deliberately admits — one hostile
+  `receiver_time` reaches `-INT64_MIN`. `clock.h` gains `seconds_between`, and
+  `unix_seconds` is now referenced nowhere outside it. Verified red: the old
+  arithmetic fails the ASan/UBSan build.
 - **The research integration, and the six test suites that came with it.** Core
   gained the types the GNSS integrity work needs — an observation that keeps
   both the normalized value and what the receiver actually said, ten separate

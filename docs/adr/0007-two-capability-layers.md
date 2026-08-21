@@ -214,7 +214,7 @@ are unchanged from ADR-0004 and endorsed by final §8.
 |---|---|
 | `Time` | GNSS · companion · RTC · user |
 | `Position` | local `GnssReceiver` · node |
-| `Heading` | `MagnetometerSensor` (neither board has one) · accel+gyro fusion · GNSS course-over-ground |
+| `Heading` | `MagnetometerSensor` (neither board has one) · GNSS course-over-ground · node |
 | `MeshMessaging` | local `Radio`, *only if* the fitted chip and the pinned MeshCore support it · node |
 | `NotificationRelay` | companion only — and it is a phone-only capability, which is exactly why [ADR-0002](0002-companion-is-optional.md) allows it to be `Unprovisioned` rather than requiring a fallback |
 

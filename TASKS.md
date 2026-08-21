@@ -210,6 +210,273 @@ stale silently. The protocol is
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.
 
+### T-063 · The cheapest way to find a lost watch, costed before the expensive ones
+- **Priority:** P1 — it is the alternative the owner has not been shown, and it
+  is cheaper than every option in
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §1
+- **Dependencies:** [COMPANION_PROTOCOL](docs/mobile/COMPANION_PROTOCOL.md)
+- **Goal:** establish what "the companion phone remembers where it last saw the
+  watch over BLE, and the watch remembers the phone" actually delivers, and what
+  it costs, so the owner can compare it against emulating somebody else's tag
+  network rather than being offered only the expensive answer.
+- **Why it is first:** it needs no Apple ID, no MFi membership, no Google
+  proposal form, no Samsung partnership, no reverse-engineered protocol, no
+  other company's SIG identifier and no server. It is also the only variant that
+  works with the companion this repository has already specified.
+- **What to answer:** what fraction of "I lost it" is answered by a last-seen
+  position and a timestamp; what a phone can record in the background on each
+  platform without being killed; whether the reverse direction (the watch
+  remembers the phone) is useful or noise; and the honest failure mode — the
+  watch left somewhere the phone never went.
+- **Acceptance:** a written comparison against §1.2's Apple route on the same
+  axes — coverage, latency, cost, who has to trust whom — with the recommendation
+  stated either way.
+- **Research status:** not started
+- **Implementation status:** not started — no code comes out of this task
+- **Tests:** none. It produces a research record.
+- **Hardware required:** no.
+
+### T-064 · Beacon profiles, and the scheduler that arbitrates them
+- **Priority:** P3 — **blocked on the owner**, question 1 of
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
+- **Dependencies:** T-063 (which may make it unnecessary), T-068, T-069
+- **Goal:** if the owner wants the watch findable by a crowd-sourced network,
+  build it as a core-owned slot scheduler with one registered profile per
+  ecosystem — never as an application.
+- **The shape, and why it is not an application:** a beacon that stops when the
+  screen goes off is not a beacon; the moment you need it is the moment the
+  device is idle or flat. And several ecosystems at once means several
+  advertising sets on one radio: interval, duty cycle, current and coexistence
+  with Wi-Fi and the node link. Arbitration of a shared radio resource does not
+  live above the platform layer. An application chooses which profiles are on
+  and reads their state; Child Mode's setup is a preset over that, not a second
+  mechanism.
+- **What the research already settled, so it is not re-derived:** two of the
+  three ecosystems are shut before the radio is involved — Google needs
+  registration, an email allowlist and third-party certification, and its only
+  readable implementation is licensed for Nordic silicon only; Samsung's SDK
+  ships for no Espressif part and an unregistered advertisement is inert.
+  OpenHaystack and macless-haystack are AGPL-3.0 and cannot be copied into an
+  MIT repository.
+- **Non-negotiable if it is built at all:** identifier and BLE address rotate
+  together, per DULT — 15 minutes near-owner, 24 hours separated. A tag that
+  does not rotate is a stalking device. A tag that rotates *faster than the
+  platforms' detectors sample* may be one too, and whether that is still true in
+  2026 is `UNKNOWN` (§1.6). Settle it before shipping, not after.
+- **Acceptance:** blocked. Do not start without an answer to §5 question 1.
+- **Research status:** done — §1
+- **Implementation status:** blocked on the owner
+- **Tests:** the profile state machine and the slot scheduler are host-testable;
+  every power and cadence figure is `NOT EXECUTED — HARDWARE REQUIRED`.
+- **Hardware required:** for anything anybody would believe, yes.
+
+### T-065 · `track/`: recording, storage, and a simplifier that fits
+- **Priority:** P2 — **sized by the owner**, question 2 of
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
+- **Dependencies:** T-046 (crash-safe persistence), T-047 (two clocks), T-067
+- **Goal:** a core library that records a track and survives the application
+  being closed, the device sleeping, and a flat battery — because a breadcrumb
+  trail that stops when the screen does is not one.
+- **What has to be decided rather than assumed:**
+  - **every point carries its source and its uncertainty.** A GNSS point, a
+    point reckoned from an anchor and a point with no anchor at all are three
+    different things, and merging them into "a track" is the same lie as a
+    confident arrow with no heading. A reckoned point is a first-class point
+    with a radius, never a bare coordinate;
+  - **the simplifier is online.** Douglas-Peucker needs the whole track in
+    memory — 28.8–43.2 kB at 3600 points — on a device that is recording
+    continuously. Zhao-Saalfeld sleeve-fitting is linear and explicitly does not
+    need all the data at once, and being online means the same routine decimates
+    while recording rather than only before sending;
+  - **coordinate resolution and the sampling rule are one decision**, not two.
+    At 1e-7° a 1.4 m walking step is just outside the one-byte varint window; at
+    1e-5° it is comfortably inside. §3.2 has the table;
+  - what a track's **timebase and datum** are, which nothing currently states,
+    and what happens to a recording when the clock steps.
+- **Acceptance:** host tests with golden vectors; a recording that survives a
+  simulated crash at an arbitrary point; the simplifier's error bound asserted
+  rather than eyeballed.
+- **Research status:** done — §3
+- **Implementation status:** not started
+- **Tests:** host, entirely. Nothing here needs a radio.
+- **Hardware required:** no.
+
+### T-066 · One track, three carriers
+- **Priority:** P2, after T-065
+- **Dependencies:** T-065, T-043, T-050, [ADR-0002](docs/adr/0002-companion-is-optional.md)
+- **Goal:** send and receive a track over the mesh, over BLE directly and over
+  IP — one format, three carriers, and nothing above the capability registry
+  learns which one it came from.
+- **The constraint that shapes it, and it is not negotiable by design:** a
+  1000-point track costs 26 packets and **16.5 s of originator airtime** at
+  4 bytes per point over LoRa at SF7/62.5 kHz; a 3600-point track, 93 packets
+  and 58.9 s. The same track over BLE is one small transfer. So the format must
+  carry **the same track at a fidelity chosen for the carrier** — and a track
+  that arrived simplified must record that it was simplified, or the map lies
+  quietly.
+- **What the research did not settle and this task must:** what a half-received
+  track looks like and whether the receiver knows it is half; resumption when
+  the node goes out of range mid-transfer, which is one of the two most concrete
+  instances of ADR-0004's availability states this project has produced; and
+  what the user is told in either case.
+- **Out of scope, deliberately:** the internet leg beyond the encoding. That
+  needs a server, an account model, TLS on a constrained device, a retention
+  policy, an operator and a privacy policy, none of which exist — §3.4.
+- **Acceptance:** host tests over a simulated lossy link; a transfer interrupted
+  at every chunk boundary resumes or fails legibly, and never silently truncates.
+- **Research status:** done — §3
+- **Implementation status:** not started
+- **Tests:** host. The LoRa airtime figures are `ESTIMATED, NOT EXECUTED`.
+- **Hardware required:** for the airtime numbers, yes.
+
+### T-067 · The reuse ledger owes three records
+- **Priority:** P1 — `CLAUDE.md` requires the record *before* the code, and
+  three subsystems are queued behind these
+- **Dependencies:** none. It is reading.
+- **Goal:** close three gaps the ledger's own section list confirms:
+  - **`xioTechnologies/Fusion`** — read, MIT, © 2021 x-io Technologies.
+    Decision is likely `USE AS DEPENDENCY` for its stationary-bias machinery
+    specifically, and explicitly **not** for heading: without a magnetometer,
+    yaw is unobservable and no filter makes it observable. Record why the
+    narrower use is the useful one.
+  - **track geometry and trajectory compression** — no record exists at all.
+    `psimpl` and `simplify-js` licences are **unchecked**; Zhao-Saalfeld's
+    reference code has no licence stated. Nothing may be depended on first.
+  - **BLE beacons and tag ecosystems** — no record exists. The licences are
+    already established in §1.5 and three of them are blocking; write it down so
+    the next agent does not re-derive it.
+- **And one that is already load-bearing:** `OPEN_QUESTIONS` M14 records that
+  `rweather/Crypto` has never had its licence read, and it is the **active**
+  Ed25519 verify path after M12. A track transfer would ride it. Close M14 here.
+- **Acceptance:** four records using the file's own template, copied whole. A
+  half-filled record is worse than none.
+- **Research status:** partly done — §1.5 and §2.5
+- **Implementation status:** n/a
+- **Tests:** none.
+- **Hardware required:** no.
+
+### T-068 · Can either board sleep on a 32 kHz clock
+- **Priority:** P1 — it is a **14×** lever on idle current and it gates every
+  always-on feature, not only beacons
+- **Dependencies:** none for the reading; a board for the confirmation
+- **Goal:** establish whether the SoC can run its RTC from a 32.768 kHz source
+  on each board. ESP-IDF reports 3.3 mA in light sleep on the main crystal
+  against **230 µA** on a 32 kHz one.
+- **What is already known, and it is tantalising rather than sufficient:** the
+  T-Watch has a PCF8563 emitting 32.768 kHz on `CLKOUT` by default (open-drain,
+  enabled at power-on), `HARDWARE_MATRIX` records the net as present with R126
+  not fitted — and `GPIO15`, which is the S3's `XTAL_32K_P`, is `VERIFIED` as the
+  MAX98357A I²S word clock. So the two may be mutually exclusive on that board.
+  Where `RTC_CLKOUT` terminates is unrecorded. For the Waveshare nothing is
+  established at all, and its PCF85063 is a different part.
+- **Note:** ESP-IDF offers four RTC sources on the S3, not two —
+  `RTC_CLK_SRC_EXT_OSC` accepts an external oscillator with no crystal fitted,
+  which is a route the schematic question does not close.
+- **Acceptance:** a row per board in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md), each with the schematic
+  sheet or the document it came from. The current figure is a HIL plan, not this
+  task.
+- **Research status:** not started
+- **Implementation status:** n/a
+- **Tests:** none.
+- **Hardware required:** no for the documents; yes to confirm a current.
+
+### T-069 · Attadipa read against the tracker threat model, and the law about children
+- **Priority:** P1 — it applies to what is **already specified**, not only to
+  anything new
+- **Dependencies:** none
+- **Goal:** the repository has never asked whether Attadipa is itself a device
+  the unwanted-tracking work exists to detect. `grep -rni "stalk|tracker detect"
+  docs/` returns nothing.
+- **Why it is not hypothetical:** the product as specified is a wearable that
+  reports a person's position to a remote party over a mesh; Child Mode makes
+  that person a six-year-old; DULT's own scope enumerates "Watch" as an
+  accessory category; and T-066's track exchange is a location-sharing channel
+  that has never been read against a threat model at all.
+- **Second half, and it is specific rather than general:** a child's position
+  leaving the device engages GDPR Article 8 (consent, thresholds 13–16 by member
+  state), the UK Age Appropriate Design Code and COPPA. Google scoping Find Hub
+  to "age-eligible users" was read as a feasibility signal; it is a hint that
+  the law here is particular.
+- **Third half, which the research also found missing:** there is no
+  authorization model for who may receive a position and no revocation story.
+  `NODE_PROFILE` N5 already asks what a shared node means; nobody has asked what
+  a node **learns** about a watch that pairs with it, or what happens to that
+  knowledge when the pairing ends.
+- **Acceptance:** a threat-model document naming who can learn a wearer's
+  position, through which path, and what revokes it — plus an explicit statement
+  of which questions are legal advice this project cannot give itself.
+- **Research status:** not started
+- **Implementation status:** n/a
+- **Tests:** none.
+- **Hardware required:** no.
+
+### T-070 · The watch as a tracker detector, which is the opposite feature
+- **Priority:** P2
+- **Dependencies:** T-069
+- **Goal:** scan for an unknown BLE identifier that has stayed near the wearer
+  for an implausibly long time, and say so.
+- **Why it is worth more than emulation for this product:** it **protects** the
+  wearer rather than exposing them, which is the right direction for a
+  child-worn device; it needs no ecosystem's approval, no account and no server;
+  it uses a radio the watch certainly has; and `seemoo-lab/AirGuard` is
+  Apache-2.0, MIT-compatible and actively maintained, so there is something to
+  learn from rather than invent.
+- **The honest limit, stated up front:** a detector that keys off a repeated
+  identifier is defeated by fast rotation, which §1.6 records as an `UNKNOWN` in
+  2026. Do not ship a detector that implies it catches everything.
+- **Acceptance:** host tests over recorded advertisement sequences — a
+  co-travelling identifier is flagged, a shop full of stationary beacons is not.
+- **Research status:** not started
+- **Implementation status:** not started
+- **Tests:** host, over synthetic scan traces.
+- **Hardware required:** for a real scan, yes.
+
+### T-071 · Dead reckoning: odometry, the disk, and what makes it stop
+- **Priority:** P2 — **sized by the owner**, question 3 of
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
+- **Dependencies:** T-060, T-061 (it is the same step detector, not a second
+  one), T-065, [ADR-0009](docs/adr/0009-heading.md)
+- **Goal:** when GNSS is lost, say how far the wearer has walked and where they
+  might be — and say it in a form that cannot be mistaken for a fix.
+- **The shape, and the rule that outranks the feature:** DR consumes odometry,
+  an anchor and — where it exists — `Heading`. **It never manufactures a
+  heading.** [#21](https://github.com/hleserg/Attadipa/issues/21) has just
+  removed accel+gyro fusion from `Capability::Heading` because without a
+  magnetometer yaw is unobservable; dead reckoning must not bring it back
+  through a side door.
+- **What the numbers permit, from §2.1:** an uncalibrated gyroscope offset of
+  ±10 dps is a full 360° of heading error in 36 seconds, and thermal drift alone
+  over a 10 °C swing is 30°/minute. On the T-Watch there is no gyroscope at all,
+  so a turn is **not observable** and the reckoned track is a length, not a
+  shape. The honest output is therefore **a disk** of radius
+  `r₀ + d̂·(1 + ε)` — "somewhere within 300 m of the anchor" — which is drawable
+  and true, rather than a line which is neither.
+- **What must be decided rather than assumed:**
+  - **what expires the disk.** ADR-0011 already says a good-sixty-seconds-ago
+    position is a circle; nothing says when the circle stops being drawn. The
+    radius bound is silently false the moment the wearer boards a bus — steps
+    stop, distance does not;
+  - **it is two devices.** Per OD-1 the GNSS is on the node and the IMU is on
+    the wrist, and the Waveshare has no GNSS at all. The anchor and the step
+    count cross a link that can drop, and so does the stride calibration;
+  - **stride is calibrated against GNSS while GNSS is good** — the difference is
+    <2 % of distance calibrated against −20 % uncalibrated. Until enough good
+    distance has been seen the stride is `Uncalibrated` and says so;
+  - **the gyroscope is a mode, not a service.** It costs 651–908 µA against
+    30–55 µA accel-only, roughly 46× the BMA423's always-on step counting.
+- **The highest-leverage piece:** extend the replay rig to carry IMU samples.
+  The whole reckoning path then becomes deterministic and host-testable, exactly
+  as `classify()` already is, and no part of it waits on a board.
+- **Acceptance:** replayed acceleration traces produce a defensible step count
+  and a disk whose radius is asserted, not eyeballed; the T-Watch profile
+  produces a length and refuses to produce a shape.
+- **Research status:** done — §2
+- **Implementation status:** not started
+- **Tests:** host, through the replay rig. Every accuracy figure that matters in
+  the field is `NOT EXECUTED — HARDWARE REQUIRED`.
+- **Hardware required:** for accuracy, yes. For the logic, no.
+
 ### T-060 · What each IMU actually does about steps
 - **Priority:** P1 — [OD-6](docs/research/OWNER_DECISIONS.md#od-6--the-watch-counts-steps-and-that-is-not-optional)
   makes the pedometer mandatory, and everything about how it is built depends on
@@ -789,6 +1056,224 @@ stale silently. The protocol is
 - **Tests:** the CI job is the test
 - **Hardware required:** no
 
+### T-084 · Deep research: design customisation on wearables
+- **Priority:** P1 — the owner asked for this **instead of** filing the animated
+  watch-face feature, and the sequencing is the point: *"забей на это задание а
+  вместо этого назначь в план исследование по кастомизации дизайна на носимых
+  смарт часах. Че кто и как делает, как реализует, какие-то удачные дизайнерские
+  и программные фишки поищи. Прям нормальный дип ресерч. А по результатам уже
+  назначишь задание себе че делать че не делать."* Tasks come out of the
+  research, not before it.
+- **Dependencies:** T-009 (**done** — it is the substrate that makes any of this
+  possible), and it feeds T-081, T-082 and T-034
+- **Goal:** a written survey, in `docs/research/`, of how wearables actually do
+  customisation — watch faces, themes, icon packs, animations — and what it costs
+  in the places it hurts on this hardware: flash, RAM, battery and the always-on
+  path.
+- **What must be covered**, because these are the questions the product has:
+  - **who does what** — Wear OS watch faces (the XML format and why Google moved
+    to it from executable ones), Apple's complications, Garmin Connect IQ, Fitbit,
+    Pebble's legacy and what its community formats got right, Amazfit/Zepp's
+    downloadable faces, Bangle.js, Flipper Zero's animation packs and its
+    manifest, InfiniTime and Wasp-OS as the LVGL/embedded-scale comparison;
+  - **the format question** — declarative versus executable. Every platform that
+    started with executable faces moved away from it, and the reasons (power,
+    security, review burden, and faces that brick the watch) are the reasons this
+    project would face too;
+  - **animation on a battery** — what an idle animation costs when the panel is
+    an AMOLED versus an IPS, how platforms bound it, and how "raise to wake, play
+    something, then show the time" is done without paying for it all day;
+  - **what stops the layout breaking**, which is the owner's explicit
+    requirement: constraint systems, safe areas, what a face is *not* allowed to
+    control, and what happens on a geometry it was not authored for;
+  - **distribution and trust** — signing, review, sandboxing, size limits, and
+    what a malicious or merely bad pack can do;
+  - **accessibility under customisation** — how, or whether, platforms keep
+    contrast and legibility guarantees when a user installs a stranger's palette.
+    Attadipa already computes contrast, so this is a live question rather than a
+    theoretical one.
+- **Acceptance:** every claim carries a source and a date. Where a platform's
+  behaviour is documented, cite it; where it is folklore, say so. A recommendation
+  section at the end that names the two or three approaches worth copying and the
+  ones worth avoiding, each with the reason. **Then** the follow-on tasks are
+  filed, which is the deliverable the owner actually asked for.
+- **This is a research task.** It produces documentation. A pull request full of
+  new subsystems has been guessed at, not done.
+### T-072 · What a vanilla MeshCore node actually exposes
+- **Priority:** P1 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours).
+  It gates T-073 and T-074 and it is cheap: the source is already cloned and MIT.
+- **Dependencies:** none
+- **Goal:** fill in §1 of
+  [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  from `d92964352441e53b93e8667b802e04f6e072b39e` — which transports the
+  `companion_radio` role exposes (BLE, serial, and whether LAN/TCP exists at the
+  pinned revision), which commands a stock build answers, whether telemetry
+  carries a position, and whether the node's own fix is distinguishable from one
+  relayed in a message.
+- **Acceptance:** every row has an answer with a file and line, or stays
+  `UNKNOWN` with the reason. A reuse-ledger record either way, per
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
+- **This is a research task.** It produces documentation. A pull request full of
+  new subsystems has been guessed at, not done.
+- **Hardware required:** no. Confirming it against a real vanilla node later is a
+  separate task and would be the first honest `OBSERVED` in this area.
+
+### T-073 · Meshtastic as a companion — the licence is the gate
+- **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
+- **Dependencies:** none, but pointless before T-072 establishes the shape a
+  companion client takes here
+- **Goal:** answer one question before any other: **are Meshtastic's protocol
+  definitions licensed separately from its GPL-3.0 firmware?** Then, only if the
+  answer permits, §2 of the research file.
+- **Acceptance:** the licence answer cited from the `protobufs` repository's own
+  `LICENSE` file, not inferred from the firmware's. If it does not permit a
+  client, the deliverable is a `BLOCKED:` with options, not a client written
+  carefully.
+- **Hardware required:** no
+
+### T-074 · More than one mesh provider at once
+- **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
+- **Dependencies:** T-072
+- **Goal:** extend [ADR-0008](docs/adr/0008-mesh-service-providers.md) §3 from two
+  providers to a list. What `availability(MeshMessaging)` means when two are up
+  and one is degraded; deduplicating a message that arrived twice over different
+  providers; and the explicit decision that bridging two networks is a **product
+  decision with an airtime cost**, never a side effect of both being configured.
+- **Acceptance:** an ADR amendment, and applications still have one code path.
+- **Hardware required:** no
+
+### T-075 · The position-source inventory, and what each may claim
+- **Priority:** P1 — [OD-8](docs/research/OWNER_DECISIONS.md#od-8--every-source-of-position-and-the-watch-as-the-instrument)
+- **Dependencies:** none
+- **Goal:** §4 of the research file — seven sources, each with its accuracy where
+  known and its **provenance** always. A fix from the wearer's receiver, one
+  relayed from a node on a roof, and a coordinate lifted from somebody else's
+  message are three different claims and exactly one is about the wearer.
+- **Acceptance:** the provenance column is complete and the user-facing
+  consequence is stated: the screen says which, in words.
+  [ADR-0011](docs/adr/0011-gnss-integrity.md)'s axes are reused, not replaced.
+- **Explicitly out of scope:** any estimator that combines two sources into a
+  third number. Selection and fusion are different features and fusion has no ADR.
+- **Hardware required:** no
+
+### T-076 · Position and data from the phone
+- **Priority:** P2 — [OD-8](docs/research/OWNER_DECISIONS.md#od-8--every-source-of-position-and-the-watch-as-the-instrument)
+- **Dependencies:** T-075
+- **Goal:** what a phone will actually hand over, over which protocol, and what
+  survives its permission model. The owner's sentence to design against is *"they
+  become the primary navigation instrument"* — which fails if the phone offers
+  only an already-smoothed position rather than measurements.
+- **Acceptance:** documented per platform, with what is refused as prominent as
+  what is offered.
+- **Hardware required:** eventually yes, for anything claimed as `OBSERVED`
+
+### T-077 · AGPS is a payload, not a transport
+- **Priority:** P2 — [OD-8](docs/research/OWNER_DECISIONS.md#od-8--every-source-of-position-and-the-watch-as-the-instrument)
+- **Dependencies:** T-051, T-052 — the receivers decide what assistance means
+- **Goal:** define the assistance data once — format, validity window, size, what
+  it actually buys — and answer delivery separately per channel: internet, BLE,
+  LoRa, a companion node. Whether anything useful fits a LoRa budget under the
+  duty cycle is the interesting row, and T-027's airtime accounting answers it.
+- **Acceptance:** §5 of the research file, including the provider's terms. A
+  service that forbids redistribution is not a channel-agnostic payload.
+- **Hardware required:** for the timings, yes
+
+### T-078 · The node's cellular option
+- **Priority:** P3 — [OD-9](docs/research/OWNER_DECISIONS.md#od-9--the-node-may-carry-a-cellular-modem)
+- **Dependencies:** a node part number, which does not exist
+- **Goal:** module class, bands, current while registered, and whether it can be
+  powered down without losing registration. Plus the two things that are not
+  engineering: type approval, and whose name the SIM is in.
+- **Status:** `BLOCKED` — needs-owner. Recorded so the question is not reopened
+  from scratch.
+- **Hardware required:** yes
+
+### T-079 · Positioning from cell towers
+- **Priority:** P3 — [OD-9](docs/research/OWNER_DECISIONS.md#od-9--the-node-may-carry-a-cellular-modem)
+- **Dependencies:** T-078
+- **Goal:** whether a tower database may lawfully be shipped in this product —
+  licence, size, regional coverage, update cadence, four separate answers — and
+  what accuracy may honestly be claimed. Hundreds of metres to kilometres makes
+  it a fallback and an indoor sanity check, not a navigation fix, and the UI must
+  say so.
+- **Also:** a registered device is locatable by the network whether or not the
+  wearer asked. T-069's threat model gains a section, and in Child Mode that has
+  a legal answer in some jurisdictions.
+- **Hardware required:** for accuracy claims, yes
+
+### T-080 · A standing person does not need a new fix
+- **Priority:** P1 — [OD-10](docs/research/OWNER_DECISIONS.md#od-10--a-standing-person-does-not-need-a-new-fix).
+  The largest continuous draw on a watch that has GNSS.
+- **Dependencies:** T-051 and T-052 (what the receivers can do), T-060 (whether
+  the IMU can raise a motion interrupt while the SoC sleeps)
+- **Goal:** duty-cycle the receiver against motion. Ask less often when the
+  wearer is still; hold an accurate, trusted fix rather than re-measuring it; and
+  **do not let that turn the next fix into a cold start**, which is the trap the
+  owner named in the same sentence as the idea.
+- **Acceptance:**
+  - standing still is a hypothesis, not a fact — a rate reduction with a
+    **ceiling**, never an indefinite suspension, and the ceiling is a setting;
+  - a held position is timestamped and its age is on screen. Holding one
+    deliberately must not become the thing that violates ADR-0011's rule against
+    presenting a position nobody observed;
+  - every current and every start time is `MEASURED` or labelled `ESTIMATED`.
+    This whole feature is a claim about a specific module's low-power behaviour,
+    so an unsourced number is the failure mode.
+- **Composes with:** T-071 (dead reckoning covers the interval this opens) and
+  T-077 (assistance held ready is the other half of avoiding the cold start).
+- **Hardware required:** yes, for every number in it
+
+### T-081 · Themes are installable data
+- **Priority:** P2 — [OD-11](docs/research/OWNER_DECISIONS.md#od-11--themes-are-installable-and-the-layout-survives-them),
+  and the owner marked it *обязательно*
+- **Dependencies:** T-009 (**done** — it is the substrate), T-046 (crash-safe
+  persistence), T-034 (icons must be named before they can be replaced)
+- **Goal:** an ADR. A theme is **data**: colour values for the twelve roles in
+  both themes, a font, an icon set. It never carries layout and never carries a
+  pixel count — a theme that could set a padding could break every screen, and
+  *"чтобы всё не поехало"* is exactly the requirement that it cannot.
+- **Acceptance:**
+  - the built-in theme cannot be uninstalled, and a theme that makes the screen
+    unreadable is removable **without reading the screen**. The recovery path is
+    designed first, not after somebody is locked out;
+  - installing a theme is installing untrusted content that arrived over the same
+    links a message does: bounded before it is read, parsed defensively, rejected
+    with a sentence a person can act on;
+  - whether a theme may carry executable content is answered explicitly. The
+    default answer is **no**.
+- **Hardware required:** no
+
+### T-082 · A theme is validated before it is applied
+- **Priority:** P2 — [OD-11](docs/research/OWNER_DECISIONS.md#od-11--themes-are-installable-and-the-layout-survives-them)
+- **Dependencies:** T-081
+- **Goal:** the installation gate, built out of checks that already exist.
+  `contrast_ratio_centi()` in `ui/src/color.cpp` is already the arithmetic; a
+  candidate palette whose text does not clear 4.5:1 on its own page is refused,
+  or applied with the failure stated in words. A candidate font that cannot draw
+  every codepoint in either catalogue is refused outright.
+- **Why it is not optional:** the same arithmetic found two failures in the
+  **owner's own** palette (DESIGN_SYSTEM §3.2) that nobody had noticed by looking.
+  A stranger's palette gets the same check and no more benefit of the doubt.
+- **Acceptance:** host tests with deliberately bad themes — an unreadable one, a
+  font missing one codepoint, an oversized one, a truncated one.
+- **Hardware required:** no
+
+### T-083 · No box characters in any build
+- **Priority:** P1 — a defect that exists **today**, not a feature. The owner saw
+  it in a screenshot: *"в проде конечно же такого быть не должно"*.
+- **Dependencies:** T-032 (**done** — the font pipeline exists and its output has
+  been compiled for the target and measured)
+- **Goal:** the simulator and every future firmware build draw with a **generated
+  subset** rather than LVGL's stock Montserrat, which is Latin-only. Today
+  `×` (U+00D7) renders as `□` on the diagnostic screen, and all six Cyrillic
+  codepoints in the English catalogue's own language names do too.
+- **The check already exists and already reports it** — `report_undrawable_glyphs()`
+  prints seven codepoints on every run, and `tools/l10n/check_glyphs.py` asks the
+  same question at build time. What is missing is that the answer is a warning
+  rather than a failure, and that nothing consumes the pipeline's output.
+- **Acceptance:** zero undrawable codepoints in either catalogue, in every build
+  that renders; the run-time report becomes a **test failure** rather than a line
+  of output; a screenshot of both boards in both locales shows no box.
 ### T-084 · Deep research: design customisation on wearables — **DONE** 2026-08-22
 - [WEARABLE_CUSTOMISATION](docs/research/WEARABLE_CUSTOMISATION.md). Eighteen
   sources, read and dated. Findings that changed the plan: **every platform that
