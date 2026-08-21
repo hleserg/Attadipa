@@ -1455,7 +1455,7 @@ Brand text:
 ```text
 Attadipa
 Attadipa
-GLOW • GUIDE • CONNECT
+INDEPENDENT BY DESIGN
 ```
 
 Use the tagline only where contextually appropriate.

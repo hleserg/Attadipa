@@ -1,6 +1,6 @@
 <p align="center">
   <img src="pics/Banner.png"
-       alt="Attadipa — светлячок со светящимся янтарным брюшком рядом с логотипом, над слоганом GLOW · GUIDE · CONNECT"
+       alt="Attadipa — светлячок со светящимся янтарным брюшком рядом с логотипом, над девизом Independent by design"
        width="820">
 </p>
 
