@@ -436,8 +436,32 @@ jobs:
           display_report: "false"
           additional_permissions: |
             actions: read
+          # --allowedTools is not optional, and its absence is silent.
+          #
+          # Agent mode — which is what `prompt:` selects — sets no default
+          # --allowedTools and no --permission-mode. Tag mode sets both
+          # (src/modes/tag/index.ts); agent mode passes through only what is
+          # written here. The headless SDK has no prompt handler, so every tool
+          # that would fall through to "ask" is DENIED, without an error and
+          # without a line in the log.
+          #
+          # Observed on 2026-08-21, before this line existed: the reviewer ran
+          # for 41 s, exited 0, and posted no comment and set no label; the
+          # implementation agent on issue #5 finished green and produced no
+          # branch and no pull request. Both had read the diff perfectly well
+          # and had no way to say so.
+          #
+          # Verified against anthropics/claude-code-action at the v1 tag
+          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
+          # MCP servers on these names too, and `grep -rn "addLabels" src/`
+          # returns nothing — the action has no label feature at all, so the
+          # label in the prompt below depends entirely on `gh` being allowed.
+          #
+          # This one writes, so it gets Edit, Write and Bash. The boundary that
+          # matters for it is the job's `permissions:` block and the branch it
+          # is checked out on, not the tool list.
           claude_args: |
-            --max-turns 60
+            --max-turns 60 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task"
           prompt: |
             You are the implementation agent for FireflyOS, working from GitHub
             issue #${{ needs.gate.outputs.issue }} in ${{ github.repository }}.

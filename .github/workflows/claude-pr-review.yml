@@ -98,8 +98,33 @@ jobs:
           allowed_non_write_users: ""
           show_full_output: "false"
           display_report: "false"
+          # --allowedTools is not optional, and its absence is silent.
+          #
+          # Agent mode — which is what `prompt:` selects — sets no default
+          # --allowedTools and no --permission-mode. Tag mode sets both
+          # (src/modes/tag/index.ts); agent mode passes through only what is
+          # written here. The headless SDK has no prompt handler, so every tool
+          # that would fall through to "ask" is DENIED, without an error and
+          # without a line in the log.
+          #
+          # Observed on 2026-08-21, before this line existed: the reviewer ran
+          # for 41 s, exited 0, and posted no comment and set no label; the
+          # implementation agent on issue #5 finished green and produced no
+          # branch and no pull request. Both had read the diff perfectly well
+          # and had no way to say so.
+          #
+          # Verified against anthropics/claude-code-action at the v1 tag
+          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
+          # MCP servers on these names too, and `grep -rn "addLabels" src/`
+          # returns nothing — the action has no label feature at all, so the
+          # label in the prompt below depends entirely on `gh` being allowed.
+          #
+          # Read-only over the repository, deliberately: no Write, no Edit, and
+          # the only `gh` verbs are the ones that publish a review. `contents:
+          # read` on the job is still the outer guarantee. This has an opinion
+          # and exactly enough hands to say it out loud.
           claude_args: |
-            --max-turns 40
+            --max-turns 40 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }}
             in ${{ github.repository }}. You did not write this code. Read the
@@ -153,6 +178,17 @@ jobs:
             For each finding give the file and line, why it breaks, and how it
             reproduces. Rank by severity. Say explicitly if you found nothing
             blocking — a review that always finds something is noise.
+
+            **Publish the review — it does not publish itself.** Post your
+            findings as a comment with `gh pr comment`. Nothing you write
+            reaches the pull request otherwise; the action leaves it in the run
+            log, where nobody reads it.
+
+            Begin the comment with the exact line `<!-- firefly-ai-review -->`,
+            and before posting, check with `gh pr view` whether a comment
+            carrying that marker already exists. If one does, edit it rather
+            than adding another — a fresh wall of text on every push is how a
+            review becomes something people scroll past.
 
             Finish by setting exactly one label on this pull request using the
             gh CLI: `ai-review:blocking` if anything must be fixed before merge,
