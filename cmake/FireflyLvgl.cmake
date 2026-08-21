@@ -15,9 +15,11 @@
 #     checkout "v9.5.0" --
 #
 # `--no-single-branch` means GIT_SHALLOW gets one commit off *every* ref, not
-# off one branch. OBSERVED here: lvgl-src passed 254 MB before the attempt was
-# retried. Do not read `GIT_SHALLOW TRUE` on the next line as "a small
-# download"; FIREFLY_LVGL_SOURCE_DIR below is how a developer avoids it.
+# off one branch. Do not read `GIT_SHALLOW TRUE` on the next line as "a small
+# download". MEASURED on a GitHub runner, first run with a cold cache
+# (run 32462413273): the clone took 22.8 s and the `_deps` tree it left behind
+# cached at 366 761 925 B — 350 MiB. On a slow link it is worse than that
+# sounds; FIREFLY_LVGL_SOURCE_DIR below is how a developer avoids it entirely.
 #
 # The tag is there because `git checkout` of a *tag ref* is what that generated
 # script can reliably resolve in such a clone; a bare SHA is fetchable by hand
@@ -28,7 +30,9 @@
 #
 # CI pays that download once and then caches `_deps`, keyed on this file — see
 # .github/workflows/ci.yml. Download cost is a CI concern that belongs in YAML,
-# not a reason to invent a second fetch mechanism in here.
+# not a reason to invent a second fetch mechanism in here. Editing this file
+# invalidates that cache by design: the pin lives here, so a changed pin must
+# not be served a tree fetched under the old one.
 #
 # FIREFLY_LVGL_SOURCE_DIR points the build at a tree that is already on disk,
 # for offline work. It skips the fetch — not the checks, which are the point.

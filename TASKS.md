@@ -538,7 +538,10 @@ Recommended next action:
   `SDL_VIDEODRIVER=dummy`, and each run writes a screenshot that the test
   requires to exist. CI has a second job that installs SDL2, builds with
   `-DFIREFLY_BUILD_SIMULATOR=ON` and uploads the screenshots as artefacts.
-  **OBSERVED** on the development host; the CI job itself has not run yet.
+  **OBSERVED** on the development host **and in CI** — run `32462413273`,
+  2026-08-21, on a runner with no LVGL and a cold cache: clone 22.8 s, commit
+  verified, build, 6/6 tests, both screenshots uploaded, whole job 2 min 2 s.
+  That is the from-scratch path proven, not the incremental one.
 - **Hardware required:** no. Nothing here touched a bus and nothing here is
   evidence about a board.
 - **What it also settled**, because the first CMake file was the last cheap

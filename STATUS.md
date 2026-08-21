@@ -96,7 +96,7 @@ None of these blocks M1. All of them block hardware work.
 | Target | State |
 |---|---|
 | Host / native | builds; four tests pass locally and in CI — smoke, capability registry, and the two halves of the layer-boundary check. The negative half is checked against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
-| Simulator | **builds and runs.** LVGL v9.5.0 + SDL2 2.30.0. Two more tests render it headless at both geometries under `SDL_VIDEODRIVER=dummy` and require a screenshot per geometry. Off by default (`-DFIREFLY_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
+| Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DFIREFLY_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED` |
@@ -134,6 +134,14 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **The specimen sheets showed a bar that is in no font.** `lv_font_conv`'s
+  dump writer marks every pixel outside the advance width in pink, and reading
+  those PNGs as luminance turns the mark into ink. The sheets now read the red
+  channel — which is exactly `255 − coverage` for both of the writer's colours —
+  and lay each line out with the real advance, side bearings and kerning from
+  `font_info.json`. That produced the number D16 was missing: at the same
+  `--size`, Nunito Sans wants 2–4 px more line height than Inter and draws a
+  slightly smaller letter, so the two are not comparable at equal size.
 - **T-032 — the font toolchain, pinned and measured.** `lv_font_conv` 1.5.3
   under MIT read from the tarball rather than the manifest; Inter and Nunito
   Sans under OFL 1.1 read from the `OFL.txt` beside each file; a 181-codepoint
