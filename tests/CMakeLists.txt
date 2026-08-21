@@ -108,6 +108,14 @@ if(Python3_Interpreter_FOUND)
     # property of the source tree rather than of any one screen. Its self-test
     # is registered beside it because a checker nobody has ever seen fail is a
     # checker nobody has tested.
+    # The generated fonts are committed, so something has to notice when their
+    # inputs change. `--check` with no Node and no configured build compares a
+    # digest of charset.py, the size list and the source TTF's hash — which
+    # catches the case that actually happens: somebody adds a codepoint and
+    # forgets that four .c files were built from the old list.
+    add_test(NAME ui_fonts_are_current
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/font/generate_ui_fonts.py --check)
     add_test(NAME ui_no_raw_values
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/ui/check_raw_values.py)
@@ -115,6 +123,7 @@ if(Python3_Interpreter_FOUND)
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/ui/selftest.py)
     set_tests_properties(ui_no_raw_values ui_check_rejects_mistakes
+                         ui_fonts_are_current
                          PROPERTIES LABELS design)
 else()
     add_test(NAME l10n_checks_unavailable

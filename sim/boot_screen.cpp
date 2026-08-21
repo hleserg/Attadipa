@@ -13,6 +13,7 @@
 #include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/ui/color.h"
 #include "attadipa/ui/tokens.h"
+#include "attadipa_fonts.h"
 
 namespace attadipa::sim {
 namespace {
@@ -173,22 +174,25 @@ void make_heading(lv_obj_t* parent, const char* text, const lv_font_t* font)
 // The one place in this file that still holds bare numbers, and the reason is
 // in tokens.h: `TypeRole` deliberately carries no sizes, because final §51 wants
 // licence, Cyrillic coverage, legibility at real pixel size and generated flash
-// size checked before a face is adopted, and none of the four has been. Until
-// then the simulator draws in Montserrat, which comes in fixed sizes that no
-// amount of Dp arithmetic can bend.
+// size checked before a face is adopted, and none of the four has been.
 //
-// So this is a scaffold and is written as one: a role goes in, one of the sizes
-// LVGL actually has comes out. When the type scale exists it replaces the body
-// of this function and no call site changes.
+// So this is a scaffold and is written as one: a role goes in, one of the four
+// generated sizes comes out. When the type scale exists it replaces the body of
+// this function and no call site changes.
+//
+// The fonts are ours rather than LVGL's built-ins, and that is not a preference.
+// `lv_font_montserrat_14` is generated from `-r 0x20-0x7F,0xB0,0x2022` — Latin
+// only — so `×` draws as a box and every Cyrillic letter draws as a box. See
+// assets/fonts/README.md.
 const lv_font_t* pick_font(TypeRole role, std::uint16_t width_px)
 {
     const bool large = width_px >= 400;
     switch (role) {
         case TypeRole::Display:
         case TypeRole::Title:
-            return large ? &lv_font_montserrat_28 : &lv_font_montserrat_16;
+            return large ? &attadipa_montserrat_28 : &attadipa_montserrat_16;
         default:
-            return large ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
+            return large ? &attadipa_montserrat_20 : &attadipa_montserrat_14;
     }
 }
 
@@ -209,6 +213,10 @@ void build_boot_screen(const platform::HardwareInventory& inventory,
     const lv_font_t*    title = pick_font(TypeRole::Title, width);
 
     lv_obj_t* screen = lv_screen_active();
+    // The screen's own default, so that a label created without an explicit font
+    // still draws every codepoint, and so that the undrawable-glyph check has
+    // something real to ask about. LVGL's default is its Latin-only Montserrat.
+    lv_obj_set_style_text_font(screen, font, 0);
     lv_obj_set_style_bg_color(screen, paint(ColorRole::BackgroundPrimary), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(screen, px(Space::Sm), 0);
