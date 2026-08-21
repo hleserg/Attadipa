@@ -789,50 +789,65 @@ stale silently. The protocol is
 - **Tests:** the CI job is the test
 - **Hardware required:** no
 
-### T-084 · Deep research: design customisation on wearables
-- **Priority:** P1 — the owner asked for this **instead of** filing the animated
-  watch-face feature, and the sequencing is the point: *"забей на это задание а
-  вместо этого назначь в план исследование по кастомизации дизайна на носимых
-  смарт часах. Че кто и как делает, как реализует, какие-то удачные дизайнерские
-  и программные фишки поищи. Прям нормальный дип ресерч. А по результатам уже
-  назначишь задание себе че делать че не делать."* Tasks come out of the
-  research, not before it.
-- **Dependencies:** T-009 (**done** — it is the substrate that makes any of this
-  possible), and it feeds T-081, T-082 and T-034
-- **Goal:** a written survey, in `docs/research/`, of how wearables actually do
-  customisation — watch faces, themes, icon packs, animations — and what it costs
-  in the places it hurts on this hardware: flash, RAM, battery and the always-on
-  path.
-- **What must be covered**, because these are the questions the product has:
-  - **who does what** — Wear OS watch faces (the XML format and why Google moved
-    to it from executable ones), Apple's complications, Garmin Connect IQ, Fitbit,
-    Pebble's legacy and what its community formats got right, Amazfit/Zepp's
-    downloadable faces, Bangle.js, Flipper Zero's animation packs and its
-    manifest, InfiniTime and Wasp-OS as the LVGL/embedded-scale comparison;
-  - **the format question** — declarative versus executable. Every platform that
-    started with executable faces moved away from it, and the reasons (power,
-    security, review burden, and faces that brick the watch) are the reasons this
-    project would face too;
-  - **animation on a battery** — what an idle animation costs when the panel is
-    an AMOLED versus an IPS, how platforms bound it, and how "raise to wake, play
-    something, then show the time" is done without paying for it all day;
-  - **what stops the layout breaking**, which is the owner's explicit
-    requirement: constraint systems, safe areas, what a face is *not* allowed to
-    control, and what happens on a geometry it was not authored for;
-  - **distribution and trust** — signing, review, sandboxing, size limits, and
-    what a malicious or merely bad pack can do;
-  - **accessibility under customisation** — how, or whether, platforms keep
-    contrast and legibility guarantees when a user installs a stranger's palette.
-    Attadipa already computes contrast, so this is a live question rather than a
-    theoretical one.
-- **Acceptance:** every claim carries a source and a date. Where a platform's
-  behaviour is documented, cite it; where it is folklore, say so. A recommendation
-  section at the end that names the two or three approaches worth copying and the
-  ones worth avoiding, each with the reason. **Then** the follow-on tasks are
-  filed, which is the deliverable the owner actually asked for.
-- **This is a research task.** It produces documentation. A pull request full of
-  new subsystems has been guessed at, not done.
+### T-084 · Deep research: design customisation on wearables — **DONE** 2026-08-22
+- [WEARABLE_CUSTOMISATION](docs/research/WEARABLE_CUSTOMISATION.md). Eighteen
+  sources, read and dated. Findings that changed the plan: **every platform that
+  shipped executable watch faces has moved away from them and none has moved
+  back**; Wear OS publishes the only hard numbers anybody publishes (15 % of
+  pixels lit in ambient, 10 MB ambient / 100 MB interactive assets, 12 sp
+  essential text, **48 dp touch targets**); Flipper's passive/active split is the
+  power model and the delight in one mechanism, with wrist-raise as the trigger
+  the owner had already named; and **no platform validates that a user-installed
+  face can be read** — they ship system-level overrides instead, which is a gap
+  Attadipa can fill for free because the contrast arithmetic already exists.
+- Filed out of it: T-085, T-086, T-087. And one finding against existing code:
+  `touch.min.adult` is 44 dp and Wear OS requires 48.
+- **Original brief, kept:** *"Прям нормальный дип ресерч. А по результатам уже
+  назначишь задание себе че делать че не делать."*
+
+### T-085 · `touch.min.adult`: 44 dp or 48 dp
+- **Priority:** P2 — a token that is already in the code and already wrong on one
+  of two sources
+- **Dependencies:** none
+- **Goal:** decide. 44 dp comes from the general touch-target literature the
+  160 dpi reference belongs to; Wear OS's own quality guideline (WO-V2) says
+  **48 × 48 dp** for a wrist. On the T-Watch that is 72 px versus 79 px — 7.0 mm
+  against 7.6 mm — and on a 240 px panel four extra pixels per side is a real
+  layout cost.
+- **Acceptance:** one number, with the reason written down, and `ChildMode`
+  re-derived from it rather than left at 56.
+- **Hardware required:** a finger and a panel, so **yes** for the final answer
+
+### T-086 · Themes and packs: the format, informed by the survey
+- **Priority:** P2 — supersedes the shape of T-081, which was written before the
+  survey existed
+- **Dependencies:** T-084 (**done**), T-081, T-082
+- **Goal:** the format decision, taking the four ideas the survey says are worth
+  copying: declarative and never executable; **limits that live in the format**
+  rather than in a style guide (Flipper's `Duration` and `Active cooldown`,
+  Wear's 15 % ambient rule); a **validator shipped with the format** and run at
+  install time on the device; and Bangle.js's app-loader shape for distribution —
+  a static index, no store, no server, self-hostable.
+- **Acceptance:** an ADR that answers what a pack may contain, what it may never
+  contain, and what the device does with one it does not like.
 - **Hardware required:** no
+
+### T-087 · Living watch faces: the passive/active model
+- **Priority:** P2 — this is the *"чтобы детишкам нравилось"* feature, and the
+  survey says it is a power model before it is a feature
+- **Dependencies:** T-086, and the wrist-raise gesture, which needs T-060
+- **Goal:** the animation model. A cheap passive loop, an expensive active
+  sequence played on wrist-raise, a cooldown so it cannot re-trigger continuously,
+  and a duration so one pack cannot pin itself on screen. Flipper recommends
+  **1–8 fps** on a device with no battery anxiety at all, which is the number to
+  argue against rather than from.
+- **Also:** the memory arithmetic every platform uses takes the **union of frame
+  bounding boxes**, so a small moving element is cheap and a full-screen one is
+  not, however little of it changes. That shapes the format, not just the guidance.
+- **Measure before designing:** what an idle animation costs on an IPS 240 × 240
+  and on a 410 × 502 AMOLED are two different answers, and the AMOLED's depends
+  on which pixels. `UNKNOWN`, hardware required.
+- **Hardware required:** yes, for every power number
 
 ## BLOCKED
 
