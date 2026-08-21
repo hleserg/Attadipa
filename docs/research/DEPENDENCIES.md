@@ -23,6 +23,9 @@ Required for every entry:
 | **LVGL** | **v9.5.0** — `85aa60d18b3d5e5588d7b247abf90198f07c8a63`, 2026-02-18 | MIT | tagged releases only. Retest both geometries, the font-subset size and asset regeneration on every bump |
 | **MeshCore** | `d92964352441e53b93e8667b802e04f6e072b39e`, 2026-08-14, tag `companion-v1.17.1` | MIT | upstream is active. Re-run the radio census (`grep RADIO_CLASS variants/`) on every bump — [ADR-0003](../adr/0003-radio-not-lora.md) is *about* this revision |
 | **RadioLib** | `510e00cfb05bbc3c2b7b524262785454944adb6e`, tag **7.7.1**, 2026-08-13 | MIT | follows MeshCore's pin |
+| **`lv_font_conv`** | **1.5.3** — npm, integrity `sha512-0xJQThBOw2ipt…TuBIbQ==` | MIT (read from the tarball, not the manifest) | it generates a build artefact that ships in flash, so a bump means re-measuring the subset. [FONT_MEASUREMENTS](FONT_MEASUREMENTS.md) |
+| **Inter** | `Inter[opsz,wght].ttf`, `google/fonts`, SHA-256 `29160a80…c559031` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; used **unmodified**, because instancing it costs its kerning |
+| **Nunito Sans** | `NunitoSans[YTLC,opsz,wdth,wght].ttf`, `google/fonts`, SHA-256 `f934d714…ae2491d` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; must be instanced to `wght=400`, because its default is 200 |
 
 MeshCore and RadioLib are pinned as *read* rather than as *linked* — nothing
 compiles against them yet. The pin is what makes ADR-0003's compatibility matrix
@@ -41,7 +44,7 @@ the image assets. Nothing in M1 can start while it floats.
 | Desktop simulator backend | **in-tree** — `src/drivers/sdl/` (display, mouse, keyboard) and `src/draw/sdl/` |
 | Reproducible image conversion | `scripts/LVGLImage.py` — official and scriptable, which final §80 requires and hand-maintained C arrays cannot give |
 | Alpha-capable image format | `LV_COLOR_FORMAT_RGB565A8` (`src/misc/lv_color.h:156`) — what the mascot art needs |
-| Font subsetting and compression | `lv_font_fmt_txt` with compressed bitmaps. **The converter is `lv_font_conv`, a separate npm tool — not vendored and not yet pinned** |
+| Font subsetting and compression | `lv_font_fmt_txt` with compressed bitmaps. The converter is `lv_font_conv`, a separate npm tool — pinned above at 1.5.3, and measured against this LVGL |
 | Both vendor BSPs | LilyGoLib ships `lv_conf.h` and `lv_conf.h.v8`; Waveshare's examples use LVGL 9 |
 
 **Rejected — LVGL 8.** Both BSPs still accept it and it is the conservative
@@ -69,12 +72,13 @@ Two things checked rather than assumed, on 2026-08-21:
 |---|---|
 | `85aa60d18b3d5e5588d7b247abf90198f07c8a63` **is** v9.5.0 | `git ls-remote https://github.com/lvgl/lvgl.git refs/tags/v9.5.0` returns that SHA, and its commit message is `chore: release v9.5.0 (#9753)` |
 | GitHub serves a shallow fetch of a bare SHA | `git fetch --depth 1 origin <sha>` succeeds — by hand. It is **not** what FetchContent emits, which is why the build clones the tag instead |
-| `GIT_SHALLOW TRUE` is **not** a small download | CMake 3.28 generates `git clone --depth 1 --no-single-branch`: one commit off *every* ref. Measured on the CI path — `_deps/lvgl-src` exceeds 160 MB. Recorded because the opposite is the natural assumption, and this file existing to prevent exactly that |
+| `GIT_SHALLOW TRUE` is **not** a small download | CMake 3.28's generated `lvgl-populate-gitclone.cmake` runs `clone --no-checkout --depth 1 --no-single-branch --progress` and then `checkout "v9.5.0" --`. One commit off *every* ref, not off one branch. OBSERVED on the CI path here: `_deps/lvgl-src` passed **254 MB** before the attempt was retried. Recorded because the opposite is the natural reading of `GIT_SHALLOW`, and preventing exactly that is what this file is for |
 
-**Not yet verified, and it is the part that can still surprise:** the measured
-size of a Latin + Cyrillic subset at the sizes the design system needs, and
-`lv_font_conv`'s own version and licence. The library is pinned; the font
-toolchain is a second decision that has to be made against it (T-032).
+**Since answered (T-032):** the subset is 181 codepoints, `lv_font_conv` is
+pinned at 1.5.3 under MIT, and a Latin + Cyrillic subset has been generated and
+compiled with the ESP32-S3 toolchain at seven sizes and three bit depths —
+[FONT_MEASUREMENTS](FONT_MEASUREMENTS.md). What is still open is which font,
+and render performance.
 
 ## Under consideration
 
@@ -113,29 +117,30 @@ toolchain is a second decision that has to be made against it (T-032).
   which is how CI renders frames with no display attached. **OBSERVED** —
   the CI job writes a screenshot per geometry and fails if either is missing.
 
-### `lv_font_conv` — the font converter
-
-- **Status:** not pinned. It is an npm tool from the LVGL organisation, outside
-  the LVGL repository, and it is the only supported way to generate a subset
-  font. Its licence must be checked before it enters the build (T-032).
-- **The toolchain to run it exists**, which was worth checking before designing
-  a pipeline around it: Node **v24.19.0** and npm **11.17.0** are installed on
-  the development host. That removes the failure mode where the font pipeline
-  is designed and only then found to be unrunnable — it does not pin anything,
-  and it says nothing about CI, which has no Node step yet.
-- **Why it matters more than it looks:** the generated font is a build artefact
-  that ships in flash. Its size is a budget line, and its glyph coverage is a
-  CI check ([ADR-0010](../adr/0010-localization.md) §3).
-
 ### Fonts — Nunito Sans and Inter
 
-- **Status:** not pinned, not verified. The owner's design boards specify both.
-  Final §51 requires licence, Cyrillic coverage, legibility at real pixel size
-  and generated size to be checked before either is adopted — and Cyrillic
-  coverage is the one that can eliminate a font outright.
-- Both are widely distributed under the SIL Open Font License, which is
-  compatible; that has **not** been confirmed from the font files this project
-  would embed, which is the only version of the check that counts.
+Pinned above; measured in [FONT_MEASUREMENTS](FONT_MEASUREMENTS.md). **Neither
+is chosen** — the numbers a choice needs now exist, and the choice itself is a
+design decision (OPEN_QUESTIONS D16).
+
+The three facts that change what "pick a font" means:
+
+- **Nunito Sans has no arrows.** U+2190–U+2193 are absent, and `lv_font_conv`
+  refuses the range rather than substituting. Either the arrows become icons
+  from the image pipeline (T-034), or Nunito Sans is not the whole answer.
+- **Both ship as variable fonts only**, and the converter takes the *default*
+  instance. Inter's default is Regular 400. Nunito Sans's is **200,
+  ExtraLight** — converting the downloaded file gives a font nobody chose.
+- **Instancing Inter destroys its kerning.** Measured: 1 012 B of kern data
+  before the `fontTools` round-trip, exactly zero after, at its own default
+  weight. So the pipeline instances only when it must.
+
+Licences were read from the `OFL.txt` shipped beside each font file rather than
+from a distributor's description, which is the only version of that check that
+counts.
+
+Still **UNKNOWN**: render performance. Final §51 asks for it; it needs the
+simulator driving timed frames, or a board.
 
 ### Radio driver
 

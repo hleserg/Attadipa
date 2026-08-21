@@ -24,35 +24,9 @@ research status · implementation status · tests · hardware required.
 
 ## NOW
 
-### T-032 · Pin LVGL, and the font toolchain that comes with it
-- **Priority:** P0
-- **Dependencies:** none
-- **Goal:** remove the one dependency decision that blocks all of M1 — final
-  §51, §76 and §77 make the LVGL pin a prerequisite for both the Cyrillic font
-  subset and the image assets.
-- **Acceptance:** LVGL pinned with reasoning and rejected alternatives; the font
-  converter pinned with a checked licence; a Latin + Cyrillic subset generated
-  at the design system's sizes and its flash cost **measured**, not estimated.
-- **Research status:** done for the library
-- **Implementation status:** **half done.** LVGL v9.5.0 is pinned (`85aa60d`,
-  MIT), fetched by `cmake/FireflyLvgl.cmake` at the commit, version-checked at
-  configure time, and **building** — see
-  [DEPENDENCIES](docs/research/DEPENDENCIES.md). `lv_font_conv` is **not**
-  pinned: it is a separate npm tool, its licence is unchecked, and it is the
-  only supported way to generate a subset font. Node v24.19.0 and npm 11.17.0
-  are on the development host, so the tool can at least be run; CI has no Node
-  step. **This half is now the critical path for M1.**
-- **Tests:** the subset builds; the generated size is recorded in
-  [RESOURCE_BUDGET](docs/architecture/RESOURCE_BUDGET.md)
-- **Hardware required:** no
-- **Note:** the library was the easy half. The font toolchain is the half that
-  can still surprise, because Cyrillic coverage can eliminate a font outright.
-
----
-
 ### T-033 · Localization: `tr()`, catalogues, and the CI that guards them
 - **Priority:** P0
-- **Dependencies:** T-032
+- **Dependencies:** T-032 (**done**)
 - **Goal:** implement [ADR-0010](docs/adr/0010-localization.md) — the `StringId`
   enum, the generator, both catalogues, runtime switching, three CI checks.
 - **Acceptance:** a screen can be written with no user-facing literal; language
@@ -71,7 +45,7 @@ research status · implementation status · tests · hardware required.
 ### T-009 · Design tokens in code
 - **Priority:** P0 — raised from P1; final §58 puts tokens in the first slice,
   before the Clock
-- **Dependencies:** T-032; T-008 (**done**)
+- **Dependencies:** T-032 (**done**); T-008 (**done**)
 - **Goal:** the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md) — colour,
   spacing, radius, typography, motion, icon size, image size, elevation, sound
   cue, haptic pattern (final §54).
@@ -91,7 +65,7 @@ research status · implementation status · tests · hardware required.
 
 ### T-034 · Image asset pipeline
 - **Priority:** P0
-- **Dependencies:** T-032
+- **Dependencies:** T-032 (**done**)
 - **Goal:** reproducible conversion from cleaned source art to board-appropriate
   LVGL assets — `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`
   (final §45), using LVGL 9.5.0's `scripts/LVGLImage.py`.
@@ -505,6 +479,46 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-032 · Pin LVGL, and the font toolchain that comes with it — **DONE**
+- **Closed:** 2026-08-21
+- **What was delivered:** LVGL v9.5.0 pinned at `85aa60d` with the commit
+  verified after the clone, and the font toolchain pinned and *measured* rather
+  than assumed. `lv_font_conv` **1.5.3**, MIT — read from the tarball's own
+  `LICENSE`, not from the manifest, along with all ten bundled dependencies
+  (one of which is Python-2.0, not MIT, and is recorded as such). Inter and
+  Nunito Sans recorded under OFL 1.1, checked from the `OFL.txt` beside each
+  font file.
+- **The measurement:** 181 codepoints in 18 ranges, defined once in
+  [`tools/font/charset.py`](tools/font/charset.py) so the font build and the
+  localization check cannot disagree. Generated at seven sizes × three bit
+  depths × compressed and raw, compiled with `xtensa-esp32s3-elf-gcc 14.2.0` at
+  `-Os`, and read as `.rodata` — 84 measurements in
+  [`docs/research/font-sizes.csv`](docs/research/font-sizes.csv), written up in
+  [FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md).
+- **What running it found, that reading about it would not have:**
+  - **Nunito Sans has no arrows** (U+2190–U+2193). `lv_font_conv` refuses the
+    range rather than substituting. Opened as D16, because it turns a font
+    preference into a decision about where arrows come from.
+  - **Both families ship as variable fonts only**, and the converter takes the
+    *default* instance — which for Nunito Sans is **ExtraLight 200**. Converting
+    the downloaded file silently produces a font nobody chose.
+  - **Instancing Inter destroys its kerning**: 1 012 B of kern data before the
+    `fontTools` round-trip at its own default weight, exactly zero after, and
+    `optimize=False` does not help. So the tool now copies a font unchanged when
+    the requested location is already the default, and says so.
+  - **bpp 1 ignores compression entirely** — identical bytes with and without,
+    at every size, for both fonts.
+- **Legibility** checked at 14/16/20/28 px through `lv_font_conv`'s own `dump`
+  rasterisation, in **both themes** —
+  [`docs/ui/specimens/`](docs/ui/specimens/). Cyrillic including Ё is legible at
+  14 px at bpp 4 in both families.
+- **Deliberately not closed by this task:** render performance (D17, final §51
+  asks for it and it needs timed frames), and which font (D16, a design decision
+  that is the owner's).
+
+---
+
 
 ### T-008 · Simulator skeleton with both geometries — 2026-08-21
 - **Priority:** P0

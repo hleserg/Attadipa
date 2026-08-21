@@ -15,7 +15,8 @@ items closed plus one the review did not list
 ## Current implementation
 
 **Firefly has code.** As of 2026-08-21 the repository builds three libraries, a
-simulator and six tests.
+simulator and six tests, and has a font pipeline whose output has been compiled
+for the target and measured.
 
 | Library | What it is | Links |
 |---|---|---|
@@ -37,9 +38,6 @@ so in its own source.
 
 ## Next ready
 
-- **T-032** — the half of the LVGL decision that is left, and now the critical
-  path: pin `lv_font_conv`, check its licence, and **measure** a Latin +
-  Cyrillic subset at the design system's sizes.
 - **T-033** — `tr()`, both catalogues, and the three CI checks that
   [ADR-0010](docs/adr/0010-localization.md) §3 treats as the mechanism rather
   than as polish. The third of them — a catalogue entry the generated font
@@ -54,7 +52,6 @@ One to two steps ahead, per final §68 — not twenty.
 
 | | Subject | For |
 |---|---|---|
-| NEXT | `lv_font_conv` — licence, and the measured size of a Latin + Cyrillic subset at the sizes the design system needs | T-032, T-033 |
 | NEXT | `scripts/LVGLImage.py` — RGB565A8, compression, and flash cost per asset | T-034 |
 | AFTER NEXT | LVGL 9.5 on QSPI AMOLED: draw-buffer strategy and realistic frame rate at 410 × 502 | M2, and the PSRAM conflict D12 |
 
@@ -90,6 +87,7 @@ been the expensive order.
 | A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Firefly node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
+| D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
 None of these blocks M1. All of them block hardware work.
 
@@ -136,6 +134,15 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **T-032 — the font toolchain, pinned and measured.** `lv_font_conv` 1.5.3
+  under MIT read from the tarball rather than the manifest; Inter and Nunito
+  Sans under OFL 1.1 read from the `OFL.txt` beside each file; a 181-codepoint
+  Latin + Cyrillic subset generated at seven sizes and compiled with the
+  ESP32-S3 toolchain, so its flash cost is a measurement and not an estimate
+  ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)). Running the
+  pipeline found three things reading about it would not have: Nunito Sans has
+  no arrows, both families' variable defaults are not the weight you would
+  assume, and instancing Inter destroys its kerning.
 - **T-008 — the simulator, and the target graph underneath it.** Both
   geometries from one binary, headless in CI, a screenshot per geometry as the
   artefact a design review needs. The first CMake file was the last cheap moment
