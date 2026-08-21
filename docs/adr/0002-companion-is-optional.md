@@ -10,7 +10,7 @@ Date: 2026-08-21
 
 > **Correction notice.** The decision below was stated about "the companion" and
 > meant "the phone". Within hours the distinction became load-bearing: the
-> project owner established that a separate **Firefly node** exists, carrying
+> project owner established that a separate **Attadipa node** exists, carrying
 > LoRa, GNSS and an ESP32, and that a watch attached to one runs the same
 > applications a LoRa watch runs
 > ([OWNER_DECISIONS OD-1](../research/OWNER_DECISIONS.md)). The node *does*
@@ -80,11 +80,11 @@ Concretely, and testably:
 
 ## What this ADR does not cover
 
-**A Firefly node is not a companion, and the rule above does not apply to it.**
+**An Attadipa node is not a companion, and the rule above does not apply to it.**
 The line is not "on the board versus off it" — that line would forbid the
 product. It is this:
 
-| | Phone | Firefly node |
+| | Phone | Attadipa node |
 |---|---|---|
 | What it is | a general-purpose device the user already owns | a dedicated device bought for this system |
 | Who controls the software | Google, the OEM, an app store, a battery optimiser | this project |

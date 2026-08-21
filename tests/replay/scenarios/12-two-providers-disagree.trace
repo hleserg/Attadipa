@@ -1,6 +1,6 @@
 scenario the watch and the node it is paired with report different places
 describe ADR-0011 §4. The watch may have no receiver of its own at all — the
-describe Waveshare board has none — so a Firefly node supplies the position.
+describe Waveshare board has none — so an Attadipa node supplies the position.
 describe When a second source disagrees, that is evidence about both of them
 describe and belongs to neither, so it is reported as its own reason rather
 describe than resolved by picking a favourite.

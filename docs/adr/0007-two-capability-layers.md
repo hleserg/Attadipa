@@ -33,7 +33,7 @@ is* — was being violated by the very enum meant to enforce it.
 
 `has()` is where the damage shows. Final §7 poses it exactly:
 
-> A Waveshare watch contains no GNSS receiver, but a Firefly Node can provide
+> A Waveshare watch contains no GNSS receiver, but an Attadipa Node can provide
 > position. So what does `has(Capability::Gnss)` mean? If false, the UI may hide
 > the application even though attaching a node makes it usable. If true, `has`
 > no longer means physical presence.
@@ -197,7 +197,7 @@ The three names are not synonyms and the difference is the whole point:
 So a Waveshare board with no node attached reports
 `supports(Position) == true` and `availability(Position) == Unprovisioned`.
 The Navigator is in the launcher, and opening it explains that it needs a
-Firefly node. That is the behaviour final §7 asks for, and neither answer
+Attadipa node. That is the behaviour final §7 asks for, and neither answer
 `has()` could have given produces it.
 
 `Unsupported` is reserved for *no configuration of this device can provide it*

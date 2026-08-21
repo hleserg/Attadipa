@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#FFF6E8">
   <meta name="color-scheme" content="light dark">
-  <title>Firefly OS — Glow · Guide · Connect</title>
-  <meta name="description" content="Firefly OS is an open-source wearable firmware/application platform for ESP32-S3: mesh messaging, offline navigation, clean app APIs and a product-grade UI.">
+  <title>Attadipa — Glow · Guide · Connect</title>
+  <meta name="description" content="Attadipa is an open-source wearable firmware/application platform for ESP32-S3: mesh messaging, offline navigation, clean app APIs and a product-grade UI.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Firefly OS — Glow · Guide · Connect">
+  <meta property="og:title" content="Attadipa — Glow · Guide · Connect">
   <meta property="og:description" content="An open, hardware-aware wearable platform for mesh messaging, offline navigation and useful apps without depending on a phone.">
-  <meta property="og:image" content="https://hleserg.github.io/FireflyOS/assets/og-card.jpg">
-  <meta property="og:url" content="https://hleserg.github.io/FireflyOS/">
+  <meta property="og:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
+  <meta property="og:url" content="https://hleserg.github.io/Attadipa/">
   <meta name="twitter:card" content="summary_large_image">
-  <link rel="canonical" href="https://hleserg.github.io/FireflyOS/">
+  <link rel="canonical" href="https://hleserg.github.io/Attadipa/">
   <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -21,7 +21,7 @@
     (() => {
       try {
         const q = new URL(location.href).searchParams.get('lang');
-        const saved = localStorage.getItem('firefly-site-lang');
+        const saved = localStorage.getItem('attadipa-site-lang');
         const langs = navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
         let detected = 'en';
         for (const value of langs) {
@@ -44,9 +44,9 @@
 
   <header class="topbar" id="top">
     <div class="shell nav-shell">
-      <a class="brand" href="#top" aria-label="Firefly OS home">
+      <a class="brand" href="#top" aria-label="Attadipa home">
         <img src="assets/favicon.png" alt="" width="34" height="34">
-        <span>Firefly <b>OS</b></span>
+        <span>Attadipa</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
         <a href="#why"><span class="lang-en">Why</span><span class="lang-ru">Зачем</span></a>
@@ -59,7 +59,7 @@
           <button type="button" data-set-lang="en" aria-pressed="true">EN</button>
           <button type="button" data-set-lang="ru" aria-pressed="false">RU</button>
         </div>
-        <a class="github-mini" href="https://github.com/hleserg/FireflyOS" target="_blank" rel="noreferrer" aria-label="Firefly OS on GitHub">
+        <a class="github-mini" href="https://github.com/hleserg/Attadipa" target="_blank" rel="noreferrer" aria-label="Attadipa on GitHub">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.1 1.2a10.7 10.7 0 0 1 5.6 0C14.8 5 15.8 5.3 15.8 5.3c.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.8 5.4-5.5 5.7.4.4.8 1.1.8 2.1v3.1c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .8Z"/></svg>
         </a>
       </div>
@@ -78,14 +78,14 @@
           <span class="lang-en" lang="en">Useful when your phone isn't.</span>
           <span class="lang-ru" lang="ru">Часы, которые полезны без телефона.</span>
         </h1>
-        <p class="hero-lead lang-en" lang="en">Firefly OS is an open firmware/application platform being built for ESP32-S3 wearables: mesh messaging, offline navigation, clean app APIs, and a UI meant to feel like a real product.</p>
-        <p class="hero-lead lang-ru" lang="ru">Firefly OS — открытая прошивка и платформа приложений для носимых устройств на ESP32-S3: mesh-связь, офлайн-навигация, чистые API для приложений и интерфейс, который должен ощущаться как настоящий продукт.</p>
+        <p class="hero-lead lang-en" lang="en">Attadipa is an open firmware/application platform being built for ESP32-S3 wearables: mesh messaging, offline navigation, clean app APIs, and a UI meant to feel like a real product.</p>
+        <p class="hero-lead lang-ru" lang="ru">Attadipa — открытая прошивка и платформа приложений для носимых устройств на ESP32-S3: mesh-связь, офлайн-навигация, чистые API для приложений и интерфейс, который должен ощущаться как настоящий продукт.</p>
         <div class="hero-actions">
-          <a class="btn primary" href="https://github.com/hleserg/FireflyOS" target="_blank" rel="noreferrer">
+          <a class="btn primary" href="https://github.com/hleserg/Attadipa" target="_blank" rel="noreferrer">
             <span class="lang-en">View on GitHub</span><span class="lang-ru">Открыть GitHub</span>
             <span aria-hidden="true">↗</span>
           </a>
-          <a class="btn secondary" href="https://github.com/hleserg/FireflyOS/blob/main/STATUS.md" target="_blank" rel="noreferrer">
+          <a class="btn secondary" href="https://github.com/hleserg/Attadipa/blob/main/STATUS.md" target="_blank" rel="noreferrer">
             <span class="lang-en">Current status</span><span class="lang-ru">Текущий статус</span>
           </a>
         </div>
@@ -93,20 +93,20 @@
           <span>MIT</span><i></i><span>ESP-IDF / FreeRTOS</span><i></i><span>MeshCore</span><i></i><span>EN + RU</span>
         </div>
       </div>
-      <div class="hero-art reveal reveal-delay" aria-label="Firefly OS brand banner">
-        <img src="assets/banner.webp" width="1600" height="800" alt="Firefly OS — Glow, Guide, Connect">
+      <div class="hero-art reveal reveal-delay" aria-label="Attadipa brand banner">
+        <img src="assets/attadipa-banner.png" width="1788" height="894" alt="Attadipa — Glow, Guide, Connect">
         <span class="glow g1"></span><span class="glow g2"></span><span class="glow g3"></span>
       </div>
     </section>
 
     <section class="section shell" id="why">
       <div class="section-heading narrow reveal">
-        <span class="kicker lang-en">Why Firefly exists</span>
-        <span class="kicker lang-ru">Зачем появился Firefly</span>
+        <span class="kicker lang-en">Why Attadipa exists</span>
+        <span class="kicker lang-ru">Зачем появился Attadipa</span>
         <h2 class="lang-en" lang="en">I wanted a smartwatch that still makes sense when the network disappears.</h2>
         <h2 class="lang-ru" lang="ru">Мне нужны были часы, которые не теряют смысл вместе с мобильной сетью.</h2>
-        <p class="lang-en" lang="en">I could find open smartwatch firmware, mesh projects, navigation tools, and polished commercial ecosystems — but not one open platform that put the pieces together the way I wanted: hardware-aware, mesh-native, extensible with useful apps, independent of a phone, and pleasant enough to wear every day. So Firefly started there.</p>
-        <p class="lang-ru" lang="ru">Я нашёл открытые прошивки для часов, mesh-проекты, навигационные инструменты и отполированные коммерческие экосистемы — но не нашёл одной открытой платформы, где всё это было бы собрано так, как хотелось: с пониманием реального железа, mesh изначально в архитектуре, нормальным каркасом для полезных приложений, независимостью от телефона и интерфейсом, которым приятно пользоваться каждый день. С этого и начался Firefly.</p>
+        <p class="lang-en" lang="en">I could find open smartwatch firmware, mesh projects, navigation tools, and polished commercial ecosystems — but not one open platform that put the pieces together the way I wanted: hardware-aware, mesh-native, extensible with useful apps, independent of a phone, and pleasant enough to wear every day. So Attadipa started there.</p>
+        <p class="lang-ru" lang="ru">Я нашёл открытые прошивки для часов, mesh-проекты, навигационные инструменты и отполированные коммерческие экосистемы — но не нашёл одной открытой платформы, где всё это было бы собрано так, как хотелось: с пониманием реального железа, mesh изначально в архитектуре, нормальным каркасом для полезных приложений, независимостью от телефона и интерфейсом, которым приятно пользоваться каждый день. С этого и начался Attadipa.</p>
       </div>
 
       <div class="feature-grid">
@@ -125,8 +125,8 @@
         <article class="feature-card reveal">
           <div class="feature-icon teal">⋯</div>
           <h3><span class="lang-en">Mesh without the cloud</span><span class="lang-ru">Mesh без облака</span></h3>
-          <p class="lang-en">MeshCore interoperability is a first-class path. A capable watch can use local radio; another watch can receive the same service from a Firefly Node.</p>
-          <p class="lang-ru">Совместимость с MeshCore — один из основных сценариев. Часы с подходящим радио используют его локально, а другая модель может получить тот же сервис от Firefly Node.</p>
+          <p class="lang-en">MeshCore interoperability is a first-class path. A capable watch can use local radio; another watch can receive the same service from an Attadipa Node.</p>
+          <p class="lang-ru">Совместимость с MeshCore — один из основных сценариев. Часы с подходящим радио используют его локально, а другая модель может получить тот же сервис от Attadipa Node.</p>
         </article>
         <article class="feature-card reveal">
           <div class="feature-icon green">↗</div>
@@ -156,14 +156,14 @@
           <span class="kicker lang-ru">Одна платформа, разное железо</span>
           <h2 class="lang-en">Apps ask what the device can do — not what is soldered to it.</h2>
           <h2 class="lang-ru">Приложение спрашивает, что устройство умеет, а не что к нему припаяно.</h2>
-          <p class="lang-en">Firefly is not a Linux-like OS. It is a single embedded firmware/application platform on ESP-IDF/FreeRTOS. Board-specific details stay below the service boundary, while capabilities can appear or disappear at runtime as local hardware or a Firefly Node becomes available.</p>
-          <p class="lang-ru">Firefly — не Linux-подобная ОС. Это единая встроенная прошивка и платформа приложений поверх ESP-IDF/FreeRTOS. Особенности конкретной платы остаются ниже сервисного слоя, а возможности могут появляться и исчезать во время работы — например, когда становится доступен локальный модуль или Firefly Node.</p>
-          <a class="text-link" href="https://github.com/hleserg/FireflyOS/tree/main/docs/adr" target="_blank" rel="noreferrer">
+          <p class="lang-en">Attadipa is not a Linux-like operating system. It is a single embedded firmware/application platform on ESP-IDF/FreeRTOS. Board-specific details stay below the service boundary, while capabilities can appear or disappear at runtime as local hardware or an Attadipa Node becomes available.</p>
+          <p class="lang-ru">Attadipa — не Linux-подобная операционная система. Это единая встроенная прошивка и платформа приложений поверх ESP-IDF/FreeRTOS. Особенности конкретной платы остаются ниже сервисного слоя, а возможности могут появляться и исчезать во время работы — например, когда становится доступен локальный модуль или Attadipa Node.</p>
+          <a class="text-link" href="https://github.com/hleserg/Attadipa/tree/main/docs/adr" target="_blank" rel="noreferrer">
             <span class="lang-en">Read the architecture decisions</span><span class="lang-ru">Посмотреть архитектурные решения</span> <span>↗</span>
           </a>
         </div>
 
-        <div class="architecture reveal reveal-delay" aria-label="Firefly OS capability architecture">
+        <div class="architecture reveal reveal-delay" aria-label="Attadipa capability architecture">
           <div class="arch-row apps-row">
             <span>Clock</span><span>Navigator</span><span>Messages</span><span>Apps…</span>
           </div>
@@ -175,7 +175,7 @@
           <div class="arch-arrow">↓</div>
           <div class="arch-providers">
             <div><small><span class="lang-en">Local provider</span><span class="lang-ru">Локальный источник</span></small><strong>Board hardware</strong></div>
-            <div><small><span class="lang-en">Remote provider</span><span class="lang-ru">Удалённый источник</span></small><strong>Firefly Node</strong></div>
+            <div><small><span class="lang-en">Remote provider</span><span class="lang-ru">Удалённый источник</span></small><strong>Attadipa Node</strong></div>
           </div>
           <div class="arch-foot"><span class="pulse-dot"></span><span class="lang-en">Same app API. Different capability source.</span><span class="lang-ru">Один API приложения. Разные источники возможностей.</span></div>
         </div>
@@ -199,12 +199,12 @@
         <article class="hardware-card reveal">
           <div class="hw-top"><span class="chip">SECOND TARGET</span><span class="hw-dot teal-dot"></span></div>
           <h3>Waveshare ESP32-S3 Touch AMOLED 2.06</h3>
-          <p class="lang-en">A larger AMOLED target with no onboard sub-GHz mesh radio and no onboard GNSS. Those capabilities can be supplied by a separate Firefly Node.</p>
-          <p class="lang-ru">Модель с большим AMOLED-дисплеем, но без встроенного sub-GHz mesh-радио и GNSS. Эти возможности может предоставлять отдельный Firefly Node.</p>
+          <p class="lang-en">A larger AMOLED target with no onboard sub-GHz mesh radio and no onboard GNSS. Those capabilities can be supplied by a separate Attadipa Node.</p>
+          <p class="lang-ru">Модель с большим AMOLED-дисплеем, но без встроенного sub-GHz mesh-радио и GNSS. Эти возможности может предоставлять отдельный Attadipa Node.</p>
         </article>
         <article class="hardware-card node-card reveal">
           <div class="hw-top"><span class="chip node-chip">COMPANION HARDWARE</span><span class="hw-dot amber-dot"></span></div>
-          <h3>Firefly Node</h3>
+          <h3>Attadipa Node</h3>
           <p class="lang-en">A dedicated device intended to carry mesh radio, GNSS and potentially other sensors. It is not a phone replacement; it is another capability provider.</p>
           <p class="lang-ru">Отдельное устройство с mesh-радио, GNSS и, возможно, другими датчиками. Это не замена телефона, а ещё один источник возможностей для часов.</p>
         </article>
@@ -220,15 +220,15 @@
     <section class="section design-band">
       <div class="shell design-grid">
         <div class="design-board reveal">
-          <img src="assets/style-board.webp" width="1200" height="900" alt="Firefly OS visual design board">
+          <img src="assets/attadipa-style-board.png" width="1440" height="1086" alt="Attadipa visual design board">
         </div>
         <div class="design-copy reveal reveal-delay">
           <span class="kicker lang-en">Design is architecture too</span><span class="kicker lang-ru">Дизайн — тоже часть архитектуры</span>
           <h2><span class="lang-en">Warm, glanceable, calm — and still grown-up.</span><span class="lang-ru">Тёплый, понятный с одного взгляда, спокойный — и при этом взрослый.</span></h2>
           <p class="lang-en">The visual language is intentionally soft without turning the watch into a toy. Semantic design tokens, board-aware spacing, day/night themes, contextual mascot poses and measured asset budgets keep the look consistent without hiding hardware limits.</p>
           <p class="lang-ru">Визуальный язык намеренно мягкий, но часы не должны превращаться в игрушку. Семантические дизайн-токены, масштабирование под конкретный экран, дневная и ночная темы, уместные состояния маскота и измеряемый бюджет графики позволяют сохранять стиль, не скрывая ограничения железа.</p>
-          <div class="palette" aria-label="Firefly color palette">
-            <span style="--c:#FF8A40" title="Firefly Orange"></span>
+          <div class="palette" aria-label="Attadipa color palette">
+            <span style="--c:#FF8A40" title="Attadipa Orange"></span>
             <span style="--c:#FFC857" title="Glow Amber"></span>
             <span style="--c:#6FA07A" title="Meadow Green"></span>
             <span style="--c:#A7B49C" title="Leaf Sage"></span>
@@ -247,8 +247,8 @@
           <p class="lang-en">The repository already builds the host architecture, localization and desktop simulator; the font pipeline is measured and CI exercises the simulator from a clean environment. Device firmware and hardware validation are not done yet.</p>
           <p class="lang-ru">В репозитории уже собираются host-архитектура, локализация и desktop-симулятор; шрифтовый пайплайн измерен, а CI поднимает симулятор с чистого окружения. Прошивка для реального устройства и аппаратная валидация ещё не закончены.</p>
           <div class="status-actions">
-            <a class="btn primary" href="https://github.com/hleserg/FireflyOS/blob/main/STATUS.md" target="_blank" rel="noreferrer"><span class="lang-en">Live project status</span><span class="lang-ru">Живой статус проекта</span> ↗</a>
-            <a class="btn secondary" href="https://github.com/hleserg/FireflyOS/blob/main/TASKS.md" target="_blank" rel="noreferrer"><span class="lang-en">Roadmap</span><span class="lang-ru">План работ</span></a>
+            <a class="btn primary" href="https://github.com/hleserg/Attadipa/blob/main/STATUS.md" target="_blank" rel="noreferrer"><span class="lang-en">Live project status</span><span class="lang-ru">Живой статус проекта</span> ↗</a>
+            <a class="btn secondary" href="https://github.com/hleserg/Attadipa/blob/main/TASKS.md" target="_blank" rel="noreferrer"><span class="lang-en">Roadmap</span><span class="lang-ru">План работ</span></a>
           </div>
         </div>
         <div class="status-list">
@@ -271,16 +271,18 @@
         <div class="ideas-copy reveal reveal-delay">
           <span class="kicker lang-en">Community app ideas</span><span class="kicker lang-ru">Идеи приложений от сообщества</span>
           <h2><span class="lang-en">What should a smartwatch actually do?</span><span class="lang-ru">Что на самом деле должны уметь умные часы?</span></h2>
-          <p class="lang-en">Too many watch apps are phone features squeezed onto a smaller screen. Firefly wants a better question: what is genuinely useful on your wrist — especially when you have seconds to act, no signal, or a group of people to stay connected with?</p>
-          <p class="lang-ru">Слишком многие приложения для часов — это функции телефона, ужатые на маленький экран. Firefly предлагает другой вопрос: что действительно полезно иметь на запястье — особенно когда на действие есть несколько секунд, связи нет или рядом целая группа людей?</p>
+          <p class="lang-en">Too many watch apps are phone features squeezed onto a smaller screen. Attadipa wants a better question: what is genuinely useful on your wrist — especially when you have seconds to act, no signal, or a group of people to stay connected with?</p>
+          <p class="lang-ru">Слишком многие приложения для часов — это функции телефона, ужатые на маленький экран. Attadipa предлагает другой вопрос: что действительно полезно иметь на запястье — особенно когда на действие есть несколько секунд, связи нет или рядом целая группа людей?</p>
+          <p class="lang-en">Meet Lumar, Attadipa’s firefly mascot — a small reminder that useful technology can stay warm and human.</p>
+          <p class="lang-ru">Знакомьтесь: Lumar, маскот-светлячок Attadipa, — маленькое напоминание, что полезная технология может оставаться тёплой и человечной.</p>
           <div class="idea-pills">
             <span><b>↗</b><span class="lang-en">Offline friend coordinates</span><span class="lang-ru">Координаты друзей офлайн</span></span>
             <span><b>⌖</b><span class="lang-en">Find my camp</span><span class="lang-ru">Вернуться в лагерь</span></span>
             <span><b>◌</b><span class="lang-en">Group radar</span><span class="lang-ru">Радар группы</span></span>
             <span><b>＋</b><span class="lang-en">Your idea</span><span class="lang-ru">Ваша идея</span></span>
           </div>
-          <a class="btn primary big" href="https://github.com/hleserg/FireflyOS/discussions" target="_blank" rel="noreferrer"><span class="lang-en">Suggest an app in Discussions</span><span class="lang-ru">Предложить приложение в Discussions</span> ↗</a>
-          <p class="queue-note"><span class="lang-en"><strong>Discussions</strong> are the open community space. <strong>Issues</strong> are Firefly's executable engineering queue for maintainers and agents.</span><span class="lang-ru"><strong>Discussions</strong> — открытое место для идей и обсуждений. <strong>Issues</strong> — исполняемая инженерная очередь Firefly для maintainer'ов и агентов.</span></p>
+          <a class="btn primary big" href="https://github.com/hleserg/Attadipa/discussions" target="_blank" rel="noreferrer"><span class="lang-en">Suggest an app in Discussions</span><span class="lang-ru">Предложить приложение в Discussions</span> ↗</a>
+          <p class="queue-note"><span class="lang-en"><strong>Discussions</strong> are the open community space. <strong>Issues</strong> are Attadipa's executable engineering queue for maintainers and agents.</span><span class="lang-ru"><strong>Discussions</strong> — открытое место для идей и обсуждений. <strong>Issues</strong> — исполняемая инженерная очередь Attadipa для maintainer'ов и агентов.</span></p>
         </div>
       </div>
     </section>
@@ -292,14 +294,14 @@
           <h2><span class="lang-en">Research, code, mistakes, measurements — visible.</span><span class="lang-ru">Исследования, код, ошибки и измерения — на виду.</span></h2>
           <p class="lang-en">Architecture decisions, verified hardware facts, unresolved conflicts, upstream reviews and the roadmap live in the repository. Technical claims are expected to earn their confidence level.</p>
           <p class="lang-ru">Архитектурные решения, проверенные факты о железе, нерешённые противоречия, upstream-обзоры и план работ живут прямо в репозитории. Техническим утверждениям здесь полагается заслужить свой уровень уверенности.</p>
-          <p class="contact-note lang-en">Want to talk about Firefly, hardware, useful watch apps, or just throw an idea around? I’m happy to chat — <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer">Telegram @skhlebnikov ↗</a></p>
-          <p class="contact-note lang-ru">Хочешь обсудить Firefly, железо, полезные приложения для часов или просто покидаться идеями? Пиши, с удовольствием поболтаю — <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer">Telegram @skhlebnikov ↗</a></p>
+          <p class="contact-note lang-en">Want to talk about Attadipa, hardware, useful watch apps, or just throw an idea around? I’m happy to chat — <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer">Telegram @skhlebnikov ↗</a></p>
+          <p class="contact-note lang-ru">Хочешь обсудить Attadipa, железо, полезные приложения для часов или просто покидаться идеями? Пиши, с удовольствием поболтаю — <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer">Telegram @skhlebnikov ↗</a></p>
         </div>
         <div class="contribute-links">
-          <a href="https://github.com/hleserg/FireflyOS" target="_blank" rel="noreferrer"><strong>GitHub</strong><span>github.com/hleserg/FireflyOS</span><b>↗</b></a>
-          <a href="https://github.com/hleserg/FireflyOS/tree/main/docs/research" target="_blank" rel="noreferrer"><strong><span class="lang-en">Research</span><span class="lang-ru">Исследования</span></strong><span>docs/research</span><b>↗</b></a>
-          <a href="https://github.com/hleserg/FireflyOS/discussions" target="_blank" rel="noreferrer"><strong>Discussions</strong><span class="lang-en">Ideas & questions</span><span class="lang-ru">Идеи и вопросы</span><b>↗</b></a>
-          <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer"><strong>Telegram · @skhlebnikov</strong><span class="lang-en">Come say hi and talk Firefly</span><span class="lang-ru">Написать мне и поболтать про Firefly</span><b>↗</b></a>
+          <a href="https://github.com/hleserg/Attadipa" target="_blank" rel="noreferrer"><strong>GitHub</strong><span>github.com/hleserg/Attadipa</span><b>↗</b></a>
+          <a href="https://github.com/hleserg/Attadipa/tree/main/docs/research" target="_blank" rel="noreferrer"><strong><span class="lang-en">Research</span><span class="lang-ru">Исследования</span></strong><span>docs/research</span><b>↗</b></a>
+          <a href="https://github.com/hleserg/Attadipa/discussions" target="_blank" rel="noreferrer"><strong>Discussions</strong><span class="lang-en">Ideas & questions</span><span class="lang-ru">Идеи и вопросы</span><b>↗</b></a>
+          <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer"><strong>Telegram · @skhlebnikov</strong><span class="lang-en">Come say hi and talk Attadipa</span><span class="lang-ru">Написать мне и поболтать про Attadipa</span><b>↗</b></a>
         </div>
       </div>
     </section>
@@ -307,7 +309,7 @@
 
   <footer class="footer">
     <div class="shell footer-inner">
-      <div class="footer-brand"><img src="assets/favicon.png" width="28" height="28" alt=""><span>Firefly OS</span><small>Glow · Guide · Connect</small></div>
+      <div class="footer-brand"><img src="assets/favicon.png" width="28" height="28" alt=""><span>Attadipa</span><small>Glow · Guide · Connect</small></div>
       <p><span class="lang-en">Open source under the MIT License. Early development — claims on this page describe both current state and explicit product goals as labelled.</span><span class="lang-ru">Открытый проект под лицензией MIT. Разработка на раннем этапе: на странице отдельно описаны текущее состояние и заявленные цели продукта.</span></p>
       <a href="#top"><span class="lang-en">Back to top</span><span class="lang-ru">Наверх</span> ↑</a>
     </div>

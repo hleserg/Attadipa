@@ -15,7 +15,7 @@ Format: what was decided · when · what it obliges · what it invalidates.
 
 ---
 
-## OD-1 — There is a separate Firefly node, and the watch uses it
+## OD-1 — There is a separate Attadipa node, and the watch uses it
 
 **Decided:** 2026-08-21.
 
@@ -60,7 +60,7 @@ hardware is UNKNOWN and lives in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) as such
 a source.
 
 **Corroboration:** this is not a new direction. The specification already
-requires it — §32 *DOCTOR / FIREFLY NODE* mandates that the architecture account
+requires it — §32 *DOCTOR / ATTADIPA NODE* mandates that the architecture account
 for a separate node, and lists "additional GNSS" among what it provides.
 
 ---
@@ -100,7 +100,7 @@ The complete model, all fourteen entities:
 The position values are deliberately **not** recorded. They are a real location
 and this repository is public.
 
-### What the model gets right, and Firefly must copy
+### What the model gets right, and Attadipa must copy
 
 **`Node status` is a separate entity from every value it carries.** The vendor
 model does not infer "the node is there" from "a number arrived". That is the
@@ -114,11 +114,11 @@ the UI must never render the third as the second. "0 nodes nearby" and "we have
 no idea how many nodes are nearby" are different sentences, and one of them is
 a lie.
 
-### What the model is missing, and Firefly must not copy
+### What the model is missing, and Attadipa must not copy
 
 This is a fine inventory of what a node *has*. It is not sufficient as a core
 data model, and the gaps are instructive because each one is a decision the
-Firefly core has to make deliberately:
+Attadipa core has to make deliberately:
 
 - **No timestamp on anything.** Latitude and longitude with no age are unusable
   for navigation. A coordinate that is four hours old and a coordinate from two
@@ -138,7 +138,7 @@ Firefly core has to make deliberately:
   are bounded by rules that constrain *airtime*, and nothing here measures it.
 
 None of this is a criticism of MeshCore, which is solving a different problem.
-It is the argument for §32's requirement that the Doctor/Firefly application
+It is the argument for §32's requirement that the Doctor/Attadipa application
 protocol not be the MeshCore internals wearing a different name.
 
 **What it obliges:**
@@ -161,7 +161,7 @@ protocol not be the MeshCore internals wearing a different name.
 at 868.731 MHz in the region of operation is exactly question **A4**, and this
 screenshot makes it concrete rather than theoretical — the owner's existing node
 is already transmitting at a power level whose legality this project has not
-established. Firefly is not responsible for that node, but it must not ship a
+established. Attadipa is not responsible for that node, but it must not ship a
 default that assumes it.
 
 ---
@@ -170,7 +170,7 @@ default that assumes it.
 
 **Decided:** 2026-08-21.
 
-**As stated:** the owner supplied `FireflyOS_Master_Prompt_Final_Bundle.zip`
+**As stated:** the owner supplied `Attadipa_Master_Prompt_Final_Bundle.zip`
 containing a 3 125-line specification and three PNGs, with the instruction
 «так, в архиве ревью, сделай все по промту от туда» — *the archive contains a
 review; do everything according to the prompt in it.*
@@ -179,10 +179,10 @@ review; do everything according to the prompt in it.*
 
 | File | Now at | SHA-256 |
 |---|---|---|
-| `FIREFLY_OS_MASTER_PROMPT_FINAL.md` | [`../master-prompt-final.md`](../master-prompt-final.md) | `65675d49604ba217e5ca7288621ab33d8655f0659e61f2ce795eec27b42312ed` |
-| `design_refs/firefly_brand_identity.png` | [`../ui/reference/`](../ui/reference/) | `d9a51f7b69b3566d366e9f9c2d27d375579152e2fdf5c3a46c46ec16112c880e` |
-| `design_refs/firefly_visual_style_board.png` | [`../ui/reference/`](../ui/reference/) | `4e66f2a4b09038bb4e94f2dd097733a987a714c13572df68766900f75b84c2b9` |
-| `design_refs/firefly_mascot_sheet.png` | [`../ui/reference/`](../ui/reference/) | `175f7cfd9343973e65242843ad697bc9646b4ba2a312f78c42de8e6f2024684a` |
+| `ATTADIPA_OS_MASTER_PROMPT_FINAL.md` | [`../master-prompt-final.md`](../master-prompt-final.md) | `65675d49604ba217e5ca7288621ab33d8655f0659e61f2ce795eec27b42312ed` |
+| `design_refs/attadipa_brand_identity.png` | [`../ui/reference/`](../ui/reference/) | `d9a51f7b69b3566d366e9f9c2d27d375579152e2fdf5c3a46c46ec16112c880e` |
+| `design_refs/attadipa_visual_style_board.png` | [`../ui/reference/`](../ui/reference/) | `4e66f2a4b09038bb4e94f2dd097733a987a714c13572df68766900f75b84c2b9` |
+| `design_refs/attadipa_mascot_sheet.png` | [`../ui/reference/`](../ui/reference/) | `175f7cfd9343973e65242843ad697bc9646b4ba2a312f78c42de8e6f2024684a` |
 
 All four are committed byte-identical to what was supplied. The hashes are
 recorded so that a later edit is visible as one.
@@ -214,7 +214,7 @@ features, that all five T-Watch radios were called LoRa, and that
 
 **What it does not change:** every hardware fact in
 [VERIFIED_FACTS](VERIFIED_FACTS.md) still stands — the review corrected the
-*model*, not the measurements. And [OD-1](#od-1--there-is-a-separate-firefly-node-and-the-watch-uses-it)
+*model*, not the measurements. And [OD-1](#od-1--there-is-a-separate-attadipa-node-and-the-watch-uses-it)
 is untouched: final §3 and §9 restate it almost word for word.
 
 ---
@@ -240,12 +240,12 @@ contacts and storage, GPS and time, and hardware RNG and crypto acceleration.
    experimental.** «Не считай, что последний релиз — лучший» — do not assume the
    latest release is the best. Check for open regressions, the FEM RX gain path
    in particular.
-3. **Do not pull unmerged code into production Firefly without analysis.**
+3. **Do not pull unmerged code into production Attadipa without analysis.**
 4. **Build a compatibility layer** so MeshCore can be updated without rewriting
    the OS: `UI/Apps → Services → Mesh Service API → MeshCore Adapter →
    transports → HAL`.
 5. **Produce `docs/upstream/meshcore-1.17-review.md`** with a status per item:
-   `adopt / adapt / monitor / reject`, then file each required Firefly change as
+   `adopt / adapt / monitor / reject`, then file each required Attadipa change as
    a separate small task.
 6. **Do not stop at the review.** Fix the critical architectural errors, add
    regression tests, build, run, fix, and continue. The order is stated as a
@@ -256,7 +256,7 @@ Four specific instructions inside it are narrower than the rest and are recorded
 verbatim in effect, because each forbids something that would otherwise look
 reasonable:
 
-- **Transport is not BLE.** Firefly's must admit BLE, USB, UART, Wi-Fi/TCP and
+- **Transport is not BLE.** Attadipa's must admit BLE, USB, UART, Wi-Fi/TCP and
   possibly ESP-NOW, several at once — «не копируй слепо», do not copy #3049
   blindly.
 - **No own LBT yet.** «Не реализовывай собственный LBT, пока не станет понятно,
@@ -285,8 +285,8 @@ before the code it constrains, which is the only moment any of it is free.
 **As stated:** a GNSS receiver is not merely a source of NMEA sentences. Modern
 receivers carry jamming detection, jamming mitigation, spoofing detection,
 integrity estimates, RF diagnostics, per-signal information, assistance and
-fast-start, and security features, and Firefly must use them. The priority order
-is explicit: **receiver-native mechanisms → Firefly's independent detectors →
+fast-start, and security features, and Attadipa must use them. The priority order
+is explicit: **receiver-native mechanisms → Attadipa's independent detectors →
 a combined trust state.**
 
 **What it obliges:**
@@ -307,7 +307,7 @@ a combined trust state.**
    and final trust are separate. A provider may be `Ready`, with a numerically
    valid fix, and still be unusable for navigation.
 5. **Do not lose data at the driver boundary.** The observation type must carry
-   what the receiver reports — both a normalized Firefly representation *and*
+   what the receiver reports — both a normalized Attadipa representation *and*
    the receiver's native values, not one at the cost of the other.
 6. **A GNSS receiver capability descriptor**, so an application still asks
    `LocationService` and never learns the chip: jam detection, active jam

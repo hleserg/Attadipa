@@ -1,6 +1,6 @@
-#include "firefly/core/geo.h"
+#include "attadipa/core/geo.h"
 
-namespace firefly::core {
+namespace attadipa::core {
 namespace {
 
 // Integer square root by Newton's method. No <cmath>, no float, and exact for
@@ -97,4 +97,4 @@ std::uint32_t distance_mm(Position a, Position b)
     return result >= kDistanceSaturated ? kDistanceSaturated : static_cast<std::uint32_t>(result);
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

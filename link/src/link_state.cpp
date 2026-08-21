@@ -1,6 +1,6 @@
-#include "firefly/link/link_state.h"
+#include "attadipa/link/link_state.h"
 
-namespace firefly::link {
+namespace attadipa::link {
 namespace {
 
 constexpr bool is_live(TransportPhase phase)
@@ -208,4 +208,4 @@ const char* to_string(EventOutcome outcome)
     return "?";
 }
 
-}  // namespace firefly::link
+}  // namespace attadipa::link

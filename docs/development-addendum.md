@@ -26,7 +26,7 @@
 
 ## REUSE FIRST — НЕ ИЗОБРЕТАЙ УЖЕ РЕШЁННОЕ
 
-Firefly не должен превращаться в проект, где мы заново реализуем всё только потому, что можем.
+Attadipa не должен превращаться в проект, где мы заново реализуем всё только потому, что можем.
 
 Перед реализацией **каждого нового существенного subsystem / feature / driver / algorithm / UI pattern** сначала исследуй существующие open-source реализации.
 
@@ -40,7 +40,7 @@ Firefly не должен превращаться в проект, где мы 
 
 - использовать готовый компонент;
 - адаптировать его;
-- обернуть Firefly API вокруг него;
+- обернуть Attadipa API вокруг него;
 - взять отдельный алгоритм;
 - взять архитектурную идею;
 - upstream'ить необходимые изменения;
@@ -245,7 +245,7 @@ Reason:
 Source revision:
 commit/tag
 
-Firefly integration:
+Attadipa integration:
 ...
 
 Tests required:
@@ -286,7 +286,7 @@ Tests required:
 ```text
 upstream dependency
         +
-thin Firefly wrapper
+thin Attadipa wrapper
 ```
 
 вместо:
@@ -732,7 +732,7 @@ License
 
 Known issues
 
-Suggested Firefly API
+Suggested Attadipa API
 
 Tests to port/reproduce
 
@@ -804,7 +804,7 @@ Questions still unresolved
 
 Мы не обязаны быть авторами каждой математической функции.
 
-Ценность Firefly состоит в том, что мы хорошо объединяем:
+Ценность Attadipa состоит в том, что мы хорошо объединяем:
 
 ```text
 wearable UX
@@ -930,7 +930,7 @@ RECENTLY COMPLETED
 
 > Не создавай работу ради работы.
 
-Каждый следующий шаг должен приближать Firefly к проверяемому работающему продукту.
+Каждый следующий шаг должен приближать Attadipa к проверяемому работающему продукту.
 
 ---
 
@@ -958,7 +958,7 @@ AFTER NEXT → NEXT
 new research → AFTER NEXT
 ```
 
-То есть разработка Firefly должна работать как непрерывный конвейер, а не как последовательность:
+То есть разработка Attadipa должна работать как непрерывный конвейер, а не как последовательность:
 
 ```text
 думать

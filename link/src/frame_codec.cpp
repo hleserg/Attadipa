@@ -1,8 +1,8 @@
-#include "firefly/link/frame_codec.h"
+#include "attadipa/link/frame_codec.h"
 
 #include <cstring>
 
-namespace firefly::link {
+namespace attadipa::link {
 namespace {
 
 // One byte derived from the length, so a corrupted length is caught before the
@@ -184,4 +184,4 @@ void Decoder::reset()
     // that has been necessary.
 }
 
-}  // namespace firefly::link
+}  // namespace attadipa::link

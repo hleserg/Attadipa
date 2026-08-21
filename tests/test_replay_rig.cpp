@@ -51,7 +51,7 @@ class Scratch
 public:
     Scratch()
     {
-        path_ = "/tmp/firefly-replay-XXXXXX";
+        path_ = "/tmp/attadipa-replay-XXXXXX";
         ok_   = ::mkdtemp(&path_[0]) != nullptr;
     }
 
@@ -94,9 +94,9 @@ std::FILE* create_private(const std::string& path)
 // otherwise. The runner must report three mismatches, not zero.
 void test_a_wrong_expectation_is_reported()
 {
-    firefly::replay::Scenario scenario;
+    attadipa::replay::Scenario scenario;
     std::string               error;
-    const bool loaded = firefly::replay::load(fixtures + "/13-a-fixture-can-fail.trace", scenario,
+    const bool loaded = attadipa::replay::load(fixtures + "/13-a-fixture-can-fail.trace", scenario,
                                               error);
     if (!loaded) {
         std::fprintf(stderr, "FAIL: could not load the negative fixture: %s\n", error.c_str());
@@ -104,11 +104,11 @@ void test_a_wrong_expectation_is_reported()
         return;
     }
 
-    const firefly::replay::Result result = firefly::replay::run(
-        scenario, firefly::core::default_trust_policy(), firefly::core::ValidityPolicy{});
+    const attadipa::replay::Result result = attadipa::replay::run(
+        scenario, attadipa::core::default_trust_policy(), attadipa::core::ValidityPolicy{});
 
     CHECK(result.failures.size() == 3);   // validity, trust, and the missing reason
-    for (const firefly::replay::Failure& failure : result.failures) {
+    for (const attadipa::replay::Failure& failure : result.failures) {
         CHECK(failure.line > 0);          // every failure points at a line to look at
         CHECK(!failure.what.empty());
     }
@@ -119,9 +119,9 @@ void test_a_wrong_expectation_is_reported()
 // writing PASS for a test that never executed.
 void test_a_missing_fixture_is_a_failure()
 {
-    firefly::replay::Scenario scenario;
+    attadipa::replay::Scenario scenario;
     std::string               error;
-    CHECK(!firefly::replay::load(fixtures + "/does-not-exist.trace", scenario, error));
+    CHECK(!attadipa::replay::load(fixtures + "/does-not-exist.trace", scenario, error));
     CHECK(!error.empty());
 }
 
@@ -174,9 +174,9 @@ void test_malformed_fixtures_are_refused()
         std::fputs(one.body, file);
         std::fclose(file);
 
-        firefly::replay::Scenario scenario;
+        attadipa::replay::Scenario scenario;
         std::string               error;
-        if (firefly::replay::load(path, scenario, error)) {
+        if (attadipa::replay::load(path, scenario, error)) {
             std::fprintf(stderr, "FAIL: accepted a fixture with %s\n", one.why);
             ++failures;
         } else if (error.empty()) {
@@ -192,19 +192,19 @@ void test_malformed_fixtures_are_refused()
 // or allocates in a way that depends on address layout.
 void test_replay_is_deterministic()
 {
-    firefly::replay::Scenario scenario;
+    attadipa::replay::Scenario scenario;
     std::string               error;
-    if (!firefly::replay::load(fixtures + "/04-spoofing-stops-navigation.trace", scenario, error)) {
+    if (!attadipa::replay::load(fixtures + "/04-spoofing-stops-navigation.trace", scenario, error)) {
         std::fprintf(stderr, "FAIL: %s\n", error.c_str());
         ++failures;
         return;
     }
 
-    const firefly::replay::Result first = firefly::replay::run(
-        scenario, firefly::core::default_trust_policy(), firefly::core::ValidityPolicy{});
+    const attadipa::replay::Result first = attadipa::replay::run(
+        scenario, attadipa::core::default_trust_policy(), attadipa::core::ValidityPolicy{});
     for (int i = 0; i < 20; ++i) {
-        const firefly::replay::Result again = firefly::replay::run(
-            scenario, firefly::core::default_trust_policy(), firefly::core::ValidityPolicy{});
+        const attadipa::replay::Result again = attadipa::replay::run(
+            scenario, attadipa::core::default_trust_policy(), attadipa::core::ValidityPolicy{});
         CHECK(again.failures.size() == first.failures.size());
         CHECK(again.final_state == first.final_state);
         CHECK(again.steps_run == first.steps_run);
@@ -215,16 +215,16 @@ void test_replay_is_deterministic()
 // fails at three in the morning has to be able to say what it was about.
 void test_a_fixture_explains_itself()
 {
-    firefly::replay::Scenario scenario;
+    attadipa::replay::Scenario scenario;
     std::string               error;
-    CHECK(firefly::replay::load(fixtures + "/07-a-walk-is-not-a-jump.trace", scenario, error));
+    CHECK(attadipa::replay::load(fixtures + "/07-a-walk-is-not-a-jump.trace", scenario, error));
     CHECK(!scenario.name.empty());
     CHECK(scenario.description.size() > 40);
     CHECK(scenario.steps.size() >= 5);
 
     // Every step remembers which line of the file it came from, or a failure
     // report points at nothing.
-    for (const firefly::replay::Step& step : scenario.steps) {
+    for (const attadipa::replay::Step& step : scenario.steps) {
         CHECK(step.line > 0);
     }
 }
@@ -257,9 +257,9 @@ void test_age_and_hold_parse_into_what_they_claim()
                file);
     std::fclose(file);
 
-    firefly::replay::Scenario scenario;
+    attadipa::replay::Scenario scenario;
     std::string               error;
-    if (!firefly::replay::load(path, scenario, error)) {
+    if (!attadipa::replay::load(path, scenario, error)) {
         std::fprintf(stderr, "FAIL: %s\n", error.c_str());
         ++failures;
         std::remove(path.c_str());
@@ -293,17 +293,17 @@ void test_age_and_hold_parse_into_what_they_claim()
 // confident NoFix for a step that never had an input. It says so instead.
 void test_a_hold_with_nothing_held_is_reported()
 {
-    firefly::replay::Scenario scenario;
+    attadipa::replay::Scenario scenario;
     scenario.name = "hand-built";
 
-    firefly::replay::Step step;
-    step.at      = firefly::core::MonotonicTime{1000};
+    attadipa::replay::Step step;
+    step.at      = attadipa::core::MonotonicTime{1000};
     step.line    = 7;
     step.is_hold = true;
     scenario.steps.push_back(step);
 
-    const firefly::replay::Result result = firefly::replay::run(
-        scenario, firefly::core::default_trust_policy(), firefly::core::ValidityPolicy{});
+    const attadipa::replay::Result result = attadipa::replay::run(
+        scenario, attadipa::core::default_trust_policy(), attadipa::core::ValidityPolicy{});
 
     CHECK(result.failures.size() == 1);
     CHECK(result.steps_run == 1);

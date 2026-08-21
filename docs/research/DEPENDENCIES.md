@@ -56,13 +56,13 @@ is a maintenance liability on the one build that must never break.
 §77 adds the subtler reason: *"Do not architect against 'latest docs' after
 pinning another version."*
 
-**How it is obtained.** `cmake/FireflyLvgl.cmake`, by `FetchContent` — cloning
+**How it is obtained.** `cmake/AttadipaLvgl.cmake`, by `FetchContent` — cloning
 the *tag* and then verifying the *commit*. The tag is only the transport: it is
 what CMake's generated `git checkout` can resolve in a shallow clone. The pin is
 the SHA, checked with `git rev-parse HEAD` after the clone, because a tag can be
 moved and a commit cannot — and a re-tagged v9.5.0 would still say `9.5.0` in
 `lv_version.h`, so the version check alone cannot catch it.
-`FIREFLY_LVGL_SOURCE_DIR` points the build at a tree already on disk for offline
+`ATTADIPA_LVGL_SOURCE_DIR` points the build at a tree already on disk for offline
 work; it skips the fetch and neither check. Both failures are configure errors
 rather than behaviour discovered later.
 
@@ -92,7 +92,7 @@ and render performance.
 - **Evidence:** Waveshare states support for **v5.5.5 and v6.0.2**; its BSP
   v2.0.0 requires `idf >= 5.3`. LilyGO's library targets the Arduino layer
   (arduino-esp32 ≥ 3.3.0-alpha1) and its PlatformIO path is pinned to the older
-  2.0.17 / IDF 4.4.7 — which probably does not bind Firefly, since Firefly is
+  2.0.17 / IDF 4.4.7 — which probably does not bind Attadipa, since Attadipa is
   ESP-IDF-native and does not use the Arduino layer. That assumption is flagged
   in OPEN_QUESTIONS T7.
 - **Constraint:** must be a supported release that LVGL 9.5.0 and both board
@@ -146,7 +146,7 @@ simulator driving timed frames, or a board.
 ### Radio driver
 
 - RadioLib is pinned above as MeshCore's dependency and as this project's
-  evidence base. Whether Firefly's *own* radio layer uses it directly on a local
+  evidence base. Whether Attadipa's *own* radio layer uses it directly on a local
   mesh path is part of the T-013 spike rather than a separate decision — two
   competing radio abstractions in one image is a design smell, and the
   integration mechanism decides which survives
@@ -169,7 +169,7 @@ simulator driving timed frames, or a board.
   T-Watch family broadly, and carries the schematics and the authoritative pin
   documentation.
 - **Open question T6:** depend on these, or take only the pin facts and write
-  Firefly's own BSP? Apache-2.0 is compatible with an MIT project but carries
+  Attadipa's own BSP? Apache-2.0 is compatible with an MIT project but carries
   notice and patent terms that must be preserved if code is vendored. This is a
   reuse-ledger decision, not a default.
 
@@ -187,7 +187,7 @@ simulator driving timed frames, or a board.
   arguing [ADR-0005](../adr/0005-node-protocol.md): runtime 7 029 B, descriptor
   tables 13 148 B for 24 message types.
 - It returns to consideration under final §18, which requires the node
-  protocol's encoding to be benchmarked against *a Firefly-specific streaming
+  protocol's encoding to be benchmarked against *an Attadipa-specific streaming
   schema* rather than against Meshtastic's whole `FromRadio` union before the
   TLV choice can be accepted (T-016).
 

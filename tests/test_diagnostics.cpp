@@ -2,7 +2,7 @@
 #include <cstring>
 #include <type_traits>
 
-#include "firefly/core/diagnostics.h"
+#include "attadipa/core/diagnostics.h"
 
 // Host tests for the diagnostics snapshot.
 //
@@ -21,7 +21,7 @@
 //      choice of format is a product decision rather than a core dependency;
 //   4. every number in it that nobody has measured says so.
 
-using namespace firefly::core;
+using namespace attadipa::core;
 
 namespace {
 

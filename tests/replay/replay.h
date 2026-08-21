@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "firefly/core/position.h"
-#include "firefly/core/trust.h"
+#include "attadipa/core/position.h"
+#include "attadipa/core/trust.h"
 
 // A replayable, deterministic navigation test rig.
 //
@@ -24,7 +24,7 @@
 // The fixture format is the normalized observation, not NMEA. That is the level
 // at which the logic under test operates, and it keeps the rig honest about
 // what it covers: it exercises the trust and validity model, and it does *not*
-// exercise a parser, because Firefly has no parser yet — minmea is a `WRAP`
+// exercise a parser, because Attadipa has no parser yet — minmea is a `WRAP`
 // decision in the reuse ledger and is not vendored. When it is, an NMEA
 // front-end feeds this same rig with the same assertions, and a GPX or a raw
 // vendor-binary capture does the same. The format below is deliberately shaped
@@ -34,7 +34,7 @@
 // be obviously nowhere. No real location belonging to anybody appears in this
 // repository, and none may be added.
 
-namespace firefly::replay {
+namespace attadipa::replay {
 
 // One assertion attached to one step. Absent fields are not checked, so a
 // fixture can pin exactly what it is about and stay readable.
@@ -61,7 +61,7 @@ struct Step {
     // This is the only way the rig can reach PositionValidity::Stale by the
     // route a device reaches it. The other route is an observation that was
     // already old when it arrived, which is `age` on a normal step and is what
-    // a position relayed from a Firefly node over a slow link looks like.
+    // a position relayed from an Attadipa node over a slow link looks like.
     bool                        is_hold = false;
 
     Expectation                 expect{};
@@ -97,4 +97,4 @@ bool load(const std::string& path, Scenario& out, std::string& error);
 Result run(const Scenario& scenario, const core::TrustPolicy& policy,
            const core::ValidityPolicy& validity_policy);
 
-}  // namespace firefly::replay
+}  // namespace attadipa::replay

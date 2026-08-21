@@ -88,9 +88,9 @@ it asks less of the system than almost anything else on this list.
 
 ### Useful capabilities / Возможности
 
-GNSS / position · heading · haptics · storage · Firefly Node.
+GNSS / position · heading · haptics · storage · Attadipa Node.
 
-**Возможности.** Координаты · направление · вибрация · хранение · Firefly Node.
+**Возможности.** Координаты · направление · вибрация · хранение · Attadipa Node.
 
 ### Existing alternatives / Что уже существует?
 

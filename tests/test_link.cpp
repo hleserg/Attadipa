@@ -2,9 +2,9 @@
 #include <cstring>
 #include <initializer_list>
 
-#include "firefly/link/frame_codec.h"
-#include "firefly/link/frame_queue.h"
-#include "firefly/link/link_state.h"
+#include "attadipa/link/frame_codec.h"
+#include "attadipa/link/frame_queue.h"
+#include "attadipa/link/link_state.h"
 
 // Host tests for the transport framing, the bounded queue above it, and the
 // session state machine above that.
@@ -19,14 +19,14 @@
 // upstream serial transport, verified at source. An over-long frame truncated
 // to the maximum and delivered as if complete; a stream with no checksum and no
 // resynchronisation; a connection predicate that returns true unconditionally
-// with the comment "no way of knowing, so assume yes". Firefly does not inherit
+// with the comment "no way of knowing, so assume yes". Attadipa does not inherit
 // those, and these are the tests that say so rather than the paragraph that
 // claims it.
 //
 // Nothing here touches USB, Bluetooth or a radio. It is the logic above them.
 
-using namespace firefly;
-using namespace firefly::link;
+using namespace attadipa;
+using namespace attadipa::link;
 
 namespace {
 
@@ -251,7 +251,7 @@ void test_reconnect_is_a_new_session()
 
 // kMaxPayload exactly, and one byte past it. The boundary is where framing bugs
 // live, and the size is not a magic number — it is the transport's own limit
-// from link/include/firefly/link/frame_codec.h, which is where the rest of the
+// from link/include/attadipa/link/frame_codec.h, which is where the rest of the
 // system reads it too.
 void test_large_payload()
 {

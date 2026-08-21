@@ -1,6 +1,6 @@
 #include <cstdio>
 
-#include "firefly/core/trust.h"
+#include "attadipa/core/trust.h"
 
 // Host tests for the GNSS trust state (docs/adr/0011-gnss-integrity.md §5, §6).
 //
@@ -15,7 +15,7 @@
 // two epochs; a suite of one-observation tests passes cheerfully while every
 // one of them is switched off.
 
-using namespace firefly::core;
+using namespace attadipa::core;
 
 namespace {
 

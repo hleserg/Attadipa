@@ -1,6 +1,6 @@
 # Reuse Ledger
 
-Firefly prefers proven work over new code. This file records, for every
+Attadipa prefers proven work over new code. This file records, for every
 non-trivial problem, what already existed, what was examined, and why the
 project did or did not use it.
 
@@ -14,9 +14,9 @@ considered decision and an unexamined reflex.
 |---|---|
 | `USE AS-IS` | taken unchanged |
 | `USE AS DEPENDENCY` | pinned and consumed as an external component |
-| `WRAP` | used behind a Firefly interface |
+| `WRAP` | used behind an Attadipa interface |
 | `PORT` | moved to this platform, logic preserved |
-| `ADAPT` | modified for Firefly's constraints |
+| `ADAPT` | modified for Attadipa's constraints |
 | `EXTRACT ALGORITHM` | only the algorithm taken, code rewritten |
 | `INSPIRE ARCHITECTURE` | only the design idea taken, nothing copied |
 | `UPSTREAM PATCH` | change contributed back rather than forked |
@@ -37,7 +37,7 @@ Weaknesses:
 Decision:
 Reason:
 Source revision:
-Firefly integration:
+Attadipa integration:
 Tests required:
 ```
 
@@ -59,7 +59,7 @@ want to inherit the experience, not only the code.
 
 | Project | Repository | Commit at examination | Last commit | Why it is here |
 |---|---|---|---|---|
-| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Firefly builds on; T-006 |
+| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006 |
 | `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API |
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
@@ -73,12 +73,12 @@ want to inherit the experience, not only the code.
 
 ### Licences, checked before anything was depended on
 
-Firefly is MIT. `CLAUDE.md` says anything incompatible with MIT does not enter
+Attadipa is MIT. `CLAUDE.md` says anything incompatible with MIT does not enter
 this repository, and the licence is checked *before* the code is depended on,
 never after. Every licence below was read from the file in the clone, not from a
 badge or a recollection.
 
-| Project | Licence | Where it was read | What Firefly may do with it |
+| Project | Licence | Where it was read | What Attadipa may do with it |
 |---|---|---|---|
 | MeshCore | **MIT** | `license.txt`, and the README's licence section | anything |
 | RadioLib | **MIT** | `license.txt`; `library.json` agrees | anything |
@@ -93,10 +93,10 @@ badge or a recollection.
 | **Gadgetbridge** | **AGPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
 
 The bottom three matter more than the top six, because they are the projects
-that have already solved Firefly's hardest problems. Meshtastic ships worldwide
+that have already solved Attadipa's hardest problems. Meshtastic ships worldwide
 and has therefore had to solve regulatory bounds on radio settings. InfiniTime
 is a mature LVGL watch firmware with a real application lifecycle running on far
-less RAM than either Firefly board has. They are the obvious places to look —
+less RAM than either Attadipa board has. They are the obvious places to look —
 and **GPL-3.0 with no linking exception forecloses every ledger verb with copy
 semantics**: not `USE AS DEPENDENCY`, not `PORT`, not `ADAPT`, and not
 `EXTRACT ALGORITHM`, which is copying with extra steps. It applies to their
@@ -123,7 +123,7 @@ to look up is a licence that gets assumed.
 - Prefer an upstream patch to a fork. If a fork is unavoidable, keep the delta
   small and record what it is and why.
 - Reusing code does not mean trusting it. Every reused component needs tests
-  that prove it does what Firefly needs, on Firefly's target.
+  that prove it does what Attadipa needs, on Attadipa's target.
 - Vendor examples are a source of *knowledge*. Do not import a vendor demo's
   architecture into the project along with the one fact you needed.
 
@@ -174,7 +174,7 @@ which obvious-looking solutions already broke for other people.
 
 ### Mesh stack, and the watch-to-node link
 
-**Problem:** a LoRa mesh stack for the Firefly node, and the protocol the watch
+**Problem:** a LoRa mesh stack for the Attadipa node, and the protocol the watch
 speaks to it.
 
 **Projects investigated:** MeshCore (MIT, `d92964352441e53b93e8667b802e04f6e072b39e`,
@@ -212,7 +212,7 @@ addendum forbids. On the node path it is also unnecessary: the radio is in a
 separate device, so the watch never originates or routes a mesh packet. `REIMPLEMENT` fails the addendum's test —
 MeshCore's routing, duplicate suppression, airtime budgeting and path-hash
 scheme are years of field tuning across 87 board variants, and nothing in
-Firefly's requirements is unmet by them. What Firefly *does* write is a
+Attadipa's requirements is unmet by them. What Attadipa *does* write is a
 companion-protocol client, which is a client of a published protocol rather than
 a reimplementation of a stack; MeshCore's own JavaScript and Python clients are
 the same thing.
@@ -231,14 +231,14 @@ seven test binaries, none touching crypto or wire format, with a no-op AES mock.
 - **A packed descriptor read as a plain integer.** The companion protocol's
   `path_len` byte packs a hash count in its low six bits and a hash size in its
   high two, and shipped firmware treated it as a plain length in
-  `CMD_SEND_RAW_DATA`. *Issue #3220, filed and closed 2026-08-19.* → Firefly's
+  `CMD_SEND_RAW_DATA`. *Issue #3220, filed and closed 2026-08-19.* → Attadipa's
   client validates every `path_len` with the semantics of
   `Packet::isValidPathLen()` (`src/Packet.cpp:13-18`) before consuming a byte of
   path.
 - **A shared array across two tasks with no synchronisation.** The ESP32 BLE
   receive path had `onWrite` appending from the BLE host task while `loop()` read
   from the Arduino task. *Fixed by `3885c67c8eaf46ce66e28252338df783ca178a95`,
-  2026-07-20.* → MeshCore's core has zero locking by design. Firefly must never
+  2026-07-20.* → MeshCore's core has zero locking by design. Attadipa must never
   touch a MeshCore object from more than one task, and all companion-frame
   reassembly on the watch belongs to one task.
 - **A blocking write took down the whole cooperative loop.** The ESP32 build
@@ -246,14 +246,14 @@ seven test binaries, none touching crypto or wire format, with a no-op AES mock.
   `39ff5b87`.* → The node link must be non-blocking on both sides; check
   writability first, never block a UI or application task on it.
 - **Security is an open upstream issue, not a solved problem.** *Issue #259,
-  "Security issues in encryption!", open since 2025-05.* → Firefly must never
+  "Security issues in encryption!", open since 2025-05.* → Attadipa must never
   present the MeshCore transport to a user as private or verified. No lock icon,
   no "encrypted" label on a mesh message. Honest status text is a requirement,
   not a nicety.
 
 **Source revision:** MeshCore `d92964352441e53b93e8667b802e04f6e072b39e`.
 
-**Firefly integration:** [ADR-0005](../adr/0005-node-protocol.md).
+**Attadipa integration:** [ADR-0005](../adr/0005-node-protocol.md).
 
 **Tests to port** — all MIT, all portable as code:
 `test/test_config_serializer/` · `test/test_companion_node_prefs/` ·
@@ -274,7 +274,7 @@ Meshtastic's `PhoneAPI` (GPL-3.0 — read only) · MeshCore's companion protocol
 (MIT) · Apple ANCS (specification) · InfiniTime's GATT services (GPL-3.0 — read
 only).
 
-**Decision:** `INSPIRE ARCHITECTURE` — write Firefly's own versioned binary TLV,
+**Decision:** `INSPIRE ARCHITECTURE` — write Attadipa's own versioned binary TLV,
 take no schema-codec dependency.
 
 **Reason:** measured, on `xtensa-esp32s3-elf-gcc` 14.2.0 at `-Os`.
@@ -287,14 +287,14 @@ same story less sharply — nanopb runtime 7 029 B, Meshtastic's descriptor tabl
 32 MB part and the 512 KB of internal SRAM is not.
 
 The licence closed the alternatives before the measurement did: the two
-implementations closest to Firefly's problem are GPL-3.0 and AGPL-3.0.
+implementations closest to Attadipa's problem are GPL-3.0 and AGPL-3.0.
 
 **Lessons from upstream issues:**
 
 - **A schema width is wire ABI.** nanopb halts on string overflow rather than
   truncating, so shrinking `long_name` by fifteen bytes made peers built against
   the old schema undecodable. *Reverted within the hour;* break at
-  `41727ea73453233fc643395ed9467998f0891e44`, 2026-06-11. → Firefly's field
+  `41727ea73453233fc643395ed9467998f0891e44`, 2026-06-11. → Attadipa's field
   widths are an **acceptance** property, never a **decode** property. Accept
   generously, clamp on store and on transmit.
 - **Per-session state outlived the physical link.** A BLE drop mid-config-sync
@@ -305,13 +305,13 @@ implementations closest to Firefly's problem are GPL-3.0 and AGPL-3.0.
 - **A negotiated version that is never reset.** MeshCore writes `app_target_ver`
   in exactly two places and never clears it, so a reconnecting client inherits
   the previous session's assumption. → Negotiated state is *link* state, not
-  *device* state. Firefly resets it unconditionally and returns a session epoch.
+  *device* state. Attadipa resets it unconditionally and returns a session epoch.
 - **A length-prefixed frame with no checksum, on a link shared with log
   output.** Debug text interleaved into a declared payload and the receiver
   believed it. *Issue #10975, 2026-07-10.* → A CRC in the header, and a partial
   transport write must retain and complete the remainder rather than dropping it.
 
-**Firefly integration:** [ADR-0005](../adr/0005-node-protocol.md).
+**Attadipa integration:** [ADR-0005](../adr/0005-node-protocol.md).
 
 ---
 
@@ -332,7 +332,7 @@ comparables, and independently **no candidate actually solves it**. esp-bsp's
 `BSP_CAPS_*` are compile-time macros and cannot express a provider that arrives
 later at all. Meshtastic's variants are a build-time selection across ~200
 boards. Both answer "which board was this compiled for", which is the question
-Firefly's architecture forbids asking.
+Attadipa's architecture forbids asking.
 
 **Lessons from upstream issues:**
 
@@ -354,7 +354,7 @@ Firefly's architecture forbids asking.
   from a peer's GATT write length. *Issue #825, `df61907073fab7d4c2f9595c7771e894a3841b65`.*
   → A detached provider is a trust boundary. Bound every length at the link edge.
 
-**Firefly integration:** [ADR-0004](../adr/0004-capability-sources.md).
+**Attadipa integration:** [ADR-0004](../adr/0004-capability-sources.md).
 
 ---
 
@@ -369,7 +369,7 @@ Android/Wear OS lifecycle contracts (specification).
 
 **Decision:** `INSPIRE ARCHITECTURE`.
 
-**Reason:** InfiniTime is the only project solving Firefly's exact shape — an
+**Reason:** InfiniTime is the only project solving Attadipa's exact shape — an
 LVGL watch firmware with a real app model on far less RAM — and it is GPL-3.0.
 Recorded explicitly so nobody relitigates it later when `DisplayApp`'s message
 loop looks copyable. It is not.
@@ -378,7 +378,7 @@ loop looks copyable. It is not.
 
 - **A resource an open app depended on was powered down underneath it, and the
   app silently rendered a missing element.** *Issue #2451, closed 2026-07-19.*
-  Upstream's fix was to stop letting the resource vanish — **Firefly cannot take
+  Upstream's fix was to stop letting the resource vanish — **Attadipa cannot take
   that escape hatch**, because a node walking out of range is not something we
   can decide to keep powered. The app must be told.
 - **Availability as a `bool` at one call site, silently disabled by a refactor,
@@ -396,7 +396,7 @@ loop looks copyable. It is not.
   timer's lifetime.
 
 **Tests to port:** none exist. `InfiniTime/tests/` contains two files. That is
-itself the finding, and it means Firefly writes these from scratch — all
+itself the finding, and it means Attadipa writes these from scratch — all
 host-native, no hardware, no LVGL.
 
 ---
@@ -425,7 +425,7 @@ precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
   reboot.** Meshtastic's `limitPower()` wrote the clamped value back into the
   persisted config — documented in a comment as a thing not to do, and shipped
   anyway, twice. *Fixed by `f95c77b8bd8babd071e7cc2b36f0e3952bf4ed92`, PR #7255,
-  2025-07-07.* → Firefly separates stored intent from effective value and makes
+  2025-07-07.* → Attadipa separates stored intent from effective value and makes
   the write-back **structurally impossible**, not merely documented.
 - **A wrong number in a region table makes the device transmit illegally.**
   Meshtastic's `EU_433` band edge is wrong and *issue #3371 has been open since
@@ -434,7 +434,7 @@ precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
 - **A transmit gate that is visibly present in the source can be silently dead.**
   Meshtastic gated transmission on `region == UNSET`; the check was there to
   read, and the device transmitted anyway. *Issue #2205, 2023-01-25.* → This is
-  Firefly's single most safety-critical line, it is exactly the state the project
+  Attadipa's single most safety-critical line, it is exactly the state the project
   ships in while A4 is open, and it needs a test that actually observes silence
   rather than reads the source.
 - **A firmware update reset a setting and the device exceeded legal power.** On a
@@ -448,7 +448,7 @@ precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
 InfiniTime's are GPL-3.0 — their *case lists* may inform, their code may not be
 copied.
 
-**Firefly integration:** [ADR-0006](../adr/0006-settings-and-bounded-values.md).
+**Attadipa integration:** [ADR-0006](../adr/0006-settings-and-bounded-values.md).
 
 ---
 
@@ -463,7 +463,7 @@ Meshtastic's fork (LGPL-2.1 — a relink obligation this project should not take
 (GPL-3.0 — read only).
 
 **Decision:** `WRAP` — take `minmea.c` / `minmea.h` unmodified at
-`2dd2cd11a359de5583e68053182d5bbf29725934`, behind a Firefly wrapper that owns
+`2dd2cd11a359de5583e68053182d5bbf29725934`, behind an Attadipa wrapper that owns
 line assembly, length enforcement, strict checksum verification and value
 validation.
 
@@ -495,7 +495,7 @@ arrive as a version bump rather than a merge.
 - **A checksum computed from a fixed offset rather than from the located `$`.**
   Meshtastic's output began with CRLF and folded the newline into the checksum.
   *PR #11293, `63671329199e1b6721f837043965a9d891afb092`, 2026-07-31.* → minmea
-  has no line assembler, so the assembler is code **Firefly** writes — this is
+  has no line assembler, so the assembler is code **Attadipa** writes — this is
   our risk surface, not the library's.
 - **Geodesic code crashed on hostile coordinates arriving over the air.** *PR
   #10862, `b4dd76a4db78292c9d181d9cc181104b662add13`, 2026-07-02.* → Coordinates
@@ -569,10 +569,10 @@ vendors it.
   nested ternary of `strcmp` over **every key in the project** — O(n) string
   compares per lookup, expanded inline at every call site.
 - It generates **C with a fixed API** (`_()`, `_p()`, `lv_i18n_set_locale`)
-  around a global current-locale. Firefly's `tr()` has to return something the
+  around a global current-locale. Attadipa's `tr()` has to return something the
   UI layer can hold, and that signature is T-033's to choose.
 - The toolchain is **Node plus a CLI that scrapes source files** for keys.
-  Firefly's source of truth is the catalogue, not the source scrape — the
+  Attadipa's source of truth is the catalogue, not the source scrape — the
   direction is reversed, and reversing it is not a small edit.
 - **No font check.** The one check that is invisible without machine
   enforcement — a Russian string the embedded font cannot draw — is not
@@ -596,10 +596,10 @@ font check regardless.
 files read: `src/lv_i18n.template.h`, `src/lv_i18n.template.c`,
 `lib/plurals.js`, `package.json`, `LICENSE`.
 
-**Firefly integration:** a TOML catalogue as the single source of truth, a
+**Attadipa integration:** a TOML catalogue as the single source of truth, a
 Python generator beside `tools/font/` emitting a `StringId` enum and parallel
 per-locale tables, and three checks wired as `ctest` entries so that a local run
-and CI enforce the same thing. The plural category function is Firefly's own
+and CI enforce the same thing. The plural category function is Attadipa's own
 code, in C++, tested against the vector ADR-0010 names.
 
 **Tests required:** the plural vector 0, 1, 2, 5, 11, 21, 101, 111, 1001
@@ -691,7 +691,7 @@ returns `true` unconditionally with the comment *"no way of knowing, so assume
 yes"*.
 
 None of that is fixable by wrapping it, because the defects are in what the
-format *is*. Firefly's frame is therefore a sync pattern, a length with a check
+format *is*. Attadipa's frame is therefore a sync pattern, a length with a check
 byte so a corrupted length is caught before the decoder waits for bytes that
 will never arrive, and a CRC-16/CCITT over length and payload. An over-long
 frame is refused, and `tests/test_link.cpp` asserts that specifically.
@@ -712,7 +712,7 @@ anything.
 anywhere: it is the largest MeshCore packet plus the node-link header, rounded
 up to a multiple of 32 so a queue slot aligns. `kDefaultQueueDepth = 4` is one
 frame in flight, one being built, and two of slack. Both are stated in
-`link/include/firefly/link/frame_codec.h` beside the constants, because §6 of
+`link/include/attadipa/link/frame_codec.h` beside the constants, because §6 of
 the brief forbids magic numbers copied from another project.
 
 **Tests required, and present:** the owner's §6 list one function per item —
@@ -777,7 +777,7 @@ recorded sentences against expected output) · RTKLIB's RINEX-driven tests
 directory of recorded inputs, each with its expected output, replayed by a
 runner that fails loudly on a mismatch and treats an unreadable fixture as a
 failure rather than a skip. What could not be taken is the level: gpsd replays
-*sentences* to test a *parser*, and Firefly has no parser yet (minmea is a `WRAP`
+*sentences* to test a *parser*, and Attadipa has no parser yet (minmea is a `WRAP`
 decision above and is not vendored). The rig therefore replays normalized
 observations to test the trust and validity model, and the fixture format is
 shaped so that an NMEA, GPX or vendor-binary front end later adds a reader

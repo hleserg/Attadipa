@@ -4,13 +4,13 @@
 // and regenerate; a stale copy of this file is a failing test
 // (`ctest -R l10n_generated_is_current`), not a silent divergence.
 
-#include "firefly/l10n/catalogue.h"
-#include "firefly/l10n/string_id.h"
+#include "attadipa/l10n/catalogue.h"
+#include "attadipa/l10n/string_id.h"
 
 // The literals below are UTF-8 and are written as themselves. See
 // tools/l10n/gen_strings.py for why they are not escaped.
 
-namespace firefly::l10n {
+namespace attadipa::l10n {
 namespace {
 
 const char* const kEnSingular[kStringIdCount] = {
@@ -25,7 +25,7 @@ const char* const kEnSingular[kStringIdCount] = {
     /* LanguageEnglish */ "English",
     /* LanguageRussian */ "Русский",
     /* No */ "no",
-    /* ProductName */ "Firefly OS",
+    /* ProductName */ "Attadipa",
     /* Yes */ "yes",
 };
 
@@ -41,7 +41,7 @@ const char* const kRuSingular[kStringIdCount] = {
     /* LanguageEnglish */ "English",
     /* LanguageRussian */ "Русский",
     /* No */ "нет",
-    /* ProductName */ "Firefly OS",
+    /* ProductName */ "Attadipa",
     /* Yes */ "да",
 };
 
@@ -124,4 +124,4 @@ const char* plural_id_name(PluralId id)
     return index < kPluralIdCount ? kPluralIdNames[index] : "<out of range>";
 }
 
-}  // namespace firefly::l10n
+}  // namespace attadipa::l10n

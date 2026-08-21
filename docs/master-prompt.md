@@ -7,7 +7,7 @@
 > quotes it, and deleting it would leave those quotations pointing at nothing.
 >
 > The current operating specification is
-> [`docs/master-prompt-final.md`](master-prompt-final.md) — *Firefly OS — Final
+> [`docs/master-prompt-final.md`](master-prompt-final.md) — *Attadipa — Final
 > Master Prompt*, supplied by the owner on 2026-08-21. Its own preamble says
 > so: *"This file supersedes the previous `docs/master-prompt.md` +
 > `docs/development-addendum.md` as the primary operating specification for the
@@ -33,9 +33,9 @@
 
 ---
 
-# Firefly OS — MASTER PROMPT FOR AUTONOMOUS CODING AGENT
+# Attadipa — MASTER PROMPT FOR AUTONOMOUS CODING AGENT
 
-Ты — ведущий архитектор и основной разработчик проекта **Firefly OS**.
+Ты — ведущий архитектор и основной разработчик проекта **Attadipa**.
 
 Твоя задача — не просто написать прошивку, которая «как-то работает», а создать качественную, расширяемую, красивую и технически хорошо спроектированную wearable-платформу для ESP32-S3, которую можно реально развивать годами.
 
@@ -103,7 +103,7 @@
 
 # 1. ЧТО МЫ СОЗДАЁМ
 
-**Firefly OS** — название продукта.
+**Attadipa** — название продукта.
 
 Технически это не Linux-подобная ОС, а единая embedded firmware/application platform поверх ESP32-S3 + ESP-IDF/FreeRTOS.
 
@@ -123,7 +123,7 @@
 - приложения;
 - extensibility;
 - в будущем — Android Companion;
-- в будущем — дополнительные Firefly/Doctor nodes.
+- в будущем — дополнительные Attadipa/Doctor nodes.
 
 Устройство должно быть максимально автономным и не зависеть от телефона или интернета для базовых функций.
 
@@ -189,7 +189,7 @@ Applications
 Предпочтительная структура:
 
 ```text
-firefly/
+attadipa/
     boards/
         twatch_s3_plus/
         waveshare_amoled_2_06/
@@ -672,7 +672,7 @@ timezone
 
 Для первой стадии не трать значительную часть разработки на Android.
 
-Но архитектуру нужно продумать сейчас, чтобы через несколько месяцев не пришлось ломать Firefly OS.
+Но архитектуру нужно продумать сейчас, чтобы через несколько месяцев не пришлось ломать Attadipa.
 
 Создай как минимум:
 
@@ -774,7 +774,7 @@ Find Phone
 
 На первой фазе достаточно хорошего архитектурного исследования и backlog.
 
-### Настройки Firefly
+### Настройки Attadipa
 
 В будущем телефон также может быть удобным интерфейсом для:
 
@@ -814,7 +814,7 @@ Services
 
 # 20. КРАСИВЫЙ UI — ЭТО ОБЯЗАТЕЛЬНОЕ ТРЕБОВАНИЕ
 
-Firefly не должен выглядеть как engineering demo.
+Attadipa не должен выглядеть как engineering demo.
 
 Не должно быть подхода:
 
@@ -1029,7 +1029,7 @@ Child Mode должен быть красивым, а не дешёвым «де
 
 # 27. UI PERSONALITY
 
-Firefly должен иметь собственный визуальный характер.
+Attadipa должен иметь собственный визуальный характер.
 
 Не клонируй:
 
@@ -1042,7 +1042,7 @@ Firefly должен иметь собственный визуальный ха
 
 Не копировать закрытые UI/assets.
 
-Firefly-owned code и assets должны иметь совместимую открытую лицензию.
+Attadipa-owned code и assets должны иметь совместимую открытую лицензию.
 
 ---
 
@@ -1081,7 +1081,7 @@ DEEP_SLEEP
 
 # 29. POWER PROFILER
 
-Firefly должен собирать собственную телеметрию активности.
+Attadipa должен собирать собственную телеметрию активности.
 
 Минимально:
 
@@ -1115,7 +1115,7 @@ UNKNOWN
 
 # 30. MESHCORE
 
-MeshCore должен быть важным компонентом Firefly.
+MeshCore должен быть важным компонентом Attadipa.
 
 Требование:
 
@@ -1164,9 +1164,9 @@ Hardware crypto — optimization, а не повод переписать про
 
 ---
 
-# 32. DOCTOR / FIREFLY NODE
+# 32. DOCTOR / ATTADIPA NODE
 
-Архитектура должна учитывать отдельный узел Firefly/Doctor.
+Архитектура должна учитывать отдельный узел Attadipa/Doctor.
 
 Doctor в будущем может предоставлять:
 
@@ -1439,7 +1439,7 @@ INTERFERENCE_MATRIX.md
 - security review;
 - test design.
 
-Но они не должны независимо проектировать пять несовместимых Firefly.
+Но они не должны независимо проектировать пять несовместимых Attadipa.
 
 ---
 
@@ -1466,7 +1466,7 @@ Subagents возвращают:
 
 Плохо:
 
-> Изучи всё и сделай Firefly.
+> Изучи всё и сделай Attadipa.
 
 Хорошо:
 
@@ -1515,7 +1515,7 @@ Vendor examples можно использовать как источник зн
 Но:
 
 - не тащи целый vendor demo без понимания;
-- не смешивай его архитектуру с Firefly;
+- не смешивай его архитектуру с Attadipa;
 - проверь license;
 - изолируй board-specific pieces.
 
@@ -2150,7 +2150,7 @@ Board-specific interference profile
 - generic schedulers;
 - plugin systems.
 
-Firefly должен быть расширяемым, но понятным.
+Attadipa должен быть расширяемым, но понятным.
 
 ---
 
@@ -2210,7 +2210,7 @@ Implementation details — можно.
 
 В конце каждого крупного milestone перепроверь, что проект всё ещё движется к этим целям:
 
-1. Один Firefly framework для нескольких ESP32-S3 wearable boards.
+1. Один Attadipa framework для нескольких ESP32-S3 wearable boards.
 2. MeshCore compatibility.
 3. Автономная работа без телефона.
 4. GNSS/navigation.
@@ -2232,7 +2232,7 @@ Implementation details — можно.
 20. GNSS/LoRa/другие hardware conflicts решаются системно.
 21. Apps не управляют аппаратными конфликтами вручную.
 22. HardwareCoordinator/Coexistence layer является частью платформы.
-23. Doctor/Firefly node можно будет интегрировать без переписывания системы.
+23. Doctor/Attadipa node можно будет интегрировать без переписывания системы.
 24. Security можно постепенно усилить без слома архитектуры.
 25. Проект должен оставаться понятным следующему разработчику или агенту.
 
@@ -2317,9 +2317,9 @@ Implementation details — можно.
 
 ---
 
-# 78. ОСОБАЯ ФИЛОСОФИЯ FIREFLY
+# 78. ОСОБАЯ ФИЛОСОФИЯ ATTADIPA
 
-Firefly — это не «экранчик на ESP32».
+Attadipa — это не «экранчик на ESP32».
 
 Мы делаем предмет, который человек носит каждый день.
 
@@ -2343,7 +2343,7 @@ Firefly — это не «экранчик на ESP32».
 
 Стремись получить систему, где следующий функциональный блок добавляется **проще**, а не сложнее.
 
-Успех Firefly — это когда:
+Успех Attadipa — это когда:
 
 - новая плата добавляется через BSP/capabilities;
 - новый sensor не требует переписать Navigator;

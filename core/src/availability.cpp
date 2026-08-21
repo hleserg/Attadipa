@@ -1,6 +1,6 @@
-#include "firefly/core/availability.h"
+#include "attadipa/core/availability.h"
 
-namespace firefly::core {
+namespace attadipa::core {
 
 int remedy_rank(Availability availability)
 {
@@ -50,4 +50,4 @@ const char* to_string(Validity validity)
     return "?";
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

@@ -7,7 +7,7 @@ fail a build; and a fourth that proves the three can fail.
 | Script | What it does |
 |---|---|
 | [`catalogue.py`](catalogue.py) | reads and validates the catalogue. The only parser — the generator and the glyph check share it so they cannot drift |
-| [`gen_strings.py`](gen_strings.py) | writes `l10n/include/firefly/l10n/string_id.h` and `l10n/src/catalogues.cpp`. `--check` fails if the committed copies are stale |
+| [`gen_strings.py`](gen_strings.py) | writes `l10n/include/attadipa/l10n/string_id.h` and `l10n/src/catalogues.cpp`. `--check` fails if the committed copies are stale |
 | [`check_glyphs.py`](check_glyphs.py) | fails if a catalogue string needs a character outside [`tools/font/charset.py`](../font/charset.py) |
 | [`selftest.py`](selftest.py) | runs the checks over eight deliberate mistakes and requires each to be rejected **for its own reason** |
 
@@ -70,7 +70,7 @@ header says `-r 0x20-0x7F,0xB0,0x2022`. **No built-in LVGL font has Cyrillic**,
 so the simulator cannot draw the Russian catalogue at all:
 
 ```
-$ SDL_VIDEODRIVER=dummy firefly_sim --board t-watch-s3-plus --locale ru --frames 2
+$ SDL_VIDEODRIVER=dummy attadipa_sim --board t-watch-s3-plus --locale ru --frames 2
   U+0412 cannot be drawn — first seen in 'diagnostic_capabilities'
   ...
 l10n: 26 codepoint(s) of the ru catalogue cannot be drawn by the font in this build.

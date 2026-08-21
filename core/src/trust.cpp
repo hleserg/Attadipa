@@ -1,8 +1,8 @@
-#include "firefly/core/trust.h"
+#include "attadipa/core/trust.h"
 
-#include "firefly/core/geo.h"
+#include "attadipa/core/geo.h"
 
-namespace firefly::core {
+namespace attadipa::core {
 namespace {
 
 constexpr std::uint8_t index_of(TrustReason reason)
@@ -505,4 +505,4 @@ const char* to_string(TrustReason reason)
     return "?";
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

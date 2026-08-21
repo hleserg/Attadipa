@@ -14,18 +14,18 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Firefly has code.** As of 2026-08-21 the repository builds five libraries, a
+**Attadipa has code.** As of 2026-08-21 the repository builds five libraries, a
 simulator and seventeen tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
 |---|---|---|
-| `firefly_platform` | the hardware inventory: `HardwareFeature`, `HardwareState`, `RadioInfo`, and the two board profiles transcribed from the schematics | — |
-| `firefly_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
-| `firefly_apps` | `AppManifest` and the launcher gating rule | core only |
-| `firefly_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
-| `firefly_replay` | the deterministic navigation replay rig, in `tests/` | core |
-| `firefly_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
+| `attadipa_platform` | the hardware inventory: `HardwareFeature`, `HardwareState`, `RadioInfo`, and the two board profiles transcribed from the schematics | — |
+| `attadipa_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
+| `attadipa_apps` | `AppManifest` and the launcher gating rule | core only |
+| `attadipa_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
+| `attadipa_replay` | the deterministic navigation replay rig, in `tests/` | core |
+| `attadipa_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
 
 The `PRIVATE` in the second row is the enforcement mechanism for
 [ADR-0007](docs/adr/0007-two-capability-layers.md) §5, and two tests compile one
@@ -113,7 +113,7 @@ been the expensive order.
 | A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
 | A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
-| A6 | Does the Firefly node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
+| A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
 None of these blocks M1. All of them block hardware work.
@@ -123,9 +123,9 @@ None of these blocks M1. All of them block hardware work.
 | Target | State |
 |---|---|
 | Host / native | builds; **seventeen tests** pass locally. CI has run the ten that were on `main`; the seven this branch adds reach it when the branch opens a pull request, because CI triggers on `pull_request` and on pushes to `main`, not on a branch push — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
-| Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DFIREFLY_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
+| Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
-| ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
+| ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
 | Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 16-case hostile-input test passes. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
@@ -157,13 +157,13 @@ needs the owner, and one needs a ruler.
 | # | Conflict |
 |---|---|
 | D15 | **The T-Watch panel's physical diagonal.** LilyGoLib's spec tables say 1.3" for the S3 and the S3 Plus by name; the schematic's LCD sheet says `QT154C2408` / `LCD_1.54-TOUCH`, and that vendor's sibling part `QT154H2201` is published as 1.54", 240×240, ST7789V — so the part number decodes. 240 × 240 is not in doubt; 261 dpi against 220 is. The code holds 1.3" as the **conservative** reading, not the confident one ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md#display-diagonal--conflicting)) |
-| A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Firefly Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
+| A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Attadipa Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
 | H8 | The T-Watch vendor document calls ALDO1 unused; the schematic drives the `+3V3` rail from it. If the schematic is right, `+3V3` is switchable and carries five parts |
 | D12 | PSRAM documented as quad; the `R8` part marking is understood to mean octal. Affects both boards, and blocks the LVGL buffer decision |
 
 ## Assumptions in force
 
-- The LilyGO PlatformIO pin to IDF 4.4.7 does not constrain Firefly, which is
+- The LilyGO PlatformIO pin to IDF 4.4.7 does not constrain Attadipa, which is
   ESP-IDF-native and does not use the Arduino layer. Flagged, not proven.
 - Both boards' SoC is an ESP32-S3 — from both schematics (`ESP32-S3-R8`,
   `ESP32-S3R8`), but not from a chip readback.
@@ -209,7 +209,7 @@ needs the owner, and one needs a ruler.
   slightly smaller letter, so the two are not comparable at equal size.
 - **T-033 — localization, and the checks that make it a mechanism.**
   `l10n/strings.toml` is the source of truth; a generator emits the `StringId`
-  enum and the per-locale tables; `firefly_l10n` sits beside core and is linked
+  enum and the per-locale tables; `attadipa_l10n` sits beside core and is linked
   by apps and the simulator but **not** by core, which a second boundary test
   enforces the way the first one enforces ADR-0007. The Russian plural vector
   asserts categories rather than strings, and a sweep proves `other` is
@@ -235,7 +235,7 @@ needs the owner, and one needs a ruler.
   it: gate → claim → Claude → draft pull request → independent review → CI →
   repair, with an hourly watchdog for lost events and a daily backstop routine
   for the case the watchdog itself is not running. Exercising it on
-  [#5](https://github.com/hleserg/FireflyOS/issues/5) proved four of its five
+  [#5](https://github.com/hleserg/Attadipa/issues/5) proved four of its five
   claims and broke on the fifth: a second run on an already-claimed issue left
   `agent:working` and `agent:review` set together, because `claim` removed only
   `agent:ready` and `Hand over` then matched the leftover `agent:review` and
@@ -254,21 +254,21 @@ needs the owner, and one needs a ruler.
   nothing; the agent on issue #5 finished green with no branch and no pull
   request. Both had read everything and had no way to say so. Fixed and merged
   (#9, `b1a3dca`), and **the reviewer half is now observed working**: on
-  [#11](https://github.com/hleserg/FireflyOS/pull/11) the independent reviewer
-  posted a full review carrying the `firefly-ai-review` marker and set
+  [#11](https://github.com/hleserg/Attadipa/pull/11) the independent reviewer
+  posted a full review carrying the `attadipa-ai-review` marker and set
   `ai-review:blocking`, which had never happened before in this repository. The
   writer half — a branch and a draft pull request from an agent run — is still
   unobserved; the open item is
-  [#10](https://github.com/hleserg/FireflyOS/issues/10).
+  [#10](https://github.com/hleserg/Attadipa/issues/10).
 - **And the reviewer would have been skipped on every agent pull request.** With
-  `FIREFLY_AGENT_TOKEN` unset — the documented default — the agent opens its pull
+  `ATTADIPA_AGENT_TOKEN` unset — the documented default — the agent opens its pull
   request as `claude[bot]`, and `claude-pr-review.yml` excluded every actor ending
   in `[bot]`. The guard was aimed at Dependabot and caught the one case the
   workflow exists for. Found by an external review bot on #11, confirmed against
   the production runs where Dependabot's pull requests were skipped, and fixed by
   exempting `claude[bot]` alone.
 - **The silent refusal was reproduced, not theorised.** A task with a valid
-  marker filed through the GitHub API ([#10](https://github.com/hleserg/FireflyOS/issues/10))
+  marker filed through the GitHub API ([#10](https://github.com/hleserg/Attadipa/issues/10))
   arrived as `claude[bot]`, was refused by the bot guard — correctly — and was
   simultaneously invisible to the watchdog, which filters on
   `author_association` and saw `NONE`. The run went green and nothing was

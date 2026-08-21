@@ -14,7 +14,7 @@ $ curl -X POST .../graphql -d '{"query":"{repository(...){issueCreationPolicy}}"
 {"message":"This GraphQL query is not enabled for this session — only the pinned
 set of PR-review operations is served."}
 
-$ curl -X PATCH .../repos/hleserg/FireflyOS -d '{"has_discussions":true}'
+$ curl -X PATCH .../repos/hleserg/Attadipa -d '{"has_discussions":true}'
 403  Repository settings writes are not permitted through this proxy.
 ```
 
@@ -32,7 +32,7 @@ biggest fix in #9 actually works. The rest is housekeeping.
 ```bash
 gh auth status          # must be a USER account, not an app
 gh api user --jq .login # expect: hleserg
-cd /path/to/FireflyOS && git fetch origin && git checkout main && git pull
+cd /path/to/Attadipa && git fetch origin && git checkout main && git pull
 ```
 
 If `gh api user` reports anything ending in `[bot]`, stop — the whole point of
@@ -52,7 +52,7 @@ Claude comment mentioning `@claude` would otherwise start a Claude run that
 comments, and the bill grows until somebody notices.
 
 On 2026-08-21 that guard was demonstrated against a real, correctly-marked task.
-[Issue #10](https://github.com/hleserg/FireflyOS/issues/10), gate log from run
+[Issue #10](https://github.com/hleserg/Attadipa/issues/10), gate log from run
 `32475652479`:
 
 ```
@@ -82,7 +82,7 @@ GitHub connector authenticates as, and give it write access:
 
 ```bash
 gh api user                                    # ...as ChatGPT, to learn the login
-gh api -X PUT repos/hleserg/FireflyOS/collaborators/<login> -f permission=push
+gh api -X PUT repos/hleserg/Attadipa/collaborators/<login> -f permission=push
 ```
 
 Then verify by filing one issue *as ChatGPT* and watching what happens. Either an
@@ -93,7 +93,7 @@ lands on the issue — that is what PR #9's refusal-comment change is for.
 the gate needs an allowlist, and it must be built to these constraints, which
 are not negotiable:
 
-- a new repository variable `FIREFLY_TRUSTED_PRODUCERS`, **empty by default**;
+- a new repository variable `ATTADIPA_TRUSTED_PRODUCERS`, **empty by default**;
 - it applies to **`issues` events only, never comments**. The loop this guards
   against lives in comments;
 - `claude` and `github-actions` can **never** be listable, checked *after* the
@@ -117,8 +117,8 @@ kill switch works either way; setting it explicitly is what makes
 `docs/automation/RECOVERY.md`'s first command meaningful.
 
 ```bash
-gh variable set CLAUDE_AUTOMATION_ENABLED --body true --repo hleserg/FireflyOS
-gh variable list --repo hleserg/FireflyOS
+gh variable set CLAUDE_AUTOMATION_ENABLED --body true --repo hleserg/Attadipa
+gh variable list --repo hleserg/Attadipa
 ```
 
 Set it to `false` instead if you want the loop parked while PR #9 is reviewed.
@@ -137,7 +137,7 @@ Two facts already established from run logs, so do not re-derive them:
   the intended path.
 
 ```bash
-gh secret list --repo hleserg/FireflyOS
+gh secret list --repo hleserg/Attadipa
 ```
 
 Expect `CLAUDE_CODE_OAUTH_TOKEN`. If `ANTHROPIC_API_KEY` is also present, it is
@@ -145,14 +145,14 @@ an unused metered fallback — deleting it removes a way to bill an API account 
 accident:
 
 ```bash
-gh secret delete ANTHROPIC_API_KEY --repo hleserg/FireflyOS
+gh secret delete ANTHROPIC_API_KEY --repo hleserg/Attadipa
 ```
 
 The workflows accept whichever exists, so deleting the unused one changes no
 behaviour. **Do not remove the `ANTHROPIC_API_KEY` lines from the workflow
 files** — they are the documented fallback.
 
-`FIREFLY_AGENT_TOKEN` is intentionally unset. Empty means the action
+`ATTADIPA_AGENT_TOKEN` is intentionally unset. Empty means the action
 authenticates as the Claude GitHub App, whose installation token *does* trigger
 workflow runs. `secrets.GITHUB_TOKEN` would not, which is why it appears nowhere.
 The app is installed — `claude[bot]` has been posting all day.
@@ -168,7 +168,7 @@ cloud session could not do it.
 ```bash
 # Read first
 gh api graphql -f query='
-{ repository(owner:"hleserg", name:"FireflyOS") {
+{ repository(owner:"hleserg", name:"Attadipa") {
     id hasIssuesEnabled issueCreationPolicy viewerCanCreateIssues
     hasDiscussionsEnabled } }'
 
@@ -202,7 +202,7 @@ read, because that is GraphQL too.
 
 ```bash
 gh api graphql -f query='
-{ repository(owner:"hleserg", name:"FireflyOS") {
+{ repository(owner:"hleserg", name:"Attadipa") {
     discussionCategories(first:30) {
       nodes { id name slug description emoji isAnswerable } } } }'
 ```
@@ -232,8 +232,8 @@ Each file's first lines give its title and category. `createDiscussion` is
 GraphQL-only, hence this handoff.
 
 ```bash
-REPO_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"FireflyOS"){id}}' --jq .data.repository.id)
-CAT_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"FireflyOS"){discussionCategories(first:30){nodes{id slug}}}}' \
+REPO_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"Attadipa"){id}}' --jq .data.repository.id)
+CAT_ID=$(gh api graphql -f query='{repository(owner:"hleserg",name:"Attadipa"){discussionCategories(first:30){nodes{id slug}}}}' \
            --jq '.data.repository.discussionCategories.nodes[]|select(.slug=="ideas")|.id')
 
 # per file: strip the four header lines, post the rest as the body
@@ -277,15 +277,15 @@ and posted nothing, and why the agent on issue #5 finished green with no branch
 and no pull request.
 
 **The reviewer half is now observed working.** On
-[#11](https://github.com/hleserg/FireflyOS/pull/11) the independent reviewer
-posted a full review carrying `<!-- firefly-ai-review -->` and set
+[#11](https://github.com/hleserg/Attadipa/pull/11) the independent reviewer
+posted a full review carrying `<!-- attadipa-ai-review -->` and set
 `ai-review:blocking` — the first time that has happened in this repository.
 
 **The writer half has not been.** No agent run has yet produced a branch or a
 pull request. That is the job:
 
 ```bash
-gh issue comment 10 --repo hleserg/FireflyOS --body "@claude"
+gh issue comment 10 --repo hleserg/Attadipa --body "@claude"
 gh run watch   # or: gh run list --workflow=claude-agent.yml --limit 3
 ```
 
@@ -300,7 +300,7 @@ Watch for:
 - [ ] a **draft pull request** appears, whose body carries a closing reference
       back to this issue (the `Fixes` keyword and the issue number);
 - [ ] the independent reviewer posts a comment on it carrying
-      `<!-- firefly-ai-review -->`, and sets exactly one of `ai-review:pass` or
+      `<!-- attadipa-ai-review -->`, and sets exactly one of `ai-review:pass` or
       `ai-review:blocking`.
 
 The third one now depends on a fix made after #11: the agent opens its pull

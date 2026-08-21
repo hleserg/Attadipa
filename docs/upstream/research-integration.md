@@ -5,7 +5,7 @@ GNSS research and apply *only* what is genuinely needed and genuinely ready.
 The instruction is explicit about the epistemics and this document follows it:
 
 > Не делай изменения только ради соответствия research-отчёту. Его findings —
-> входные гипотезы. Источник истины — актуальный FireflyOS, фактический upstream
+> входные гипотезы. Источник истины — актуальный Attadipa, фактический upstream
 > и проверенное железо.
 
 So every finding below is a hypothesis until it is checked against three things:
@@ -18,12 +18,12 @@ Audited at `53f8cea`, 2026-08-21.
 
 ---
 
-## 1. The audit: what Firefly actually is today
+## 1. The audit: what Attadipa actually is today
 
 Before deciding anything, the state of the tree — because half the research
 report's recommendations name subsystems that do not exist here, and acting on
 a path like `src/hal/esp32` or `src/navigation` would be inventing an
-architecture rather than integrating a finding. **Firefly has none of those
+architecture rather than integrating a finding. **Attadipa has none of those
 directories, and it is not an oversight.**
 
 ```
@@ -117,11 +117,11 @@ than the finding list:
 
 | Landed | Lines | What it does | Tests |
 |---|---|---|---|
-| `core/include/firefly/core/position.h` | value types | a fix that carries its own quality, and four validity states | `test_position` |
-| `core/include/firefly/core/trust.h` | the trust state | evidence, reasons, hysteresis, last-trusted position | `test_trust` |
-| `core/include/firefly/core/gnss_power.h` | receiver states | OFF / BACKUP / ACQUIRING / TRACKING / POWER_SAVE / DEGRADED and their legal transitions | `test_power` |
-| `core/include/firefly/core/power_state.h` | device states | the six states, their wake sources, and the rule a board cannot break | `test_power` |
-| `core/include/firefly/core/diagnostics.h` | the snapshot | every field optional, no serializer, no JSON | `test_diagnostics` |
+| `core/include/attadipa/core/position.h` | value types | a fix that carries its own quality, and four validity states | `test_position` |
+| `core/include/attadipa/core/trust.h` | the trust state | evidence, reasons, hysteresis, last-trusted position | `test_trust` |
+| `core/include/attadipa/core/gnss_power.h` | receiver states | OFF / BACKUP / ACQUIRING / TRACKING / POWER_SAVE / DEGRADED and their legal transitions | `test_power` |
+| `core/include/attadipa/core/power_state.h` | device states | the six states, their wake sources, and the rule a board cannot break | `test_power` |
+| `core/include/attadipa/core/diagnostics.h` | the snapshot | every field optional, no serializer, no JSON | `test_diagnostics` |
 | `link/` | framing + link state | sync, CRC, resync, bounded queues, backpressure, the connection state machine | `test_link` |
 | `tests/replay/` | the rig | deterministic replay of timestamped fixtures into the trust engine | twelve scenarios, plus `test_replay_rig` |
 
@@ -177,7 +177,7 @@ One quantified consequence, and it is the first honest number this project has
 about sleep current: `CONFIG_ESP_SLEEP_PSRAM_LEAKAGE_WORKAROUND` defaults to `y`,
 must not be deselected on a module rather than a bare chip, and *"will increase
 the sleep current about 10 µA"*
-(`components/esp_hw_support/Kconfig:114-128`). Both Firefly boards are
+(`components/esp_hw_support/Kconfig:114-128`). Both Attadipa boards are
 ESP32-S3**R8** modules with PSRAM, so **~10 µA of the light-sleep floor is not
 ours to optimise away.** Labelled `VENDOR-STATED`, not `MEASURED` — Espressif's
 figure, not one taken here.
@@ -200,7 +200,7 @@ the MeshCore review proved are distinct, and the distinction is the whole point:
 `enterDeepSleep(0)` with the FEM held in RX and EXT1 armed on the radio's DIO1
 ([meshcore-1.17-review §5](meshcore-1.17-review.md), issue #3165). Two behaviours
 that differ only in their wake sources shared one function name, and "off" ended
-at the next received packet. Firefly makes that a compile-and-test-time error:
+at the next received packet. Attadipa makes that a compile-and-test-time error:
 `legal_wake_sources()` returns nothing radio-shaped for `DeepSleep` or
 `PowerOff`, and `wake_plan_is_legal()` rejects the combination.
 
@@ -219,7 +219,7 @@ a driver to power would be inventing its clients.
 
 ## 5. Crypto and RNG
 
-**Firefly has no crypto and no RNG today**, so there is nothing to fix; the
+**Attadipa has no crypto and no RNG today**, so there is nothing to fix; the
 question is only what shape the seam should be when there is.
 
 Three facts from the upstream read
@@ -233,7 +233,7 @@ Three facts from the upstream read
 - nRF52 got CC310 hardware crypto (#2824, merged, released); the ESP32
   equivalent (#2280) is **open**.
 
-So for Firefly this is a *gap to fill*, not a port. The decisions, recorded now
+So for Attadipa this is a *gap to fill*, not a port. The decisions, recorded now
 and implemented when there is a MeshCore adapter to need them (T-048):
 
 1. **One interface, three named backends** — `software`, `ESP32-S3 hardware`,
@@ -252,7 +252,7 @@ and implemented when there is a MeshCore adapter to need them (T-048):
    using, per backend, so "the hardware path is enabled" can never be assumed
    from a Kconfig symbol.
 6. **No claim that hardware acceleration is faster** may be written until it is
-   `MEASURED` against the software path at Firefly's real payload sizes.
+   `MEASURED` against the software path at Attadipa's real payload sizes.
    MeshCore's frames are ≤ 176 bytes, and a hardware AES block can lose to
    software at that length once driver setup is counted.
 
@@ -266,7 +266,7 @@ recovery. Checked against upstream at `d929643`:
 - **#3005** (ESP32 BLE bonded reconnects) and **#3007** (BLE receive queue
   synchronization) are **merged and released** in v1.17.0. Per the owner's §5 —
   *"Не добавляй workaround для старого upstream bug, если текущая используемая
-  версия уже содержит исправление"* — Firefly does **not** carry a workaround for
+  версия уже содержит исправление"* — Attadipa does **not** carry a workaround for
   either, and this line exists so nobody adds one later.
 - **#2333** (BLE ghost connection) is **open**, and its root-cause list is worth
   more than its patch: `onDisconnect()` not resetting state unconditionally;
@@ -299,7 +299,7 @@ framing is a start byte plus a 16-bit length with **no checksum, no escaping and
 no resync marker**; and an over-long frame is silently truncated to
 `MAX_FRAME_SIZE` and delivered as if complete.
 
-Firefly's `link/` answers each of those directly:
+Attadipa's `link/` answers each of those directly:
 
 | Requirement | How |
 |---|---|
@@ -332,7 +332,7 @@ the right value can be *measured* rather than argued about.
 | Board | GNSS |
 |---|---|
 | LilyGO T-Watch S3 Plus | **u-blox MIA-M10Q *or* Quectel LS550G** — a purchase-time variant on a 13-pin FPC daughterboard. UART TX 42 / RX 41. **PPS is not connected.** Rails: BLDO1, plus DC4 at 850 mV for the LS550G only |
-| Waveshare ESP32-S3-Touch-AMOLED-2.06 | **none.** Position arrives from a Firefly node or not at all |
+| Waveshare ESP32-S3-Touch-AMOLED-2.06 | **none.** Position arrives from an Attadipa node or not at all |
 
 So "assume u-blox because u-blox is well documented" is precisely the error this
 project's first rule exists to prevent, and it would have cost a GNSS that never
@@ -376,7 +376,7 @@ whether ephemeris is retained, motion, an application's request for a fresh
 position, and the device power state.
 
 **AGPS is not a dependency.** `assistance_available()` is an input to *how fast*
-a start is expected to be, never to *whether* a start is attempted. Firefly must
+a start is expected to be, never to *whether* a start is attempted. Attadipa must
 work with no network, ever, and an assistance path that becomes load-bearing is
 a bug even when it works.
 
@@ -413,7 +413,7 @@ Everything the finding was reaching for is already decided and remains in force:
 course over ground only above a speed and quality gate, standing still as a
 designed state rather than an error, and a node's compass presented in the
 node's frame or not at all (ADR-0009 §3, §4). And the architecture already
-admits a magnetometer arriving later — via a Firefly node or a future board —
+admits a magnetometer arriving later — via an Attadipa node or a future board —
 without an application changing, because an application asks for
 `Capability::Heading` and never learns the source (ADR-0004 §2). §11's
 calibration work stays in [MAGNETOMETER_BACKLOG](../hardware/MAGNETOMETER_BACKLOG.md),

@@ -1,7 +1,7 @@
 scenario a position relayed by a node can be stale on arrival
 describe The second route to Stale, and the one that has nothing to do with a
 describe receiver going quiet: an observation that was already old when it got
-describe here. A Firefly node carries the GNSS for a watch that has none, and
+describe here. An Attadipa node carries the GNSS for a watch that has none, and
 describe the position crosses a link that can queue, retry and reconnect.
 describe
 describe `age` is the fixture's way of saying the observation's own timestamp

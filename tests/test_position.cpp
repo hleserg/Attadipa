@@ -1,8 +1,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "firefly/core/geo.h"
-#include "firefly/core/position.h"
+#include "attadipa/core/geo.h"
+#include "attadipa/core/position.h"
 
 // Host tests for the position observation, the validity classifier and the
 // integer distance function.
@@ -19,7 +19,7 @@
 // answer, and where the method itself breaks down the test says so instead of
 // widening the tolerance until it passes.
 
-using namespace firefly::core;
+using namespace attadipa::core;
 
 // Every coordinate in this file is synthetic and deliberately obviously
 // nowhere — half a degree north, one degree east, in the Gulf of Guinea, the

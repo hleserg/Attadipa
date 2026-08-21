@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: firefly-agent-watchdog
+  group: attadipa-agent-watchdog
   cancel-in-progress: false
 
 permissions: {}
@@ -56,7 +56,7 @@ jobs:
                   body: (.body // "")
                 }
               | select((.labels | index("agent:ready")) != null
-                       or ((.body | test("firefly-agent-task"))
+                       or ((.body | test("attadipa-agent-task"))
                            and (.body | test("@claude"))))
               | select((.labels | index("agent:working")) == null)
               | select((.labels | index("agent:review")) == null)

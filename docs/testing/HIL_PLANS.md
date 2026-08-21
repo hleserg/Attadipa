@@ -61,7 +61,7 @@ nothing.
 ## H-2 · Sleep current, per power state
 
 **Claim under test.** `PowerMetrics::sleep_current_ua` is `Unknown` in every
-build (`core/include/firefly/core/power_state.h`), and
+build (`core/include/attadipa/core/power_state.h`), and
 `docs/upstream/research-integration.md` §4 records
 `CONFIG_ESP_SLEEP_PSRAM_LEAKAGE_WORKAROUND` as costing about 10 µA — labelled
 `VENDOR-STATED`, which is not a measurement of this board.
@@ -102,7 +102,7 @@ end left in receive and EXT1 armed on `P_LORA_DIO_1`.
 `RadioIrq` and `NodeLink`, and `tests/test_power.cpp` asserts it — on a host.
 This is the plan that makes the assertion mean something.
 
-**Equipment.** PPK2 in series; a second Firefly node or any transmitter on the
+**Equipment.** PPK2 in series; a second Attadipa node or any transmitter on the
 same frequency; a spectrum analyser or an RTL-SDR is helpful but not required.
 
 **Procedure.**

@@ -17,7 +17,7 @@ on Android platform behaviour are marked **NEEDS RESEARCH** and are listed in
 — useful. The phone adds convenience, never capability.
 
 > **Scope correction, 2026-08-21.** This document originally said "the
-> companion", and by that it meant the phone. A **Firefly node** is also an
+> companion", and by that it meant the phone. A **Attadipa node** is also an
 > external device, and it *does* provide capability — deliberately, and with the
 > owner's explicit acceptance that whole applications disappear when it is away
 > ([OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-1). Everywhere below,

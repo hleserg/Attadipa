@@ -17,7 +17,7 @@ So a task is a GitHub issue, and everything an agent needs to start is in it.
 A producing agent puts a machine-readable block at the top of the issue body:
 
 ```html
-<!-- firefly-agent-task
+<!-- attadipa-agent-task
 producer: chatgpt
 task_type: continuous-review
 reviewed_head: 53f8cea

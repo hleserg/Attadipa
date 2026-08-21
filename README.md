@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="pics/Banner.png"
-       alt="Firefly OS — a firefly with a glowing amber abdomen beside the wordmark, over the tagline GLOW · GUIDE · CONNECT"
+  <img src="pics/AttadipaBanner.png"
+       alt="Attadipa — Lumar, a firefly with a glowing amber abdomen, beside the wordmark and the tagline GLOW · GUIDE · CONNECT"
        width="820">
 </p>
 
-**English** · [Русский](README.ru.md) · [Project page](https://hleserg.github.io/FireflyOS/)
+**English** · [Русский](README.ru.md) · [Project page](https://hleserg.github.io/Attadipa/)
 
-# Firefly OS
+# Attadipa
 
 A wearable firmware platform for ESP32-S3 smartwatches — mesh messaging,
 offline navigation, and a UI that is meant to be genuinely pleasant to use.
@@ -17,12 +17,12 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 > run on a physical board yet, and nothing here is written as if it had. See
 > [STATUS.md](STATUS.md) for exactly where things stand.
 
-Firefly OS is not a Linux-like OS. It is a single embedded
+Attadipa is not a Linux-like OS. It is a single embedded
 firmware/application platform on top of ESP32-S3 and ESP-IDF/FreeRTOS,
 designed to support several watch models from one codebase.
 
 > **Have an idea for a watch app?**
-> [Start a Discussion](https://github.com/hleserg/FireflyOS/discussions) — that
+> [Start a Discussion](https://github.com/hleserg/Attadipa/discussions) — that
 > is the front door, and it is open to everybody. Issues are the engineering
 > queue and are limited to collaborators; a maintainer moves an idea across when
 > it is ready to be built. See [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -32,7 +32,7 @@ designed to support several watch models from one codebase.
 - **Independent of your phone.** Mesh messaging, navigation, and time work with
   no companion app and no internet. A phone is an optional companion, never the
   brain of the watch. Where a capability needs hardware a particular watch does
-  not have, it comes from a **Firefly node** — a dedicated box built for this,
+  not have, it comes from a **Attadipa node** — a dedicated box built for this,
   not a handset — and the interface says which situation it is in rather than
   pretending.
 - **Mesh-native.** Long-range LoRa messaging built on
@@ -58,12 +58,12 @@ designed to support several watch models from one codebase.
 |---|---|---|
 | LilyGO T-Watch S3 Plus | first target — the full product | LoRa + GNSS |
 | Waveshare ESP32-S3 Touch AMOLED 2.06 | second target | **neither** |
-| Firefly node | separate device — LoRa, GNSS, ESP32 | provides both, over a link |
+| Attadipa node | separate device — LoRa, GNSS, ESP32 | provides both, over a link |
 | Desktop simulator | first-class development target | simulated, including the node |
 
 The second board has no sub-GHz radio and no GNSS receiver. That is not an
 oversight in the plan — it is the reason the capability layer exists. Nor does
-it make that board a lesser device: a **Firefly node** is a separate box
+it make that board a lesser device: a **Attadipa node** is a separate box
 carrying LoRa, GNSS and an ESP32, and a watch attached to one runs the same
 applications a watch with its own radio runs. Mesh and navigation are
 unavailable there *without a node*, and the interface says which of those two
@@ -109,7 +109,7 @@ somebody measures them. A datasheet number is not a measurement.
 **Capability-driven, in two layers.** Applications ask what the device can
 *do* — `availability(Capability::Position)` — and never what is on it. They do
 not learn which GPIO powers the GNSS module, which SPI the radio sits on, or
-whether there is a GNSS module at all: a Firefly node supplies one over a link,
+whether there is a GNSS module at all: an Attadipa node supplies one over a link,
 and the answer is the same shape either way. The hardware inventory is a
 separate layer that lives below the service boundary and is not linked into
 applications, so asking a chip a question is a build error rather than a review
@@ -151,7 +151,7 @@ cmake/                         the pinned LVGL dependency
 
 docs/master-prompt-final.md    product specification (source of truth)
 docs/research/                 verified facts, owner decisions, open questions, deps, reuse ledger
-docs/node/                     the Firefly node — mostly what is *not* known about it
+docs/node/                     the Attadipa node — mostly what is *not* known about it
 docs/hardware/                 interference matrix, board notes
 docs/architecture/             architecture, resource budget
 docs/adr/                      architecture decision records
@@ -182,15 +182,15 @@ network fetch of LVGL:
 
 ```sh
 sudo apt install libsdl2-dev          # or your platform's equivalent
-cmake -S . -B build-sim -DFIREFLY_BUILD_SIMULATOR=ON
+cmake -S . -B build-sim -DATTADIPA_BUILD_SIMULATOR=ON
 cmake --build build-sim
-./build-sim/sim/firefly_sim --board waveshare-amoled-206
+./build-sim/sim/attadipa_sim --board waveshare-amoled-206
 ```
 
 ```
 --board <id>      t-watch-s3-plus (240x240) | waveshare-amoled-206 (410x502)
 --radio <chip>    fit any of the five candidate T-Watch radios
---node            present a paired, reachable Firefly node
+--node            present a paired, reachable Attadipa node
 --no-bring-up     leave every part untouched, to see the unavailable states
 --screenshot <p>  write the screen to a PNG
 --frames <n>      render n frames and exit; with SDL_VIDEODRIVER=dummy, headless
@@ -203,7 +203,7 @@ this project has no per-board binaries.
 LVGL is pinned at v9.5.0 and fetched by CMake at the commit; the build refuses
 to continue if the version it finds is not the version that was chosen. To
 build offline against a tree you already have, pass
-`-DFIREFLY_LVGL_SOURCE_DIR=/path/to/lvgl`. The ESP-IDF version is still not
+`-DATTADIPA_LVGL_SOURCE_DIR=/path/to/lvgl`. The ESP-IDF version is still not
 chosen, and it blocks the device build rather than this one — see
 [`docs/research/DEPENDENCIES.md`](docs/research/DEPENDENCIES.md).
 

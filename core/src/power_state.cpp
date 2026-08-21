@@ -1,6 +1,6 @@
-#include "firefly/core/power_state.h"
+#include "attadipa/core/power_state.h"
 
-namespace firefly::core {
+namespace attadipa::core {
 
 std::uint16_t legal_wake_sources(PowerState state)
 {
@@ -123,4 +123,4 @@ const char* to_string(Provenance provenance)
     return "?";
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

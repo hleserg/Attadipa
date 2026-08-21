@@ -1,6 +1,6 @@
-#include "firefly/core/gnss_power.h"
+#include "attadipa/core/gnss_power.h"
 
-namespace firefly::core {
+namespace attadipa::core {
 namespace {
 
 // Past this, a receiver's ephemeris is old enough that the start is warm rather
@@ -154,4 +154,4 @@ const char* to_string(StartKind kind)
     return "?";
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

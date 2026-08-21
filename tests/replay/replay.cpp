@@ -14,10 +14,10 @@
 // which is the same class of dishonesty as writing PASS for a test that did not
 // run on hardware.
 
-namespace firefly::replay {
+namespace attadipa::replay {
 namespace {
 
-using namespace firefly::core;
+using namespace attadipa::core;
 
 struct Parser {
     std::string error;
@@ -483,4 +483,4 @@ Result run(const Scenario& scenario, const TrustPolicy& policy,
     return result;
 }
 
-}  // namespace firefly::replay
+}  // namespace attadipa::replay

@@ -1,7 +1,7 @@
 #include <cstdio>
 
-#include "firefly/core/gnss_power.h"
-#include "firefly/core/power_state.h"
+#include "attadipa/core/gnss_power.h"
+#include "attadipa/core/power_state.h"
 
 // Host tests for the device power states and the GNSS receiver's own.
 //
@@ -16,7 +16,7 @@
 // specifically to make sure that stays true by construction rather than by
 // discipline.
 
-using namespace firefly::core;
+using namespace attadipa::core;
 
 namespace {
 

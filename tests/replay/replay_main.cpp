@@ -19,8 +19,8 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    const firefly::core::TrustPolicy    trust    = firefly::core::default_trust_policy();
-    const firefly::core::ValidityPolicy validity = firefly::core::ValidityPolicy{};
+    const attadipa::core::TrustPolicy    trust    = attadipa::core::default_trust_policy();
+    const attadipa::core::ValidityPolicy validity = attadipa::core::ValidityPolicy{};
 
     int total_failures = 0;
     int scenarios      = 0;
@@ -28,16 +28,16 @@ int main(int argc, char** argv)
     for (int i = 1; i < argc; ++i) {
         const std::string path = argv[i];
 
-        firefly::replay::Scenario scenario;
+        attadipa::replay::Scenario scenario;
         std::string               error;
-        if (!firefly::replay::load(path, scenario, error)) {
+        if (!attadipa::replay::load(path, scenario, error)) {
             std::fprintf(stderr, "FAIL %s: %s\n", path.c_str(), error.c_str());
             ++total_failures;
             continue;
         }
 
-        const firefly::replay::Result result =
-            firefly::replay::run(scenario, trust, validity);
+        const attadipa::replay::Result result =
+            attadipa::replay::run(scenario, trust, validity);
         ++scenarios;
 
         if (result.failures.empty()) {
@@ -46,7 +46,7 @@ int main(int argc, char** argv)
         }
 
         std::printf("  FAIL  %s\n", scenario.name.c_str());
-        for (const firefly::replay::Failure& failure : result.failures) {
+        for (const attadipa::replay::Failure& failure : result.failures) {
             std::printf("        %s:%d: %s\n", path.c_str(), failure.line, failure.what.c_str());
             ++total_failures;
         }

@@ -1,4 +1,4 @@
-# Working on Firefly OS
+# Working on Attadipa
 
 ## Read first
 
@@ -74,7 +74,7 @@ commit private keys.
 Applications ask what the device can do, never which device it is. Board
 differences live in `boards/` and `platform/`; `#ifdef BOARD_X` must not appear
 in `core/` or `apps/`. Differences that are **not** the board's — a capability
-supplied by an attached Firefly node — live in the provider registry beside the
+supplied by an attached Attadipa node — live in the provider registry beside the
 BSP, because no BSP can know at build time what will be plugged in later. Same
 rule, one more source: nothing above the capability registry learns where an
 answer came from. An application never learns which GPIO powers the GNSS
@@ -84,7 +84,7 @@ is the only thing keeping one codebase viable.
 
 Every part on the board gets a seat in the core — including the ones no
 application uses yet, and the ones the vendor's own BSP ignores. So does every
-capability that reaches the device *without* being on the board: a Firefly node
+capability that reaches the device *without* being on the board: an Attadipa node
 supplies LoRa and GNSS to a watch that has neither, and those need an owner,
 a power story and a state to be in when the node walks away.
 

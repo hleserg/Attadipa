@@ -12,10 +12,10 @@
 # permission on this repository — is looked up by the caller and passed in,
 # which is also what makes the table test possible.
 
-# firefly_intake_decision ACTOR EVENT ACTION LABEL BODY LABELS STATE PERMISSION
+# attadipa_intake_decision ACTOR EVENT ACTION LABEL BODY LABELS STATE PERMISSION
 #
 # Prints `accept`, or `reject: <reason>`. Never exits.
-firefly_intake_decision() {
+attadipa_intake_decision() {
   local actor="$1" event="$2" action="$3" label="$4" body="$5" labels="$6" state="$7" permission="$8"
 
   # 1. Never react to ourselves, or to any other bot.
@@ -66,7 +66,7 @@ firefly_intake_decision() {
         assigned) wanted=yes ;;
         *)
           case "$body" in
-            *"firefly-agent-task"*) case "$body" in *"@claude"*) wanted=yes ;; esac ;;
+            *"attadipa-agent-task"*) case "$body" in *"@claude"*) wanted=yes ;; esac ;;
           esac ;;
       esac ;;
   esac
@@ -90,5 +90,5 @@ firefly_intake_decision() {
 # Callable as a script as well as sourceable, so the workflow can run it
 # without worrying about shell inheritance.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  firefly_intake_decision "$@"
+  attadipa_intake_decision "$@"
 fi

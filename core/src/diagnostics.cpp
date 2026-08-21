@@ -1,6 +1,6 @@
-#include "firefly/core/diagnostics.h"
+#include "attadipa/core/diagnostics.h"
 
-namespace firefly::core {
+namespace attadipa::core {
 
 const char* to_string(ResetReason reason)
 {
@@ -58,4 +58,4 @@ const char* to_string(TransportKind kind)
     return "?";
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

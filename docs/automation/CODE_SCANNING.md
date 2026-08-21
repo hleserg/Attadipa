@@ -22,8 +22,8 @@ log.
 `cpp/world-writable-file-creation`, twice, in `tests/test_replay_rig.cpp`.
 
 The rig's own test builds malformed traces by hand and feeds them to the
-parser. It used to write them to `/tmp/firefly-replay-malformed.trace` and
-`/tmp/firefly-replay-freshness.trace` — fixed names in a directory anyone can
+parser. It used to write them to `/tmp/attadipa-replay-malformed.trace` and
+`/tmp/attadipa-replay-freshness.trace` — fixed names in a directory anyone can
 write to.
 
 That is wrong twice over, and only one half of it is the scanner's half. Two

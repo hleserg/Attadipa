@@ -1,6 +1,6 @@
-#include "firefly/core/position.h"
+#include "attadipa/core/position.h"
 
-namespace firefly::core {
+namespace attadipa::core {
 
 PositionValidity classify(const GnssObservation& observation, MonotonicTime now,
                           const ValidityPolicy& policy)
@@ -109,4 +109,4 @@ const char* to_string(PositionValidity validity)
     return "?";
 }
 
-}  // namespace firefly::core
+}  // namespace attadipa::core

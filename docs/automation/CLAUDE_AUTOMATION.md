@@ -77,7 +77,7 @@ push, whatever its opinion.
 
 One grant in that list is not about least privilege and is easy to mistake for
 a mistake: **`id-token: write`** on every job that runs the action. When
-`FIREFLY_AGENT_TOKEN` is empty — the supported default — the action authenticates
+`ATTADIPA_AGENT_TOKEN` is empty — the supported default — the action authenticates
 as the Claude GitHub App by exchanging this workflow's GitHub OIDC token for an
 installation token, and without the permission that exchange fails with
 `Unable to get ACTIONS_ID_TOKEN_REQUEST_URL`. The error surfaces as *"Could not
@@ -132,13 +132,13 @@ So a pull request opened with `GITHUB_TOKEN` would never run CI — and the whol
 point of this loop is that CI runs without anybody asking. The failure is
 silent: a green-looking pull request with no checks on it at all.
 
-The workflows therefore pass `github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}`,
+The workflows therefore pass `github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}`,
 which gives two working paths:
 
 | If | Then | Commits authored by |
 |---|---|---|
-| `FIREFLY_AGENT_TOKEN` is unset (empty) | the action uses the **Claude GitHub App**, whose installation token does trigger workflows | `claude[bot]` |
-| `FIREFLY_AGENT_TOKEN` is a fine-grained PAT with `contents: write`, `pull requests: write`, `issues: write` | the action uses that | the token's owner |
+| `ATTADIPA_AGENT_TOKEN` is unset (empty) | the action uses the **Claude GitHub App**, whose installation token does trigger workflows | `claude[bot]` |
+| `ATTADIPA_AGENT_TOKEN` is a fine-grained PAT with `contents: write`, `pull requests: write`, `issues: write` | the action uses that | the token's owner |
 
 Either is fine. The app is one click at <https://github.com/apps/claude> and
 needs no secret to rotate; the PAT needs no app installed. What is **not** fine
@@ -262,7 +262,7 @@ hardware-in-the-loop runner. CI prints
    API account) under Settings → Secrets and variables → Actions. See
    [Authentication](#authentication) — the difference is a bill.
 3. Either install <https://github.com/apps/claude> on the repository, or add a
-   fine-grained PAT as `FIREFLY_AGENT_TOKEN`.
+   fine-grained PAT as `ATTADIPA_AGENT_TOKEN`.
 
 That is the whole list. Everything else in this directory is already in the
 repository and works without further configuration.
