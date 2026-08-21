@@ -1,0 +1,10 @@
+# `ru.other` is unreachable for an integer under the CLDR rule, so accepting it
+# would silently discard a translator's work.
+[message_count]
+plural = true
+en.one = "%u message"
+en.other = "%u messages"
+ru.one = "%u сообщение"
+ru.few = "%u сообщения"
+ru.many = "%u сообщений"
+ru.other = "%u сообщения"

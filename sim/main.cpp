@@ -4,6 +4,7 @@
 #include "lvgl.h"
 
 #include "firefly/core/capability_registry.h"
+#include "firefly/l10n/tr.h"
 #include "firefly/platform/hardware_inventory.h"
 #include "firefly/version.h"
 
@@ -88,6 +89,30 @@ core::NodeLink node_link_for(bool attached)
     return link;
 }
 
+// ADR-0010 §3: a missing string is announced, never swallowed. On a device this
+// goes to the log; here it goes to stderr, where a test run will show it.
+void report_missing_string(l10n::Locale requested, const char* identifier)
+{
+    std::fprintf(stderr, "l10n: '%s' has no %s text — showing English\n", identifier,
+                 l10n::to_string(requested));
+}
+
+// L toggles the language. It is a keypress rather than a menu because the
+// Settings screen does not exist yet (T-038) and the acceptance criterion —
+// "switches at runtime without a reboot" — is about the mechanism, not about
+// where the switch lives.
+void on_screen_key(lv_event_t* event)
+{
+    (void)event;
+    const std::uint32_t key = lv_indev_get_key(lv_indev_active());
+    if (key == 'l' || key == 'L') {
+        const l10n::Locale next =
+            l10n::locale() == l10n::Locale::En ? l10n::Locale::Ru : l10n::Locale::En;
+        std::printf("locale: %s\n", l10n::to_string(next));
+        l10n::set_locale(next);
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv)
@@ -132,10 +157,40 @@ int main(int argc, char** argv)
         lv_sdl_window_set_zoom(display, options.zoom);
     }
 
-    lv_sdl_mouse_create();     // the finger
-    lv_sdl_keyboard_create();  // the buttons
+    lv_sdl_mouse_create();                              // the finger
+    lv_indev_t* keyboard = lv_sdl_keyboard_create();    // the buttons
+
+    // The screen itself takes key events, so L works without anything focused.
+    lv_group_t* group = lv_group_create();
+    lv_indev_set_group(keyboard, group);
+    lv_group_add_obj(group, lv_screen_active());
+    lv_obj_add_event_cb(lv_screen_active(), on_screen_key, LV_EVENT_KEY, nullptr);
+
+    l10n::set_missing_string_handler(report_missing_string);
+    l10n::set_locale_changed_handler(firefly::sim::rebuild_boot_screen);
+    l10n::set_locale(options.locale);
 
     firefly::sim::build_boot_screen(inventory, caps);
+
+    // The honest part. LVGL ships Montserrat and unscii, and both are Latin —
+    // Montserrat's own header says `-r 0x20-0x7F,0xB0,0x2022`. So the Russian
+    // catalogue is not merely hard to read in this build, it is undrawable, and
+    // the simulator says which codepoints rather than rendering boxes and
+    // leaving a reviewer to guess. It stops being true when the font pipeline's
+    // output is linked in, which needs the font choice (D16) and T-034.
+    //
+    // This is exactly the failure ADR-0010 §1 predicted: a Latin-only font is
+    // not a font missing some characters, it is a different artefact.
+    {
+        const lv_font_t* font = lv_obj_get_style_text_font(lv_screen_active(), LV_PART_MAIN);
+        const int undrawable = firefly::sim::report_undrawable_glyphs(font, l10n::locale());
+        if (undrawable > 0) {
+            std::fprintf(stderr,
+                         "l10n: %d codepoint(s) of the %s catalogue cannot be drawn by the "
+                         "font in this build. See docs/adr/0010-localization.md §1.\n",
+                         undrawable, l10n::to_string(l10n::locale()));
+        }
+    }
 
     if (options.screenshot != nullptr) {
         // One handler pass first, so layout and the theme have run. A snapshot

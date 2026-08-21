@@ -1,0 +1,4 @@
+# The identifier becomes a C++ enumerator, so the mapping has to be reversible.
+[Settings-Title]
+en = "Settings"
+ru = "Настройки"

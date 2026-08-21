@@ -24,21 +24,31 @@ research status · implementation status · tests · hardware required.
 
 ## NOW
 
-### T-033 · Localization: `tr()`, catalogues, and the CI that guards them
-- **Priority:** P0
-- **Dependencies:** T-032 (**done**)
-- **Goal:** implement [ADR-0010](docs/adr/0010-localization.md) — the `StringId`
-  enum, the generator, both catalogues, runtime switching, three CI checks.
-- **Acceptance:** a screen can be written with no user-facing literal; language
-  switches at runtime without a reboot; CI fails on a missing key, a duplicate
-  key, or a catalogue glyph absent from the font subset; the Russian plural rule
-  passes a vector covering 0, 1, 2, 5, 11, 21, 101, 111, 1001.
-- **Research status:** decided; the API shape is open
+### T-041 · Owner amendment: MeshCore 1.17 upstream review
+- **Priority:** P0 — the owner marked it *"выполнить до дальнейшей разработки
+  OS"*, ahead of the remaining M1 slice.
+- **Goal:** review upstream MeshCore between v1.16.0 and v1.17.1+ and `dev`,
+  and produce `docs/upstream/meshcore-1.17-review.md` with a status of
+  `adopt / adapt / monitor / reject` against every item.
+- **Acceptance:** every named PR and issue read and cited by number; regressions
+  separated from fixes; *confirmed / merged / released / open / experimental*
+  distinguished; the upstream compatibility boundary written down; small tasks
+  filed for each Firefly change it implies.
+- **Implementation status:** in progress
+- **Hardware required:** no — and no Heltec V4 is in this project's hands, so
+  nothing here may be reported as tested on one.
+
+### T-042 · Owner amendment: GNSS integrity and receiver-native protection
+- **Priority:** P0 for the *architecture and task* half; the navigation stack
+  itself is explicitly out of scope now (owner §15).
+- **Goal:** record the decision, fix the generic-RTCM assumption, add the GNSS
+  receiver capability descriptor, put trust/integrity state into the
+  `LocationService` architecture, and add the simulator's GNSS-fault scenarios
+  to the backlog.
+- **Acceptance:** OWNER_DECISIONS carries the amendment; no interface loses
+  integrity or diagnostic information; MIA-M10Q and LS550G have a research task
+  each; RTCM is a per-provider capability rather than a property of GNSS.
 - **Implementation status:** not started
-- **Tests:** host tests for plural categories and fallback; the three CI checks
-- **Hardware required:** no
-- **Note:** this is what final §50 means by *"localization is architecture, not
-  later polish"*. It precedes the first screen rather than following it.
 
 ## NEXT
 
@@ -479,6 +489,46 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-033 · Localization: `tr()`, catalogues, and the checks that guard them — **DONE**
+- **Closed:** 2026-08-21
+- **What was delivered:** [ADR-0010](docs/adr/0010-localization.md) in code.
+  `l10n/strings.toml` is the single source of truth; a Python generator emits a
+  `StringId` enum, a separate `PluralId` enum and parallel per-locale tables,
+  and the generated files are **committed** so the C++ build needs no Python.
+  A new `firefly_l10n` library sits beside core and is linked by apps and the
+  simulator — **not** by core, and that is enforced rather than reviewed.
+- **Acceptance, item by item:**
+  - *a screen with no user-facing literal* — the simulator's diagnostic screen
+    has none. Its rows are spelled with the `to_string()` of enums from core and
+    platform, which are diagnostic identifiers rather than product text, and
+    that distinction is written down in `l10n/strings.toml`.
+  - *switches at runtime without a reboot* — `--locale en|ru`, and `L` toggles
+    it live; the screen is rebuilt by the locale-changed handler.
+  - *CI fails on a missing key, a duplicate key, or a glyph the font cannot
+    draw* — three `ctest` entries, so a local run and CI enforce the same rule.
+  - *the Russian plural vector* — 0, 1, 2, 5, 11, 21, 101, 111, 1001 assert
+    **categories** rather than rendered strings, plus a sweep of every remainder
+    class proving `other` is unreachable in Russian, which is what lets the
+    catalogue format reject `ru.other`.
+- **Beyond the acceptance list**, because running it found them:
+  - a **fourth** generator check — placeholders must match across locales.
+    `%u` in English and `%s` in Russian is undefined behaviour at the `snprintf`
+    call that no compiler warning can reach.
+  - a **selftest**: eight deliberate mistakes, each required to be rejected *for
+    its own reason*. The `WILL_FAIL` lesson, applied before it could bite again.
+  - the second **boundary test**, pointing the other way: a fixture that
+    compiles against apps and must not compile against core. Proved by
+    temporarily linking `firefly_l10n` into core and watching it fail.
+- **The finding:** LVGL ships no font with Cyrillic — Montserrat's own header
+  says `-r 0x20-0x7F,0xB0,0x2022`. The simulator therefore **cannot draw the
+  Russian catalogue**: 26 codepoints in `ru`, and 7 in `en`, because a language
+  is named in itself and `Русский` is in the English catalogue too. The
+  simulator names the codepoints rather than rendering boxes. This is ADR-0010
+  §1's argument arriving on schedule, and it closes only when the font pipeline
+  output is linked in — D16 and T-034.
+- **Tests:** 10 host, 12 with the simulator. All pass.
+- **Hardware required:** no.
 
 ### T-032 · Pin LVGL, and the font toolchain that comes with it — **DONE**
 - **Closed:** 2026-08-21

@@ -1,0 +1,5 @@
+# The coverage check. Both catalogues ship together from the first screen; a
+# missing Russian entry is an error at generation time, not a silent fallback
+# that ships an English word forever.
+[settings_title]
+en = "Settings"

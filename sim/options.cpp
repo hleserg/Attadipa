@@ -54,6 +54,7 @@ void print_usage(const char* argv0)
         "  --zoom <factor>  scale the window. The panel resolution does not change\n"
         "  --frames <n>     render n frames and exit. For CI, with SDL_VIDEODRIVER=dummy\n"
         "  --screenshot <p> write the rendered screen to p as a PNG, then continue\n"
+        "  --locale <lang>  start in en or ru. L toggles it while running\n"
         "  --node           present a paired, reachable Firefly node\n"
         "  --no-bring-up    leave every part untouched instead of pretending it came up\n"
         "  --list-boards    print the board profiles this build knows about\n"
@@ -134,6 +135,21 @@ ParseResult parse_options(int argc, char** argv, Options& out)
                 return ParseResult::Error;
             }
             radio_requested = true;
+            continue;
+        }
+        if (std::strcmp(arg, "--locale") == 0) {
+            const char* value = take_value(argc, argv, i, arg);
+            if (value == nullptr) {
+                return ParseResult::Error;
+            }
+            if (std::strcmp(value, "en") == 0) {
+                out.locale = l10n::Locale::En;
+            } else if (std::strcmp(value, "ru") == 0) {
+                out.locale = l10n::Locale::Ru;
+            } else {
+                std::fprintf(stderr, "unknown locale '%s'. Known: en, ru\n", value);
+                return ParseResult::Error;
+            }
             continue;
         }
         if (std::strcmp(arg, "--screenshot") == 0) {

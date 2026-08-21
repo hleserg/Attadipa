@@ -1,0 +1,9 @@
+# %u in one locale, %s in another. The catalogue string reaches snprintf as a
+# runtime format, so this is undefined behaviour and no compiler sees it.
+[message_count]
+plural = true
+en.one = "%u message"
+en.other = "%u messages"
+ru.one = "%s сообщение"
+ru.few = "%u сообщения"
+ru.many = "%u сообщений"

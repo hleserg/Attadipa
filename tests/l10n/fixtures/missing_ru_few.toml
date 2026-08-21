@@ -1,0 +1,7 @@
+# Russian needs three forms. Two is the mistake an English speaker makes.
+[message_count]
+plural = true
+en.one = "%u message"
+en.other = "%u messages"
+ru.one = "%u сообщение"
+ru.many = "%u сообщений"

@@ -1,0 +1,4 @@
+# An empty label reads as a layout bug and gets filed as one.
+[settings_title]
+en = "Settings"
+ru = ""

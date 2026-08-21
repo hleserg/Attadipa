@@ -15,6 +15,7 @@ target_link_libraries(firefly_sim PRIVATE
     firefly_platform
     firefly_core
     firefly_apps
+    firefly_l10n
     lvgl
     SDL2::SDL2
 )

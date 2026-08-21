@@ -22,12 +22,17 @@ target_include_directories(firefly_headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
 #
 #   firefly_platform   chips, pins, rails, buses      — apps/ does not link it
 #   firefly_core       services and the capability registry
-#   firefly_apps       applications                   — links core only
+#   firefly_l10n       the string catalogues          — core does not link it
+#   firefly_apps       applications                   — links core and l10n
 #
-# docs/adr/0007-two-capability-layers.md §5. tests/boundary/ asserts that an
-# application still cannot include a platform header.
+# docs/adr/0007-two-capability-layers.md §5 for the first boundary and
+# docs/adr/0010-localization.md §4 for the second. They point in opposite
+# directions and are the same kind of rule: an application must not learn which
+# chip answered, and the core must not learn which language will be read.
+# tests/boundary/ asserts both, by compiling a fixture that must not build.
 add_subdirectory(platform)
 add_subdirectory(core)
+add_subdirectory(l10n)
 add_subdirectory(apps)
 
 if(FIREFLY_BUILD_SIMULATOR)

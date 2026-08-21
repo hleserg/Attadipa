@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "firefly/l10n/locale.h"
 #include "firefly/platform/board_profile.h"
 
 namespace firefly::sim {
@@ -19,6 +20,12 @@ struct Options {
     std::uint32_t frames = 0;     // 0 = run until the window closes
 
     const char*   screenshot = nullptr;  // write the first rendered frame here, as PNG
+
+    // Which language the screen starts in. It is a runtime choice for the same
+    // reason the geometry is: a design review has to see both without a
+    // rebuild, and Russian running 15-30% longer than English is a layout
+    // question rather than a translation one (ADR-0010).
+    l10n::Locale locale = l10n::Locale::En;
 
     bool node_attached = false;   // a paired, reachable, compatible Firefly node
     bool bring_up      = true;    // pretend every present part came up

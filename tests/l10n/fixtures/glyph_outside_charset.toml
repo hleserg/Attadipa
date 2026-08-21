@@ -1,0 +1,5 @@
+# Every character has to be in tools/font/charset.py. The em-dash is; the
+# Chinese character and the emoji are not, and on hardware they are blanks.
+[greeting]
+en = "Hello 世界"
+ru = "Привет 🌍"

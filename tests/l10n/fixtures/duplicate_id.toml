@@ -1,0 +1,10 @@
+# The uniqueness check of ADR-0010 §3. TOML itself rejects a repeated table, so
+# the check is enforced by the format rather than by our code -- this fixture is
+# what keeps that a tested claim instead of a remembered one.
+[settings_title]
+en = "Settings"
+ru = "Настройки"
+
+[settings_title]
+en = "Preferences"
+ru = "Параметры"

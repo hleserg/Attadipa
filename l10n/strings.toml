@@ -1,0 +1,105 @@
+# Every user-facing string in Firefly, in both locales.
+#
+# This file is the single source of truth. `tools/l10n/gen_strings.py` turns it
+# into the StringId enum and the per-locale tables under `l10n/`, and those
+# generated files are committed so that the C++ build needs no Python. A ctest
+# entry regenerates and compares, so an edit here that is not regenerated is a
+# failing test rather than a surprise later.
+#
+# Rules the generator enforces, so you do not have to remember them:
+#
+#   * every id needs `en` and `ru`. A missing one is an error, not a fallback.
+#   * ids are unique. TOML itself rejects a duplicate table, and the generator
+#     checks again for the case where two ids differ only in spelling style.
+#   * a plural entry needs `one` and `other` in English, and exactly `one`,
+#     `few` and `many` in Russian. `ru.other` is rejected: for integers the
+#     CLDR `other` category is unreachable in Russian, so an entry there is a
+#     string that will never be shown.
+#   * placeholders must match across locales. A translator who turns `%u` into
+#     `%s` writes undefined behaviour, and no compiler will notice.
+#   * every character must be in the font subset — tools/font/charset.py. A
+#     glyph the embedded font cannot draw is a blank on the screen and nothing
+#     else in the build will see it.
+#
+# User content -- contact names, mesh message bodies, notification text -- is
+# never in this file. It is data, rendered as it arrived (ADR-0010 §5).
+
+# --- Product ---------------------------------------------------------------
+
+[product_name]
+en = "Firefly OS"
+ru = "Firefly OS"           # a name, not a word: transliterating it would be wrong
+
+# --- The diagnostic boot screen --------------------------------------------
+#
+# Chrome only. The rows themselves are spelled with the enum identifiers from
+# core/ and platform/ -- Gnss, HapticActuator, Ready -- and those are not
+# translated, because they are not product text. They are what a developer
+# reads to find out which capability is which, and a translated enum name is
+# worse for that person in either language. The first *product* screen (T-037)
+# has no untranslated text on it at all.
+
+[diagnostic_geometry]
+# The board's name and panel, on the diagnostic. Identical in both locales
+# today — "dpi" is an abbreviation Russian borrows unchanged — and it is in the
+# catalogue anyway, because the rule is that UI code holds no format string,
+# not that UI code holds no format string worth translating. U+00D7 is the
+# multiplication sign; "240x240" with a letter x is a typographic mistake the
+# font subset exists to make avoidable.
+en = "%s\n%u × %u  %u dpi"
+ru = "%s\n%u × %u  %u dpi"
+
+[diagnostic_capabilities]
+en = "Capabilities"
+ru = "Возможности"
+
+[diagnostic_hardware]
+en = "Hardware"
+ru = "Оборудование"
+
+[diagnostic_radio]
+en = "Radio"
+ru = "Радио"
+
+[diagnostic_radio_chip]
+en = "chip"
+ru = "чип"
+
+[diagnostic_radio_lora]
+en = "LoRa"
+ru = "LoRa"                 # the modulation's name, and it is not translated
+
+[diagnostic_radio_meshcore]
+en = "MeshCore"
+ru = "MeshCore"             # likewise a product name
+
+[yes]
+en = "yes"
+ru = "да"
+
+[no]
+en = "no"
+ru = "нет"
+
+[diagnostic_capability_count]
+plural = true
+en.one = "%u capability"
+en.other = "%u capabilities"
+ru.one = "%u возможность"
+ru.few = "%u возможности"
+ru.many = "%u возможностей"
+
+# --- Language, because the Settings screen needs its own name in its own
+#     language before anything else does (final §88) ------------------------
+
+[language]
+en = "Language"
+ru = "Язык"
+
+[language_english]
+en = "English"
+ru = "English"              # a language is named in itself, never translated
+
+[language_russian]
+en = "Русский"
+ru = "Русский"              # same rule, the other direction

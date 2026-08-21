@@ -38,13 +38,22 @@ so in its own source.
 
 ## Next ready
 
-- **T-033** — `tr()`, both catalogues, and the three CI checks that
-  [ADR-0010](docs/adr/0010-localization.md) §3 treats as the mechanism rather
-  than as polish. The third of them — a catalogue entry the generated font
-  cannot draw — is the one that is invisible without machine enforcement.
+Two owner amendments arrived on 2026-08-21 and both outrank the remaining M1
+slice. They are recorded in
+[OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md).
+
+- **T-041 — MeshCore 1.17 upstream review.** The owner marked it explicitly as
+  the task to do *before* further OS development: v1.16.0 → v1.17.1+ and `dev`,
+  with a status of `adopt / adapt / monitor / reject` per item, in
+  `docs/upstream/meshcore-1.17-review.md`.
+- **T-042 — GNSS integrity.** The architecture and task half only; the owner's
+  §15 is explicit that the navigation stack is *not* to be built now. It fixes
+  a wrong assumption (RTCM is not a property of GNSS, and the MIA-M10Q has
+  none), adds a receiver capability descriptor, and puts a trust state into the
+  `LocationService` architecture before either exists as stable code.
 - **T-009 · T-034 · T-037 · T-038** — design tokens in code, the image asset
-  pipeline, the first Clock and the first Settings. That is the rest of the M1
-  slice, in the order final §58 gives.
+  pipeline, the first Clock and the first Settings. The rest of the M1 slice,
+  in the order final §58 gives, resumed after the two above.
 
 ## Lookahead research
 
@@ -95,7 +104,7 @@ None of these blocks M1. All of them block hardware work.
 
 | Target | State |
 |---|---|
-| Host / native | builds; four tests pass locally and in CI — smoke, capability registry, and the two halves of the layer-boundary check. The negative half is checked against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+| Host / native | builds; ten tests pass locally and in CI — smoke, capability registry, and the two halves of the layer-boundary check. The negative half is checked against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DFIREFLY_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
@@ -142,6 +151,16 @@ needs the owner, and one needs a ruler.
   `font_info.json`. That produced the number D16 was missing: at the same
   `--size`, Nunito Sans wants 2–4 px more line height than Inter and draws a
   slightly smaller letter, so the two are not comparable at equal size.
+- **T-033 — localization, and the checks that make it a mechanism.**
+  `l10n/strings.toml` is the source of truth; a generator emits the `StringId`
+  enum and the per-locale tables; `firefly_l10n` sits beside core and is linked
+  by apps and the simulator but **not** by core, which a second boundary test
+  enforces the way the first one enforces ADR-0007. The Russian plural vector
+  asserts categories rather than strings, and a sweep proves `other` is
+  unreachable — which is what lets the catalogue format reject `ru.other`.
+  Running it produced the finding: **no built-in LVGL font has Cyrillic**, so
+  the simulator cannot draw the Russian catalogue — 26 codepoints in `ru`, 7 in
+  `en` — and it prints which ones instead of rendering boxes.
 - **T-032 — the font toolchain, pinned and measured.** `lv_font_conv` 1.5.3
   under MIT read from the tarball rather than the manifest; Inter and Nunito
   Sans under OFL 1.1 read from the `OFL.txt` beside each file; a 181-codepoint

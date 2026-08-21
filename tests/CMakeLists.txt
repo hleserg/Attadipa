@@ -51,6 +51,68 @@ set_tests_properties(boundary_apps_cannot_see_platform PROPERTIES
     LABELS architecture)
 
 # ---------------------------------------------------------------------------
+# Localization (docs/adr/0010-localization.md).
+
+add_executable(test_l10n test_l10n.cpp)
+target_link_libraries(test_l10n PRIVATE firefly_l10n)
+add_test(NAME l10n COMMAND test_l10n)
+
+# The other boundary, and it points the opposite way. An application must not
+# learn which chip answered; the core must not learn which language will be
+# read. Same mechanism, same pair of tests: the fixture builds against apps and
+# must not build against core.
+add_executable(l10n_boundary_positive boundary/core_reaches_for_words.cpp)
+target_link_libraries(l10n_boundary_positive PRIVATE firefly_apps)
+add_test(NAME boundary_apps_can_speak COMMAND l10n_boundary_positive)
+
+add_executable(l10n_boundary_negative EXCLUDE_FROM_ALL boundary/core_reaches_for_words.cpp)
+target_link_libraries(l10n_boundary_negative PRIVATE firefly_core)
+add_test(NAME boundary_core_cannot_speak
+         COMMAND ${CMAKE_COMMAND}
+                 -DBUILD_DIR=${CMAKE_BINARY_DIR}
+                 -DTARGET=l10n_boundary_negative
+                 -DCONFIG=$<CONFIG>
+                 "-DEXPECT_MATCHES=tr\\.h.*(No such file|file not found|Cannot open)"
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_build_failure.cmake)
+set_tests_properties(boundary_core_cannot_speak PROPERTIES LABELS architecture)
+
+# ---------------------------------------------------------------------------
+# The three checks ADR-0010 §3 asks a machine to make, plus the check that the
+# checks work.
+#
+# They are ctest entries rather than CI-only steps so that a local run and CI
+# enforce exactly the same thing, and neither needs its own copy of the rule.
+#
+# If Python 3.11 is not on the machine, these are registered as FAILING rather
+# than skipped. "The check did not run" must never read as "the check passed" —
+# the same reason a hardware test in this repository says NOT EXECUTED instead
+# of PASS. tomllib is why the floor is 3.11.
+find_package(Python3 3.11 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME l10n_generated_is_current
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/l10n/gen_strings.py --check)
+    add_test(NAME l10n_glyphs_in_font_subset
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/l10n/check_glyphs.py)
+    add_test(NAME l10n_checks_reject_mistakes
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/l10n/selftest.py)
+    set_tests_properties(l10n_generated_is_current l10n_glyphs_in_font_subset
+                         l10n_checks_reject_mistakes
+                         PROPERTIES LABELS localization)
+else()
+    add_test(NAME l10n_checks_unavailable
+             COMMAND ${CMAKE_COMMAND} -E false)
+    set_tests_properties(l10n_checks_unavailable PROPERTIES
+        LABELS localization)
+    message(WARNING
+        "Python 3.11+ was not found, so the three localization checks "
+        "(ADR-0010 section 3) cannot run. A deliberately failing test is "
+        "registered in their place — install Python 3.11 or newer.")
+endif()
+
+# ---------------------------------------------------------------------------
 # The simulator, headless.
 #
 # Only when it is built. A run that renders a frame and writes a screenshot is
