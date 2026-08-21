@@ -114,9 +114,12 @@ been the expensive order.
 | A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
+| A7 | **Three features asked for in conversation and absent from the specification — how big is each?** (a) is "the watch can be found by a crowd-sourced network" a requirement, and which one; (b) how long is a track; (c) how far must a reckoned path stay useful. | they compete for one antenna, one coexistence arbiter and one 940 mAh cell, so they are one question in three parts. Every sizing decision in [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is parameterised by these. T-064, T-065 and T-071 are blocked or unsized until answered |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
-None of these blocks M1. All of them block hardware work.
+None of these blocks M1. All of them block hardware work — except A7, which
+blocks three features that are not in the specification and cannot be sized
+until it is answered.
 
 ## Build and test state
 
@@ -173,6 +176,34 @@ needs the owner, and one needs a ruler.
   not VERIFIED.
 
 ## Recently completed
+
+- **Smart tags, tracks and dead reckoning, researched rather than guessed at.**
+  Three owner asks from 2026-08-21, none of which is in the specification —
+  recorded in
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md), with nine
+  tasks (T-063…T-071) and owner question A7. Thirteen agents, every claim that
+  would become a design commitment put through an adversarial refutation, four
+  claims downgraded as a result. The load-bearing answers: of the three tag
+  ecosystems only Apple is reachable at all, and only outside its own app —
+  Google needs registration, an email allowlist and a third-party lab, and its
+  one readable implementation is licensed for Nordic silicon; Samsung's SDK
+  ships for no Espressif part and an unregistered advertisement is inert.
+  OpenHaystack and macless-haystack are AGPL-3.0 and cannot be copied here. An
+  uncalibrated gyroscope offset of ±10 dps is a full 360° of heading error in
+  36 seconds, so a reckoned path is a **disk**, not a line — and on the T-Watch,
+  which has no gyroscope, a turn is not observable at all. A 1000-point track
+  costs 16.5 s of originator airtime over LoRa at 4 bytes a point, which is what
+  makes an online simplifier a requirement rather than an optimisation. Also
+  corrected: the Waveshare carries a **QMI8658C**, whose `CTRL8` is "Reserved:
+  Not Used" — the A's step-counter registers describe a part that is not on this
+  board.
+- **The clock-disagreement detector no longer relies on undefined behaviour.**
+  `WallTime` is signed on purpose and has no subtraction on purpose; the
+  anti-spoofing detector reached through `.unix_seconds` and derived one anyway,
+  which is UB for the range the type deliberately admits — one hostile
+  `receiver_time` reaches `-INT64_MIN`. `clock.h` gains `seconds_between`, and
+  `unix_seconds` is now referenced nowhere outside it. Verified red: the old
+  arithmetic fails the ASan/UBSan build.
 
 - **The research integration, and the six test suites that came with it.** Core
   gained the types the GNSS integrity work needs — an observation that keeps
