@@ -153,3 +153,18 @@ add_executable(test_trust test_trust.cpp)
 target_link_libraries(test_trust PRIVATE firefly_core)
 add_test(NAME trust COMMAND test_trust)
 set_tests_properties(trust PROPERTIES LABELS gnss)
+
+# ---------------------------------------------------------------------------
+# Framing, the bounded queue, and the session state machine.
+#
+# The test names are the owner's §6 list one for one — fragmented input, partial
+# writes, a full queue, a disconnect mid-frame, a reconnect, a large payload, a
+# malformed frame — so that coverage against the brief can be read rather than
+# asserted. The second half holds our implementation against the defects
+# docs/upstream/meshcore-1.17-review.md verified in the upstream serial
+# transport, which are bugs in code shipping on these boards today.
+
+add_executable(test_link test_link.cpp)
+target_link_libraries(test_link PRIVATE firefly_link)
+add_test(NAME link COMMAND test_link)
+set_tests_properties(link PROPERTIES LABELS transport)
