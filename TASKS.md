@@ -24,21 +24,6 @@ research status · implementation status · tests · hardware required.
 
 ## NOW
 
-### T-008 · Simulator skeleton with both geometries
-- **Priority:** P0
-- **Dependencies:** T-032 (LVGL pin — **done**)
-- **Goal:** a desktop window that renders LVGL at 240 × 240 and 410 × 502, mouse
-  as touch, keyboard as buttons. The simulator is a first-class target
-  (final §57), not a convenience.
-- **Acceptance:** both presets run; switching between them needs no rebuild;
-  the build is part of CI.
-- **Research status:** done — LVGL 9.5.0 carries SDL2 display, mouse and
-  keyboard drivers in-tree ([DEPENDENCIES](docs/research/DEPENDENCIES.md)); SDL2
-  is installed on the host
-- **Implementation status:** not started
-- **Tests:** it builds in CI; headless run or an explicit, stated skip
-- **Hardware required:** no
-
 ### T-032 · Pin LVGL, and the font toolchain that comes with it
 - **Priority:** P0
 - **Dependencies:** none
@@ -49,10 +34,14 @@ research status · implementation status · tests · hardware required.
   converter pinned with a checked licence; a Latin + Cyrillic subset generated
   at the design system's sizes and its flash cost **measured**, not estimated.
 - **Research status:** done for the library
-- **Implementation status:** **LVGL v9.5.0 pinned** (`85aa60d`, MIT) — see
+- **Implementation status:** **half done.** LVGL v9.5.0 is pinned (`85aa60d`,
+  MIT), fetched by `cmake/FireflyLvgl.cmake` at the commit, version-checked at
+  configure time, and **building** — see
   [DEPENDENCIES](docs/research/DEPENDENCIES.md). `lv_font_conv` is **not**
   pinned: it is a separate npm tool, its licence is unchecked, and it is the
-  only supported way to generate a subset font.
+  only supported way to generate a subset font. Node v24.19.0 and npm 11.17.0
+  are on the development host, so the tool can at least be run; CI has no Node
+  step. **This half is now the critical path for M1.**
 - **Tests:** the subset builds; the generated size is recorded in
   [RESOURCE_BUDGET](docs/architecture/RESOURCE_BUDGET.md)
 - **Hardware required:** no
@@ -60,29 +49,6 @@ research status · implementation status · tests · hardware required.
   can still surprise, because Cyrillic coverage can eliminate a font outright.
 
 ---
-
-## NEXT
-
-### T-009 · Design tokens in code
-- **Priority:** P0 — raised from P1; final §58 puts tokens in the first slice,
-  before the Clock
-- **Dependencies:** T-032, T-008
-- **Goal:** the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md) — colour,
-  spacing, radius, typography, motion, icon size, image size, elevation, sound
-  cue, haptic pattern (final §54).
-- **Acceptance:** no raw RGB, pixel count, duration, font size or radius
-  anywhere in UI code; day and night variants; both geometries; spacing resolved
-  per board rather than in raw pixels, because 8 px is not the same physical
-  distance on a 1.54″ and a 2.06″ panel.
-- **Research status:** done — palette, typography direction and mascot usage
-  derived from the owner references ([docs/ui/reference](docs/ui/reference/README.md))
-- **Implementation status:** document written and marked *proposed*; no code
-  tokens; **no value has been shown on a panel**
-- **Tests:** reference screenshots once the simulator runs
-- **Hardware required:** for the final colour values, **yes** — final §55
-  forbids preserving a concept-board hex that fails on the real display
-- **Open inside this task:** `color.danger` has no value. There is no red in
-  either owner palette, and inventing one is an identity decision for the owner.
 
 ### T-033 · Localization: `tr()`, catalogues, and the CI that guards them
 - **Priority:** P0
@@ -99,6 +65,29 @@ research status · implementation status · tests · hardware required.
 - **Hardware required:** no
 - **Note:** this is what final §50 means by *"localization is architecture, not
   later polish"*. It precedes the first screen rather than following it.
+
+## NEXT
+
+### T-009 · Design tokens in code
+- **Priority:** P0 — raised from P1; final §58 puts tokens in the first slice,
+  before the Clock
+- **Dependencies:** T-032; T-008 (**done**)
+- **Goal:** the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md) — colour,
+  spacing, radius, typography, motion, icon size, image size, elevation, sound
+  cue, haptic pattern (final §54).
+- **Acceptance:** no raw RGB, pixel count, duration, font size or radius
+  anywhere in UI code; day and night variants; both geometries; spacing resolved
+  per board rather than in raw pixels, because 8 px is not the same physical
+  distance on a 1.54″ and a 2.06″ panel.
+- **Research status:** done — palette, typography direction and mascot usage
+  derived from the owner references ([docs/ui/reference](docs/ui/reference/README.md))
+- **Implementation status:** document written and marked *proposed*; no code
+  tokens; **no value has been shown on a panel**
+- **Tests:** reference screenshots once the simulator runs
+- **Hardware required:** for the final colour values, **yes** — final §55
+  forbids preserving a concept-board hex that fails on the real display
+- **Open inside this task:** `color.danger` has no value. There is no red in
+  either owner palette, and inventing one is an identity decision for the owner.
 
 ### T-034 · Image asset pipeline
 - **Priority:** P0
@@ -417,6 +406,25 @@ research status · implementation status · tests · hardware required.
 
 ---
 
+### T-039 · A formatting rule, and CI that enforces it
+- **Priority:** P2
+- **Dependencies:** none
+- **Goal:** one `.clang-format`, applied to everything under `platform/`,
+  `core/`, `apps/`, `sim/` and `tests/`, checked in CI.
+- **Why now rather than later:** there is code to format as of 2026-08-21, and
+  the cost of adopting a style grows with every file. `.github/workflows/ci.yml`
+  already names this task in its list of what is deliberately absent, which is
+  the honest way to carry a gap but not a substitute for closing it.
+- **Acceptance:** `clang-format --dry-run --Werror` is green on a fresh
+  checkout; the rules are chosen once and not argued again.
+- **Research status:** not started. The existing code was written to a
+  consistent house style by hand — 4 spaces, 100 columns, Allman braces on
+  functions and attached elsewhere — so the job is mostly transcribing what is
+  already there rather than choosing.
+- **Implementation status:** not started
+- **Tests:** the CI job is the test
+- **Hardware required:** no
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -497,6 +505,34 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-008 · Simulator skeleton with both geometries — 2026-08-21
+- **Priority:** P0
+- **Dependencies:** T-032 (LVGL pin — done)
+- **Goal:** a desktop window that renders LVGL at 240 × 240 and 410 × 502, mouse
+  as touch, keyboard as buttons. The simulator is a first-class target
+  (final §57), not a convenience.
+- **Acceptance:** both presets run; switching between them needs no rebuild;
+  the build is part of CI. **Met.** `firefly_sim --board <id>` selects the
+  geometry at runtime; `--radio <chip>` fits any of the five T-Watch radios
+  without recompiling, which is the same requirement one layer down.
+- **Implementation status:** **done.** `sim/` holds the composition root, the
+  option parser, a diagnostic boot screen and a dependency-free PNG writer.
+  LVGL configuration is `sim/lv_conf_simulator.h`, generated once from the
+  v9.5.0 template with every edit recorded in its header.
+- **Tests:** `ctest` runs the simulator headless at both geometries under
+  `SDL_VIDEODRIVER=dummy`, and each run writes a screenshot that the test
+  requires to exist. CI has a second job that installs SDL2, builds with
+  `-DFIREFLY_BUILD_SIMULATOR=ON` and uploads the screenshots as artefacts.
+  **OBSERVED** on the development host; the CI job itself has not run yet.
+- **Hardware required:** no. Nothing here touched a bus and nothing here is
+  evidence about a board.
+- **What it also settled**, because the first CMake file was the last cheap
+  moment to settle it: the target graph. `firefly_platform` → `firefly_core` →
+  `firefly_apps`, with platform linked PRIVATE into core, and two tests that
+  compile one fixture against each of the two libraries to prove an application
+  still cannot include a hardware header
+  ([ADR-0007](docs/adr/0007-two-capability-layers.md) §5).
 
 ### T-039 · M0.5 — reconcile with the final master prompt — 2026-08-21
 - All eight §75 P0 items re-checked, all eight found still present, all eight

@@ -146,7 +146,28 @@ enum class HardwareFeature : uint8_t {
 bool             present(HardwareFeature) const;   // is the part here
 const RadioInfo* radio() const;                    // which part, typed
 HardwareState    state(HardwareFeature) const;     // is the driver up
+
+enum class HardwareState : uint8_t {
+    Absent,        // present() == false. There is no driver to have a state.
+    Untouched,     // owned, deliberately not brought up. Not an error.
+    RailOff,       // the supply that feeds it is down. Can be brought up.
+    Initialising,
+    Failed,        // bring-up was attempted and did not succeed
+    Ready,
+};
 ```
+
+`Untouched` is the value that had to be invented. `Absent` and `Failed` already
+had names; *we own this part and chose to leave it alone* did not, and §4 below
+plus final §32 both insist that this is a legitimate owned state rather than a
+gap. Without it, a rail deliberately left off reads as a failure on the
+diagnostics screen, and the first person to see that screen will "fix" it.
+
+It also has a mapping consequence. `Untouched`, `RailOff` and `Initialising` all
+become `Availability::Off` — one sentence, *it is not running and it can be
+started*. `Initialising` is the imprecise one: the honest sentence there is
+"wait", and `Availability` has no state for it because waiting is not a remedy.
+A service that is coming up reports progress through its own loading state.
 
 This layer knows chips, pins, rails, buses, addresses, IRQ topology and
 modulation families. It is contributed by the BSP for the local board and by a
@@ -262,6 +283,37 @@ about a chip fails to build. `#ifdef BOARD_X` was already forbidden in `core/`
 and `apps/` and was already unenforced; this makes the stronger version of the
 same rule mechanical, and lets a reviewer answer *does this application touch
 hardware* by reading the link line instead of the diff.
+
+As of the first commit of code, this is the target graph rather than a plan:
+
+```
+firefly_platform   chips, pins, rails, buses, typed descriptors
+        ▲ PRIVATE
+firefly_core       services, and the capability registry that owns the mapping
+        ▲ PUBLIC
+firefly_apps       applications
+```
+
+The enforcement is one keyword. `core/CMakeLists.txt` links `firefly_platform`
+**PRIVATE**, so `core/` compiles against the inventory and nothing that links
+`core/` inherits the ability to. `firefly_core` is the only place in `core/`
+that includes a platform header, and it does so in a `.cpp`; the registry's own
+header forward-declares `HardwareInventory` so that an application can hold a
+`CapabilityRegistry&` without gaining a way to ask it about chips.
+
+Two tests compile the same fixture twice — linked against `firefly_platform` it
+must build, linked against `firefly_apps` it must not. Two rather than one,
+because a single failing compile cannot tell an enforced boundary from a
+mistyped `#include` path. The failure is exactly the one intended:
+
+```
+tests/boundary/app_reaches_for_hardware.cpp:9:10: fatal error:
+    firefly/platform/hardware_feature.h: No such file or directory
+```
+
+The simulator's `main()` links both, and so will the device's. A composition
+root is allowed to see everything it assembles; that is what makes it the
+composition root and not a layer.
 
 ### 3.6 Capabilities are not data feeds
 
@@ -598,7 +650,7 @@ budget on a device where internal RAM is the scarce resource.
 | 2 | Rail ownership and reference counting | ADR (TASKS T-035) | open |
 | 3 | Radio abstraction, and what MeshCore actually supports | [ADR-0003](../adr/0003-radio-not-lora.md) (TASKS T-013) | **accepted** |
 | 4 | Partition layout and OTA scheme | ADR (TASKS T-025) | open |
-| 5 | ESP-IDF and LVGL versions | DEPENDENCIES (TASKS T-004, T-032) | open — **blocks M1** |
+| 5 | ESP-IDF and LVGL versions | DEPENDENCIES (TASKS T-004, T-032) | **LVGL pinned** at v9.5.0 and building; ESP-IDF still open, and it blocks the device build rather than M1 |
 | 6 | Whether to depend on the vendor BSPs or take only their pin facts | REUSE_LEDGER (OPEN_QUESTIONS T6) | open |
 | 7 | Capability sources and their runtime lifecycle | [ADR-0004](../adr/0004-capability-sources.md) (TASKS T-015) | **accepted** |
 | 8 | The watch↔node protocol | [ADR-0005](../adr/0005-node-protocol.md) (TASKS T-016) | **provisional** — encoding pending benchmark |
@@ -616,6 +668,13 @@ than what the same reading found: at the pinned revision, MeshCore supports
 **none** of the five T-Watch radio chips except the SX1262, and two of those
 chips cannot do LoRa at all. See [ADR-0003](../adr/0003-radio-not-lora.md).
 
-Decision 5 is now the one on the critical path. Nothing in M1 — the font
-subset, the image pipeline, the design tokens — can be built before LVGL is
-pinned.
+Decision 5 was the one on the critical path, and half of it has moved. LVGL is
+pinned at v9.5.0, the simulator builds against it and renders at both
+geometries, so the font subset, the image pipeline and the design tokens are no
+longer waiting on a version. The ESP-IDF half is still open and now blocks only
+the device build — which is where it belongs, because M1 is the simulator.
+
+What replaced it on the critical path is the font toolchain: `lv_font_conv` is
+a separate npm tool, unpinned, licence unchecked, and it is the only supported
+way to produce a Cyrillic subset. Nothing about that was made easier by pinning
+the library (T-032).

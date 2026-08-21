@@ -1,0 +1,130 @@
+#include "firefly/platform/board_profile.h"
+
+#include <cstring>
+
+// The board profiles, transcribed from docs/research/HARDWARE_MATRIX.md.
+//
+// Every entry below is a fact that was traced to a schematic or a vendor BSP
+// before it was written here. Where the matrix says PARTIAL or UNKNOWN, this
+// file says so in a comment rather than picking the convenient value —
+// CLAUDE.md's first rule, and the reason the T-Watch's radio chip defaults to
+// Unknown even though the schematic footprint hints at an SX1262.
+
+namespace firefly::platform {
+namespace {
+
+using HF = HardwareFeature;
+
+// LilyGO T-Watch S3 Plus.
+//
+// Not present, and each absence is load-bearing: no gyroscope (BMA423 is an
+// accelerometer), no magnetometer, no SD card.
+constexpr std::uint32_t kTWatchFeatures =
+    feature_bit(HF::Display) |          // ST7789V3, 240x240 IPS 1.3"
+    feature_bit(HF::Touch) |            // FT6336U, on its own I2C bus
+    feature_bit(HF::Buttons) |          // BOOT on the GNSS daughterboard; PWR via the PMU
+    feature_bit(HF::Pmu) |              // AXP2101
+    feature_bit(HF::BatterySense) |     // through the AXP2101
+    feature_bit(HF::Rtc) |              // PCF8563, with a rechargeable backup cell
+    feature_bit(HF::Accelerometer) |    // BMA423
+    feature_bit(HF::Radio) |            // one of five chips — see below
+    feature_bit(HF::GnssReceiver) |     // MIA-M10Q or LS550G, on an FPC daughterboard
+    feature_bit(HF::HapticActuator) |   // DRV2605L, a real waveform driver
+    feature_bit(HF::AudioOutDevice) |   // MAX98357A
+    feature_bit(HF::AudioInDevice) |    // SPM1423HM4H-B, PDM
+    feature_bit(HF::IrTransmitter) |    // IR12-21C on GPIO 2
+    feature_bit(HF::Wifi) |
+    feature_bit(HF::Ble) |
+    feature_bit(HF::Usb);
+
+// Waveshare ESP32-S3-Touch-AMOLED-2.06.
+//
+// No radio, no GNSS, no IR. It also has a bare motor rather than a haptic
+// driver IC, which is a HapticActuator all the same — the difference belongs to
+// the driver, not to the inventory. Buttons are PARTIAL in the matrix (D5): the
+// keys are on the board, the GPIO assignment is not resolved, and the vendor
+// BSP declares none. Present, therefore, and not yet drivable.
+constexpr std::uint32_t kWaveshareFeatures =
+    feature_bit(HF::Display) |          // CO5300, 410x502 AMOLED, driven through SH8601
+    feature_bit(HF::Touch) |            // FT3168
+    feature_bit(HF::Buttons) |          // PARTIAL — see D5
+    feature_bit(HF::Pmu) |              // AXP2101 — the one part the two boards share
+    feature_bit(HF::BatterySense) |
+    feature_bit(HF::Rtc) |              // PCF85063ATL
+    feature_bit(HF::Accelerometer) |    // QMI8658, 6-axis
+    feature_bit(HF::Gyroscope) |        // the same part, the other axis set
+    feature_bit(HF::HapticActuator) |   // bare motor on GPIO 18 — no driver IC
+    feature_bit(HF::AudioOutDevice) |   // ES8311 codec
+    feature_bit(HF::AudioInDevice) |    // ES7210, two microphones
+    feature_bit(HF::SdCard) |           // SDMMC, 1-bit
+    feature_bit(HF::Wifi) |
+    feature_bit(HF::Ble) |
+    feature_bit(HF::Usb);
+
+BoardProfile make_twatch()
+{
+    BoardProfile p;
+    p.id                          = "t-watch-s3-plus";
+    p.name                        = "LilyGO T-Watch S3 Plus";
+    p.display.width_px            = 240;
+    p.display.height_px           = 240;
+    p.display.diagonal_milli_inch = 1300;
+    p.display.technology          = PanelTechnology::Ips;
+    p.present_mask                = kTWatchFeatures;
+    // Unknown, and deliberately so. The chip is chosen at purchase and open
+    // question A2 records that nobody has told us which one this project has.
+    // Every capability derived from the radio therefore comes out "we cannot
+    // say", which is the truth. Override it with --radio in the simulator.
+    p.radio = radio_info_for(RadioChip::Unknown);
+    return p;
+}
+
+BoardProfile make_waveshare()
+{
+    BoardProfile p;
+    p.id                          = "waveshare-amoled-206";
+    p.name                        = "Waveshare ESP32-S3-Touch-AMOLED-2.06";
+    p.display.width_px            = 410;
+    p.display.height_px           = 502;
+    p.display.diagonal_milli_inch = 2060;
+    p.display.technology          = PanelTechnology::Amoled;
+    p.present_mask                = kWaveshareFeatures;
+    p.radio                       = {};  // no radio is fitted; the struct is meaningless
+    return p;
+}
+
+// Function-local statics rather than a namespace-scope array: these are built
+// by calling radio_info_for(), so they are dynamically initialised, and a
+// namespace-scope array would be readable before its initialiser ran if
+// anything else's static initialiser reached it first.
+const BoardProfile* profiles(std::uint8_t& count_out)
+{
+    static const BoardProfile kProfiles[] = {make_twatch(), make_waveshare()};
+    count_out = static_cast<std::uint8_t>(sizeof(kProfiles) / sizeof(kProfiles[0]));
+    return kProfiles;
+}
+
+}  // namespace
+
+const BoardProfile* board_profiles(std::uint8_t& count_out)
+{
+    return profiles(count_out);
+}
+
+const BoardProfile* find_board_profile(const char* id)
+{
+    if (id == nullptr) {
+        return nullptr;
+    }
+
+    std::uint8_t count = 0;
+    const BoardProfile* all = profiles(count);
+    for (std::uint8_t i = 0; i < count; ++i) {
+        if (std::strcmp(all[i].id, id) == 0) {
+            return &all[i];
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace firefly::platform

@@ -7,39 +7,46 @@ not a history — what changed and why lives in git and in the ADRs.
 
 ## Current milestone
 
-**M0.5 — review reconciliation.** M0 is complete: the repository exists, both
-boards are surveyed from vendor schematics, ten upstream projects are cloned at
-pinned commits, and the native build runs in CI.
-
-M0.5 exists because the owner supplied a new master specification on 2026-08-21
-containing a review of this work
-([OWNER_DECISIONS OD-3](docs/research/OWNER_DECISIONS.md)). Its §75 lists eight
-mandatory corrections that must land before large new core implementation. All
-eight were re-checked and all eight were real
+**M1 — simulator and the product design foundation.** M0.5, the reconciliation
+forced by the owner's new master specification, is complete: all eight §75
+items closed plus one the review did not list
 ([RECONCILIATION](docs/research/RECONCILIATION_2026-08-21.md)).
 
 ## Current implementation
 
-No firmware code exists yet. That is still deliberate, and M0.5 is the last
-point at which it stays true — final §75 closes with *"do not spend another
-week in research after this reconciliation; move into M1."*
+**Firefly has code.** As of 2026-08-21 the repository builds three libraries, a
+simulator and six tests.
 
-**The reconciliation is complete.** All eight §75 items closed, plus one further
-P0-grade correction the review did not list — final §32's rule that ownership
-does not mean initialisation, which four ownership tables were built on.
+| Library | What it is | Links |
+|---|---|---|
+| `firefly_platform` | the hardware inventory: `HardwareFeature`, `HardwareState`, `RadioInfo`, and the two board profiles transcribed from the schematics | — |
+| `firefly_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
+| `firefly_apps` | `AppManifest` and the launcher gating rule | core only |
+| `firefly_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
 
-Next is M1, starting with the simulator. Final §75 closes: *"do not spend
-another week in research after this reconciliation."*
+The `PRIVATE` in the second row is the enforcement mechanism for
+[ADR-0007](docs/adr/0007-two-capability-layers.md) §5, and two tests compile one
+fixture against two different libraries to prove an application still cannot
+include a hardware header.
+
+The simulator renders at 240 × 240 and 410 × 502 from one binary, selected by
+`--board`, and fits any of the five candidate T-Watch radios with `--radio`
+without recompiling. Its first screen is a diagnostic that shows the two
+capability layers side by side — deliberately not a product screen, and it says
+so in its own source.
 
 ## Next ready
 
-- **T-008** — simulator skeleton at both geometries. Unblocked: LVGL is pinned.
-- **T-032** — the second half of the LVGL decision: pin `lv_font_conv`, check
-  its licence, and **measure** a Latin + Cyrillic subset at the design system's
-  sizes.
-- **T-009 · T-033 · T-034** — design tokens in code, the localization
-  mechanism, and the image asset pipeline. Together with T-008 these are the M1
-  vertical slice (final §58), and they land before the first Clock.
+- **T-032** — the half of the LVGL decision that is left, and now the critical
+  path: pin `lv_font_conv`, check its licence, and **measure** a Latin +
+  Cyrillic subset at the design system's sizes.
+- **T-033** — `tr()`, both catalogues, and the three CI checks that
+  [ADR-0010](docs/adr/0010-localization.md) §3 treats as the mechanism rather
+  than as polish. The third of them — a catalogue entry the generated font
+  cannot draw — is the one that is invisible without machine enforcement.
+- **T-009 · T-034 · T-037 · T-038** — design tokens in code, the image asset
+  pipeline, the first Clock and the first Settings. That is the rest of the M1
+  slice, in the order final §58 gives.
 
 ## Lookahead research
 
@@ -61,7 +68,10 @@ remaining work is being done directly.
 
 Completed and still useful: ten upstream clones with full history in
 `/root/upstream`, ESP-IDF `release/v5.5` with a verified `esp32s3` toolchain,
-and `ninja`/`SDL2`/`ccache` on the host.
+and `ninja`, SDL2 2.30.0, Node v24.19.0 / npm 11.17.0 and `ccache` on the host.
+Node matters more than it looks: `lv_font_conv` is an npm tool, and finding out
+it could not be run *after* designing the font pipeline around it would have
+been the expensive order.
 
 ## Blocked
 
@@ -87,8 +97,8 @@ None of these blocks M1. All of them block hardware work.
 
 | Target | State |
 |---|---|
-| Host / native | builds; smoke test passes locally and in CI |
-| Simulator | not started — SDL2 and ninja installed; **LVGL pinned at v9.5.0**, whose SDL2 drivers are in-tree |
+| Host / native | builds; four tests pass locally and in CI — smoke, capability registry, and the two halves of the layer-boundary check |
+| Simulator | **builds and runs.** LVGL v9.5.0 + SDL2 2.30.0. Two more tests render it headless at both geometries under `SDL_VIDEODRIVER=dummy` and require a screenshot per geometry. Off by default (`-DFIREFLY_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED` |
@@ -103,10 +113,12 @@ has been taken. Nothing here may be described as hardware-tested.
 
 ## Open conflicts
 
-Recorded rather than resolved by preference. Both need a powered board.
+Recorded rather than resolved by preference. Two of the three need a powered
+board; the third needs the owner.
 
 | # | Conflict |
 |---|---|
+| A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Firefly Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
 | H8 | The T-Watch vendor document calls ALDO1 unused; the schematic drives the `+3V3` rail from it. If the schematic is right, `+3V3` is switchable and carries five parts |
 | D12 | PSRAM documented as quad; the `R8` part marking is understood to mean octal. Affects both boards, and blocks the LVGL buffer decision |
 
@@ -123,6 +135,10 @@ Recorded rather than resolved by preference. Both need a powered board.
 
 ## Recently completed
 
+- **T-008 — the simulator, and the target graph underneath it.** Both
+  geometries from one binary, headless in CI, a screenshot per geometry as the
+  artefact a design review needs. The first CMake file was the last cheap moment
+  to make the platform/core/apps boundary real, so it was made real there.
 - **M0.5 reconciliation — all eight §75 items closed**, tracked row by row in
   [RECONCILIATION_2026-08-21](docs/research/RECONCILIATION_2026-08-21.md). Five
   new ADRs; three earlier ones accepted, one superseded, one made explicitly

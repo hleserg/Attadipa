@@ -53,6 +53,24 @@ is a maintenance liability on the one build that must never break.
 §77 adds the subtler reason: *"Do not architect against 'latest docs' after
 pinning another version."*
 
+**How it is obtained.** `cmake/FireflyLvgl.cmake`, by `FetchContent` — cloning
+the *tag* and then verifying the *commit*. The tag is only the transport: it is
+what CMake's generated `git checkout` can resolve in a shallow clone. The pin is
+the SHA, checked with `git rev-parse HEAD` after the clone, because a tag can be
+moved and a commit cannot — and a re-tagged v9.5.0 would still say `9.5.0` in
+`lv_version.h`, so the version check alone cannot catch it.
+`FIREFLY_LVGL_SOURCE_DIR` points the build at a tree already on disk for offline
+work; it skips the fetch and neither check. Both failures are configure errors
+rather than behaviour discovered later.
+
+Two things checked rather than assumed, on 2026-08-21:
+
+| Claim | How |
+|---|---|
+| `85aa60d18b3d5e5588d7b247abf90198f07c8a63` **is** v9.5.0 | `git ls-remote https://github.com/lvgl/lvgl.git refs/tags/v9.5.0` returns that SHA, and its commit message is `chore: release v9.5.0 (#9753)` |
+| GitHub serves a shallow fetch of a bare SHA | `git fetch --depth 1 origin <sha>` succeeds — by hand. It is **not** what FetchContent emits, which is why the build clones the tag instead |
+| `GIT_SHALLOW TRUE` is **not** a small download | CMake 3.28 generates `git clone --depth 1 --no-single-branch`: one commit off *every* ref. Measured on the CI path — `_deps/lvgl-src` exceeds 160 MB. Recorded because the opposite is the natural assumption, and this file existing to prevent exactly that |
+
 **Not yet verified, and it is the part that can still surprise:** the measured
 size of a Latin + Cyrillic subset at the sizes the design system needs, and
 `lv_font_conv`'s own version and licence. The library is pinned; the font
@@ -80,17 +98,31 @@ toolchain is a second decision that has to be made against it (T-032).
 
 ### SDL2 — the simulator display backend
 
-- **Decided in principle by the LVGL pin**: 9.5.0 carries SDL2 display, mouse
-  and keyboard drivers in-tree, so there is no third-party port to choose.
-- `libsdl2-dev` and `libsdl2-image-dev` are installed on the development host.
-  The **version is not yet recorded here**, and must be before the simulator
-  build can be called reproducible.
+- **Decided by the LVGL pin**: 9.5.0 carries SDL2 display, mouse and keyboard
+  drivers in-tree, so there is no third-party port to choose. LVGL does *not*
+  link SDL itself — the application does, which is why `sim/CMakeLists.txt`
+  carries `find_package(SDL2 REQUIRED)`.
+- **Development host: SDL2 2.30.0** (`libsdl2-dev` 2.30.0+dfsg-1ubuntu3.1,
+  Ubuntu 24.04). CI installs `libsdl2-dev` from `ubuntu-latest`, so the two
+  will drift; that is acceptable because SDL is a host-side dependency of a
+  development tool and never ships in firmware.
+- **Minimum version: not established.** Nothing in the simulator uses an API
+  newer than SDL 2.0, and no lower bound has been tested. Recorded as an
+  assumption rather than a claim.
+- The headless path is `SDL_VIDEODRIVER=dummy` with `LV_SDL_ACCELERATED 0`,
+  which is how CI renders frames with no display attached. **OBSERVED** —
+  the CI job writes a screenshot per geometry and fails if either is missing.
 
 ### `lv_font_conv` — the font converter
 
 - **Status:** not pinned. It is an npm tool from the LVGL organisation, outside
   the LVGL repository, and it is the only supported way to generate a subset
   font. Its licence must be checked before it enters the build (T-032).
+- **The toolchain to run it exists**, which was worth checking before designing
+  a pipeline around it: Node **v24.19.0** and npm **11.17.0** are installed on
+  the development host. That removes the failure mode where the font pipeline
+  is designed and only then found to be unrunnable — it does not pin anything,
+  and it says nothing about CI, which has no Node step yet.
 - **Why it matters more than it looks:** the generated font is a build artefact
   that ships in flash. Its size is a budget line, and its glyph coverage is a
   CI check ([ADR-0010](../adr/0010-localization.md) §3).

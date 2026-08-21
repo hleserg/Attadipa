@@ -128,32 +128,69 @@ with the decision and its reasoning recorded in
 ## Repository
 
 ```
-docs/master-prompt.md          product specification (source of truth)
-docs/development-addendum.md   process doctrine: reuse-first, lookahead research
+platform/                      the hardware inventory — chips, pins, rails, board profiles
+core/                          services, and the capability registry that owns the mapping
+apps/                          applications; links core and cannot reach platform
+sim/                           the desktop simulator, and its LVGL configuration
+tests/                         host tests, including the two that check the layer boundary
+cmake/                         the pinned LVGL dependency
+
+docs/master-prompt-final.md    product specification (source of truth)
 docs/research/                 verified facts, owner decisions, open questions, deps, reuse ledger
 docs/node/                     the Firefly node — mostly what is *not* known about it
 docs/hardware/                 interference matrix, board notes
 docs/architecture/             architecture, resource budget
 docs/adr/                      architecture decision records
+docs/ui/                       the design system, and the owner's design references
+pics/                          brand assets — banner, icon, favicon
 TASKS.md                       backlog: NOW / NEXT / READY / BLOCKED / WAITING / DONE
 STATUS.md                      where the project is right now
 ```
+
+`apps/` not being able to reach `platform/` is enforced by the link line rather
+than by review, and there is a test that fails if somebody removes it —
+[ADR-0007](docs/adr/0007-two-capability-layers.md) §5.
 
 The specification documents are written in Russian; code, comments, and the
 rest of the documentation are in English.
 
 ## Building
 
-Nothing to build yet beyond a toolchain smoke test:
+The host build needs nothing but a C++17 compiler and CMake:
 
 ```sh
 cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure
 ```
 
-The ESP-IDF version, the LVGL version, and the rest of the dependency set are
-deliberately not chosen yet — that decision belongs to the research gate and
-will be recorded in
-[`docs/research/DEPENDENCIES.md`](docs/research/DEPENDENCIES.md) with an ADR.
+The simulator is opt-in, because it is the only part that needs SDL2 and a
+network fetch of LVGL:
+
+```sh
+sudo apt install libsdl2-dev          # or your platform's equivalent
+cmake -S . -B build-sim -DFIREFLY_BUILD_SIMULATOR=ON
+cmake --build build-sim
+./build-sim/sim/firefly_sim --board waveshare-amoled-206
+```
+
+```
+--board <id>      t-watch-s3-plus (240x240) | waveshare-amoled-206 (410x502)
+--radio <chip>    fit any of the five candidate T-Watch radios
+--node            present a paired, reachable Firefly node
+--no-bring-up     leave every part untouched, to see the unavailable states
+--screenshot <p>  write the screen to a PNG
+--frames <n>      render n frames and exit; with SDL_VIDEODRIVER=dummy, headless
+```
+
+None of those need a rebuild. That is the point of them: the simulator has to
+be able to present a configuration it was not compiled for, which is also why
+this project has no per-board binaries.
+
+LVGL is pinned at v9.5.0 and fetched by CMake at the commit; the build refuses
+to continue if the version it finds is not the version that was chosen. To
+build offline against a tree you already have, pass
+`-DFIREFLY_LVGL_SOURCE_DIR=/path/to/lvgl`. The ESP-IDF version is still not
+chosen, and it blocks the device build rather than this one — see
+[`docs/research/DEPENDENCIES.md`](docs/research/DEPENDENCIES.md).
 
 ## Contributing
 

@@ -21,12 +21,54 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  simulator:
+    name: Simulator build and headless run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # LVGL is fetched by CMake at the commit pinned in
+      # docs/research/DEPENDENCIES.md. SDL2 is the only system package this
+      # build needs; LVGL carries the SDL display, mouse and keyboard drivers
+      # in-tree but does not link SDL itself.
+      - name: Install SDL2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-dev
+
+      - name: Configure
+        run: cmake -S . -B build-sim -DCMAKE_BUILD_TYPE=Release -DFIREFLY_BUILD_SIMULATOR=ON
+
+      - name: Build
+        run: cmake --build build-sim
+
+      # No display attached, so SDL opens its dummy video driver. This renders
+      # real frames through LVGL and writes a screenshot per geometry; the test
+      # fails if either file cannot be produced.
+      - name: Test
+        env:
+          SDL_VIDEODRIVER: dummy
+        run: ctest --test-dir build-sim --output-on-failure
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshots
+          path: build-sim/screenshots/*.png
+          # warn, not error: the render tests already fail if a screenshot is
+          # missing. Failing the upload as well would turn one red into two and
+          # bury the real message under an artifact-step error.
+          if-no-files-found: warn
+
 # Not present yet, and deliberately not faked:
 #
 #   * embedded build  — ESP-IDF version is not chosen (TASKS.md T-004)
-#   * simulator build — LVGL version is not chosen (TASKS.md T-008)
-#   * lint            — formatting rules are not agreed yet
+#   * lint            — formatting rules are not agreed yet (TASKS.md T-039)
+#   * localization    — the catalogue and font-coverage checks land with
+#                       T-033; see docs/adr/0010-localization.md §3
 #   * hardware tests  — NOT EXECUTED, HARDWARE REQUIRED
 #
-# A green badge here means the host build and its tests passed. It means
-# nothing about firmware and nothing at all about hardware.
+# A green badge here means two host builds and their tests passed, and that the
+# simulator rendered a frame at both geometries. It means nothing about firmware
+# and nothing at all about hardware.
