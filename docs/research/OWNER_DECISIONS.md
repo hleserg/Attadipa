@@ -412,7 +412,344 @@ persistence). Neither is started.
 
 ---
 
+## OD-7 — The companion is any node, not only ours
+
+**Decided:** 2026-08-22.
+
+**As stated**, across three messages:
+
+> *"а почему бы нам не добавить в часы возможность цепляться к нодам meshcore на
+> ванильной прошиве по ble или lan? Не каждый захочет заморачиваться со сбором
+> нашего варианта ноды сразу. Да и нам может пригодиться. В план!"*
+
+> *"Нужно чтобы часы при этом получали сразу возможность общаться по мешкору,
+> возможность запрашивать и получать телеметрию, возможность снимать координаты
+> из телеметрии, входящих сообщений и с самой ноды если в ней есть gps."*
+
+> *"При наличии lora и меш в самих часах я бы хотел чтобы была возможность
+> пользоваться обеими нодами, на часах пусть так же будет доступен meshtastiс
+> как вариант компаньона вместо (или вместе, как получится) meshcore."*
+
+**What it changes.** [ADR-0008](../adr/0008-mesh-service-providers.md) already
+has the right shape — one `MeshService`, providers behind it, applications that
+never learn which one answered — and it already has two providers: the watch's
+own radio and *the Attadipa node*. This widens the second one. The companion is
+now **any** device that speaks a protocol the watch has a client for, reached
+over **any** transport the watch has:
+
+| | |
+|---|---|
+| Stack | MeshCore · Meshtastic · the Attadipa node |
+| Transport | BLE · Wi-Fi/LAN · the wired node link |
+| Count | more than one at a time, and alongside a local radio |
+
+The reasoning the owner gave is a product argument and it is a good one: a person
+who already owns a MeshCore node should be able to use the watch on the day they
+buy it, without building anything. That also makes the watch testable against
+hardware other people have.
+
+**What it obliges:**
+
+1. **A companion is a capability source, not a device an application knows
+   about.** Same rule as everything else — an application asks `MeshService` to
+   send a message and never learns that a vanilla node in a rucksack carried it.
+   ADR-0008 §3's selection policy extends from "local or node" to a list; that
+   the list can now have three entries does not give applications a second code
+   path.
+2. **Telemetry is a request/response feed, and feeds are not capabilities.**
+   T-029 already established that separation; this is its first real customer.
+   A telemetry value carries the two ages every datum that crosses a link
+   carries ([ADR-0004](../adr/0004-capability-sources.md)).
+3. **Three more ways a position arrives**, each with a different provenance and
+   a different trust: from a telemetry frame, from an incoming message that
+   carried one, and from the companion's own receiver.
+   [ADR-0011](../adr/0011-gnss-integrity.md) already separates `PositionValidity`
+   from `TrustState`; a coordinate taken out of somebody else's message is the
+   case those axes exist for, and it must never be presented as the wearer's
+   own fix.
+4. **Nothing here relaxes the licence rule.** MeshCore is MIT and Meshtastic's
+   firmware is GPL-3.0 — *read it, learn from it, copy nothing*
+   ([REUSE_LEDGER](REUSE_LEDGER.md)). Whether Meshtastic's **protocol
+   definitions** carry the same licence as the firmware is `UNKNOWN` and is the
+   gate on a Meshtastic client. It is verified from the files or the client is
+   not written.
+5. **Nothing here relaxes the honesty rule either.** MeshCore's own security is
+   an open upstream issue; a message that crossed a vanilla node gets no lock
+   icon and no "encrypted" label.
+
+**Status:** research only. Filed as T-072 (what a vanilla MeshCore node actually
+exposes, and over which transports), T-073 (the same for Meshtastic, licence
+first), T-074 (many providers at once, in the ADR-0008 shape). No client is
+written until T-072 has answers from source.
+
+---
+
+## OD-8 — Every source of position, and the watch as the instrument
+
+**Decided:** 2026-08-22.
+
+**As stated**, across two messages:
+
+> *"При наличии gps в часах - так же хорошо бы иметь возможность выбрать какой
+> gps использовать и еще как вариант - использовать оба источника данных
+> комбинируя и обрабатывая их для улучшения точности. Если возможно - та же
+> история с телефоном - нужно иметь возможность снять gps координаты (и прочие
+> полезные и доступные данные) и обработать на уровне часов. Они превращаются в
+> основной навигационный инструмент."*
+
+> *"По поводу agps - надо заложить возможность их получения не только по
+> интернету но и по другим каналам связи, ble, lora и проч. На всякий. Буду
+> стараться как-то их получить и пропихнуть в любом случае."*
+
+**The list of sources this creates**, which is longer than the one the GNSS work
+was written against:
+
+| Source | Already modelled? |
+|---|---|
+| the watch's own receiver | yes — ADR-0011 |
+| the companion node's receiver | yes — ADR-0004, as a node-supplied capability |
+| a phone, over the companion link | **no** |
+| a coordinate inside an incoming mesh message | **no** — OD-7 |
+| a coordinate inside a telemetry frame | **no** — OD-7 |
+| dead reckoning from the IMU | filed, not modelled — T-071 |
+| cell towers | **no** — OD-9 |
+
+**What it obliges:**
+
+1. **Selection and fusion are two different features and the second is not the
+   first done twice.** Choosing which receiver to believe is a policy in the
+   ADR-0008 shape. Combining two receivers to do better than either is an
+   estimator, and an estimator that is wrong is worse than the better of its
+   inputs — it produces a confident number nobody can check. Which of the two
+   ships first is a decision that needs the replay rig
+   (`tests/replay/`) pointed at real multi-source traces, not an opinion.
+2. **Provenance travels with the position, always.** A fix from the wearer's own
+   receiver, a fix relayed from a node on a roof, and a coordinate lifted out of
+   somebody else's message are three different claims about where the wearer is,
+   and exactly one of them is about the wearer. The user-facing consequence is
+   that the screen says which, in words.
+3. **AGPS is a payload, not a transport.** The owner is explicit that it may
+   arrive over the internet, BLE, LoRa or anything else. So the assistance data
+   is defined once — format, validity window, size, what it is good for — and
+   the delivery is a separate question answered per channel. A LoRa channel with
+   a few hundred bytes a minute and an internet one are the same payload with
+   very different pacing, and whether any useful assistance format fits the first
+   is `UNKNOWN` until the receiver documents are read (T-051, T-052).
+4. **"The watch becomes the primary navigation instrument"** is the sentence to
+   design against. It means the watch is the thing that decides, not a display
+   for whatever the phone last said.
+
+**Status:** research only. Filed as T-075 (the source inventory and what each one
+can honestly claim), T-076 (phone-supplied position and data over the companion
+link), T-077 (AGPS as a payload, and what fits each channel). Selection versus
+fusion is deliberately not decided here.
+
+---
+
+## OD-9 — The node may carry a cellular modem
+
+**Decided:** 2026-08-22.
+
+**As stated:**
+
+> *"я вероятно пихну в ноду gsm/4g/lte короче мобильную связь. Это будет
+> во-первых - один из вариантов уточнения позиции (опрашиваем вышки, по
+> идентификатору смотрим ее координаты в базе которая заранее качается из
+> интернета) а во-вторых, один из вариантов выйти на связь, получить agps, и тому
+> подобное."*
+
+**Two features, and they are independent.** A modem in the node would give:
+
+- **a position source that works indoors and needs no sky** — read the serving
+  and neighbour cells, look their identifiers up in a database downloaded ahead
+  of time, and produce a coarse position. Accuracy is hundreds of metres to
+  kilometres depending on cell density, which makes it a *fallback and a sanity
+  check* rather than a navigation fix. It is also the only source on this list
+  that keeps working under a roof;
+- **a route off the mesh** — internet for assistance data, for a message that has
+  to leave the mesh, and for keeping the tower database current.
+
+**What is `UNKNOWN` and gates it**, none of which may be guessed:
+
+1. **The part.** There is no modem in [NODE_PROFILE](../node/NODE_PROFILE.md)
+   because there is no node part number yet. Band support, power draw while
+   registered, and whether it can be powered down without losing registration
+   are all properties of a specific module.
+2. **The database.** A tower database is the whole feature and it is somebody
+   else's data. Licence, size, coverage in the regions this product ships to, and
+   update cadence are four separate answers, and "there is an open one" is not
+   any of them. A database that does not fit the node's flash is not a feature.
+3. **The regulatory picture.** A cellular modem is type-approved equipment and a
+   SIM is a subscription in somebody's name. That is a different conversation
+   from an ISM-band radio and it belongs to the owner, not to this repository.
+4. **Privacy.** A device that registers on a network is a device that can be
+   located by the network, whether or not the wearer asked. Child Mode makes that
+   a question with a legal answer in some jurisdictions, and the tracker threat
+   model already filed (T-069) grows a section rather than a footnote.
+
+**What it does not change:** the mesh is still the product. A modem is one more
+source and one more route, entering through the same provider registry as
+everything else, and the watch must be complete with none of it present.
+
+**Status:** research only. Filed as T-078 (the cellular option: part class, power
+and regulatory shape) and T-079 (tower-database positioning: licence, size,
+coverage, and what accuracy may honestly be claimed). Nothing is designed until
+a part exists.
+
+---
+
+## OD-10 — A standing person does not need a new fix
+
+**Decided:** 2026-08-22.
+
+**As stated:**
+
+> *"надо чтобы у стоящего на месте человека (определять по акселерометру можно)
+> gps координаты брались реже, если есть точные и доверенные координаты - то
+> вообще можно не переспрашивать пока он не двинется с места. При этом конечно
+> не допускать холодного пуска желательно очень, т.е. не выключать модуль совсем
+> или держать agps на готове как-то. В общем на подумать это"*
+
+**The idea is right and the second half is the hard half.** GNSS is the largest
+continuous draw on a watch that has it, and a position that has not changed does
+not need to be measured again. What makes this non-trivial is that the saving and
+the cost live in the same place: switching the receiver off is exactly what turns
+the next fix into a cold start, and a cold start is tens of seconds of full
+current plus a wearer standing still looking at a spinner. The owner names that
+trap in the same sentence, which is why this is recorded as a decision rather
+than as a feature request.
+
+**What already exists to build it on**, so that this is a composition rather than
+a new subsystem:
+
+- **motion, from the IMU.** [OD-6](#od-6--the-watch-counts-steps-and-that-is-not-optional)
+  already requires the accelerometer to keep working while the SoC sleeps, and
+  "is the wearer moving" is a strictly easier question than "how many steps".
+  On the T-Watch that may be an interrupt from the part itself rather than a
+  sampling loop, which is the difference between free and not;
+- **the three start kinds.** `start_kind()` in `core/` already distinguishes hot,
+  warm and cold, and T-055 already found and fixed a bug where *having* a backup
+  domain was read as evidence it had been *powered*. This decision is that
+  function's first real consumer;
+- **trust and validity as separate axes.**
+  [ADR-0011](../adr/0011-gnss-integrity.md) already says a position can be valid
+  and untrusted. "Accurate and trusted coordinates" in the owner's sentence is
+  exactly the conjunction of the two, and it is already expressible.
+
+**What it obliges:**
+
+1. **Standing still is a hypothesis, not a fact.** A watch on a table in a moving
+   train reports no motion. A wrist held steady while walking reports very
+   little. So the gate is a *rate reduction with a ceiling*, never an indefinite
+   suspension: there is always a longest interval after which the receiver is
+   asked again regardless, and the ceiling is a setting rather than a constant.
+2. **A held position is timestamped, not refreshed.** The screen shows the age of
+   the fix, and an old fix reads as an old fix. This is the same rule the GNSS
+   work already applies — a position nobody observed is not interpolated — and
+   holding one deliberately must not quietly become the thing that violates it.
+3. **The receiver is duty-cycled, not switched off.** Which of the receiver's own
+   low-power modes are usable, what each one keeps, and what each one costs are
+   properties of the specific module and are `UNKNOWN` — see T-051 (MIA-M10Q) and
+   T-052 (Quectel LS550G). This decision does not choose between them; it says
+   the choice is made from the receiver documents and measured, not assumed. An
+   estimated milliamp is labelled `ESTIMATED`.
+4. **AGPS is the other half of the answer**, which is why
+   [OD-8](#od-8--every-source-of-position-and-the-watch-as-the-instrument) item 3
+   matters here: assistance held ready turns a cold start back into something
+   closer to a warm one, and it can arrive over any channel. Ephemeris has a
+   validity window measured in hours, so "held ready" means a refresh policy, not
+   a download.
+5. **Dead reckoning covers the gap it opens.** If the receiver is asked less
+   often, the interval between fixes is exactly where T-071's IMU track has to
+   carry the position. The two features are the same feature seen from either
+   end.
+
+**Status:** research and design, filed as T-080. Nothing is implemented until
+T-051 and T-052 say what the receivers can actually do, because the whole feature
+is a claim about a specific module's low-power behaviour.
+
+---
+
+## OD-11 — Themes are installable, and the layout survives them
+
+**Decided:** 2026-08-22.
+
+**As stated:**
+
+> *"мы сделаем красиво, но всем понравиться с одним единственным вариантом не
+> получится. нужно заложить в ядро возможность смены темы. и сделать эти темы
+> скачиваемыми, устанавливаемыми и переключаемыми, как приложения. чтобы можно
+> было поставить свои цвета, свои шрифты, свои иконки ванильных приложений и
+> прочее. и при этом чтобы все не поехало к чертям на экране. в план,
+> обязательно!"*
+
+And, in the same message, about a `□` visible in a simulator screenshot:
+
+> *"а что там за прямоугольник на экране? проебанный в шрифте символ? в проде
+> конечно же такого быть не должно, ты же понимаешь?"*
+
+The second half is not a separate topic. A missing glyph is what a theme system
+produces by default unless it is designed not to, and the box in that screenshot
+is the *stock* font failing on `×` — with one font, chosen by us, in a build we
+control. A user-supplied font is that failure mode with the safeties off.
+
+**What already exists.** [T-009](../../TASKS.md) shipped the substrate on
+2026-08-22 and it was built the right way round by accident of following final
+§54: a screen names `color.accent.primary` and `space.md`, and the value behind
+the name is resolved in exactly one place. Swapping the table under those names
+*is* a theme. What does not exist is any of: a theme that is data rather than
+code, a way to install one, a validity check, or a way to survive a bad one.
+
+**What it obliges:**
+
+1. **A theme is data, not code.** It carries colour values for the twelve roles
+   in both themes, a font, an icon set, and nothing else. It never carries
+   layout, and it never carries a pixel count — a theme that could set a padding
+   could break every screen, and "чтобы всё не поехало" is precisely a
+   requirement that it cannot.
+2. **Installing a theme is installing untrusted content**, and it arrives over
+   the same links a message does. It is parsed defensively, it is bounded in
+   size before it is read, and a malformed one is rejected with a sentence a
+   person can act on. This is a security surface, not a preferences screen.
+3. **A theme is validated before it is applied, and the rules already exist as
+   arithmetic.** `ui/src/color.cpp` computes WCAG contrast today; a candidate
+   theme whose text does not clear 4.5:1 on its own page is not applied, or is
+   applied with the failure stated. The palette work of 2026-08-22 found two such
+   failures in the *owner's own* palette by computing rather than looking — a
+   stranger's palette gets the same arithmetic and no more benefit of the doubt.
+4. **A font is only installed with its coverage.** A theme's font must draw every
+   codepoint both catalogues contain, or it is refused. `check_glyphs.py` and
+   `report_undrawable_glyphs()` already ask that question at build time and at
+   run time respectively; a theme system makes it a runtime gate on installation.
+   **No box characters, ever** — which also means the shipping build must stop
+   using a Latin-only stock font, a defect that is real today and filed.
+5. **There is always a way back.** The built-in theme cannot be uninstalled, and
+   a theme that makes the screen unreadable must be removable without reading the
+   screen. That is a recovery path, and it is designed before the first theme is
+   installable rather than after somebody is locked out.
+6. **Icons are replaceable for vanilla applications**, which means an application
+   asks for a *named* icon and never for a file. Same rule as colour, applied to
+   images, and it constrains the asset pipeline (T-034) before it is written —
+   which is why this is recorded now rather than when themes are built.
+
+**What it does not decide:** the format, the distribution, the signing, and
+whether a theme may ship executable content at all. The last one is the load-
+bearing question and the default answer is **no**.
+
+**Status:** filed as T-081 (themes as installable data, the ADR), T-082 (theme
+validation — contrast and glyph coverage as an installation gate) and T-083 (the
+shipping font: no box characters in any build, which is a defect today rather
+than a feature). T-034's asset pipeline is amended before it starts.
+
+---
+
 ## Still with the owner
 
 Nothing here answers A1–A3, A5 or the compass question. Those remain in
 [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+
+OD-7 to OD-10 add three of their own, and they are the kind that cannot be
+answered from a datasheet: whether Meshtastic's protocol definitions are licensed
+separately from its firmware, which cellular module the node will carry, and
+which tower database may lawfully be shipped in a product. The first is research
+and is filed; the last two are the owner's.
