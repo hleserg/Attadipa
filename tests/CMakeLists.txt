@@ -122,8 +122,25 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME ui_check_rejects_mistakes
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/ui/selftest.py)
+    # The image pipeline, same shape as the fonts: the generated tree is
+    # committed, so something has to notice when its inputs change. The digest
+    # covers the converter as well as the art, because an encoder that changes
+    # its output *is* the asset changing. Its self-test builds each mistake the
+    # pipeline refuses — a 1440-pixel concept sheet, a source under docs/, a
+    # size with no drawing behind it — and fails if the tool accepted one.
+    add_test(NAME ui_images_are_current
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/assets/generate_images.py --check)
+    add_test(NAME ui_icon_drawings_are_current
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/assets/draw_icons.py --check)
+    add_test(NAME ui_image_pipeline_rejects_mistakes
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/assets/selftest.py)
     set_tests_properties(ui_no_raw_values ui_check_rejects_mistakes
-                         ui_fonts_are_current
+                         ui_fonts_are_current ui_images_are_current
+                         ui_icon_drawings_are_current
+                         ui_image_pipeline_rejects_mistakes
                          PROPERTIES LABELS design)
 else()
     add_test(NAME l10n_checks_unavailable
@@ -166,6 +183,19 @@ if(ATTADIPA_BUILD_SIMULATOR)
     # criterion. Nothing was rebuilt between the two tests above; if that ever
     # stops being true, they will still pass, so the criterion is also written
     # down where a reader will find it: docs/architecture/ARCHITECTURE.md.
+
+    # ---------------------------------------------------------------------
+    # The generated image assets (T-034).
+    #
+    # Here rather than with the host tests because an `lv_image_dsc_t` needs
+    # LVGL's headers, the same reason `attadipa_images` itself only exists in a
+    # simulator build. What it checks is the half Python cannot see: that the
+    # bytes which were linked describe themselves correctly and are a drawing
+    # rather than a blank rectangle.
+    add_executable(test_ui_icons test_ui_icons.cpp)
+    target_link_libraries(test_ui_icons PRIVATE attadipa_images)
+    add_test(NAME ui_icons COMMAND test_ui_icons)
+    set_tests_properties(ui_icons PROPERTIES LABELS design)
 endif()
 
 # ---------------------------------------------------------------------------
