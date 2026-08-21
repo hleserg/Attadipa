@@ -4,6 +4,7 @@
 
 #include "attadipa/l10n/locale.h"
 #include "attadipa/platform/board_profile.h"
+#include "attadipa/ui/color.h"
 
 namespace attadipa::sim {
 
@@ -26,6 +27,12 @@ struct Options {
     // rebuild, and Russian running 15-30% longer than English is a layout
     // question rather than a translation one (ADR-0010).
     l10n::Locale locale = l10n::Locale::En;
+
+    // Which palette the screen starts in. Same argument as the locale: the
+    // Definition of Done asks for both themes checked, and a reviewer who has
+    // to rebuild to see the second one will check the first. T toggles it while
+    // running; this flag is here so CI can screenshot both without a keyboard.
+    ui::Theme theme = ui::Theme::Day;
 
     bool node_attached = false;   // a paired, reachable, compatible Attadipa node
     bool bring_up      = true;    // pretend every present part came up

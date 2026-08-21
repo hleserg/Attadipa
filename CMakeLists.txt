@@ -35,6 +35,7 @@ add_subdirectory(platform)
 add_subdirectory(core)
 add_subdirectory(link)
 add_subdirectory(l10n)
+add_subdirectory(ui)
 add_subdirectory(apps)
 
 if(ATTADIPA_BUILD_SIMULATOR)
