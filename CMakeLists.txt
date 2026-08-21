@@ -40,6 +40,10 @@ add_subdirectory(apps)
 
 if(ATTADIPA_BUILD_SIMULATOR)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/AttadipaLvgl.cmake)
+    # The generated fonts need LVGL's headers, so they come after it and only
+    # when it is present. Firmware will link the same target for the same reason
+    # the simulator does: LVGL's built-in Montserrat cannot draw Cyrillic.
+    add_subdirectory(assets/fonts)
     add_subdirectory(sim)
 endif()
 

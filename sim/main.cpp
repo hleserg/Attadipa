@@ -176,23 +176,39 @@ int main(int argc, char** argv)
     attadipa::sim::set_theme(options.theme);
     attadipa::sim::build_boot_screen(inventory, caps);
 
-    // The honest part. LVGL ships Montserrat and unscii, and both are Latin —
-    // Montserrat's own header says `-r 0x20-0x7F,0xB0,0x2022`. So the Russian
-    // catalogue is not merely hard to read in this build, it is undrawable, and
-    // the simulator says which codepoints rather than rendering boxes and
-    // leaving a reviewer to guess. It stops being true when the font pipeline's
-    // output is linked in, which needs the font choice (D16) and T-034.
+    // A box on a screen is a defect, and this is where it is refused.
     //
-    // This is exactly the failure ADR-0010 §1 predicted: a Latin-only font is
-    // not a font missing some characters, it is a different artefact.
+    // It used to be a warning, because it was unfixable: LVGL ships Montserrat
+    // and unscii and both are Latin — Montserrat's own header says
+    // `-r 0x20-0x7F,0xB0,0x2022` — so the Russian catalogue was not merely hard
+    // to read in this build, it was undrawable, and the honest thing was to name
+    // the codepoints rather than render boxes and leave a reviewer to guess.
+    //
+    // T-083 removed the reason. The simulator now links generated subsets that
+    // cover all 181 codepoints in `tools/font/charset.py`, so an undrawable
+    // codepoint is no longer a known limitation, it is a regression — and the
+    // process exits non-zero, which makes it a test failure rather than a line
+    // of output somebody scrolls past.
+    //
+    // **Both catalogues, not the current one.** A check that passes in English
+    // and fails in Russian is a check that reports the locale the reviewer
+    // happened to start in. ADR-0010 §1: a Latin-only font is not a font missing
+    // some characters, it is a different artefact.
     {
         const lv_font_t* font = lv_obj_get_style_text_font(lv_screen_active(), LV_PART_MAIN);
-        const int undrawable = attadipa::sim::report_undrawable_glyphs(font, l10n::locale());
+        const l10n::Locale started_in = l10n::locale();
+        int undrawable = 0;
+        for (l10n::Locale locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+            undrawable += attadipa::sim::report_undrawable_glyphs(font, locale);
+        }
+        l10n::set_locale(started_in);
         if (undrawable > 0) {
             std::fprintf(stderr,
-                         "l10n: %d codepoint(s) of the %s catalogue cannot be drawn by the "
-                         "font in this build. See docs/adr/0010-localization.md §1.\n",
-                         undrawable, l10n::to_string(l10n::locale()));
+                         "l10n: %d codepoint(s) cannot be drawn by the font in this build, "
+                         "so this screen would show boxes. See assets/fonts/README.md and "
+                         "docs/adr/0010-localization.md §1.\n",
+                         undrawable);
+            return 1;
         }
     }
 

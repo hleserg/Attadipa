@@ -40,7 +40,10 @@ capability layers side by side — deliberately not a product screen, and it say
 so in its own source. Since T-009 it draws entirely through the tokens: no hex
 colour and no pixel padding remain in it, `--theme day|night` and the `T` key
 switch palettes without a rebuild, and a checker in CI refuses to let a raw
-value back in.
+value back in. Since T-083 it also draws every character: it links four generated
+Montserrat subsets covering all 181 codepoints of `charset.py`, so `×` and
+Cyrillic render rather than showing boxes, and an undrawable codepoint now
+**fails the run** instead of printing a warning.
 
 **Two contrast findings came out of that migration and neither is a proposal to
 repaint anything.** On the day page every accent is under the 3:1 that a glyph
@@ -137,7 +140,7 @@ None of these blocks M1. All of them block hardware work.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **twenty-one tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |

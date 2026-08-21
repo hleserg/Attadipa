@@ -103,3 +103,226 @@ ru = "English"              # a language is named in itself, never translated
 [language_russian]
 en = "Русский"
 ru = "Русский"              # same rule, the other direction
+
+# --- The diagnostic rows, in words --------------------------------------
+#
+# Added 2026-08-22. The rows used to be spelled with the enum identifiers
+# from core/ and platform/ — MotionSensing, Unprovisioned — on the argument
+# that a diagnostic is read by a developer and a translated enum name is
+# worse for that person. The owner looked at a screenshot and disagreed,
+# and was right: this is the only screen that exists, so it is the screen
+# the product is judged by, and a Russian build in which one word out of
+# twenty is Russian reads as broken rather than as diagnostic.
+#
+# The identifiers are not lost. `--list-boards` and the stderr diagnostics
+# still print them, which is where a developer grepping for a symbol is
+# actually looking.
+#
+# The names are also chosen short. A two-column row on a 240 px panel has
+# about half the width for each side, and "MeshMessaging" against
+# "unprovisioned" is what broke the layout in the first place.
+
+
+[capability_time]
+en = "Time"
+ru = "Время"
+
+[capability_position]
+en = "Position"
+ru = "Местоположение"
+
+[capability_heading]
+en = "Heading"
+ru = "Направление"
+
+[capability_motion]
+en = "Motion"
+ru = "Движение"
+
+[capability_mesh]
+en = "Mesh"
+ru = "Меш"
+
+[capability_haptics]
+en = "Haptics"
+ru = "Вибрация"
+
+[capability_audio_out]
+en = "Sound"
+ru = "Звук"
+
+[capability_audio_in]
+en = "Microphone"
+ru = "Микрофон"
+
+[capability_notifications]
+en = "Notifications"
+ru = "Уведомления"
+
+[capability_infrared]
+# The capability is controlling other devices in the room, so it is named after
+# what it does. Also short on purpose: this row shares 240 px with a state that
+# can say "не поддерживается".
+en = "IR remote"
+ru = "ИК-пульт"
+
+[capability_storage]
+en = "Storage"
+ru = "Память"
+
+[capability_removable]
+en = "Memory card"
+ru = "Карта памяти"
+
+[capability_companion]
+en = "Phone"
+ru = "Телефон"
+
+[availability_unsupported]
+en = "unsupported"
+ru = "не поддерживается"
+
+[availability_unprovisioned]
+en = "not set up"
+ru = "не настроено"
+
+[availability_unreachable]
+en = "unreachable"
+ru = "нет связи"
+
+[availability_incompatible]
+en = "incompatible"
+ru = "несовместимо"
+
+[availability_failed]
+en = "failed"
+ru = "сбой"
+
+[availability_off]
+en = "off"
+ru = "выключено"
+
+[availability_ready]
+en = "ready"
+ru = "готово"
+
+[hardware_display]
+en = "Display"
+ru = "Экран"
+
+[hardware_touch]
+en = "Touch"
+ru = "Сенсор"
+
+[hardware_buttons]
+en = "Buttons"
+ru = "Кнопки"
+
+[hardware_pmu]
+en = "Power chip"
+ru = "Питание"
+
+[hardware_battery_sense]
+en = "Battery gauge"
+ru = "Заряд батареи"
+
+[hardware_rtc]
+en = "Clock chip"
+ru = "Часы RTC"
+
+[hardware_accelerometer]
+en = "Accelerometer"
+ru = "Акселерометр"
+
+[hardware_gyroscope]
+en = "Gyroscope"
+ru = "Гироскоп"
+
+[hardware_magnetometer]
+en = "Magnetometer"
+ru = "Магнитометр"
+
+[hardware_radio]
+en = "Radio"
+ru = "Радио"
+
+[hardware_gnss]
+en = "GNSS"
+ru = "GNSS"                 # the constellation family's name, not translated
+
+[hardware_haptic]
+en = "Vibration"
+ru = "Вибромотор"
+
+[hardware_audio_out]
+en = "Speaker"
+ru = "Динамик"
+
+[hardware_audio_in]
+en = "Microphone"
+ru = "Микрофон"
+
+[hardware_infrared]
+en = "IR LED"
+ru = "ИК-светодиод"
+
+[hardware_sd_card]
+en = "Memory card"
+ru = "Карта памяти"
+
+[hardware_wifi]
+en = "Wi-Fi"
+ru = "Wi-Fi"
+
+[hardware_ble]
+en = "Bluetooth LE"
+ru = "Bluetooth LE"
+
+[hardware_usb]
+en = "USB"
+ru = "USB"
+
+[hardware_state_absent]
+en = "absent"
+ru = "нет"
+
+[hardware_state_untouched]
+en = "untouched"
+ru = "не трогали"
+
+[hardware_state_rail_off]
+en = "rail off"
+ru = "питание снято"
+
+[hardware_state_initialising]
+en = "starting"
+ru = "запускается"
+
+[hardware_state_failed]
+en = "failed"
+ru = "сбой"
+
+[hardware_state_ready]
+en = "ready"
+ru = "готово"
+
+[radio_chip_unknown]
+en = "unknown"
+ru = "неизвестен"
+
+[meshcore_untested]
+en = "untested"
+ru = "не проверено"
+
+[meshcore_supported]
+en = "supported"
+ru = "поддерживается"
+
+[meshcore_needs_work]
+en = "needs work"
+ru = "нужна доработка"
+
+[meshcore_impossible]
+# The silicon cannot: no LoRa modulator, so no wrapper will help — ADR-0003.
+en = "impossible"
+ru = "невозможно"
