@@ -186,8 +186,13 @@ jobs:
       # The gate decides who may drive a write-capable agent on a public
       # repository. This runs the real decision function against sixteen cases,
       # including a stranger who has copied the task marker verbatim.
+      # Invoked through bash rather than as ./script on purpose. This working
+      # copy lives on a filesystem where git reports core.filemode=false, so an
+      # executable bit set locally never reaches a commit and the runner gets
+      # `Permission denied` instead of a result. The mode is set correctly in
+      # the index as well; this makes the job independent of it either way.
       - name: Intake gate
-        run: ./.github/tests/intake-gate-test.sh
+        run: bash .github/tests/intake-gate-test.sh
 
   simulator:
     name: Simulator build and headless run

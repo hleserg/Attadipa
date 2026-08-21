@@ -133,7 +133,7 @@ jobs:
           LABELS=$(jq -r '[.labels[].name] | join(",")' /tmp/issue.json)
           STATE=$(jq -r '.state' /tmp/issue.json)
 
-          VERDICT=$(./.github/scripts/intake-decision.sh \
+          VERDICT=$(bash .github/scripts/intake-decision.sh \
             "$ACTOR" "$EVENT_NAME" "$ACTION" "$LABEL_NAME" \
             "$BODY" "$LABELS" "$STATE" "$PERMISSION")
           if [ "$VERDICT" != "accept" ]; then
