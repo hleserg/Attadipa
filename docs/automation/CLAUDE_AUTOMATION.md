@@ -36,6 +36,27 @@ write-capable agent do something?**
    therefore gets ordinary CI and no AI review, which is the correct trade and
    not a limitation to work around.
 
+### The gate is a tested file, not a paragraph of YAML
+
+The decision is [`.github/scripts/intake-decision.sh`](../../.github/scripts/intake-decision.sh),
+and [`.github/tests/intake-gate-test.sh`](../../.github/tests/intake-gate-test.sh)
+runs that same function over sixteen cases — a stranger who has copied the task
+marker verbatim, a read-only collaborator, a triage collaborator who can label
+but not write, a bot answering its own comment, an already-claimed task, a
+closed issue. CI runs it on every push.
+
+The reason it is a file rather than an `if:` is that a security boundary nobody
+has executed against a hostile input is a hypothesis. The reason there is one
+file rather than a workflow and a test that mirrors it is that a mirror drifts,
+silently, in the direction of whichever copy somebody edited.
+
+One detail in the workflow is easy to miss and load-bearing: the checkout that
+fetches the script is pinned to the **default branch**. For a
+`pull_request_review_comment` event `GITHUB_REF` is `refs/pull/N/merge`, so an
+ordinary checkout would fetch a fork's version of the very script that decides
+whether a write-capable agent may run. The gate's rules come from `main` or from
+nowhere.
+
 Two further habits, both deliberate:
 
 - **Untrusted text never reaches a shell.** An issue body is passed through an

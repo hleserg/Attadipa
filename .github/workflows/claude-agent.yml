@@ -73,6 +73,26 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # The decision logic lives in .github/scripts/intake-decision.sh so that it
+      # can be executed and tested — .github/tests/intake-gate-test.sh runs it
+      # over sixteen cases including real refusals, and CI runs that test. Logic
+      # transcribed into a second file drifts from the first; logic in one file
+      # sourced by both cannot.
+      #
+      # ref is pinned to the default branch on purpose. For a
+      # pull_request_review_comment event GITHUB_REF is refs/pull/N/merge, so a
+      # plain checkout would fetch a fork's version of the very script that
+      # decides whether a write-capable agent may run. The gate's rules come
+      # from main or from nowhere.
+      - name: Fetch the gate logic from the default branch
+        if: steps.switch.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Decide
         id: decide
         if: steps.switch.outputs.enabled == 'true'
@@ -94,89 +114,35 @@ jobs:
 
           say() { echo "run=false" >> "$GITHUB_OUTPUT"; echo "reason=$1" >> "$GITHUB_OUTPUT"; echo "::notice::$1"; }
 
-          # --- 1. Never react to ourselves, or to any other bot. ---------------
-          #
-          # The action's own allowed_bots default is already "no bots", but the
-          # loop this prevents is expensive enough to be checked twice: a Claude
-          # comment that mentions @claude would otherwise start a Claude run that
-          # comments, and the bill grows until somebody notices.
-          #
-          # workflow_dispatch is the one exception, and it is trusted by
-          # construction rather than by exemption: GitHub only accepts a manual
-          # dispatch from an actor with write access, and the only other way to
-          # produce one is a workflow already in this repository. That is how
-          # the queue watchdog hands a missed task over — see
-          # agent-queue-watchdog.yml.
-          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
-            case "$ACTOR" in
-              *"[bot]"|claude|github-actions)
-                say "actor $ACTOR is a bot; ignoring"; exit 0 ;;
-            esac
-          fi
-
           if [ -z "${ISSUE_NUMBER:-}" ]; then
             say "no issue or pull request number in this event"; exit 0
           fi
 
-          # --- 2. The actor must be trusted. -----------------------------------
-          #
-          # This is the security boundary. The `producer: chatgpt` line in a task
-          # marker is a data field and anybody can type it; what cannot be typed
-          # is write access to this repository.
+          # The one fact the decision needs that cannot be decided offline: what
+          # permission this actor actually holds. `producer: chatgpt` in a task
+          # marker is a data field anybody can type; write access is not.
+          PERMISSION=dispatch
           if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
             PERMISSION=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq .permission 2>/dev/null || echo none)
-            case "$PERMISSION" in
-              admin|maintain|write) ;;
-              *) say "actor $ACTOR has permission '$PERMISSION'; write or better is required"; exit 0 ;;
-            esac
           fi
 
-          # --- 3. Read the task, from the API rather than from the payload. ----
+          # Read the task from the API rather than from the event payload, which
+          # is a snapshot of whatever the issue said when the event fired.
           gh api "repos/$REPO/issues/$ISSUE_NUMBER" > /tmp/issue.json
           BODY=$(jq -r '.body // ""' /tmp/issue.json)
           LABELS=$(jq -r '[.labels[].name] | join(",")' /tmp/issue.json)
           STATE=$(jq -r '.state' /tmp/issue.json)
 
-          if [ "$STATE" != "open" ]; then
-            say "issue #$ISSUE_NUMBER is $STATE"; exit 0
+          VERDICT=$(./.github/scripts/intake-decision.sh \
+            "$ACTOR" "$EVENT_NAME" "$ACTION" "$LABEL_NAME" \
+            "$BODY" "$LABELS" "$STATE" "$PERMISSION")
+          if [ "$VERDICT" != "accept" ]; then
+            say "#$ISSUE_NUMBER ${VERDICT#reject: }"; exit 0
           fi
 
-          # --- 4. Is this a task for us? ---------------------------------------
-          WANTED=no
-          case "$EVENT_NAME" in
-            workflow_dispatch) WANTED=yes ;;
-            issue_comment|pull_request_review_comment|pull_request_review)
-              case "$COMMENT_BODY" in *"@claude"*) WANTED=yes ;; esac ;;
-            issues)
-              case "$ACTION" in
-                labeled)
-                  # An `x && y` as the last statement of a case branch exits the
-                  # whole script under `set -e` when x is false. An if does not.
-                  if [ "$LABEL_NAME" = "agent:ready" ]; then WANTED=yes; fi ;;
-                assigned) WANTED=yes ;;
-                *)
-                  case "$BODY" in
-                    *"firefly-agent-task"*) case "$BODY" in *"@claude"*) WANTED=yes ;; esac ;;
-                  esac ;;
-              esac ;;
-          esac
-          if [ "$WANTED" != "yes" ]; then
-            say "nothing in this event asks for an agent"; exit 0
-          fi
-
-          # --- 5. Deduplicate. -------------------------------------------------
-          #
-          # An issue already being worked on, already in review, or already
-          # blocked does not need a second writer. Only a fresh @claude comment
-          # overrides that, because that is a human explicitly asking again.
-          if [ "$EVENT_NAME" = "issues" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            case ",$LABELS," in
-              *,agent:working,*|*,agent:review,*|*,agent:blocked,*|*,agent:done,*)
-                say "issue #$ISSUE_NUMBER already carries a state label ($LABELS)"; exit 0 ;;
-            esac
-          fi
-
-          # --- 6. Parse the marker. Fields are data, not permissions. ----------
+          # The marker fields decide what KIND of work this is. They never
+          # decide whether there is any — that was settled above, by write
+          # access. See docs/automation/AI_TASK_PROTOCOL.md.
           field() {
             printf '%s' "$BODY" | sed -n "s/^[[:space:]]*$1:[[:space:]]*\\([A-Za-z0-9._-]*\\).*/\\1/p" | head -1
           }

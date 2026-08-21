@@ -64,6 +64,10 @@ issue or comment has `write`, `maintain` or `admin` permission, using the
 GitHub API, before any Anthropic-billed step runs. The marker decides *what
 kind* of work it is; write access decides *whether there is any*.
 
+That check is [`.github/scripts/intake-decision.sh`](../../.github/scripts/intake-decision.sh)
+and it is covered by a test that includes a stranger who has copied this
+marker word for word.
+
 There is one deliberate exception, and it is trusted by construction rather
 than by exemption: `workflow_dispatch`. GitHub only accepts a manual dispatch
 from an actor with write access, and the only other way to produce one is a
