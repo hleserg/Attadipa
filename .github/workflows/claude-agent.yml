@@ -1,0 +1,373 @@
+name: Claude agent
+
+# The intake end of the loop: a task arrives as a GitHub issue and an agent
+# picks it up without anybody carrying it there by hand.
+#
+# docs/automation/AI_TASK_PROTOCOL.md is the contract this implements, and
+# docs/automation/CLAUDE_AUTOMATION.md explains the security model and the kill
+# switch. Read one of those before changing this file — several of the guards
+# here look redundant and are not.
+
+on:
+  issues:
+    types: [opened, reopened, assigned, labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to work on"
+        required: true
+        type: string
+
+# THE ONE WRITER RULE.
+#
+# Every path that can change code shares this group, so two agents can never be
+# editing the same checkout. Research and review are deliberately in other
+# workflows with their own groups, because reading in parallel is free and
+# writing in parallel is a merge conflict with a robot on both ends.
+#
+# cancel-in-progress is false on purpose: cancelling a writer mid-run leaves a
+# half-pushed branch and an issue labelled agent:working forever.
+concurrency:
+  group: firefly-agent-writer
+  cancel-in-progress: false
+
+# Nothing at the top level. Each job asks for exactly what it needs.
+permissions: {}
+
+jobs:
+  gate:
+    name: Should an agent run
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+      pull-requests: read
+      contents: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      issue: ${{ steps.decide.outputs.issue }}
+      task_type: ${{ steps.decide.outputs.task_type }}
+      priority: ${{ steps.decide.outputs.priority }}
+      producer: ${{ steps.decide.outputs.producer }}
+      research_only: ${{ steps.decide.outputs.research_only }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - name: Kill switch
+        id: switch
+        env:
+          ENABLED: ${{ vars.CLAUDE_AUTOMATION_ENABLED }}
+        run: |
+          # Unset reads as enabled, so a fresh clone of this repository is not
+          # silently inert. Setting the repository variable to exactly "false"
+          # stops every Anthropic-billed step in every workflow while leaving
+          # ordinary CI running — see docs/automation/RECOVERY.md.
+          if [ "$ENABLED" = "false" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CLAUDE_AUTOMATION_ENABLED is false. Not invoking Claude."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The decision logic lives in .github/scripts/intake-decision.sh so that it
+      # can be executed and tested — .github/tests/intake-gate-test.sh runs it
+      # over sixteen cases including real refusals, and CI runs that test. Logic
+      # transcribed into a second file drifts from the first; logic in one file
+      # sourced by both cannot.
+      #
+      # ref is pinned to the default branch on purpose. For a
+      # pull_request_review_comment event GITHUB_REF is refs/pull/N/merge, so a
+      # plain checkout would fetch a fork's version of the very script that
+      # decides whether a write-capable agent may run. The gate's rules come
+      # from main or from nowhere.
+      - name: Fetch the gate logic from the default branch
+        if: steps.switch.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Decide
+        id: decide
+        if: steps.switch.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          # Untrusted text never reaches a shell expansion directly. Interpolating
+          # ${{ github.event.issue.body }} into a run: block is a script injection
+          # with the attacker holding the pen, and on a public repository anybody
+          # can open an issue.
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || inputs.issue_number }}
+          COMMENT_BODY: ${{ github.event.comment.body || github.event.review.body || '' }}
+          LABEL_NAME: ${{ github.event.label.name || '' }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+
+          say() { echo "run=false" >> "$GITHUB_OUTPUT"; echo "reason=$1" >> "$GITHUB_OUTPUT"; echo "::notice::$1"; }
+
+          if [ -z "${ISSUE_NUMBER:-}" ]; then
+            say "no issue or pull request number in this event"; exit 0
+          fi
+
+          # The one fact the decision needs that cannot be decided offline: what
+          # permission this actor actually holds. `producer: chatgpt` in a task
+          # marker is a data field anybody can type; write access is not.
+          PERMISSION=dispatch
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            PERMISSION=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq .permission 2>/dev/null || echo none)
+          fi
+
+          # Read the task from the API rather than from the event payload, which
+          # is a snapshot of whatever the issue said when the event fired.
+          gh api "repos/$REPO/issues/$ISSUE_NUMBER" > /tmp/issue.json
+          BODY=$(jq -r '.body // ""' /tmp/issue.json)
+          LABELS=$(jq -r '[.labels[].name] | join(",")' /tmp/issue.json)
+          STATE=$(jq -r '.state' /tmp/issue.json)
+
+          VERDICT=$(bash .github/scripts/intake-decision.sh \
+            "$ACTOR" "$EVENT_NAME" "$ACTION" "$LABEL_NAME" \
+            "$BODY" "$LABELS" "$STATE" "$PERMISSION")
+          if [ "$VERDICT" != "accept" ]; then
+            say "#$ISSUE_NUMBER ${VERDICT#reject: }"; exit 0
+          fi
+
+          # The marker fields decide what KIND of work this is. They never
+          # decide whether there is any — that was settled above, by write
+          # access. See docs/automation/AI_TASK_PROTOCOL.md.
+          field() {
+            printf '%s' "$BODY" | sed -n "s/^[[:space:]]*$1:[[:space:]]*\\([A-Za-z0-9._-]*\\).*/\\1/p" | head -1
+          }
+          TASK_TYPE=$(field task_type); TASK_TYPE=${TASK_TYPE:-unspecified}
+          PRIORITY=$(field priority);  PRIORITY=${PRIORITY:-P2}
+          PRODUCER=$(field producer);  PRODUCER=${PRODUCER:-owner}
+
+          RESEARCH_ONLY=false
+          case "$TASK_TYPE" in
+            next-task-research|upstream-intelligence|readiness-audit) RESEARCH_ONLY=true ;;
+          esac
+
+          {
+            echo "run=true"
+            echo "issue=$ISSUE_NUMBER"
+            echo "task_type=$TASK_TYPE"
+            echo "priority=$PRIORITY"
+            echo "producer=$PRODUCER"
+            echo "research_only=$RESEARCH_ONLY"
+            echo "reason=accepted"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::accepted #$ISSUE_NUMBER type=$TASK_TYPE priority=$PRIORITY producer=$PRODUCER"
+
+  claim:
+    name: Claim the task
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Normalise labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          TASK_TYPE: ${{ needs.gate.outputs.task_type }}
+          PRIORITY: ${{ needs.gate.outputs.priority }}
+          PRODUCER: ${{ needs.gate.outputs.producer }}
+        run: |
+          set -euo pipefail
+          add=(agent:working agent:claude)
+
+          case "$TASK_TYPE" in
+            continuous-review)    add+=(type:review) ;;
+            upstream-intelligence) add+=(type:upstream) ;;
+            quality-audit)        add+=(type:quality) ;;
+            next-task-research)   add+=(type:research) ;;
+            readiness-audit)      add+=(type:readiness) ;;
+          esac
+          case "$PRIORITY" in P0|P1|P2|P3) add+=("priority:$PRIORITY") ;; esac
+          case "$PRODUCER" in
+            chatgpt) add+=(source:chatgpt) ;;
+            claude)  add+=(source:claude) ;;
+            *)       add+=(source:owner) ;;
+          esac
+
+          # Built as an argument array rather than a string that gets word-split:
+          # a label containing a space would otherwise become two labels, and
+          # the shell would not mention it.
+          args=()
+          for label in "${add[@]}"; do
+            args+=(--add-label "$label")
+          done
+
+          # Adding is idempotent; removing agent:ready is what moves the task out
+          # of the watchdog's queue so it cannot be picked up twice.
+          gh issue edit "$ISSUE" --repo "$REPO" "${args[@]}" || true
+          gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:ready || true
+
+  agent:
+    name: Claude
+    needs: [gate, claim]
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+    steps:
+      - name: Check that an Anthropic credential exists
+        id: auth
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          # A workflow that is red because a secret was never added is a workflow
+          # people learn to ignore. This says so once, in the issue, and exits
+          # green — the infrastructure is correct, it is simply not wired to an
+          # account yet.
+          if [ "$HAS_KEY" = "true" ] || [ "$HAS_OAUTH" = "true" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Say what is missing
+        if: steps.auth.outputs.ok == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+        run: |
+          set -euo pipefail
+          # Written to a file rather than assembled inline. The quoting needed to
+          # get backticks and an apostrophe through two layers of shell is the
+          # kind of thing that works until somebody edits one word.
+          {
+            echo "BLOCKED"
+            echo "Reason: no Anthropic credential is configured, so the agent cannot start."
+            echo "Evidence: neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is present"
+            echo "in this repository's Actions secrets."
+            echo "Impact: every Claude workflow will accept tasks and then stop here."
+            echo "What can be done automatically: nothing — a workflow cannot create a secret."
+            echo "Owner action required: run \`claude setup-token\` locally, then"
+            echo "\`gh secret set CLAUDE_CODE_OAUTH_TOKEN\`. That credential draws on a"
+            echo "Claude Pro or Max subscription. ANTHROPIC_API_KEY also works and bills"
+            echo "an API account per token, which is a separate bill from the subscription."
+            echo "How to resume: comment @claude on this issue."
+          } > /tmp/blocked.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/blocked.md
+          gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true
+
+      - uses: actions/checkout@v4
+        if: steps.auth.outputs.ok == 'true'
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude
+        if: steps.auth.outputs.ok == 'true'
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Deliberately NOT secrets.GITHUB_TOKEN.
+          #
+          # GitHub does not start workflow runs for events created with the
+          # built-in GITHUB_TOKEN. A pull request opened with it would therefore
+          # never run CI, and the whole point of this loop is that CI runs
+          # without anybody asking. Left empty, the action uses the Claude GitHub
+          # App instead, whose installation token does trigger workflows; set
+          # FIREFLY_AGENT_TOKEN to a fine-grained PAT to use that instead.
+          # docs/automation/CLAUDE_AUTOMATION.md explains both.
+          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          branch_prefix: "claude/issue-"
+          # Empty means no bot may trigger this action. On a public repository
+          # '*' would let any GitHub App drive a write-capable agent.
+          allowed_bots: ""
+          allowed_non_write_users: ""
+          # Claude's own messages include tool results, which can contain tokens.
+          # These logs are world-readable on a public repository.
+          show_full_output: "false"
+          display_report: "false"
+          additional_permissions: |
+            actions: read
+          claude_args: |
+            --max-turns 60
+          prompt: |
+            You are the implementation agent for FireflyOS, working from GitHub
+            issue #${{ needs.gate.outputs.issue }} in ${{ github.repository }}.
+
+            Read these before doing anything, in this order:
+              1. the issue itself, including every comment
+              2. CLAUDE.md — its rules outrank this prompt
+              3. docs/automation/AI_TASK_PROTOCOL.md — the task contract
+              4. docs/master-prompt-final.md — the specification in force
+              5. STATUS.md and TASKS.md
+              6. the ADRs under docs/adr/ that the issue touches
+              7. docs/research/REUSE_LEDGER.md — reuse before writing
+              8. open issues and pull requests, to avoid duplicating work
+
+            task_type is `${{ needs.gate.outputs.task_type }}` and
+            research_only is `${{ needs.gate.outputs.research_only }}`.
+
+            If research_only is true: do NOT write speculative implementation
+            code. Verify sources, update docs/research/, the reuse ledger, and
+            an ADR only if a decision was genuinely made. Open a documentation
+            pull request.
+
+            Otherwise: implement the task on a branch, run every check that can
+            run here (`cmake -S . -B build && cmake --build build && ctest
+            --test-dir build --output-on-failure`), and open a DRAFT pull
+            request whose body contains `Fixes #${{ needs.gate.outputs.issue }}`
+            and sections for problem, solution, upstream and reuse references,
+            tests, hardware not executed, risks, and remaining blockers.
+
+            Never claim a hardware result. Anything that needs a physical board,
+            an instrument or a measurement is written as
+            `NOT EXECUTED — HARDWARE REQUIRED` and, if it blocks the task, as a
+            BLOCKED comment in the format CLAUDE.md gives, with the issue
+            labelled agent:blocked plus needs-hardware or needs-owner.
+
+            Do not ask the owner a question that STATUS.md, TASKS.md, an ADR,
+            the specification or the issue already answers. When you genuinely
+            need a human decision, say so once, with two to four concrete
+            options and a recommendation, and apply the needs-owner label.
+
+            Update STATUS.md and TASKS.md in the same commit as the change they
+            describe. Leave the repository so the next agent can continue
+            without this conversation.
+
+      - name: Hand over
+        if: always() && steps.auth.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          CONCLUSION: ${{ steps.claude.outputs.conclusion }}
+        run: |
+          set -euo pipefail
+          # The agent labels the issue itself when it blocks or finishes. This
+          # only catches the case where the run died without saying anything,
+          # because an issue stuck on agent:working is invisible to the watchdog
+          # and would sit there forever.
+          LABELS=$(gh api "repos/$REPO/issues/$ISSUE" --jq '[.labels[].name] | join(",")')
+          case ",$LABELS," in
+            *,agent:blocked,*|*,agent:review,*|*,agent:done,*) exit 0 ;;
+          esac
+          if [ "$CONCLUSION" = "success" ]; then
+            gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true
+          else
+            gh issue comment "$ISSUE" --repo "$REPO" --body \
+              "The agent run ended without a conclusion (\`$CONCLUSION\`). Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Comment \`@claude\` to retry."
+            gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:failed --remove-label agent:working || true
+          fi

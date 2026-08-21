@@ -1,0 +1,55 @@
+name: CodeQL
+
+# Static analysis of the host build path.
+#
+# It analyses what it can actually compile, which here is the host libraries and
+# their tests — the same code the sanitizers run over, looked at a different way.
+# The simulator is excluded: building it pulls LVGL, and a CodeQL database full
+# of somebody else's library produces alerts nobody in this repository can act
+# on.
+#
+# If this workflow ever cannot build the project it will go red and stay red,
+# which is worse than not having it. That is why the build is explicit rather
+# than autobuild — a failure here means the build genuinely broke, not that a
+# heuristic guessed wrong.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so a newly published query pattern reaches this code without
+    # waiting for somebody to push.
+    - cron: "41 6 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    name: Analyse C/C++
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialise
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-and-quality
+
+      - name: Build
+        run: |
+          cmake -S . -B build-codeql -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-codeql
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"

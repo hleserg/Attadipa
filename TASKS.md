@@ -20,6 +20,21 @@ research status · implementation status · tests · hardware required.
 **Task state is updated in the same commit as the change it describes**
 (final §73). A status file several commits behind is not a status file.
 
+## This file and the GitHub issue queue
+
+They are not the same list and neither is a copy of the other.
+
+| | Holds | Lifetime |
+|---|---|---|
+| **this file** | the roadmap — milestones, dependencies between large pieces of work, and the record of what was decided and why | a task here is days of work and outlives any one agent run |
+| **GitHub issues** | executable work packages, findings, bugs, research assignments | an issue is one agent run, or a few |
+
+The link is by reference only: an issue that implements part of a task here
+names it (`T-045`), and a task here that has been split into issues names their
+numbers. Nobody maintains two copies of the same sentence, because a copy goes
+stale silently. The protocol is
+[`docs/automation/AI_TASK_PROTOCOL.md`](docs/automation/AI_TASK_PROTOCOL.md).
+
 ---
 
 ## NOW
