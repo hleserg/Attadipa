@@ -182,3 +182,17 @@ add_executable(test_power test_power.cpp)
 target_link_libraries(test_power PRIVATE firefly_core)
 add_test(NAME power COMMAND test_power)
 set_tests_properties(power PROPERTIES LABELS power)
+
+# ---------------------------------------------------------------------------
+# The position observation, the validity classifier and integer distance.
+#
+# The distance function is integer arithmetic over a cosine table, so its error
+# is bounded and knowable rather than "floating point, probably fine". The
+# tolerances in this file are stated as percentages of a hand-computed answer;
+# where the method itself breaks down the test says so rather than widening the
+# tolerance until it passes.
+
+add_executable(test_position test_position.cpp)
+target_link_libraries(test_position PRIVATE firefly_core)
+add_test(NAME position COMMAND test_position)
+set_tests_properties(position PROPERTIES LABELS gnss)
