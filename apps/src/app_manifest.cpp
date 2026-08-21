@@ -1,6 +1,6 @@
-#include "firefly/apps/app_manifest.h"
+#include "attadipa/apps/app_manifest.h"
 
-namespace firefly::apps {
+namespace attadipa::apps {
 
 using core::Availability;
 using core::Capability;
@@ -56,4 +56,4 @@ bool blocking_capability(const AppManifest&              manifest,
     return true;
 }
 
-}  // namespace firefly::apps
+}  // namespace attadipa::apps

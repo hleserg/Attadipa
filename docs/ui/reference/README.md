@@ -15,26 +15,26 @@ PNG is a desktop concept sheet, not a watch asset.
 
 | File | SHA-256 | Size | Pixels |
 |---|---|---|---|
-| `firefly_brand_identity.png` | `d9a51f7b69b3566d366e9f9c2d27d375579152e2fdf5c3a46c46ec16112c880e` | 1 978 830 B | 1448 × 1086 |
-| `firefly_visual_style_board.png` | `4e66f2a4b09038bb4e94f2dd097733a987a714c13572df68766900f75b84c2b9` | 2 290 608 B | 1448 × 1086 |
-| `firefly_mascot_sheet.png` | `175f7cfd9343973e65242843ad697bc9646b4ba2a312f78c42de8e6f2024684a` | 2 222 907 B | 1448 × 1086 |
+| `attadipa_brand_identity.png` | `4f31ce764bc56a69f72b8e8782020aec4e47d932be2e8bea51b00ca0b5511ac1` | regenerated | 1440 × 1086 |
+| `attadipa_visual_style_board.png` | `72c23e0c6852127067c3cf41705344c2ade02101b99420cae9feabe52a06b875` | regenerated | 1440 × 1086 |
+| `lumar_mascot_sheet.png` | `6b0aeec6c1701357b299a8933c3399374e95543ab539ed169bf97b698027df58` | regenerated | 1440 × 1086 |
 
 The hashes are here so that a later "I cleaned up the source art" commit is
 visible as one. Verify with `sha256sum docs/ui/reference/*.png`.
 
 ## What each one carries
 
-**`firefly_brand_identity.png`** — the wordmark *Firefly*, the tagline
+**`attadipa_brand_identity.png`** — the wordmark *Attadipa*, the tagline
 `GLOW · GUIDE · CONNECT`, the mascot, an icon mark, an app icon, and horizontal
 and stacked lockups. Its palette is labelled Honey / Apricot / Warm Coral /
 Sage / Warm Teal / Cream / Dark Olive.
 
-**`firefly_visual_style_board.png`** — the fuller system: a ten-swatch palette,
+**`attadipa_visual_style_board.png`** — the fuller system: a ten-swatch palette,
 a typography specimen (Nunito Sans, Inter), an icon-style row, tone and values,
 day and night mockups of six screens, five design principles, and a component
 row (primary/secondary button, toggle, slider).
 
-**`firefly_mascot_sheet.png`** — the mascot in a hero pose plus four named
+**`lumar_mascot_sheet.png`** — the mascot in a hero pose plus four named
 states, which are the ones the UI is expected to use:
 
 | Pose | Named on the sheet | Where it belongs |
@@ -61,7 +61,7 @@ spec:
 
 The style board shows a **heart-rate card**. Neither target board has a
 heart-rate sensor, and shipping that card would violate §97 ("do not ship fake
-features"). It shows **`fireflyos.org`** — no such domain is known to exist. It
+features"). It shows **`attadipa.org`** — no such domain is known to exist. It
 shows sample names, sample messages, an example navigation distance, Wi-Fi and
 Bluetooth statuses and sample dates. All of it is mock visual content. None of
 it is a product fact, a default value, or a promise.
@@ -99,7 +99,7 @@ they are, and the banner is now at the top of the repository
 
 They matter here for two reasons. They add a tagline that did not previously
 exist — **`GLOW · GUIDE · CONNECT`** — and they carry inks that are *not* the
-§42 palette: the wordmark orange samples around `#E16439`, against Firefly
+§42 palette: the wordmark orange samples around `#E16439`, against Attadipa
 Orange `#FF8A40`. That is a wider gap than "disagree by a digit", so the rule
 above does not settle it, and it has been raised as A7 in
 [`../../research/OPEN_QUESTIONS.md`](../../research/OPEN_QUESTIONS.md) rather

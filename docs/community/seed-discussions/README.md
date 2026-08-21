@@ -9,7 +9,7 @@ operation** (`createDiscussion`), and the agent session that wrote them had
 GraphQL disabled. Each file is the complete body of one Discussion, ready to be
 posted into the **Ideas** category with the title given at the top.
 
-They are ideas, not commitments. Nothing here describes a capability Firefly
+They are ideas, not commitments. Nothing here describes a capability Attadipa
 already has — see [STATUS.md](../../../STATUS.md) for what actually exists,
 which today is a simulator and no firmware.
 

@@ -17,7 +17,7 @@ statements that the specification documents happen to be written in it.
 Final §50 makes English and Russian a product requirement in the same register
 as MeshCore compatibility and standalone operation:
 
-> Firefly must support at least English / Русский **from the first implemented
+> Attadipa must support at least English / Русский **from the first implemented
 > UI vertical slice**. Localization is architecture, not later polish.
 
 There are three specific reasons this cannot be deferred, and each of them is a

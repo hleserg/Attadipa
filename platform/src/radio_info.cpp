@@ -1,8 +1,8 @@
-#include "firefly/platform/radio_info.h"
+#include "attadipa/platform/radio_info.h"
 
 #include <cstring>
 
-namespace firefly::platform {
+namespace attadipa::platform {
 namespace {
 
 // A power ceiling we have not established. Zero would read as "1 mW", which is
@@ -144,4 +144,4 @@ bool parse_radio_chip(const char* name, RadioChip& out)
     return false;
 }
 
-}  // namespace firefly::platform
+}  // namespace attadipa::platform

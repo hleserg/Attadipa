@@ -2,9 +2,9 @@
 #include <cstring>
 #include <initializer_list>
 
-#include "firefly/l10n/catalogue.h"
-#include "firefly/l10n/locale.h"
-#include "firefly/l10n/tr.h"
+#include "attadipa/l10n/catalogue.h"
+#include "attadipa/l10n/locale.h"
+#include "attadipa/l10n/tr.h"
 
 // Host tests for the localization layer (ADR-0010).
 //
@@ -13,7 +13,7 @@
 // as a typo rather than as a bug — which is precisely why it survives review
 // and has to be caught by a machine instead.
 
-using namespace firefly::l10n;
+using namespace attadipa::l10n;
 
 namespace {
 
@@ -154,8 +154,8 @@ void translation_follows_the_locale()
 
     // A name is not a word. Both catalogues carry it unchanged, and that is a
     // decision recorded in l10n/strings.toml rather than an oversight.
-    CHECK_TEXT(tr(StringId::ProductName, Locale::En), "Firefly OS");
-    CHECK_TEXT(tr(StringId::ProductName, Locale::Ru), "Firefly OS");
+    CHECK_TEXT(tr(StringId::ProductName, Locale::En), "Attadipa");
+    CHECK_TEXT(tr(StringId::ProductName, Locale::Ru), "Attadipa");
 
     // A language is named in itself, in every locale. A user who cannot read
     // the current language has to be able to find their own in the list.

@@ -5,15 +5,15 @@
 # Toolchain smoke test. It proves the host build and the CI path work — nothing
 # more. It is not evidence about firmware, and certainly not about hardware.
 add_executable(test_build_smoke test_build_smoke.cpp)
-target_link_libraries(test_build_smoke PRIVATE firefly_headers)
+target_link_libraries(test_build_smoke PRIVATE attadipa_headers)
 add_test(NAME build_smoke COMMAND test_build_smoke)
 
 # The two capability layers, and the ADR rules that live on top of them.
 add_executable(test_capability_registry test_capability_registry.cpp)
 target_link_libraries(test_capability_registry PRIVATE
-    firefly_platform
-    firefly_core
-    firefly_apps
+    attadipa_platform
+    attadipa_core
+    attadipa_apps
 )
 add_test(NAME capability_registry COMMAND test_capability_registry)
 
@@ -25,17 +25,17 @@ add_test(NAME capability_registry COMMAND test_capability_registry)
 # a claim about a build system is worth exactly as much as the test that breaks
 # when somebody changes PRIVATE to PUBLIC in core/CMakeLists.txt.
 #
-# The same source file is compiled twice. Against firefly_platform it must
-# build; against firefly_apps it must not. Two tests rather than one, because a
+# The same source file is compiled twice. Against attadipa_platform it must
+# build; against attadipa_apps it must not. Two tests rather than one, because a
 # single failing compile cannot distinguish an enforced boundary from a typo in
 # an #include path.
 
 add_executable(boundary_positive boundary/app_reaches_for_hardware.cpp)
-target_link_libraries(boundary_positive PRIVATE firefly_platform)
+target_link_libraries(boundary_positive PRIVATE attadipa_platform)
 add_test(NAME boundary_platform_can_see_platform COMMAND boundary_positive)
 
 add_executable(boundary_negative EXCLUDE_FROM_ALL boundary/app_reaches_for_hardware.cpp)
-target_link_libraries(boundary_negative PRIVATE firefly_apps)
+target_link_libraries(boundary_negative PRIVATE attadipa_apps)
 # Not WILL_FAIL. WILL_FAIL passes on *any* non-zero exit, so a fixture typo or
 # a renamed target would turn this into a test that proves nothing while
 # reporting success. The script demands the failure and the compiler's reason
@@ -54,7 +54,7 @@ set_tests_properties(boundary_apps_cannot_see_platform PROPERTIES
 # Localization (docs/adr/0010-localization.md).
 
 add_executable(test_l10n test_l10n.cpp)
-target_link_libraries(test_l10n PRIVATE firefly_l10n)
+target_link_libraries(test_l10n PRIVATE attadipa_l10n)
 add_test(NAME l10n COMMAND test_l10n)
 
 # The other boundary, and it points the opposite way. An application must not
@@ -62,11 +62,11 @@ add_test(NAME l10n COMMAND test_l10n)
 # read. Same mechanism, same pair of tests: the fixture builds against apps and
 # must not build against core.
 add_executable(l10n_boundary_positive boundary/core_reaches_for_words.cpp)
-target_link_libraries(l10n_boundary_positive PRIVATE firefly_apps)
+target_link_libraries(l10n_boundary_positive PRIVATE attadipa_apps)
 add_test(NAME boundary_apps_can_speak COMMAND l10n_boundary_positive)
 
 add_executable(l10n_boundary_negative EXCLUDE_FROM_ALL boundary/core_reaches_for_words.cpp)
-target_link_libraries(l10n_boundary_negative PRIVATE firefly_core)
+target_link_libraries(l10n_boundary_negative PRIVATE attadipa_core)
 add_test(NAME boundary_core_cannot_speak
          COMMAND ${CMAKE_COMMAND}
                  -DBUILD_DIR=${CMAKE_BINARY_DIR}
@@ -119,14 +119,14 @@ endif()
 # worth more than one that merely fails to crash: the PNG is the artefact a
 # design review at both geometries needs, and an empty or missing file is a
 # failure the test can see.
-if(FIREFLY_BUILD_SIMULATOR)
-    set(_firefly_shot_dir ${CMAKE_BINARY_DIR}/screenshots)
-    file(MAKE_DIRECTORY ${_firefly_shot_dir})
+if(ATTADIPA_BUILD_SIMULATOR)
+    set(_attadipa_shot_dir ${CMAKE_BINARY_DIR}/screenshots)
+    file(MAKE_DIRECTORY ${_attadipa_shot_dir})
 
     foreach(_board t-watch-s3-plus waveshare-amoled-206)
         add_test(NAME simulator_renders_${_board}
-                 COMMAND firefly_sim --board ${_board} --frames 3
-                         --screenshot ${_firefly_shot_dir}/${_board}.png)
+                 COMMAND attadipa_sim --board ${_board} --frames 3
+                         --screenshot ${_attadipa_shot_dir}/${_board}.png)
         # SDL needs a video driver it can open with no display attached. This
         # is the "headless run" T-008 asks for rather than the "explicit,
         # stated skip" it allows instead.
@@ -140,3 +140,115 @@ if(FIREFLY_BUILD_SIMULATOR)
     # stops being true, they will still pass, so the criterion is also written
     # down where a reader will find it: docs/architecture/ARCHITECTURE.md.
 endif()
+
+# ---------------------------------------------------------------------------
+# GNSS trust (docs/adr/0011-gnss-integrity.md).
+#
+# Sequences rather than single calls, on purpose. The detectors that matter are
+# rate detectors, and a rate needs two epochs — a suite of one-observation tests
+# passes cheerfully while every one of them is switched off, which is exactly
+# how the interval bug survived being written.
+
+add_executable(test_trust test_trust.cpp)
+target_link_libraries(test_trust PRIVATE attadipa_core)
+add_test(NAME trust COMMAND test_trust)
+set_tests_properties(trust PROPERTIES LABELS gnss)
+
+# ---------------------------------------------------------------------------
+# Framing, the bounded queue, and the session state machine.
+#
+# The test names are the owner's §6 list one for one — fragmented input, partial
+# writes, a full queue, a disconnect mid-frame, a reconnect, a large payload, a
+# malformed frame — so that coverage against the brief can be read rather than
+# asserted. The second half holds our implementation against the defects
+# docs/upstream/meshcore-1.17-review.md verified in the upstream serial
+# transport, which are bugs in code shipping on these boards today.
+
+add_executable(test_link test_link.cpp)
+target_link_libraries(test_link PRIVATE attadipa_link)
+add_test(NAME link COMMAND test_link)
+set_tests_properties(link PROPERTIES LABELS transport)
+
+# ---------------------------------------------------------------------------
+# Device power states and the GNSS receiver's own.
+#
+# Both tables are exhaustive over every (from, to) pair, because a suite that
+# only walks the legal paths passes against a transition_is_legal that returns
+# true for everything. The illegal half is where the information is — including
+# the rule the MeshCore review found broken upstream: a wake source that only
+# exists while the radio is powered must not be armed in a state where it is not.
+
+add_executable(test_power test_power.cpp)
+target_link_libraries(test_power PRIVATE attadipa_core)
+add_test(NAME power COMMAND test_power)
+set_tests_properties(power PROPERTIES LABELS power)
+
+# ---------------------------------------------------------------------------
+# The position observation, the validity classifier and integer distance.
+#
+# The distance function is integer arithmetic over a cosine table, so its error
+# is bounded and knowable rather than "floating point, probably fine". The
+# tolerances in this file are stated as percentages of a hand-computed answer;
+# where the method itself breaks down the test says so rather than widening the
+# tolerance until it passes.
+
+add_executable(test_position test_position.cpp)
+target_link_libraries(test_position PRIVATE attadipa_core)
+add_test(NAME position COMMAND test_position)
+set_tests_properties(position PROPERTIES LABELS gnss)
+
+# ---------------------------------------------------------------------------
+# The replayable navigation rig (docs/adr/0011-gnss-integrity.md §7).
+#
+# The interesting GNSS failures cannot be staged. Nobody can arrange to be
+# spoofed on a Tuesday afternoon, so a detector for an event that cannot be
+# produced on demand is one that gets written once and never verified again.
+# The rig replays timestamped observations into the same pure code the device
+# runs and asserts the verdict at every step rather than only at the end.
+#
+# Two targets, and the second is the one that matters. `replay` runs the
+# scenarios; `test_replay_rig` proves the runner can fail — a rig that passes
+# everything is indistinguishable from a rig that checks nothing.
+
+add_library(attadipa_replay STATIC replay/replay.cpp)
+target_include_directories(attadipa_replay PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(attadipa_replay PUBLIC attadipa_core)
+
+add_executable(replay replay/replay_main.cpp)
+target_link_libraries(replay PRIVATE attadipa_replay)
+target_compile_definitions(replay PRIVATE
+    ATTADIPA_REPLAY_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios")
+
+file(GLOB ATTADIPA_REPLAY_SCENARIOS
+     "${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios/[0-9][0-9]-*.trace")
+# 13 is the deliberately-wrong fixture and belongs to the rig's own test.
+list(FILTER ATTADIPA_REPLAY_SCENARIOS EXCLUDE REGEX "13-a-fixture-can-fail")
+list(LENGTH ATTADIPA_REPLAY_SCENARIOS ATTADIPA_REPLAY_COUNT)
+if(ATTADIPA_REPLAY_COUNT LESS 10)
+    # A glob that silently matched nothing would produce a test that passes by
+    # running no scenarios at all.
+    message(FATAL_ERROR "only ${ATTADIPA_REPLAY_COUNT} replay scenarios found")
+endif()
+
+add_test(NAME replay COMMAND replay)
+set_tests_properties(replay PROPERTIES LABELS gnss)
+
+add_executable(test_replay_rig test_replay_rig.cpp)
+target_link_libraries(test_replay_rig PRIVATE attadipa_replay)
+target_compile_definitions(test_replay_rig PRIVATE
+    ATTADIPA_REPLAY_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/replay/scenarios")
+add_test(NAME replay_rig COMMAND test_replay_rig)
+set_tests_properties(replay_rig PROPERTIES LABELS gnss)
+
+# ---------------------------------------------------------------------------
+# The diagnostics snapshot.
+#
+# Mostly a plain structure, so the tests are about its structural properties
+# rather than its behaviour: it must survive a memcpy from a crash handler that
+# has no allocator, it must stay small enough to keep in RTC memory, it must
+# carry no format — §14, do not tie core to JSON — and every number nobody has
+# measured must say so.
+
+add_executable(test_diagnostics test_diagnostics.cpp)
+target_link_libraries(test_diagnostics PRIVATE attadipa_core)
+add_test(NAME diagnostics COMMAND test_diagnostics)

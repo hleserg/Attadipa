@@ -62,7 +62,7 @@ stale silently. The protocol is
 - **Tests:** `actionlint` over six workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
   cases — 16/16; host build 10/10; simulator 12/12, both geometries. Production:
-  smoke test A ([#5](https://github.com/hleserg/FireflyOS/issues/5)) exercised
+  smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
   intake, marker-derived labels, the `@claude` dedup override and a green Claude
   run, and exposed the stuck-label defect now fixed.
 - **Hardware required:** no.
@@ -126,7 +126,7 @@ stale silently. The protocol is
 - **Goal:** the first real screen. Time, date, battery, a good watchface, day and
   night, EN and RU, a Child variant, and one purposeful use of the owner's art
   (final §58, §88).
-- **Acceptance:** it looks like Firefly and not like debug UI (final §96), at
+- **Acceptance:** it looks like Attadipa and not like debug UI (final §96), at
   both geometries, in both locales, in both themes.
 - **Research status:** not started — mature wearable watchface patterns
   (final §85); interaction lessons only, never someone else's visual identity
@@ -152,6 +152,149 @@ stale silently. The protocol is
 ---
 
 ## READY
+
+### T-062 · The branch audit's remaining findings
+- **Priority:** P1. These are defects in code that already exists and that other
+  work is about to build on, which makes them cheaper now than later.
+- **Dependencies:** none
+- **Goal:** close, or consciously decline with reasons, each finding below.
+  Every one of them was read in the source before being written here; none is a
+  report taken on trust. Four from the same audit are already fixed —
+  `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
+  evaluator) and `7e4c4f9` (the replay rig could not produce Stale) — and the
+  rule from the research prompt applies: **do not stop after the first fix.**
+
+- **A state that cannot say "nobody has checked".** `GnssCapabilities`
+  (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
+  to `false`, so "this receiver has no backup domain" and "nobody has read the
+  datasheet yet" are the same value. T-051 and T-052 exist precisely because
+  those answers are not yet known, and the type cannot hold the state the
+  project is actually in. Compare `ReceiverIndication`, which gets this right
+  with `Unknown` and `Unsupported` as distinct values, and OD-5, which is the
+  decision saying they must be.
+
+- **A default-constructed snapshot claims to be trusted.** `GnssStatus::trust`
+  (`core/include/attadipa/core/diagnostics.h:116`) defaults to
+  `TrustState::Trusted`. A snapshot nobody filled in therefore reports the most
+  reassuring answer available. `validity` on the line above defaults to `NoFix`,
+  which is the right instinct; `trust` should be `Untrusted` for the same
+  reason, or the field should be optional so that "not evaluated" is sayable.
+
+- **Rates for a relayed fix are divided by the wrong interval.**
+  `TrustEvaluator::observe` sets `previous_position_at_ = now` rather than
+  `observation.observed_at`. For a receiver on the board the two are equal. For
+  a position relayed by an Attadipa node over a link that queues and retries they
+  are not, so the interval is measured from *arrival* and the implied speed is
+  overstated — the same shape as the bug `f46578c` fixed, by a different door.
+  The fix is one line and the reasoning is not: it has to say what happens when
+  observations arrive out of order, which the current code cannot express.
+
+- **`holds()` and `reasons()` can report evidence that has expired.** Both read
+  `live_`, which only `update()` prunes, and both are `const`. A caller that
+  reads without having called `update(now)` first gets past-TTL evidence and has
+  no way to tell. Either the readers take `now`, or the class documents that a
+  reader must update first and something enforces it.
+
+- **Zero means two things in the transport.** `Decoder::next()` returns 0 for
+  "nothing ready" and for "a zero-length frame was delivered", and
+  `FrameQueue::pop()` has the same ambiguity. A zero-length frame is legal —
+  `encode()` accepts it and the round-trip tests cover it — so a caller
+  draining until zero silently drops one.
+
+- **`Attach` while `Faulted` reports the wrong refusal.** It returns `Redundant`
+  where `Ignored` is the truth: nothing about a faulted link makes a new attach
+  redundant, and the two words tell an operator different things.
+
+- **`Detach` hardcodes `PeerClosed`.** A detach the *device* initiated is
+  recorded as one the peer initiated. That is the field-report evidence for the
+  most common question about a node link — who let go first.
+
+- **Recovery can complete with no observation at all.** The clean-hold window
+  can elapse while nothing whatever has been reported, so silence promotes the
+  state. OD-5's rule is that silence is not an all-clear; this is the one place
+  the code still treats it as one.
+
+- **`FixLost` and `StalePosition` both weigh 20 against a `degrade_at` of 30.**
+  So neither, alone, moves trust. That may be the intended two-axis design —
+  validity already carries the whole freshness story, and trust is about whether
+  numbers can be believed rather than when they were taken — and
+  `02-fix-goes-stale.trace` now asserts the current behaviour either way. What
+  is missing is the decision, written down, rather than a number nobody chose.
+
+- **Resync costs a full CRC per candidate offset.** Correct and O(n·m) on a
+  noisy link. Worth measuring before optimising, and worth a note either way:
+  the frame is at most 192 bytes and the link is slow, so this may be entirely
+  affordable. `ESTIMATED`, not measured.
+
+- **Acceptance:** each item either fixed with a test that fails without the fix
+  — mutation-verified, as the four already closed were — or declined in writing
+  with the reason. A silent decline is not one.
+- **Research status:** n/a
+- **Implementation status:** not started
+- **Tests:** host, per item
+- **Hardware required:** no, except the resync measurement, which is a HIL note
+  rather than a HIL plan.
+
+### T-060 · What each IMU actually does about steps
+- **Priority:** P1 — [OD-6](docs/research/OWNER_DECISIONS.md#od-6--the-watch-counts-steps-and-that-is-not-optional)
+  makes the pedometer mandatory, and everything about how it is built depends on
+  this answer
+- **Dependencies:** none. It is reading, not code.
+- **Goal:** establish, from primary sources only, what the BMA423 and the
+  QMI8658 each do about step counting, in the order the GNSS tasks use:
+  datasheet → application note → vendor driver source → vendor example.
+- **What to answer, at minimum:**
+  - **BMA423:** does the part count steps *itself*? Bosch documents step
+    counting and step detection in the BMA4xx wearable family — is it in this
+    part, on this revision, and is it in the feature blob that has to be
+    uploaded at boot? What is the counter's width and what happens when it
+    wraps? Does it keep counting while the host is in deep sleep, and at what
+    current? What survives a soft reset, and what does not? Which interrupt
+    lines does it need — **INT2 is bonded out but not routed** on the T-Watch
+    (R12/R15 not fitted, [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)),
+    so anything requiring two interrupts is already blocked.
+  - **QMI8658:** is there any integrated step counter at all? If not: FIFO depth
+    in samples, watermark interrupt behaviour, the lowest output data rate at
+    which a step algorithm still works, and therefore how often the SoC must
+    wake to drain it.
+- **Acceptance:** a row per part in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md) marked `SUPPORTED`,
+  `UNSUPPORTED` or `UNKNOWN`, each with the document and section it came from.
+  An unsourced `SUPPORTED` is not an answer.
+- **Research status:** not started
+- **Implementation status:** not started — no code comes out of this task
+- **Tests:** none. It produces a research record.
+- **Hardware required:** no for the documents. Confirming a current figure or a
+  wake rate is a HIL plan and is not this task.
+
+### T-061 · Steps, as a capability with a power story
+- **Priority:** P1, after T-060
+- **Dependencies:** T-060, [ADR-0007](docs/adr/0007-two-capability-layers.md),
+  T-046 (crash-safe persistence), T-045 (`PowerState`)
+- **Goal:** implement `Capability::MotionSensing` for step counting, on both
+  boards, without either board's answer leaking upwards.
+- **The shape:** an application asks for a step count and a daily total. It
+  never learns whether a sensor counted them or firmware did, which interrupt
+  fired, or that one board can count through a sleep and the other may not.
+- **What has to be decided rather than assumed:**
+  - a board that cannot count while asleep reports `MotionSensing` as
+    **`Degraded`** with a reason, not as a number that is quietly missing hours.
+    A mandatory pedometer that stops when the screen goes off is not one;
+  - the daily total survives a reboot, a crash and a flat battery, and is zeroed
+    by midnight and by nothing else. Four events, one of which resets it;
+  - **no interpolation.** A period the device was not measuring did not contain
+    a known number of steps. The day's total says steps were missed rather than
+    inventing them — the same rule the GNSS work applies to a position nobody
+    observed.
+- **Acceptance:** a host test with a synthetic acceleration trace replayed
+  through the same path the device uses — the replay rig's shape, a second
+  reader; both board profiles produce a defensible availability; the daily total
+  survives a simulated crash at an arbitrary point.
+- **Research status:** blocked on T-060
+- **Implementation status:** not started
+- **Tests:** host, plus a HIL plan for the wake rate and the current, which is
+  the only way the power claim becomes a measurement.
+- **Hardware required:** for the power numbers, yes. For the logic, no.
 
 ### T-051 · What the MIA-M10Q actually does, from u-blox's own documents
 - **Priority:** P1 — it gates the GNSS driver, and nothing before it
@@ -199,6 +342,14 @@ stale silently. The protocol is
 ### T-053 · The simulator can fail at GNSS twelve different ways
 - **Priority:** P2 — after the descriptor research, before the trust engine
 - **Dependencies:** [ADR-0011](docs/adr/0011-gnss-integrity.md), T-051, T-052
+- **Half of this is built.** The offline half of the acceptance criterion — *"a
+  captured trace can be replayed into the trust engine offline (ADR-0011 §7)"* —
+  exists: `tests/replay/` with twelve traces covering the twelve failures below,
+  a runner, and a test proving the runner can fail. What remains is the
+  *simulator* half: making each of the twelve selectable from the command line
+  so a screen can be developed against them, and confirming that none of them
+  renders as another one. The traces are the specification for that work — the
+  same twelve, in a format the simulator can read.
 - **Goal:** injectable GNSS scenarios in the simulator, so the trust state and
   every screen that reads it can be developed and reviewed without a sky.
 - **The twelve, from OD-5:** normal · weak signal · fix loss · poor accuracy ·
@@ -299,7 +450,7 @@ stale silently. The protocol is
 ### T-047 · Two clocks, and the rule about which one measures time
 - **Priority:** P1
 - **Goal:** adopt MeshCore's separation — `RTCClock` (wall, absolute) versus
-  `MillisecondClock` (monotonic) — as Firefly's own, and write the rule down:
+  `MillisecondClock` (monotonic) — as Attadipa's own, and write the rule down:
   **timers, timeouts, retries, connection expiry and the scheduler use the
   monotonic clock.** RTC and GNSS time only where absolute time is required.
 - **Why:** a GNSS fix that steps the wall clock must not be able to make a
@@ -329,7 +480,7 @@ stale silently. The protocol is
 - **Acceptance:** no `#ifdef` for a backend above the seam; entropy comes from
   `esp_fill_random()` on ESP32; and **no claim that hardware acceleration is
   faster** appears anywhere until it is `MEASURED` against the software path at
-  Firefly's actual payload sizes.
+  Attadipa's actual payload sizes.
 - **Research status:** done —
   [meshcore-1.17-review §8](docs/upstream/meshcore-1.17-review.md)
 - **Implementation status:** not started
@@ -405,10 +556,10 @@ stale silently. The protocol is
 - **Priority:** P1
 - **Dependencies:** [ADR-0005](docs/adr/0005-node-protocol.md) (**provisional**)
 - **Goal:** final §18 endorses ADR-0005's *goals* and rejects its *evidence*: it
-  compared a hypothetical small Firefly TLV against Meshtastic's entire
+  compared a hypothetical small Attadipa TLV against Meshtastic's entire
   `meshtastic_FromRadio` union and called the question settled. That is not a
   comparison.
-- **Acceptance:** a Firefly TLV prototype, nanopb with a Firefly-specific
+- **Acceptance:** an Attadipa TLV prototype, nanopb with an Attadipa-specific
   streaming/callback schema, and at least one other compact option, measured on
   `xtensa-esp32s3-elf-gcc` for peak internal RAM, static RAM, flash, encoded
   bytes, malformed-input behaviour, schema-evolution cost, tooling, fragmentation
@@ -416,10 +567,10 @@ stale silently. The protocol is
   evidence.
 - **Also required before ADR-0005 can be accepted:** the demultiplexing rule
   (final §19) — how a parser distinguishes log text, MeshCore companion frames
-  and Firefly frames on one physical link. Separate GATT characteristics,
+  and Attadipa frames on one physical link. Separate GATT characteristics,
   separate UART channels, or an explicit outer mux frame. A diagram is not a
   design.
-- **Research status:** nanopb measured in isolation; the Firefly-schema
+- **Research status:** nanopb measured in isolation; the Attadipa-schema
   comparison is the missing half
 - **Implementation status:** ADR written, provisional
 - **Tests:** round-trip vectors; a hostile-frame corpus; a version-mismatch test
@@ -512,7 +663,7 @@ stale silently. The protocol is
   the limit part of the regulatory profile, not a constant; visible in
   diagnostics; the arithmetic tested against reference time-on-air formulas.
 - **Research status:** MeshCore's own governor found — `Dispatcher::updateTxBudget()`
-  — which Firefly must reconcile with rather than override on a local mesh path
+  — which Attadipa must reconcile with rather than override on a local mesh path
 - **Implementation status:** not started
 - **Tests:** host tests against known LoRa time-on-air arithmetic
 - **Hardware required:** no
@@ -636,7 +787,7 @@ stale silently. The protocol is
   source, version, licence, rationale and upgrade strategy.
 - **Research status:** narrowed — Waveshare supports v5.5.5 and v6.0.2, its BSP
   needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 probably does not bind
-  Firefly (T7)
+  Attadipa (T7)
 - **Implementation status:** `v5.5.5-496-gc197d718bcc` installed and **verified**
   by a real `idf.py set-target esp32s3 && idf.py build`. Verified is not decided.
 - **Tests:** a trivial esp32s3 build — **passed**
@@ -744,6 +895,82 @@ Recommended next action:
 
 ## DONE
 
+### T-059 · The trust state, tested as sequences — **DONE**
+- **Why sequences:** the detectors that matter are rate detectors, and a rate
+  needs two epochs. A suite of single-observation tests passes cheerfully while
+  every one of them is switched off — which is exactly how the interval bug
+  survived being written, with `dt` read after the previous timestamp had been
+  overwritten so every interval was zero.
+- **Mutation-checked** rather than merely green: re-introducing that bug turns
+  three checks red; treating an `Unknown` spoofing verdict as an all-clear turns
+  two red (OD-5 §2); granting recovery without the hold, two; collapsing the
+  hysteresis band to one threshold, one.
+- **Also pinned:** `MotionEvidence{known=false}` is not evidence of stillness; an
+  absent last-trusted position reads as no answer rather than as certainty; the
+  transition log is bounded and reports how much it dropped.
+- **Tests:** `tests/test_trust.cpp`.
+- **Note:** its commit is prefixed `T-053`, which was already taken by the
+  simulator task above. The number here is the correct one; the commit is left
+  alone rather than rewritten.
+
+### T-058 · The diagnostics snapshot, tested structurally — **DONE**
+- **What it proved:** the snapshot survives a `memcpy` from a crash handler that
+  has no allocator (asserted statically *and* exercised), is 384 bytes against a
+  1 KiB bound so it can live in RTC memory beside everything else that wants to
+  survive a deep sleep, carries no serializer — §14, core is not tied to JSON —
+  and defaults every unread value to absent rather than to zero.
+- **Tests:** `tests/test_diagnostics.cpp`. Host only; nothing was sampled.
+
+### T-057 · The replayable navigation rig — **DONE**
+- **Why it exists:** the interesting GNSS failures cannot be staged. A detector
+  for an event nobody can produce on demand is one that gets written once and
+  never verified again.
+- **What landed:** `tests/replay/` — a strict fixture reader, a deterministic
+  runner, twelve traces, and `tests/test_replay_rig.cpp`, which is the part that
+  matters: it feeds the runner a deliberately-wrong fixture and demands three
+  mismatches, ten malformed fixtures and demands each be refused with a reason,
+  and a missing file, which is a failure and never a skip. CMake refuses to
+  configure if the scenario glob matches fewer than ten files.
+- **Reuse:** `INSPIRE ARCHITECTURE` from gpsd's regression framework — see
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
+- **Feeds:** the simulator half of T-053, which the traces specify.
+
+### T-056 · Position, validity and integer distance, tested — **DONE**
+- **What it pinned:** freshness is decided before quality; `TimeOnly` is `NoFix`
+  rather than a bad position; a coordinate off the globe lands in `NoFix` rather
+  than being clamped into something plausible; an unasked receiver reports
+  `Unknown` for jamming and spoofing and never `None` (OD-5 §2).
+- **Distance:** tolerances stated as percentages of a hand-computed answer rather
+  than borrowed from the implementation. A degree of longitude shrinks with the
+  cosine of the latitude, and the antimeridian is 111 m rather than forty
+  thousand kilometres.
+- **Tests:** `tests/test_position.cpp`.
+
+### T-055 · The two power state machines, tested exhaustively — **DONE**
+- **Method:** every `(from, to)` pair in both tables, because a suite that only
+  walks the legal paths passes against a `transition_is_legal` that returns true
+  for everything.
+- **Found two real defects:** `next_state()` proposed `Off → Backup` when the
+  device slept with the receiver already off — current spent holding a domain
+  with nothing in it; and `start_kind()` read *having* a backup domain as
+  evidence the domain had been *powered*, reporting a warm start where the truth
+  was cold. `GnssContext` gained `backup_retained`, the fact that was missing.
+- **Also pinned:** no wake source that exists only while the radio is powered may
+  be armed in `DeepSleep` — the rule the MeshCore review found broken upstream.
+- **Tests:** `tests/test_power.cpp`.
+
+### T-054 · The transport, tested against the brief and against upstream — **DONE**
+- **First half:** the owner's §6 list, one function per item — fragmented input,
+  several frames in one read, partial writes, a full queue, a disconnect
+  mid-frame, a reconnect, a large payload, a malformed frame — so coverage
+  against the brief can be read rather than asserted.
+- **Second half:** the defects
+  [the MeshCore review](docs/upstream/meshcore-1.17-review.md) verified at source
+  in the upstream serial transport, held against our own code. An over-long frame
+  is refused rather than truncated and delivered as complete; the checksum is
+  pinned against published vectors; `Attached` and `Ready` are separate phases.
+- **Tests:** `tests/test_link.cpp`.
+
 ### T-042 · Owner amendment: GNSS integrity and receiver-native protection — **DONE**
 - **Closed:** 2026-08-21
 - **Scope, and it is deliberately small:** the owner's §15 forbids building the
@@ -804,7 +1031,7 @@ Recommended next action:
     delivered as if complete. The same codebase gets it right on BLE, with
     bounded queues and logged overflow — which is what makes it a lesson rather
     than a limitation.
-- **What Firefly takes:** the two-clock separation, the JSON migration that does
+- **What Attadipa takes:** the two-clock separation, the JSON migration that does
   not destroy its source, the preamble-detect LBT scheme with both watchdog
   deadlines, BLE's queue discipline, and the battery rules (never sample during
   transmit; flush on every shutdown path). **What it does not take:** any FEM
@@ -815,7 +1042,7 @@ Recommended next action:
   adapter boundary).
 - **Hardware required:** no — and **no Heltec board of any revision is in this
   project's hands**, so every upstream measurement quoted in the document is
-  attributed to upstream and Firefly's own status for all of it stays
+  attributed to upstream and Attadipa's own status for all of it stays
   `NOT EXECUTED — HARDWARE REQUIRED`.
 
 ### T-033 · Localization: `tr()`, catalogues, and the checks that guard them — **DONE**
@@ -824,7 +1051,7 @@ Recommended next action:
   `l10n/strings.toml` is the single source of truth; a Python generator emits a
   `StringId` enum, a separate `PluralId` enum and parallel per-locale tables,
   and the generated files are **committed** so the C++ build needs no Python.
-  A new `firefly_l10n` library sits beside core and is linked by apps and the
+  A new `attadipa_l10n` library sits beside core and is linked by apps and the
   simulator — **not** by core, and that is enforced rather than reviewed.
 - **Acceptance, item by item:**
   - *a screen with no user-facing literal* — the simulator's diagnostic screen
@@ -847,7 +1074,7 @@ Recommended next action:
     its own reason*. The `WILL_FAIL` lesson, applied before it could bite again.
   - the second **boundary test**, pointing the other way: a fixture that
     compiles against apps and must not compile against core. Proved by
-    temporarily linking `firefly_l10n` into core and watching it fail.
+    temporarily linking `attadipa_l10n` into core and watching it fail.
 - **The finding:** LVGL ships no font with Cyrillic — Montserrat's own header
   says `-r 0x20-0x7F,0xB0,0x2022`. The simulator therefore **cannot draw the
   Russian catalogue**: 26 codepoints in `ru`, and 7 in `en`, because a language
@@ -905,7 +1132,7 @@ Recommended next action:
   as touch, keyboard as buttons. The simulator is a first-class target
   (final §57), not a convenience.
 - **Acceptance:** both presets run; switching between them needs no rebuild;
-  the build is part of CI. **Met.** `firefly_sim --board <id>` selects the
+  the build is part of CI. **Met.** `attadipa_sim --board <id>` selects the
   geometry at runtime; `--radio <chip>` fits any of the five T-Watch radios
   without recompiling, which is the same requirement one layer down.
 - **Implementation status:** **done.** `sim/` holds the composition root, the
@@ -915,7 +1142,7 @@ Recommended next action:
 - **Tests:** `ctest` runs the simulator headless at both geometries under
   `SDL_VIDEODRIVER=dummy`, and each run writes a screenshot that the test
   requires to exist. CI has a second job that installs SDL2, builds with
-  `-DFIREFLY_BUILD_SIMULATOR=ON` and uploads the screenshots as artefacts.
+  `-DATTADIPA_BUILD_SIMULATOR=ON` and uploads the screenshots as artefacts.
   **OBSERVED** on the development host **and in CI** — run `32462413273`,
   2026-08-21, on a runner with no LVGL and a cold cache: clone 22.8 s, commit
   verified, build, 6/6 tests, both screenshots uploaded, whole job 2 min 2 s.
@@ -923,8 +1150,8 @@ Recommended next action:
 - **Hardware required:** no. Nothing here touched a bus and nothing here is
   evidence about a board.
 - **What it also settled**, because the first CMake file was the last cheap
-  moment to settle it: the target graph. `firefly_platform` → `firefly_core` →
-  `firefly_apps`, with platform linked PRIVATE into core, and two tests that
+  moment to settle it: the target graph. `attadipa_platform` → `attadipa_core` →
+  `attadipa_apps`, with platform linked PRIVATE into core, and two tests that
   compile one fixture against each of the two libraries to prove an application
   still cannot include a hardware header
   ([ADR-0007](docs/adr/0007-two-capability-layers.md) §5).
@@ -1007,7 +1234,7 @@ Recommended next action:
   and degree, a separate availability axis. Four alternatives recorded with
   reasons, all four still rejected.
 - **Its Decision has since been superseded twice in one day** — by
-  [ADR-0004](docs/adr/0004-capability-sources.md) for the Firefly node, then
+  [ADR-0004](docs/adr/0004-capability-sources.md) for the Attadipa node, then
   wholesale by [ADR-0007](docs/adr/0007-two-capability-layers.md). The task
   stays DONE: it produced a decision, a review found it wrong, and that is the
   process working rather than failing.

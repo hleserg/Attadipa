@@ -1,6 +1,6 @@
-#include "firefly/platform/hardware_inventory.h"
+#include "attadipa/platform/hardware_inventory.h"
 
-namespace firefly::platform {
+namespace attadipa::platform {
 
 ProfileInventory::ProfileInventory(const BoardProfile& profile) : profile_(&profile)
 {
@@ -39,4 +39,4 @@ void ProfileInventory::set_state(HardwareFeature feature, HardwareState state)
     states_[index] = state;
 }
 
-}  // namespace firefly::platform
+}  // namespace attadipa::platform

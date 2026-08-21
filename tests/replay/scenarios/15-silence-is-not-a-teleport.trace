@@ -1,0 +1,50 @@
+scenario a minute of silence followed by a walk is not a teleport
+describe The regression that pins why `hold` calls refresh() and not observe().
+describe
+describe Re-running the detectors against an observation they have already seen
+describe is tempting and wrong: it would re-stamp the epoch that the next real
+describe fix is measured from. Under this trace the device is quiet for sixty
+describe seconds and then reports a position four hundred metres away — an
+describe ordinary walk over the whole interval, and 400 m/s if the interval is
+describe taken to have started at the last hold.
+describe
+describe implausible_speed_mm_s is 55000, so the wrong implementation fires
+describe PositionJump here and the right one does not. Nothing else in the
+describe fixture distinguishes them.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3000
+  sats 12 15
+  jam none
+  spoof none
+  motion moving
+  expect validity valid
+  expect trust trusted
+
+at 20000
+  hold
+
+at 40000
+  hold
+
+at 59000
+  hold
+  expect validity stale
+
+# 400 m north of the last real fix, sixty seconds after it. One unit of
+# latitude here is 1e-7 degrees, which is 11.1 mm, so 400 m is 35932 of them.
+# 6.7 m/s — fast for a walk, ordinary for a bicycle, and nowhere near the
+# 55 m/s gate. Against the last *hold* it would be 400 m/s.
+at 60000
+  fix 3d
+  pos 5035932 10000000
+  alt 42000
+  acc 3000
+  sats 12 15
+  motion moving
+  expect validity valid
+  expect no-reason position-jump
+  expect trust trusted

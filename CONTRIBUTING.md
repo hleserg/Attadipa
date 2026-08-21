@@ -1,12 +1,12 @@
-# Contributing to Firefly OS
+# Contributing to Attadipa
 
 ## Ideas go to Discussions. Issues are the engineering queue.
 
-**Have an idea? [Start a Discussion](https://github.com/hleserg/FireflyOS/discussions).**
+**Have an idea? [Start a Discussion](https://github.com/hleserg/Attadipa/discussions).**
 If it turns out to be something worth building, a maintainer will turn it into
 an Issue.
 
-Issues are Firefly's executable engineering queue — the working memory that
+Issues are Attadipa's executable engineering queue — the working memory that
 coding agents and maintainers pick tasks from, in a defined format, with a
 lifecycle attached. Discussions are where ideas are argued about until they are
 good enough to enter that queue. Filing a half-formed idea as an Issue does not
@@ -18,10 +18,10 @@ the project — Discussions are open to everybody, and they are the front door.
 
 ---
 
-**Есть идея? [Начните Discussion](https://github.com/hleserg/FireflyOS/discussions).**
+**Есть идея? [Начните Discussion](https://github.com/hleserg/Attadipa/discussions).**
 Если из неё получается конкретная работа, maintainer перенесёт её в Issue.
 
-Issues — исполняемая инженерная очередь Firefly: рабочая память, из которой
+Issues — исполняемая инженерная очередь Attadipa: рабочая память, из которой
 берут задачи агенты и мейнтейнеры, в заданном формате и с понятным жизненным
 циклом. Discussions — место, где идеи обсуждаются и созревают до задачи.
 Недооформленная идея, поданная сразу как Issue, не ускоряется — она просто
@@ -38,17 +38,17 @@ Most smartwatch software is built by copying features from phones and other
 watches. There is a great deal of it, and much of it exists because it could be
 made rather than because anybody wanted it.
 
-Firefly is open. Tell us what would genuinely be useful on your wrist: something
+Attadipa is open. Tell us what would genuinely be useful on your wrist: something
 you can understand or act on in seconds, something that still matters when your
 phone has no signal, or simply something nobody has built properly yet.
 
 Ideas that make the most of being on a wrist rather than in a pocket are the
 most interesting ones — quick, contextual, useful in a real situation, and
 often stronger for working offline, over mesh, with navigation, local
-connectivity, sensors or a Firefly node. That list is a hint, not a boundary. If
+connectivity, sensors or an Attadipa node. That list is a hint, not a boundary. If
 your idea needs none of it, it is still welcome.
 
-**[Post an app idea →](https://github.com/hleserg/FireflyOS/discussions/new?category=ideas)**
+**[Post an app idea →](https://github.com/hleserg/Attadipa/discussions/new?category=ideas)**
 
 ---
 
@@ -58,7 +58,7 @@ your idea needs none of it, it is still welcome.
 с других часов. Их очень много, и значительная часть существует потому, что их
 было можно сделать, а не потому, что они кому-то понадобились.
 
-Firefly открыт. Расскажите, что было бы по-настоящему полезно именно у вас на
+Attadipa открыт. Расскажите, что было бы по-настоящему полезно именно у вас на
 запястье: то, что понимаешь или делаешь за считаные секунды; то, что не теряет
 смысла, когда у телефона нет сети; или просто то, что до сих пор никто не сделал
 как следует.
@@ -66,11 +66,11 @@ Firefly открыт. Расскажите, что было бы по-насто
 Интереснее всего идеи, которые выигрывают именно от того, что устройство на
 запястье, а не в кармане: быстрые, контекстные, полезные в конкретной ситуации —
 и часто более сильные оттого, что работают офлайн, через меш, с навигацией, с
-локальной связью, с датчиками или с Firefly node. Этот список — подсказка, а не
+локальной связью, с датчиками или с Attadipa node. Этот список — подсказка, а не
 граница. Если вашей идее ничего из перечисленного не нужно, она всё равно нужна
 нам.
 
-**[Предложить идею приложения →](https://github.com/hleserg/FireflyOS/discussions/new?category=ideas)**
+**[Предложить идею приложения →](https://github.com/hleserg/Attadipa/discussions/new?category=ideas)**
 
 ---
 

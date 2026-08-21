@@ -6,12 +6,12 @@
 
   const copy = {
     en: {
-      title: 'Firefly OS — Glow · Guide · Connect',
-      description: 'Firefly OS is an open-source wearable firmware/application platform for ESP32-S3: mesh messaging, offline navigation, clean app APIs and a product-grade UI.'
+      title: 'Attadipa — Glow · Guide · Connect',
+      description: 'Attadipa is an open-source wearable firmware/application platform for ESP32-S3: mesh messaging, offline navigation, clean app APIs and a product-grade UI.'
     },
     ru: {
-      title: 'Firefly OS — Glow · Guide · Connect',
-      description: 'Firefly OS — открытая платформа прошивки и приложений для носимых устройств на ESP32-S3: mesh-связь, офлайн-навигация, чистые API и продуманный интерфейс.'
+      title: 'Attadipa — Glow · Guide · Connect',
+      description: 'Attadipa — открытая платформа прошивки и приложений для носимых устройств на ESP32-S3: mesh-связь, офлайн-навигация, чистые API и продуманный интерфейс.'
     }
   };
 
@@ -33,7 +33,7 @@
     const url = new URL(location.href);
     const fromUrl = url.searchParams.get('lang');
     if (fromUrl === 'ru' || fromUrl === 'en') return fromUrl;
-    const saved = localStorage.getItem('firefly-site-lang');
+    const saved = localStorage.getItem('attadipa-site-lang');
     if (saved === 'ru' || saved === 'en') return saved;
     return browserLanguage();
   }
@@ -45,7 +45,7 @@
     if (metaDescription) metaDescription.content = copy[lang].description;
     if (ogDescription) ogDescription.content = copy[lang].description;
     buttons.forEach(btn => btn.setAttribute('aria-pressed', btn.dataset.setLang === lang ? 'true' : 'false'));
-    if (persist) localStorage.setItem('firefly-site-lang', lang);
+    if (persist) localStorage.setItem('attadipa-site-lang', lang);
     if (updateUrl) {
       const url = new URL(location.href);
       url.searchParams.set('lang', lang);

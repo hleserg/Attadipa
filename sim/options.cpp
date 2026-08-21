@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 
-namespace firefly::sim {
+namespace attadipa::sim {
 namespace {
 
 bool parse_uint(const char* text, std::uint32_t& out)
@@ -44,7 +44,7 @@ const char* take_value(int argc, char** argv, int& i, const char* flag)
 void print_usage(const char* argv0)
 {
     std::printf(
-        "Firefly OS simulator\n"
+        "Attadipa simulator\n"
         "\n"
         "usage: %s [options]\n"
         "\n"
@@ -55,7 +55,7 @@ void print_usage(const char* argv0)
         "  --frames <n>     render n frames and exit. For CI, with SDL_VIDEODRIVER=dummy\n"
         "  --screenshot <p> write the rendered screen to p as a PNG, then continue\n"
         "  --locale <lang>  start in en or ru. L toggles it while running\n"
-        "  --node           present a paired, reachable Firefly node\n"
+        "  --node           present a paired, reachable Attadipa node\n"
         "  --no-bring-up    leave every part untouched instead of pretending it came up\n"
         "  --list-boards    print the board profiles this build knows about\n"
         "  --help\n"
@@ -197,4 +197,4 @@ ParseResult parse_options(int argc, char** argv, Options& out)
     return ParseResult::Ok;
 }
 
-}  // namespace firefly::sim
+}  // namespace attadipa::sim

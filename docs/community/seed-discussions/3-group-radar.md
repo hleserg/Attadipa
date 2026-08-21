@@ -95,9 +95,9 @@ still there when nothing else is.
 
 ### Useful capabilities / Возможности
 
-Mesh · GNSS / position · haptics · Firefly Node.
+Mesh · GNSS / position · haptics · Attadipa Node.
 
-**Возможности.** Меш · координаты · вибрация · Firefly Node.
+**Возможности.** Меш · координаты · вибрация · Attadipa Node.
 
 ### Existing alternatives / Что уже существует?
 
@@ -147,7 +147,7 @@ this screen is a summary and summaries are where nuance goes to die:
 - distance should only appear where a position actually exists, and should carry
   its age;
 - a person whose watch has no GNSS of its own may still be perfectly reachable
-  over mesh through a Firefly node. "I can hear you" and "I know where you are"
+  over mesh through an Attadipa node. "I can hear you" and "I know where you are"
   are separate facts and should look separate.
 
 The intended interaction is a glance that either reassures or names exactly who
@@ -164,7 +164,7 @@ to worry about — and says "I don't know" where it does not know.
 - дистанция должна появляться только там, где координаты действительно есть, и
   нести свой возраст;
 - человек, у которого в часах нет собственного GNSS, может при этом прекрасно
-  быть на связи через меш и Firefly node. «Я тебя слышу» и «я знаю, где ты» —
+  быть на связи через меш и Attadipa node. «Я тебя слышу» и «я знаю, где ты» —
   разные факты, и выглядеть они должны по-разному.
 
 Задумка — взгляд, который либо успокаивает, либо называет, за кого именно стоит

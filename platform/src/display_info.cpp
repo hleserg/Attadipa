@@ -1,8 +1,8 @@
-#include "firefly/platform/display_info.h"
+#include "attadipa/platform/display_info.h"
 
 #include <cmath>
 
-namespace firefly::platform {
+namespace attadipa::platform {
 
 std::uint16_t DisplayInfo::dpi() const
 {
@@ -18,4 +18,4 @@ std::uint16_t DisplayInfo::dpi() const
     return static_cast<std::uint16_t>(diagonal_px / diagonal_inch + 0.5);
 }
 
-}  // namespace firefly::platform
+}  // namespace attadipa::platform

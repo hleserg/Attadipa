@@ -1,10 +1,10 @@
 #include <cstdio>
 #include <cstring>
 
-#include "firefly/apps/app_manifest.h"
-#include "firefly/core/capability_registry.h"
-#include "firefly/platform/board_profile.h"
-#include "firefly/platform/hardware_inventory.h"
+#include "attadipa/apps/app_manifest.h"
+#include "attadipa/core/capability_registry.h"
+#include "attadipa/platform/board_profile.h"
+#include "attadipa/platform/hardware_inventory.h"
 
 // Host tests for the two capability layers.
 //
@@ -14,7 +14,7 @@
 // written. Whether the profiles match the metal is a hardware test, and no
 // hardware test in this repository has been executed.
 
-using namespace firefly;
+using namespace attadipa;
 
 namespace {
 
@@ -145,7 +145,7 @@ void test_radio_is_not_lora()
     };
 
     // Without a node, every non-working local radio lands on Unprovisioned
-    // rather than Unsupported, because a Firefly node can always provide mesh.
+    // rather than Unsupported, because an Attadipa node can always provide mesh.
     // That is what keeps supports() stable — see test_supports_is_stable.
     const Case cases[] = {
         {platform::RadioChip::Sx1262, core::Availability::Ready,

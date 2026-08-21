@@ -6,12 +6,12 @@
 #include <cstdio>
 #include <set>
 
-#include "firefly/core/capability_registry.h"
-#include "firefly/l10n/catalogue.h"
-#include "firefly/l10n/tr.h"
-#include "firefly/platform/hardware_inventory.h"
+#include "attadipa/core/capability_registry.h"
+#include "attadipa/l10n/catalogue.h"
+#include "attadipa/l10n/tr.h"
+#include "attadipa/platform/hardware_inventory.h"
 
-namespace firefly::sim {
+namespace attadipa::sim {
 namespace {
 
 using core::Availability;
@@ -266,4 +266,4 @@ int report_undrawable_glyphs(const lv_font_t* font, l10n::Locale locale)
     return missing;
 }
 
-}  // namespace firefly::sim
+}  // namespace attadipa::sim

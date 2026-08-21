@@ -8,7 +8,7 @@ Date: 2026-08-21
 Final §75 item **E**, and final §10. Re-checking found this one narrower than
 the review described, and in a way that is more dangerous rather than less.
 
-The review warns that a magnetometer in a Firefly node does not tell the
+The review warns that a magnetometer in an Attadipa node does not tell the
 orientation of the watch. That error had not been made — because there was no
 heading model at all to make it with. "Heading" appeared as prose in seven
 documents and as a structure in none. No source, no reference frame, no
@@ -59,7 +59,7 @@ enum class HeadingSource : uint8_t {
 
 enum class ReferenceFrame : uint8_t {
     WatchBody,          // the watch's own chassis
-    NodeBody,           // a Firefly node's chassis
+    NodeBody,           // an Attadipa node's chassis
     CourseOverGround,   // the direction of travel of whatever is moving
 };
 
@@ -143,7 +143,7 @@ The interesting design work is here rather than in the struct.
 | Position + bearing, standing still | north-up, bearing marked, "walk a few steps to orient" |
 | Position, no target | position and its quality |
 | No position, provider `Ready` | acquiring, with elapsed time and satellite count |
-| No position, provider `Unprovisioned` | the mascot's `GUIDING` pose and what a Firefly node would add |
+| No position, provider `Unprovisioned` | the mascot's `GUIDING` pose and what an Attadipa node would add |
 | Heading `Uncalibrated` | the value, marked, plus the calibration entry point |
 
 Every row is a real state with a real remedy, which is the same rule the

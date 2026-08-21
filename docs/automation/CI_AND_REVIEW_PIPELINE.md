@@ -38,6 +38,12 @@ push / pull request
 | **simulator** | that LVGL still renders at 240×240 and 410×502 | one runner + SDL2 |
 | **CodeQL** | patterns a compiler does not look for | weekly plus per push |
 
+CodeQL is the one of these whose output needs a person. Every alert it
+raises is either fixed or written down in
+[`CODE_SCANNING.md`](CODE_SCANNING.md) with the reason it does not apply —
+there is no third option where it is dismissed in the web UI and the
+reasoning lives nowhere.
+
 Three notes on choices that could reasonably have gone the other way:
 
 **`-Werror` is a separate job, and it is defensible only because the debt is
@@ -82,7 +88,7 @@ It cannot push: `contents: read`. It has an opinion and no hands.
 The question it is asked is deliberately not "does this compile":
 
 > Assume it compiles and every existing test is green. **How can it still break
-> FireflyOS?**
+> Attadipa?**
 
 and the checklist is the one this project has actually been bitten by —
 architecture boundaries, lifetime and memory, concurrency and ISR context,
@@ -116,7 +122,7 @@ The workflows were exercised, not merely read. What was verified, and how:
 
 | # | What | How |
 |---|---|---|
-| A | intake accepts a trusted task and applies labels | a real issue with a `firefly-agent-task` marker |
+| A | intake accepts a trusted task and applies labels | a real issue with a `attadipa-agent-task` marker |
 | B | the reviewer runs on a pull request and changes no file | this pull request |
 | C | repair triggers only on an agent branch | a deliberate, temporary test failure on a `claude/*` branch |
 | D | the watchdog finds a task whose event was missed | an issue labelled `agent:ready` with no trigger event |

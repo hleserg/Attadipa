@@ -20,17 +20,17 @@ Required by: master plan §32 · builds on [ADR-0004](0004-capability-sources.md
 > by name: versioning, request IDs, a bounded parser, session reset, capability
 > re-announcement, fragmentation, a hostile-frame corpus, freshness and validity,
 > and separation from MeshCore internals. The *choice* is not, and the reason is
-> a fair hit: this ADR compared a hypothetical small Firefly TLV against
+> a fair hit: this ADR compared a hypothetical small Attadipa TLV against
 > Meshtastic's entire `meshtastic_FromRadio` union and called the question
-> settled. That is not a comparison. Before acceptance, benchmark a Firefly TLV
-> prototype against nanopb with a Firefly-specific streaming/callback schema and
+> settled. That is not a comparison. Before acceptance, benchmark an Attadipa TLV
+> prototype against nanopb with an Attadipa-specific streaming/callback schema and
 > at least one other compact option, on the target compiler, measuring peak
 > internal RAM, static RAM, flash, encoded bytes, malformed-input behaviour,
 > schema-evolution cost, tooling, fragmentation interaction and test burden. If
 > TLV still wins, accept it with the evidence. **T-016.**
 >
 > **3 — the node's software architecture must be settled before the protocol is
-> frozen** (final §17). Whether the node runs stock MeshCore, Firefly firmware,
+> frozen** (final §17). Whether the node runs stock MeshCore, Attadipa firmware,
 > or both decides which component terminates this protocol, how it coexists with
 > companion traffic, who owns pairing and identity, and what happens when the two
 > firmwares are upgraded independently. Recorded in
@@ -40,7 +40,7 @@ Required by: master plan §32 · builds on [ADR-0004](0004-capability-sources.md
 > one physical relationship is a diagram, not a design, until it says how a
 > parser tells them apart — separate GATT characteristics, separate UART
 > channels, or an outer mux frame. *"A parser must never mistake log text,
-> MeshCore frames and Firefly frames for one another"*, and a node's serial port
+> MeshCore frames and Attadipa frames for one another"*, and a node's serial port
 > emits all three. **T-016.**
 
 ## Context
@@ -87,8 +87,8 @@ This is the load-bearing decision and the one §32 constrains most tightly.
 
 ```
   ┌─────────────────────────────────────────────┐
-  │  Firefly Node Protocol   (this ADR)         │  weather, object coordinates,
-  │  versioned, TLV, Firefly-owned              │  Home Assistant, quests,
+  │  Attadipa Node Protocol   (this ADR)         │  weather, object coordinates,
+  │  versioned, TLV, Attadipa-owned              │  Home Assistant, quests,
   ├─────────────────────────────────────────────┤  telemetry, capabilities
   │  MeshCore companion protocol                │  contacts, messages,
   │  MeshCore-owned, spoken verbatim            │  channels, mesh state
@@ -105,16 +105,16 @@ which four first-party clients already depend. Speaking a published boundary is
 the opposite of reaching into internals. What §32 forbids is concrete and this
 design does none of it:
 
-- Firefly's own high-level data must not be carried as extensions to MeshCore's
+- Attadipa's own high-level data must not be carried as extensions to MeshCore's
   opcode space.
-- Firefly's protocol version must not be derived from, or coupled to,
+- Attadipa's protocol version must not be derived from, or coupled to,
   MeshCore's `FIRMWARE_VER_CODE`.
 - MeshCore's frame limits, packet structures and payload cipher must not shape
-  the Firefly protocol's design.
-- No Firefly type may be defined in terms of a MeshCore type.
+  the Attadipa protocol's design.
+- No Attadipa type may be defined in terms of a MeshCore type.
 
 The practical test: **it must be possible to replace the mesh stack under the
-node without touching the Firefly protocol.** If that is true, they are not
+node without touching the Attadipa protocol.** If that is true, they are not
 mixed.
 
 ### 2. On the node path, the watch links no MeshCore code at all
@@ -126,7 +126,7 @@ mixed.
 
 The node's firmware consumes MeshCore unmodified as a PlatformIO library in its
 `companion_radio` role. The watch — ESP-IDF, `core/` — implements a
-Firefly-authored client of the companion wire format, roughly 700 lines of
+Attadipa-authored client of the companion wire format, roughly 700 lines of
 framing and marshalling.
 
 This is not a reimplementation of MeshCore. It is a client of a published
@@ -147,7 +147,7 @@ Bring-up starts on UART, because every transport carries identical frames and
 three shipped variants already wire the companion link to a serial port. Moving
 to BLE later changes no protocol byte.
 
-### 3. Encoding: a Firefly-owned binary TLV. The reason is RAM, and it was measured
+### 3. Encoding: an Attadipa-owned binary TLV. The reason is RAM, and it was measured
 
 §32 forbids choosing an encoding because it appears in a list, so here is the
 evidence rather than a preference.
@@ -177,7 +177,7 @@ reader that walks the frame in place materialises nothing.
 beat fixed-width TLV on small integers; TLV wins where it can size a field
 exactly. Both reference systems are MTU-bound rather than encoding-bound —
 MeshCore caps at 176 bytes, Meshtastic at 512 with a compile-time `#error` if the
-schema outgrows it. Firefly's real packet-size problem is **fragmentation**,
+schema outgrows it. Attadipa's real packet-size problem is **fragmentation**,
 which neither upstream provides and which no encoding choice solves.
 
 **Flash — real, measured, and not decisive.** On the target compiler:
@@ -189,7 +189,7 @@ which neither upstream provides and which no encoding choice solves.
 | — of which `mesh.pb` alone | 2 880 B |
 | **total** | **≈ 20.2 kB** |
 
-The Firefly TLV codec is **not written, so its size is UNKNOWN** and no number
+The Attadipa TLV codec is **not written, so its size is UNKNOWN** and no number
 is quoted for it here. It would have to be implausibly large to change the
 conclusion, but that is an argument, not a measurement, and this repository does
 not let one stand in for the other.
@@ -232,7 +232,7 @@ correlation at all, which makes concurrent requests unanswerable.
 ### 5. Version and capability set are orthogonal, and this is where both upstreams are wrong
 
 Both reference implementations collapse *protocol version* and *capability set*
-into one monotonic integer. Firefly cannot, because
+into one monotonic integer. Attadipa cannot, because
 [ADR-0004](0004-capability-sources.md) says capabilities appear and disappear at
 runtime, and §32's list of what a node may provide is explicitly open-ended.
 
@@ -327,8 +327,8 @@ size on a fragmented BLE link, a parser with a much larger attack surface, and
 float round-tripping that ADR-0006 §2 has already measured to be lossy at the
 frequencies this system uses.
 
-**Extend MeshCore's companion protocol with Firefly opcodes.** Rejected: it is
-what §32 prohibits, and it would tie Firefly's protocol lifecycle to another
+**Extend MeshCore's companion protocol with Attadipa opcodes.** Rejected: it is
+what §32 prohibits, and it would tie Attadipa's protocol lifecycle to another
 project's release cadence. It also fails the practical test in §1 — the mesh
 stack could never be replaced under the node.
 
@@ -344,7 +344,7 @@ one is the mixing the prohibition is about.
 ## Consequences
 
 **Easier.** The watch stays pure ESP-IDF with no Arduino dependency. The node
-gets a mature, field-tested mesh stack unmodified. Mesh and Firefly concerns
+gets a mature, field-tested mesh stack unmodified. Mesh and Attadipa concerns
 evolve independently, and either can be replaced. Bring-up starts over a wire, on
 a bench, with a hex dump that a person can read.
 
@@ -355,15 +355,15 @@ that is a standing cost that will be paid or quietly not paid. Fragmentation and
 request correlation are ours to get right, and neither upstream can be copied
 from.
 
-**Committed to.** A node protocol replaceable-under without touching Firefly
+**Committed to.** A node protocol replaceable-under without touching Attadipa
 types. Version negotiated per link, capabilities re-announceable, session epoch
 reset on every reconnect. Age, source and three-valued validity on every value.
 A hostile-frame corpus before the first opcode.
 
 **Open.** The transport is not decided (N2), and nothing above depends on which
-it is. Whether the node runs a Firefly-built image or MeshCore's stock companion
+it is. Whether the node runs an Attadipa-built image or MeshCore's stock companion
 firmware is a product question (N8) that does not change the watch-side work
 either way. `rweather/Crypto`'s licence is unverified (M14) and matters only if
-Firefly ever builds the node image itself. The security review that M10 and M11
+Attadipa ever builds the node image itself. The security review that M10 and M11
 call for — AES-128-ECB, and a two-byte authentication tag — is a separate ADR
 and needs someone competent in it.

@@ -13,7 +13,7 @@ a smoothing filter answers a different one.
 
 Usage:
   python3 tools/font/contact_sheet.py --font F.ttf --lv-font-conv PATH \\
-      --sizes 14,16,20 --bpp 4 --text "Привет Firefly 12:34" --out sheet.png
+      --sizes 14,16,20 --bpp 4 --text "Привет Attadipa 12:34" --out sheet.png
 """
 import argparse, json, math, os, subprocess, tempfile
 from PIL import Image, ImageChops, ImageDraw
@@ -129,7 +129,7 @@ def main():
     a = ap.parse_args()
 
     sizes = [int(s) for s in a.sizes.split(",")]
-    work = tempfile.mkdtemp(prefix="firefly-sheet-")
+    work = tempfile.mkdtemp(prefix="attadipa-sheet-")
     rows = [(s, row_for(a.lv_font_conv, a.font, s, a.bpp, a.text, work)) for s in sizes]
 
     # The dump is dark ink on light paper. Day keeps it; night inverts it,
