@@ -36,6 +36,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libsdl2-dev
 
+      # CMake's shallow clone is --no-single-branch, so it pulls one commit off
+      # every ref and the tree runs to hundreds of megabytes. That is a
+      # download cost, not a correctness one -- the commit is verified after
+      # the clone either way -- so it is fixed here rather than by inventing
+      # another fetch mechanism in CMake. The key is the pin file: change the
+      # pinned commit and the cache misses, which is the behaviour we want.
+      - name: Cache LVGL
+        uses: actions/cache@v4
+        with:
+          path: build-sim/_deps
+          key: lvgl-${{ runner.os }}-${{ hashFiles('cmake/FireflyLvgl.cmake') }}
+
       - name: Configure
         run: cmake -S . -B build-sim -DCMAKE_BUILD_TYPE=Release -DFIREFLY_BUILD_SIMULATOR=ON
 

@@ -7,12 +7,17 @@
 #
 # The clone asks for the *tag* and the *commit* is verified afterwards.
 #
-# The tag is not there for speed, and it would be dishonest to imply it is:
-# CMake 3.28 generates `git clone --no-checkout --depth 1 --no-single-branch`
-# followed by `git checkout <GIT_TAG> --`, so GIT_SHALLOW gets one commit off
-# *every* ref rather than off one branch. Measured on this repository's own CI
-# path: `_deps/lvgl-src` exceeds 160 MB. Do not read `GIT_SHALLOW TRUE` here as
-# "a small download".
+# The tag is not there for speed, and it would be dishonest to imply it is.
+# CMake 3.28's generated lvgl-populate-gitclone.cmake runs, verbatim:
+#
+#     clone --no-checkout --depth 1 --no-single-branch --progress \
+#           --config "advice.detachedHead=false" ".../lvgl.git" "lvgl-src"
+#     checkout "v9.5.0" --
+#
+# `--no-single-branch` means GIT_SHALLOW gets one commit off *every* ref, not
+# off one branch. OBSERVED here: lvgl-src passed 254 MB before the attempt was
+# retried. Do not read `GIT_SHALLOW TRUE` on the next line as "a small
+# download"; FIREFLY_LVGL_SOURCE_DIR below is how a developer avoids it.
 #
 # The tag is there because `git checkout` of a *tag ref* is what that generated
 # script can reliably resolve in such a clone; a bare SHA is fetchable by hand
@@ -21,8 +26,9 @@
 # pin. A tag can be moved and a commit cannot, which is why the transport is
 # never trusted and the commit is checked after the fact.
 #
-# If the download cost ever matters, the fix is `actions/cache` on `_deps`
-# keyed by the SHA — a CI concern, in YAML, not another mechanism in here.
+# CI pays that download once and then caches `_deps`, keyed on this file — see
+# .github/workflows/ci.yml. Download cost is a CI concern that belongs in YAML,
+# not a reason to invent a second fetch mechanism in here.
 #
 # FIREFLY_LVGL_SOURCE_DIR points the build at a tree that is already on disk,
 # for offline work. It skips the fetch — not the checks, which are the point.
