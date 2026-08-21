@@ -209,6 +209,15 @@ needs the owner, and one needs a ruler.
   which files changed, with an instruction to verify a finding before
   implementing it. The expensive failure of a review queue is not a wrong
   finding, it is a stale one.
+- **The agents were running with no tools, and that is why the loop produced
+  nothing.** Agent mode grants no default `--allowedTools` and the headless SDK
+  denies anything that would prompt, silently. The reviewer ran 41 s and posted
+  nothing; the agent on issue #5 finished green with no branch and no pull
+  request. Both had read everything and had no way to say so. Fixed and merged
+  (#9, `b1a3dca`) — **and not yet observed working**, because workflow changes
+  only take effect from the default branch. The first run that produces a branch
+  and a pull request is the one that proves it; the open item is
+  [#10](https://github.com/hleserg/FireflyOS/issues/10).
 - **The silent refusal was reproduced, not theorised.** A task with a valid
   marker filed through the GitHub API ([#10](https://github.com/hleserg/FireflyOS/issues/10))
   arrived as `claude[bot]`, was refused by the bot guard — correctly — and was
