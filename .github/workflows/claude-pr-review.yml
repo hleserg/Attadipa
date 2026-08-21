@@ -81,7 +81,7 @@ jobs:
           allowed_bots: ""
           allowed_non_write_users: ""
           show_full_output: "false"
-          display_report: "false"
+          display_report: "true"
           claude_args: |
             --max-turns 40
           prompt: |

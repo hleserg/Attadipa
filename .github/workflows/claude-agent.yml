@@ -305,10 +305,20 @@ jobs:
           # '*' would let any GitHub App drive a write-capable agent.
           allowed_bots: ""
           allowed_non_write_users: ""
-          # Claude's own messages include tool results, which can contain tokens.
-          # These logs are world-readable on a public repository.
+          # Two different things, and only one of them is a leak.
+          #
+          # show_full_output prints every message including tool results, which
+          # can contain tokens, into a world-readable log on a public
+          # repository. It stays off.
+          #
+          # display_report posts Claude's own summary of what it did. Turning
+          # that off as well was a mistake found by smoke test A: the agent ran
+          # twenty-eight turns successfully and left no branch, no pull request
+          # and no comment, so the only evidence any work happened at all was a
+          # green tick. An agent whose conclusions nobody can read is not an
+          # agent, it is a bill.
           show_full_output: "false"
-          display_report: "false"
+          display_report: "true"
           additional_permissions: |
             actions: read
           claude_args: |
@@ -357,6 +367,20 @@ jobs:
             describe. Leave the repository so the next agent can continue
             without this conversation.
 
+            **Finish by leaving the outcome on the issue itself**, with `gh
+            issue comment`, in every case including the ones where you changed
+            nothing:
+
+              * work done — link the pull request and say in two sentences what
+                it changes;
+              * nothing to change — say what you checked and what you found,
+                so the next person does not check it again;
+              * blocked — the BLOCKED format above.
+
+            Nobody can see your reasoning. An issue that ends with a green tick
+            and no sentence has cost money and told nobody anything, and the
+            next agent along will start the same task from the beginning.
+
       - name: Hand over
         if: always() && steps.auth.outputs.ok == 'true'
         env:
@@ -372,7 +396,14 @@ jobs:
           # and would sit there forever.
           LABELS=$(gh api "repos/$REPO/issues/$ISSUE" --jq '[.labels[].name] | join(",")')
           case ",$LABELS," in
-            *,agent:blocked,*|*,agent:review,*|*,agent:done,*) exit 0 ;;
+            *,agent:blocked,*|*,agent:review,*|*,agent:done,*)
+              # The agent labelled the issue itself, so the outcome is already
+              # recorded. Release the claim anyway: leaving agent:working beside
+              # agent:review makes the issue invisible to the watchdog while
+              # looking finished to a person, which is the worst of both. Smoke
+              # test A ended in exactly that state.
+              gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working || true
+              exit 0 ;;
           esac
           if [ "$CONCLUSION" = "success" ]; then
             gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true
