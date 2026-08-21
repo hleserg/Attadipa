@@ -350,6 +350,68 @@ a correction.
 
 ---
 
+## OD-6 — The watch counts steps, and that is not optional
+
+**Decided:** 2026-08-21.
+
+**As stated:** *"учти кстати что шагомер должен быть в часах обязательно"* — a
+pedometer is a mandatory feature of the watch, not a nice-to-have and not a
+later milestone.
+
+**What already exists, and what does not.** `Capability::MotionSensing` is
+already in the enum and its comment already says *"steps, wrist gestures,
+activity"*, so the seat exists. Nothing implements it, and the interesting part
+is that the two boards cannot implement it the same way.
+
+| | T-Watch S3 | Waveshare 2.06 |
+|---|---|---|
+| Part | BMA423 | QMI8658 |
+| Axes | accelerometer only, no gyroscope | accelerometer + gyroscope |
+| Step counting | **`UNKNOWN` — must be traced to the datasheet.** The BMA4xx wearable variants are documented by Bosch as carrying a step counter and step detector in the sensor itself; whether the BMA423 specifically does, on this revision, and what its interrupt and FIFO behaviour is, has not been read from a primary source by this project | **`UNKNOWN`.** No integrated step counter is known. Steps would be a firmware algorithm over raw acceleration |
+
+That asymmetry is the whole engineering content of this decision, and it is a
+power question rather than a maths question:
+
+- **a step counter inside the sensor keeps counting while the SoC is asleep**,
+  and the SoC reads an accumulated total when it next wakes. The cost is the
+  sensor's own microamps;
+- **a step counter in firmware needs the samples.** Either the SoC stays awake,
+  or the sensor batches into a FIFO deep enough to cover a sleep interval and
+  the SoC wakes to drain it. Both cost far more than the first, and how much
+  more is a measurement nobody has taken.
+
+A mandatory pedometer that stops counting when the screen goes off is not a
+pedometer, so this decides something about the power model rather than only
+about an application.
+
+**What it obliges:**
+
+1. **Read the datasheets before writing anything.** BMA423 first: does the part
+   count steps itself, what does it do across a sleep, what survives a reset,
+   and how is the counter reset at midnight without losing steps taken during
+   the reset. Then QMI8658: FIFO depth, watermark interrupt, and what a sleep
+   interval costs in wakes. `UNKNOWN` is a valid answer and an unsourced
+   `SUPPORTED` is not.
+2. **Steps are a capability, not a board feature.** An application asks for a
+   step count; it never learns whether a sensor counted them or firmware did.
+   Both answers live below `Capability::MotionSensing`, and a board where the
+   honest answer is "not while asleep" reports a `Degraded` availability rather
+   than a number that is quietly wrong.
+3. **The daily total must survive.** A reboot, a crash, a flat battery and
+   midnight are four different events and only one of them should zero the
+   count. That is persistence with crash safety, which is T-046's problem and
+   now has a first customer.
+4. **No estimated step counts.** A count derived from a period the device was
+   not measuring is not a count. If steps were missed, the day's total says so
+   rather than interpolating — the same rule the GNSS work applies to a position
+   nobody observed.
+
+**Status:** filed as T-060 (what each IMU actually does about steps, from
+primary sources) and T-061 (the capability, its power story and its
+persistence). Neither is started.
+
+---
+
 ## Still with the owner
 
 Nothing here answers A1–A3, A5 or the compass question. Those remain in

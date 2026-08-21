@@ -100,6 +100,67 @@ research status · implementation status · tests · hardware required.
 
 ## READY
 
+### T-060 · What each IMU actually does about steps
+- **Priority:** P1 — [OD-6](docs/research/OWNER_DECISIONS.md#od-6--the-watch-counts-steps-and-that-is-not-optional)
+  makes the pedometer mandatory, and everything about how it is built depends on
+  this answer
+- **Dependencies:** none. It is reading, not code.
+- **Goal:** establish, from primary sources only, what the BMA423 and the
+  QMI8658 each do about step counting, in the order the GNSS tasks use:
+  datasheet → application note → vendor driver source → vendor example.
+- **What to answer, at minimum:**
+  - **BMA423:** does the part count steps *itself*? Bosch documents step
+    counting and step detection in the BMA4xx wearable family — is it in this
+    part, on this revision, and is it in the feature blob that has to be
+    uploaded at boot? What is the counter's width and what happens when it
+    wraps? Does it keep counting while the host is in deep sleep, and at what
+    current? What survives a soft reset, and what does not? Which interrupt
+    lines does it need — **INT2 is bonded out but not routed** on the T-Watch
+    (R12/R15 not fitted, [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)),
+    so anything requiring two interrupts is already blocked.
+  - **QMI8658:** is there any integrated step counter at all? If not: FIFO depth
+    in samples, watermark interrupt behaviour, the lowest output data rate at
+    which a step algorithm still works, and therefore how often the SoC must
+    wake to drain it.
+- **Acceptance:** a row per part in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md) marked `SUPPORTED`,
+  `UNSUPPORTED` or `UNKNOWN`, each with the document and section it came from.
+  An unsourced `SUPPORTED` is not an answer.
+- **Research status:** not started
+- **Implementation status:** not started — no code comes out of this task
+- **Tests:** none. It produces a research record.
+- **Hardware required:** no for the documents. Confirming a current figure or a
+  wake rate is a HIL plan and is not this task.
+
+### T-061 · Steps, as a capability with a power story
+- **Priority:** P1, after T-060
+- **Dependencies:** T-060, [ADR-0007](docs/adr/0007-two-capability-layers.md),
+  T-046 (crash-safe persistence), T-045 (`PowerState`)
+- **Goal:** implement `Capability::MotionSensing` for step counting, on both
+  boards, without either board's answer leaking upwards.
+- **The shape:** an application asks for a step count and a daily total. It
+  never learns whether a sensor counted them or firmware did, which interrupt
+  fired, or that one board can count through a sleep and the other may not.
+- **What has to be decided rather than assumed:**
+  - a board that cannot count while asleep reports `MotionSensing` as
+    **`Degraded`** with a reason, not as a number that is quietly missing hours.
+    A mandatory pedometer that stops when the screen goes off is not one;
+  - the daily total survives a reboot, a crash and a flat battery, and is zeroed
+    by midnight and by nothing else. Four events, one of which resets it;
+  - **no interpolation.** A period the device was not measuring did not contain
+    a known number of steps. The day's total says steps were missed rather than
+    inventing them — the same rule the GNSS work applies to a position nobody
+    observed.
+- **Acceptance:** a host test with a synthetic acceleration trace replayed
+  through the same path the device uses — the replay rig's shape, a second
+  reader; both board profiles produce a defensible availability; the daily total
+  survives a simulated crash at an arbitrary point.
+- **Research status:** blocked on T-060
+- **Implementation status:** not started
+- **Tests:** host, plus a HIL plan for the wake rate and the current, which is
+  the only way the power claim becomes a measurement.
+- **Hardware required:** for the power numbers, yes. For the logic, no.
+
 ### T-051 · What the MIA-M10Q actually does, from u-blox's own documents
 - **Priority:** P1 — it gates the GNSS driver, and nothing before it
 - **Dependencies:** [ADR-0011](docs/adr/0011-gnss-integrity.md)
