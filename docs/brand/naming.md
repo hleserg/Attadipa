@@ -1,7 +1,7 @@
 # Attadipa naming
 
 `Attadipa` is the project name. Always write it with this capitalization; it is
-not an abbreviation and `Attadipa` is not an alternative official name.
+not an abbreviation, and `AttadipaOS` is not an alternative official name.
 
 The name comes from the Pali *attadīpa* ("relying on oneself" or "having
 oneself as an island/refuge"). The brand and code deliberately omit the

@@ -6,8 +6,8 @@ final master specification
 §40) and are named there as *canonical visual references* — not mood-board
 decoration.
 
-They are **immutable design references**. Do not edit them, do not re-export
-them, do not overwrite them with a "cleaned up" version. Derived and cleaned
+They are **canonical design references**. Update them only through an explicit
+brand decision; do not silently "clean up" or redraw them. Derived and cleaned
 artwork belongs in `ui/assets/source/`; generated target assets belong in
 `ui/assets/generated/`; the scripts that produce them belong in `tools/assets/`
 (§45). Nothing in this directory is ever compiled into firmware — a 1448×1086
@@ -15,17 +15,17 @@ PNG is a desktop concept sheet, not a watch asset.
 
 | File | SHA-256 | Size | Pixels |
 |---|---|---|---|
-| `attadipa_brand_identity.png` | `4f31ce764bc56a69f72b8e8782020aec4e47d932be2e8bea51b00ca0b5511ac1` | regenerated | 1440 × 1086 |
-| `attadipa_visual_style_board.png` | `72c23e0c6852127067c3cf41705344c2ade02101b99420cae9feabe52a06b875` | regenerated | 1440 × 1086 |
-| `lumar_mascot_sheet.png` | `6b0aeec6c1701357b299a8933c3399374e95543ab539ed169bf97b698027df58` | regenerated | 1440 × 1086 |
+| `attadipa_brand_identity.png` | `9c5c93a701347163724905a543e502f8df7280b0733c1dc50b4660d50023c54b` | regenerated | 1440 × 1086 |
+| `attadipa_visual_style_board.png` | `02703056cd84661560f58c51d661fd7a45790ace322954efd5689ea951860374` | regenerated | 1440 × 1086 |
+| `lumar_mascot_sheet.png` | `34e480e9b5b0a91525dc360c4ce6a6aa105d3e8cba6c6942d79e3903af92372c` | regenerated | 1440 × 1086 |
 
 The hashes are here so that a later "I cleaned up the source art" commit is
 visible as one. Verify with `sha256sum docs/ui/reference/*.png`.
 
 ## What each one carries
 
-**`attadipa_brand_identity.png`** — the wordmark *Attadipa*, the tagline
-`GLOW · GUIDE · CONNECT`, the mascot, an icon mark, an app icon, and horizontal
+**`attadipa_brand_identity.png`** — the wordmark *Attadipa*, the motto
+`INDEPENDENT BY DESIGN`, the mascot, an icon mark, an app icon, and horizontal
 and stacked lockups. Its palette is labelled Honey / Apricot / Warm Coral /
 Sage / Warm Teal / Cream / Dark Olive.
 
@@ -97,8 +97,8 @@ marks — a banner, an application icon, a favicon — meant to be published as
 they are, and the banner is now at the top of the repository
 [`README`](../../../README.md).
 
-They matter here for two reasons. They add a tagline that did not previously
-exist — **`GLOW · GUIDE · CONNECT`** — and they carry inks that are *not* the
+They matter here for two reasons. They establish the motto
+**`INDEPENDENT BY DESIGN`** and carry inks that are *not* the
 §42 palette: the wordmark orange samples around `#E16439`, against Attadipa
 Orange `#FF8A40`. That is a wider gap than "disagree by a digit", so the rule
 above does not settle it, and it has been raised as A7 in

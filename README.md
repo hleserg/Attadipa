@@ -1,6 +1,6 @@
 <p align="center">
   <img src="pics/AttadipaBanner.png"
-       alt="Attadipa — Lumar, a firefly with a glowing amber abdomen, beside the wordmark and the tagline GLOW · GUIDE · CONNECT"
+       alt="Attadipa — Lumar, a firefly with a glowing amber abdomen, beside the wordmark and the motto Independent by design"
        width="820">
 </p>
 

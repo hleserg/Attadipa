@@ -6,11 +6,11 @@
 
   const copy = {
     en: {
-      title: 'Attadipa — Glow · Guide · Connect',
+      title: 'Attadipa — Independent by design',
       description: 'Attadipa is an open-source wearable firmware/application platform for ESP32-S3: mesh messaging, offline navigation, clean app APIs and a product-grade UI.'
     },
     ru: {
-      title: 'Attadipa — Glow · Guide · Connect',
+      title: 'Attadipa — Independent by design',
       description: 'Attadipa — открытая платформа прошивки и приложений для носимых устройств на ESP32-S3: mesh-связь, офлайн-навигация, чистые API и продуманный интерфейс.'
     }
   };

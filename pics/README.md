@@ -13,9 +13,9 @@ they are.
 
 ## What the banner establishes
 
-- **A tagline: `GLOW · GUIDE · CONNECT`.** It did not exist before this file and
-  is not in the master prompt. Three words that happen to name the three things
-  the product claims to be: a light, a navigator, and a mesh.
+- **A motto: `INDEPENDENT BY DESIGN`.** It expresses the meaning of *attadīpa*:
+  useful core capabilities should work locally, without a mandatory phone,
+  cloud, or Internet connection.
 - **The mark.** Lumar, a firefly seen from above — olive head and thorax, two antennae,
   two orange-red wings, and an amber abdomen with a real glow behind it. The
   glow is the only light source in the composition, which is worth knowing
