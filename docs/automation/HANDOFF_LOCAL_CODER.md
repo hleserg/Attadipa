@@ -1,7 +1,7 @@
 # Handoff: what a local session must do, and why a cloud session could not
 
-**Written:** 2026-08-21 · **By:** the Claude Code cloud session that produced
-pull request #9 · **For:** a Claude Code session running on the owner's own
+**Written:** 2026-08-21 · **Updated:** after #9 merged as `b1a3dca` ·
+**By:** the Claude Code cloud session that produced pull request #9 · **For:** a Claude Code session running on the owner's own
 machine, with the owner's own `gh` login.
 
 Everything in this file is blocked by one thing: **the cloud session's GitHub
@@ -21,8 +21,9 @@ $ curl -X PATCH .../repos/hleserg/FireflyOS -d '{"has_discussions":true}'
 A local session has none of those limits. Everything below is one command or
 one file away there.
 
-Run them in order. **1 and 2 are the ones that matter** — until 1 is done the
-agent queue does not close, and everything else is cosmetic by comparison.
+Run them in order. **1 and 7 are the ones that matter** — until 1 is done the
+agent queue does not close, and until 7 is observed nobody knows whether the
+biggest fix in #9 actually works. The rest is housekeeping.
 
 ---
 
@@ -253,37 +254,49 @@ different scenario; do not pad the section.
 
 ---
 
-## 7. Review and merge pull request #9
+## 7. Verify the merged fix actually works
 
-<https://github.com/hleserg/FireflyOS/pull/9> — draft, `mergeable: true`, CI
-green except where noted in its body.
+**#9 is merged** (`b1a3dca`, 2026-08-21). Everything in it is on `main` now, which
+means the workflow changes are finally live — `issues` and `pull_request` events
+run the workflow file from the default branch, so until the merge none of it was
+in effect.
 
-It carries four fixes, three of which were found by running the pipeline rather
-than by reading it:
+The single most important fix in it was that **every Claude step was running with
+no tools at all**. Agent mode grants no default `--allowedTools`, and the headless
+SDK denies anything that would prompt, silently. That is why the reviewer ran 41 s
+and posted nothing, and why the agent on issue #5 finished green with no branch
+and no pull request.
 
-1. **`--allowedTools` was missing from every Claude step.** This is the big one.
-   Agent mode grants no tools by default and the headless SDK denies anything
-   that would prompt — silently. That is why the reviewer ran 41 s and posted
-   nothing, and why the agent on issue #5 finished green with no branch and no
-   pull request. Both had read everything and had no way to say so.
-2. **A claim that did not clear the other state labels**, so a retry left an
-   issue on `agent:working` *and* `agent:review`, stuck forever, re-queued by the
-   watchdog every two hours.
-3. **`reviewed_head` was never checked** despite being in the protocol since the
-   marker was defined.
-4. **A refused task was silent**, which is what task 1 above is about.
+**That fix has never been observed working.** It could not be, before the merge.
+Verifying it is the first job:
 
-**The `--allowedTools` fix cannot be verified until it is merged** — `issues` and
-`pull_request` events run the workflow file from the default branch. After
-merging, confirm on the next agent run that a branch and a pull request actually
-appear, and that the reviewer leaves a comment carrying `<!-- firefly-ai-review -->`.
+```bash
+gh issue comment 10 --repo hleserg/FireflyOS --body "@claude"
+gh run watch   # or: gh run list --workflow=claude-agent.yml --limit 3
+```
 
-Issue #10's task — the missing reuse-ledger record for
-`anthropics/claude-code-action`, which three workflows depend on — is real and
-still open. Once task 1 is done, comment `@claude` on it and it becomes the
-first end-to-end run of the repaired loop.
+Issue #10's task is real and unfinished — three workflows depend on
+`anthropics/claude-code-action` and `docs/research/REUSE_LEDGER.md` has no record
+of it, which `CLAUDE.md` requires. So this is a genuine first task, not a test
+fixture.
 
----
+Watch for three things that have never yet happened in this repository:
+
+- [ ] a branch `claude/issue-10-*` appears;
+- [ ] a **draft pull request** appears, with `Fixes #10` in the body;
+- [ ] the independent reviewer posts a comment on it carrying
+      `<!-- firefly-ai-review -->`, and sets exactly one of `ai-review:pass` or
+      `ai-review:blocking`.
+
+If a branch and a PR appear, the loop closes end to end for the first time.
+
+If the run still finishes green with nothing to show, the tool list is still
+wrong — read the run's **Step Summary**, which now carries Claude's own report
+(`display_report` is on), and check the `Run Claude` step for denied tools. Do not
+re-run hoping for a different result.
+
+**Note:** commenting `@claude` yourself works because you have write access. It
+does not answer task 1 — that is still about ChatGPT's own account.
 
 ## Do not do these
 
