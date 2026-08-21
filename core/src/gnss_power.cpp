@@ -17,10 +17,12 @@ StartKind start_kind(const GnssContext& context)
     if (context.ephemeris_retained && context.since_last_fix < kHotStartWindow) {
         return StartKind::Hot;
     }
-    // Warm needs somewhere for the almanac and the clock to have survived. A
-    // receiver with no backup domain came up knowing nothing, however recently
-    // it was last on.
-    if (context.capabilities.backup_domain) {
+    // Warm needs the almanac and the clock to have actually survived, which
+    // takes two things: a backup domain to survive in, and that domain having
+    // been powered. Having the feature is not using it — a receiver switched
+    // off at the rail came up knowing nothing, however capable it is and
+    // however recently it was last on.
+    if (context.capabilities.backup_domain && context.backup_retained) {
         return StartKind::Warm;
     }
     return StartKind::Cold;
@@ -83,6 +85,15 @@ GnssState next_state(GnssState current, const GnssContext& context)
     // draws the most" — the same conflation the power model exists to prevent.
     if (context.device_power == PowerState::PowerOff ||
         context.device_power == PowerState::DeepSleep) {
+        // Backup retains what the receiver *had*. A receiver that is already
+        // off has nothing to retain, so moving it into backup would spend
+        // current holding an empty domain and would still cost a cold start.
+        // It is also a transition transition_is_legal refuses, which is how
+        // this was found: the two functions are written separately and the
+        // cross-check in tests/test_power.cpp is what keeps them agreeing.
+        if (current == GnssState::Off) {
+            return GnssState::Off;
+        }
         return can.backup_domain ? GnssState::Backup : GnssState::Off;
     }
 

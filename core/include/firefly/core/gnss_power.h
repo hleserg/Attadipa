@@ -59,6 +59,14 @@ struct GnssCapabilities {
 struct GnssContext {
     Millis           since_last_fix{0};
     bool             ephemeris_retained = false;
+
+    // Whether the backup domain was actually kept powered — which is a
+    // different fact from `capabilities.backup_domain`, and the difference is a
+    // cold start. A receiver that has a backup domain and was switched off at
+    // the rail comes up knowing nothing, and telling the caller to expect a
+    // warm start there is promising a fix in thirty seconds that arrives in
+    // several minutes.
+    bool             backup_retained = false;
     bool             device_moving      = false;
     bool             fresh_fix_requested = false;  // an application is waiting
     PowerState       device_power = PowerState::Active;

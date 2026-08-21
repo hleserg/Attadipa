@@ -168,3 +168,17 @@ add_executable(test_link test_link.cpp)
 target_link_libraries(test_link PRIVATE firefly_link)
 add_test(NAME link COMMAND test_link)
 set_tests_properties(link PROPERTIES LABELS transport)
+
+# ---------------------------------------------------------------------------
+# Device power states and the GNSS receiver's own.
+#
+# Both tables are exhaustive over every (from, to) pair, because a suite that
+# only walks the legal paths passes against a transition_is_legal that returns
+# true for everything. The illegal half is where the information is — including
+# the rule the MeshCore review found broken upstream: a wake source that only
+# exists while the radio is powered must not be armed in a state where it is not.
+
+add_executable(test_power test_power.cpp)
+target_link_libraries(test_power PRIVATE firefly_core)
+add_test(NAME power COMMAND test_power)
+set_tests_properties(power PROPERTIES LABELS power)
