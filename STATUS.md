@@ -14,8 +14,8 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Attadipa has code.** As of 2026-08-21 the repository builds five libraries, a
-simulator and seventeen tests, and has a font pipeline whose output has been
+**Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
+simulator and twenty tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -24,6 +24,7 @@ compiled for the target and measured.
 | `attadipa_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
 | `attadipa_apps` | `AppManifest` and the launcher gating rule | core only |
 | `attadipa_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
+| `attadipa_ui` | the design tokens: `Dp` against a 160 dpi reference, twelve colour roles across two themes with WCAG contrast arithmetic, and the spacing, radius, motion, size and feedback scales | `attadipa_headers` only — **deliberately not platform** |
 | `attadipa_replay` | the deterministic navigation replay rig, in `tests/` | core |
 | `attadipa_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
 
@@ -36,7 +37,21 @@ The simulator renders at 240 × 240 and 410 × 502 from one binary, selected by
 `--board`, and fits any of the five candidate T-Watch radios with `--radio`
 without recompiling. Its first screen is a diagnostic that shows the two
 capability layers side by side — deliberately not a product screen, and it says
-so in its own source.
+so in its own source. Since T-009 it draws entirely through the tokens: no hex
+colour and no pixel padding remain in it, `--theme day|night` and the `T` key
+switch palettes without a rebuild, and a checker in CI refuses to let a raw
+value back in.
+
+**Two contrast findings came out of that migration and neither is a proposal to
+repaint anything.** On the day page every accent is under the 3:1 that a glyph
+or an outline needs — Attadipa Orange 2.19:1, Glow Amber 1.44:1 — so a day accent
+is emphasis and the meaning lives in the icon and the word. And
+`color.text.muted` passes on the page and on a surface and then fails on a
+*raised* card at 4.44:1, six hundredths under the threshold, which is the kind of
+thing a review by eye does not find. Both are tabulated in
+[DESIGN_SYSTEM §3.2](docs/ui/DESIGN_SYSTEM.md) and pinned by tests. The colours
+are the owner's; open question **A7** already records that the published brand
+art disagrees with the palette text.
 
 ## Next ready
 
@@ -122,7 +137,9 @@ None of these blocks M1. All of them block hardware work.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **seventeen tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+| Host / native | builds; **twenty tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+design-token suite and the two checks that keep raw colours and pixel counts out
+of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |

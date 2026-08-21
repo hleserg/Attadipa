@@ -4,12 +4,15 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <optional>
 #include <set>
 
 #include "attadipa/core/capability_registry.h"
 #include "attadipa/l10n/catalogue.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/hardware_inventory.h"
+#include "attadipa/ui/color.h"
+#include "attadipa/ui/tokens.h"
 
 namespace attadipa::sim {
 namespace {
@@ -20,6 +23,12 @@ using l10n::PluralId;
 using l10n::StringId;
 using l10n::tr;
 using platform::HardwareFeature;
+using ui::ColorRole;
+using ui::Dp;
+using ui::Metrics;
+using ui::Space;
+using ui::Theme;
+using ui::TypeRole;
 
 // What the screen was last built from, so the locale-changed handler can build
 // it again. Pointers rather than copies: the inventory and the registry are
@@ -27,17 +36,45 @@ using platform::HardwareFeature;
 const platform::HardwareInventory* g_inventory = nullptr;
 const core::CapabilityRegistry*    g_caps      = nullptr;
 
-// NOT DESIGN TOKENS. These five values exist so this diagnostic can be read at
-// all; the real palette is docs/ui/DESIGN_SYSTEM.md, it is still marked
-// *proposed*, no value in it has been shown on a panel, and open question A7
-// records that the published brand art disagrees with it. Writing hex in UI
-// code is exactly what T-009 exists to stop — which is why nothing outside this
-// file does it.
-constexpr std::uint32_t kInk       = 0x2F3A2E;
-constexpr std::uint32_t kPaper     = 0xFFF6E8;
-constexpr std::uint32_t kMuted     = 0x7A5E3A;
-constexpr std::uint32_t kReady     = 0x6FA07A;
-constexpr std::uint32_t kAttention = 0xFF8A40;
+// Which theme this screen is currently drawn in. `T` toggles it and the screen
+// rebuilds, which is how "day and night both checked" becomes something a person
+// can do in four seconds rather than a line in a review checklist.
+Theme g_theme = Theme::Day;
+
+// Dp to pixels for the panel this run was given. Rebuilt on every build because
+// --board can change between runs and the value is two bytes.
+Metrics metrics()
+{
+    return g_inventory != nullptr ? Metrics::for_dpi(g_inventory->display().dpi())
+                                  : Metrics::unscaled();
+}
+
+std::int32_t px(Space s)
+{
+    return metrics().px(ui::dp_of(s));
+}
+
+// A role, resolved for the current theme, in the form LVGL wants.
+//
+// The substitution is the interesting part. `color()` returns nothing for a role
+// the theme genuinely does not define — `color.danger` in both themes, any
+// background the night table omits — and this screen must not paint a guess and
+// must not paint nothing either. So it substitutes the one colour that is always
+// defined, and says out loud that it did. A diagnostic that quietly invents a
+// colour is a diagnostic that lies about the palette it is diagnosing.
+lv_color_t paint(ColorRole role)
+{
+    if (const std::optional<ui::Rgb> value = ui::color(role, g_theme)) {
+        return lv_color_hex(value->packed());
+    }
+
+    const ColorRole substitute = ui::kind_of(role) == ui::ColorKind::Background
+                                     ? ColorRole::BackgroundPrimary
+                                     : ColorRole::TextPrimary;
+    std::fprintf(stderr, "palette: %s is UNKNOWN in the %s theme, drawing %s instead\n",
+                 ui::name_of(role), ui::name_of(g_theme), ui::name_of(substitute));
+    return lv_color_hex(ui::color(substitute, g_theme)->packed());
+}
 
 // A UTF-8 reader, because the catalogue is UTF-8 and LVGL's own decoder lives
 // behind a private header. Fifteen lines is a smaller dependency than a header
@@ -76,16 +113,22 @@ std::uint32_t next_codepoint(const char* text, std::size_t& i)
     return codepoint;
 }
 
-std::uint32_t colour_for(Availability availability)
+// Availability is a seven-state enum and this maps it onto three roles, which
+// is a loss of information on purpose: the row already spells the state out in
+// words beside the colour. DESIGN_SYSTEM §3.1 requires exactly that, and on the
+// day palette it is not a nicety — Meadow Green is 2.81:1 on Warm Ivory and
+// Attadipa Orange is 2.19:1, so the colour here is emphasis and the word is the
+// message. See docs/ui/DESIGN_SYSTEM.md §3.4.
+ColorRole role_for(Availability availability)
 {
     switch (availability) {
-        case Availability::Ready:       return kReady;
-        case Availability::Unsupported: return kMuted;
-        default:                        return kAttention;
+        case Availability::Ready:       return ColorRole::Success;
+        case Availability::Unsupported: return ColorRole::TextMuted;
+        default:                        return ColorRole::Warning;
     }
 }
 
-lv_obj_t* make_row(lv_obj_t* parent, const char* left, const char* right, std::uint32_t colour,
+lv_obj_t* make_row(lv_obj_t* parent, const char* left, const char* right, ColorRole role,
                    const lv_font_t* font)
 {
     lv_obj_t* row = lv_obj_create(parent);
@@ -97,15 +140,23 @@ lv_obj_t* make_row(lv_obj_t* parent, const char* left, const char* right, std::u
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
+    // The left label grows and the right one does not. Without this, a long
+    // name and a long state — "MeshMessaging" against "unprovisioned" — are
+    // pushed to opposite edges by SPACE_BETWEEN and drawn straight through each
+    // other on the 240 px panel. Truncating the name is a loss; overlapping two
+    // words is two unreadable words.
     lv_obj_t* left_label = lv_label_create(row);
     lv_label_set_text(left_label, left);
+    lv_label_set_long_mode(left_label, LV_LABEL_LONG_DOT);
+    lv_obj_set_flex_grow(left_label, 1);
+    lv_obj_set_style_pad_right(left_label, px(Space::Xs), 0);
     lv_obj_set_style_text_font(left_label, font, 0);
-    lv_obj_set_style_text_color(left_label, lv_color_hex(kInk), 0);
+    lv_obj_set_style_text_color(left_label, paint(ColorRole::TextPrimary), 0);
 
     lv_obj_t* right_label = lv_label_create(row);
     lv_label_set_text(right_label, right);
     lv_obj_set_style_text_font(right_label, font, 0);
-    lv_obj_set_style_text_color(right_label, lv_color_hex(colour), 0);
+    lv_obj_set_style_text_color(right_label, paint(role), 0);
 
     return row;
 }
@@ -115,17 +166,30 @@ void make_heading(lv_obj_t* parent, const char* text, const lv_font_t* font)
     lv_obj_t* label = lv_label_create(parent);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_font(label, font, 0);
-    lv_obj_set_style_text_color(label, lv_color_hex(kMuted), 0);
-    lv_obj_set_style_pad_top(label, 8, 0);
+    lv_obj_set_style_text_color(label, paint(ColorRole::TextMuted), 0);
+    lv_obj_set_style_pad_top(label, px(Space::Sm), 0);
 }
 
-// Montserrat comes in fixed sizes and the two panels differ by 3.6x in area.
-// Picking by width is crude and is meant to be: the real answer is a type scale
-// resolved per board (T-009), and this is scaffolding that must not be mistaken
-// for it.
-const lv_font_t* pick_font(std::uint16_t width_px)
+// The one place in this file that still holds bare numbers, and the reason is
+// in tokens.h: `TypeRole` deliberately carries no sizes, because final §51 wants
+// licence, Cyrillic coverage, legibility at real pixel size and generated flash
+// size checked before a face is adopted, and none of the four has been. Until
+// then the simulator draws in Montserrat, which comes in fixed sizes that no
+// amount of Dp arithmetic can bend.
+//
+// So this is a scaffold and is written as one: a role goes in, one of the sizes
+// LVGL actually has comes out. When the type scale exists it replaces the body
+// of this function and no call site changes.
+const lv_font_t* pick_font(TypeRole role, std::uint16_t width_px)
 {
-    return width_px >= 400 ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
+    const bool large = width_px >= 400;
+    switch (role) {
+        case TypeRole::Display:
+        case TypeRole::Title:
+            return large ? &lv_font_montserrat_28 : &lv_font_montserrat_16;
+        default:
+            return large ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
+    }
 }
 
 }  // namespace
@@ -140,21 +204,21 @@ void build_boot_screen(const platform::HardwareInventory& inventory,
     // new screen on every switch would leak one per keypress.
     lv_obj_clean(lv_screen_active());
 
-    const lv_font_t* font  = pick_font(inventory.display().width_px);
-    const lv_font_t* title = inventory.display().width_px >= 400 ? &lv_font_montserrat_28
-                                                                 : &lv_font_montserrat_16;
+    const std::uint16_t width = inventory.display().width_px;
+    const lv_font_t*    font  = pick_font(TypeRole::Body, width);
+    const lv_font_t*    title = pick_font(TypeRole::Title, width);
 
     lv_obj_t* screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(kPaper), 0);
+    lv_obj_set_style_bg_color(screen, paint(ColorRole::BackgroundPrimary), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
-    lv_obj_set_style_pad_all(screen, 10, 0);
-    lv_obj_set_style_pad_row(screen, 2, 0);
+    lv_obj_set_style_pad_all(screen, px(Space::Sm), 0);
+    lv_obj_set_style_pad_row(screen, px(Space::Xs), 0);
     lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
 
     lv_obj_t* heading = lv_label_create(screen);
     lv_label_set_text(heading, tr(StringId::ProductName));
     lv_obj_set_style_text_font(heading, title, 0);
-    lv_obj_set_style_text_color(heading, lv_color_hex(kAttention), 0);
+    lv_obj_set_style_text_color(heading, paint(ColorRole::AccentPrimary), 0);
 
     lv_obj_t* subtitle = lv_label_create(screen);
     lv_label_set_text_fmt(subtitle, tr(StringId::DiagnosticGeometry), inventory.board_name(),
@@ -163,7 +227,7 @@ void build_boot_screen(const platform::HardwareInventory& inventory,
     lv_label_set_long_mode(subtitle, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(subtitle, lv_pct(100));
     lv_obj_set_style_text_font(subtitle, font, 0);
-    lv_obj_set_style_text_color(subtitle, lv_color_hex(kMuted), 0);
+    lv_obj_set_style_text_color(subtitle, paint(ColorRole::TextMuted), 0);
 
     // What an application may ask for. This is the list that exists to be read
     // by product code; the one below it is the list that exists to be read by
@@ -176,32 +240,48 @@ void build_boot_screen(const platform::HardwareInventory& inventory,
         const auto capability = static_cast<Capability>(i);
         const Availability availability = caps.availability(capability);
         make_row(screen, core::to_string(capability), core::to_string(availability),
-                 colour_for(availability), font);
+                 role_for(availability), font);
     }
 
     make_heading(screen, tr(StringId::DiagnosticHardware), font);
     for (std::uint8_t i = 0; i < platform::kHardwareFeatureCount; ++i) {
         const auto feature = static_cast<HardwareFeature>(i);
         const platform::HardwareState state = inventory.state(feature);
-        const std::uint32_t colour =
+        const ColorRole role =
             state == platform::HardwareState::Ready
-                ? kReady
-                : (state == platform::HardwareState::Absent ? kMuted : kAttention);
-        make_row(screen, platform::to_string(feature), platform::to_string(state), colour, font);
+                ? ColorRole::Success
+                : (state == platform::HardwareState::Absent ? ColorRole::TextMuted
+                                                            : ColorRole::Warning);
+        make_row(screen, platform::to_string(feature), platform::to_string(state), role, font);
     }
 
     if (const platform::RadioInfo* radio = inventory.radio()) {
         make_heading(screen, tr(StringId::DiagnosticRadio), font);
         make_row(screen, tr(StringId::DiagnosticRadioChip), platform::to_string(radio->chip),
-                 radio->chip == platform::RadioChip::Unknown ? kAttention : kInk, font);
+                 radio->chip == platform::RadioChip::Unknown ? ColorRole::Warning
+                                                            : ColorRole::TextPrimary,
+                 font);
         make_row(screen, tr(StringId::DiagnosticRadioLora),
                  tr(radio->can_do_lora() ? StringId::Yes : StringId::No),
-                 radio->can_do_lora() ? kReady : kMuted, font);
+                 radio->can_do_lora() ? ColorRole::Success : ColorRole::TextMuted, font);
         make_row(screen, tr(StringId::DiagnosticRadioMeshcore),
                  platform::to_string(radio->meshcore),
-                 radio->meshcore == platform::MeshCoreSupport::Supported ? kReady : kAttention,
+                 radio->meshcore == platform::MeshCoreSupport::Supported ? ColorRole::Success
+                                                                        : ColorRole::Warning,
                  font);
     }
+}
+
+void set_theme(Theme theme)
+{
+    g_theme = theme;
+}
+
+void toggle_theme()
+{
+    g_theme = g_theme == Theme::Day ? Theme::Night : Theme::Day;
+    std::printf("theme: %s\n", ui::name_of(g_theme));
+    rebuild_boot_screen();
 }
 
 void rebuild_boot_screen()
