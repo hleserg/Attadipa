@@ -55,6 +55,7 @@ void print_usage(const char* argv0)
         "  --frames <n>     render n frames and exit. For CI, with SDL_VIDEODRIVER=dummy\n"
         "  --screenshot <p> write the rendered screen to p as a PNG, then continue\n"
         "  --locale <lang>  start in en or ru. L toggles it while running\n"
+        "  --theme <name>   start in day or night. T toggles it while running\n"
         "  --node           present a paired, reachable Attadipa node\n"
         "  --no-bring-up    leave every part untouched instead of pretending it came up\n"
         "  --list-boards    print the board profiles this build knows about\n"
@@ -148,6 +149,21 @@ ParseResult parse_options(int argc, char** argv, Options& out)
                 out.locale = l10n::Locale::Ru;
             } else {
                 std::fprintf(stderr, "unknown locale '%s'. Known: en, ru\n", value);
+                return ParseResult::Error;
+            }
+            continue;
+        }
+        if (std::strcmp(arg, "--theme") == 0) {
+            const char* value = take_value(argc, argv, i, arg);
+            if (value == nullptr) {
+                return ParseResult::Error;
+            }
+            if (std::strcmp(value, "day") == 0) {
+                out.theme = ui::Theme::Day;
+            } else if (std::strcmp(value, "night") == 0) {
+                out.theme = ui::Theme::Night;
+            } else {
+                std::fprintf(stderr, "unknown theme '%s'. Known: day, night\n", value);
                 return ParseResult::Error;
             }
             continue;

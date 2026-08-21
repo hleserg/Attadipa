@@ -16,6 +16,7 @@ target_link_libraries(attadipa_sim PRIVATE
     attadipa_core
     attadipa_apps
     attadipa_l10n
+    attadipa_ui
     lvgl
     SDL2::SDL2
 )

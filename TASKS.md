@@ -77,31 +77,6 @@ stale silently. The protocol is
   removed from the loop.
 
 
-### T-009 · Design tokens in code
-- **Priority:** P0 — raised from P1; final §58 puts tokens in the first slice,
-  before the Clock
-- **Dependencies:** T-032 (**done**); T-008 (**done**)
-- **Goal:** the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md) — colour,
-  spacing, radius, typography, motion, icon size, image size, elevation, sound
-  cue, haptic pattern (final §54).
-- **Acceptance:** no raw RGB, pixel count, duration, font size or radius
-  anywhere in UI code; day and night variants; both geometries; spacing resolved
-  per board rather than in raw pixels, because 8 px is not the same physical
-  distance on a 1.54″ and a 2.06″ panel.
-- **Research status:** done — palette, typography direction and mascot usage
-  derived from the owner references ([docs/ui/reference](docs/ui/reference/README.md))
-- **Implementation status:** document written and marked *proposed*; no code
-  tokens; **no value has been shown on a panel**
-- **Tests:** reference screenshots once the simulator runs
-- **Hardware required:** for the final colour values, **yes** — final §55
-  forbids preserving a concept-board hex that fails on the real display
-- **Open inside this task:** `color.danger` has no value. There is no red in
-  either owner palette, and inventing one is an identity decision for the owner.
-- **Resumed:** 2026-08-21, after both owner amendments landed (T-041, T-042).
-  Final §58 puts tokens first in the M1 slice and §15 of the GNSS amendment says
-  the current milestone is not to be broken — so this is where the roadmap
-  picks back up.
-
 ## NEXT
 
 ### T-034 · Image asset pipeline
@@ -894,6 +869,39 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-009 · Design tokens in code — **DONE** 2026-08-22
+- `ui/` is the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md): a `Dp`
+  type against a 160 dpi reference, twelve semantic colour roles across two
+  themes, and the spacing, radius, motion, size, elevation, typography-role,
+  haptic and sound-category scales. The library links `attadipa_headers` and
+  deliberately **not** `attadipa_platform` — a screen asks for `space.md` and
+  only the composition root knows which panel answered.
+- **Acceptance met.** `tools/ui/check_raw_values.py` refuses a colour, a pixel
+  count or a duration written as a number under `ui/`, `sim/` or `apps/`, with
+  two files exempted for holding the palette and the scale; `tools/ui/selftest.py`
+  proves the checker rejects seven real mistakes and accepts seven correct
+  lines. `sim/boot_screen.cpp` no longer contains a hex colour or a raw padding.
+- **Both themes are now switchable without a rebuild** — `T` at runtime,
+  `--theme day|night` for CI — for the same reason the locale is: a reviewer who
+  must rebuild to see the second one checks the first.
+- **Two measured findings, neither of them a proposal to change the palette.**
+  Every day accent is under 3:1 against the brightest background it will sit on
+  (Attadipa Orange 2.19, Glow Amber 1.44, Meadow Green 2.81, Sky Teal 2.15), so
+  on the day theme an accent is emphasis and the meaning is in the icon and the
+  word. And `color.text.muted` clears the threshold on the page (5.62) and on a
+  surface (4.95) and then fails on a **raised** card at 4.44 — six hundredths
+  under 4.5:1, on the most ordinary thing the system draws. Both are pinned in
+  `tests/test_ui_tokens.cpp`, both are tabulated in DESIGN_SYSTEM §3.2, and both
+  break a test if the palette moves. See also open question **A7**.
+- **Still hardware-blocked, as it always was:** final §55 forbids preserving a
+  concept-board value that fails on the real display. Every number in `ui/` is
+  **PROPOSED**; none has been shown on a panel. `color.danger` stays UNKNOWN.
+- **Mutation-tested**: five mutants — a background falling through to day, a
+  shrunken touch target, `radius.pill` resolved as a length, a hairline rounding
+  away, and contrast computed from a channel average instead of WCAG luminance.
+  All five red. The fourth was green on the first attempt and the test was wrong,
+  not the code: nothing exercised the guarantee below 80 dpi where it bites.
 
 ### T-059 · The trust state, tested as sequences — **DONE**
 - **Why sequences:** the detectors that matter are rate detectors, and a rate

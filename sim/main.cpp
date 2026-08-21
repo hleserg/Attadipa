@@ -97,7 +97,7 @@ void report_missing_string(l10n::Locale requested, const char* identifier)
                  l10n::to_string(requested));
 }
 
-// L toggles the language. It is a keypress rather than a menu because the
+// L toggles the language, T the theme. Keypresses rather than a menu because the
 // Settings screen does not exist yet (T-038) and the acceptance criterion —
 // "switches at runtime without a reboot" — is about the mechanism, not about
 // where the switch lives.
@@ -110,6 +110,9 @@ void on_screen_key(lv_event_t* event)
             l10n::locale() == l10n::Locale::En ? l10n::Locale::Ru : l10n::Locale::En;
         std::printf("locale: %s\n", l10n::to_string(next));
         l10n::set_locale(next);
+    }
+    if (key == 't' || key == 'T') {
+        attadipa::sim::toggle_theme();
     }
 }
 
@@ -170,6 +173,7 @@ int main(int argc, char** argv)
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_boot_screen);
     l10n::set_locale(options.locale);
 
+    attadipa::sim::set_theme(options.theme);
     attadipa::sim::build_boot_screen(inventory, caps);
 
     // The honest part. LVGL ships Montserrat and unscii, and both are Latin —

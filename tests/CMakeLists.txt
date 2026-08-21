@@ -101,11 +101,29 @@ if(Python3_Interpreter_FOUND)
     set_tests_properties(l10n_generated_is_current l10n_glyphs_in_font_subset
                          l10n_checks_reject_mistakes
                          PROPERTIES LABELS localization)
+
+    # The design-system boundary, same family as the two compile boundaries
+    # above and for the same reason: T-009's acceptance criterion is that no raw
+    # colour, pixel count or duration appears in screen code, and that is a
+    # property of the source tree rather than of any one screen. Its self-test
+    # is registered beside it because a checker nobody has ever seen fail is a
+    # checker nobody has tested.
+    add_test(NAME ui_no_raw_values
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/ui/check_raw_values.py)
+    add_test(NAME ui_check_rejects_mistakes
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/ui/selftest.py)
+    set_tests_properties(ui_no_raw_values ui_check_rejects_mistakes
+                         PROPERTIES LABELS design)
 else()
     add_test(NAME l10n_checks_unavailable
              COMMAND ${CMAKE_COMMAND} -E false)
     set_tests_properties(l10n_checks_unavailable PROPERTIES
         LABELS localization)
+    add_test(NAME ui_checks_unavailable
+             COMMAND ${CMAKE_COMMAND} -E false)
+    set_tests_properties(ui_checks_unavailable PROPERTIES LABELS design)
     message(WARNING
         "Python 3.11+ was not found, so the three localization checks "
         "(ADR-0010 section 3) cannot run. A deliberately failing test is "
@@ -252,3 +270,18 @@ set_tests_properties(replay_rig PROPERTIES LABELS gnss)
 add_executable(test_diagnostics test_diagnostics.cpp)
 target_link_libraries(test_diagnostics PRIVATE attadipa_core)
 add_test(NAME diagnostics COMMAND test_diagnostics)
+
+# ---------------------------------------------------------------------------
+# The design tokens (T-009, final §54).
+#
+# Every value in the token tables is *proposed* — none has been shown on a
+# panel — so these tests deliberately pin properties rather than numbers: that
+# one token is one physical size on two panels whose densities differ by 21 %,
+# that no spacing rounds away to nothing, that a night theme with a hole in it
+# does not paint a bright card on a dark page. The three numbers they do pin
+# are contrast ratios, which are arithmetic and not taste.
+
+add_executable(test_ui_tokens test_ui_tokens.cpp)
+target_link_libraries(test_ui_tokens PRIVATE attadipa_ui)
+add_test(NAME ui_tokens COMMAND test_ui_tokens)
+set_tests_properties(ui_tokens PROPERTIES LABELS design)
