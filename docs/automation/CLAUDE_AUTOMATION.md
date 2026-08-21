@@ -62,9 +62,14 @@ Two further habits, both deliberate:
 - **Untrusted text never reaches a shell.** An issue body is passed through an
   `env:` variable, never interpolated into a `run:` block. `${{ github.event.issue.body }}`
   inside a script is a command injection with the attacker holding the pen.
-- **`show_full_output` and `display_report` are off.** Claude's full output
-  includes tool results, which can contain tokens, and Actions logs on a public
-  repository are world-readable.
+- **`show_full_output` is off; `display_report` is on.** They are different
+  things and only one of them is a leak. Full output prints every message
+  including tool results, which can contain tokens, into a world-readable log.
+  The report is Claude's own summary of what it did — and turning *that* off as
+  well was a mistake, found by smoke test A: the agent ran twenty-eight turns
+  successfully and left no branch, no pull request and no comment, so the only
+  evidence any work had happened was a green tick. An agent whose conclusions
+  nobody can read is not an agent, it is a bill.
 
 Permissions are per job. The top of every file is `permissions: {}` and each job
 asks for exactly what it needs; the reviewer gets `contents: read` and cannot

@@ -126,3 +126,18 @@ Results are recorded in the pull request that introduced these files. Where a
 test could not complete because no Anthropic credential was configured, that is
 stated rather than glossed: the gate, the labels and the no-op path were
 exercised; the Claude step itself was not.
+
+## One thing the reviewer cannot review
+
+A pull request that changes the Claude workflow files themselves is skipped by
+the review, with this in the log:
+
+> Workflow validation failed. The workflow file must exist and have identical
+> content to the version on the repository's default branch.
+
+That is the action refusing to run a version of itself that a pull request has
+edited — which is the right refusal, since otherwise a pull request could supply
+the prompt that reviews it. The consequence is a rule rather than a bug:
+**changes to `.github/workflows/claude-*.yml` are merged on ordinary CI and a
+human's reading, never on an AI review.** Nothing needs configuring; it is worth
+knowing so the silence is not mistaken for approval.
