@@ -140,3 +140,16 @@ if(FIREFLY_BUILD_SIMULATOR)
     # stops being true, they will still pass, so the criterion is also written
     # down where a reader will find it: docs/architecture/ARCHITECTURE.md.
 endif()
+
+# ---------------------------------------------------------------------------
+# GNSS trust (docs/adr/0011-gnss-integrity.md).
+#
+# Sequences rather than single calls, on purpose. The detectors that matter are
+# rate detectors, and a rate needs two epochs — a suite of one-observation tests
+# passes cheerfully while every one of them is switched off, which is exactly
+# how the interval bug survived being written.
+
+add_executable(test_trust test_trust.cpp)
+target_link_libraries(test_trust PRIVATE firefly_core)
+add_test(NAME trust COMMAND test_trust)
+set_tests_properties(trust PROPERTIES LABELS gnss)
