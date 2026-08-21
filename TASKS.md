@@ -20,9 +20,62 @@ research status · implementation status · tests · hardware required.
 **Task state is updated in the same commit as the change it describes**
 (final §73). A status file several commits behind is not a status file.
 
+## This file and the GitHub issue queue
+
+They are not the same list and neither is a copy of the other.
+
+| | Holds | Lifetime |
+|---|---|---|
+| **this file** | the roadmap — milestones, dependencies between large pieces of work, and the record of what was decided and why | a task here is days of work and outlives any one agent run |
+| **GitHub issues** | executable work packages, findings, bugs, research assignments | an issue is one agent run, or a few |
+
+The link is by reference only: an issue that implements part of a task here
+names it (`T-045`), and a task here that has been split into issues names their
+numbers. Nobody maintains two copies of the same sentence, because a copy goes
+stale silently. The protocol is
+[`docs/automation/AI_TASK_PROTOCOL.md`](docs/automation/AI_TASK_PROTOCOL.md).
+
 ---
 
 ## NOW
+
+### T-054 · The agent queue, verified by running it rather than by reading it
+- **Priority:** P1
+- **Dependencies:** none — the automation is merged on `main`
+- **Goal:** the loop closes without the owner as transport: a finding becomes an
+  issue, an issue becomes a branch and a draft pull request, CI and an
+  independent reviewer act on it, and a stranded task is recovered without
+  anybody noticing it was stranded.
+- **Acceptance:** a producer files an issue and an agent starts on it with no
+  copy/paste; a refused task says so on the issue rather than only in a run log;
+  a stale `reviewed_head` causes the finding to be re-verified rather than
+  implemented; the kill switch stops Anthropic spending while ordinary CI keeps
+  running.
+- **Research status:** done. Routine capabilities checked against the published
+  documentation before design, and two constraints changed it: routine GitHub
+  triggers support **Pull request and Release only, not Issues** — so intake
+  must live in `claude-agent.yml` and cannot be a routine — and a routine's API
+  trigger carries a bearer token but no actor, which is the wrong shape for a
+  gate whose entire security model is the actor's write access.
+- **Implementation status:** live. Six workflows, an hourly watchdog, and a
+  daily backstop routine scoped to what a workflow cannot detect about itself.
+- **Tests:** `actionlint` over six workflows with shellcheck integration —
+  clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
+  cases — 16/16; host build 10/10; simulator 12/12, both geometries. Production:
+  smoke test A ([#5](https://github.com/hleserg/FireflyOS/issues/5)) exercised
+  intake, marker-derived labels, the `@claude` dedup override and a green Claude
+  run, and exposed the stuck-label defect now fixed.
+- **Hardware required:** no.
+- **Not verified by execution:** the no-credential BLOCKED path (a credential is
+  configured, so that step is skipped rather than run), and the producer-identity
+  path — see the open question below.
+- **Open inside this task:** how ChatGPT actually authenticates when it files an
+  issue. If it posts through a GitHub App its login ends in `[bot]` and the gate
+  rejects it, correctly and by design. A user account with `write` or better is
+  required. Until an issue has actually been filed that way, this is `UNKNOWN`
+  and it is the single thing standing between the queue and the owner being
+  removed from the loop.
+
 
 ### T-009 · Design tokens in code
 - **Priority:** P0 — raised from P1; final §58 puts tokens in the first slice,

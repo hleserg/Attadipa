@@ -1,0 +1,313 @@
+name: Claude CI repair
+
+# When CI fails on an agent's own branch, read the log and fix the cause.
+#
+# The thing this must never become is `CI failed → change something → rerun`.
+# That is a random walk with a budget attached. So the repair step is given the
+# actual failing log and told to find the root cause, and it gets two attempts
+# per problem before it stops and says what it could not work out.
+#
+# Trigger is workflow_run, which runs in the context of the default branch and
+# therefore has access to secrets even when the pull request does not. That is
+# also why every guard below exists: this workflow is privileged, so it must
+# refuse to touch anything that is not an agent branch of this repository.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+concurrency:
+  group: firefly-ci-repair-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  gate:
+    name: Is this ours to fix
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      vars.CLAUDE_AUTOMATION_ENABLED != 'false'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      pr: ${{ steps.decide.outputs.pr }}
+      branch: ${{ steps.decide.outputs.branch }}
+      attempt: ${{ steps.decide.outputs.attempt }}
+      job: ${{ steps.decide.outputs.job }}
+    steps:
+      - name: Decide
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          stop() { echo "run=false" >> "$GITHUB_OUTPUT"; echo "::notice::$1"; exit 0; }
+
+          # 1. Never main, never a fork, never a branch we did not create.
+          #
+          # A privileged workflow that checks out and pushes to an arbitrary
+          # branch is a supply-chain hole with a friendly name.
+          [ "$HEAD_REPO" = "$REPO" ] || stop "head repository is $HEAD_REPO, not $REPO"
+          case "$BRANCH" in
+            claude/*) ;;
+            *) stop "branch '$BRANCH' is not an agent branch" ;;
+          esac
+
+          # 2. There must be an open pull request, and it must be an agent's.
+          PR=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number,labels --jq '.[0].number // ""')
+          [ -n "$PR" ] || stop "no open pull request for $BRANCH"
+          LABELS=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name] | join(",")')
+          case ",$LABELS," in
+            *,agent:claude,*) ;;
+            *) stop "pull request #$PR is not labelled agent:claude" ;;
+          esac
+
+          # 3. Which job failed. Repairing "CI" as a whole is how a fix for one
+          #    thing quietly rewrites another.
+          JOB=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+                --jq '[.jobs[] | select(.conclusion=="failure") | .name] | join(", ")')
+          JOB=${JOB:-unknown}
+
+          # 4. Two attempts per problem chain, counted from marker comments and
+          #    reset by a human commenting `/ci-repair reset`.
+          COMMENTS=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body')
+          RESET_AT=$(printf '%s\n' "$COMMENTS" | grep -n '/ci-repair reset' | tail -1 | cut -d: -f1 || true)
+          if [ -n "${RESET_AT:-}" ]; then
+            COUNT=$(printf '%s\n' "$COMMENTS" | tail -n "+$RESET_AT" | grep -c 'firefly-ci-repair' || true)
+          else
+            COUNT=$(printf '%s\n' "$COMMENTS" | grep -c 'firefly-ci-repair' || true)
+          fi
+          COUNT=${COUNT:-0}
+          if [ "$COUNT" -ge 2 ]; then
+            {
+              echo "run=false"
+              echo "pr=$PR"
+              echo "exhausted=true"
+              echo "job=$JOB"
+            } >> "$GITHUB_OUTPUT"
+            echo "::notice::$COUNT repair attempts already made on #$PR"
+            exit 0
+          fi
+
+          {
+            echo "run=true"
+            echo "pr=$PR"
+            echo "branch=$BRANCH"
+            echo "job=$JOB"
+            echo "attempt=$((COUNT + 1))"
+          } >> "$GITHUB_OUTPUT"
+
+  give_up:
+    name: Stop and explain
+    needs: gate
+    if: needs.gate.outputs.run == 'false' && needs.gate.outputs.pr != ''
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Say so, once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.gate.outputs.pr }}
+          JOB: ${{ needs.gate.outputs.job }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          # Built line by line rather than with a here-document: a here-document
+          # body has to start at column zero, which ends the YAML block scalar
+          # this script lives in and produces a file that will not parse.
+          {
+            echo "**Automatic CI repair has stopped.**"
+            echo
+            echo "Two attempts have already been made on this problem chain and CI is"
+            echo "still failing in: \`$JOB\`"
+            echo
+            echo "Failing run: $RUN_URL"
+            echo
+            echo "A third automatic attempt would be guessing rather than diagnosing, so"
+            echo "this needs a look. When the cause is understood, comment"
+            echo "\`/ci-repair reset\` to clear the counter, or push a fix directly."
+          } > /tmp/give-up.md
+          gh pr comment "$PR" --repo "$REPO" --body-file /tmp/give-up.md
+          gh pr edit "$PR" --repo "$REPO" --add-label ci:failed --add-label agent:blocked --remove-label ci:repairing || true
+
+  repair:
+    name: Repair
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      # id-token: write is not optional, and the reason is easy to miss.
+      #
+      # github_token below is FIREFLY_AGENT_TOKEN, which is deliberately allowed
+      # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
+      # action authenticates as the Claude GitHub App by exchanging this
+      # workflow's GitHub OIDC token for an installation token, and without this
+      # permission that exchange fails with "Unable to get
+      # ACTIONS_ID_TOKEN_REQUEST_URL". The failure looks like an authentication
+      # problem with the Anthropic credential and is not one.
+      id-token: write
+    steps:
+      - name: Check that an Anthropic credential exists
+        id: auth
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ] || [ "$HAS_OAUTH" = "true" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Anthropic credential configured; not attempting a repair."
+          fi
+
+      - name: Mark the attempt
+        if: steps.auth.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.gate.outputs.pr }}
+          ATTEMPT: ${{ needs.gate.outputs.attempt }}
+          JOB: ${{ needs.gate.outputs.job }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # The marker is written *before* the attempt, so a run that dies
+          # halfway still counts. A counter that only increments on success
+          # counts to two forever.
+          {
+            echo "<!-- firefly-ci-repair sha=$SHA job=$JOB attempt=$ATTEMPT -->"
+            echo "Automatic CI repair, attempt $ATTEMPT of 2, on failing job \`$JOB\`."
+          } > /tmp/attempt.md
+          gh pr comment "$PR" --repo "$REPO" --body-file /tmp/attempt.md
+          gh pr edit "$PR" --repo "$REPO" --add-label ci:repairing || true
+
+      - uses: actions/checkout@v4
+        if: steps.auth.outputs.ok == 'true'
+        with:
+          # The agent's branch, not the default branch this workflow_run event
+          # is nominally attached to.
+          ref: ${{ needs.gate.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Collect the failing log
+        if: steps.auth.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-repair
+          # Only the failing steps, and bounded. Handing over sixty thousand
+          # lines of a successful build costs tokens and hides the error.
+          gh run view "$RUN_ID" --repo "$REPO" --log-failed > .ci-repair/failed.log 2>/dev/null || true
+          if [ ! -s .ci-repair/failed.log ]; then
+            gh run view "$RUN_ID" --repo "$REPO" --log 2>/dev/null | tail -n 500 > .ci-repair/failed.log || true
+          fi
+          tail -c 200000 .ci-repair/failed.log > .ci-repair/failed.trimmed.log
+          mv .ci-repair/failed.trimmed.log .ci-repair/failed.log
+          wc -l .ci-repair/failed.log
+
+      - name: Fix it
+        if: steps.auth.outputs.ok == 'true'
+        id: fix
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          allowed_bots: ""
+          allowed_non_write_users: ""
+          show_full_output: "false"
+          # On, for the same reason as the other two: a repair whose reasoning
+          # nobody can read is a bill. It writes the run's Step Summary, not a
+          # pull request comment — the comment comes from the prompt below.
+          display_report: "true"
+          additional_permissions: |
+            actions: read
+          # --allowedTools is not optional, and its absence is silent.
+          #
+          # Agent mode — which is what `prompt:` selects — sets no default
+          # --allowedTools and no --permission-mode. Tag mode sets both
+          # (src/modes/tag/index.ts); agent mode passes through only what is
+          # written here. The headless SDK has no prompt handler, so every tool
+          # that would fall through to "ask" is DENIED, without an error and
+          # without a line in the log.
+          #
+          # Observed on 2026-08-21, before this line existed: the reviewer ran
+          # for 41 s, exited 0, and posted no comment and set no label; the
+          # implementation agent on issue #5 finished green and produced no
+          # branch and no pull request. Both had read the diff perfectly well
+          # and had no way to say so.
+          #
+          # Verified against anthropics/claude-code-action at the v1 tag
+          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
+          # MCP servers on these names too, and `grep -rn "addLabels" src/`
+          # returns nothing — the action has no label feature at all, so the
+          # label in the prompt below depends entirely on `gh` being allowed.
+          #
+          # This one writes, so it gets Edit, Write and Bash. The boundary that
+          # matters for it is the job's `permissions:` block and the branch it
+          # is checked out on, not the tool list.
+          claude_args: |
+            --max-turns 40 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,TodoWrite"
+          prompt: |
+            CI failed on branch `${{ needs.gate.outputs.branch }}`, pull request
+            #${{ needs.gate.outputs.pr }}. The failing job is
+            `${{ needs.gate.outputs.job }}`. This is repair attempt
+            ${{ needs.gate.outputs.attempt }} of 2.
+
+            The failing log is checked out at `.ci-repair/failed.log`. Read it
+            first. Do not guess from the job name.
+
+            Then:
+              1. state the root cause in one or two sentences;
+              2. change only what that cause requires. A repair that also
+                 reformats, renames or "tidies" is a repair nobody can review;
+              3. reproduce the failure locally where the failure is
+                 reproducible locally — `cmake -S . -B build && cmake --build
+                 build && ctest --test-dir build --output-on-failure`;
+              4. commit to this branch with a message that names the cause, and
+                 push;
+              5. comment on the pull request with the root cause and what you
+                 changed.
+
+            If the log does not support a diagnosis, say so and stop. Do not
+            change files hoping the next run is different — that is what the
+            two-attempt limit exists to catch, and reaching it honestly on the
+            first attempt is a better outcome than reaching it by accident on
+            the second.
+
+            Delete `.ci-repair/` before committing; it must not enter the
+            repository.
+
+            Never weaken a test to make it pass. If the test is right and the
+            code is wrong, fix the code; if the test itself is wrong, say why in
+            the commit message.
+
+      - name: Clear the flag
+        if: always() && steps.auth.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.gate.outputs.pr }}
+        run: gh pr edit "$PR" --repo "$REPO" --remove-label ci:repairing || true

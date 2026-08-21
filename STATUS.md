@@ -127,7 +127,7 @@ None of these blocks M1. All of them block hardware work.
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
-| Automation | four Claude workflows on `main`; the loop has run end to end on a real issue. `CLAUDE_CODE_OAUTH_TOKEN` is configured, which draws on a subscription rather than a metered API account |
+| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 16-case hostile-input test passes. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
@@ -230,6 +230,47 @@ needs the owner, and one needs a ruler.
   geometries from one binary, headless in CI, a screenshot per geometry as the
   artefact a design review needs. The first CMake file was the last cheap moment
   to make the platform/core/apps boundary real, so it was made real there.
+- **The agent queue runs, and smoke test A found a defect rather than passing.**
+  A task now arrives as a GitHub issue and is picked up without anybody carrying
+  it: gate → claim → Claude → draft pull request → independent review → CI →
+  repair, with an hourly watchdog for lost events and a daily backstop routine
+  for the case the watchdog itself is not running. Exercising it on
+  [#5](https://github.com/hleserg/FireflyOS/issues/5) proved four of its five
+  claims and broke on the fifth: a second run on an already-claimed issue left
+  `agent:working` and `agent:review` set together, because `claim` removed only
+  `agent:ready` and `Hand over` then matched the leftover `agent:review` and
+  exited without clearing the claim. A task in that state is stuck working
+  forever and the watchdog re-queues finished work every two hours. Fixed by
+  making a claim actually a claim.
+- **`reviewed_head` stopped being decorative.** The protocol has specified it
+  since the marker was defined and nothing read it. The gate now compares it
+  against the default branch and tells the agent how far the tree has moved and
+  which files changed, with an instruction to verify a finding before
+  implementing it. The expensive failure of a review queue is not a wrong
+  finding, it is a stale one.
+- **The agents were running with no tools, and that is why the loop produced
+  nothing.** Agent mode grants no default `--allowedTools` and the headless SDK
+  denies anything that would prompt, silently. The reviewer ran 41 s and posted
+  nothing; the agent on issue #5 finished green with no branch and no pull
+  request. Both had read everything and had no way to say so. Fixed and merged
+  (#9, `b1a3dca`) — **and not yet observed working**, because workflow changes
+  only take effect from the default branch. The first run that produces a branch
+  and a pull request is the one that proves it; the open item is
+  [#10](https://github.com/hleserg/FireflyOS/issues/10).
+- **The silent refusal was reproduced, not theorised.** A task with a valid
+  marker filed through the GitHub API ([#10](https://github.com/hleserg/FireflyOS/issues/10))
+  arrived as `claude[bot]`, was refused by the bot guard — correctly — and was
+  simultaneously invisible to the watchdog, which filters on
+  `author_association` and saw `NONE`. The run went green and nothing was
+  written anywhere. The route decides this, not the marker: issue #5, filed by
+  `hleserg` as a `User`, was accepted the same day. Whether ChatGPT hits this
+  depends on how it authenticates, which is
+  [still open](docs/research/OPEN_QUESTIONS.md) and is the owner's decision.
+- **A refused task is no longer silent.** An issue carrying a task marker that
+  the gate rejects now gets one comment naming the guard and the actor, plus
+  `needs-owner`. This is aimed at the likeliest silent failure in the loop: a
+  producing agent filing through a GitHub App, whose login ends in `[bot]` and
+  which every bot guard correctly rejects.
 - **M0.5 reconciliation — all eight §75 items closed**, tracked row by row in
   [RECONCILIATION_2026-08-21](docs/research/RECONCILIATION_2026-08-21.md). Five
   new ADRs; three earlier ones accepted, one superseded, one made explicitly
