@@ -35,7 +35,7 @@ state: ready
 | `producer` | which agent filed it | `chatgpt` · `claude` · `owner` |
 | `task_type` | what kind of work it is | see below |
 | `priority` | queue order | `P0` … `P3`; default `P2` |
-| `reviewed_head` | the commit the producer looked at | a short SHA, so a reviewer can tell what has changed since |
+| `reviewed_head` | the commit the producer looked at | a short SHA. **Checked, not decorative** — see below |
 | `state` | where it is | `ready` · `working` · `review` · `blocked` · `done` |
 
 `task_type` is at least:
@@ -53,6 +53,45 @@ A research-only type means exactly that: verify sources, write to
 genuinely made — and do **not** write speculative implementation code. A
 research task that arrives as a pull request full of new subsystems has not
 been done, it has been guessed at.
+
+### `reviewed_head` is checked
+
+The gate compares `reviewed_head` against the tip of the default branch through
+the compare API and tells the agent, in its prompt, how many commits the tree has
+moved and which files changed since. Three outcomes:
+
+| Compare says | The agent is told |
+|---|---|
+| `ahead_by: 0` | the finding was made against current code |
+| `ahead_by: N` | the branch has moved N commits; these files changed; **verify before implementing** |
+| not a commit here | the field could not be checked at all |
+
+This exists because the expensive failure of a review queue is not a bad finding,
+it is a **stale** one: a problem that was already fixed, implemented again by an
+agent that had no reason to doubt the issue. Neither the issue nor its producer
+is automatically right. A finding that no longer holds is closed with the
+evidence — a diff, a file, a line — and not implemented.
+
+Omitting the field is allowed. The agent is then told that nothing can be said
+about what has changed, which is worse for it than a SHA and better than a
+number it would have trusted.
+
+### A refused task says so
+
+Most refusals are ordinary: an issue with no marker, a task somebody already
+claimed. Those stay in the run log.
+
+An issue that **carries a task marker and is still refused** is different — a
+producer believes it has filed work and the repository has silently dropped it.
+That case gets one comment on the issue naming the guard that rejected it and
+the actor it saw, plus `needs-owner`. The comment is posted with the built-in
+`GITHUB_TOKEN`, whose events GitHub does not use to start workflow runs, so it
+cannot start another gate run.
+
+This is aimed squarely at the likeliest silent failure in the whole loop: a
+producing agent that files through a **GitHub App** rather than a user account.
+Its login ends in `[bot]`, the gate rejects every bot by design, and without this
+comment the task would simply never be picked up and nobody would be told.
 
 ### The marker is data, not a permission
 

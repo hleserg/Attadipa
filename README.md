@@ -17,6 +17,17 @@ Firefly OS is not a Linux-like OS. It is a single embedded
 firmware/application platform on top of ESP32-S3 and ESP-IDF/FreeRTOS,
 designed to support several watch models from one codebase.
 
+> **Have an idea for a watch app?**
+> [Start a Discussion](https://github.com/hleserg/FireflyOS/discussions) — that
+> is the front door, and it is open to everybody. Issues are the engineering
+> queue and are limited to collaborators; a maintainer moves an idea across when
+> it is ready to be built. See [CONTRIBUTING.md](CONTRIBUTING.md).
+>
+> **Есть идея приложения для часов?**
+> [Начните Discussion](https://github.com/hleserg/FireflyOS/discussions) — это
+> главный вход, и он открыт для всех. Issues — инженерная очередь, она доступна
+> только участникам; maintainer перенесёт идею туда, когда она созреет.
+
 ## What it is meant to be
 
 - **Independent of your phone.** Mesh messaging, navigation, and time work with

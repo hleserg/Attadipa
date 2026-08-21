@@ -67,9 +67,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # continue-on-error, and the reason is evidence rather than taste.
+      #
+      # On 2026-08-21 this job went red on pull request #9 after 373 ms, one
+      # turn and $0.00, with `is_error: true` and no output. That is not a
+      # review verdict — it is the Anthropic credential refusing before the
+      # model was ever reached, which on the subscription path means the quota
+      # is spent. The diff was irrelevant to it.
+      #
+      # A red check that means "we ran out of quota" is indistinguishable, in
+      # the checks list, from "the reviewer found something", and this file
+      # already states the principle for the other half of the same problem: a
+      # workflow that is red for a reason outside the code is a workflow people
+      # learn to ignore. So a reviewer that cannot run says so in a comment and
+      # leaves the check green, while a reviewer that CAN run still blocks
+      # through `ai-review:blocking` — which is the label, not the exit code.
       - name: Review
         if: steps.auth.outputs.ok == 'true'
         id: review
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -81,9 +97,40 @@ jobs:
           allowed_bots: ""
           allowed_non_write_users: ""
           show_full_output: "false"
+          # display_report posts Claude's own summary to the run's Step Summary
+          # (src/entrypoints/run.ts writes to GITHUB_STEP_SUMMARY). It is on
+          # because a run whose conclusions nobody can read is a bill — but note
+          # what it is NOT: it has never posted a pull request comment, in any
+          # version. The reason findings did not reach the pull request is the
+          # tool list below, not this flag.
           display_report: "true"
+          # --allowedTools is not optional, and its absence is silent.
+          #
+          # Agent mode — which is what `prompt:` selects — sets no default
+          # --allowedTools and no --permission-mode. Tag mode sets both
+          # (src/modes/tag/index.ts); agent mode passes through only what is
+          # written here. The headless SDK has no prompt handler, so every tool
+          # that would fall through to "ask" is DENIED, without an error and
+          # without a line in the log.
+          #
+          # Observed on 2026-08-21, before this line existed: the reviewer ran
+          # for 41 s, exited 0, and posted no comment and set no label; the
+          # implementation agent on issue #5 finished green and produced no
+          # branch and no pull request. Both had read the diff perfectly well
+          # and had no way to say so.
+          #
+          # Verified against anthropics/claude-code-action at the v1 tag
+          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
+          # MCP servers on these names too, and `grep -rn "addLabels" src/`
+          # returns nothing — the action has no label feature at all, so the
+          # label in the prompt below depends entirely on `gh` being allowed.
+          #
+          # Read-only over the repository, deliberately: no Write, no Edit, and
+          # the only `gh` verbs are the ones that publish a review. `contents:
+          # read` on the job is still the outer guarantee. This has an opinion
+          # and exactly enough hands to say it out loud.
           claude_args: |
-            --max-turns 40
+            --max-turns 40 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }}
             in ${{ github.repository }}. You did not write this code. Read the
@@ -138,6 +185,53 @@ jobs:
             reproduces. Rank by severity. Say explicitly if you found nothing
             blocking — a review that always finds something is noise.
 
+            **Publish the review — it does not publish itself.** Post your
+            findings as a comment with `gh pr comment`. Nothing you write
+            reaches the pull request otherwise; the action leaves it in the run
+            log, where nobody reads it.
+
+            Begin the comment with the exact line `<!-- firefly-ai-review -->`,
+            and before posting, check with `gh pr view` whether a comment
+            carrying that marker already exists. If one does, edit it rather
+            than adding another — a fresh wall of text on every push is how a
+            review becomes something people scroll past.
+
             Finish by setting exactly one label on this pull request using the
             gh CLI: `ai-review:blocking` if anything must be fixed before merge,
             otherwise `ai-review:pass`. Remove the other one if present.
+
+      - name: Say that the review did not happen
+        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Neither label is set. `ai-review:pass` would be a lie and
+          # `ai-review:blocking` would be a finding nobody made.
+          {
+            echo "<!-- firefly-review-did-not-run -->"
+            echo "**The independent review did not run on this commit, so there is no verdict.**"
+            echo
+            echo "This says nothing about the diff. The usual cause is the Anthropic"
+            echo "credential: on the subscription path a spent quota fails immediately,"
+            echo "before the model is reached, and looks exactly like this."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "Neither \`ai-review:pass\` nor \`ai-review:blocking\` has been set. Push again,"
+            echo "or re-run the job, to get an actual review."
+          } > /tmp/no-review.md
+
+          # One per head commit, not one per push: re-running the job on the same
+          # commit should not stack identical notes.
+          if gh api "repos/$REPO/issues/$PR/comments" --paginate \
+               --jq '.[].body' | grep -q 'firefly-review-did-not-run'; then
+            echo "::notice::already said so on #$PR"
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/no-review.md
+          fi
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
+          echo "::warning::The independent review could not run; no verdict was recorded."

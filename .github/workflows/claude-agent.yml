@@ -56,6 +56,11 @@ jobs:
       producer: ${{ steps.decide.outputs.producer }}
       research_only: ${{ steps.decide.outputs.research_only }}
       reason: ${{ steps.decide.outputs.reason }}
+      reviewed_head: ${{ steps.decide.outputs.reviewed_head }}
+      head_moved: ${{ steps.decide.outputs.head_moved }}
+      staleness: ${{ steps.decide.outputs.staleness }}
+      refused_marker: ${{ steps.decide.outputs.refused_marker }}
+      refusal: ${{ steps.decide.outputs.refusal }}
     steps:
       - name: Kill switch
         id: switch
@@ -137,7 +142,29 @@ jobs:
             "$ACTOR" "$EVENT_NAME" "$ACTION" "$LABEL_NAME" \
             "$BODY" "$LABELS" "$STATE" "$PERMISSION")
           if [ "$VERDICT" != "accept" ]; then
-            say "#$ISSUE_NUMBER ${VERDICT#reject: }"; exit 0
+            say "#$ISSUE_NUMBER ${VERDICT#reject: }"
+
+            # A refusal that only reaches the run log is the failure mode this
+            # whole queue exists to remove. Most refusals are ordinary — an issue
+            # with no marker, a task somebody already claimed — and commenting on
+            # those would be noise. But an issue that DOES carry a task marker and
+            # is still refused is a producer that believes it has filed work and a
+            # repository that has silently dropped it. That one gets said out loud,
+            # on the issue, where the person who filed it is looking.
+            #
+            # Only on `issues` events: a refused comment would otherwise draw a
+            # comment per comment. This costs nothing from Anthropic either way —
+            # it is a gh call in the gate, not an agent run.
+            case "$BODY" in
+              *firefly-agent-task*)
+                if [ "$EVENT_NAME" = "issues" ]; then
+                  {
+                    echo "refused_marker=true"
+                    echo "refusal=${VERDICT#reject: }"
+                  } >> "$GITHUB_OUTPUT"
+                fi ;;
+            esac
+            exit 0
           fi
 
           # The marker fields decide what KIND of work this is. They never
@@ -155,6 +182,36 @@ jobs:
             next-task-research|upstream-intelligence|readiness-audit) RESEARCH_ONLY=true ;;
           esac
 
+          # reviewed_head: has the tree moved since the producer looked at it?
+          #
+          # AI_TASK_PROTOCOL.md has always specified this field, and until now
+          # nothing read it. That is the quietest way for this queue to do damage:
+          # a finding produced against a commit that has since been fixed gets
+          # implemented anyway, because the agent had no reason to doubt it. The
+          # comparison is one API call and no checkout — the gate job only
+          # sparse-checks out .github/scripts, so there is no history here to
+          # `git log` against.
+          REVIEWED_HEAD=$(field reviewed_head)
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          DEFAULT_BRANCH=${DEFAULT_BRANCH:-main}
+          HEAD_MOVED=unknown
+          STALENESS="reviewed_head was not given, so nothing can be said about what has changed since."
+          if [ -n "$REVIEWED_HEAD" ]; then
+            CMP=$(gh api "repos/$REPO/compare/$REVIEWED_HEAD...$DEFAULT_BRANCH" 2>/dev/null || echo '')
+            if [ -n "$CMP" ]; then
+              HEAD_MOVED=$(printf '%s' "$CMP" | jq -r '.ahead_by // "unknown"')
+              FILES=$(printf '%s' "$CMP" | jq -r '[.files[]?.filename] | join(", ")' | cut -c1-800)
+              if [ "$HEAD_MOVED" = "0" ]; then
+                STALENESS="reviewed_head $REVIEWED_HEAD is still the tip of $DEFAULT_BRANCH. The finding was made against current code."
+              else
+                STALENESS="$DEFAULT_BRANCH is $HEAD_MOVED commit(s) ahead of the reviewed commit $REVIEWED_HEAD. Files changed since: $FILES"
+              fi
+            else
+              STALENESS="reviewed_head $REVIEWED_HEAD could not be compared against $DEFAULT_BRANCH — it is not a commit in this repository."
+            fi
+          fi
+          echo "::notice::reviewed_head=$REVIEWED_HEAD ahead_by=$HEAD_MOVED"
+
           {
             echo "run=true"
             echo "issue=$ISSUE_NUMBER"
@@ -163,8 +220,64 @@ jobs:
             echo "producer=$PRODUCER"
             echo "research_only=$RESEARCH_ONLY"
             echo "reason=accepted"
+            echo "reviewed_head=${REVIEWED_HEAD:-unspecified}"
+            echo "head_moved=$HEAD_MOVED"
+            echo "staleness=$STALENESS"
           } >> "$GITHUB_OUTPUT"
           echo "::notice::accepted #$ISSUE_NUMBER type=$TASK_TYPE priority=$PRIORITY producer=$PRODUCER"
+
+  refused:
+    name: Say why it was refused
+    needs: gate
+    if: needs.gate.outputs.refused_marker == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Comment once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          REFUSAL: ${{ needs.gate.outputs.refusal }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          # Once per issue. The marker is what makes that checkable, and the
+          # comment is posted with the built-in GITHUB_TOKEN, whose events GitHub
+          # deliberately does not use to start workflow runs — so this cannot
+          # start another gate run and cannot loop.
+          EXISTING=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
+                       --jq '[.[] | select(.body | test("firefly-intake-refused"))] | length')
+          if [ "$EXISTING" != "0" ]; then
+            echo "::notice::already explained on #$ISSUE"; exit 0
+          fi
+
+          {
+            echo "<!-- firefly-intake-refused -->"
+            echo "**This issue carries a \`firefly-agent-task\` marker, and the intake gate refused it.**"
+            echo
+            echo "> $REFUSAL"
+            echo
+            echo "Nothing is queued and no agent will pick this up. The marker is data, not a"
+            echo "permission — see [AI_TASK_PROTOCOL](../blob/HEAD/docs/automation/AI_TASK_PROTOCOL.md#the-marker-is-data-not-a-permission)."
+            echo
+            echo "The usual causes, in order of likelihood:"
+            echo
+            echo "1. **The producer posted as a GitHub App.** The gate rejects any actor whose"
+            echo "   login ends in \`[bot]\`, because a Claude comment that mentions \`@claude\`"
+            echo "   would otherwise start a Claude run that comments. A producing agent must"
+            echo "   file through an ordinary user account."
+            echo "2. **The actor lacks write access.** \`write\`, \`maintain\` or \`admin\` is"
+            echo "   required. The actor on this event was \`$ACTOR\`."
+            echo "3. **The task is already claimed.** A state label suppresses a second pickup."
+            echo
+            echo "To queue it deliberately, someone with write access can comment \`@claude\`,"
+            echo "or run the \`Claude agent\` workflow with this issue number."
+          } > /tmp/refused.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/refused.md
+          gh issue edit "$ISSUE" --repo "$REPO" --add-label needs-owner || true
 
   claim:
     name: Claim the task
@@ -208,10 +321,22 @@ jobs:
             args+=(--add-label "$label")
           done
 
-          # Adding is idempotent; removing agent:ready is what moves the task out
-          # of the watchdog's queue so it cannot be picked up twice.
+          # Adding is idempotent; removing the other state labels is what makes
+          # the claim true rather than merely additional.
+          #
+          # agent:ready must go or the watchdog picks the task up twice. The
+          # other two matter for the second run on an issue that has already
+          # been through the loop — the @claude override, or a retry after a
+          # failure. Without this the issue ends up carrying agent:working AND
+          # agent:review at once, and the `Hand over` step below sees
+          # agent:review in the label list, concludes the agent labelled the
+          # issue itself, and exits without clearing agent:working. The task is
+          # then stuck working forever, the watchdog "unsticks" it two hours
+          # later, and a finished task is re-queued on a loop.
           gh issue edit "$ISSUE" --repo "$REPO" "${args[@]}" || true
-          gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:ready || true
+          for stale in agent:ready agent:review agent:failed; do
+            gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$stale" || true
+          done
 
   agent:
     name: Claude
@@ -321,8 +446,32 @@ jobs:
           display_report: "true"
           additional_permissions: |
             actions: read
+          # --allowedTools is not optional, and its absence is silent.
+          #
+          # Agent mode — which is what `prompt:` selects — sets no default
+          # --allowedTools and no --permission-mode. Tag mode sets both
+          # (src/modes/tag/index.ts); agent mode passes through only what is
+          # written here. The headless SDK has no prompt handler, so every tool
+          # that would fall through to "ask" is DENIED, without an error and
+          # without a line in the log.
+          #
+          # Observed on 2026-08-21, before this line existed: the reviewer ran
+          # for 41 s, exited 0, and posted no comment and set no label; the
+          # implementation agent on issue #5 finished green and produced no
+          # branch and no pull request. Both had read the diff perfectly well
+          # and had no way to say so.
+          #
+          # Verified against anthropics/claude-code-action at the v1 tag
+          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
+          # MCP servers on these names too, and `grep -rn "addLabels" src/`
+          # returns nothing — the action has no label feature at all, so the
+          # label in the prompt below depends entirely on `gh` being allowed.
+          #
+          # This one writes, so it gets Edit, Write and Bash. The boundary that
+          # matters for it is the job's `permissions:` block and the branch it
+          # is checked out on, not the tool list.
           claude_args: |
-            --max-turns 60
+            --max-turns 60 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task"
           prompt: |
             You are the implementation agent for FireflyOS, working from GitHub
             issue #${{ needs.gate.outputs.issue }} in ${{ github.repository }}.
@@ -339,6 +488,18 @@ jobs:
 
             task_type is `${{ needs.gate.outputs.task_type }}` and
             research_only is `${{ needs.gate.outputs.research_only }}`.
+
+            HAS THE FINDING GONE STALE? The producer looked at
+            `${{ needs.gate.outputs.reviewed_head }}`, and:
+
+              ${{ needs.gate.outputs.staleness }}
+
+            If the default branch has moved, verify the finding against the code
+            as it is now BEFORE implementing anything. A finding that has already
+            been fixed, or that was never right, is closed with the evidence that
+            says so — a diff, a file and a line — and not implemented. Neither
+            the issue nor its producer is automatically correct; that is why this
+            field exists. Say in a comment which of the two you found.
 
             If research_only is true: do NOT write speculative implementation
             code. Verify sources, update docs/research/, the reuse ledger, and

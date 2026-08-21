@@ -148,6 +148,62 @@ files.
 Ordinary bookkeeping — adding labels, posting the "no credential" comment — does
 use `github.token`, because a label change is not supposed to start a workflow.
 
+## The tool list, and why an empty one fails silently
+
+`prompt:` selects the action's **agent mode**. Agent mode sets no default
+`--allowedTools` and no `--permission-mode` — tag mode sets both, agent mode
+passes through only what the workflow writes. The headless SDK has no prompt
+handler, so any tool that would fall through to *ask* is **denied, with no error
+and no line in the log**.
+
+Observed on 2026-08-21, before the tool lists existed:
+
+| Run | What it did | What reached anybody |
+|---|---|---|
+| `Independent review` on #9 | ran 41 s, exit 0 | no comment, no label |
+| `Claude agent` on issue #5 | ran ~7 min, exit 0, `CONCLUSION: success` | no branch, no pull request, no comment |
+
+Both had read everything they needed. Neither could say so. A green check that
+means "the agent was not allowed to speak" is worse than a red one.
+
+So every Claude step in this repository names its tools explicitly:
+
+| Workflow | Tools | Why |
+|---|---|---|
+| `claude-pr-review.yml` | `Read,Glob,Grep`, read-only `git`, and the four `gh pr` verbs that publish a review | it has an opinion and exactly enough hands to say it. No `Write`, no `Edit` |
+| `claude-agent.yml` | `Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task` | it implements; its boundary is the job's `permissions:` and its branch |
+| `claude-ci-repair.yml` | `Read,Glob,Grep,Edit,Write,Bash,TodoWrite` | same, narrower — it fixes one failure |
+
+Verified against `anthropics/claude-code-action` at the `v1` tag (v1.0.198,
+`3f854a8`). Two facts from that reading are worth keeping:
+
+- `grep -rn "addLabels" src/` returns nothing. **The action has no label
+  feature.** `ai-review:pass` and `ai-review:blocking` exist only because the
+  prompt tells Claude to run `gh pr edit`, which needs `Bash(gh pr edit:*)`.
+- `display_report` writes the **GitHub Step Summary**, not a pull request
+  comment, and `show_full_output` governs the **runner log**. Neither has ever
+  posted to a pull request, in any version — `display_report`'s only consumer is
+  `src/entrypoints/run.ts`, which calls `writeStepSummary`.
+
+  This matters because both were changed at once while chasing the same symptom.
+  Turning `display_report` back on was right and is kept: a run whose reasoning
+  nobody can read is a bill. But it was not what stopped findings reaching the
+  pull request — that was the missing tool list above, and the two fixes are
+  independent. `show_full_output` stays off; it is the one that leaks.
+
+### One live hazard
+
+`base-action/src/parse-sdk-options.ts`:
+
+```ts
+const showFullOutput = options.showFullOutput === "true" || isDebugMode;
+```
+
+Turning on GitHub's **step-debug logging** (`ACTIONS_STEP_DEBUG`) overrides
+`show_full_output: "false"` and writes every tool result — which can contain
+tokens — into a run log that is world-readable on a public repository. Do not
+enable step debugging on this repository while the agent workflows are live.
+
 ## Cost control
 
 What "cost" means depends on which credential is in use. With
