@@ -91,7 +91,7 @@ jobs:
       # from main or from nowhere.
       - name: Fetch the gate logic from the default branch
         if: steps.switch.outputs.enabled == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -410,7 +410,7 @@ jobs:
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/blocked.md
           gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.auth.outputs.ok == 'true'
         with:
           fetch-depth: 0

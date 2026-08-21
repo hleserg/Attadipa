@@ -200,7 +200,7 @@ jobs:
           gh pr comment "$PR" --repo "$REPO" --body-file /tmp/attempt.md
           gh pr edit "$PR" --repo "$REPO" --add-label ci:repairing || true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.auth.outputs.ok == 'true'
         with:
           # The agent's branch, not the default branch this workflow_run event
