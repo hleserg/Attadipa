@@ -92,6 +92,12 @@ void test_board_profiles()
     CHECK(platform::find_board_profile(nullptr) == nullptr);
 
     // 240x240 across 1.3 inches, 410x502 across 2.06 inches.
+    //
+    // 261 is not a measurement. The T-Watch diagonal is CONFLICTING between
+    // 1.3" and 1.54" (OPEN_QUESTIONS D15) and 1.3" is held as the conservative
+    // reading. This assertion therefore locks the *arithmetic* and the current
+    // choice, not the panel: when D15 resolves to 1.54" this line becomes 220
+    // and that is a correct change, not a regression.
     CHECK(twatch(platform::RadioChip::Unknown).display.dpi() == 261);
     CHECK(waveshare().display.dpi() == 315);
 

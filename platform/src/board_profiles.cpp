@@ -68,6 +68,18 @@ BoardProfile make_twatch()
     p.name                        = "LilyGO T-Watch S3 Plus";
     p.display.width_px            = 240;
     p.display.height_px           = 240;
+    // CONFLICTING, and this is the conservative half of the conflict rather
+    // than the confident one — OPEN_QUESTIONS D15. LilyGoLib's spec tables say
+    // 1.3" for the S3 and the S3 Plus by name; the schematic's LCD sheet says
+    // QT154C2408 / LCD_1.54-TOUCH, and that vendor's sibling part QT154H2201 is
+    // published as 1.54", 240x240, ST7789V, so the "154" field decodes. No
+    // document both names the Plus and shows the panel.
+    //
+    // 1300 is kept because it yields the *higher* dpi (261 against 220), and a
+    // physical minimum converted at the higher dpi produces more pixels. If the
+    // panel turns out to be 1.54", every touch target is physically larger than
+    // designed. The other way round it would be smaller, and a too-small touch
+    // target is the failure that reaches a wrist.
     p.display.diagonal_milli_inch = 1300;
     p.display.technology          = PanelTechnology::Ips;
     p.present_mask                = kTWatchFeatures;

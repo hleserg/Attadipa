@@ -79,7 +79,7 @@ unit is still unknown — see OPEN_QUESTIONS A1.
 
 | Peripheral | Part | Bus / pins | I2C addr | Power rail | Status |
 |---|---|---|---|---|---|
-| Display | ST7789V3, 240×240 IPS 1.3", 450 cd/m², 262K | SPI: CS 12, MOSI 13, SCK 18, DC 38, BL 45; MISO and RESET not connected | — | ALDO3 (panel), ALDO2 (backlight) | VERIFIED |
+| Display | ST7789V3, 240×240 IPS, 450 cd/m², 262K. **Diagonal is CONFLICTING — 1.3" or 1.54"; see below and OPEN_QUESTIONS D15.** Everything else in this row is verified | SPI: CS 12, MOSI 13, SCK 18, DC 38, BL 45; MISO and RESET not connected | — | ALDO3 (panel), ALDO2 (backlight) | VERIFIED except the diagonal |
 | Touch | FT6336U | **separate I2C**: SDA 39, SCL 40, INT 16; **RESET not connected** | 0x38 | ALDO3 | VERIFIED |
 | PMU | AXP2101 | main I2C, INT 21 | 0x34 | — | VERIFIED |
 | RTC | PCF8563 | main I2C, INT 17 | 0x51 | VBACKUP (coin cell) | VERIFIED |
@@ -213,6 +213,41 @@ Two consequences, both structural:
 
 The daughterboard also carries `LNA_EN`, `SAFEBOOT_N` and `RESET_N` on the
 module; none of them appear on the main-board schematic.
+
+### Display diagonal — CONFLICTING
+
+240 × 240 is not in doubt; the **physical size** is, and the two sources are
+both first-party.
+
+| Says | Source | Weight |
+|---|---|---|
+| **1.3"** | LilyGoLib `docs/hardware/lilygo-t-watch-s3-plus.md:68` and `lilygo-t-watch-s3.md:62`, both `\| Display Size \| 1.3 Inch \|` | vendor documentation, stated for the Plus **by name** — the only source that names this product |
+| **1.54"** | the schematic LCD sheet: part `QT154C2408`, symbol `LCD_1.54-TOUCH` | vendor schematic, and the part number decodes — see below |
+
+**What the part number decodes to.** `QT154C2408` is a 深圳秦唐盛世科技有限公司
+(Shenzhen Qintang Shengshi) module. That vendor's published specification for the
+sibling part **`QT154H2201`** — the one Adafruit distributes with product 4421 —
+reads `LCD Size 1.54" inch`, `Resolution 240x(RGB)x240`, `Driver IC ST7789V`,
+`Light Source 3 White LED in Parallel`. So in this vendor's own numbering the
+`154` field **is** the diagonal in hundredths of an inch, and the sibling part
+matches our panel on resolution, driver and backlight topology. The T-Watch
+schematic's `一串三并` backlight annotation is the same three-parallel string.
+
+**What keeps it CONFLICTING anyway.** The sheet carrying `QT154C2408` is in
+`T_WATCH-S3 25-03-24.pdf`, whose title block is a stale `T_WATCH-2020&GPS_V08`
+nameplate — and the 2020 T-Watch genuinely was 1.54" (TTGO_TWatch_Library reports
+`1.54"/240X240/ST7789V` for 2019 and 2020 V1/V2/V3). An inherited LCD symbol is
+exactly the artefact that stale nameplate predicts. Against that, the same sheet
+was re-pinned for S3 GPIOs (IO12/IO13/IO38/IO45), so it is not simply the 2020
+drawing. **There is no S3 Plus main-board schematic published at all** — the file
+named for the Plus is one sheet covering the GNSS daughterboard only — so no
+document both names this product and shows this panel.
+
+**Working value: 1.3" (261 dpi).** Chosen as the conservative one, not the likely
+one: physical minimums converted at the higher dpi produce more pixels, so if the
+panel is really 1.54" every touch target comes out physically larger than
+designed rather than smaller. Recorded in `platform/src/board_profiles.cpp`.
+A ruler on a physical unit settles it — it rides on A1.
 
 ### Display detail worth budgeting
 

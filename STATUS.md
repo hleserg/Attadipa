@@ -97,7 +97,7 @@ None of these blocks M1. All of them block hardware work.
 
 | Target | State |
 |---|---|
-| Host / native | builds; four tests pass locally and in CI — smoke, capability registry, and the two halves of the layer-boundary check |
+| Host / native | builds; four tests pass locally and in CI — smoke, capability registry, and the two halves of the layer-boundary check. The negative half is checked against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs.** LVGL v9.5.0 + SDL2 2.30.0. Two more tests render it headless at both geometries under `SDL_VIDEODRIVER=dummy` and require a screenshot per geometry. Off by default (`-DFIREFLY_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
@@ -113,11 +113,12 @@ has been taken. Nothing here may be described as hardware-tested.
 
 ## Open conflicts
 
-Recorded rather than resolved by preference. Two of the three need a powered
-board; the third needs the owner.
+Recorded rather than resolved by preference. Two need a powered board, one
+needs the owner, and one needs a ruler.
 
 | # | Conflict |
 |---|---|
+| D15 | **The T-Watch panel's physical diagonal.** LilyGoLib's spec tables say 1.3" for the S3 and the S3 Plus by name; the schematic's LCD sheet says `QT154C2408` / `LCD_1.54-TOUCH`, and that vendor's sibling part `QT154H2201` is published as 1.54", 240×240, ST7789V — so the part number decodes. 240 × 240 is not in doubt; 261 dpi against 220 is. The code holds 1.3" as the **conservative** reading, not the confident one ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md#display-diagonal--conflicting)) |
 | A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Firefly Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
 | H8 | The T-Watch vendor document calls ALDO1 unused; the schematic drives the `+3V3` rail from it. If the schematic is right, `+3V3` is switchable and carries five parts |
 | D12 | PSRAM documented as quad; the `R8` part marking is understood to mean octal. Affects both boards, and blocks the LVGL buffer decision |
