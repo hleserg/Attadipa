@@ -77,6 +77,11 @@ In order of likelihood:
 5. **The marker is missing.** An issue needs `firefly-agent-task` *and*
    `@claude` in the body, or the `agent:ready` label.
 
+**Look at the issue first.** If it carries a task marker and was refused anyway,
+the gate has already commented on it saying which guard rejected it and which
+actor it saw, and applied `needs-owner`. That comment exists so this list does
+not have to be worked through by hand.
+
 ### The workflow fires but nothing happens
 
 Look at the `gate` job's log. Every refusal writes a `::notice::` saying which
@@ -107,7 +112,16 @@ the repository knows or cares which of those happened.
 
 ## Restoring the labels
 
-If the label set is ever damaged, it is described in
-[AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#labels) and can be recreated with
-`gh label create`. Losing a label loses no work — the issues keep their
-history, and re-applying a label is enough to put a task back in the queue.
+```bash
+.github/scripts/setup-labels.sh              # this repository
+.github/scripts/setup-labels.sh --dry-run    # show what it would do
+```
+
+Idempotent — it creates what is missing and corrects the colour and description
+of what is not. Losing a label loses no work: the issues keep their history, and
+re-applying a label is enough to put a task back in the queue. The set itself is
+described in [AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#labels).
+
+A label that does not exist is a state a task cannot reach — `gh issue edit
+--add-label` fails and the workflows swallow it with `|| true` — so this is worth
+running after any manual tidying of the label list.

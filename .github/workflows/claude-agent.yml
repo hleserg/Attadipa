@@ -321,10 +321,22 @@ jobs:
             args+=(--add-label "$label")
           done
 
-          # Adding is idempotent; removing agent:ready is what moves the task out
-          # of the watchdog's queue so it cannot be picked up twice.
+          # Adding is idempotent; removing the other state labels is what makes
+          # the claim true rather than merely additional.
+          #
+          # agent:ready must go or the watchdog picks the task up twice. The
+          # other two matter for the second run on an issue that has already
+          # been through the loop — the @claude override, or a retry after a
+          # failure. Without this the issue ends up carrying agent:working AND
+          # agent:review at once, and the `Hand over` step below sees
+          # agent:review in the label list, concludes the agent labelled the
+          # issue itself, and exits without clearing agent:working. The task is
+          # then stuck working forever, the watchdog "unsticks" it two hours
+          # later, and a finished task is re-queued on a loop.
           gh issue edit "$ISSUE" --repo "$REPO" "${args[@]}" || true
-          gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:ready || true
+          for stale in agent:ready agent:review agent:failed; do
+            gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$stale" || true
+          done
 
   agent:
     name: Claude

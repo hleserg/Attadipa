@@ -200,6 +200,41 @@ products and the difference is visible to the user in the first ten seconds.
 
 ---
 
+## Automation
+
+### How does a producing agent authenticate when it files a task?
+
+**Status: UNKNOWN.** This is the one thing standing between the queue working
+and the owner still being in the loop, and it cannot be settled by reading.
+
+The intake gate trusts the **actor**, not the marker — `producer: chatgpt` is a
+data field anybody can type, and write access is not. It rejects, by design, any
+login ending in `[bot]`, plus `claude` and `github-actions`, because a Claude
+comment mentioning `@claude` would otherwise start a Claude run that comments.
+
+That guard is right and must stay. But it means the producer's **route** decides
+whether the loop closes:
+
+| ChatGPT files through | Actor the gate sees | Outcome |
+|---|---|---|
+| a user account with `write`/`maintain`/`admin` | that user's login | accepted |
+| a GitHub App | `something[bot]` | rejected — correctly, by the bot guard |
+| an account with only `read` or `triage` | that login | rejected on permission |
+
+Until an issue has actually been filed the way ChatGPT will file it, which of
+these applies is a guess, and guessing is what this file exists to prevent.
+
+**What has been done about it:** a refusal of a marked task is no longer silent.
+The gate comments once on the issue naming the guard that rejected it and the
+actor it saw, and applies `needs-owner`. So the failure is now loud on the first
+occurrence instead of being an issue nobody picks up.
+
+**What would settle it:** one issue, filed by ChatGPT through whatever route it
+will really use, and the resulting run. Either an agent starts, or the refusal
+comment names the actor — and either way the answer is on the issue.
+
+---
+
 ## Recently resolved
 
 Moved to [VERIFIED_FACTS.md](VERIFIED_FACTS.md) on 2026-08-21: both boards'
