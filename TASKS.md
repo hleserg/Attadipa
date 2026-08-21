@@ -24,20 +24,6 @@ research status · implementation status · tests · hardware required.
 
 ## NOW
 
-### T-041 · Owner amendment: MeshCore 1.17 upstream review
-- **Priority:** P0 — the owner marked it *"выполнить до дальнейшей разработки
-  OS"*, ahead of the remaining M1 slice.
-- **Goal:** review upstream MeshCore between v1.16.0 and v1.17.1+ and `dev`,
-  and produce `docs/upstream/meshcore-1.17-review.md` with a status of
-  `adopt / adapt / monitor / reject` against every item.
-- **Acceptance:** every named PR and issue read and cited by number; regressions
-  separated from fixes; *confirmed / merged / released / open / experimental*
-  distinguished; the upstream compatibility boundary written down; small tasks
-  filed for each Firefly change it implies.
-- **Implementation status:** in progress
-- **Hardware required:** no — and no Heltec V4 is in this project's hands, so
-  nothing here may be reported as tested on one.
-
 ### T-042 · Owner amendment: GNSS integrity and receiver-native protection
 - **Priority:** P0 for the *architecture and task* half; the navigation stack
   itself is explicitly out of scope now (owner §15).
@@ -48,7 +34,8 @@ research status · implementation status · tests · hardware required.
 - **Acceptance:** OWNER_DECISIONS carries the amendment; no interface loses
   integrity or diagnostic information; MIA-M10Q and LS550G have a research task
   each; RTCM is a per-provider capability rather than a property of GNSS.
-- **Implementation status:** not started
+- **Implementation status:** in progress — the amendment is recorded as
+  [OD-5](docs/research/OWNER_DECISIONS.md)
 
 ## NEXT
 
@@ -121,6 +108,165 @@ research status · implementation status · tests · hardware required.
 ---
 
 ## READY
+
+### T-043 · The node link is not a BLE link
+- **Priority:** P0 — it is the shape of the transport, and the shape is cheapest
+  before there is code in it
+- **Dependencies:** [ADR-0005](docs/adr/0005-node-protocol.md)
+- **Goal:** a transport abstraction for the watch↔node link that admits several
+  interfaces at once — BLE, USB, UART, and later Wi-Fi/ESP-NOW — the way
+  MeshCore's `MultiSerialInterface` (#3049, merged) does, without the three
+  semantics that make upstream's version wrong for us.
+- **Acceptance:** a reply goes back to the interface its request arrived on, not
+  to all of them; each interface has its own bounded queue, so a stalled one
+  cannot mark the stack busy; interfaces are serviced fairly rather than in
+  registration order; a write failure names the interface that failed. No
+  transport-specific method (`enableBluetooth()`) on the generic manager.
+- **Research status:** done —
+  [meshcore-1.17-review §1](docs/upstream/meshcore-1.17-review.md)
+- **Implementation status:** not started
+- **Tests:** host — two fake interfaces, one of which never drains; the other
+  must keep working, and the drop must be counted.
+- **Hardware required:** no for the abstraction; yes to prove it on a real link.
+
+### T-044 · Framing that can be resynchronised
+- **Priority:** P0 — it is a two-line requirement now and a protocol break later
+- **Dependencies:** T-043
+- **Goal:** write the framing requirements into
+  [ADR-0005](docs/adr/0005-node-protocol.md). MeshCore's USB framing is a start
+  byte plus a 16-bit length with **no checksum, no escaping and no resync
+  marker**, and an over-long frame is silently truncated to `MAX_FRAME_SIZE` and
+  delivered as if complete.
+- **Acceptance:** ADR-0005 states that a torn frame must be *detected*; that an
+  over-long frame is an error rather than a truncation; that resynchronisation
+  cannot depend on a byte value that occurs freely in payloads; and that
+  connection state is either observable or explicitly `Unknown`, never a
+  hardcoded `true`.
+- **Research status:** done —
+  [meshcore-1.17-review §2](docs/upstream/meshcore-1.17-review.md)
+- **Implementation status:** not started
+- **Tests:** host — a fuzz over truncated, extended and bit-flipped frames; no
+  input may produce a frame the parser reports as valid.
+- **Hardware required:** no.
+
+### T-045 · `PowerState`: hibernate is not a sleep with the radio armed
+- **Priority:** P0
+- **Goal:** the six-state power model — `ACTIVE`, `IDLE`, `LIGHT_SLEEP`,
+  `MESH_LISTEN_SLEEP`, `HIBERNATE`, `POWER_OFF` — as a type, with the wake
+  sources of each written down.
+- **Why:** upstream's `HeltecV4R8Board::powerOff()` is `enterDeepSleep(0)`, and
+  that path leaves the FEM in RX and arms EXT1 on `P_LORA_DIO_1`. "Off" ends at
+  the next packet (#3165; fix #3168 still open). Two behaviours that differ only
+  in their wake sources shared one function name.
+- **Acceptance:** a board cannot satisfy `HIBERNATE` while a radio wake source is
+  armed — the API must not let it, rather than a review catching it. Each state
+  names its wake sources and its expected current as `ESTIMATED` until measured.
+- **Research status:** done —
+  [meshcore-1.17-review §5](docs/upstream/meshcore-1.17-review.md)
+- **Implementation status:** not started
+- **Tests:** host — a fake board that arms a radio wake in `HIBERNATE` must fail.
+- **Hardware required:** yes to fill in the current figures. Until then every
+  number is `ESTIMATED` and says so.
+
+### T-046 · Crash-safe persistence, for everything and not only contacts
+- **Priority:** P1
+- **Goal:** one rule for every persistent structure —
+  `write temp → flush → close → rename old to backup → atomic rename into place`
+  — with load falling back to the backup and reporting which copy it used.
+- **Why:** upstream still writes `/contacts3` in place and `break`s mid-stream on
+  failure (open PR #1447 fixes contacts only), and `savePrefs()` on nRF52/STM32
+  *deletes* `prefs.json` before writing the new one. Its JSON migration (#2982)
+  is the part to copy: forward-convert and **leave the old file alone**.
+- **Acceptance:** no critical structure is ever overwritten in place; a migration
+  never destroys its source; the ~2× storage headroom the pattern needs is
+  checked rather than assumed; dirty state is flushed on every shutdown and
+  reboot path (#2627).
+- **Research status:** done —
+  [meshcore-1.17-review §6](docs/upstream/meshcore-1.17-review.md)
+- **Implementation status:** not started
+- **Tests:** host — a filesystem fake that fails at every write offset in turn;
+  a load must always produce either the old contents or the new, never a hybrid.
+- **Hardware required:** no for the logic; yes for the flash behaviour.
+
+### T-047 · Two clocks, and the rule about which one measures time
+- **Priority:** P1
+- **Goal:** adopt MeshCore's separation — `RTCClock` (wall, absolute) versus
+  `MillisecondClock` (monotonic) — as Firefly's own, and write the rule down:
+  **timers, timeouts, retries, connection expiry and the scheduler use the
+  monotonic clock.** RTC and GNSS time only where absolute time is required.
+- **Why:** a GNSS fix that steps the wall clock must not be able to make a
+  timeout fire late — or never. Upstream already hit the long-uptime version of
+  this (#2937). It also connects to T-042: a clock that jumps is itself evidence
+  in the GNSS trust state.
+- **Acceptance:** the two clocks are distinct types, not one type with two
+  meanings; a duration cannot be computed from wall-clock readings without
+  saying so explicitly.
+- **Research status:** done —
+  [meshcore-1.17-review §7](docs/upstream/meshcore-1.17-review.md)
+- **Implementation status:** not started
+- **Tests:** host — step the wall clock forwards and backwards under a running
+  timeout and assert it fires at the same monotonic instant.
+- **Hardware required:** no.
+
+### T-048 · The crypto and RNG seam
+- **Priority:** P1
+- **Goal:** one crypto interface with three named backends — `software`,
+  `ESP32-S3 hardware`, `nRF52 CC310` — and an entropy source that is the
+  platform's hardware RNG.
+- **Why:** upstream's ESP32 LoRa path uses `radio->randomByte() ^ ::random()`,
+  and the Arduino PRNG's own header calls itself *"VERY SLOW"*. `esp_fill_random`
+  appears **only** in the two ESP-NOW variants, and there is **no** mbedtls,
+  `esp_aes` or `esp_sha` anywhere in the tree. So this is a gap to fill, not a
+  port. nRF52 got CC310 in 1.17.0 (#2824); the ESP32 equivalent (#2280) is open.
+- **Acceptance:** no `#ifdef` for a backend above the seam; entropy comes from
+  `esp_fill_random()` on ESP32; and **no claim that hardware acceleration is
+  faster** appears anywhere until it is `MEASURED` against the software path at
+  Firefly's actual payload sizes.
+- **Research status:** done —
+  [meshcore-1.17-review §8](docs/upstream/meshcore-1.17-review.md)
+- **Implementation status:** not started
+- **Tests:** host — known-answer vectors that every backend must satisfy.
+- **Hardware required:** yes for the ESP32-S3 measurement.
+
+### T-049 · Front-end control is a board capability
+- **Priority:** P1
+- **Dependencies:** [ADR-0003](docs/adr/0003-radio-not-lora.md)
+- **Goal:** express FEM/LNA/PA control as a property of the **board**, never as
+  something inferred from "it has an SX1262".
+- **Why:** the Heltec V4 auto-detects a GC1109 (V4.2) or a KCT8103L (V4.3) from
+  the pull level of a shared GPIO at boot, and only one of the two can switch its
+  LNA. Same product name, different silicon — the T-Watch radio problem from a
+  second vendor. Upstream then shipped the LNA on by default and removed the
+  companion's ability to turn it off (`e2aa7b98`, #3203); issues #3010 and #3232
+  report the noise floor rising 13–22 dB and are open.
+- **Acceptance:** the capability model can express *"has a front end, and it is
+  switchable"* separately from *"has a front end"*; no default that changes RF
+  behaviour is set without a measurement recorded beside it; the upstream
+  implementation is **not** ported.
+- **Research status:** done —
+  [meshcore-1.17-review §4](docs/upstream/meshcore-1.17-review.md)
+- **Implementation status:** not started
+- **Tests:** host — a board declaring a fixed front end must not compile against
+  the switch-it API.
+- **Hardware required:** yes to measure any of it. No Heltec board is in this
+  project's hands.
+
+### T-050 · The MeshCore adapter boundary, tested before there is an adapter
+- **Priority:** P1
+- **Dependencies:** [ADR-0007](docs/adr/0007-two-capability-layers.md) §5
+- **Goal:** the boundary the owner asked for —
+  `UI/Apps → Services → Mesh Service API → MeshCore Adapter → transports → HAL`
+  — enforced the way the other two boundaries already are: a `PRIVATE` link plus
+  a fixture that **must fail** to compile.
+- **Acceptance:** no file outside the adapter includes a MeshCore header, and a
+  test proves it by trying; bumping the MeshCore pin cannot require an edit
+  above the adapter.
+- **Research status:** done —
+  [meshcore-1.17-review §12](docs/upstream/meshcore-1.17-review.md)
+- **Implementation status:** not started
+- **Tests:** host — the third boundary test, alongside
+  `capability_boundary_negative` and `l10n_boundary_negative`.
+- **Hardware required:** no.
 
 ### T-013 · The local mesh integration spike
 - **Priority:** P0
@@ -489,6 +635,49 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-041 · Owner amendment: MeshCore 1.17 upstream review — **DONE**
+- **Closed:** 2026-08-21
+- **What was delivered:**
+  [`docs/upstream/meshcore-1.17-review.md`](docs/upstream/meshcore-1.17-review.md)
+  — v1.16.0 → v1.17.1 and `dev` read at source, all thirteen owner-named PRs and
+  issues read through the GitHub API, and a status of
+  `adopt / adapt / monitor / reject` against every item.
+- **The finding that shaped the rest:** **ten of the thirteen owner-named pull
+  requests are still open.** Only #3049 (multi-interface companion) and #3137
+  (FEM gain persistence) are merged; #2734 is an *issue* already fixed by merged
+  #3006. So most of what the amendment names is a *proposal* rather than
+  shipped code, which is exactly the distinction the owner's §3 asks for and the
+  reason nothing here is proposed for porting.
+- **Two defects confirmed by reading the shipped tree, not by trusting a report:**
+  - the **FEM/LNA regression** — `e2aa7b98` added `radio_fem_rxgain = 1` to the
+    companion (v1.16.0 had no FEM pref at all), then #3203 `#if 0`'d the pref
+    out. On a Heltec V4.3 running 1.17.1 the external LNA is on and cannot be
+    turned off. Open issues #3010 and #3232 report the noise floor going
+    −115 → −95 dB and −108 → −86 dB. Released, unfixed.
+  - the **V4-R8 hibernate defect** — `powerOff()` is literally
+    `enterDeepSleep(0)`, which leaves the FEM in RX and arms EXT1 on
+    `P_LORA_DIO_1`. "Off" ends at the next received packet (#3165, fix #3168
+    open).
+  - and the **USB transport** — `isConnected()` returns `true` unconditionally
+    *("no way of knowing, so assume yes")*, `isWriteBusy()` returns `false`
+    unconditionally, and an over-long frame is truncated to `MAX_FRAME_SIZE` and
+    delivered as if complete. The same codebase gets it right on BLE, with
+    bounded queues and logged overflow — which is what makes it a lesson rather
+    than a limitation.
+- **What Firefly takes:** the two-clock separation, the JSON migration that does
+  not destroy its source, the preamble-detect LBT scheme with both watchdog
+  deadlines, BLE's queue discipline, and the battery rules (never sample during
+  transmit; flush on every shutdown path). **What it does not take:** any FEM
+  default, any unmerged code, and hardware CAD, which upstream still ships off.
+- **Filed as a result:** T-043 (multi-interface node link), T-044 (framing),
+  T-045 (`PowerState`), T-046 (crash-safe persistence), T-047 (two clocks),
+  T-048 (crypto/RNG seam), T-049 (front-end as a board capability), T-050 (the
+  adapter boundary).
+- **Hardware required:** no — and **no Heltec board of any revision is in this
+  project's hands**, so every upstream measurement quoted in the document is
+  attributed to upstream and Firefly's own status for all of it stays
+  `NOT EXECUTED — HARDWARE REQUIRED`.
 
 ### T-033 · Localization: `tr()`, catalogues, and the checks that guard them — **DONE**
 - **Closed:** 2026-08-21

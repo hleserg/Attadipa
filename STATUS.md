@@ -42,18 +42,27 @@ Two owner amendments arrived on 2026-08-21 and both outrank the remaining M1
 slice. They are recorded in
 [OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md).
 
-- **T-041 — MeshCore 1.17 upstream review.** The owner marked it explicitly as
-  the task to do *before* further OS development: v1.16.0 → v1.17.1+ and `dev`,
-  with a status of `adopt / adapt / monitor / reject` per item, in
-  `docs/upstream/meshcore-1.17-review.md`.
-- **T-042 — GNSS integrity.** The architecture and task half only; the owner's
+- **T-041 — MeshCore 1.17 upstream review — done.**
+  [`docs/upstream/meshcore-1.17-review.md`](docs/upstream/meshcore-1.17-review.md).
+  Ten of the thirteen owner-named pull requests are **still open**, so most of
+  what the amendment names is a proposal rather than shipped code. Two defects
+  were confirmed by reading the shipped tree: the Heltec V4.3 external LNA is on
+  by default with the companion's control removed (#3010, #3232 — noise floor up
+  13–22 dB, unfixed), and `HeltecV4R8Board::powerOff()` is wake-on-LoRa deep
+  sleep, so "off" ends at the next packet (#3165). It filed **T-043 … T-050**.
+- **T-042 — GNSS integrity — next.** The architecture and task half only; the owner's
   §15 is explicit that the navigation stack is *not* to be built now. It fixes
   a wrong assumption (RTCM is not a property of GNSS, and the MIA-M10Q has
   none), adds a receiver capability descriptor, and puts a trust state into the
   `LocationService` architecture before either exists as stable code.
+- **T-043 … T-050** — the eight small tasks the MeshCore review filed: the node
+  link that is not a BLE link, resynchronisable framing, the `PowerState`
+  taxonomy that cannot call a wake-on-LoRa sleep "hibernate", crash-safe
+  persistence, two clocks, the crypto/RNG seam, the front end as a board
+  capability, and the adapter boundary test written before there is an adapter.
 - **T-009 · T-034 · T-037 · T-038** — design tokens in code, the image asset
   pipeline, the first Clock and the first Settings. The rest of the M1 slice,
-  in the order final §58 gives, resumed after the two above.
+  in the order final §58 gives, resumed after the above.
 
 ## Lookahead research
 

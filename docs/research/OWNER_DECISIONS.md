@@ -219,6 +219,130 @@ is untouched: final §3 and §9 restate it almost word for word.
 
 ---
 
+## OD-4 — Synchronise with upstream MeshCore before continuing the roadmap
+
+**Decided:** 2026-08-21.
+
+**As stated:** «ПЕРВАЯ ЗАДАЧА — выполнить до дальнейшей разработки OS» — the
+first task, to be done before further OS development. Stop the roadmap and
+review upstream MeshCore between v1.16.0 and v1.17.1+, including `dev`, across
+ESP32-S3, the Heltec V4 family, SX1262, the companion firmware, BLE, USB, the
+multi-interface work, LoRa RX/TX, preamble detection, LBT, CAD, FEM/LNA, power
+management and sleep, battery measurement and brownout, persistent config,
+contacts and storage, GPS and time, and hardware RNG and crypto acceleration.
+
+**What it obliges:**
+
+1. **Release notes are not evidence.** Read commits, merged pull requests,
+   technically valuable unmerged ones, open issues and `dev`; for each change,
+   find the *root cause*, not the changelog line.
+2. **Distinguish confirmed fix / merged fix / released fix / open PR /
+   experimental.** «Не считай, что последний релиз — лучший» — do not assume the
+   latest release is the best. Check for open regressions, the FEM RX gain path
+   in particular.
+3. **Do not pull unmerged code into production Firefly without analysis.**
+4. **Build a compatibility layer** so MeshCore can be updated without rewriting
+   the OS: `UI/Apps → Services → Mesh Service API → MeshCore Adapter →
+   transports → HAL`.
+5. **Produce `docs/upstream/meshcore-1.17-review.md`** with a status per item:
+   `adopt / adapt / monitor / reject`, then file each required Firefly change as
+   a separate small task.
+6. **Do not stop at the review.** Fix the critical architectural errors, add
+   regression tests, build, run, fix, and continue. The order is stated as a
+   principle: **Research → reuse proven implementations → adapt → test → only
+   then invent.**
+
+Four specific instructions inside it are narrower than the rest and are recorded
+verbatim in effect, because each forbids something that would otherwise look
+reasonable:
+
+- **Transport is not BLE.** Firefly's must admit BLE, USB, UART, Wi-Fi/TCP and
+  possibly ESP-NOW, several at once — «не копируй слепо», do not copy #3049
+  blindly.
+- **No own LBT yet.** «Не реализовывай собственный LBT, пока не станет понятно,
+  что можно безопасно взять из MeshCore.» Hardware CAD stays experimental while
+  upstream ships it off.
+- **Do not port the old FEM implementation.** «Не переносить старую
+  реализацию.» FEM/LNA is a **board capability**, never an SX1262 assumption.
+- **Hibernate is not a sleep with the radio armed.** «Не смешивай "сон с
+  пробуждением по LoRa" и настоящий hibernate.» And, separately: **«wall clock
+  нельзя использовать для измерения elapsed time»** — the monotonic clock owns
+  timers, timeouts, retries, connection expiry and the scheduler.
+
+**What it invalidates:** nothing already written, because none of these
+subsystems exists yet. That is the point of its timing — the review landed
+before the code it constrains, which is the only moment any of it is free.
+
+**Status:** the review is
+[done](../upstream/meshcore-1.17-review.md); it filed T-043 … T-050.
+
+---
+
+## OD-5 — GNSS integrity, and the receiver's own protection comes first
+
+**Decided:** 2026-08-21.
+
+**As stated:** a GNSS receiver is not merely a source of NMEA sentences. Modern
+receivers carry jamming detection, jamming mitigation, spoofing detection,
+integrity estimates, RF diagnostics, per-signal information, assistance and
+fast-start, and security features, and Firefly must use them. The priority order
+is explicit: **receiver-native mechanisms → Firefly's independent detectors →
+a combined trust state.**
+
+**What it obliges:**
+
+1. **Research both real variants from primary sources before writing a driver.**
+   The T-Watch S3 Plus ships either a u-blox **MIA-M10Q** or a Quectel
+   **LS550G**. Datasheet → integration manual → protocol specification → vendor
+   examples → official library source, in that order. Anything unclear is
+   `UNKNOWN` — never an assumption baked into code.
+2. **Anti-spoofing on the LS550G is `UNKNOWN`, not `SUPPORTED`,** until a
+   primary source or a real device says otherwise. The vendor's marketing claims
+   are claims.
+3. **RTCM is not a property of "GNSS", of "u-blox", or of an abstract
+   `GnssDriver`.** **The MIA-M10Q does not support RTCM.** Differential
+   corrections must be an optional capability of a specific provider.
+4. **Do not collapse the states.** Availability, receiver health, fix presence,
+   fix type, freshness, accuracy, integrity, interference, spoofing suspicion
+   and final trust are separate. A provider may be `Ready`, with a numerically
+   valid fix, and still be unusable for navigation.
+5. **Do not lose data at the driver boundary.** The observation type must carry
+   what the receiver reports — both a normalized Firefly representation *and*
+   the receiver's native values, not one at the cost of the other.
+6. **A GNSS receiver capability descriptor**, so an application still asks
+   `LocationService` and never learns the chip: jam detection, active jam
+   mitigation, spoof detection, interference monitoring, protection level,
+   signal security log, per-signal diagnostics, constellation control,
+   autonomous orbit prediction, assistance injection, differential corrections
+   input, raw measurements, configuration lock, message integrity.
+7. **Trust is a state with reasons, not a boolean.** `Trusted` / `Degraded` /
+   `Untrusted`, with hysteresis, weighted evidence, reason codes, timestamps,
+   the last trusted position, growing uncertainty after loss, and a transition
+   log. Not `gps_ok`, and not `spoofFlag || jumpDetected || jamming`.
+8. **The receiver's own verdict is strong evidence, not truth.** Fuse it with
+   the accelerometer, physical plausibility, clock-versus-GNSS time, provider
+   disagreement and constellation anomalies. The canonical case: **GNSS reports
+   large movement while the accelerometer says the device is still.**
+9. **The BMA423 is an accelerometer.** No gyroscope, no magnetometer. It is
+   right for that detector and is **not** an IMU and not dead reckoning.
+10. **A bounded, disableable, replayable diagnostic trace** before any field
+    testing — never an unbounded log that can fill flash.
+
+**What is explicitly *not* to be built now** (owner §15, and it is emphatic):
+no Kalman filter, no RTS smoother, no pedestrian dead reckoning, no second GNSS,
+no RTK, no DGNSS, no RTCM over LoRa, no map matching, no HMM, no routing, no
+universal spoofing detector. «Текущий milestone не ломать» — do not break the
+current milestone. What is to be done now is the architecture and the tasks:
+record the decision, check the existing `GnssDriver` / `LocationService` shape,
+stop the interfaces losing integrity information, file the receiver research,
+add the descriptor, add the trust state, add the simulator's fault scenarios,
+fix the RTCM assumption — and then carry on.
+
+**What it invalidates:** the assumption that RTCM belongs to a generic GNSS
+driver, wherever this repository has written it.
+
+---
+
 ## Still with the owner
 
 Nothing here answers A1–A3, A5 or the compass question. Those remain in
