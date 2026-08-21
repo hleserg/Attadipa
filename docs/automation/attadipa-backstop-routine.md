@@ -118,7 +118,9 @@ re-run the workflow that should have run, file an issue with a correct marker
 and `agent:ready` where one is genuinely needed.
 
   Limits:
-    - never merge a pull request; that is the owner's decision;
+    - still never merge a pull request — the orchestrator does that, not the
+      backstop. You repair pipeline state; deciding a change is good is not
+      state repair;
     - never change code on main and never open a code pull request — you repair
       pipeline state, you do not write features;
     - unblock at most one dependent task per run;
