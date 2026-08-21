@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="pics/Banner.png"
+       alt="Firefly OS — a firefly with a glowing amber abdomen beside the wordmark, over the tagline GLOW · GUIDE · CONNECT"
+       width="820">
+</p>
+
 # Firefly OS
 
 A wearable firmware platform for ESP32-S3 smartwatches — mesh messaging,

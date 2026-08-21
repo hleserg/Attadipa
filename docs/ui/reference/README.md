@@ -88,3 +88,20 @@ contrast testing on the real panels, not by picking a favourite swatch (§55).
 The hex values recorded in `DESIGN_SYSTEM.md` are taken from §42 of the
 specification, which is text, rather than sampled from these PNGs, which are
 raster. Where the two disagree by a digit, the text wins.
+
+## And the brand assets, which are a different thing
+
+[`../../pics/`](../../../pics/README.md) arrived later the same day and is not
+part of this directory, because it is not a reference. Those files are finished
+marks — a banner, an application icon, a favicon — meant to be published as
+they are, and the banner is now at the top of the repository
+[`README`](../../../README.md).
+
+They matter here for two reasons. They add a tagline that did not previously
+exist — **`GLOW · GUIDE · CONNECT`** — and they carry inks that are *not* the
+§42 palette: the wordmark orange samples around `#E16439`, against Firefly
+Orange `#FF8A40`. That is a wider gap than "disagree by a digit", so the rule
+above does not settle it, and it has been raised as A7 in
+[`../../research/OPEN_QUESTIONS.md`](../../research/OPEN_QUESTIONS.md) rather
+than decided here. Sampled values and the reasoning are in
+[`../../../pics/README.md`](../../../pics/README.md).
