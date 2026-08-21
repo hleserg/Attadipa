@@ -1099,6 +1099,181 @@ stale silently. The protocol is
   filed, which is the deliverable the owner actually asked for.
 - **This is a research task.** It produces documentation. A pull request full of
   new subsystems has been guessed at, not done.
+### T-072 · What a vanilla MeshCore node actually exposes
+- **Priority:** P1 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours).
+  It gates T-073 and T-074 and it is cheap: the source is already cloned and MIT.
+- **Dependencies:** none
+- **Goal:** fill in §1 of
+  [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  from `d92964352441e53b93e8667b802e04f6e072b39e` — which transports the
+  `companion_radio` role exposes (BLE, serial, and whether LAN/TCP exists at the
+  pinned revision), which commands a stock build answers, whether telemetry
+  carries a position, and whether the node's own fix is distinguishable from one
+  relayed in a message.
+- **Acceptance:** every row has an answer with a file and line, or stays
+  `UNKNOWN` with the reason. A reuse-ledger record either way, per
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
+- **This is a research task.** It produces documentation. A pull request full of
+  new subsystems has been guessed at, not done.
+- **Hardware required:** no. Confirming it against a real vanilla node later is a
+  separate task and would be the first honest `OBSERVED` in this area.
+
+### T-073 · Meshtastic as a companion — the licence is the gate
+- **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
+- **Dependencies:** none, but pointless before T-072 establishes the shape a
+  companion client takes here
+- **Goal:** answer one question before any other: **are Meshtastic's protocol
+  definitions licensed separately from its GPL-3.0 firmware?** Then, only if the
+  answer permits, §2 of the research file.
+- **Acceptance:** the licence answer cited from the `protobufs` repository's own
+  `LICENSE` file, not inferred from the firmware's. If it does not permit a
+  client, the deliverable is a `BLOCKED:` with options, not a client written
+  carefully.
+- **Hardware required:** no
+
+### T-074 · More than one mesh provider at once
+- **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
+- **Dependencies:** T-072
+- **Goal:** extend [ADR-0008](docs/adr/0008-mesh-service-providers.md) §3 from two
+  providers to a list. What `availability(MeshMessaging)` means when two are up
+  and one is degraded; deduplicating a message that arrived twice over different
+  providers; and the explicit decision that bridging two networks is a **product
+  decision with an airtime cost**, never a side effect of both being configured.
+- **Acceptance:** an ADR amendment, and applications still have one code path.
+- **Hardware required:** no
+
+### T-075 · The position-source inventory, and what each may claim
+- **Priority:** P1 — [OD-8](docs/research/OWNER_DECISIONS.md#od-8--every-source-of-position-and-the-watch-as-the-instrument)
+- **Dependencies:** none
+- **Goal:** §4 of the research file — seven sources, each with its accuracy where
+  known and its **provenance** always. A fix from the wearer's receiver, one
+  relayed from a node on a roof, and a coordinate lifted from somebody else's
+  message are three different claims and exactly one is about the wearer.
+- **Acceptance:** the provenance column is complete and the user-facing
+  consequence is stated: the screen says which, in words.
+  [ADR-0011](docs/adr/0011-gnss-integrity.md)'s axes are reused, not replaced.
+- **Explicitly out of scope:** any estimator that combines two sources into a
+  third number. Selection and fusion are different features and fusion has no ADR.
+- **Hardware required:** no
+
+### T-076 · Position and data from the phone
+- **Priority:** P2 — [OD-8](docs/research/OWNER_DECISIONS.md#od-8--every-source-of-position-and-the-watch-as-the-instrument)
+- **Dependencies:** T-075
+- **Goal:** what a phone will actually hand over, over which protocol, and what
+  survives its permission model. The owner's sentence to design against is *"they
+  become the primary navigation instrument"* — which fails if the phone offers
+  only an already-smoothed position rather than measurements.
+- **Acceptance:** documented per platform, with what is refused as prominent as
+  what is offered.
+- **Hardware required:** eventually yes, for anything claimed as `OBSERVED`
+
+### T-077 · AGPS is a payload, not a transport
+- **Priority:** P2 — [OD-8](docs/research/OWNER_DECISIONS.md#od-8--every-source-of-position-and-the-watch-as-the-instrument)
+- **Dependencies:** T-051, T-052 — the receivers decide what assistance means
+- **Goal:** define the assistance data once — format, validity window, size, what
+  it actually buys — and answer delivery separately per channel: internet, BLE,
+  LoRa, a companion node. Whether anything useful fits a LoRa budget under the
+  duty cycle is the interesting row, and T-027's airtime accounting answers it.
+- **Acceptance:** §5 of the research file, including the provider's terms. A
+  service that forbids redistribution is not a channel-agnostic payload.
+- **Hardware required:** for the timings, yes
+
+### T-078 · The node's cellular option
+- **Priority:** P3 — [OD-9](docs/research/OWNER_DECISIONS.md#od-9--the-node-may-carry-a-cellular-modem)
+- **Dependencies:** a node part number, which does not exist
+- **Goal:** module class, bands, current while registered, and whether it can be
+  powered down without losing registration. Plus the two things that are not
+  engineering: type approval, and whose name the SIM is in.
+- **Status:** `BLOCKED` — needs-owner. Recorded so the question is not reopened
+  from scratch.
+- **Hardware required:** yes
+
+### T-079 · Positioning from cell towers
+- **Priority:** P3 — [OD-9](docs/research/OWNER_DECISIONS.md#od-9--the-node-may-carry-a-cellular-modem)
+- **Dependencies:** T-078
+- **Goal:** whether a tower database may lawfully be shipped in this product —
+  licence, size, regional coverage, update cadence, four separate answers — and
+  what accuracy may honestly be claimed. Hundreds of metres to kilometres makes
+  it a fallback and an indoor sanity check, not a navigation fix, and the UI must
+  say so.
+- **Also:** a registered device is locatable by the network whether or not the
+  wearer asked. T-069's threat model gains a section, and in Child Mode that has
+  a legal answer in some jurisdictions.
+- **Hardware required:** for accuracy claims, yes
+
+### T-080 · A standing person does not need a new fix
+- **Priority:** P1 — [OD-10](docs/research/OWNER_DECISIONS.md#od-10--a-standing-person-does-not-need-a-new-fix).
+  The largest continuous draw on a watch that has GNSS.
+- **Dependencies:** T-051 and T-052 (what the receivers can do), T-060 (whether
+  the IMU can raise a motion interrupt while the SoC sleeps)
+- **Goal:** duty-cycle the receiver against motion. Ask less often when the
+  wearer is still; hold an accurate, trusted fix rather than re-measuring it; and
+  **do not let that turn the next fix into a cold start**, which is the trap the
+  owner named in the same sentence as the idea.
+- **Acceptance:**
+  - standing still is a hypothesis, not a fact — a rate reduction with a
+    **ceiling**, never an indefinite suspension, and the ceiling is a setting;
+  - a held position is timestamped and its age is on screen. Holding one
+    deliberately must not become the thing that violates ADR-0011's rule against
+    presenting a position nobody observed;
+  - every current and every start time is `MEASURED` or labelled `ESTIMATED`.
+    This whole feature is a claim about a specific module's low-power behaviour,
+    so an unsourced number is the failure mode.
+- **Composes with:** T-071 (dead reckoning covers the interval this opens) and
+  T-077 (assistance held ready is the other half of avoiding the cold start).
+- **Hardware required:** yes, for every number in it
+
+### T-081 · Themes are installable data
+- **Priority:** P2 — [OD-11](docs/research/OWNER_DECISIONS.md#od-11--themes-are-installable-and-the-layout-survives-them),
+  and the owner marked it *обязательно*
+- **Dependencies:** T-009 (**done** — it is the substrate), T-046 (crash-safe
+  persistence), T-034 (icons must be named before they can be replaced)
+- **Goal:** an ADR. A theme is **data**: colour values for the twelve roles in
+  both themes, a font, an icon set. It never carries layout and never carries a
+  pixel count — a theme that could set a padding could break every screen, and
+  *"чтобы всё не поехало"* is exactly the requirement that it cannot.
+- **Acceptance:**
+  - the built-in theme cannot be uninstalled, and a theme that makes the screen
+    unreadable is removable **without reading the screen**. The recovery path is
+    designed first, not after somebody is locked out;
+  - installing a theme is installing untrusted content that arrived over the same
+    links a message does: bounded before it is read, parsed defensively, rejected
+    with a sentence a person can act on;
+  - whether a theme may carry executable content is answered explicitly. The
+    default answer is **no**.
+- **Hardware required:** no
+
+### T-082 · A theme is validated before it is applied
+- **Priority:** P2 — [OD-11](docs/research/OWNER_DECISIONS.md#od-11--themes-are-installable-and-the-layout-survives-them)
+- **Dependencies:** T-081
+- **Goal:** the installation gate, built out of checks that already exist.
+  `contrast_ratio_centi()` in `ui/src/color.cpp` is already the arithmetic; a
+  candidate palette whose text does not clear 4.5:1 on its own page is refused,
+  or applied with the failure stated in words. A candidate font that cannot draw
+  every codepoint in either catalogue is refused outright.
+- **Why it is not optional:** the same arithmetic found two failures in the
+  **owner's own** palette (DESIGN_SYSTEM §3.2) that nobody had noticed by looking.
+  A stranger's palette gets the same check and no more benefit of the doubt.
+- **Acceptance:** host tests with deliberately bad themes — an unreadable one, a
+  font missing one codepoint, an oversized one, a truncated one.
+- **Hardware required:** no
+
+### T-083 · No box characters in any build
+- **Priority:** P1 — a defect that exists **today**, not a feature. The owner saw
+  it in a screenshot: *"в проде конечно же такого быть не должно"*.
+- **Dependencies:** T-032 (**done** — the font pipeline exists and its output has
+  been compiled for the target and measured)
+- **Goal:** the simulator and every future firmware build draw with a **generated
+  subset** rather than LVGL's stock Montserrat, which is Latin-only. Today
+  `×` (U+00D7) renders as `□` on the diagnostic screen, and all six Cyrillic
+  codepoints in the English catalogue's own language names do too.
+- **The check already exists and already reports it** — `report_undrawable_glyphs()`
+  prints seven codepoints on every run, and `tools/l10n/check_glyphs.py` asks the
+  same question at build time. What is missing is that the answer is a warning
+  rather than a failure, and that nothing consumes the pipeline's output.
+- **Acceptance:** zero undrawable codepoints in either catalogue, in every build
+  that renders; the run-time report becomes a **test failure** rather than a line
+  of output; a screenshot of both boards in both locales shows no box.
 - **Hardware required:** no
 
 ## BLOCKED

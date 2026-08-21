@@ -115,6 +115,45 @@ Node matters more than it looks: `lv_font_conv` is an npm tool, and finding out
 it could not be run *after* designing the font pipeline around it would have
 been the expensive order.
 
+## Owner decisions of 2026-08-22, recorded and not yet started
+
+Five messages in one session, all filed as
+[OD-7 to OD-11](docs/research/OWNER_DECISIONS.md) with the research questions in
+[COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+and twelve tasks, T-072 to T-083. **Nothing is implemented.** Recorded here
+because a fact that lives only in a chat log does not exist.
+
+- **The companion is any node, not only ours** — vanilla MeshCore over BLE or
+  LAN, Meshtastic alongside or instead, several providers at once with a local
+  radio, and telemetry as a request/response feed. It fits
+  [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape; what it needs is
+  the protocol facts, which are `UNKNOWN` (T-072, T-073, T-074).
+- **Every source of position, with the watch as the instrument** — the watch's
+  receiver, a node's, a phone's, a coordinate inside somebody else's message,
+  telemetry, dead reckoning, cell towers. Selection and fusion are different
+  features and only the first has a shape (T-075, T-076).
+- **AGPS is a payload, not a transport** — internet, BLE, LoRa, whatever is
+  available. Blocked on what the receivers accept (T-077).
+- **The node may carry a cellular modem** — tower positioning from a downloaded
+  database, plus a route off the mesh. Blocked on a part that does not exist, and
+  on four separate answers about the database (T-078, T-079).
+- **A standing person does not need a new fix** — duty-cycle GNSS against motion,
+  without turning the next fix into a cold start. The largest continuous draw on
+  a watch that has GNSS, and the whole feature is a claim about a specific
+  module's low-power behaviour (T-080).
+- **Themes are installable, like applications** — user colours, fonts and icons,
+  without the layout breaking. T-009 turns out to be the substrate: a screen
+  already names a role rather than a value, so swapping the table is the feature.
+  What is missing is themes as data, an installation gate built from the contrast
+  and glyph checks that already exist, and a way back from a theme that makes the
+  screen unreadable (T-081, T-082).
+- **And one defect, not a feature.** The simulator draws with LVGL's stock
+  Latin-only Montserrat, so `×` renders as `□` and so do the Cyrillic letters in
+  the English catalogue's own language names. The check already reports seven
+  undrawable codepoints on every run; what is missing is that it is a warning
+  rather than a failure, and that nothing consumes the font pipeline T-032 built.
+  Filed as **T-083, P1**.
+
 ## Blocked
 
 - **T-010 board bring-up** — no physical board; exact variant unknown.
