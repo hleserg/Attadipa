@@ -90,10 +90,12 @@ jobs:
           fi
           COUNT=${COUNT:-0}
           if [ "$COUNT" -ge 2 ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "pr=$PR" >> "$GITHUB_OUTPUT"
-            echo "exhausted=true" >> "$GITHUB_OUTPUT"
-            echo "job=$JOB" >> "$GITHUB_OUTPUT"
+            {
+              echo "run=false"
+              echo "pr=$PR"
+              echo "exhausted=true"
+              echo "job=$JOB"
+            } >> "$GITHUB_OUTPUT"
             echo "::notice::$COUNT repair attempts already made on #$PR"
             exit 0
           fi

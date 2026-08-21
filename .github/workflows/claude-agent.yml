@@ -234,9 +234,17 @@ jobs:
             *)       add+=(source:owner) ;;
           esac
 
+          # Built as an argument array rather than a string that gets word-split:
+          # a label containing a space would otherwise become two labels, and
+          # the shell would not mention it.
+          args=()
+          for label in "${add[@]}"; do
+            args+=(--add-label "$label")
+          done
+
           # Adding is idempotent; removing agent:ready is what moves the task out
           # of the watchdog's queue so it cannot be picked up twice.
-          gh issue edit "$ISSUE" --repo "$REPO" $(printf -- '--add-label %s ' "${add[@]}") || true
+          gh issue edit "$ISSUE" --repo "$REPO" "${args[@]}" || true
           gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:ready || true
 
   agent:
@@ -275,15 +283,21 @@ jobs:
           ISSUE: ${{ needs.gate.outputs.issue }}
         run: |
           set -euo pipefail
-          gh issue comment "$ISSUE" --repo "$REPO" --body \
-            "$(printf '%s\n' \
-              'BLOCKED' \
-              'Reason: no Anthropic credential is configured, so the agent cannot start.' \
-              'Evidence: neither `ANTHROPIC_API_KEY` nor `CLAUDE_CODE_OAUTH_TOKEN` is present in this repository'"'"'s Actions secrets.' \
-              'Impact: every Claude workflow will accept tasks and then stop here.' \
-              'What can be done automatically: nothing — a secret cannot be created by a workflow.' \
-              'Owner action required: Settings → Secrets and variables → Actions → New repository secret → `ANTHROPIC_API_KEY`.' \
-              'How to resume: comment `@claude` on this issue.')"
+          # Written to a file rather than assembled inline. The quoting needed to
+          # get backticks and an apostrophe through two layers of shell is the
+          # kind of thing that works until somebody edits one word.
+          {
+            echo "BLOCKED"
+            echo "Reason: no Anthropic credential is configured, so the agent cannot start."
+            echo "Evidence: neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is present"
+            echo "in this repository's Actions secrets."
+            echo "Impact: every Claude workflow will accept tasks and then stop here."
+            echo "What can be done automatically: nothing — a workflow cannot create a secret."
+            echo "Owner action required: Settings → Secrets and variables → Actions →"
+            echo "New repository secret → ANTHROPIC_API_KEY."
+            echo "How to resume: comment @claude on this issue."
+          } > /tmp/blocked.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/blocked.md
           gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true
 
       - uses: actions/checkout@v4
