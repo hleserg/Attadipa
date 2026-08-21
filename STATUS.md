@@ -23,6 +23,8 @@ for the target and measured.
 | `firefly_platform` | the hardware inventory: `HardwareFeature`, `HardwareState`, `RadioInfo`, and the two board profiles transcribed from the schematics | — |
 | `firefly_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
 | `firefly_apps` | `AppManifest` and the launcher gating rule | core only |
+| `firefly_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
+| `firefly_replay` | the deterministic navigation replay rig, in `tests/` | core |
 | `firefly_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
 
 The `PRIVATE` in the second row is the enforcement mechanism for
@@ -120,11 +122,12 @@ None of these blocks M1. All of them block hardware work.
 
 | Target | State |
 |---|---|
-| Host / native | builds; ten tests pass locally and in CI — smoke, capability registry, and the two halves of the layer-boundary check. The negative half is checked against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+| Host / native | builds; **seventeen tests** pass locally and in CI — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its twelve traces. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DFIREFLY_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Firefly firmware to build yet |
-| Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED` |
+| Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
+| Automation | four Claude workflows on `main`; the loop has run end to end on a real issue. `CLAUDE_CODE_OAUTH_TOKEN` is configured, which draws on a subscription rather than a metered API account |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
@@ -133,6 +136,18 @@ that decision no longer blocks M1, because M1 is the simulator.
 
 All of them. No board has been powered on by this project and no measurement
 has been taken. Nothing here may be described as hardware-tested.
+
+What changed is that they are now *specified*.
+[HIL_PLANS](docs/testing/HIL_PLANS.md) holds ten of them — which parts are
+actually on the board, sleep current per state, whether deep sleep is deep and
+the radio really off, the front-end regression as a measured noise floor, time
+to first fix cold against hot, which interference indications each receiver
+emits, energy per fix, USB surviving a cable pulled mid-frame, bonded reconnect
+after a reboot, and the battery sag during a transmission — each with equipment,
+a procedure, a pass/fail criterion and a place to write the result.
+
+Every one is marked `NOT EXECUTED — HARDWARE REQUIRED`, and the file's own rule
+is that a result is appended rather than written over the plan.
 
 ## Open conflicts
 
@@ -159,6 +174,31 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **The research integration, and the six test suites that came with it.** Core
+  gained the types the GNSS integrity work needs — an observation that keeps
+  both the normalized value and what the receiver actually said, ten separate
+  state axes rather than one `quality`, a trust state with weighted evidence,
+  hysteresis and kept reason codes — plus a link layer and a deterministic
+  replay rig. Writing the tests found four real defects rather than confirming
+  what was already believed: `next_state()` proposed moving an already-off GNSS
+  receiver into backup, spending current to hold a domain with nothing in it;
+  `start_kind()` read *having* a backup domain as evidence it had been
+  *powered*, promising a warm start where the truth was cold; the trust
+  evaluator read the interval between epochs after overwriting the timestamp it
+  came from, so every rate detector silently did nothing; and `-Werror` caught a
+  comma operator in the replay reader. Four of the author's own expectations
+  were wrong where the code was right, and are recorded as such.
+- **The automation loop, and what running it actually found.** Four workflows,
+  an intake gate extracted into a script with sixteen tested cases, and a CI
+  upgrade — strict warnings with zero debt, Clang, ASan+UBSan, coverage,
+  actionlint. Then it was run rather than reasoned about, which produced three
+  defects a green YAML lint could not: the agent could not authenticate because
+  `id-token: write` was missing, so the action could not exchange its OIDC token
+  for a Claude App installation token; `display_report` had been turned off
+  beside `show_full_output` as if they were the same precaution, so a
+  twenty-eight-turn run left nothing anybody could read; and the hand-over step
+  could leave an issue labelled both `agent:working` and `agent:review`, which
+  is invisible to the watchdog and finished-looking to a person.
 - **The specimen sheets showed a bar that is in no font.** `lv_font_conv`'s
   dump writer marks every pixel outside the advance width in pink, and reading
   those PNGs as luminance turns the mark into ink. The sheets now read the red
