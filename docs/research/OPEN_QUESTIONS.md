@@ -30,7 +30,7 @@ nobody is asked is not a question.
 | A1 | Does the developer have either board physically, and which revision? | **UNKNOWN** | ask the project owner — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
 | A2 | If a T-Watch is present: which of the five radio chips, and which of the two GNSS modules? | **UNKNOWN** | inspect the unit / order details — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
 | A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
-| A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN — now concrete** | ask the project owner. The owner's existing MeshCore node runs 868.731 MHz at 22 dBm ([OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-2). 22 dBm is 158 mW; whether that is lawful on that frequency in the region of operation is unestablished — **asked as [#55](https://github.com/hleserg/Attadipa/issues/55)** |
+| A4 | Which regulatory region governs LoRa operation here? | **CLOSED — not this project's to answer** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-14, 2026-08-22: asked as [#55](https://github.com/hleserg/Attadipa/issues/55), and the owner declined to name one — *"legality is my problem, not the firmware's."* No country or region is coming; nothing here researches a specific jurisdiction's rule table. [ADR-0006](../adr/0006-settings-and-bounded-values.md)'s transmit-closed-while-`Unknown` gate is unchanged by this and still applies to whoever configures the device |
 | A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **UNKNOWN** | ask the project owner — see [../hardware/MAGNETOMETER_BACKLOG.md](../hardware/MAGNETOMETER_BACKLOG.md) — **asked as [#56](https://github.com/hleserg/Attadipa/issues/56)** |
 | A6 | **Does the Attadipa node carry a magnetometer?** | **UNKNOWN** | ask the project owner. Note that "yes" does *not* give the watch a compass: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform. The ADR exists so that this answer does not arrive before the model does — **asked as [#56](https://github.com/hleserg/Attadipa/issues/56)** |
 | ~~A7~~ | ~~Which orange, and which olive?~~ | **RESOLVED** | the project owner, on [issue #57](https://github.com/hleserg/Attadipa/issues/57), 2026-08-22: §42 wins — Attadipa Orange `#FF8A40`, Ink Olive `#2F3A2E`. The sampled brand-art values that lost have left [`../../pics/README.md`](../../pics/README.md) and are recorded in [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-12 |
@@ -44,15 +44,20 @@ which changes region rules and mesh interoperability, not just a driver.
 
 A4 is not a preference. Which frequencies, power levels and duty cycles are
 lawful is set by the region the device operates in, and the answer changes what
-the radio may legally do. It has to be settled before anything transmits.
+the radio may legally do. It has to be settled before anything transmits — by
+whoever operates a given device, not by this project on their behalf.
 
 A4 stopped being theoretical on 2026-08-21. The owner's own node is already on
 air at 868.731 MHz and 22 dBm. Attadipa is not responsible for that node — but
-the numbers it ships as *defaults* are Attadipa's responsibility, and a default
-cannot be chosen before A4 is answered. Note also that A4 no longer decides what
-the core is built to do: per OD-2 these are settings, so the core is built to
-carry a bounded, user-settable value either way. A4 decides the bounds and the
-default, which is a smaller question than it was — but a legal one still.
+the numbers it ships as *defaults* are Attadipa's responsibility, and it ships
+none: [OD-14](OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)
+closes A4 as the owner's to answer for his own device, not this project's to
+research a table for. Note also that A4 was never going to decide what the core
+is built to do: per OD-2 these are settings, so the core carries a bounded,
+user-settable value regardless of which region turns out to apply. What A4 used
+to promise — a specific profile this project would write and ship as a
+default — is not coming, and per ADR-0006 was never supposed to ship as a
+default anyway.
 
 A5 decides whether five epics in §67 are dormant or dead.
 

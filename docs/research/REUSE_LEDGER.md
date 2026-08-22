@@ -435,9 +435,11 @@ precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
 - **A transmit gate that is visibly present in the source can be silently dead.**
   Meshtastic gated transmission on `region == UNSET`; the check was there to
   read, and the device transmitted anyway. *Issue #2205, 2023-01-25.* → This is
-  Attadipa's single most safety-critical line, it is exactly the state the project
-  ships in while A4 is open, and it needs a test that actually observes silence
-  rather than reads the source.
+  Attadipa's single most safety-critical line, it is exactly the state the
+  project ships in with the region profile `Unknown` — permanently, now that
+  [OD-14](OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)
+  has closed A4 without naming one — and it needs a test that actually observes
+  silence rather than reads the source.
 - **A firmware update reset a setting and the device exceeded legal power.** On a
   board with an external amplifier, `lora.tx_power` returned to a default that
   was lawful without the amplifier. *Issue #1830.* → What a reset restores is a

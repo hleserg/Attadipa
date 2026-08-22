@@ -1004,3 +1004,72 @@ Whoever does not want it turns it off.
 dwell time and the sampling rate — all four are to be computed and shown. If the
 arithmetic does not close on power or on storage, that is a `BLOCKED` with
 numbers in it, not a quiet simplification.
+
+---
+
+## OD-14 — Which region is the owner's problem, not the firmware's
+
+**Decided:** 2026-08-22, on [#55](https://github.com/hleserg/Attadipa/issues/55).
+
+**As stated:** *«Законность моя проблема а не прошивки»* — *legality is my
+problem, not the firmware's.*
+
+**What was asked.** [OPEN_QUESTIONS](OPEN_QUESTIONS.md) A4: which country or
+regulatory region does the device operate in. The question was concrete rather
+than theoretical — OD-2 already records the owner's own MeshCore node
+transmitting 158 mW at 868.731 MHz, and whether that is lawful there has never
+been established. The issue asked for a country name so this project could go
+read the applicable rule and record it, the same as any other fact.
+
+**What was answered, and what was not.** The owner declined to name one. That
+is the whole content of the decision: **no country or region is coming**, now
+or later, and this project stops asking. It is not an answer to "which region",
+it is an answer to "whose job is it to know" — and the owner's is the answer.
+
+**What this does and does not change.** It is tempting to read this as
+licence to relax [ADR-0006](../adr/0006-settings-and-bounded-values.md)'s
+transmit-closed-while-`Unknown` gate (final §35, §37), and that reading is
+wrong. Nothing about *that* mechanism required this project to know which
+region applies — ADR-0006 already rejected shipping a default region, rejected
+compiling a jurisdiction into `core/`, and built the gate to hold exactly the
+state this project is *in* rather than the state it hoped to reach. What the
+owner's answer removes is the expectation that a **specific region's rule
+table** was ever going to arrive from this side: nobody is going to research UK
+or ETSI or GKRCh limits for this project and file them as a `RegulatoryProfile`
+data record, because there is no region to research them for. The gate does not
+need that answer to do its job — it needs to know that *some* profile was
+chosen, never which one, and it stays exactly as ADR-0006 designed it: closed
+until a profile is selected, by whoever configures the device.
+[REUSE_LEDGER](REUSE_LEDGER.md) already calls this gate "Attadipa's single most
+safety-critical line" after reading how Meshtastic's own version of it went
+silently dead (issue #2205) — that finding does not become less true because
+the owner named no country.
+
+**What it obliges:**
+
+1. **A4 is closed, permanently, as "operator's choice, not this project's
+   research."** No task researches "which region" as a prerequisite for
+   anything in `core/` or `apps/`. [OPEN_QUESTIONS](OPEN_QUESTIONS.md) A4 is
+   updated to say so rather than left looking like a pending question with an
+   owner who has not yet replied.
+2. **The `Unknown`-blocks-transmit fail-safe is unchanged, and is not open for
+   reinterpretation by a future agent reading this record loosely.** Any
+   firmware built from this repository — the owner's or anyone else's, since it
+   is MIT — still refuses to transmit until an operator has explicitly chosen a
+   `RegulatoryProfile`. That protects users this decision was never about, not
+   only the owner.
+3. **Choosing and validating the specific profile for his own device is the
+   owner's task, done through the settings mechanism ADR-0006 already
+   specifies** — the same schema, the same typed bounds, the same three
+   ceilings — when that mechanism exists. Nothing about this decision brings
+   that forward; T-025 (partitions/settings persistence) is still not started.
+
+**What it invalidates.** The framing in
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md) and [TASKS](../../TASKS.md) T-012 that A4
+is one of a batch of questions still awaiting an owner reply. It is answered —
+just not with a country.
+
+**Status:** documentation only. No code exists yet that ADR-0006 governs, so
+there is nothing to change in `core/`; this record is the fence for whoever
+writes `SettingsService` next.
+

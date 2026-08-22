@@ -415,7 +415,6 @@ available on this board.
 | A1 | Is either board physically available, and which revision? | everything hardware |
 | A2 | If a T-Watch: which radio chip and which GNSS module? | decides whether the watch can join a MeshCore network at all — two of the five candidate radios cannot ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 | A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
-| A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
@@ -492,6 +491,20 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-12.
   not VERIFIED.
 
 ## Recently completed
+
+- **A4 is closed, not answered.** [#55](https://github.com/hleserg/Attadipa/issues/55)
+  asked which regulatory region governs the radio, concretely — the owner's own
+  MeshCore node already transmits 158 mW at 868.731 MHz and its legality here
+  was never established. The owner declined to name a region: *"Законность моя
+  проблема а не прошивки"* — legality is his problem, not the firmware's
+  ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
+  Nothing in [ADR-0006](docs/adr/0006-settings-and-bounded-values.md) changes:
+  the design never required this project to know which region applies, only
+  that an operator has chosen one, and the transmit-closed-while-`Unknown` gate
+  — called "Attadipa's single most safety-critical line" in the reuse ledger —
+  stays exactly as designed, for any operator of any build. What closes is the
+  expectation that this project would research and ship a specific
+  jurisdiction's rule table; there is no subject left to research one for.
 
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
