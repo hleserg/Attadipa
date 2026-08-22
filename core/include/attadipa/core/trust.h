@@ -60,7 +60,9 @@ enum class TrustReason : std::uint8_t {
     ImplausibleSpeed,         // faster than anything this device travels on
     ImplausibleAltitudeRate,  // climbing or falling faster than is possible
     PositionJump,             // consecutive fixes imply a speed nothing reaches
-    ClockDisagreement,        // receiver time and device time have diverged
+    ClockDisagreement,        // receiver time and device time have diverged,
+                              // or an observation claims to be measured after
+                              // the instant it is being processed
     ProviderDisagreement,     // two providers report different places
     ConstellationAnomaly,     // the satellite picture is not physically sensible
     AccuracyPoor,             // the receiver's own estimate is wide
@@ -108,6 +110,21 @@ struct TrustPolicy {
     std::uint32_t implausible_altitude_rate_mm_s  = 30000;  // ~30 m/s
     std::uint32_t jump_while_still_mm             = 50000;  // 50 m with a still wrist
     std::uint32_t clock_disagreement_s            = 60;
+
+    // How far after `now` an observation's `observed_at` may claim to have
+    // been measured and still be believed. Not zero: `observed_at` and `now`
+    // are not read atomically together even for a purely local fix, so a
+    // hard `>` would reject honest samples on jitter alone. 50 ms is small on
+    // every scale that matters here: at implausible_speed_mm_s (55 000 mm/s)
+    // it bounds the distance a skewed-but-accepted sample could hide to
+    // 2 750 mm — under 6% of jump_while_still_mm and negligible next to any
+    // real inter-fix interval — while remaining three orders of magnitude
+    // tighter than clock_disagreement_s, which answers a different, much
+    // coarser question about a different clock. A claim wider than this is
+    // not jitter, it is a clock that does not add up, and is treated the same
+    // as one (ClockDisagreement) rather than believed.
+    Millis        observed_at_forward_skew{50};
+
     std::uint32_t protection_level_limit_mm       = 50000;  // 50 m
     std::uint32_t provider_disagreement_mm        = 250000; // 250 m between sources
 
@@ -293,9 +310,13 @@ private:
     // failure by a different door: a position relayed over a link that queues
     // and retries is measured seconds apart and can arrive milliseconds apart,
     // and arrival time reads that as a teleport. Only an observation whose
-    // `PositionValidity` is `Valid` or `Degraded`, and whose `observed_at` is
-    // not older than what is already stored, may advance either baseline —
-    // see the comment in trust.cpp above the rate blocks.
+    // `PositionValidity` is `Valid` or `Degraded`, whose `observed_at` is not
+    // older than what is already stored, and whose `observed_at` is not
+    // implausibly *after* `now` either, may advance either baseline — a
+    // future-dated `observed_at` is exactly as able to poison this state as a
+    // reordered one, and is rejected the same way: evaluated for its own
+    // trust reasons, never adopted as the baseline. See the comment in
+    // trust.cpp above the rate blocks.
     bool          have_previous_    = false;
     Position      previous_position_{};
     MonotonicTime previous_position_at_{};

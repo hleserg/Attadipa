@@ -342,6 +342,16 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
         clock_disagrees = seconds_between(*observation.receiver_time, *device_time) >
                           policy.clock_disagreement_s;
     }
+
+    // A monotonic measurement instant claimed to be after the instant we are
+    // processing it is not jitter, it is a clock — or an attacker — that does
+    // not add up, and is exactly as suspect as one claimed to be implausibly
+    // old (below). Computed once here, shared by both rate blocks, because it
+    // is a property of the observation, not of either baseline.
+    const bool observed_in_future =
+        elapsed(now, observation.observed_at) > policy.observed_at_forward_skew;
+    clock_disagrees = clock_disagrees || observed_in_future;
+
     set(engine_, TrustReason::ClockDisagreement, clock_disagrees, now);
 
     // --- physics, which needs the previous fix --------------------------------
@@ -371,9 +381,20 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     // evaluated for their own trust reasons; only the baseline they would seed
     // for the following observation is refused.
     //
+    // Trusting measurement time unconditionally opens a fourth door of the
+    // same shape, and it is worse than the third: an `observed_at` claimed to
+    // be *after* `now` (`observed_in_future`, above) is in_order by the check
+    // below — future is never less than past — so nothing stopped it from
+    // becoming the baseline. Once it did, its own implied speed rounded to
+    // nothing (the interval is enormous), and every genuine sample afterward
+    // was "older" than the poisoned baseline and was rejected the same way,
+    // forever — no path back short of reset(). `observed_in_future` closes
+    // that door the same way the reorder case is closed: refused as a
+    // baseline, still evaluated on its own, never adopted.
+    //
     // None of this is visible to a test of a single observation, which is why
     // the replay fixtures walk several epochs and why some of them walk
-    // through a dropout or a reorder.
+    // through a dropout, a reorder, or a poisoning attempt.
     bool jumped         = false;
     bool moved_at_rest  = false;
     bool climbed_absurd = false;
@@ -386,8 +407,8 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
         validity == PositionValidity::Valid || validity == PositionValidity::Degraded;
 
     if (observation.position.has_value() && in_range(*observation.position)) {
-        const bool in_order =
-            !have_previous_ || observation.observed_at >= previous_position_at_;
+        const bool in_order = !observed_in_future &&
+            (!have_previous_ || observation.observed_at >= previous_position_at_);
 
         if (usable_for_rate && in_order) {
             if (have_previous_) {
@@ -422,8 +443,8 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     }
 
     if (observation.altitude_msl_mm.has_value()) {
-        const bool in_order =
-            !have_previous_altitude_ || observation.observed_at >= previous_altitude_at_;
+        const bool in_order = !observed_in_future &&
+            (!have_previous_altitude_ || observation.observed_at >= previous_altitude_at_);
 
         if (usable_for_rate && in_order) {
             if (have_previous_altitude_) {

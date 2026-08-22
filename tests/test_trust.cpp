@@ -400,6 +400,47 @@ void test_out_of_order_observation_does_not_poison_the_baseline()
     CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
 }
 
+// The poisoning sequence itself, not just the single sample that starts it: a
+// genuine baseline, one observation dated far in the future, and then real
+// observations afterward. A fix that only refuses the future-dated sample but
+// leaves it as the baseline — or that refuses it correctly but then never
+// accepts a baseline again — would still pass a test that checks nothing past
+// the second observe() call. This one does not stop there.
+void test_a_future_dated_observation_is_rejected_without_freezing_the_baseline()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+    // Claims to have been measured ~11.5 days in the future, ~500 km away,
+    // and is handed to observe() one millisecond later — the review's own
+    // reproduction. If this became the baseline, the interval to it would be
+    // enormous and its implied speed would round to nothing; the review is
+    // right that it must not fire PositionJump on the strength of a claimed
+    // interval that large, but it must not be believed either.
+    GnssObservation poisoned = good_fix(1000000000, kLat + 45000000);
+    evaluator.observe(poisoned, PositionValidity::Valid, MotionEvidence{}, {}, at(1));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+    CHECK_REASON(evaluator.engine(), TrustReason::ClockDisagreement);
+
+    // A real jump, measured two milliseconds after the *original* baseline at
+    // t=0 — ~500 km in 2 ms. This is the test that would fail against an
+    // implementation that freezes: if the poisoned sample had become the
+    // baseline, this observation's observed_at (2) would be "older" than the
+    // poisoned one's (1 000 000 000), fail in_order, and never reach the
+    // speed calculation at all.
+    evaluator.observe(good_fix(2, kLat + 45000000), PositionValidity::Valid, MotionEvidence{}, {},
+                       at(2));
+    CHECK_REASON(evaluator.engine(), TrustReason::PositionJump);
+
+    // And the detector is not merely alive for one more call — it keeps
+    // working. An ordinary walk (about 56 m over 10 s, 5.6 m/s) measured
+    // against the baseline the previous, genuine observation just set is
+    // neither a jump nor a permanently latched one.
+    evaluator.observe(good_fix(10002, kLat + 45005000), PositionValidity::Valid, MotionEvidence{},
+                       {}, at(10002));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+}
+
 // The canonical detector, and the one ADR-0011 names the BMA423 for. Note what
 // is being asserted: `known == false` is not evidence of stillness. A device
 // that has not asked the accelerometer knows nothing, and must not treat that
@@ -883,6 +924,7 @@ int main()
     test_no_fix_altitude_sample_does_not_move_the_baseline();
     test_equal_measurement_timestamps_are_handled_safely();
     test_out_of_order_observation_does_not_poison_the_baseline();
+    test_a_future_dated_observation_is_rejected_without_freezing_the_baseline();
     test_a_still_wrist_is_evidence_and_an_unasked_one_is_not();
     test_satellites_used_cannot_exceed_satellites_in_view();
     test_receiver_time_is_compared_against_device_time();

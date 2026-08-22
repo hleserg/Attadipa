@@ -203,7 +203,15 @@ stale silently. The protocol is
   observation whose `observed_at` is not older than what is already stored;
   an equal timestamp is measured as zero elapsed time and an out-of-order one
   is evaluated but not adopted as the new baseline. Regression tests in
-  `tests/test_trust.cpp`.
+  `tests/test_trust.cpp`. **Review of that fix (PR #71) found it traded the
+  arrival-time bug for a future-dated one: nothing bounded `observed_at`
+  against `now`, so a single sample dated far ahead was `in_order`, seeded
+  the baseline with a near-zero implied speed, and froze both rate detectors
+  for the rest of the session — closed the same call by treating a
+  future-dated `observed_at` exactly like an out-of-order one** (bounded by
+  `TrustPolicy::observed_at_forward_skew`, 50 ms, reusing `ClockDisagreement`
+  rather than adding a reason for the same condition). Poisoning-sequence
+  regression test added; confirmed red against the pre-review code.
 
 - **`holds()` and `reasons()` can report evidence that has expired.** Both read
   `live_`, which only `update()` prunes, and both are `const`. A caller that

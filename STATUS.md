@@ -491,6 +491,29 @@ needs the owner, and one needs a ruler.
   `-fno-sanitize-recover=all`. Simulator build `NOT EXECUTED` in this
   environment — no SDL2 dev package and no permission to install one — but
   the change does not touch UI or simulator code.
+  **[PR #71](https://github.com/hleserg/Attadipa/pull/71) review found the fix
+  itself opened a new hole: nothing bounded `observed_at` against `now`, so a
+  single observation dated arbitrarily far in the *future* was `in_order` (future
+  is never less than past), became the baseline unchallenged, implied a
+  near-zero speed on arrival (the interval is enormous), and then froze the
+  baseline forever — every genuine sample afterward was "older" than the
+  poisoned one and never re-armed `PositionJump`/`ImplausibleAltitudeRate`.
+  Closed by bounding `observed_at` against `now` with a 50 ms forward-skew
+  tolerance (`TrustPolicy::observed_at_forward_skew`, `core/include/attadipa/
+  core/trust.h`) — not zero, because the two are not read atomically even for
+  a purely local fix, but small enough (2 750 mm of maskable displacement at
+  the 55 000 mm/s implausible-speed ceiling) to matter to nothing else in the
+  policy. A future-dated sample is rejected the same way an out-of-order one
+  already was — evaluated for its own trust reasons, never adopted as the
+  baseline — and now also raises `ClockDisagreement`, reusing the existing
+  reason rather than adding a second one for the same condition. Regression
+  test `test_a_future_dated_observation_is_rejected_without_freezing_the_
+  baseline` walks the full poisoning sequence the review named: a genuine
+  baseline, the future-dated sample, a real jump measured against the
+  *untouched* original baseline (would be missed if the baseline had frozen),
+  and one more ordinary fix afterward (proves the detector keeps working, not
+  just survives one more call). Confirmed red against the pre-fix code.
+  GCC+Clang, `-Werror` strict-warnings and ASan+UBSan all clean.
 - **T-070 research — the watch as a tracker detector, and the honest limit is
   now sourced rather than deferred.**
   [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md), for
