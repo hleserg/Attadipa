@@ -143,6 +143,12 @@ Two worked examples, because they land on opposite sides of the same line:
   a small addition to this ADR: it is a same-body correction, not a heading
   source, and does not belong in the `HeadingSource` enum at all.
 
+That question is now answered in [ADR-0013](0013-node-motion.md), which carries
+this rule into motion the way §3 carries it into heading — and finds that the
+line runs through code that already existed: an accelerometer was being compared
+with a receiver on a different body, with no way for either to say which body it
+was.
+
 ### 4. Course over ground needs motion, and standing still is a designed state
 
 GNSS course is derived from movement. Below some speed it is noise; at zero

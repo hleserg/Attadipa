@@ -958,6 +958,73 @@ configure if the scenario glob matches fewer than ten files, because a glob that
 silently matched nothing would produce a test that passes by running no
 scenarios at all.
 
+### Motion-gated GNSS, when more than one body carries a receiver
+
+**Problem:** T-111 / [ADR-0013](../adr/0013-node-motion.md). An accelerometer
+decides when a GNSS receiver may sleep (OD-10) and when a position is worth
+disbelieving (ADR-0011 §6). OD-16 gives the Attadipa node an IMU and a receiver
+of its own, so there are now two of each, on two objects that move
+independently. Is there anything upstream that models which body a motion sample
+is about?
+
+**Projects investigated:** only what this repository had already read and
+recorded, and that is the honest extent of it —
+Meshtastic's GPS availability model, read from its commits for
+[ADR-0004](../adr/0004-capability-sources.md) §2a (GPL-3.0, read-only) ·
+Meshtastic's position handling and InfiniTime's navigation app, both already
+recorded above · `xioTechnologies/Fusion`, already `REJECT`ed above for the
+parts-list reason. **No upstream source was read afresh for this decision.**
+
+**Useful implementation:** none found, and see the `UNKNOWN` below before
+reading that as "none exists".
+
+**License:** not reached — nothing was taken.
+
+**Strengths:** the one transferable finding is already recorded and it is
+negative: ADR-0004 §2a documents Meshtastic shipping GPS as a two-state boolean
+and retrofitting a third state two years later
+(`7f7c5cbd629e5188939926fd7c0a64280405df6f`, 2024-02-01), and then still needing
+`4a534f02a48626f2addf742dced2f9e8321d5e16` (2026-03-19) to stop a hardware
+switch dragging a device out of it. That is the same shape as the defect
+ADR-0013 fixes — a state that could not say what it meant, widened after code
+depended on it — and it is the argument for putting the body in the type on the
+first day rather than documenting an assumption.
+
+**Weaknesses:** the composition rule this needed is a product decision, not an
+algorithm. *Which body's stillness may sleep which body's receiver* is answered
+by OD-16 and ADR-0009 §3, and no upstream project has this project's node.
+
+**Decision:** `REIMPLEMENT`, and it is roughly thirty lines — an enum, a
+predicate, and two consumers that name their subject.
+
+**Reason:** there is nothing to take. What was needed was a label on an existing
+struct and a refusal at two call sites, and the value is in the refusal rather
+than in any code. Taking a general sensor-fusion library would be the mistake
+the `Fusion` record above already refuses for a different reason: reaching for
+an algorithm where the answer is a decision about what the product may claim.
+
+**Source revision:** not applicable — nothing vendored, nothing adapted.
+
+**UNKNOWN, and filed rather than guessed:** whether any upstream wearable or
+tracker firmware labels a motion sample with the body it was measured on is
+**not established**. It was not researched in this run, and this record must not
+be read as evidence that nobody does it. `T-113` asks the question; the answer
+does not change ADR-0013's decision, because the rule it encodes comes from
+OD-16, but it could change how the two consumers are shaped.
+
+**Attadipa integration:** `core/include/attadipa/core/motion.h` (`SensorBody`,
+`MotionEvidence::speaks_for`), `GnssContext::receiver_body`, and
+`body_of(PositionSource)` in `core/include/attadipa/core/position.h`.
+
+**Tests required, and present:** `tests/test_power.cpp` — unknown motion moves
+the receiver in neither direction, evidence about another body changes no
+answer, exhaustively over every state and body pair. `tests/test_trust.cpp` —
+four cases either side of the body boundary. `tests/replay/scenarios/16-the-node-is-a-different-body.trace`
+— the same walk judged against two bodies, with the control step that keeps the
+fixture from being satisfied by a detector that was merely switched off.
+
+---
+
 ### BLE tracker detection — the reverse of tag emulation
 
 **Problem:** T-070 — scan for an unknown BLE identifier that has stayed near
