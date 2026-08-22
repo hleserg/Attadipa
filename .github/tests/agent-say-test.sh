@@ -153,7 +153,7 @@ FAILED_WHY=$(attadipa_outcome failed "$RUN" cancelled "" "API Error: 400 prompt 
 says "carries the reason the extractor found, in the reader's first paragraph" -- \
      "$FAILED_WHY" -- "**Why:**" "prompt is too long: 214233 tokens"
 says "and still says what happens next, because a cause is not a plan" -- \
-     "$FAILED_WHY" -- "watchdog picks it up" '`@claude`'
+     "$FAILED_WHY" -- "watchdog gives it one retry" '`@claude`'
 # An unclassified reason must not read as a dead end: it is a gap in a
 # whitelist, and saying which file to widen is what makes it actionable.
 FAILED_UNCLASS=$(attadipa_outcome failed "$RUN" cancelled "" "unclassified — SDK subtype \`success\`, ended at turn 20")
