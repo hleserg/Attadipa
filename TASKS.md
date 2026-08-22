@@ -1502,6 +1502,38 @@ stale silently. The protocol is
   evidence and it is still evidence, not a trace.
 - **Hardware required:** yes — a meter on the board.
 
+### T-106 · Three measurements and five registers, before any cell is ordered
+- **Priority:** P1 — it gates the battery decision, and every part of it is
+  cheap. Nothing here needs a soldering iron.
+- **Dependencies:** the research is done —
+  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md). What is missing is
+  physical, and only the owner can take it.
+- **Why it is not one measurement.** The note's sizing table branches on all
+  three, and each answers a different way of being wrong:
+  - **M1 — closed-case clearance**, *not* the depth of the recess. Three
+    plasticine balls, the cover screwed to normal torque, and the **smallest**
+    of the three is the number. A cell chosen against the recess depth fits
+    until the case is closed on it.
+  - **M2 — the clear rectangle, the length the connector actually leaves, and
+    the diagonal.** The diagonal is the one that gets forgotten: a rectangle
+    that fits on paper can fail to lie flat inside a body 42.00 mm across.
+  - **M3 — weigh the fitted cell**, which is the lie detector. Pouches in this
+    class run 1.74–2.26 g/cm³ across four manufacturers. **6.0–6.5 g is
+    consistent with 280–330 mAh; 7.5–8 g is the only mass consistent with a
+    genuine 400 mAh**, and no sampled pouch reaches that density. A kitchen
+    scale settles what 51 datasheets can only estimate.
+- **And five registers, on the board, whenever convenient:** `0x62` (charge
+  current — the one value that has never been read and cannot be quoted from
+  the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
+  `0x12` and `0x69`, at I²C address `0x34`.
+- **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
+  instrument named, the five register values recorded as read, and the sizing
+  table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
+  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
+- **What must not be assumed:** that the sticker settles the capacity. Reading
+  it was verified; what it means is exactly what is in doubt.
+- **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
