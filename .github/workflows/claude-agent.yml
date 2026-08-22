@@ -669,6 +669,16 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "::notice::pull request head before this run: ${SHA:-not a pull request}"
 
+          # AND WHEN THIS RUN BEGAN. The hand-over step's second question is
+          # "which open pull request mentions this issue at all", and a mention
+          # is only evidence of THIS run's work if it was made during it. An
+          # issue that cites a pull request as evidence -- #75 cites #71 five
+          # times -- creates that same cross-reference the moment it is filed,
+          # and the step reported "Done — pull request #71" for a run that
+          # produced nothing. Stamped here rather than in the gate for the same
+          # reason as the head above: this is where the writer queue lets go.
+          date -u +%Y-%m-%dT%H:%M:%SZ | sed 's/^/started=/' >> "$GITHUB_OUTPUT"
+
       - name: Run Claude
         if: steps.auth.outputs.ok == 'true'
         id: claude
@@ -860,6 +870,7 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
           HEAD_BEFORE: ${{ steps.prhead.outputs.sha }}
+          RUN_STARTED: ${{ steps.prhead.outputs.started }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -916,6 +927,7 @@ jobs:
                     timelineItems(last:30, itemTypes:[CROSS_REFERENCED_EVENT]) {
                       nodes {
                         ... on CrossReferencedEvent {
+                          referencedAt
                           source { ... on PullRequest { number state } }
                         }
                       }
@@ -928,11 +940,12 @@ jobs:
                   | if $i.__typename == "PullRequest"
                     then (if $i.state == "OPEN"
                           then "here \($i.number) \($i.headRefOid)" else "" end)
-                    else ([$i.closedByPullRequestsReferences.nodes[]?
-                            | select(.state == "OPEN") | .number]
-                           + [$i.timelineItems.nodes[]?.source?
-                              | select(.state? == "OPEN") | .number]
-                          | first | if . then "pr \(.)" else "" end)
+                    else (([$i.closedByPullRequestsReferences.nodes[]?
+                             | select(.state == "OPEN") | "pr \(.number)"]
+                            + [$i.timelineItems.nodes[]?
+                               | select(.source?.state? == "OPEN")
+                               | "xref \(.source.number) \(.referencedAt)"])
+                          | first // "")
                     end' 2>/dev/null || echo "")
 
           # Everything from here is .github/scripts/handover-decision.sh, which
@@ -954,7 +967,7 @@ jobs:
             read -r DETAIL
             read -r EXTRA
           } < <(bash .github/scripts/handover-decision.sh \
-                  "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}")
+                  "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}" "$RUN_STARTED")
           echo "::notice::hand over as $KIND (${DETAIL:-no detail}${EXTRA:+, $EXTRA})"
 
           # The agent labels the issue itself when it blocks — and a BLOCKED

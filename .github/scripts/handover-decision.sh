@@ -22,15 +22,30 @@
 # here: no network, no `gh`, no environment, every input an argument, and
 # .github/tests/handover-decision-test.sh asserts on the exact output.
 
-# attadipa_handover_decision FOUND HEAD_BEFORE CONCLUSION
+# attadipa_handover_decision FOUND HEAD_BEFORE CONCLUSION RUN_STARTED
 #
 # FOUND is the raw output of the workflow's lookup, which is trusted for
-# nothing. Two shapes mean something:
+# nothing. Three shapes mean something:
 #
 #   "here <number> <sha>"  the task IS an open pull request -- the trigger was
 #                          a comment on it -- and <sha> is its head now
 #   "pr <number>"          the task is an issue, and that open pull request
-#                          closes or mentions it
+#                          declares it CLOSES it. Definitive: somebody wrote
+#                          "Fixes #N" and GitHub resolved the keyword itself.
+#   "xref <number> <iso>"  the task is an issue and that open pull request
+#                          merely MENTIONS it, at <iso>. Not definitive, and
+#                          this is the third defect this step shipped: #75
+#                          cites #71 five times as evidence, so filing #75
+#                          created that cross-reference before any agent ran,
+#                          and the step announced "Done — pull request #71" for
+#                          a run that produced nothing and then labelled the
+#                          issue agent:review so nothing would re-queue it. A
+#                          mention is evidence only if it was made DURING this
+#                          run, so it is kept only when <iso> is at or after
+#                          RUN_STARTED. Both are UTC in the same format, which
+#                          is what makes a string comparison sound; a malformed
+#                          or missing RUN_STARTED discards the mention, because
+#                          an unverifiable claim of work must not be printed.
 #
 # Anything else is treated as "found nothing", including an error document, a
 # partial response, and whatever a future `gh` decides to print. A lookup that
@@ -46,8 +61,8 @@
 # done_here_cut uses (the conclusion word). The third line is always printed,
 # empty when unused, so a caller can read a fixed number of lines.
 attadipa_handover_decision() {
-  local found="$1" head_before="$2" conclusion="$3"
-  local where="" pr="" head_now="" rest=""
+  local found="$1" head_before="$2" conclusion="$3" run_started="${4:-}"
+  local where="" pr="" head_now="" rest="" seen_at=""
 
   case "$found" in
     "here "[0-9]*)
@@ -62,6 +77,31 @@ attadipa_handover_decision() {
       esac ;;
     "pr "[0-9]*)
       where="pr"; pr="${found#pr }" ;;
+    "xref "[0-9]*)
+      rest="${found#xref }"
+      pr="${rest%% *}"
+      case "$rest" in
+        *" "*) seen_at="${rest#* }" ;;
+        *)     seen_at="" ;;
+      esac
+      # A mention made before this run started belongs to somebody else's
+      # work, or to the issue's own text. Only a mention made during the run
+      # is evidence that this run made it.
+      case "$run_started" in
+        20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z) ;;
+        *) run_started="" ;;
+      esac
+      case "$seen_at" in
+        20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z) ;;
+        *) seen_at="" ;;
+      esac
+      where=""
+      if [ -n "$run_started" ] && [ -n "$seen_at" ]; then
+        if [ "$seen_at" = "$run_started" ] || [ "$seen_at" \> "$run_started" ]; then
+          where="pr"
+        fi
+      fi
+      [ -n "$where" ] || pr="" ;;
   esac
 
   case "$pr" in
@@ -112,5 +152,5 @@ attadipa_handover_decision() {
 
 # Callable as a script as well as sourceable.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  attadipa_handover_decision "${1:-}" "${2:-}" "${3:-}"
+  attadipa_handover_decision "${1:-}" "${2:-}" "${3:-}" "${4:-}"
 fi

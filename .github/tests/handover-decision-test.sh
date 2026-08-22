@@ -22,10 +22,10 @@ cd "$(dirname "$0")/../.." || exit 1
 
 pass=0; fail=0
 
-# decide FOUND HEAD_BEFORE CONCLUSION -> "KIND|DETAIL|EXTRA"
+# decide FOUND HEAD_BEFORE CONCLUSION [RUN_STARTED] -> "KIND|DETAIL|EXTRA"
 decide() {
   local out
-  out=$(bash .github/scripts/handover-decision.sh "$1" "$2" "$3")
+  out=$(bash .github/scripts/handover-decision.sh "$1" "$2" "$3" "${4:-}")
   printf '%s|%s|%s' \
     "$(printf '%s' "$out" | sed -n 1p)" \
     "$(printf '%s' "$out" | sed -n 2p)" \
@@ -95,6 +95,32 @@ says "a head that is not hexadecimal is discarded, not compared" \
      "$(decide "here 71 ../../etc/passwd" "$SHA_A" success)" "done_here_nopush|71|"
 says "and neither field is taken from a longer line than the shape allows" \
      "$(decide "here 71 $SHA_B extra" "$SHA_A" success)" "done_here_nopush|71|"
+
+echo
+echo "A pull request that merely mentions the issue"
+# Shipped on #75, in production, while this pull request was open: #75 cites
+# #71 five times as evidence, so filing #75 created the cross-reference before
+# any agent ran. The step announced "Done — pull request #71" for a run that
+# produced nothing, and labelled the issue agent:review so nothing re-queued it.
+STARTED=2026-08-22T15:26:00Z
+says "THE #75 DEFECT: a mention made before the run is not this run's work" \
+     "$(decide "xref 71 2026-08-22T15:25:59Z" "" success "$STARTED")" "done_nopr||"
+says "and it is a failure, not a no-op, when the run also died" \
+     "$(decide "xref 71 2026-08-22T15:25:59Z" "" cancelled "$STARTED")" "failed|cancelled|"
+says "a mention made during the run is the work" \
+     "$(decide "xref 71 2026-08-22T15:36:49Z" "" success "$STARTED")" "done_pr|71|"
+says "a mention made in the same second counts, since the stamp is whole seconds" \
+     "$(decide "xref 71 $STARTED" "" success "$STARTED")" "done_pr|71|"
+says "no start stamp at all discards the mention rather than trusting it" \
+     "$(decide "xref 71 2026-08-22T15:36:49Z" "" success "")" "done_nopr||"
+says "a malformed start stamp discards it too" \
+     "$(decide "xref 71 2026-08-22T15:36:49Z" "" success "yesterday")" "done_nopr||"
+says "a malformed reference time discards it, rather than comparing garbage" \
+     "$(decide "xref 71 whenever" "" success "$STARTED")" "done_nopr||"
+says "a mention with no time at all is discarded" \
+     "$(decide "xref 71" "" success "$STARTED")" "done_nopr||"
+says "but a CLOSING reference needs no timestamp — Fixes #N is definitive" \
+     "$(decide "pr 71" "" success "")" "done_pr|71|"
 
 echo
 echo "The head moved for a reason that was not this run"
