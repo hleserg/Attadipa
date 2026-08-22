@@ -343,8 +343,23 @@ came off the unit the same day —
   means this board's audio path is already written down by somebody who had it
   working. Licence first: **T-104**.
 - **The vendor bakes raw pixel buffers**, not encoded images, with no decoder on
-  the device. Corroboration for where T-034 was already heading; **T-103** turns
-  the file sizes into the confirmation.
+  the device — and **T-103 has since decoded them.** Each image is exactly
+  411 652 bytes: a 12-byte header (`u32` magic, `u16` width 410, `u16` height
+  502, `u32` stride 820) followed by **410 × 502 RGB565 little-endian**. The byte
+  order was settled by rendering, which is the only thing that could settle it —
+  little-endian gives coherent artwork, big-endian gives noise. The panel's pixel
+  format and byte order are now facts about the hardware rather than a preference
+  of T-034's.
+- **And the partition holds six files, not three.** There is a `/music/`
+  directory with three MP3 background tracks, two stereo, 112–128 kbps. That
+  gives **T-105** a strong prior that `AAC210602A1` is the speaker rather than a
+  haptic actuator, though only tracing the pads closes it. It also means the
+  factory image carries **third-party all-rights-reserved audio**
+  (`All Rights Reserved to www.Art-list.io`), which is a second and sharper
+  reason the dump never goes near this repository.
+- **`tools/flash/spiffs_extract.py`** does SPIFFS extraction without `mkspiffs`
+  and without an ESP-IDF build. `strings` recovers a SPIFFS image's file names
+  and none of its file bodies.
 - **One claim had to be withdrawn.** A parallel reading of the same unit concluded
   the PSRAM is *quad*, on the reasoning that "octal PSRAM would be 1.8 V". It is
   not: Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` at

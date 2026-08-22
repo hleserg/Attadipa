@@ -1451,30 +1451,6 @@ stale silently. The protocol is
   random walk with a budget attached.
 - **Hardware required:** yes — the owner's unit, already connected.
 
-### T-103 · What the vendor's three images actually are
-- **Priority:** P2 — it is a free input to T-034 and it expires the moment
-  somebody guesses instead.
-- **Dependencies:** none. The partition is already dumped.
-- **Why now:** the `storage` SPIFFS holds `/image/image1.bin`, `image2.bin` and
-  `image3.bin` — raw binaries, no encoder in sight
-  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4). That the
-  vendor bakes raw pixel buffers rather than shipping a PNG decoder is corroboration
-  for the direction T-034 was already leaning, and the file sizes turn it from a
-  guess into a measurement.
-- **Goal:** extract them (`mkspiffs -u out -b 4096 -p 256 -s 0x600000
-  storage.spiffs` — `strings` recovers names but not bodies, because SPIFFS
-  spreads data across pages), compare each size against **411 640** bytes, which
-  is a full 410×502 frame at RGB565. Then say what the format is, including
-  whether an LVGL image header sits in front of the pixels.
-- **Acceptance:** the three sizes and the derived format recorded in
-  `docs/research/`, with the arithmetic shown. If the sizes do not match any clean
-  interpretation, **say so** — a format nobody can account for is a finding, not a
-  failure.
-- **What must not be assumed:** that RGB565 is the answer because it is the
-  obvious one. RGB888, RGB565A8 and a palette all produce different numbers, and
-  the numbers are right there.
-- **Hardware required:** no — the partition is already in hand.
-
 ### T-104 · `xiaozhi-esp32`: the licence, then this board's audio path
 - **Priority:** P1 — it is the audio bring-up for the exact board we have,
   already written by somebody who had it working.
@@ -1515,8 +1491,16 @@ stale silently. The protocol is
 - **Acceptance:** the [hardware matrix](docs/research/HARDWARE_MATRIX.md) row
   moves off `CONFLICTING` in one direction with the measurement recorded, and
   T-097's premise is restated against whichever answer wins.
-- **What must not be assumed:** that the case grille settles it. It is strong
-  evidence and it is still evidence, not a trace.
+- **Update 2026-08-22, and it shortens the job:** the `storage` partition turns
+  out to hold **three MP3 background tracks**, two of them stereo, at 112–128
+  kbps, played by the factory demo's `MusicPlayer`
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4.3). A
+  board that ships 788 kB of licensed music and an app to play it has a speaker.
+  Combined with the grille and the separate `P1`/`P2` motor pads, the haptic
+  reading is now hard to sustain — but the trace is still what closes it.
+- **What must not be assumed:** that the case grille settles it, or that the
+  music does. Both are strong evidence and both are still evidence, not a trace.
+  Stereo source material decoded to one transducer is still mono output.
 - **Hardware required:** yes — a meter on the board.
 
 ### T-106 · Three measurements and five registers, before any cell is ordered
@@ -1636,6 +1620,32 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-103 · What the vendor's three images actually are — **DONE** 2026-08-22
+- **Six files, not three.** `/image/image1..3.bin` and a `/music/` directory
+  holding three MP3s. The earlier record came from `strings` and was incomplete.
+- **The image format is settled, not inferred**: each image is exactly
+  **411 652** bytes = a **12-byte header** plus **410 × 502 RGB565
+  little-endian**. Header is `u32` magic `0x00001219`, `u16` width, `u16` height,
+  `u32` stride (820 = width × 2). `12 + w·h·2` equals the file length exactly.
+- **The byte order was settled by rendering**, which is the only thing that could
+  settle it: little-endian gives coherent artwork, big-endian gives noise.
+- **`tools/flash/spiffs_extract.py`** does the extraction without `mkspiffs` and
+  without an ESP-IDF build — the blocker the original task named. `strings`
+  recovers a SPIFFS image's names and none of its bodies.
+- **Feeds T-034**, and the distinction matters: the panel's pixel format and byte
+  order are facts about the hardware; the vendor's header is not, and is worth
+  noticing rather than copying — it has width, height and stride but **no format
+  field**, which is the field needed the moment a second format exists. Three
+  full frames cost 1.18 MB.
+- **Two findings outside the task's scope**, both recorded in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md): the music gives T-105 a
+  strong prior that `AAC210602A1` is the speaker, and the factory image carries
+  third-party all-rights-reserved audio, which is a second reason the dump never
+  goes near this repository.
+- Extracted files and rendered PNGs are **not committed**. The extractor and the
+  measurements are.
+
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
 - `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
