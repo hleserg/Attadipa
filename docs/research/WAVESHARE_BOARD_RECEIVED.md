@@ -49,7 +49,14 @@ bottom edge, next to the expansion pad row. This is the revision named in
 schematic describes our board" is now standing on an observation instead of an
 assumption.
 
-### 1.2 The battery is 400 mAh, and this is the headline. `VERIFIED`
+### 1.2 The battery is *marked* 400 mAh, and that marking is now the headline
+
+`VERIFIED` — the label was read off a received unit. **It is not verified that
+the cell holds 400 mAh, and the arithmetic says it probably does not**: that
+capacity in this footprint would need 132.3 mAh/cm³ against an 87–102 band
+across 51 datasheet cells, so 250–310 mAh is the honest expectation,
+`ESTIMATED`. See [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1; T-106 M3 settles it
+with a scale.
 
 The cell is marked:
 

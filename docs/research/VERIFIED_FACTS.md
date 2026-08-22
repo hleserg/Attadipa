@@ -607,10 +607,17 @@ magnification the camera did not have, and the items that do need one are in
 [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §3 as bench readings
 still to take.
 
-### The Waveshare cell is 400 mAh — less than half the T-Watch's
+### The Waveshare cell is *marked* 400 mAh — and probably does not hold it
 
-- **Claim:** the battery is a `402728` pouch cell, **3.7 V, 400 mAh**,
-  manufactured 2026-07-11. `402728` is the geometry: 4.0 mm × 27 mm × 28 mm.
+- **Claim:** the battery is a `402728` pouch cell manufactured 2026-07-11,
+  **labelled 3.7 V, 400 mAh**. `402728` is the geometry: 4.0 mm × 27 mm × 28 mm.
+  **What is verified is the reading of the label, not the capacity behind it.**
+  400 mAh at 3.7 V in 3.024 cm³ implies 132.3 mAh/cm³, against an 87–102 band
+  observed across 51 datasheet cells from four manufacturers at footprints
+  ≤ 32 mm — +22 % on the densest cell in that sample. Honest expectation
+  **250–310 mAh**, `ESTIMATED` —
+  [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1. One weighing settles it (T-106 M3):
+  6.0–6.5 g is consistent with 280–330 mAh, and only 7.5–8 g with a real 400.
 - **Source:** S9 — printed on the cell's own label.
 - **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
 - **Was:** `UNKNOWN` — the schematic shows the cell on `BAT1` through the AXP2101

@@ -381,11 +381,14 @@ the charger not at all, so whichever value is there at boot is the one charging
 the cell. Precharge and termination both default four times higher than the
 convention, and the input limit defaults to 1500 mA on a port that granted 500.
 
-- **The cell is 400 mAh**, where the row said `UNKNOWN` and the T-Watch carries
-  940. The board with less than half the energy is the board with the emissive
-  panel, and the day theme costs 13.9× the night theme on the same pixels
-  (`ESTIMATED`). "Which theme is default on the Waveshare" is now a power
-  question — **T-095**.
+- **The cell's sticker says 400 mAh**, where the row said `UNKNOWN` and the
+  T-Watch carries 940 — and the sticker is now the thing in doubt, not the
+  reading of it: see the paragraphs above, `ESTIMATED` 250–310 mAh. Either way
+  the board with far less energy is the board with the emissive panel, and the
+  day theme costs 13.9× the night theme on the same pixels (`ESTIMATED`).
+  "Which theme is default on the Waveshare" is now a power question — **T-095**,
+  and a sharper one if the real figure is a third of the T-Watch rather than
+  a half.
 - **A ten-pad expansion row** nobody had transcribed, and the trap in it: `IO15`
   and `IO14` are printed as bare GPIO numbers and are the main I2C bus, with six
   devices already on them. The one free channel for an attached node is the UART
