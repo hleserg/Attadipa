@@ -257,6 +257,38 @@ that a future licence change reopens only what it actually affects.
   rather than a failure, and that nothing consumes the font pipeline T-032 built.
   Filed as **T-083, P1**.
 
+## The Waveshare board arrived — 2026-08-22
+
+One `ESP32-S3-Touch-AMOLED-2.06` is on the owner's desk, opened and
+photographed. The readings are
+[WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md); the
+bring-up order they feed into is
+[WAVESHARE_ARRIVAL](docs/research/WAVESHARE_ARRIVAL.md).
+
+**The schematic was right.** Nothing the unit shows contradicts anything in
+[VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Three things were new:
+
+- **The cell is 400 mAh**, where the row said `UNKNOWN` and the T-Watch carries
+  940. The board with less than half the energy is the board with the emissive
+  panel, and the day theme costs 13.9× the night theme on the same pixels
+  (`ESTIMATED`). "Which theme is default on the Waveshare" is now a power
+  question — **T-095**.
+- **A ten-pad expansion row** nobody had transcribed, and the trap in it: `IO15`
+  and `IO14` are printed as bare GPIO numbers and are the main I2C bus, with six
+  devices already on them. The one free channel for an attached node is the UART
+  — **T-096**.
+- **No vibration motor is fitted.** The drive circuit is there and correct; the
+  actuator is not, and no firmware can detect the difference. `Capability::Haptics`
+  is `Unsupported` on this unit, which is the enum's terminal value — **T-097**.
+
+The IMU's board-frame axes turn out to be silkscreened next to it, which is half
+of H15. The other half — how the board sits in the case — needs the assembled
+watch tilted through known angles.
+
+**Before anything is flashed, the factory image must be read out.** It is not
+published in restorable form and overwriting it is the first irreversible thing
+available on this board.
+
 ## Blocked
 
 - **T-061 the pedometer** — partly, and less than before. T-060a settled the
@@ -268,11 +300,21 @@ that a future licence change reopens only what it actually affects.
   is nobody's datasheet, and which is **already filed as [H8](docs/research/OPEN_QUESTIONS.md)**
   rather than new: whether the AXP2101 keeps the IMU's rail up across an
   SoC sleep. If it does not, the 6 kB blob is gone and the 150 ms is owed again
-  on every wake.
-- **T-010 board bring-up** — no physical board; exact variant unknown.
-- **T-011 interference measurement** — same, and neither board has a
-  magnetometer, so the headline haptics-versus-compass concern is not measurable
-  on current hardware in any configuration.
+  on every wake. **Both are now bench questions rather than reading questions** —
+  the Waveshare is on the desk, so `WHO_AM_I` settles the variant and a rail
+  measurement across a sleep settles H8. Neither has been done.
+- **T-010 board bring-up** — **half unblocked as of 2026-08-22.** A physical
+  Waveshare `ESP32-S3-Touch-AMOLED-2.06` is on the desk; a T-Watch is not, and
+  the T-Watch's variant question (which of five radios, which of two GNSS
+  modules) is exactly what nobody can answer without one. The Waveshare half is
+  no longer blocked and is no longer being *done* either — see the section
+  above; **nothing in this repository may say `PASS` until somebody runs a test
+  on the board and writes down what came out.**
+- **T-011 interference measurement** — still blocked, and note that arriving
+  hardware does not help: neither board has a magnetometer, so the headline
+  haptics-versus-compass concern is not measurable on either of them in any
+  configuration. On the Waveshare it is doubly not measurable — that unit has no
+  vibration motor fitted at all.
 
 ## Waiting on the owner
 
