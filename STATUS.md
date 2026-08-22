@@ -223,8 +223,11 @@ that a future licence change reopens only what it actually affects.
 - **The companion is any node, not only ours** — vanilla MeshCore over BLE or
   LAN, several providers at once with a local radio, and telemetry as a
   request/response feed. It fits
-  [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape; what it needs is
-  the protocol facts, which are `UNKNOWN` (T-072, T-074).
+  [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape, and since
+  2026-08-22 the protocol facts it needs are **read** — T-072 is done, and
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md)
+  carries transports, framing, the command set and the three position scalings.
+  Read from source and **never observed on a node** (T-072a); T-074 is open.
   **Meshtastic is not one of the providers.** OD-7 asked for it alongside or
   instead of MeshCore; [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)
   reversed that on 2026-08-22 and T-073 is `REJECTED`, not awaiting protocol
@@ -250,6 +253,39 @@ that a future licence change reopens only what it actually affects.
   What is missing is themes as data, an installation gate built from the contrast
   and glyph checks that already exist, and a way back from a theme that makes the
   screen unreadable (T-081, T-082).
+**The MeshCore half of that is now answered** (T-072).
+[MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) has
+the transports, the framing, all 58 commands and the three different position
+scalings, read from the pinned `d929643` and with a provenance section saying
+which claims a second reader confirmed and which rest on one. Three things
+changed what we can plan:
+
+- **LAN is real** — Wi-Fi/TCP and Ethernet/TCP, port 5000, one client at a time.
+  A host-side client can speak to the node behind Home Assistant on `doctor`
+  today, with no ESP32 and no BLE stack involved. That is T-072a, and it would be
+  the first `OBSERVED` fact in this area.
+- **176 bytes is the frame budget**, a bare `#define` with no `#ifndef` guard, so
+  no peer can raise it. Every queue and buffer size on our side is bounded by it.
+- **A companion's position arrives with no provenance and no age.** No fix flag,
+  no satellite count, no timestamp, no HDOP — and `node_lat` is a single slot
+  shared by the GNSS loop, the saved prefs and the client app, written only
+  *inside* an `isValid()` branch, so a lost fix leaves the last value standing. A
+  receiver cannot distinguish a live fix from a six-hour-old one from a
+  hand-typed coordinate. [ADR-0011](docs/adr/0011-gnss-integrity.md) must supply
+  both from outside, and motion-gated GNSS (OD-10) cannot lean on a companion's
+  fix to decide whether the wearer moved.
+
+**The Meshtastic half is closed, and the gate was licensing.**
+`meshtastic/protobufs` *is* a separate repository with its own `LICENSE`, and
+that `LICENSE` is GPL-3.0, the same as the firmware. No exception clause, no SPDX
+header in any `.proto`. That closed the cheap path — a linked client is not
+available under this repository's own rule — and the four options went to the
+owner as [#41](https://github.com/hleserg/Attadipa/issues/41). **They chose
+option 4: not supported.**
+[OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
+2026-08-22. T-073 is `REJECTED` — not blocked, not deferred, and not waiting on
+protocol facts it will never need.
+
 - **And one defect, not a feature.** The simulator draws with LVGL's stock
   Latin-only Montserrat, so `×` renders as `□` and so do the Cyrillic letters in
   the English catalogue's own language names. The check already reports seven
@@ -267,6 +303,61 @@ bring-up order they feed into is
 
 **The schematic was right.** Nothing the unit shows contradicts anything in
 [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Three things were new:
+
+**And then it answered for itself.** Later the same day the owner read the chip
+over its own USB-Serial/JTAG port — `espefuse summary` and `esptool flash-id` —
+which is the first evidence here that came from neither a document nor a camera:
+[WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md).
+
+- **D12a is closed on silicon.** `PSRAM_CAP = 8M`, `PSRAM_VENDOR = AP_3v3` — so
+  the part is `R8`, not the 1.8 V `R8V` — and `PIN_POWER_SELECTION = VDD_SPI`
+  puts GPIO33–37 on the memory rail. The eFuse gives capacity and rail, not bus
+  width, so the step to *octal* is still Table 1-1's; but both legs now have
+  evidence and **five GPIOs are gone for good**, fused rather than argued.
+- **The flash is confirmed external and quad**: JEDEC `0xC8 0x4019`, and
+  `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` unprogrammed in BLOCK1.
+- **The chip is revision v0.2.** A build must keep `CONFIG_ESP32S3_REV_MIN` at 0
+  or the bootloader refuses it. Which errata apply to v0.2 is **D18**, unread.
+- **Nothing has been burned.** Every fuse is at its factory default, so every
+  recovery path is open. That baseline is recorded so a later reading that
+  differs means something happened.
+
+Taking the factory backup surfaced a failure mode worth knowing before anyone
+repeats it: `esptool read-flash` **with the stub** aborts at flash addresses that
+repeat exactly across runs starting from different offsets, so retrying is
+guaranteed to fail identically — `--no-stub` completes the same ranges. And
+`esptool` leaves a **short file** behind on abort, so concatenating chunks
+without checking each one's length produces a silently shifted image.
+[WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2.
+
+**And then the flash was read.** The partition table and two data partitions
+came off the unit the same day —
+[WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md).
+
+- **28 of 32 MB is partitioned**, with a 9 MB `factory` image and two 6 MB OTA
+  slots — so the vendor's own update path can never restore the build that
+  shipped, which is one more reason T-099 is P0.
+- **The stock firmware is `xiaozhi-esp32`.** The `model` partition holds WakeNet9
+  `wn9_nihaoxiaozhi_tts`, so the launcher's AIChats app is that project — which
+  means this board's audio path is already written down by somebody who had it
+  working. Licence first: **T-104**.
+- **The vendor bakes raw pixel buffers**, not encoded images, with no decoder on
+  the device. Corroboration for where T-034 was already heading; **T-103** turns
+  the file sizes into the confirmation.
+- **One claim had to be withdrawn.** A parallel reading of the same unit concluded
+  the PSRAM is *quad*, on the reasoning that "octal PSRAM would be 1.8 V". It is
+  not: Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` at
+  **3.3 V** in one row, and the table has no 8 MB quad in-package part at all.
+  That mattered because the conclusion drawn from it — plan LVGL draw buffers
+  against quad throughput — is an architectural constraint on the tightest budget
+  this board has.
+- **Two rows are `CONFLICTING`**, not overwritten: whether `AAC210602A1` is the
+  speaker or a haptic actuator (**T-105**, and T-097 sits on top of it), and the
+  battery connector's pitch, which a photograph cannot establish.
+
+**A bigger battery is under consideration.** The cell turns out to be on a
+removable 2-pin plug rather than soldered, which makes it a real option. What to
+order is open — see D2, now PARTIAL rather than UNKNOWN.
 
 - **The cell is 400 mAh**, where the row said `UNKNOWN` and the T-Watch carries
   940. The board with less than half the energy is the board with the emissive

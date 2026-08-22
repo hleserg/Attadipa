@@ -143,8 +143,19 @@ jobs:
           # returns nothing — the action has no label feature at all, so the
           # label in the prompt below depends entirely on `gh` being allowed.
           #
+          # WIDENED 2026-08-22, and the reason is a run that cost $1.48 and
+          # published nothing. The review of #44 at eb4d063 ran 49 turns and
+          # ended `is_error: true` — real work, then a tool it needed and did
+          # not have. Under this list a reviewer can Read a file but cannot
+          # `wc -l` it, cannot `git rev-parse` a SHA it was asked to compare,
+          # and cannot `gh pr checks` the checks it is reasoning about. Every
+          # verb added here reads and none of them writes; the job still holds
+          # `contents: read`, which is the guarantee that matters, and the only
+          # `gh` verbs that change anything are still the two that publish the
+          # review itself.
+          #
           # Read-only over the repository, deliberately: no Write, no Edit, and
-          # the only `gh` verbs are the ones that publish a review. `contents:
+          # the only `gh` verbs that mutate are the ones that publish a review. `contents:
           # read` on the job is still the outer guarantee. This has an opinion
           # and exactly enough hands to say it out loud.
           # 100 turns, raised from 40 on 2026-08-22.
@@ -161,7 +172,7 @@ jobs:
           # something else — a reviewer stuck in a loop — and 100 is above what a
           # thirty-file diff was observed to need, not a blank cheque.
           claude_args: |
-            --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
+            --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git blame:*),Bash(git ls-files:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(wc:*),Bash(sort:*),Bash(uniq:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }}
             in ${{ github.repository }}. You did not write this code. Read the
@@ -296,16 +307,31 @@ jobs:
             echo "1. **A turn or time ceiling.** \`is_error: false\` with a turn count at or"
             echo "   near \`--max-turns\` means the review worked and was cut off — the whole"
             echo "   bill, none of the verdict. Raise the ceiling; do not re-run into it."
-            echo "2. **This pull request edits \`.github/workflows/claude-*.yml\`.** The action"
-            echo "   refuses to run a version of itself that a pull request has modified —"
-            echo "   otherwise a pull request could supply the prompt that reviews it. That"
-            echo "   refusal is correct, and it means changes to those files are merged on"
-            echo "   ordinary CI and a human's reading, never on an AI review. No execution"
-            echo "   log is written in this case."
-            echo "3. **The Anthropic credential.** A spent quota fails before the model is"
+            echo "2. **This pull request is BEHIND a \`main\` that changed"
+            echo "   \`.github/workflows/claude-*.yml\`** — the commonest cause by far, and"
+            echo "   the one that looks like all the others. The action requires the"
+            echo "   workflow file it runs to be byte-identical to the copy on the default"
+            echo "   branch, and a pull request runs from its own merge ref. So change that"
+            echo "   file on \`main\` and every open pull request whose merge ref predates"
+            echo "   the change is silently skipped, whatever it touches. The run log says"
+            echo "   \"Workflow validation failed\". **The fix is to update the branch from"
+            echo "   \`main\`, not to re-run.** Observed on #50 at 08:26 on 2026-08-22 — a"
+            echo "   documentation-only pull request that touches no workflow at all."
+            echo "3. **This pull request edits \`.github/workflows/claude-*.yml\` itself.** The"
+            echo "   action refuses to run a version of itself that a pull request has"
+            echo "   modified — otherwise a pull request could supply the prompt that"
+            echo "   reviews it. That refusal is correct, and it means changes to those"
+            echo "   files are merged on ordinary CI and a human reading them, never on an"
+            echo "   AI review. Same log line as cause 2, and no execution log either way."
+            echo "4. **The Anthropic credential.** A spent quota fails before the model is"
             echo "   reached, in a second or so, and also writes no execution log."
-            echo "4. **A tool the session needed was not in \`--allowedTools\`.** This shows as"
-            echo "   \`is_error: true\` after real work, and the run log names the tool."
+            echo "5. **A tool the session needed was not in \`--allowedTools\`.** This shows"
+            echo "   as \`is_error: true\` after real work — a non-trivial turn count and a"
+            echo "   non-zero cost, which is what tells it apart from causes 2 to 4."
+            echo "   **The log does not name the tool**, because \`show_full_output\` is off"
+            echo "   and tool results are where that name would appear. Turning it on is"
+            echo "   not the answer: tool results can carry tokens into a world-readable"
+            echo "   log. Reason from what the review was trying to do instead."
             echo
             echo "Run: $RUN_URL"
             echo

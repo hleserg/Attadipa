@@ -1095,24 +1095,24 @@ stale silently. The protocol is
 - **Tests:** the CI job is the test
 - **Hardware required:** no
 
-### T-072 · What a vanilla MeshCore node actually exposes
-- **Priority:** P1 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours).
-  It gates T-073 and T-074 and it is cheap: the source is already cloned and MIT.
-- **Dependencies:** none
-- **Goal:** fill in §1 of
-  [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  from `d92964352441e53b93e8667b802e04f6e072b39e` — which transports the
-  `companion_radio` role exposes (BLE, serial, and whether LAN/TCP exists at the
-  pinned revision), which commands a stock build answers, whether telemetry
-  carries a position, and whether the node's own fix is distinguishable from one
-  relayed in a message.
-- **Acceptance:** every row has an answer with a file and line, or stays
-  `UNKNOWN` with the reason. A reuse-ledger record either way, per
-  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
-- **This is a research task.** It produces documentation. A pull request full of
-  new subsystems has been guessed at, not done.
-- **Hardware required:** no. Confirming it against a real vanilla node later is a
-  separate task and would be the first honest `OBSERVED` in this area.
+### T-072a · The same protocol, against a node that exists
+- **Priority:** P2 — it converts a document full of `read from source` into the
+  first `OBSERVED` in this area, and it is now possible where it was not before.
+- **Dependencies:** T-072
+- **Goal:** speak the companion protocol to a **real** vanilla node and record
+  where the reading was wrong. A MeshCore node hangs off Home Assistant on the
+  LAN host `doctor`, and a USB node is coming to the development machine. A host
+  program — not firmware — is enough: open the TCP socket or the serial port,
+  send `CMD_DEVICE_QUERY`, read `RESP_CODE_DEVICE_INFO`, and compare byte for
+  byte against §3 of the protocol document.
+- **Acceptance:** every claim in the protocol document that the exchange touches
+  is marked `OBSERVED` or corrected, with the captured bytes committed as a
+  fixture. Claims the exchange does not touch stay as they are — a partial
+  confirmation must not be written up as a whole one.
+- **Answer first, because it is free:** which transport that node actually has.
+  §1's trap is that the build name does not tell you.
+- **Hardware required:** yes, but not *our* hardware — this needs a MeshCore
+  node, not a T-Watch. That is why it can happen now.
 
 ### T-074 · More than one mesh provider at once
 - **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
@@ -1393,6 +1393,115 @@ stale silently. The protocol is
   makes this a configuration question, not a probing question.
 - **Hardware required:** no for the decision; yes to confirm by feel.
 
+### T-098 · Read the ESP32-S3 errata against revision v0.2
+- **Priority:** P1 — it gates nothing today and invalidates anything tomorrow.
+- **Dependencies:** none. The revision is known.
+- **Why now:** the received unit is `ESP32-S3` **revision v0.2**
+  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §1.1). The
+  errata sheet has never been read against any revision here, so every workaround
+  ESP-IDF applies silently is currently an assumption rather than a fact — D18.
+- **Goal:** read the ESP32-S3 Errata sheet, list every erratum that applies to
+  v0.2, and for each say whether ESP-IDF works around it automatically, whether
+  the workaround costs anything measurable, and whether it touches octal PSRAM,
+  the quad flash interface, USB-Serial/JTAG, the RTC domain or light sleep —
+  the five things this design leans on hardest.
+- **Acceptance:** the list in `docs/research/`, each entry with its erratum
+  number and the sheet's revision; anything with a firmware consequence raised as
+  its own task rather than left in prose.
+- **What must not be assumed:** that "ESP-IDF handles it" means "it is free".
+  Several ESP32 errata workarounds cost clock speed or current.
+- **Hardware required:** no.
+
+### T-099 · Finish and verify the factory flash backup
+- **Priority:** P0 — it is the only thing standing between this unit and an
+  unrecoverable factory image, and the first flash of our own firmware destroys it.
+- **Dependencies:** none.
+- **Why now:** the backup is in progress and the naive procedure produces a
+  silently corrupt file
+  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2). `esptool`
+  writes its output incrementally, so an aborted read leaves a **short** file
+  that concatenates without complaint into a shifted image.
+- **Goal:** a single `stock_dump.bin` of exactly `33 554 432` bytes, assembled
+  only from chunks whose individual lengths are exactly nominal, verified against
+  the device by on-chip MD5 (`esptool verify-flash 0x0 stock_dump.bin`) and
+  stored somewhere that is not the machine doing the flashing.
+- **Acceptance:** the length check and the verify output both recorded, with the
+  chunk map, in `docs/research/`. **Do not record a `PASS` for a verify that was
+  not run.**
+- **What must not be assumed:** that the stub failing is a transient. It is
+  content-deterministic — the same absolute flash addresses across runs that
+  started at different offsets — so a retry loop that does not change method is a
+  random walk with a budget attached.
+- **Hardware required:** yes — the owner's unit, already connected.
+
+### T-103 · What the vendor's three images actually are
+- **Priority:** P2 — it is a free input to T-034 and it expires the moment
+  somebody guesses instead.
+- **Dependencies:** none. The partition is already dumped.
+- **Why now:** the `storage` SPIFFS holds `/image/image1.bin`, `image2.bin` and
+  `image3.bin` — raw binaries, no encoder in sight
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4). That the
+  vendor bakes raw pixel buffers rather than shipping a PNG decoder is corroboration
+  for the direction T-034 was already leaning, and the file sizes turn it from a
+  guess into a measurement.
+- **Goal:** extract them (`mkspiffs -u out -b 4096 -p 256 -s 0x600000
+  storage.spiffs` — `strings` recovers names but not bodies, because SPIFFS
+  spreads data across pages), compare each size against **411 640** bytes, which
+  is a full 410×502 frame at RGB565. Then say what the format is, including
+  whether an LVGL image header sits in front of the pixels.
+- **Acceptance:** the three sizes and the derived format recorded in
+  `docs/research/`, with the arithmetic shown. If the sizes do not match any clean
+  interpretation, **say so** — a format nobody can account for is a finding, not a
+  failure.
+- **What must not be assumed:** that RGB565 is the answer because it is the
+  obvious one. RGB888, RGB565A8 and a palette all produce different numbers, and
+  the numbers are right there.
+- **Hardware required:** no — the partition is already in hand.
+
+### T-104 · `xiaozhi-esp32`: the licence, then this board's audio path
+- **Priority:** P1 — it is the audio bring-up for the exact board we have,
+  already written by somebody who had it working.
+- **Dependencies:** none.
+- **Why now:** the received unit's `model` partition holds WakeNet9
+  `wn9_nihaoxiaozhi_tts`, so the stock firmware **is**
+  [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §3). That
+  project therefore contains this board's I2S wiring, its ES8311 bring-up and what
+  the two microphones are for — all of which we would otherwise reverse out of a
+  9 MB blob or rediscover on the bench.
+- **Goal, in this order and not the other one:** (1) read its `LICENSE` and record
+  the decision in the [reuse ledger](docs/research/REUSE_LEDGER.md) whichever way
+  it goes; (2) only if the licence permits, read the board's audio path and write
+  it up as facts with file-and-line citations.
+- **Acceptance:** a full ledger record — the template, whole — and, if step 2
+  happens, an audio-path document that cites source rather than paraphrasing it.
+- **What must not be assumed:** that "it is on GitHub" means it may be copied, or
+  that reading a permissively-licensed project entitles us to its structure. The
+  ledger's rule is not a preference.
+- **Wake words are not in scope.** Identifying the vendor's firmware is not a
+  decision to ship a wake word; this repository has no such requirement and adding
+  one is a product change.
+- **Hardware required:** no.
+
+### T-105 · Is `AAC210602A1` the speaker or a haptic actuator?
+- **Priority:** P1 — it decides what `Capability::Haptics` resolves to, and
+  T-097 cannot be answered underneath a wrong answer here.
+- **Dependencies:** none.
+- **Why now:** two readings of the same unit disagree. This repository has the
+  part as the **speaker** in the back cover; a parallel reading calls it a haptic
+  module and concludes the board therefore has haptics after all
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §6). AAC
+  Technologies makes both, so the marking settles nothing.
+- **Goal:** trace the two solder pads. A speaker sits behind the ES8311 and its
+  amplifier; a haptic actuator does not. Continuity from the pads to the codec's
+  output stage answers it in one measurement.
+- **Acceptance:** the [hardware matrix](docs/research/HARDWARE_MATRIX.md) row
+  moves off `CONFLICTING` in one direction with the measurement recorded, and
+  T-097's premise is restated against whichever answer wins.
+- **What must not be assumed:** that the case grille settles it. It is strong
+  evidence and it is still evidence, not a trace.
+- **Hardware required:** yes — a meter on the board.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1654,6 +1763,26 @@ Recommended next action:
 - **Original brief, kept:** *"Прям нормальный дип ресерч. А по результатам уже
   назначишь задание себе че делать че не делать."*
 
+### T-072 · What a vanilla MeshCore node actually exposes — **DONE** 2026-08-22
+- §1 of [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  is answered, and the detail it summarises is
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  transports, framing, the whole command set, the three position scalings, and a
+  provenance section saying which claims were verified twice and which once.
+- **LAN exists**, which is what OD-7 turned on: Wi-Fi/TCP and Ethernet/TCP, both
+  port 5000 by default, one client at a time. That makes a host-side client the
+  cheapest possible bring-up.
+- **176 bytes is the frame budget** and it cannot be raised by a build flag.
+- **The finding that outranks the rest:** a position from a vanilla node carries
+  **no fix flag, no satellite count, no timestamp and no HDOP**, and `node_lat`
+  is one slot shared by the GNSS loop, saved prefs and the client app. A receiver
+  cannot tell a live fix from a stale one from a hand-typed coordinate. That is a
+  direct input to [ADR-0011](docs/adr/0011-gnss-integrity.md), OD-8 and OD-10.
+- Reuse-ledger records added for both the client (`REIMPLEMENT`) and the
+  Meshtastic gate (`REJECT`).
+- **Read from source, never observed.** `NOT EXECUTED — HARDWARE REQUIRED` —
+  see T-072a.
+
 ### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
 - **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
   [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
@@ -1691,10 +1820,17 @@ Recommended next action:
   expensive one. A real clean-room is months and is done honestly or not at all.
 - **What still answers the need:** MeshCore, MIT. OD-7 asked for a companion for
   people who will not build our node, and MeshCore is the remaining candidate
-  whose licence permits one. **T-072 is still open** — §1 of
+  whose licence permits one. **T-072 has since answered how much work that client
+  is** (2026-08-22): §1 of
   [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  is `UNKNOWN` on every row — so how much work that client is remains unknown.
-  The rejection here does not depend on that number.
+  is answered on every row, with the detail in
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  58 commands, a 176-byte frame budget that no build flag can raise, and a
+  Wi-Fi/Ethernet TCP transport that makes a host-side client the cheapest
+  bring-up there is. It is a real but bounded amount of work. **The rejection
+  here never depended on that number and does not change now that it exists** —
+  it rests on the licence gate and the cost of a clean-room, neither of which
+  T-072 touched.
 - **If this is ever revisited:** the licence question is answered and recorded.
   Only the product decision would need to change.
 

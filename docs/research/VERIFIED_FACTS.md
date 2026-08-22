@@ -691,3 +691,80 @@ still to take.
 - **Source:** S9.
 - **Impact:** small and practical. Both the speaker and any future motor attach
   by solder, so opening this watch twice means desoldering twice.
+
+## Read off the silicon of that unit (S10)
+
+`espefuse v5.3.1 summary` and `esptool v5.3.1 flash-id`, run over the board's own
+USB-Serial/JTAG port on 2026-08-22. This is the first evidence in this repository
+that came from neither a document nor a camera. The full reading and its
+redactions are in [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md); the three
+facts that change what may be written are here.
+
+### The die is fused as 8 MB AP Memory PSRAM at 3.3 V — so the part is `R8`, not `R8V`
+
+- **Claim:** `PSRAM_CAP = 8M`, `PSRAM_CAP_3 = False`, `PSRAM_VENDOR = AP_3v3`,
+  `PSRAM_TEMP = 85C`. `esptool` renders the same fuses as
+  `Embedded PSRAM 8MB (AP_3v3)`. `PIN_POWER_SELECTION = VDD_SPI` puts GPIO33–37
+  on the memory rail.
+- **Source:** S10.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** D12a was `RESOLVED` by inference from the package marking against
+  ESP32-S3 Series Datasheet v2.2 Table 1-1.
+- **What it does and does not prove.** It proves the capacity, the vendor and the
+  3.3 V rail on *this die*, which eliminates `ESP32-S3R8V` (1.8 V) and every 2 MB
+  quad variant. It does **not** state bus width. The step from "8 MB in package"
+  to "octal" is still Table 1-1's, and it holds because that table contains no
+  8 MB quad in-package part. Both legs of D12a are now supported, one by document
+  and one by silicon.
+- **Impact:** GPIO33–37 are confirmed unavailable to any application — not
+  argued from an unrouted schematic net, but fused. The GPIO budget loses five
+  pins for good.
+
+### The flash is outside the package, and the fuses say so
+
+- **Claim:** JEDEC ID `0xC8 0x4019` — GigaDevice, `0x40` = GD25Q SPI family,
+  `0x19` = 2^25 bytes = 32 MB. `FLASH_TYPE = 4 data lines` (quad).
+  `VDD_SPI_FORCE` and `VDD_SPI_XPD` are set and `VDD_SPI_TIEH` reads
+  `VDD_SPI connects to VDD3P3_RTC_IO`, i.e. 3.3 V. `FLASH_CAP`, `FLASH_TEMP` and
+  `FLASH_VENDOR` in BLOCK1 are all unprogrammed.
+- **Source:** S10.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** `VERIFIED` from the schematic alone (`GD25Q256EYIGR` at U3).
+- **Impact:** the schematic and the silicon agree, and the three unprogrammed
+  BLOCK1 fields independently confirm there is no in-package flash competing for
+  the bus. The combination the board actually is — **octal PSRAM in package,
+  quad flash outside it, both at 3.3 V** — is now settled from two directions.
+
+### The chip is revision v0.2, and a build must not ask for more
+
+- **Claim:** `WAFER_VERSION_MAJOR = 0`, `WAFER_VERSION_MINOR = 2`; `esptool`
+  reports `ESP32-S3 (QFN56) (revision v0.2)`. Crystal 40 MHz. ADC calibration
+  (`BLK_VERSION_MAJOR = ADC calib V1`, `ADC1_INIT_CODE_*`, `ADC1_CAL_VOL_*` and
+  the ADC2 counterparts) and `TEMP_CALIB` are burned.
+- **Source:** S10.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** `UNKNOWN` — no document states which revision a shipped board carries,
+  and it is not a property of the board design.
+- **Impact:** ESP-IDF's `CONFIG_ESP32S3_REV_MIN_*` gates boot. A build whose
+  minimum revision exceeds 0 will be **refused by the bootloader on this unit**.
+  Nothing sets it higher today; this is recorded so nobody raises it blind. The
+  burned calibration fuses mean ESP-IDF's ADC calibration works rather than
+  falling back to a nominal curve. Which errata apply to v0.2 is `UNKNOWN` — the
+  ESP32-S3 Errata sheet has not been read against this revision.
+
+### Nothing has been burned — every recovery path is open
+
+- **Claim:** `WR_DIS = 0`, `RD_DIS = 0`, `SPI_BOOT_CRYPT_CNT = Disable`,
+  `SECURE_BOOT_EN = False`, all three `SECURE_BOOT_KEY_REVOKE*` false, all six
+  `KEY_PURPOSE_*` = `USER` with `BLOCK_KEY0..5` zero, `DIS_DOWNLOAD_MODE = False`,
+  `ENABLE_SECURITY_DOWNLOAD = False`, `DIS_PAD_JTAG = False`,
+  `SOFT_DIS_JTAG = 0`, `DIS_USB_SERIAL_JTAG = False`, `CUSTOM_MAC` zero,
+  `SECURE_VERSION = 0`.
+- **Source:** S10. `espefuse summary` reads; it burns nothing, and
+  `espefuse burn_efuse` was not run.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Impact:** the unit is in the state the "never irreversible without being
+  asked" rule exists to preserve. Download mode, USB-Serial/JTAG and pad JTAG are
+  all available, so there is no way yet to brick this board that a reflash cannot
+  undo. Recorded as a baseline: a future reading that differs from this one means
+  something was burned, and this file says when it was not.
