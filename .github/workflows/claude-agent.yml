@@ -731,8 +731,38 @@ jobs:
           # This one writes, so it gets Edit, Write and Bash. The boundary that
           # matters for it is the job's `permissions:` block and the branch it
           # is checked out on, not the tool list.
+          #
+          # THE CEILING WAS 60 AND IT KILLED SIX RUNS IN ONE AFTERNOON.
+          #
+          # 2026-08-22: #71 three times, #67, #75 and #78 all ended the same way
+          # -- accepted, an accurate plan comment three minutes in, then dead
+          # with `error_max_turns` at turn 61 and nothing on the branch. Read
+          # from the execution log of run 32587675386: `"subtype":
+          # "error_max_turns"`, `"num_turns": 61`, `"total_cost_usd": 3.00`,
+          # after 8 min 49 s of real work. An honest report over an empty branch
+          # is the one outcome nobody can act on, and it was paid for in full
+          # every time.
+          #
+          # This repository already reached this conclusion once, for the
+          # reviewer, on this same day -- docs/automation/CLAUDE_AUTOMATION.md
+          # records #39 being killed at turn 50 of a 40 ceiling having posted
+          # nothing, and the reasoning it settled on: "a limit that stops work
+          # AFTER it has been paid for is not a cost control; the control that
+          # actually bounds spend is timeout-minutes, which is denominated in
+          # the thing being billed. --max-turns bounds a different failure -- a
+          # session stuck in a loop." The reviewer went to 100. The agent was
+          # left at 60 and is the job that does strictly more: it reads the same
+          # material the reviewer does, and then implements, tests, pushes and
+          # reports.
+          #
+          # 200, and the reason it is not a round guess: the mandated reading
+          # order below -- CLAUDE.md, the specification, STATUS, TASKS, the
+          # ADRs, the reuse ledger, then open issues and pull requests -- spends
+          # 20 to 30 turns before a line is written, and run 32587675386 was
+          # still mid-implementation at 61. Spend stays bounded by
+          # timeout-minutes: 60 above, which is the thing actually being billed.
           claude_args: |
-            --max-turns 60 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task"
+            --max-turns 200 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task"
           prompt: |
             You are the implementation agent for Attadipa, working from GitHub
             issue #${{ needs.gate.outputs.issue }} in ${{ github.repository }}.
