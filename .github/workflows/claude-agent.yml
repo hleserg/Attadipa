@@ -276,11 +276,19 @@ jobs:
             CMP=$(gh api "repos/$REPO/compare/$REVIEWED_HEAD...$DEFAULT_BRANCH" 2>/dev/null || echo '')
             if [ -n "$CMP" ]; then
               HEAD_MOVED=$(printf '%s' "$CMP" | jq -r '.ahead_by // "unknown"')
-              FILES=$(printf '%s' "$CMP" | jq -r '[.files[]?.filename] | join(", ")' | cut -c1-800)
+              # How many files, and where — not a truncated list. The filter
+              # lives in .github/scripts/compare-summary.jq rather than here,
+              # for the reason its header gives and the reason
+              # intake-decision.sh and queue-scan.jq already live in files:
+              # logic inside a `run:` block cannot be executed by a test, so
+              # the fixtures it was checked against exist only in somebody's
+              # terminal. .github/tests/compare-summary-test.sh runs it over
+              # every shape, and CI runs that.
+              CHANGED=$(printf '%s' "$CMP" | jq -r -f .github/scripts/compare-summary.jq)
               if [ "$HEAD_MOVED" = "0" ]; then
                 STALENESS="reviewed_head $REVIEWED_HEAD is still the tip of $DEFAULT_BRANCH. The finding was made against current code."
               else
-                STALENESS="$DEFAULT_BRANCH is $HEAD_MOVED commit(s) ahead of the reviewed commit $REVIEWED_HEAD. Files changed since: $FILES"
+                STALENESS="$DEFAULT_BRANCH is $HEAD_MOVED commit(s) ahead of the reviewed commit $REVIEWED_HEAD. $CHANGED"
               fi
             else
               STALENESS="reviewed_head $REVIEWED_HEAD could not be compared against $DEFAULT_BRANCH — it is not a commit in this repository."
