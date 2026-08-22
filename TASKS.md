@@ -377,8 +377,16 @@ stale silently. The protocol is
 - **Why it is not hypothetical:** the product as specified is a wearable that
   reports a person's position to a remote party over a mesh; Child Mode makes
   that person a six-year-old; DULT's own scope enumerates "Watch" as an
-  accessory category; and T-066's track exchange is a location-sharing channel
-  that has never been read against a threat model at all.
+  accessory category (value 146 in the Accessory Category table — confirmed in
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md) §1.3); and
+  T-066's track exchange is a location-sharing channel that has never been read
+  against a threat model at all.
+- **Where to start, so this is not re-derived:** `draft-ietf-dult-threat-model-05`
+  is an **active** IETF working-group document (latest revision 2026-08-06,
+  not expired like the accessory protocol) and is the primary source naming
+  what DULT itself considers a threat — found but not read in full by T-070's
+  research; [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md)
+  §"Relationship to T-069" hands it over.
 - **Second half, and it is specific rather than general:** a child's position
   leaving the device engages GDPR Article 8 (consent, thresholds 13–16 by member
   state), the UK Age Appropriate Design Code and COPPA. Google scoping Find Hub
@@ -399,7 +407,8 @@ stale silently. The protocol is
 
 ### T-070 · The watch as a tracker detector, which is the opposite feature
 - **Priority:** P2
-- **Dependencies:** T-069
+- **Dependencies:** T-069 for implementation. The research half did not need
+  T-069 and was done directly — see below.
 - **Goal:** scan for an unknown BLE identifier that has stayed near the wearer
   for an implausibly long time, and say so.
 - **Why it is worth more than emulation for this product:** it **protects** the
@@ -408,15 +417,39 @@ stale silently. The protocol is
   it uses a radio the watch certainly has; and `seemoo-lab/AirGuard` is
   Apache-2.0, MIT-compatible and actively maintained, so there is something to
   learn from rather than invent.
-- **The honest limit, stated up front:** a detector that keys off a repeated
-  identifier is defeated by fast rotation, which §1.6 records as an `UNKNOWN` in
-  2026. Do not ship a detector that implies it catches everything.
+- **The honest limit, stated up front, and now sourced rather than deferred.**
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md) §3: two
+  independent 2025/2026 studies — one peer-reviewed (PoPETs 2025), one an
+  unreviewed 2026 preprint — report that an identifier rotated faster than a
+  detector's correlation window evades or substantially delays Apple's,
+  Google's **and AirGuard's** detection, on every ecosystem except Samsung's
+  aging-counter scheme. Both used an ESP32 to demonstrate it. The exact 2022
+  methodology against a *current* iOS build remains untested and `UNKNOWN`.
+  **Do not ship a detector that implies it catches everything** — AirGuard's
+  own shipped strings do not, and neither should Attadipa's.
+- **What the research also settled, so implementation does not re-derive it —
+  all in [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md):**
+  AirGuard's actual thresholds (3 sightings / 14 days, ≥2–4 distinct locations
+  150 m apart, altitude gates for the aeroplane case — §2); DULT's current
+  broadcast format and rotation intervals, and that no shipping accessory has
+  been observed using DULT's own `0xFCB2` service data yet (§1); that
+  Espressif publishes no BLE-scanning current figure at all — 93 mA RX peak is
+  the nearest documented proxy, and the scanning power story is still gated on
+  T-068's open question of whether either board can reach a 32 kHz sleep floor
+  between scan bursts (§4); that concurrent scan-while-connected is documented
+  as supported and costs 828 B per activity, but its cost to the companion
+  link's latency is undocumented (§5); and a correction — ADR-0003 does not
+  claim a shared T-Watch BLE/LoRa front end, contrary to how this task was
+  first framed (§5.3).
 - **Acceptance:** host tests over recorded advertisement sequences — a
   co-travelling identifier is flagged, a shop full of stationary beacons is not.
-- **Research status:** not started
+- **Research status:** done —
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md); reuse ledger
+  record added.
 - **Implementation status:** not started
 - **Tests:** host, over synthetic scan traces.
-- **Hardware required:** for a real scan, yes.
+- **Hardware required:** for a real scan and for the power figures, yes — see
+  T-068, which this task's power story now depends on explicitly.
 
 ### T-071 · Dead reckoning: odometry, the disk, and what makes it stop
 - **Priority:** P2 — **not blocked.**
