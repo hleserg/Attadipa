@@ -147,8 +147,21 @@ jobs:
           # the only `gh` verbs are the ones that publish a review. `contents:
           # read` on the job is still the outer guarantee. This has an opinion
           # and exactly enough hands to say it out loud.
+          # 100 turns, raised from 40 on 2026-08-22.
+          #
+          # 40 was chosen as a cost control and it was the wrong control. On
+          # pull request #39 the reviewer read the diff, worked for six and a
+          # half minutes, reported `is_error: false` — and was killed at turn 50
+          # for exceeding 40, having posted nothing and set no label. That is the
+          # worst of both: the full bill and no review. A ceiling that stops work
+          # after it has been paid for does not save money.
+          #
+          # The real backstop is `timeout-minutes` on the job, which bounds the
+          # spend in the only unit that maps to it. This number now bounds
+          # something else — a reviewer stuck in a loop — and 100 is above what a
+          # thirty-file diff was observed to need, not a blank cheque.
           claude_args: |
-            --max-turns 40 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
+            --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }}
             in ${{ github.repository }}. You did not write this code. Read the
@@ -218,47 +231,97 @@ jobs:
             gh CLI: `ai-review:blocking` if anything must be fixed before merge,
             otherwise `ai-review:pass`. Remove the other one if present.
 
+      # What actually went wrong, read from the action's own execution log
+      # rather than guessed at.
+      #
+      # The note below used to list two possible causes and leave the reader to
+      # work out which applied. On 2026-08-22 the answer was neither: the review
+      # ran, cost money, returned `is_error: false`, and was killed at turn 50 by
+      # a 40-turn ceiling. Somebody spent twenty minutes reading credential
+      # documentation for a limit written three lines above it. A diagnostic that
+      # offers a menu is not a diagnostic.
+      - name: Work out why the review did not happen
+        id: why
+        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        env:
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          detail='The action wrote no execution log at all, which means it never reached the model — a refused workflow or a rejected credential.'
+          if [ -n "${EXEC_FILE:-}" ] && [ -f "${EXEC_FILE}" ]; then
+            # Only the numeric and boolean fields. The free-text `result` is
+            # model output and would be interpolated into a comment we author.
+            # `-s` plus `flatten(1)` so this reads the log whether the action
+            # writes one JSON array or one object per line. Both shapes have
+            # been seen from this action and neither is documented.
+            summary="$(jq -rs '
+              flatten(1)
+              | [.[] | select(type == "object" and .type == "result")] | last
+              | if . == null then "the log has no result record — the session did not finish"
+                else "is_error=\(.is_error), subtype=\(.subtype), turns=\(.num_turns), cost=$\(.total_cost_usd // 0)"
+                end' "${EXEC_FILE}" 2>/dev/null || echo "the execution log could not be parsed")"
+            detail="The session's own result record says: ${summary}"
+          fi
+          {
+            echo "detail<<ATTADIPA_EOF"
+            echo "${detail}"
+            echo "ATTADIPA_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Say that the review did not happen
         if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # Through the environment, never through `${{ }}` inside the script:
+          # the value is assembled from a file the model's session wrote.
+          DETAIL: ${{ steps.why.outputs.detail }}
         run: |
           set -euo pipefail
           # Neither label is set. `ai-review:pass` would be a lie and
           # `ai-review:blocking` would be a finding nobody made.
           {
-            echo "<!-- attadipa-review-did-not-run -->"
-            echo "**The independent review did not run on this commit, so there is no verdict.**"
+            echo "<!-- attadipa-review-did-not-run:${SHA} -->"
+            echo "**The independent review did not run on \`${SHA:0:8}\`, so there is no verdict.**"
             echo
-            echo "This says nothing about the diff. There are two usual causes:"
+            echo "This says nothing about the diff."
             echo
-            echo "1. **This pull request edits \`.github/workflows/claude-*.yml\`.** The action"
+            echo "${DETAIL}"
+            echo
+            echo "The usual causes, in the order they are worth checking:"
+            echo
+            echo "1. **A turn or time ceiling.** \`is_error: false\` with a turn count at or"
+            echo "   near \`--max-turns\` means the review worked and was cut off — the whole"
+            echo "   bill, none of the verdict. Raise the ceiling; do not re-run into it."
+            echo "2. **This pull request edits \`.github/workflows/claude-*.yml\`.** The action"
             echo "   refuses to run a version of itself that a pull request has modified —"
             echo "   otherwise a pull request could supply the prompt that reviews it. That"
             echo "   refusal is correct, and it means changes to those files are merged on"
-            echo "   ordinary CI and a human's reading, never on an AI review."
-            echo "2. **The Anthropic credential.** On the subscription path a spent quota"
-            echo "   fails immediately, before the model is reached, and looks like this too."
-            echo
-            echo "Check which by opening the run below: cause 1 says \"Workflow validation"
-            echo "failed\", cause 2 shows a result with \`is_error\` after a second or so."
+            echo "   ordinary CI and a human's reading, never on an AI review. No execution"
+            echo "   log is written in this case."
+            echo "3. **The Anthropic credential.** A spent quota fails before the model is"
+            echo "   reached, in a second or so, and also writes no execution log."
+            echo "4. **A tool the session needed was not in \`--allowedTools\`.** This shows as"
+            echo "   \`is_error: true\` after real work, and the run log names the tool."
             echo
             echo "Run: $RUN_URL"
             echo
-            echo "Neither \`ai-review:pass\` nor \`ai-review:blocking\` has been set. Push again,"
-            echo "or re-run the job, to get an actual review."
+            echo "Neither \`ai-review:pass\` nor \`ai-review:blocking\` has been set."
           } > /tmp/no-review.md
 
-          # One per head commit, not one per push: re-running the job on the same
-          # commit should not stack identical notes.
+          # One note per head commit. The marker carries the SHA, because the
+          # previous version matched on the marker alone and therefore posted
+          # once per pull request *ever* — leaving a stale note pointing at a
+          # months-old run while every push after it failed silently. That is
+          # how the 2026-08-22 turn-limit failure was misread as a spent quota.
           if gh api "repos/$REPO/issues/$PR/comments" --paginate \
-               --jq '.[].body' | grep -q 'attadipa-review-did-not-run'; then
-            echo "::notice::already said so on #$PR"
+               --jq '.[].body' | grep -q "attadipa-review-did-not-run:${SHA}"; then
+            echo "::notice::already said so for ${SHA:0:8} on #$PR"
           else
             gh pr comment "$PR" --repo "$REPO" --body-file /tmp/no-review.md
           fi
           gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
-          echo "::warning::The independent review could not run; no verdict was recorded."
+          echo "::warning::The independent review could not run on ${SHA:0:8}; no verdict was recorded."

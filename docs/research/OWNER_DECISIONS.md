@@ -753,3 +753,73 @@ answered from a datasheet: whether Meshtastic's protocol definitions are license
 separately from its firmware, which cellular module the node will carry, and
 which tower database may lawfully be shipped in a product. The first is research
 and is filed; the last two are the owner's.
+
+## OD-12 — Meshtastic is not supported, and the reason is not the licence
+
+**Decided:** 2026-08-22, on [#41](https://github.com/hleserg/Attadipa/issues/41).
+
+**As stated:**
+
+> *"Согласен - принимаю."*
+
+— to the recommendation in that issue: option 4, do not support Meshtastic,
+MeshCore alone answers what [OD-7](#od-7--the-companion-is-any-node-not-only-ours)
+actually asked for.
+
+**What was asked, and what happened to it.** OD-7 said Meshtastic should be a
+companion option *"вместо (или вместе, как получится)"* MeshCore. T-073 checked
+the licence first, as that task required, and found the blocker:
+`meshtastic/protobufs` is a separate repository with its own `LICENSE`, and that
+file is **GPL-3.0** with no linking exception. Generating code from those
+`.proto` files and linking it into the firmware would make Attadipa's firmware a
+derivative work under GPL-3.0, and Attadipa is MIT. The reuse ledger's rule —
+read it, learn from it, copy nothing — applies to protocol definitions exactly
+as it applies to C++.
+
+Four options were put to the owner: a real clean-room from published
+documentation only; shipping the provider as a separately distributed GPL-3.0
+component; asking upstream for an exception; or not supporting Meshtastic. Only
+the first and last are executable by an agent without legal advice, and they
+differ by months.
+
+**The decision is option 4, and the distinction matters for the record.** The
+licence is what made the cheap path impossible. The *decision* is that the
+feature is not worth the expensive one — a genuine clean-room is months, done
+honestly or not at all, and a half-clean-room is worse than neither.
+
+**What MeshCore is, stated at the strength the evidence actually supports.** It
+is MIT, and its source has a `companion_radio` role and a transport abstraction
+— both read, both in the reuse ledger. That is enough to say a companion client
+is *buildable without a licensing problem*, which is the half OD-7's need turns
+on. It is **not** enough to say the protocol is understood: **T-072 is open**,
+and every row of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) §1 is still
+`UNKNOWN` — which transports a stock build exposes, whether a LAN/TCP companion
+transport exists at the pinned revision, which commands it answers, whether
+telemetry carries a position. An earlier draft of this record said T-072 was
+finished and LAN was there. It was not, and the independent review on
+[#48](https://github.com/hleserg/Attadipa/pull/48) caught it.
+
+The decision does not rest on the overstatement. Rejecting Meshtastic follows
+from the licence and the cost of a real clean-room; MeshCore being the remaining
+candidate follows from its licence. What is *not* yet established is how much
+work a MeshCore companion client is — and that is T-072's job to answer, not
+this record's to assume.
+
+So the ledger records `REJECT` for the licence, and this records `REJECT` for
+the product. If Meshtastic's licensing ever changes, the licence half is
+answered and this decision is the only thing to revisit.
+
+**What it changes.**
+
+| | |
+|---|---|
+| **T-073** | closed, `REJECT`. Not blocked, not deferred — decided |
+| **T-074** | keeps its scope but loses its second concrete provider. Written against MeshCore plus a hypothetical second, which is enough to keep `availability(MeshMessaging)` and deduplication honest without inventing a provider to satisfy a list |
+| **OD-7** | stands, minus its Meshtastic clause. The companion is still *any* node, and MeshCore is the one we have a client for |
+| ADR-0008 | unchanged in shape. It was already a list, and a list of one is not a design flaw |
+
+**What is explicitly not decided here.** Whether a Meshtastic *bridge* could
+live outside the firmware — on the Attadipa node, or on a phone — is a different
+question with a different licensing answer, and nobody has asked it.
+
