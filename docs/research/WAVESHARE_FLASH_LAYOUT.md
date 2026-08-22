@@ -199,6 +199,15 @@ here — roughly 65 KB/s, over a *network* USB transport — against the ~15 KB/
 the first pass measured. "No-stub is unusably slow" was a fact about that host,
 not about the tool.
 
+**And the stub can *read* those addresses perfectly well.** This falls out of the
+verification below and is easy to miss: `esptool verify-flash 0x0` succeeded over
+all 33 554 432 bytes, and `verify-flash` works by asking the **stub** to compute
+an MD5 on the device and comparing one 16-byte digest. The stub therefore walked
+every byte of all five problem regions without complaint — it just cannot
+*stream* them back. That narrows the unknown considerably: whatever those five
+addresses have in common, it acts on the **device-to-host transfer path**, not on
+flash access. `UNKNOWN` still, but a smaller one.
+
 ### Verification: three independent reads agree, and the scare was mine
 
 Two complete 32 MB passes taken back to back are **byte-for-byte identical**, all
@@ -232,8 +241,10 @@ changed.
 > c_0x0000000  c_0x0a00000  c_0x0c00000  c_0x0e00000  c_0x1a00000 …
 > ```
 >
-> putting every chunk whose address contains a letter ahead of every chunk whose
-> address does not. **Sort chunk files by their numeric offset, never by their
+> which is not numeric order: `0x0a00000` lands second, ahead of `0x0200000`.
+> Version sort splits a name into digit and non-digit runs, and `0x0a00000`
+> breaks at the `a` where `0x0200000` does not, so the two are never compared as
+> numbers at all. **Sort chunk files by their numeric offset, never by their
 > name.** A careful chunked reader with retries and a `--no-stub` fallback was
 > undone in the last line of the script by `ls`.
 >
@@ -258,11 +269,23 @@ because it was originally an attempt to explain a mismatch that turned out not t
 exist, and it stands on its own as a fact about this firmware: **it does not
 rewrite its own configuration partitions on an ordinary boot.**
 
-> The same caveat as before, undiminished: `--after hard-reset` *should* have
-> booted the device between reads, but no screen was watched and no serial
-> captured, so **whether the application actually ran is `UNKNOWN`**. If it did
-> not, this measures only that flash is stable in download mode, which nobody
-> doubted.
+> **The caveat this measurement carried is now closed, and it needed a human to
+> close it.** The reads ended with `--after hard-reset`, but nothing here can see
+> a screen, so whether the application actually *ran* between them was `UNKNOWN` —
+> and if it never ran, the whole test measured only that flash is stable in
+> download mode, which nobody doubted.
+>
+> Resolved by observation on 2026-08-22: the device was cycled six times through
+> download mode and back with the same `--no-stub … --after hard-reset` shape the
+> NVS reads used, and the owner watched the panel. **It blinked on every cycle** —
+> dark, then the launcher again. So `--after hard-reset` does restart the
+> application on this unit, the firmware was running between the three reads, and
+> the result stands: **`phone_s3_box_3` does not rewrite `nvs`, `otadata` or
+> `phy_init` on an ordinary boot.**
+>
+> Worth keeping as method, not just as a result: a claim about what firmware does
+> while running cannot be verified from the host side alone, and the cheapest
+> instrument available was a person glancing at the watch.
 
 ## 3. `model` — a wake-word model, and what it does not prove
 
@@ -445,8 +468,8 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
   record the decision in the ledger either way.
 - **Run the `octal_psram` boot-log check** in §1 and close D12a against silicon
   rather than against a table.
-- **Verify the dump.** A second pass over the *populated* ranges with `--no-stub`,
-  compared per chunk against the first, would also test whether the five
-  stub-failure addresses (`0x23d000`, `0x476000`, `0xbef000`, `0xdcc000`,
-  `0xe61000`) are marginal sectors on the GD25Q256. If two passes disagree,
-  **record it as a conflict — do not "fix" it.** T-099.
+- ~~**Verify the dump.**~~ **Done** — §2.2. Two further complete passes, compared
+  per chunk against the owner's, all three identical, and the device's own MD5
+  agrees. The five stub-failure addresses are **not** marginal sectors: the same
+  stub computed a correct MD5 over every one of them, so the fault is in the
+  transfer path, not the flash. T-099 is `DONE`.

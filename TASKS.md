@@ -1470,28 +1470,6 @@ stale silently. The protocol is
   makes this a configuration question, not a probing question.
 - **Hardware required:** no for the decision; yes to confirm by feel.
 
-### T-099 · Finish and verify the factory flash backup
-- **Priority:** P0 — it is the only thing standing between this unit and an
-  unrecoverable factory image, and the first flash of our own firmware destroys it.
-- **Dependencies:** none.
-- **Why now:** the backup is in progress and the naive procedure produces a
-  silently corrupt file
-  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2). `esptool`
-  writes its output incrementally, so an aborted read leaves a **short** file
-  that concatenates without complaint into a shifted image.
-- **Goal:** a single `stock_dump.bin` of exactly `33 554 432` bytes, assembled
-  only from chunks whose individual lengths are exactly nominal, verified against
-  the device by on-chip MD5 (`esptool verify-flash 0x0 stock_dump.bin`) and
-  stored somewhere that is not the machine doing the flashing.
-- **Acceptance:** the length check and the verify output both recorded, with the
-  chunk map, in `docs/research/`. **Do not record a `PASS` for a verify that was
-  not run.**
-- **What must not be assumed:** that the stub failing is a transient. It is
-  content-deterministic — the same absolute flash addresses across runs that
-  started at different offsets — so a retry loop that does not change method is a
-  random walk with a budget attached.
-- **Hardware required:** yes — the owner's unit, already connected.
-
 ### T-104 · `xiaozhi-esp32`: the licence — **step 1 DONE** 2026-08-22, step 2 open
 - **Priority:** P1 — it is the audio bring-up for the exact board we have,
   already written by somebody who had it working, and the licence now permits
@@ -1690,6 +1668,35 @@ Recommended next action:
 
 ## DONE
 
+### T-099 · Finish and verify the factory flash backup — **DONE** 2026-08-22
+- **Verified, by the only test that settles it.** `esptool verify-flash 0x0` over
+  all **33 554 432** bytes returns `Verification successful` — the device
+  computes the MD5 itself, so the comparison is against the flash, not against
+  another copy of the same read.
+- **Three complete reads agree byte for byte**: the owner's first pass on
+  Windows over native USB, and two passes here on Linux over USB/IP. All three
+  hash to `2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5`.
+  Chunk map, method and the per-chunk lengths are in
+  [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §2.2.
+- **The `--no-stub` fallback is the procedure**, not a workaround: the stub
+  aborts at five addresses, reproducibly, ten failures out of ten predicted
+  across two passes on a host sharing nothing with the first but the board.
+  `--no-stub` reads them at ~65 KB/s, which is *faster* than the stub managed on
+  the original host. "No-stub is unusably slow" was a fact about that host.
+- **The task's own warning was right, and it caught me wearing a different hat.**
+  T-099 warned that a short chunk concatenates silently into a shifted image. The
+  chunks here were all full length; they were concatenated in the **wrong order**,
+  by `ls -v` on hexadecimal filenames, and the resulting image failed
+  `verify-flash`. I published a mismatch and a paragraph inviting suspicion of the
+  owner's dump before finding my own bug. Both are retracted in §2.2. **Sort
+  chunk files by numeric offset, never by name.**
+- **What this unblocks:** the first flash of our own firmware is now reversible,
+  which is the whole point of the task. It is the precondition
+  T-104 and the bench sequence in
+  [WAVESHARE_ARRIVAL](docs/research/WAVESHARE_ARRIVAL.md) §5 were waiting on.
+- **The dump is not committed and never will be** — Waveshare's binaries plus
+  third-party all-rights-reserved audio. It lives on the owner's machine.
+
 ### T-098 · Read the ESP32-S3 errata against revision v0.2 — **DONE** 2026-08-22
 - [ESP32S3_ERRATA_V02](docs/research/ESP32S3_ERRATA_V02.md). Document identified
   by version and hash: **ESP32-S3 Series SoC Errata v1.3**, 2025-03-31, md5
@@ -1716,7 +1723,6 @@ Recommended next action:
   trust the rest.
 - Answers **D18**. Nothing transfers to the T-Watch: that board's silicon
   revision has never been read.
-
 
 ### T-103 · What the vendor's three images actually are — **DONE** 2026-08-22
 - **Six files, not three.** `/image/image1..3.bin` and a `/music/` directory

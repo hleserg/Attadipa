@@ -842,3 +842,51 @@ facts that change what may be written are here.
   because republishing the dump would redistribute somebody else's licensed
   audio. The extracted files and the rendered PNGs are **not committed** either.
   What is committed is the extractor and the measurements.
+
+### The factory backup of the received unit is verified against the device
+
+- **Claim:** the 33 554 432-byte image of this unit's flash hashes to
+  `2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5`, and
+  `esptool verify-flash 0x0` — which has the **device** compute the MD5 — returns
+  `Verification successful` over the whole 32 MB.
+- **Source:** S12 — three complete reads of the received unit's flash: the
+  owner's on Windows 11 over native USB, and two here on Linux over USB/IP.
+  All three agree byte for byte, per chunk. Method and chunk map in
+  [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §2.2.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Impact:** **the first flash of our own firmware is reversible.** That is the
+  precondition every bench task on this unit was waiting for, and the reason the
+  balance of risk between the two diagnostic routes has shifted.
+- **Not committed, and this is the rule not a preference** — the image is
+  Waveshare's proprietary binary plus third-party all-rights-reserved audio. It
+  lives on the owner's machine.
+
+### Two complete applications ship on this flash, both built with ESP-IDF v5.5.1
+
+- **Claim:** `factory` at `0x100000` holds **`phone_s3_box_3`**
+  `v0.4.2-92-g5c6be6c-dirty`, 5 175 184 B, built 4 Nov 2025; `ota_0` at
+  `0xa00000` holds **`xiaozhi`** version **`1.8.5`**, 5 481 872 B, built
+  31 Oct 2025. Both descriptors give `idf_ver` **`v5.5.1-dirty`**. `ota_1` is
+  erased and `otadata` is blank, so `factory` is what runs.
+- **Source:** S12 — the `esp_app_desc_t` in each image, parsed at its slot
+  offset. Read out of the binaries, not inferred from the wake-word model as an
+  earlier record did.
+- **Impact:** T-104 must read xiaozhi at **tag `1.8.5`**; reading `HEAD` is
+  research into a different program. And `v5.5.1` is the vendor's own answer to
+  the IDF-version question T-004 asks — one version about which something is
+  *known*, not a recommendation. Note `-dirty` on both: they built from modified
+  trees, so it names a starting point, not a reproducible one.
+
+### The stock firmware does not rewrite its own configuration partitions on boot
+
+- **Claim:** `nvs`, `otadata` and `phy_init` (`0x9000`–`0x12000`) are byte-for-byte
+  identical across three reads separated by hard resets and ~90 s of running,
+  hashing to
+  `803798ee52013c09e9dd55a72226d0195ec6a3582f85af3b43315f9247b3e26e`.
+- **Source:** S12, plus a direct observation by the owner on 2026-08-22 — the
+  device was cycled six times through download mode and back, and the panel
+  blinked dark-then-launcher on every cycle. That is what makes the reads a test
+  of a *running* firmware rather than of flash in download mode.
+- **Impact:** modest but real — a bench procedure on this unit can reset it
+  repeatedly without the stock firmware quietly changing the bytes underneath.
+  It says nothing about what the firmware writes when a user touches it.

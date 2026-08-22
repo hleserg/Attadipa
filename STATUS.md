@@ -341,9 +341,20 @@ without checking each one's length produces a silently shifted image.
 came off the unit the same day —
 [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md).
 
-- **28 of 32 MB is partitioned**, with a 9 MB `factory` image and two 6 MB OTA
-  slots — so the vendor's own update path can never restore the build that
-  shipped, which is one more reason T-099 is P0.
+- **28 of 32 MB is partitioned**, with a 9 MB `factory` *slot* and two 6 MB OTA
+  slots. The image in that slot turned out to be **4.94 MB**, so it does fit an
+  OTA slot after all — the earlier inference that a 9 MB partition implies a 9 MB
+  image was wrong and is withdrawn. What still holds is that `otadata` is blank
+  and `ota_1` is erased, so nothing has ever updated this unit.
+- **The factory backup is verified and T-099 is `DONE`.** `esptool verify-flash`
+  over all 33 554 432 bytes returns `Verification successful`, and three
+  independent complete reads — one on Windows over native USB, two on Linux over
+  USB/IP — agree byte for byte. **The first flash of our own firmware is now
+  reversible.**
+- **Two complete applications are on the flash, not one.** `phone_s3_box_3` in
+  `factory` and **`xiaozhi` `1.8.5`** in `ota_0`, both built with **ESP-IDF
+  `v5.5.1-dirty`** — read out of the application descriptors, not guessed from a
+  wake-word model. T-104 should read xiaozhi at **tag `1.8.5`**, not `HEAD`.
 - **The stock firmware is `xiaozhi-esp32`.** The `model` partition holds WakeNet9
   `wn9_nihaoxiaozhi_tts`, so the launcher's AIChats app is that project — which
   means this board's audio path is already written down by somebody who had it
