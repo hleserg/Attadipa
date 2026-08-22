@@ -247,9 +247,24 @@ including disabling workflows entirely, are in [RECOVERY](RECOVERY.md).
 the last meaningful gate: an agent does the work, opens a **draft** pull
 request, fixes CI and collects an independent review, and then a human decides.
 
-Auto-merge for Dependabot patch updates and documentation-only changes is a
-reasonable thing to consider later. It is a separate decision, and it is not
-made here.
+Auto-merge for documentation-only changes **has since been decided**, owner
+2026-08-21, and it is narrower than "documentation":
+
+| | May be merged unattended | By what |
+|---|---|---|
+| `docs/`, except `docs/automation/` | yes | the backstop routine, under the conditions in [its prompt](attadipa-backstop-routine.md) |
+| `docs/automation/` | **no** | that directory governs the automation, including the backstop's own instructions. A gate that can widen itself is not a gate |
+| `core/` `platform/` `link/` `apps/` `sim/` `boards/` `.github/` | **no** | the rule above stands. Green CI proves nothing about a board |
+
+The backstop does not form an opinion about a change. It merges only where the
+independent reviewer has already published `ai-review:pass`, every check is
+green, no review thread or Codex comment is outstanding, and the pull request
+has been untouched for six hours — each of which is a decision taken by
+something other than the backstop. Three per run, and a comment on each naming
+what was checked.
+
+Dependabot is still not auto-merged; that remains a separate decision and is
+still not made here.
 
 **Hardware.** No workflow claims a hardware result, and there is no
 hardware-in-the-loop runner. CI prints

@@ -5,11 +5,19 @@ A daily Claude Code routine, 08:00 Europe/Tallinn, scoped to
 that the routine is reviewable and reproducible rather than a paragraph that
 exists only in one account's settings.
 
-**The two drifted once**, on 2026-08-21: the live prompt was edited directly and
+**They drifted once**, on 2026-08-21: the live prompt was edited directly and
 this file was not, so the document described a routine that no longer existed.
-Change this file first, then paste the block below into the routine — and the
-prompt itself now says so, so a session that notices the difference knows which
-way to reconcile it.
+
+That is now impossible by construction. The routine's stored prompt is a short
+bootstrap that says *"your instructions are in the repository, not here"* and
+points at the block below. **This file is the only copy.** Change it, and the
+routine changes with it — no pasting, nothing to keep in step.
+
+The bootstrap keeps exactly two rules of its own, because they are the reason
+the routine exists: check the kill switch before spending anything, and never
+hand work back to the owner. It also refuses to improvise: if this file cannot
+be read, it reports `BLOCKED` and stops rather than inventing a backstop while
+holding write access to `main`.
 
 ## Why it exists, and what it deliberately does not do
 
@@ -142,23 +150,56 @@ and `agent:ready` where one is genuinely needed.
   Limits:
     - merge ONLY a pull request where every decision has already been made by
       something else, and ALL of these hold. Check each; do not infer any:
-        * every check run on the head commit is `success` or `skipped`;
+        * at least ONE check run exists on the head commit, and every one of
+          them is `success` or `skipped`. "All green" over an empty list is
+          vacuously true, and a pull request no workflow touched has proved
+          nothing;
         * `ai-review:pass` is present — the independent reviewer put it there,
           and its absence means no verdict, not a silent yes;
         * `ai-review:blocking`, `agent:blocked` and `needs-owner` are absent;
-        * no unresolved review threads — and note this is the condition that
-          carries the OTHER reviewer. Codex (`chatgpt-codex-connector[bot]`) is
-          configured on ChatGPT's side, not in this repository, and it does NOT
-          set `ai-review:pass`. Its findings reach a pull request only as review
-          threads, so this line is the only thing standing between a Codex P1
-          and an automatic merge. It has been load-bearing once already: on
-          #19 Codex found a real hole that Claude's reviewer did not;
-        * `mergeable_state` is `clean` — never resolve a conflict to merge one;
+        * no unresolved review threads AND no unanswered comment from
+          `chatgpt-codex-connector[bot]` anywhere on the pull request, review
+          thread or not.
+
+          This is the condition that carries the OTHER reviewer, and it rests
+          on a claim that is `UNKNOWN` rather than established. Codex is
+          configured on ChatGPT's side, not in this repository, and it does not
+          set `ai-review:pass` — so a Codex finding reaches you only as a
+          comment. That it always arrives as a *review thread* is observed once,
+          on #19, and is not a contract anybody here can read. So check both
+          shapes, and when in doubt do not merge. Codex found a real hole on
+          #19 that Claude's reviewer did not, which is the whole reason this
+          line matters;
+        * `mergeable_state` is `clean` — never resolve a conflict to merge one.
+          **A draft reads `draft` here, never `clean`**, which is why the step
+          below exists: the anomaly is usually a draft, so a rule that only
+          accepted `clean` would decline every case it was written for;
         * untouched for over six hours, so an active session is not about to
           push to it.
       Everything else is somebody's decision and none of it is yours. You are
       not judging the change — the reviewer already did, and its label is the
-      only place you may read that judgement from;
+      only place you may read that judgement from.
+
+      THE ORDER MATTERS. Check every condition above FIRST, treating draft as
+      the expected state rather than a failure. Only once all of them hold, and
+      only then, take it out of draft (`gh pr ready`) and merge. Taking a pull
+      request out of draft is a visible act on somebody else's work, so it is
+      the last step before the merge and never a way to make a candidate
+      qualify;
+
+    - PATHS. Merge ONLY a pull request whose every changed file is under
+      `docs/` — and NOT under `docs/automation/`. Everything else is the
+      owner's, and two of those exclusions have specific reasons:
+        * `core/`, `platform/`, `link/`, `apps/`, `sim/`, `boards/`, `.github/`
+          — CLAUDE_AUTOMATION.md's standing rule, which this does not overturn.
+          Green CI proves nothing about a board: it can only print
+          `NOT EXECUTED — HARDWARE REQUIRED`, and a wrong rail or a wrong radio
+          chip is exactly where an unverified assumption does the most damage;
+        * `docs/automation/` — **including this file**. This document is the
+          literal source of your own instructions. A pull request that loosened
+          a condition here would otherwise reach `main` by the path this rule
+          created, and you would paste your own widened authority into yourself
+          on the next run. A gate that can widen itself is not a gate;
     - at most THREE such merges per run. If more qualify, take the oldest three
       and say how many are left. A backstop that empties the queue in one go is
       indistinguishable from one that has gone wrong;
