@@ -53,7 +53,17 @@ attadipa_receipt() {
     issues)
       how="the \`agent:ready\` label, or an assignment" ;;
     workflow_dispatch)
-      how="the hourly watchdog, which found this task waiting" ;;
+      # Not always the watchdog, and saying so when it was a person is the
+      # small kind of wrong this whole protocol exists to stop. A manual
+      # dispatch is a documented recovery path — the refusal comment tells
+      # people to use it — and the gate trusts the event precisely because
+      # GitHub only accepts one from an actor with write access.
+      case "$actor" in
+        github-actions|"github-actions[bot]"|"")
+          how="the hourly watchdog, which found this task waiting" ;;
+        *)
+          how="a manual run of the \`Claude agent\` workflow by \`$actor\`" ;;
+      esac ;;
     *)
       how="\`$trigger\`" ;;
   esac
@@ -112,18 +122,27 @@ attadipa_outcome() {
       echo "[Run log]($run_url)"
       ;;
     done_nopr)
-      echo "### Finished, and opened no pull request"
+      echo "### Finished, and no pull request was found for this issue"
       echo
-      echo "The run ended cleanly but produced no branch and no pull request."
-      echo "That is a real outcome in two cases and a defect in every other:"
+      echo "The run ended cleanly. Nothing here could find a pull request that"
+      echo "references this issue, which is a real outcome in three cases:"
       echo
       echo "* the finding was **verified against current code and did not hold**"
       echo "  — the comment above should say so with a file and a line;"
-      echo "* the work was **already done** by something merged since."
+      echo "* the work was **already done** by something merged since;"
+      echo "* a pull request **was** opened and does not mention this issue"
+      echo "  anywhere, in which case it is the pull request that needs fixing,"
+      echo "  not the run — it will not close this issue on merge either."
       echo
-      echo "If neither is written above, this run did nothing and the honest"
-      echo "reading is that it failed quietly. [Run log]($run_url) — and"
-      echo "\`@claude\` here starts it again."
+      echo "**Check for an open pull request before doing anything else.** If"
+      echo "one exists, this issue is with the reviewers and commenting"
+      echo "\`@claude\` would start a second agent against work that is already"
+      echo "done — a comment is not deduplicated, by design, so nothing would"
+      echo "stop it."
+      echo
+      echo "If there is genuinely no pull request and none of the three cases"
+      echo "above is written above this, the run did nothing and the honest"
+      echo "reading is that it failed quietly. [Run log]($run_url)."
       ;;
     failed)
       echo "### The run did not finish"

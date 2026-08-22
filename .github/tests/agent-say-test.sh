@@ -89,6 +89,15 @@ lacks "no staleness line when the gate had nothing to say" -- "$RESEARCH" -- \
 DISPATCH=$(attadipa_receipt "$RUN" unspecified P2 false workflow_dispatch github-actions "")
 says "a watchdog handover is named as one" -- "$DISPATCH" -- "hourly watchdog"
 
+# workflow_dispatch is not only the watchdog — the refusal comment tells people
+# to use it as a recovery path, and the gate trusts the event because GitHub
+# only accepts a manual one from an actor with write access.
+MANUAL=$(attadipa_receipt "$RUN" quality-audit P1 false workflow_dispatch hleserg "")
+says "a person who dispatched it by hand is not told a watchdog found it" -- \
+     "$MANUAL" -- "manual run" '`hleserg`'
+lacks "and the watchdog is not credited with their work" -- "$MANUAL" -- \
+     "hourly watchdog"
+
 echo
 echo "The outcome — always, on every exit path"
 
@@ -103,9 +112,21 @@ says "carries the marker" -- "$DONE" -- "<!-- attadipa-outcome -->"
 
 NOPR=$(attadipa_outcome done_nopr "$RUN")
 says "a clean run with no pull request is not reported as success" -- "$NOPR" -- \
-     "opened no pull request" "failed quietly"
-says "names the two cases where that is legitimate" -- "$NOPR" -- \
-     "did not hold" "already done"
+     "no pull request was found" "failed quietly"
+says "names the three cases where that is legitimate" -- "$NOPR" -- \
+     "did not hold" "already done" "does not mention this issue"
+# The review on #58 found this one: research-only tasks are not required to put
+# `Fixes #N` in the pull request body, so a perfectly good documentation pull
+# request can go undetected — and the old wording then called a successful run a
+# silent failure AND told the reader to comment `@claude`, which the gate does
+# not deduplicate for comment events. That is a second billed run and a second
+# competing pull request, produced by the message meant to prevent exactly that.
+lacks "never tells the reader to re-run without checking first" -- "$NOPR" -- \
+     "starts it again"
+says "tells them to look for a pull request before doing anything" -- "$NOPR" -- \
+     "Check for an open pull request before doing anything else"
+says "and says plainly why a second @claude is dangerous here" -- "$NOPR" -- \
+     "second agent" "not deduplicated"
 
 FAILED=$(attadipa_outcome failed "$RUN" cancelled)
 says "reports the actual conclusion word" -- "$FAILED" -- '`cancelled`'
