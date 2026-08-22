@@ -217,7 +217,7 @@ as much as the first.
 |---|---|
 | **Kill switch** — repository variable `CLAUDE_AUTOMATION_ENABLED=false` stops every Anthropic-billed step everywhere, leaving ordinary CI running | checked in all four workflows |
 | **Empty queue costs nothing** — the watchdog's scan is shell and one API call; Claude is invoked only when there is a task | `agent-queue-watchdog.yml` |
-| **One writer** — a repository-wide concurrency group, so writers queue instead of colliding | `claude-agent.yml` |
+| **One writer** — a concurrency group on the agent job, so writers queue instead of colliding. On the job and not on the workflow: a workflow-level group also holds the intake gate, and GitHub cancels a *pending* run when a newer one joins the group, so a burst of events loses everything but the last before anything reads it. Three tasks were queued and none started this way on 2026-08-22 | `claude-agent.yml` |
 | **Deduplication** — an issue already claimed is not picked up again | intake gate |
 | **Turn limits** — 60 for implementation, 40 for review and repair | `claude_args: --max-turns` |
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
