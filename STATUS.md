@@ -355,9 +355,31 @@ came off the unit the same day —
   speaker or a haptic actuator (**T-105**, and T-097 sits on top of it), and the
   battery connector's pitch, which a photograph cannot establish.
 
-**A bigger battery is under consideration.** The cell turns out to be on a
-removable 2-pin plug rather than soldered, which makes it a real option. What to
-order is open — see D2, now PARTIAL rather than UNKNOWN.
+**A bigger battery is under consideration, and the fitted one is probably not
+400 mAh.** The cell turns out to be on a removable 2-pin plug rather than
+soldered, which makes it a real option — and researching what to order produced
+a headline nobody expected. `402728` is 3.024 cm³, so the sticker's 400 mAh at
+3.7 V implies **132.3 mAh/cm³**, against an observed **87–102** band across 51
+datasheet cells from four manufacturers at footprints ≤ 32 mm: +22 % on the
+densest cell found in any footprint in that sample, +52 % on the median. Honest
+expectation **250–310 mAh** — so a same-size replacement buys no capacity at
+all, and 400 mAh in this footprint costs 5.5 mm of thickness rather than 4.0.
+[BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) — ESTIMATED from published
+datasheets, not measured. **What to order now has a decision tree rather than an
+open question**, gated on three measurements only the owner can take: the
+closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
+the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
+280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
+need. **T-106** holds all three, and the register reads that go with them.
+
+**Both inheritable charge currents are wrong for the real cell.** Waveshare's own
+demo sets 400 mA, which is 1.33C on ~300 mAh against a 1.0C class maximum, and
+it is a deliberate change — upstream XPowersLib's copy of the same file sets
+200 mA. The power-on default cannot be quoted at all: `REG 0x62`'s reset value is
+eFuse-trimmed and has never been read on this board. The Waveshare BSP configures
+the charger not at all, so whichever value is there at boot is the one charging
+the cell. Precharge and termination both default four times higher than the
+convention, and the input limit defaults to 1500 mA on a port that granted 500.
 
 - **The cell is 400 mAh**, where the row said `UNKNOWN` and the T-Watch carries
   940. The board with less than half the energy is the board with the emissive
@@ -489,6 +511,26 @@ needs the owner, and one needs a ruler.
   not VERIFIED.
 
 ## Recently completed
+
+- **T-102 — documentation consistency in CI, and the defect its own pull request
+  shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
+  job. Four checks: relative links resolve, inline code spans close, task IDs are
+  unique, and a live task has a body while finished work is filed under
+  `## DONE`. The last two exist because the review of
+  [#65](https://github.com/hleserg/Attadipa/pull/65) found the pull request had
+  spliced a `### T-102` heading into the middle of an unclosed code span in
+  T-100's first bullet — T-100 lost its whole field list to T-102, and **the two
+  checks the pull request added both passed on that file**, so a green job read
+  as *TASKS.md is fine* while the roadmap carried a task nobody could pick up.
+  The span check catches that at its cause; the body check catches it at its
+  effect, and catches the effect however it got there. Once the body check
+  existed it found four records left in live sections marked `DONE` — T-034,
+  T-060, T-060a, T-084 — drift predating the splice by weeks and the same defect
+  the #48 review established for T-064 and T-073; all four are now under
+  `## DONE`. Under `## BLOCKED` the body is the `BLOCKED:` block CLAUDE.md
+  specifies rather than a priority, so T-010 and T-011 are correct and not
+  flagged. Twenty-five mutation tests, thirteen of which assert the checker does
+  *not* fire.
 
 - **T-070 research — the watch as a tracker detector, and the honest limit is
   now sourced rather than deferred.**
