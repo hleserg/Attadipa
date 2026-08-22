@@ -25,12 +25,69 @@ write-capable agent do something?**
 2. **The action's own check.** `anthropics/claude-code-action@v1` performs the
    same check independently, and `allowed_non_write_users` is left empty so
    there is no bypass list to get onto.
-3. **No bots.** `allowed_bots` is empty, which means no bot may trigger the
-   action at all. On a public repository `'*'` would let any installed GitHub
-   App drive a write-capable agent with a prompt it controls. The workflow also
-   refuses bot actors itself, because the loop it prevents — Claude comments,
-   the comment mentions `@claude`, Claude runs — costs money until somebody
-   notices.
+3. **One named bot, and it is this repository's own dispatcher.** On a public
+   repository `'*'` would let any installed GitHub App drive a write-capable
+   agent with a prompt it controls, so the list is never a star. It is also not
+   empty, and the reason is worth reading before anybody "tightens" it back:
+   `allowed_bots: ""` meant the **hourly watchdog had never once started an
+   agent**. It hands a task over with `gh workflow run` under the built-in
+   `GITHUB_TOKEN`, so the dispatching actor is `github-actions[bot]`, and the
+   action refused it in about five seconds — before the agent read a file,
+   without writing an execution log, so the hand-over could only say `no
+   conclusion`. Four issues were written off as unexplained model deaths. The
+   list therefore names exactly that dispatcher:
+
+   | Workflow | `allowed_bots` | Why |
+   |---|---|---|
+   | `claude-agent.yml` | `github-actions` | the watchdog dispatches it as `github-actions[bot]`; nothing else in this repository holds `actions: write` |
+   | `claude-pr-review.yml` | `claude` | its `if:` deliberately admits `claude[bot]`, because a blanket bot guard skipped the review on the agent's own pull requests — the ones it exists for |
+   | `claude-ci-repair.yml` | `""` | its trigger is `workflow_run`; the actor is whoever pushed, today a person holding `ATTADIPA_AGENT_TOKEN`. It admits no bot, so it needs to name none — but it is one token change from the same failure |
+
+   **The reviewer had the identical defect, and it hid better.** Its `if:`
+   deliberately lets `claude[bot]` through — the comment there says a blanket
+   bot guard "skipped the review on exactly the pull requests this workflow
+   exists to review: the agent's own" — and then the step handed the action the
+   one list that does not contain `claude`. So the guard let the job start and
+   the action refused it:
+
+   ```
+   Checking permissions for actor: claude[bot]
+   Actor is a GitHub App: claude[bot]
+   Actor type: Bot
+   ##[error]Action failed with error: Workflow initiated by non-human actor:
+   claude (type: Bot). Add bot to allowed_bots list or use '*' to allow all bots.
+   ```
+
+   Byte-identical on runs `32597016812` (#95), `32596445164` (#94),
+   `32595947792` (#92) and `32595273274` (#88) — five, five, five and four
+   seconds. **No agent-authored pull request had ever been reviewed.** Worse
+   than the watchdog's version, because every one of those jobs reported
+   **success**: the `Review` step carries `continue-on-error`, which is correct
+   for its own reason — a red check meaning "we ran out of quota" is
+   indistinguishable from "the reviewer found something" — and it turned a
+   silent refusal into a green tick.
+
+   The three alternatives were ruled out by evidence rather than argued away:
+   the `claude-*.yml` files on those branches are byte-identical to `main`, so
+   the action's workflow-validation refusal cannot apply; a human-authored
+   review ran normally for six minutes at 20:39, so the credential was not
+   spent; and no execution log exists at all, which excludes the tool-list
+   cause, since that one needs real work before it shows up.
+
+   The workflow's own "the review did not run" comment listed five candidate
+   causes and **this was not among them** — it steered every reader towards the
+   branch-behind-`main` case, which was the wrong answer. It is now cause 1.
+
+   `github-actions` is not a concession to outside apps: it is the actor of
+   this repository's own workflows, and no third party can present as it. It is
+   also **not** a producer grant — `.github/scripts/queue-scan.jq` still refuses
+   `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so our own
+   output still cannot enqueue a billable writer. Those are two different rules
+   and `.github/tests/bot-actor-test.sh` asserts both, including
+   that the list never becomes `'*'`. The workflow also refuses bot actors
+   itself where the actor is not the dispatcher, because the loop it prevents —
+   Claude comments, the comment mentions `@claude`, Claude runs — costs money
+   until somebody notices.
 4. **No `pull_request_target`.** That trigger grants secrets to a workflow
    examining untrusted code, and it is how tokens leak. A fork's pull request
    therefore gets ordinary CI and no AI review, which is the correct trade and
@@ -231,7 +288,7 @@ as much as the first.
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
 | **Sticky review comment** — one comment edited in place, not a new one per push | `use_sticky_comment` |
-| **No bots** — nothing can trigger a run by replying to a run | `allowed_bots: ""` |
+| **Bots named, never starred** — a workflow that admits a bot actor must name it, and nothing may name `'*'`. The writer admits `github-actions`, the actor its own watchdog dispatches as; the reviewer admits `claude`, the actor that opens the pull requests it exists to review; the CI repairer admits none and names none. Empty lists had made the first two refuse silently — the watchdog had never started an agent, and no agent-authored pull request had ever been reviewed. The test asserts the rule rather than the three instances, so a fourth workflow is checked the day it grows an exemption | `allowed_bots`, `.github/tests/bot-actor-test.sh` |
 
 The review's limit was 40 until 2026-08-22, and it was the wrong number for the
 wrong reason. On pull request #39 the reviewer read a thirty-file diff, worked
