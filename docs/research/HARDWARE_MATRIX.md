@@ -28,7 +28,7 @@ Sources are listed at the bottom.
 | Sub-GHz radio | yes — **five possible chips, and only some of them do LoRa** ([ADR-0003](../adr/0003-radio-not-lora.md)) | **absent** |
 | GNSS | yes — **two possible modules** | **absent** |
 | IMU | BMA423 — accelerometer only | QMI8658 — 6-axis |
-| Magnetometer | **absent** | **absent** |
+| Magnetometer | **absent** | **absent as shipped** — a retrofit is under way ([MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md)) |
 | RTC | PCF8563 | PCF85063 |
 | Haptic | DRV2605L — waveform library over I2C | **bare motor on a GPIO** — no driver IC |
 | Audio in | 1× PDM mic | 2× mics via ES7210 ADC |
@@ -43,9 +43,22 @@ subsystem differs in part, in bus, or in existence. This table is the
 justification for the capability layer: a build that hardcodes either board's
 peripheral set cannot run on the other.
 
-**Neither board has a magnetometer.** The magnetometer work the specification
-calls for is therefore architectural only — an API that can accept one later,
-not a driver. Heading on real hardware currently comes from GNSS course alone.
+**Neither board has a magnetometer**, and that stays true of any board either
+vendor will sell you. The magnetometer work the specification calls for is
+therefore architectural — an API that can accept one later, not a driver.
+
+**"Later" now has a date.** The owner has ordered two magnetometer modules and
+intends to solder one inside the Waveshare unit
+([#83](https://github.com/hleserg/Attadipa/issues/83), 2026-08-22;
+[MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) for the datasheet comparison).
+This does **not** make the row above wrong and it must not be edited into "yes":
+a stock board has no magnetometer, the firmware has to run on a stock board, and
+one modified unit on one wrist is not a hardware capability. It makes the
+architectural API the thing that has to be right, rather than the thing that can
+be deferred — and it means the registry must handle a provider that exists on
+one physical device and on no other.
+
+Heading on real hardware currently comes from GNSS course alone.
 Only the T-Watch has GNSS **on the board** — an Attadipa node supplies it to
 either, so that is a statement about boards and not about what a device can do.
 Course-over-ground also only works while the user is moving, which is what makes
@@ -298,7 +311,7 @@ of the board.
 
 | Item | Value | Status |
 |---|---|---|
-| SoC | **ESP32-S3R8** — bare chip, not a module. `ESP32-S3 (QFN56)`, **revision v0.2**; 40 MHz crystal; ADC and temperature calibration fuses burned. A build must keep `CONFIG_ESP32S3_REV_MIN` at 0 or the bootloader refuses the chip | VERIFIED — S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1 |
+| SoC | **ESP32-S3R8** — bare chip, not a module. `ESP32-S3 (QFN56)`, **revision v0.2**; 40 MHz crystal; ADC and temperature calibration fuses burned. A build must keep `CONFIG_ESP32S3_REV_MIN` at 0 or the bootloader refuses the chip. **All eight errata in sheet v1.3 apply to v0.2**, seven permanently, and no later revision exists — [ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md) | VERIFIED — S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1 |
 | Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3). JEDEC read back `0xC8 0x4019` = GigaDevice, 2^25 bytes; eFuse `FLASH_TYPE = 4 data lines`, rail forced to 3.3 V by `VDD_SPI_TIEH`, and `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` all unprogrammed — **no in-package flash** | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.3 |
 | PSRAM | 8 MB **octal** — ESP32-S3 Series Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` and the table contains no 8 MB quad in-package variant. Corroborated by five vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y`, and by GPIO33–37 — octal's DQ4–DQ7 and DQS — sitting unrouted on the schematic. **The die's own fuses now agree**: `PSRAM_CAP = 8M`, `PSRAM_VENDOR = AP_3v3` — so `R8`, not the 1.8 V `R8V` — and `PIN_POWER_SELECTION = VDD_SPI` puts GPIO33–37 on the memory rail, which is where octal's DQ4–DQ7 and DQS go. The eFuse states capacity and rail, not bus width; the step to *octal* remains Table 1-1's, and is sound because no 8 MB quad in-package part exists. D12a | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2 |
 | Battery | **Marked 400 mAh, 3.7 V — and the marking is the thing in doubt.** `VERIFIED` here means the label was read correctly, not that the cell holds it: 400 mAh in `402728`'s 3.024 cm³ implies 132.3 mAh/cm³ against an 87–102 band across 51 datasheet cells, so the honest expectation is **250–310 mAh, `ESTIMATED`** — [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1, settled by weighing the cell (T-106 M3). Cell `402728` (4.0 × 27 × 28 mm), on connector `BAT1` via the AXP2101 charge path. The cell is **not soldered**: red/black leads into a white 2-pin plug, identified from a photograph as **MX1.25 / PicoBlade, 1.25 mm — `LIKELY`, not measured**. A photograph without a scale reference does not establish a pitch, and this decides what plugs in | VERIFIED — read off the cell of a received unit, 2026-08-22, [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2 |
@@ -455,4 +468,6 @@ a typed descriptor rather than a flag.
 
 | S11 | **the flash of that same unit** — the partition table dumped from `0x8000` and parsed byte for byte, plus the `model` and `storage` partitions dumped whole, 2026-08-22. [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) |
 
-S1–S8 checked 2026-08-21; S9, S10 and S11 on 2026-08-22.
+| S12 | **the complete 32 MB flash of that same unit**, read whole and verified against the device — three independent complete passes (the owner's on Windows over native USB, two on Linux over USB/IP) agreeing byte for byte, plus `esptool verify-flash 0x0` returning `Verification successful` over all 33 554 432 bytes, 2026-08-22. Extends S11 from three partitions to the whole part. The image itself is **not committed** — Waveshare's binary plus third-party licensed audio; see [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §2.2 |
+
+S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22.
