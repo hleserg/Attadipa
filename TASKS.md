@@ -1543,13 +1543,31 @@ stale silently. The protocol is
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
   `0x12` and `0x69`, at I²C address `0x34`.
+- **And one bus scan, now a precondition rather than a footnote:** whether
+  `0x6A` is free for the magnetometer retrofit ([#83](https://github.com/hleserg/Attadipa/issues/83))
+  depends on which QMI8658 address mapping this unit's IMU follows —
+  [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) marks that
+  `CONFLICTING` — and the resolving scan on `SDA 15 / SCL 14` is the same one
+  [WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §3
+  already lists as outstanding. Do not resolve the conflict by picking the
+  likelier mapping; run the scan.
 - **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
-  instrument named, the five register values recorded as read, and the sizing
-  table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
-  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
+  instrument named, the five register values recorded as read, the bus scan
+  recorded as run with whichever address ACKed, and the sizing table in
+  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one row.
+  `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
 - **What must not be assumed:** that the sticker settles the capacity. Reading
   it was verified; what it means is exactly what is in doubt.
 - **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
+- **Update 2026-08-22 — PAUSED behind [#83](https://github.com/hleserg/Attadipa/issues/83).**
+  The owner has ordered a magnetometer to solder into the same cavity this
+  task's M1/M2 measure, so the cell is chosen after the sensor is sited, not
+  before ([STATUS.md](STATUS.md), [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md)).
+  **This task's text above is left exactly as written** — the measurements
+  themselves are still correct and still the ones to take — but they are not
+  to be taken, and no cell is to be ordered from them, until #83 sites the
+  sensor. Do not pick this task up before then, even though it is still filed
+  under `## READY` rather than moved.
 
 ## BLOCKED
 
@@ -1589,16 +1607,22 @@ Recommended next action:
                 magnetometer, so the haptics-versus-compass case cannot be
                 measured on current hardware in any configuration.
 ```
-- **Update 2026-08-22 — the last sentence is about to stop being true.** The
-  owner has ordered a magnetometer and intends to solder it onto the received
-  Waveshare ([#83](https://github.com/hleserg/Attadipa/issues/83)). The
-  haptics-versus-compass case then becomes measurable on this unit, and given a
-  speaker with a permanent magnet sitting in the same case it stops being
-  theoretical. **The blocker above is left exactly as written** until the part is
-  in and working — a retrofit that has been ordered is not a retrofit that
-  exists — but the tooling under Option 1 now has a customer, which it did not
-  before.
-```
+- **Update 2026-08-22 — the last sentence is about to stop being true, for two
+  of its three interference cases and not the third.** The owner has ordered a
+  magnetometer and intends to solder it onto the received Waveshare
+  ([#83](https://github.com/hleserg/Attadipa/issues/83)). The speaker- and
+  charging-interference cases become measurable on this unit once it is
+  fitted — a speaker with a permanent magnet and a charge lead carrying
+  150–200 mA both already sit in the same case. **The haptics-versus-compass
+  case (G-08) does not**: this unit's motor pads are bare and haptics is
+  recorded unsupported ([STATUS.md](STATUS.md), the T-097 paragraph: "No
+  vibration motor is fitted... `Capability::Haptics` is `Unsupported`"), so
+  fitting the magnetometer alone leaves G-08 blocked on an actuator that
+  does not exist, or on T-105 first establishing that `AAC210602A1` is one
+  rather than the speaker it is currently read as. **The blocker above is left
+  exactly as written** until the part is in and working — a retrofit that has
+  been ordered is not a retrofit that exists — but the tooling under Option 1
+  now has a customer for two of its three cases, which it did not before.
 ```
 
 ---
