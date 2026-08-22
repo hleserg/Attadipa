@@ -1595,6 +1595,41 @@ stale silently. The protocol is
   it was verified; what it means is exactly what is in doubt.
 - **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
 
+### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
+- **Priority:** P2 — nothing can start until the parts land, but what to do
+  when they land is decided now, while there is time to be wrong about it
+  cheaply.
+- **Dependencies:** the datasheet work is done —
+  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md). What remains
+  is physical.
+- **What is already settled, so that nobody re-opens it:**
+  - Both parts run at 3.3 V. The AK09911C is *not* a 1.8 V part; `VDD` is
+    2.4–3.6 V.
+  - **`CAD` goes to ground.** That puts the AKM part at `0x0C` and leaves the
+    QST part at its fixed `0x0D`, so both can be on the bus at once — which is
+    the only way to compare them in the same magnetic environment on the same
+    wrist. `0x34`, `0x38` and `0x6A`/`0x6B` are taken; these two are free.
+  - **The IMU cannot read the magnetometer for us.** QMI8658C Mag Mode supports
+    AK09915C, AK09918CZ and QMC6308 and nothing else, and it needs pins that
+    Mode 1 requires be tied off. The host reads the sensor and the host does the
+    fusion.
+- **The measurement that decides the part:** the field at the candidate mounting
+  position, motor idle and motor driven. The QMC5883L is the recommendation on
+  current alone — 250 µA against 2.4 mA at 100 Hz — but it saturates at ±800 µT
+  where the AKM part reaches ±4900 µT, and a vibration motor magnet a few
+  millimetres away is exactly the thing that closes a six-fold range advantage.
+  If the QMC sits near overflow wherever it physically fits, the AKM part is not
+  a fallback, it is the answer.
+- **Acceptance:** both module footprints recorded as `MEASURED` with the caliper
+  named; the field at the chosen position recorded with the motor in both
+  states; the rotation between module frame and board frame written down for
+  *this assembly* rather than inferred; overflow surfaced by the driver as a
+  state an application can see, never as a clipped number passed upward.
+- **What must not be assumed:** that a module which fits on the bench fits under
+  a closed cover — the same trap as T-106's M1 — or that the axis arrows on a
+  purple PCB survive being glued in at whatever angle it fits.
+- **Hardware required:** yes. The parts are not here.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1642,9 +1677,13 @@ Recommended next action:
 - **Priority:** P0
 - **Waiting on:** the project owner
 - **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3,
-  A5, A6 — hardware availability and revision · which radio and GNSS variant ·
-  a second mesh device · whether an external magnetometer is intended · whether
-  the node carries one. **A4 (the regulatory region) is no longer on this
+  A6 — hardware availability and revision · which radio and GNSS variant ·
+  a second mesh device · whether the node carries a magnetometer. **A5 is
+  answered** — 2026-08-22, the owner has ordered a CJMCU-9911 (AK09911C) and a
+  GY-271 (QMC5883L) and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
+  that: a node's magnetometer and a wrist's magnetometer answer different
+  questions. **A4 (the regulatory region) is no longer on this
   list** — closed 2026-08-22, not by an answer but by the owner declining to
   give one: legality is his problem, not the firmware's
   ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
@@ -1657,7 +1696,10 @@ Recommended next action:
   decides whether the watch has a local mesh path at all. A5 and A6 decide
   whether five magnetometer epics are dormant or dead, and A6 does **not** give
   the watch a compass even if the answer is yes
-  ([ADR-0009](docs/adr/0009-heading.md) §3).
+  ([ADR-0009](docs/adr/0009-heading.md) §3). A5's answer moves those five epics
+  from *possibly dead* to *dormant with a delivery date*, and hands
+  [ADR-0009](docs/adr/0009-heading.md) a second possible provider for heading —
+  see [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md).
 - **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification

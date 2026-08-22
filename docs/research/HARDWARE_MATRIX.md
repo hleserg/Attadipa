@@ -28,7 +28,7 @@ Sources are listed at the bottom.
 | Sub-GHz radio | yes — **five possible chips, and only some of them do LoRa** ([ADR-0003](../adr/0003-radio-not-lora.md)) | **absent** |
 | GNSS | yes — **two possible modules** | **absent** |
 | IMU | BMA423 — accelerometer only | QMI8658 — 6-axis |
-| Magnetometer | **absent** | **absent** |
+| Magnetometer | **absent** | **absent as shipped** — a retrofit is under way ([MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md)) |
 | RTC | PCF8563 | PCF85063 |
 | Haptic | DRV2605L — waveform library over I2C | **bare motor on a GPIO** — no driver IC |
 | Audio in | 1× PDM mic | 2× mics via ES7210 ADC |
@@ -43,9 +43,22 @@ subsystem differs in part, in bus, or in existence. This table is the
 justification for the capability layer: a build that hardcodes either board's
 peripheral set cannot run on the other.
 
-**Neither board has a magnetometer.** The magnetometer work the specification
-calls for is therefore architectural only — an API that can accept one later,
-not a driver. Heading on real hardware currently comes from GNSS course alone.
+**Neither board has a magnetometer**, and that stays true of any board either
+vendor will sell you. The magnetometer work the specification calls for is
+therefore architectural — an API that can accept one later, not a driver.
+
+**"Later" now has a date.** The owner has ordered two magnetometer modules and
+intends to solder one inside the Waveshare unit
+([#83](https://github.com/hleserg/Attadipa/issues/83), 2026-08-22;
+[MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) for the datasheet comparison).
+This does **not** make the row above wrong and it must not be edited into "yes":
+a stock board has no magnetometer, the firmware has to run on a stock board, and
+one modified unit on one wrist is not a hardware capability. It makes the
+architectural API the thing that has to be right, rather than the thing that can
+be deferred — and it means the registry must handle a provider that exists on
+one physical device and on no other.
+
+Heading on real hardware currently comes from GNSS course alone.
 Only the T-Watch has GNSS **on the board** — an Attadipa node supplies it to
 either, so that is a statement about boards and not about what a device can do.
 Course-over-ground also only works while the user is moving, which is what makes
