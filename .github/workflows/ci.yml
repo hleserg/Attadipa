@@ -259,6 +259,14 @@ jobs:
       - name: What the agent says
         run: bash .github/tests/agent-say-test.sh
 
+      # And whether what it says is true. The hand-over step has shipped two
+      # defects, both in shell embedded in this workflow's sibling where nothing
+      # could execute it: a GraphQL error document printed as a pull request
+      # number, and then a claim of "pushed to this pull request" on a run that
+      # pushed nothing. The decision is a file now, so it can be run.
+      - name: What the agent decides it did
+        run: bash .github/tests/handover-decision-test.sh
+
       # The staleness line is the only thing telling an agent that the finding
       # it is about to implement was made against code that has since moved.
       # Its previous version truncated at 800 characters and, on issue #26,

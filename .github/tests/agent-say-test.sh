@@ -160,6 +160,18 @@ case "$BAD" in
   *) says "and the error document itself does not reach the comment" -- "$BAD" -- \
           "Run log" ;;
 esac
+# The review finding on the first version of done_here: a run that pushed
+# nothing must not claim a push. The wording has to be usable on its own,
+# because it is the only thing a person reading the pull request will see.
+NOPUSH=$(attadipa_outcome done_here_nopush "$RUN" 71)
+says "says plainly that nothing was pushed" -- "$NOPUSH" -- "pushed nothing" "#71"
+says "and that there is therefore no new CI and no new review" -- "$NOPUSH" -- \
+     "no new CI result" "no new review"
+says "offers the three readings rather than asserting one" -- "$NOPUSH" -- \
+     "nothing to change" "out of scope" "did not get to the work"
+says "and warns that a second @claude is a second billed agent" -- "$NOPUSH" -- \
+     "second billed agent"
+
 EMPTY=$(attadipa_outcome done_here "$RUN" "")
 says "an empty detail is refused the same way" -- "$EMPTY" -- \
      "could not name the result"

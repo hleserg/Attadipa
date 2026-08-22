@@ -99,6 +99,7 @@ attadipa_receipt() {
 # KIND is one of:
 #   done_pr    DETAIL is the pull request number, no `#`
 #   done_here  DETAIL is the pull request number this comment is being posted on
+#   done_here_nopush  same, but the head did not move -- it ran and pushed nothing
 #   done_nopr  DETAIL is unused
 #   failed     DETAIL is the conclusion word from the action
 #
@@ -112,7 +113,7 @@ attadipa_outcome() {
   local kind="$1" run_url="$2" detail="${3:-}"
 
   case "$kind" in
-    done_pr|done_here)
+    done_pr|done_here|done_here_nopush)
       case "$detail" in
         ""|*[!0-9]*) kind=bad_detail ;;
       esac ;;
@@ -135,6 +136,31 @@ attadipa_outcome() {
       echo "and the finding is a product decision rather than a defect, or if it"
       echo "carries \`needs-owner\`. Otherwise it is merged without asking —"
       echo "owner decision, 2026-08-21."
+      echo
+      echo "[Run log]($run_url)"
+      ;;
+    done_here_nopush)
+      echo "### Ran on this pull request, and pushed nothing"
+      echo
+      echo "The run finished cleanly and the head of #$detail is the commit it"
+      echo "started on. Nothing was pushed, so **there is no new CI result and"
+      echo "no new review** — the checks you can see are the ones that were"
+      echo "already there."
+      echo
+      echo "That is a real outcome and not necessarily a wrong one. It reads three"
+      echo "ways, and the comment above this one should say which:"
+      echo
+      echo "* the agent **checked and found nothing to change** — it should have"
+      echo "  said so with a file and a line;"
+      echo "* the change it wanted to make was **out of scope** for what it was"
+      echo "  asked, and it said what it would take;"
+      echo "* it **did not get to the work at all**, in which case nothing above"
+      echo "  explains itself and the run log is the only place the reason is."
+      echo
+      echo "**Before commenting \`@claude\` again:** a comment is not deduplicated,"
+      echo "by design, so a second one starts a second billed agent against the"
+      echo "same branch. If the first said why it changed nothing, that reason"
+      echo "will not change on its own."
       echo
       echo "[Run log]($run_url)"
       ;;

@@ -81,6 +81,7 @@ jobs:
       refused_marker: ${{ steps.decide.outputs.refused_marker }}
       refusal_kind: ${{ steps.decide.outputs.refusal_kind }}
       refusal: ${{ steps.decide.outputs.refusal }}
+      pr_head_before: ${{ steps.prhead.outputs.sha }}
     steps:
       - name: Kill switch
         id: switch
@@ -309,6 +310,40 @@ jobs:
             echo "staleness=$STALENESS"
           } >> "$GITHUB_OUTPUT"
           echo "::notice::accepted #$ISSUE_NUMBER type=$TASK_TYPE priority=$PRIORITY producer=$PRODUCER"
+
+      # WHERE THE BRANCH WAS BEFORE THE AGENT TOUCHED IT.
+      #
+      # Only meaningful when the task is a pull request -- `@claude` on #71
+      # rather than on an issue. The hand-over step needs it to tell "the agent
+      # pushed a fix here" from "the agent ran and pushed nothing", and those
+      # two are indistinguishable from the trigger alone: the pull request is
+      # open and is its own number either way. Empty for an issue, and empty is
+      # the safe value -- an unknown starting point can never be read as proof
+      # that the head moved.
+      - name: Where the pull request head was
+        id: prhead
+        if: steps.decide.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ steps.decide.outputs.issue }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016  # GraphQL variables, bound by -F below.
+          SHA=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $number:Int!) {
+              repository(owner:$owner, name:$repo) {
+                issueOrPullRequest(number:$number) {
+                  ... on PullRequest { headRefOid }
+                }
+              }
+            }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
+            --jq '.data.repository.issueOrPullRequest.headRefOid // ""' 2>/dev/null || echo "")
+          case "$SHA" in
+            *[!0-9a-f]*) SHA="" ;;
+          esac
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "::notice::pull request head before the agent: ${SHA:-not a pull request}"
 
   acknowledge:
     # THE RECEIPT. Somebody asked for an agent; they hear back in seconds.
@@ -811,6 +846,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
+          HEAD_BEFORE: ${{ needs.gate.outputs.pr_head_before }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -859,7 +895,7 @@ jobs:
               repository(owner:$owner, name:$repo) {
                 issueOrPullRequest(number:$number) {
                   __typename
-                  ... on PullRequest { number state }
+                  ... on PullRequest { number state headRefOid }
                   ... on Issue {
                     closedByPullRequestsReferences(first:5, includeClosedPrs:false) {
                       nodes { number state }
@@ -877,7 +913,8 @@ jobs:
             }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
             --jq '.data.repository.issueOrPullRequest as $i
                   | if $i.__typename == "PullRequest"
-                    then (if $i.state == "OPEN" then "here \($i.number)" else "" end)
+                    then (if $i.state == "OPEN"
+                          then "here \($i.number) \($i.headRefOid)" else "" end)
                     else ([$i.closedByPullRequestsReferences.nodes[]?
                             | select(.state == "OPEN") | .number]
                            + [$i.timelineItems.nodes[]?.source?
@@ -885,32 +922,26 @@ jobs:
                           | first | if . then "pr \(.)" else "" end)
                     end' 2>/dev/null || echo "")
 
-          # Whatever the query did, only two shapes are allowed out of it. A
-          # lookup that fails is empty, never a fragment of an error document:
-          # that is the specific way the previous version reached a person.
-          WHERE=""; PR=""
-          case "$FOUND" in
-            "here "[0-9]*) WHERE="here"; PR="${FOUND#here }" ;;
-            "pr "[0-9]*)   WHERE="pr";   PR="${FOUND#pr }" ;;
-          esac
-          case "$PR" in
-            ""|*[!0-9]*) WHERE=""; PR="" ;;
-          esac
-
-          # A pull request number is the whole story, so it wins over every
-          # other signal — including a run whose conclusion never arrived. An
-          # agent that opened a pull request and then timed out has still done
-          # the work, and reporting that as a failure would send somebody
-          # looking for a branch that is already there.
-          if [ "$WHERE" = "here" ]; then
-            KIND=done_here; DETAIL="$PR"
-          elif [ -n "$PR" ]; then
-            KIND=done_pr; DETAIL="$PR"
-          elif [ "$CONCLUSION" = "success" ]; then
-            KIND=done_nopr; DETAIL=""
-          else
-            KIND=failed; DETAIL="${CONCLUSION:-no conclusion}"
-          fi
+          # Everything from here is .github/scripts/handover-decision.sh, which
+          # is a file so that .github/tests/handover-decision-test.sh can run
+          # it. Both defects this step has had were in a shell block embedded in
+          # a workflow, where nothing could execute it — the same reason the
+          # intake gate and the watchdog filter are files.
+          #
+          # It decides four things at once: that only "here <n> <sha>" and
+          # "pr <n>" mean anything and everything else is "found nothing"; that
+          # a pull request which triggered its own agent is only "done" if its
+          # head actually moved; that a clean run which pushed nothing says so
+          # rather than claiming a push; and that a pull request number found
+          # for an issue outranks even a missing conclusion, because an agent
+          # that opened a pull request and then timed out has still done the
+          # work.
+          {
+            read -r KIND
+            read -r DETAIL
+          } < <(bash .github/scripts/handover-decision.sh \
+                  "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}")
+          echo "::notice::hand over as $KIND (${DETAIL:-no detail})"
 
           # The agent labels the issue itself when it blocks — and a BLOCKED
           # comment written by the agent says far more than this step could, so
@@ -929,7 +960,7 @@ jobs:
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
 
           case "$KIND" in
-            done_pr|done_here|done_nopr)
+            done_pr|done_here|done_here_nopush|done_nopr)
               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
             *)
               # agent:failed AND back to agent:ready: the label pair says both
