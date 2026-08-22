@@ -402,8 +402,18 @@ BSP already demonstrated to be an incomplete description of its own board.
   **32 MB**. The SoC is a bare `ESP32-S3R8`, not a module.
 - **Source:** S6.
 - **Impact:** resolves D1. Twice the T-Watch's flash, on the board with 3.57×
-  the pixels. Also means **both** boards carry the `R8` marking, so the quad-vs-
-  octal PSRAM question (D12) is one question with one answer for both targets.
+  the pixels.
+- **What this does NOT settle, and an earlier version of this entry said it
+  did:** both boards carry the `R8` marking, and it is tempting to read that as
+  one question with one answer for both. It is not. `R8` is verified as octal on
+  the Waveshare — see *The R8 in ESP32-S3R8 means octal PSRAM* above — and that
+  is **D12a**. **D12b**, the T-Watch, stays `CONFLICTING`: a LilyGO document
+  describes that board's PSRAM as QSPI, and the marking implying otherwise is an
+  inference, not a reading. This paragraph used to assert the transfer, twenty-
+  five lines below the section that splits it, so the answer a reader got
+  depended on which one they landed on first — which is the exact propagation
+  failure this file exists to prevent, committed inside the change that fixed
+  three others.
 
 ### The Waveshare board has buttons; its BSP does not
 

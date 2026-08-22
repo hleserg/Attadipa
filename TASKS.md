@@ -1829,9 +1829,11 @@ Recommended next action:
 - **Dependencies:** none. Each is a small correcting commit.
 - **Goal:** close out the defects listed in
   [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §7 that are ours
-  rather than the external advice's. Three of the six are already done in the
-  commit that filed this task — the peripheral table's missing columns, the
-  reuse-ledger's wrong upstream, and D3's mis-stated connector. What remains:
+  rather than the external advice's. **Five of the seven** are already done on
+  the branch that filed this task — the peripheral table's missing columns, the
+  reuse ledger's wrong upstream, D3's mis-stated connector, the false promise in
+  VERIFIED_FACTS §1, and the D12 split propagated to all three of the places it
+  had been left out of. **Two remain:**
   - [`docs/upstream/research-integration.md:180-181`](docs/upstream/research-integration.md)
     says "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
     ~10 µA light-sleep floor on the workaround "must not be deselected on a

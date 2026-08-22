@@ -660,12 +660,13 @@ does not, kept because an uncorrected claim propagates.
     `ci.yml:330`, where the file is 295 lines long and the line is
     [`:281`](../../.github/workflows/ci.yml).
 
-And the defects that are ours. Four of them were repaired in `e5b7791`, the same
-commit that introduced this document; they are kept as record rather than as
+And the defects that are ours. **Five** of them were repaired on this branch —
+four in `e5b7791`, the same commit that introduced this document, and the D12
+propagation in the commits after it. They are kept as record rather than as
 actions, because a fixed defect listed as open sends the next agent to fix it
-twice. Three are still live.
+twice. **Two are still live.**
 
-**Repaired in `e5b7791`:**
+**Repaired on this branch:**
 
 1. HARDWARE_MATRIX called J3 an "Expansion connector … at least 29 pins", and D3
    asked for its pinout. J3 is the 34-pin AMOLED display FPC and there is no
@@ -688,9 +689,26 @@ twice. Three are still live.
    and populated at [:313](HARDWARE_MATRIX.md); the rails still need D13, and
    read `—` until it is answered.
 
+5. **Splitting D12 left three places behind, and all three are now closed.**
+   `HARDWARE_MATRIX.md:303` reads VERIFIED/octal;
+   [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
+   columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
+   open-question row at `STATUS.md:266` is struck and split the same way.
+
+   The third took one more commit and is the one worth remembering.
+   [VERIFIED_FACTS.md](VERIFIED_FACTS.md) still concluded, twenty-five lines
+   below the section that split the question, that because both boards carry the
+   `R8` marking D12 is "one question with one answer for both targets" — the
+   exact premise §3.1 abandoned. The independent review on
+   [#49](https://github.com/hleserg/Attadipa/pull/49) found it: **this
+   document's own named failure mode, committed inside the change that fixed
+   three other instances of it.** A reader got a different answer depending on
+   which of two sections of one file they landed on first, which is precisely
+   the thing §7 is a list of.
+
 **Still live, and each one a small correcting commit:**
 
-5. [`docs/upstream/research-integration.md:180-181`](../upstream/research-integration.md)
+6. [`docs/upstream/research-integration.md:180-181`](../upstream/research-integration.md)
    states "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
    ~10 µA light-sleep floor on the reasoning that the workaround "must not be
    deselected on a module rather than a bare chip". That contradicts
@@ -698,7 +716,7 @@ twice. Three are still live.
    the figure is carried forward into [HIL_PLANS.md:64-67](../testing/HIL_PLANS.md)
    as VENDOR-STATED. One of the two is wrong and the sleep-current plan depends
    on which.
-6. The part-ownership table at
+7. The part-ownership table at
    [ARCHITECTURE.md:396-414](../architecture/ARCHITECTURE.md) has two problems in
    one table. It has no flash or PSRAM row for this board, where the T-Watch
    table has both — an omission rather than a claim of absence, but a defect
@@ -707,17 +725,3 @@ twice. Three are still live.
    pinout unresolved (D3). |`, which is now contradicted by
    [HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md) and by the struck D3 above. The
    row should become the display FPC, owned by `DisplayService`.
-7. **Splitting D12 left three places behind.** `HARDWARE_MATRIX.md:303` was
-   updated with this work and now reads VERIFIED/octal, but
-   [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) still carries
-   `PSRAM | 8 MB — but see below | 8 MB — same caveat | CONFLICTING` for both
-   columns; the open-question row at `STATUS.md:266` still reads "PSRAM
-   documented as quad … affects both boards", which `STATUS.md:128` of the same
-   file now contradicts; and [VERIFIED_FACTS.md:405-406](VERIFIED_FACTS.md) still
-   concludes that because both boards carry the `R8` marking, D12 is "one
-   question with one answer for both targets" — which is precisely the premise
-   §3.1 abandoned when the question was split. One correcting commit fixes all
-   three: the Waveshare column becomes VERIFIED-octal, the T-Watch column stays
-   CONFLICTING as D12b. Left alone, the next agent gets a different answer
-   depending on which file they open first, and that is the failure mode this
-   whole document exists to avoid.
