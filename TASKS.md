@@ -1600,7 +1600,7 @@ stale silently. The protocol is
 - **Hardware required:** yes — the board, a caliper, a scale, a bus scan, and
   the five-register read.
 
-### T-110 · A third capability source, for hardware that is neither the board's nor the node's
+### T-111 · A third capability source, for hardware that is neither the board's nor the node's
 - **Priority:** P2 — no code depends on the answer yet, but the registry design
   ([ADR-0007](docs/adr/0007-two-capability-layers.md)) is the thing every
   application trusts not to leak where an answer came from, and this is the
