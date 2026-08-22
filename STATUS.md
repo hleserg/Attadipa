@@ -466,9 +466,10 @@ available on this board.
   ordered two magnetometer modules and is soldering one on
   ([#83](https://github.com/hleserg/Attadipa/issues/83),
   [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)), which turns
-  this from impossible into merely waiting for parts. On the Waveshare unit it
-  stays doubly blocked for a second, unrelated reason: that unit has no
-  vibration motor fitted at all, so there is nothing to interfere.
+  this from impossible into merely waiting for parts — and for a placement,
+  which is not chosen yet (T-109). On the Waveshare unit it stays doubly
+  blocked for a second, unrelated reason: that unit has no vibration motor
+  fitted at all, so there is nothing to interfere.
 
 ## Waiting on the owner
 
@@ -477,20 +478,22 @@ available on this board.
 | A1 | Is either board physically available, and which revision? | everything hardware |
 | A2 | If a T-Watch: which radio chip and which GNSS module? | decides whether the watch can join a MeshCore network at all — two of the five candidate radios cannot ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 | A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
-| A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
 None of these blocks M1. All of them block hardware work.
 
-**A5 was answered on 2026-08-22** and is struck from the table above: an
-external magnetometer is intended, the owner has ordered a **CJMCU-9911
-(AK09911C)** and a **GY-271 (QMC5883L)**, and one of them is going inside the
-watch. The five magnetometer epics are dormant, not dead. Which of the two
-parts, and where it physically sits, are open —
+**A5 and A6 are answered** — [#56](https://github.com/hleserg/Attadipa/issues/56),
+on 2026-08-22, recorded as
+[OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one).
+An external magnetometer is intended for the watch: the owner has ordered a
+**CJMCU-9911 (AK09911C)** and a **GY-271 (QMC5883L)**, and one of them is going
+inside. The five magnetometer epics are dormant, not dead. Which of the two
+parts, and where it physically sits, are open — T-109, and
 [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) has the
-datasheet comparison and the one measurement that decides it. A6 stays open and
-stays independent: a node's magnetometer and a wrist's magnetometer answer
-different questions.
+datasheet comparison and the one measurement that decides it. The node will
+never carry one, and gets an accelerometer and probably a gyroscope instead,
+for GNSS power optimisation — filed as its own capability question,
+[#93](https://github.com/hleserg/Attadipa/issues/93) (T-111).
 
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as

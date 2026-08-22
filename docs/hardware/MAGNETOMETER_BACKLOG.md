@@ -32,13 +32,29 @@ is the part that makes this a different product rather than a lesser one:
 it is therefore a designed UI state rather than an absence. It never renders as
 0°.
 
-If A6 comes back *the node has a magnetometer*, that still does not give the
-watch a compass. A node in a backpack or clipped to a belt measures its own
-orientation, related to the watch's by a transform nobody has measured and which
-changes every time the node is set down. ADR-0009 §3 refuses the conversion
-unless a calibrated, still-valid transform exists, and none does.
+**A6 is answered, and the node path is closed rather than merely unavailable:**
+the Attadipa node will never carry a magnetometer — owner decision, 2026-08-22,
+*"в нодах магнитометр реально лишний"*
+([OWNER_DECISIONS.md](../research/OWNER_DECISIONS.md) OD-16). It gets an
+accelerometer and probably a gyroscope instead, for GNSS power optimisation, not
+for heading — filed as its own capability question,
+[#93](https://github.com/hleserg/Attadipa/issues/93), not resolved here. So the
+paragraph this backlog used to carry about a node compass — a node in a
+backpack or clipped to a belt measuring its own orientation, related to the
+watch's by an unmeasured transform — no longer describes a live possibility.
+ADR-0009 §3 still states the rule that would have applied if it had (a remote
+heading is never presented as `WatchBody` heading without a calibrated
+transform), because the rule generalises beyond this one dead path.
 
-This does not make the backlog pointless — it makes it **design-only, and
+**A5 is answered, and the compass path is a retrofit, not a board fact.** An
+external module is ordered for the Waveshare unit — a CJMCU-9911 (AK09911C) and
+a GY-271 (QMC5883L), [#83](https://github.com/hleserg/Attadipa/issues/83),
+researched in `docs/research/MAGNETOMETER_RETROFIT.md` in
+[PR #87](https://github.com/hleserg/Attadipa/pull/87), not yet merged — but **placement is undecided**, tracked as **T-109**, and nothing
+below gets built from a part that has not been placed. This is a fact about one
+physical unit, not about the `ESP32-S3-Touch-AMOLED-2.06` board type: a stock
+board still has no magnetometer, and the firmware must run correctly on a stock
+board — so this backlog does not become pointless, it stays **design-only, and
 honest about why**. The capability model already treats the magnetometer as a
 first-class absence ([ADR-0007](../adr/0007-two-capability-layers.md)), which is
 what lets the rest of the system be written now and a sensor be added later
@@ -53,7 +69,7 @@ fake-green result the project forbids.
 | # | Epic | Kind | Can start now? |
 |---|---|---|---|
 | G-01 | Magnetometer capability API | DESIGN | **Yes** — ADR-0001 covers presence and degree; this is the sensor-facing side |
-| G-02 | External sensor BSP | DESIGN | **Yes** — how an off-board sensor attaches at all; gated on A5 below |
+| G-02 | External sensor BSP | DESIGN | **Yes** — how an off-board sensor attaches at all. A5 is answered (OD-16); this no longer waits on the owner, only on placement (T-109) before the mapping half of G-03 can follow |
 | G-03 | Axis mapping | DESIGN | Partly — the representation can be designed; the actual mapping needs a physical sensor in a physical case |
 | G-04 | Calibration storage | DESIGN | **Yes** — format, versioning, where it lives, what invalidates it |
 | G-05 | Calibration wizard | DESIGN | UI flow can be designed; it cannot be validated |
@@ -87,11 +103,14 @@ the arbiter is being built for the contention that actually exists here.
 
 | # | Question | Status |
 |---|---|---|
-| A5 | Is an external magnetometer intended at all — a variant board, a daughterboard, a different unit? | **owner decision** — [OPEN_QUESTIONS A5](../research/OPEN_QUESTIONS.md) |
-| A6 | Does the Attadipa node carry one? If it does, it is a *node* compass, not a watch compass — see [ADR-0009](../adr/0009-heading.md) §3 | **owner decision** — [OPEN_QUESTIONS A6](../research/OPEN_QUESTIONS.md) |
-| G-14 | If yes: which part, on which bus, at what address, on which rail? | conditional on A5; local to this backlog |
-| G-15 | If yes: is it on the same I2C bus as the PMU and RTC? | conditional on A5. Decides whether G-08–G-10 are even measurable |
+| ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch, hardware ordered** — [OWNER_DECISIONS OD-16](../research/OWNER_DECISIONS.md) |
+| ~~A6~~ | ~~Does the Attadipa node carry one?~~ | **RESOLVED — no, deliberately** — [OWNER_DECISIONS OD-16](../research/OWNER_DECISIONS.md). The node compass path this row used to gate is closed, not merely unavailable |
+| G-14 | Which part, on which bus, at what address, on which rail? | answered for the part: CJMCU-9911 (AK09911C, `0x0C`) and GY-271 (QMC5883L, `0x0D`), both on the Waveshare main I2C bus with `CAD` tied to ground — `docs/research/MAGNETOMETER_RETROFIT.md` in [PR #87](https://github.com/hleserg/Attadipa/pull/87), not yet merged. Rail is still open |
+| G-15 | Is it on the same I2C bus as the PMU and RTC? | **yes** — the Waveshare main I2C bus carries all fitted devices; this decides G-08–G-10 are measurable in principle once T-109 places the sensor |
 
-Until A5 has an answer, the honest state of this backlog is: **five epics can be
-designed usefully, three are research, five are blocked on hardware that does not
-exist yet.** Recorded as such rather than left to look like a plan in progress.
+The honest state of this backlog, now that A5 and A6 are answered rather than
+open: of the thirteen epics above, seven are `DESIGN` kind (one, G-03, only
+partly — the mapping itself needs a placed sensor), one is `RESEARCH`, and five
+are `BLOCKED`, all five on a sensor that is ordered but not yet placed (T-109)
+rather than on an owner decision. Recorded as such rather than left to look
+like a plan in progress.

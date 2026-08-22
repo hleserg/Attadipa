@@ -35,8 +35,8 @@ nobody is asked is not a question.
 | A2 | If a T-Watch is present: which of the five radio chips, and which of the two GNSS modules? | **UNKNOWN** | inspect the unit / order details — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
 | A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
 | A4 | Which regulatory region governs LoRa operation here? | **CLOSED — not this project's to answer** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-14, 2026-08-22: asked as [#55](https://github.com/hleserg/Attadipa/issues/55), and the owner declined to name one — *"legality is my problem, not the firmware's."* No country or region is coming; nothing here researches a specific jurisdiction's rule table. [ADR-0006](../adr/0006-settings-and-bounded-values.md)'s transmit-closed-while-`Unknown` gate is unchanged by this and still applies to whoever configures the device |
-| A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **ANSWERED 2026-08-22 — yes** | the owner ordered a **CJMCU-9911 (AK09911C)** and a **GY-271 (QMC5883L)** and is soldering one into the Waveshare unit ([#83](https://github.com/hleserg/Attadipa/issues/83)). The five epics are dormant, not dead. Which part, and where it sits, are open — [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md). **This does not change any board's capabilities**: a stock unit still has no magnetometer and the firmware still has to run on one |
-| A6 | **Does the Attadipa node carry a magnetometer?** | **UNKNOWN** | ask the project owner. Note that "yes" does *not* give the watch a compass: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform. The ADR exists so that this answer does not arrive before the model does — **asked as [#56](https://github.com/hleserg/Attadipa/issues/56)** |
+| ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch** | the project owner, on [#56](https://github.com/hleserg/Attadipa/issues/56) and [#83](https://github.com/hleserg/Attadipa/issues/83), 2026-08-22: an external module is ordered for the Waveshare unit (CJMCU-9911/AK09911C and GY-271/QMC5883L). **Hardware in prospect, not in hand** — placement is undecided and gates every compass feature (T-109). [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-16. This is a retrofit on one unit, not a fact about the board type: [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md)'s magnetometer row stays absent |
+| ~~A6~~ | ~~Does the Attadipa node carry a magnetometer?~~ | **RESOLVED — no, deliberately** | the project owner, on [#56](https://github.com/hleserg/Attadipa/issues/56), 2026-08-22: no magnetometer on the nodes, ever. [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-16. The node gets an accelerometer and probably a gyroscope instead, for GNSS power optimisation, not heading — filed as its own capability question, [#93](https://github.com/hleserg/Attadipa/issues/93) (T-111), rather than resolved here. "Yes" would not have given the watch a compass in any case: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform |
 | ~~A7~~ | ~~Which orange, and which olive?~~ | **RESOLVED** | the project owner, on [issue #57](https://github.com/hleserg/Attadipa/issues/57), 2026-08-22: §42 wins — Attadipa Orange `#FF8A40`, Ink Olive `#2F3A2E`. The sampled brand-art values that lost have left [`../../pics/README.md`](../../pics/README.md) and are recorded in [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-15 |
 | ~~A8~~ | ~~May the icon and favicon be re-exported with transparent corners?~~ | **RESOLVED — yes** | the project owner, same issue. `pics/Ikon.png` and `pics/Favicon.png` are re-exported RGBA with transparent corners; the pixels inside the rounded square are unchanged. OD-15 |
 | A9 | **Does the day theme keep its near-white page on the AMOLED board?** The Waveshare panel is emissive: every lit pixel draws its own current and ages in proportion. Rendered on the 410×502 face, the day theme's mean per-subpixel drive is 4.2× the night theme's on the raw 8-bit mean and 13.9× gamma-decoded (ESTIMATED — no panel, no efficiency curve; method in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1). The T-Watch's IPS panel does not care, so this is the first design question whose answer differs by board | **UNKNOWN** | the project owner. Four options and their costs are tabulated in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1. Not an engineering call: it decides whether the two boards look like one product — **asked as [#52](https://github.com/hleserg/Attadipa/issues/52)** |
@@ -63,10 +63,10 @@ to promise — a specific profile this project would write and ship as a
 default — is not coming, and per ADR-0006 was never supposed to ship as a
 default anyway.
 
-A5 decided this: the five epics in §67 are **dormant**, not dead — answered
-2026-08-22, see the table above.
+A5 is answered as **dormant, not dead**: the five epics in §67 have a physical
+part in prospect and stay gated on placement (T-109), not on the owner.
 
-Until these are answered: simulator, architecture, host tests and protocol work
+Until A1–A3 are answered: simulator, architecture, host tests and protocol work
 proceed; hardware work does not.
 
 ## Hardware — measurement required
@@ -203,7 +203,7 @@ with someone competent reviewing it — not in a paragraph here.
 | # | Question | Status | Resolved by |
 |---|---|---|---|
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
-| Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83)). The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
+| Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83), [OD-16](OWNER_DECISIONS.md)). A6 also settles that the node will never be the source. The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
@@ -222,13 +222,13 @@ or "compass" means GNSS course-over-ground, which only works while moving and
 shows nothing at all when the user stands still. Those are different products and
 the difference is visible to the user in the first ten seconds.
 
-A5 has since been answered by a **third** route neither branch anticipated: the
-owner is soldering a magnetometer into one unit. That answers "is one expected to
-be added externally" — yes — and leaves the product question untouched, because
-**a soldered part on one wrist is not a shipping capability**. A6 also remains
-open and remains independent: node orientation is not watch orientation
-([ADR-0009](../adr/0009-heading.md) §3), so a node's magnetometer answers a
-different question than a wrist's does.
+Both halves of that framing are now decided, and neither decides Q2. A5 was
+answered by a **third** route neither branch anticipated: the owner is soldering
+a magnetometer into one unit — yes, one is expected to be added externally, and
+**a soldered part on one wrist is not a shipping capability**. A6 was answered
+in the negative and deliberately: the node will never carry one, so it was never
+going to be the source, and node orientation would not have been watch
+orientation in any case ([ADR-0009](../adr/0009-heading.md) §3).
 
 What Q2 now asks is the narrow, still-open thing: **on a board nobody has
 modified, is heading GNSS-course-only for good?** That is a product decision and
