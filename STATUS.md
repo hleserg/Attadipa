@@ -268,6 +268,36 @@ bring-up order they feed into is
 **The schematic was right.** Nothing the unit shows contradicts anything in
 [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Three things were new:
 
+**And then it answered for itself.** Later the same day the owner read the chip
+over its own USB-Serial/JTAG port — `espefuse summary` and `esptool flash-id` —
+which is the first evidence here that came from neither a document nor a camera:
+[WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md).
+
+- **D12a is closed on silicon.** `PSRAM_CAP = 8M`, `PSRAM_VENDOR = AP_3v3` — so
+  the part is `R8`, not the 1.8 V `R8V` — and `PIN_POWER_SELECTION = VDD_SPI`
+  puts GPIO33–37 on the memory rail. The eFuse gives capacity and rail, not bus
+  width, so the step to *octal* is still Table 1-1's; but both legs now have
+  evidence and **five GPIOs are gone for good**, fused rather than argued.
+- **The flash is confirmed external and quad**: JEDEC `0xC8 0x4019`, and
+  `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` unprogrammed in BLOCK1.
+- **The chip is revision v0.2.** A build must keep `CONFIG_ESP32S3_REV_MIN` at 0
+  or the bootloader refuses it. Which errata apply to v0.2 is **D18**, unread.
+- **Nothing has been burned.** Every fuse is at its factory default, so every
+  recovery path is open. That baseline is recorded so a later reading that
+  differs means something happened.
+
+Taking the factory backup surfaced a failure mode worth knowing before anyone
+repeats it: `esptool read-flash` **with the stub** aborts at flash addresses that
+repeat exactly across runs starting from different offsets, so retrying is
+guaranteed to fail identically — `--no-stub` completes the same ranges. And
+`esptool` leaves a **short file** behind on abort, so concatenating chunks
+without checking each one's length produces a silently shifted image.
+[WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2.
+
+**A bigger battery is under consideration.** The cell turns out to be on a
+removable 2-pin plug rather than soldered, which makes it a real option. What to
+order is open — see D2, now PARTIAL rather than UNKNOWN.
+
 - **The cell is 400 mAh**, where the row said `UNKNOWN` and the T-Watch carries
   940. The board with less than half the energy is the board with the emissive
   panel, and the day theme costs 13.9× the night theme on the same pixels

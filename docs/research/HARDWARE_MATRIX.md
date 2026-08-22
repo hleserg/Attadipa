@@ -298,9 +298,9 @@ of the board.
 
 | Item | Value | Status |
 |---|---|---|
-| SoC | **ESP32-S3R8** — bare chip, not a module | VERIFIED |
-| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3) | VERIFIED |
-| PSRAM | 8 MB **octal** — ESP32-S3 Series Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` and the table contains no 8 MB quad in-package variant. Corroborated by five vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y`, and by GPIO33–37 — octal's DQ4–DQ7 and DQS — sitting unrouted on the schematic. D12a | VERIFIED |
+| SoC | **ESP32-S3R8** — bare chip, not a module. `ESP32-S3 (QFN56)`, **revision v0.2**; 40 MHz crystal; ADC and temperature calibration fuses burned. A build must keep `CONFIG_ESP32S3_REV_MIN` at 0 or the bootloader refuses the chip | VERIFIED — S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1 |
+| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3). JEDEC read back `0xC8 0x4019` = GigaDevice, 2^25 bytes; eFuse `FLASH_TYPE = 4 data lines`, rail forced to 3.3 V by `VDD_SPI_TIEH`, and `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` all unprogrammed — **no in-package flash** | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.3 |
+| PSRAM | 8 MB **octal** — ESP32-S3 Series Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` and the table contains no 8 MB quad in-package variant. Corroborated by five vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y`, and by GPIO33–37 — octal's DQ4–DQ7 and DQS — sitting unrouted on the schematic. **The die's own fuses now agree**: `PSRAM_CAP = 8M`, `PSRAM_VENDOR = AP_3v3` — so `R8`, not the 1.8 V `R8V` — and `PIN_POWER_SELECTION = VDD_SPI` puts GPIO33–37 on the memory rail, which is where octal's DQ4–DQ7 and DQS go. The eFuse states capacity and rail, not bus width; the step to *octal* remains Table 1-1's, and is sound because no 8 MB quad in-package part exists. D12a | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2 |
 | Battery | **400 mAh, 3.7 V** — cell `402728` (4.0 × 27 × 28 mm), on connector `BAT1` via the AXP2101 charge path | VERIFIED — read off the cell of a received unit, 2026-08-22, [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2 |
 
 The SoC marking is `ESP32-S3R8` on **both** target boards, so D12 — quad or octal
@@ -451,4 +451,6 @@ a typed descriptor rather than a flag.
 | S8 | arduino-esp32 variant `lilygo_twatch_s3/pins_arduino.h` (referenced by S1) |
 | S9 | **a physical `ESP32-S3-Touch-AMOLED-2.06`**, received and opened by the owner 2026-08-22 — four photographs of the assembled watch, the back cover, the cell and the mainboard, examined at full resolution. Silkscreen and populated-or-not only; see [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §0 for what a photograph is and is not evidence of |
 
-S1–S8 checked 2026-08-21; S9 on 2026-08-22.
+| S10 | **the silicon of that same unit, answering for itself** — `espefuse v5.3.1 summary` and `esptool v5.3.1 flash-id` over the board's USB-Serial/JTAG port, 2026-08-22. Device-identifying values (MAC, `OPTIONAL_UNIQUE_ID`) are deliberately not recorded; see [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §0 |
+
+S1–S8 checked 2026-08-21; S9 and S10 on 2026-08-22.
