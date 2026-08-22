@@ -75,33 +75,39 @@ flatly contradicts.
 
 **The claim that the board's PSRAM is absent or undeclared is false, and was
 false before the advice arrived.** [HARDWARE_MATRIX.md:303](HARDWARE_MATRIX.md)
-records 8 MB of PSRAM, [VERIFIED_FACTS.md:354-358](VERIFIED_FACTS.md) records the
-same as the resolution of D1, and no line anywhere in the repository says the
-part is missing — the vocabulary for absence exists and is used plainly where it
-is meant, as in `| Sub-GHz radio | — | **not present** | VERIFIED |`
+records 8 MB of PSRAM — now also octal-VERIFIED — and
+[VERIFIED_FACTS.md:399-402](VERIFIED_FACTS.md) records the same as the resolution
+of D1. No line anywhere in the repository says the part is missing — the
+vocabulary for absence exists and is used plainly where it
+is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
 ([HARDWARE_MATRIX.md:330](HARDWARE_MATRIX.md)). The only true reading of "not
 declared" is that this repository contains no ESP-IDF build configuration for any
 target: there is no `sdkconfig`, no partition CSV and no `boards/` directory at
 all, which makes the statement vacuous rather than informative. What *was* open
 is narrower and was already filed: whether that PSRAM is quad or octal, open
-question D12 ([OPEN_QUESTIONS.md:91](OPEN_QUESTIONS.md)), named there as a
-blocker on the LVGL draw-buffer decision.
+question D12, named there as a blocker on the LVGL draw-buffer decision. That
+question has since been split on the strength of §3.1 — D12a resolved octal for
+this board, D12b still open for the T-Watch
+([OPEN_QUESTIONS.md:93-95](OPEN_QUESTIONS.md)).
 
 **The I2C topology was known; the addresses were not.** The main bus at SDA 15 /
 SCL 14 and the membership of the touch, PMU, IMU and RTC are all VERIFIED
 ([HARDWARE_MATRIX.md:316-319, :326](HARDWARE_MATRIX.md)). But the Waveshare
-peripheral table carries the header `| Peripheral | Part | Bus / pins | Status |`
-([:313](HARDWARE_MATRIX.md)) where the T-Watch table 233 lines above it carries
+peripheral table carried the header `| Peripheral | Part | Bus / pins | Status |`
+where the T-Watch table 233 lines above it carried
 `| Peripheral | Part | Bus / pins | I2C addr | Power rail | Status |`
-([:80](HARDWARE_MATRIX.md)). Two columns were dropped, so not one address and not
-one power rail is recorded for this board. That was a genuine gap and the advice
-was right to press on it, though it named the wrong number of devices — see §3.
+([:80](HARDWARE_MATRIX.md)). Two columns had been dropped, so not one address and
+not one power rail was recorded for this board. That was a genuine gap and the
+advice was right to press on it, though it named the wrong number of devices —
+see §3. The columns were restored and filled at [:313](HARDWARE_MATRIX.md) in the
+same commit that introduced this document, so the gap is closed; it is recorded
+here because the assessment of the advice depends on it having been real.
 
 **"Wrap the vendor BSP rather than rewrite it" is not a finding, it is a
 proposal, and the repository has deliberately left the question open.** It is
 recorded by name in three places that agree with each other: T6, "Use the
 Waveshare BSP as a dependency, or take only its pin facts?", UNKNOWN
-([OPEN_QUESTIONS.md:176](OPEN_QUESTIONS.md)); decision row 6, "open"
+([OPEN_QUESTIONS.md:179](OPEN_QUESTIONS.md)); decision row 6, "open"
 ([../architecture/ARCHITECTURE.md:654](../architecture/ARCHITECTURE.md)); and
 "This is a reuse-ledger decision, not a default"
 ([DEPENDENCIES.md:171-174](DEPENDENCIES.md)). The surrounding facts were already
@@ -112,7 +118,7 @@ the AXP2101 or the PCF85063 that are on the board — which
 Whatever is decided, wrapping the BSP does not cover the board.
 
 **The ESP-IDF mechanics were already constrained by an undecided version.** T1 is
-"narrowed" ([OPEN_QUESTIONS.md:171](OPEN_QUESTIONS.md)), T-004 is open
+"narrowed" ([OPEN_QUESTIONS.md:174](OPEN_QUESTIONS.md)), T-004 is open
 ([TASKS.md:1023](../../TASKS.md)), and CI prints
 `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
 ([`.github/workflows/ci.yml:281`](../../.github/workflows/ci.yml)). What exists
@@ -172,9 +178,9 @@ build that aborts at boot if octal PSRAM is not found.
 **Scope.** This closes D12 for the Waveshare board only. D12 as written binds
 both targets through the shared `R8` marking, and the LilyGO vendor document
 describing the T-Watch's PSRAM as QSPI remains a live conflicting source that
-nobody has re-examined. Split the question rather than closing it: mark the
-Waveshare row resolved and octal, and leave the T-Watch CONFLICTING pending its
-own readback.
+nobody has re-examined. So the question was split rather than closed: D12a
+records the Waveshare as resolved and octal, D12b leaves the T-Watch CONFLICTING
+pending its own readback ([OPEN_QUESTIONS.md:93-95](OPEN_QUESTIONS.md)).
 
 **A flash conflict comes with it, and is not resolved.** Those same five vendor
 `sdkconfig.defaults` set `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, while the schematic
@@ -191,10 +197,11 @@ The advice named four. The vendor's own BSP puts six on one wire: it creates a
 single `i2c_master_bus` (`esp32_s3_touch_amoled_2_06.c:93`) and hands that same
 handle to the ES8311 codec (`:262`), the ES7210 microphone ADC (`:310`) and the
 FT5x06-family touch IO (`:494`). Both Everest parts are register-configured
-devices; they appear in [HARDWARE_MATRIX.md:320-321](HARDWARE_MATRIX.md) as
-"I2S", which is their data path, with no control bus recorded. They are two more
-addresses on SDA 15 / SCL 14, and they belong in the board profile and in any
-collision check.
+devices; they appeared in HARDWARE_MATRIX as "I2S", which is their data path,
+with no control bus recorded — since corrected, and
+[:320-321](HARDWARE_MATRIX.md) now name the I2C control path explicitly. They are
+two more addresses on SDA 15 / SCL 14, and they belong in the board profile and
+in any collision check.
 
 | Addr | Part | How it is known |
 |---|---|---|
@@ -272,13 +279,15 @@ resolving as "take the pin map and the init table, depend on upstream."
 
 ### 3.4 A correction to the schematic reading: J3 is the display FPC
 
-[HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md) records "Expansion connector |
-header `J3`, at least 29 pins on the drawing", and D3
-([OPEN_QUESTIONS.md:84](OPEN_QUESTIONS.md)) asks for its pinout. Read visually,
+HARDWARE_MATRIX recorded "Expansion connector | header `J3`, at least 29 pins on
+the drawing", and D3 asked for its pinout. Read visually,
 J3 is the **34-pin AMOLED FPC connector**: its block is titled AMOLED and it
 carries `QSPI_SIO0`–`SIO3`, `QSPI_SCL`, `LCD_CS`/`RESET`/`TE`, the MIPI pairs,
 `VCI`, `VDDIO`, `IM0`/`IM1` and `TP_SCL`/`TP_SDA`/`TP_INT`/`TP_RESET`. There is
-no user expansion header on this board. This retires the hot-unplug and
+no user expansion header on this board. Both records now say so:
+[HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md) carries a Display FPC row instead,
+and D3 is struck as mis-stated at
+[OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md). This retires the hot-unplug and
 bus-capacitance worry that D3 inherited from the T-Watch, where main-I2C `SDA`
 genuinely does reach a detachable GNSS connector
 ([HARDWARE_MATRIX.md:208](HARDWARE_MATRIX.md)) — but it confirms that the touch
@@ -442,10 +451,22 @@ touches no eFuse. *Expected:* a header line `Chip is ESP32-S3 (QFN56) (revision
 vX.Y)`, a features line containing `Embedded PSRAM 8MB (AP_3v3)`, and
 `Detected flash size: 32MB`. *Failure:* `Embedded PSRAM 2MB` would refute §3.1
 completely, since the only 8 MB in-package variants are octal; a blank vendor
-field is unremarkable. *Unblocks:* confirms D12 for this board and settles the
-16-versus-32 MB flash conflict in one line. Note this reports capacity and
-voltage class, never bus width — octal follows from capacity plus Table 1-1, not
-from esptool.
+field is unremarkable. `Detected flash size: 16MB` is the other half of this
+step and needs saying explicitly: it would mean the schematic reading is wrong
+and the five vendor `sdkconfig.defaults` right, and the 32 MB figure has to come
+out of `RESOURCE_BUDGET.md` before anything is sized against it. *Unblocks:*
+confirms D12 for this board and settles the 16-versus-32 MB flash conflict in
+one line. Note that this reports capacity and voltage class, never bus width —
+octal follows from capacity plus Table 1-1, not from esptool.
+
+*Also available at this point, and read-only:* `ESP_EFUSE_PSRAM_CAP`,
+`ESP_EFUSE_PSRAM_VENDOR` and `ESP_EFUSE_PSRAM_TEMP` are public ESP-IDF eFuse
+fields on the ESP32-S3 (`components/efuse/esp32s3/esp_efuse_table.csv:206-209`),
+readable from an application with `esp_efuse_read_field_blob`. **Reading an eFuse
+is not burning one** — nothing in this document writes one, and nothing in this
+project may without the owner asking in writing. They give capacity and vendor at
+runtime; the line mode is exposed by no public API, which is why the boot log
+stays the instrument for quad-versus-octal.
 
 **Step 3 — back up the factory image: `esptool.py -p <PORT> read_flash 0 ALL
 factory.bin`.** Read-only, and the only genuinely unrecoverable thing on the desk
@@ -481,38 +502,68 @@ ABSENT. `UU` in the table means a timeout, which points at pull-ups rather than
 at a device. *Unblocks:* every driver on this board, and §3.2's whole address
 table.
 
-**Step 6 — settle the QMI8658 datasheet conflict.** If step 5 showed 0x6B, read
-register `0x00`; *expected:* `WHO_AM_I = 0x05`, which confirms the Rev A mapping
-and retires Rev 0.6. If step 5 showed 0x6A instead, the silicon follows Rev 0.6
-and Waveshare's own wiki link was right — record that, because it inverts a
-strap-to-address rule the next agent will otherwise re-derive wrongly. While
-here, read the FocalTech identity block at 0x38 — registers `0xA3`, `0xA6`, `0xA8`
-and `0xA1` — and **record the raw bytes** rather than comparing them to a
-remembered constant, since no FT3168 datasheet publishes a register map. Then
-write and read back one of the threshold registers the FT5x06 driver blind-writes
-during init, `0x80`: *failure*, meaning a NACK or a value that does not read
-back, means `touch_ft5x06_init()` will return an error on this chip and the
-vendor's own FT3168-via-FT5x06 substitution is not safe as shipped. *Unblocks:*
-the IMU and touch drivers, and the T6 argument.
+**Step 6 — settle the QMI8658 datasheet conflict.** Stay in the same `i2c_tools`
+console as step 5, so nothing new has to be built. If step 5 showed 0x6B, run
+`i2cget -c 0x6b -r 0x00 -l 1`; *expected:* `WHO_AM_I = 0x05`, which confirms
+the Rev A mapping and retires Rev 0.6. If step 5 showed 0x6A instead, the
+silicon follows Rev 0.6 and Waveshare's own wiki link was right — record that,
+because it inverts a strap-to-address rule the next agent will otherwise
+re-derive wrongly. While here, read the FocalTech identity block —
+`i2cget -c 0x38 -r 0xa3 -l 1` and the same for `0xa6`, `0xa8` and `0xa1` — and
+**record the raw bytes** rather than comparing them to a remembered constant,
+since no FT3168 datasheet publishes a register map. Then write and read back one
+of the threshold registers the FT5x06 driver blind-writes during init:
+`i2cset -c 0x38 -r 0x80 0x16` followed by `i2cget -c 0x38 -r 0x80 -l 1`.
+*Failure*, meaning a NACK or a value that does not read back, means
+`touch_ft5x06_init()` will return an error on this chip and the vendor's own
+FT3168-via-FT5x06 substitution is not safe as shipped. *Unblocks:* the IMU and
+touch drivers, and the T6 argument.
 
-**Step 7 — the AMOLED controller probes.** `RDDPM` (`0x0A`) returns the
-IDMON/PTLON/SLPOUT/NORON/DISPON bits, so idle mode is directly observable rather
-than inferred. Read `0x0A`, write `0x39`, read `0x0A` again; *expected:* the
-IDMON bit sets and the screen visibly changes. Then write `0x49` and `0x4A`, and
-read back `0x4B`: if `0x4B` returns what was written, the AOD commands are real
-on this part; if nothing changes, the Arduino header's `48h`/`49h`/`4Ah`/`4Bh` are
-a mis-copied SH8601 header and Attadipa must not depend on those opcodes.
-Finally write `0x55 = 0x11` to enable ACL and photograph the result. *Unblocks:*
-the design decision in §3.5, which currently has no measured cost on either side.
+**Step 7 — the AMOLED controller probes.** *What to run*, first, because it is
+not what the previous two steps used: these are DCS commands to the CO5300 over
+the **QSPI panel IO**, not I2C, so the `i2c_tools` console of steps 5 and 6
+cannot send them. They need a small firmware — in practice a dozen lines added
+to the step-4 vendor demo. The pattern to copy is
+`bsp_display_brightness_set()` in `esp32_s3_touch_amoled_2_06.c:341-364`, which
+packs the opcode as `lcd_cmd =
+(0x02 << 24) | (cmd << 8)` and calls `esp_lcd_panel_io_tx_param(io_handle,
+lcd_cmd, &param, 1)`; the `0x02` prefix is the QSPI write-command header for the
+`SH8601_PANEL_IO_QSPI_CONFIG` at `:437`.
 
-**Step 8 — the current measurements behind §1.** With radios off, the CPU pinned
-and touch and IMU polling stopped, take five readings on the same firmware:
-full-frame Warm Ivory `#FFF6E8` at `0x51 = 0xFF` and at `0x20`; full-frame Ink
-Olive `#2F3A2E` at the same two; and full-frame black at `0xFF` as the zero
-reference. Subtract the black reading from each to isolate panel emission. Prefer
-a shunt on the battery lead to a USB meter, because the USB path includes AXP2101
-charging. *Expected, as a prediction to falsify:* ivory-minus-black is roughly
-fourteen times olive-minus-black at the same DBV. *Unblocks:* A9, which is
+Writes are therefore proven by vendor source. **Reads are not.** `rx_param`
+appears zero times in that BSP, and `bsp_display_brightness_get()` at `:367-376`
+returns a cached variable rather than asking the panel, so nothing in the vendor
+tree demonstrates a readback over this IO. Try `esp_lcd_panel_io_rx_param` for
+`RDDPM` (`0x0A`), which returns the IDMON/PTLON/SLPOUT/NORON/DISPON bits and
+would make idle mode directly observable; but if the read returns zeros or
+errors, that is a limitation of the QSPI read path and **not** evidence about the
+panel's state. Fall back to the visible change, and record the readback attempt
+as UNKNOWN rather than as a negative result.
+
+*The sequence.* Read `0x0A` if reads work, write `0x39` (IDMON), read `0x0A`
+again; *expected:* the IDMON bit sets and the screen visibly dims and posterises.
+**Restore with `0x38` before moving on**, or every later measurement is taken in
+idle mode. Then write `0x49` and `0x4A` and read back `0x4B`: if `0x4B` returns
+what was written, the AOD commands are real on this part; if nothing changes —
+and given the read caveat above, treat "nothing changes" as inconclusive unless
+the display itself responds — the Arduino header's `48h`/`49h`/`4Ah`/`4Bh` are a
+mis-copied SH8601 header and Attadipa must not depend on those opcodes. Finally
+write `0x55 = 0x11` to enable ACL, photograph the result against a photograph of
+the same frame taken before, then **write `0x55 = 0x00` to restore**, since ACL
+left enabled silently changes the step-8 currents. *Unblocks:* the design
+decision in §3.5, which currently has no measured cost on either side.
+
+**Step 8 — the current measurements behind §1.** Same patched firmware as step 7,
+since setting `0x51` is the same `tx_param` call and the fill colour is an LVGL
+one-liner; confirm first that step 7's `0x38` and `0x55 = 0x00` restores actually
+ran. With radios off, the CPU pinned and touch and IMU polling stopped, take
+five readings: full-frame Warm Ivory `#FFF6E8` at `0x51 = 0xFF` and at `0x20`;
+full-frame Ink Olive `#2F3A2E` at the same two; and full-frame black at `0xFF`
+as the zero reference. Subtract the black reading from each to isolate panel
+emission. Prefer a shunt on the battery lead to a USB meter, because the USB path
+includes AXP2101 charging. *Expected, as a prediction to falsify:*
+ivory-minus-black is roughly fourteen times olive-minus-black at the same DBV.
+*Unblocks:* A9, which is
 currently being asked of the owner on an ESTIMATE rather than a measurement.
 
 **Step 9 — the buttons.** Press `Key1` and `Key3` and watch a GPIO dump; the
@@ -547,6 +598,7 @@ answer a vendor file already contains.
 | 6 | What ACL costs visually and saves electrically here | Step 7 plus step 8's meter, with `0x55` toggled |
 | 7 | The panel module's maker, part number, and therefore its own image-sticking and lifetime specification | Step 1's loupe on the module or its flex |
 | 8 | What `0x51 = 0xFF` actually is in cd/m² | A photometer against the panel; not obtainable from any document |
+| 8a | The PSRAM **line mode** as the chip itself reports it — no public ESP-IDF API exposes it, so it is not obtainable at runtime at all. `ESP_EFUSE_PSRAM_CAP`, `ESP_EFUSE_PSRAM_VENDOR` and `ESP_EFUSE_PSRAM_TEMP` are public read-only eFuse fields on the S3 (`components/efuse/esp32s3/esp_efuse_table.csv:206-209`) and give capacity and vendor, never line mode | The boot log's `octal_psram` tag in step 4 |
 | 9 | Achievable PSRAM bandwidth and the real cache-coherency cost of DMA out of PSRAM | A memcpy and blit benchmark on the board; every figure in §3.3 is arithmetic |
 | 10 | Whether 120 MHz PSRAM is viable here, given the vendor ships 80 MHz | Build at `CONFIG_SPIRAM_SPEED_120M` and run the same benchmark |
 | 11 | Which GPIO each tactile key uses (D5) | Step 9 |
@@ -567,7 +619,7 @@ does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
    [HARDWARE_MATRIX.md:303](HARDWARE_MATRIX.md) and
-   [VERIFIED_FACTS.md:354-358](VERIFIED_FACTS.md). Only the build-configuration
+   [VERIFIED_FACTS.md:399-402](VERIFIED_FACTS.md). Only the build-configuration
    reading is true, and it is vacuous — no target has a build configuration here.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
    asked of it. `CONFIG_SPIRAM_MODE` defaults to QUAD, and a quad image on this
@@ -608,35 +660,64 @@ does not, kept because an uncorrected claim propagates.
     `ci.yml:330`, where the file is 295 lines long and the line is
     [`:281`](../../.github/workflows/ci.yml).
 
-And the defects that are ours, each of which should become a small correcting
-commit rather than sitting here:
+And the defects that are ours. Four of them were repaired in `e5b7791`, the same
+commit that introduced this document; they are kept as record rather than as
+actions, because a fixed defect listed as open sends the next agent to fix it
+twice. Three are still live.
 
-1. [HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md) calls J3 an "Expansion connector
-   … at least 29 pins", and D3 ([OPEN_QUESTIONS.md:84](OPEN_QUESTIONS.md)) asks
-   for its pinout. J3 is the 34-pin AMOLED display FPC; there is no expansion
-   header. D3 should be closed as mis-stated rather than answered.
-2. [REUSE_LEDGER.md:68](REUSE_LEDGER.md) records the Waveshare BSP as coming from
+**Repaired in `e5b7791`:**
+
+1. HARDWARE_MATRIX called J3 an "Expansion connector … at least 29 pins", and D3
+   asked for its pinout. J3 is the 34-pin AMOLED display FPC and there is no
+   expansion header. Now a Display FPC row at
+   [HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md), with D3 struck as mis-stated
+   rather than answered at [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md).
+2. REUSE_LEDGER recorded the Waveshare BSP as coming from
    `github.com/espressif/esp-bsp`. It does not: `esp-bsp/bsp` holds 26 board
-   entries and none is a Waveshare AMOLED board. The BSP lives in
-   `waveshareteam/Waveshare-ESP32-components`. The confusion is understandable —
-   esp-bsp genuinely is the source of the `esp_lcd_touch_ft5x06` dependency.
+   entries and none is a Waveshare AMOLED board. The confusion was understandable
+   — esp-bsp genuinely is the source of the `esp_lcd_touch_ft5x06` dependency —
+   and it now has its own row, `waveshare-components` pointing at
+   `waveshareteam/Waveshare-ESP32-components`, at
+   [REUSE_LEDGER.md:69](REUSE_LEDGER.md).
 3. [VERIFIED_FACTS.md:51-53](VERIFIED_FACTS.md) promises that "every part, pin,
    I2C address, and power rail" lives in HARDWARE_MATRIX. For this board neither
-   addresses nor rails are there. Either the table regains the two columns the
-   T-Watch table has, or that sentence is corrected; leaving it sends the next
-   agent looking for data that does not exist.
-4. [`docs/upstream/research-integration.md:180-181`](../upstream/research-integration.md)
+   addresses nor rails were there, which made the promise false. The promise now
+   holds because the table was filled, not because the sentence was weakened.
+4. The Waveshare peripheral table lacked the `I2C addr` and `Power rail` columns
+   the T-Watch table ([:80](HARDWARE_MATRIX.md)) has. Both columns are present
+   and populated at [:313](HARDWARE_MATRIX.md); the rails still need D13, and
+   read `—` until it is answered.
+
+**Still live, and each one a small correcting commit:**
+
+5. [`docs/upstream/research-integration.md:180-181`](../upstream/research-integration.md)
    states "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
    ~10 µA light-sleep floor on the reasoning that the workaround "must not be
    deselected on a module rather than a bare chip". That contradicts
-   [HARDWARE_MATRIX.md:301](HARDWARE_MATRIX.md), and the figure is carried
-   forward into [HIL_PLANS.md:64-67](../testing/HIL_PLANS.md) as VENDOR-STATED. One
-   of the two is wrong and the sleep-current plan depends on which.
-5. The Waveshare peripheral table ([:313](HARDWARE_MATRIX.md)) lacks the `I2C
-   addr` and `Power rail` columns the T-Watch table ([:80](HARDWARE_MATRIX.md))
-   has. §3.2 supplies the addresses; the rails still need D13.
+   [HARDWARE_MATRIX.md:301](HARDWARE_MATRIX.md), which records a bare chip, and
+   the figure is carried forward into [HIL_PLANS.md:64-67](../testing/HIL_PLANS.md)
+   as VENDOR-STATED. One of the two is wrong and the sleep-current plan depends
+   on which.
 6. The part-ownership table at
-   [ARCHITECTURE.md:396-414](../architecture/ARCHITECTURE.md) has no flash or
-   PSRAM row for this board, where the T-Watch table has both. That is an
-   omission rather than a claim of absence, but it is a defect against
-   [CLAUDE.md:85](../../CLAUDE.md) — every part on the board gets a seat.
+   [ARCHITECTURE.md:396-414](../architecture/ARCHITECTURE.md) has two problems in
+   one table. It has no flash or PSRAM row for this board, where the T-Watch
+   table has both — an omission rather than a claim of absence, but a defect
+   against [CLAUDE.md:85](../../CLAUDE.md), since every part on the board gets a
+   seat. And it still carries `| Expansion header J3 | BoardService | ≥ 29 pins;
+   pinout unresolved (D3). |`, which is now contradicted by
+   [HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md) and by the struck D3 above. The
+   row should become the display FPC, owned by `DisplayService`.
+7. **Splitting D12 left three places behind.** `HARDWARE_MATRIX.md:303` was
+   updated with this work and now reads VERIFIED/octal, but
+   [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) still carries
+   `PSRAM | 8 MB — but see below | 8 MB — same caveat | CONFLICTING` for both
+   columns; the open-question row at `STATUS.md:266` still reads "PSRAM
+   documented as quad … affects both boards", which `STATUS.md:128` of the same
+   file now contradicts; and [VERIFIED_FACTS.md:405-406](VERIFIED_FACTS.md) still
+   concludes that because both boards carry the `R8` marking, D12 is "one
+   question with one answer for both targets" — which is precisely the premise
+   §3.1 abandoned when the question was split. One correcting commit fixes all
+   three: the Waveshare column becomes VERIFIED-octal, the T-Watch column stays
+   CONFLICTING as D12b. Left alone, the next agent gets a different answer
+   depending on which file they open first, and that is the failure mode this
+   whole document exists to avoid.

@@ -70,7 +70,7 @@ unit is still unknown — see OPEN_QUESTIONS A1.
 |---|---|---|
 | SoC | ESP32-S3 | VERIFIED |
 | Flash | 16 MB QSPI | VERIFIED |
-| PSRAM | 8 MB QSPI | VERIFIED |
+| PSRAM | 8 MB. **QSPI per the LilyGO vendor document; the `ESP32-S3R8` marking says octal** by ESP32-S3 Series Datasheet v2.2 Table 1-1, which contains no 8 MB quad in-package part. Nobody has read the vendor document against the table — D12b | CONFLICTING |
 | Battery | 940 mAh, 3.7 V | VERIFIED |
 | Charge current | 0–1024 mA programmable; vendor recommends ≤300–400 mA; vendor header default 125 mA | VERIFIED |
 | USB | Micro-USB, charge + programming only, no external supply function | VERIFIED |

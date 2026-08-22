@@ -35,20 +35,39 @@ That is the only conclusion this document is currently entitled to draw.
 | Resource | T-Watch S3 Plus | Waveshare AMOLED 2.06 | Status |
 |---|---|---|---|
 | Flash | 16 MB (`W25Q128JW`) | **32 MB** (`GD25Q256EYIGR`, quad) | CEILING |
-| PSRAM | 8 MB — **but see below** | 8 MB — same caveat | CONFLICTING |
+| PSRAM | 8 MB — **quad or octal still open, D12b** | 8 MB **octal**, D12a | T-Watch CONFLICTING, Waveshare CEILING |
 | Internal SRAM | 512 KB (ESP32-S3) | 512 KB (ESP32-S3) | CEILING |
 | Display | 240 × 240 | 410 × 502 | CEILING |
 
-**The PSRAM conflict.** The T-Watch vendor document describes 8 MB **QSPI**
-PSRAM. Both schematics mark the SoC `ESP32-S3R8`, and the `R8` suffix is
-*understood* to denote **octal** SPI PSRAM — that understanding is recollection,
-not something established here, and checking it against Espressif's published
-part-numbering scheme is part of D12 rather than an assumption this document
-gets to make. Quad and octal differ by roughly a factor of two in
-bandwidth and they need different `sdkconfig` settings; getting it wrong is not
-a performance nuance, it is a board that does not boot or a framebuffer that
-cannot keep up. Resolve before pinning any display or LVGL configuration —
-OPEN_QUESTIONS D12.
+**The PSRAM conflict, half resolved.** The recollection this section rested on
+has been checked: ESP32-S3 Series Datasheet v2.2 §1.2 Table 1-1 gives
+`ESP32-S3R8 | 8 MB (Octal SPI)`, and the table contains **no 8 MB quad
+in-package variant at all** — quad in-package exists only at 2 MB. Footnote 3
+names `R8`, `R8V` and `R16V` as the octal parts, and `R8`/`R8V` differ by
+`VDD_SPI` voltage rather than bus width.
+
+For the **Waveshare** that closes it: 8 MB octal, D12a, corroborated by five
+vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y` with
+`CONFIG_SPIRAM_IGNORE_NOTFOUND` unset, and by GPIO33–37 — octal's DQ4–DQ7 and
+DQS — sitting unrouted on the schematic.
+
+For the **T-Watch** it does not, and the shared `R8` marking is not enough to
+make it. The LilyGO vendor document describing that board's PSRAM as **QSPI** is
+a live conflicting source that nobody has read against Table 1-1, and one
+document beating another by inference is how a wrong `sdkconfig` gets pinned.
+D12b, and it wants that board's own `esptool.py flash_id`.
+
+Quad and octal differ by roughly a factor of two in bandwidth and need different
+`sdkconfig` settings; getting it wrong is not a performance nuance, it is a board
+that does not boot or a framebuffer that cannot keep up.
+
+**And the Waveshare answer does not license the obvious next step.** The vendor's
+own BSP does *not* put the LVGL draw buffer in PSRAM — its `.buff_spiram = true`
+is dead code and what ships is one ~80 KiB partial buffer in internal SRAM. There
+is no existence proof to lean on here, and `SOC_PSRAM_DMA_CAPABLE` is 0 on the
+S3, so a draw buffer in PSRAM can never also be DMA-capable. See
+[../research/WAVESHARE_ARRIVAL.md](../research/WAVESHARE_ARRIVAL.md) §3.3 and
+T-093.
 
 Internal SRAM is the number that actually binds. 512 KB is the die's total; what
 a task can allocate after ESP-IDF, the Wi-Fi/BLE stacks and the driver layer
