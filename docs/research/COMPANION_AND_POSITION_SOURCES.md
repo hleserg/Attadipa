@@ -65,9 +65,24 @@ vanilla node is reachable behind Home Assistant on `doctor` and a USB node is
 coming; confirming this against one of them is **T-072a** and would be the first
 honest `OBSERVED` in this area.
 
-## 2. Meshtastic as a companion — T-073 — **BLOCKED at the gate**
+## 2. Meshtastic as a companion — T-073 — **ANSWERED: not supported**
 
-The gate question has an answer and the answer closes the door.
+**The owner chose option 4 on 2026-08-22**, on
+[#41](https://github.com/hleserg/Attadipa/issues/41):
+[OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence).
+T-073 is `REJECT` in the reuse ledger and closed, not blocked and not deferred.
+
+The `BLOCKED:` box below is kept **as the record of what was put to the owner**,
+because a decision without the alternatives it was chosen over is not a decision
+anybody can revisit. Its recommended next action was an owner decision, and that has happened.
+Read it as history; do not act on it.
+
+And read OD-12 for what the answer actually turns on: the licence closed the
+cheap path, but the decision is that the feature is not worth an honest
+clean-room. Recording this as "blocked on licensing" would leave the next agent
+thinking a licence change reopens it. It does not.
+
+The gate question has an answer and the answer closed the cheap door.
 
 | Question | State | Answer |
 |---|---|---|
@@ -111,7 +126,7 @@ Possible options:
      have asked before; the outcome is not this repository's to predict.
   4. Do not support Meshtastic. MeshCore is MIT and answers OD-7's actual need —
      "not everyone will want to build our node" — on its own.
-Recommended next action: OWNER DECISION. This is a licensing and product call,
+Recommended next action: OWNER DECISION — taken 2026-08-22, option 4. This is a licensing and product call,
   not a technical one. Options 1 and 4 are the only two an agent can execute
   without legal advice, and they differ in months of work. Recommend option 4
   for now and option 1 only if the owner wants Meshtastic badly enough to fund

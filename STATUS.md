@@ -205,14 +205,16 @@ changed what we can plan:
   both from outside, and motion-gated GNSS (OD-10) cannot lean on a companion's
   fix to decide whether the wearer moved.
 
-**The Meshtastic half is answered, and it is closed.** The licence gate shut
-first: `meshtastic/protobufs` *is* a separate repository with its own `LICENSE`,
-and that `LICENSE` is GPL-3.0, the same as the firmware — no exception clause,
-no SPDX header in any `.proto`. Four options went to the owner and the owner
-took the last of them on 2026-08-22
-([OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)):
-Meshtastic is not supported. The licence is why the cheap path is gone; not
-funding the expensive one is the decision. T-073 is `REJECTED`, not blocked.
+**The Meshtastic half is closed, and the gate was licensing.**
+`meshtastic/protobufs` *is* a separate repository with its own `LICENSE`, and
+that `LICENSE` is GPL-3.0, the same as the firmware. No exception clause, no SPDX
+header in any `.proto`. That closed the cheap path — a linked client is not
+available under this repository's own rule — and the four options went to the
+owner as [#41](https://github.com/hleserg/Attadipa/issues/41). **They chose
+option 4: not supported.**
+[OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
+2026-08-22. T-073 is `REJECTED` — not blocked, not deferred, and not waiting on
+protocol facts it will never need.
 
 - **And one defect, not a feature.** The simulator draws with LVGL's stock
   Latin-only Montserrat, so `×` renders as `□` and so do the Cyrillic letters in
