@@ -133,7 +133,9 @@ says "reports the actual conclusion word" -- "$FAILED" -- '`cancelled`'
 says "says the claim was released, so nobody has to check" -- "$FAILED" -- \
      "claim is released"
 says "says what happens without the owner, and what starts it now" -- "$FAILED" -- \
-     "within the" "hour" '`@claude`'
+     "one retry" "hour" '`@claude`'
+says "says the retry is bounded rather than promising an unconditional pick-up" -- "$FAILED" -- \
+     "fails a second time" "needs-owner"
 says "warns against retrying a deterministic failure" -- "$FAILED" -- \
      "same failure" "with a bill attached"
 # The old text sent the reader to the run log for the cause. That log is
@@ -151,7 +153,7 @@ FAILED_WHY=$(attadipa_outcome failed "$RUN" cancelled "" "API Error: 400 prompt 
 says "carries the reason the extractor found, in the reader's first paragraph" -- \
      "$FAILED_WHY" -- "**Why:**" "prompt is too long: 214233 tokens"
 says "and still says what happens next, because a cause is not a plan" -- \
-     "$FAILED_WHY" -- "watchdog picks it up" '`@claude`'
+     "$FAILED_WHY" -- "watchdog gives it one retry" '`@claude`'
 # An unclassified reason must not read as a dead end: it is a gap in a
 # whitelist, and saying which file to widen is what makes it actionable.
 FAILED_UNCLASS=$(attadipa_outcome failed "$RUN" cancelled "" "unclassified — SDK subtype \`success\`, ended at turn 20")

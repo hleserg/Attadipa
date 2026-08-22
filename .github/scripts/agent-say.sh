@@ -300,10 +300,24 @@ attadipa_outcome() {
         echo "not fill the gap."
       fi
       echo
-      echo "**What happens without you:** the watchdog picks it up within the"
-      echo "hour. **To start it now:** comment \`@claude\` — but read the line above"
-      echo "first, because a retry of a deterministic failure is the same failure"
-      echo "with a bill attached."
+      echo "**What happens without you:** the watchdog gives it one retry within"
+      echo "the hour. If it fails a second time without anything changing in"
+      echo "between, that is treated as the same failure with a bill attached,"
+      echo "and the watchdog labels it \`agent:blocked\` and \`needs-owner\`"
+      echo "instead of trying again."
+      echo
+      # The two ways of starting it again are NOT equivalent, and the
+      # difference is invisible unless somebody writes it down.
+      # .github/scripts/failure-count.jq resets its count at the most recent
+      # `agent:ready` labelling by a person -- a comment is not a labelling, so
+      # an owner who fixes the cause and replies `@claude` still carries every
+      # failure that happened before their fix, and escalates on the next one.
+      echo "**To start it now:** add \`agent:ready\` yourself. A human labelling is"
+      echo "also what resets the retry budget, so a task whose cause you have"
+      echo "actually fixed starts again from zero. Commenting \`@claude\` starts a"
+      echo "run too, but it does **not** reset the count — read the line above"
+      echo "first either way, because a retry of a deterministic failure is the"
+      echo "same failure with a bill attached."
       ;;
     *)
       echo "### The run ended in an unrecognised state (\`$kind\`)"
