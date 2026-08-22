@@ -49,7 +49,14 @@ bottom edge, next to the expansion pad row. This is the revision named in
 schematic describes our board" is now standing on an observation instead of an
 assumption.
 
-### 1.2 The battery is 400 mAh, and this is the headline. `VERIFIED`
+### 1.2 The battery is *marked* 400 mAh, and that marking is now the headline
+
+`VERIFIED` — the label was read off a received unit. **It is not verified that
+the cell holds 400 mAh, and the arithmetic says it probably does not**: that
+capacity in this footprint would need 132.3 mAh/cm³ against an 87–102 band
+across 51 datasheet cells, so 250–310 mAh is the honest expectation,
+`ESTIMATED`. See [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1; T-106 M3 settles it
+with a scale.
 
 The cell is marked:
 
@@ -195,8 +202,10 @@ kind a coin vibration motor sits in, and it is **empty**.
 
 The drive circuit is present and is exactly what the schematic says:
 `HARDWARE_MATRIX` records **GPIO 18 → R12 (4.7 kΩ) → Q1 (MMBT3904, NPN) → motor
-on connector `J1`**, supplied from `BLDO2`. `J1` is those two pads. So the board
-can drive a motor and does not have one.
+on pads `P1`/`P2`**, supplied from `BLDO2`. Those are the two bare pads. So the
+board can drive a motor and does not have one.
+
+> **Designator corrected 2026-08-22:** the motor pads are **`P1`/`P2`**, not `J1`. `J1` is the **battery** connector — a word-coordinate extraction of the schematic puts `J1` at (267.4, 193.8) beside net `VBAT1` at (297.2, 189.9), while the motor block (`MOTOR`, `R12 4.7K`, `R13 47K`, `Q1`, `R7 0R`, `P1`, `P2`) clusters at x ≈ 154–205, and the designator list holds `COJ1`, `COJ2` and `COP1`–`COP6` with **no `BAT1` at all**. It also resolves a contradiction inside this repository's own record: the battery plug is visibly mated to a two-pin header on the received unit, so `J1` cannot be "two bare pads". [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1.1. **The conclusion is unchanged** — the pads are bare and the coin-motor footprint is empty either way.
 
 **Why this is a specification problem and not a soldering problem.** The design
 system defines a haptic scale, the specification asks for haptic feedback, and
@@ -204,7 +213,7 @@ system defines a haptic scale, the specification asks for haptic feedback, and
 that resolves to `Ready`. On this unit it resolves to `Unsupported` — and
 `Unsupported` is the one terminal value in the `Availability` enum, the one that
 must be stable at runtime and must never be shown to the user as something a
-remedy can fix. Soldering a motor to `J1` changes the answer and no firmware can
+remedy can fix. Soldering a motor to `P1`/`P2` changes the answer and no firmware can
 detect that it happened: an NPN driving an absent load looks identical to an NPN
 driving a present one.
 

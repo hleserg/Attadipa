@@ -356,15 +356,40 @@ came off the unit the same day —
   speaker or a haptic actuator (**T-105**, and T-097 sits on top of it), and the
   battery connector's pitch, which a photograph cannot establish.
 
-**A bigger battery is under consideration.** The cell turns out to be on a
-removable 2-pin plug rather than soldered, which makes it a real option. What to
-order is open — see D2, now PARTIAL rather than UNKNOWN.
+**A bigger battery is under consideration, and the fitted one is probably not
+400 mAh.** The cell turns out to be on a removable 2-pin plug rather than
+soldered, which makes it a real option — and researching what to order produced
+a headline nobody expected. `402728` is 3.024 cm³, so the sticker's 400 mAh at
+3.7 V implies **132.3 mAh/cm³**, against an observed **87–102** band across 51
+datasheet cells from four manufacturers at footprints ≤ 32 mm: +22 % on the
+densest cell found in any footprint in that sample, +52 % on the median. Honest
+expectation **250–310 mAh** — so a same-size replacement buys no capacity at
+all, and 400 mAh in this footprint costs 5.5 mm of thickness rather than 4.0.
+[BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) — ESTIMATED from published
+datasheets, not measured. **What to order now has a decision tree rather than an
+open question**, gated on three measurements only the owner can take: the
+closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
+the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
+280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
+need. **T-106** holds all three, and the register reads that go with them.
 
-- **The cell is 400 mAh**, where the row said `UNKNOWN` and the T-Watch carries
-  940. The board with less than half the energy is the board with the emissive
-  panel, and the day theme costs 13.9× the night theme on the same pixels
-  (`ESTIMATED`). "Which theme is default on the Waveshare" is now a power
-  question — **T-095**.
+**Both inheritable charge currents are wrong for the real cell.** Waveshare's own
+demo sets 400 mA, which is 1.33C on ~300 mAh against a 1.0C class maximum, and
+it is a deliberate change — upstream XPowersLib's copy of the same file sets
+200 mA. The power-on default cannot be quoted at all: `REG 0x62`'s reset value is
+eFuse-trimmed and has never been read on this board. The Waveshare BSP configures
+the charger not at all, so whichever value is there at boot is the one charging
+the cell. Precharge and termination both default four times higher than the
+convention, and the input limit defaults to 1500 mA on a port that granted 500.
+
+- **The cell's sticker says 400 mAh**, where the row said `UNKNOWN` and the
+  T-Watch carries 940 — and the sticker is now the thing in doubt, not the
+  reading of it: see the paragraphs above, `ESTIMATED` 250–310 mAh. Either way
+  the board with far less energy is the board with the emissive panel, and the
+  day theme costs 13.9× the night theme on the same pixels (`ESTIMATED`).
+  "Which theme is default on the Waveshare" is now a power question — **T-095**,
+  and a sharper one if the real figure is a third of the T-Watch rather than
+  a half.
 - **A ten-pad expansion row** nobody had transcribed, and the trap in it: `IO15`
   and `IO14` are printed as bare GPIO numbers and are the main I2C bus, with six
   devices already on them. The one free channel for an attached node is the UART
