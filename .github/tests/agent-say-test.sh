@@ -184,6 +184,13 @@ says "warns that it may be half the work and nothing here knows which half" -- \
      "$CUT" -- "may be half" "which half"
 says "and that green CI proves nothing about the part never written" -- "$CUT" -- \
      "never got written"
+# Review's third-round finding: the first version of this case added agent:ready
+# alongside agent:review, and agent:ready is inert on a pull request -- the
+# watchdog's queue scan drops pull requests before it reads a label. The label
+# is gone; saying so is what replaces it, because words are the only thing that
+# reaches a person here.
+says "says plainly that nothing automated will come back for the rest" -- "$CUT" -- \
+     "on its own" "watchdog scans issues, not pull requests" '`@claude`'
 CUT_NO=$(attadipa_outcome done_here_cut "$RUN" 71 "")
 says "a missing conclusion is named rather than left as an empty quote" -- \
      "$CUT_NO" -- "no conclusion"

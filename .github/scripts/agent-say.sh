@@ -155,6 +155,11 @@ attadipa_outcome() {
       echo "**Now waiting on:** CI on the new head and a fresh independent review."
       echo "Both run automatically. Neither of them knows the run was cut off."
       echo
+      echo "**Nothing will come back for the unfinished part on its own.** The"
+      echo "hourly watchdog scans issues, not pull requests, so no label on this"
+      echo "page queues anything. Finishing it takes a person commenting"
+      echo "\`@claude\` here, having read the diff and said what is still missing."
+      echo
       echo "[Run log]($run_url) — the reason it stopped is in there, and it decides"
       echo "whether the rest is worth restarting or the branch is worth dropping."
       ;;

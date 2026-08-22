@@ -990,11 +990,16 @@ jobs:
             done_pr|done_here|done_here_nopush|done_nopr)
               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
             done_here_cut)
-              # Both labels, because both are true: a commit is on the branch
-              # for a reviewer to read, AND the run that made it never
-              # finished, so somebody has to pick the rest up. agent:review
-              # alone would file half-done work as done.
-              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --add-label agent:ready --remove-label agent:working || true ;;
+              # agent:review only, and NOT agent:ready. The first version added
+              # both -- a commit to read, and somebody to pick up the rest --
+              # and review pointed out that the second label is inert on a pull
+              # request and therefore a lie: .github/scripts/queue-scan.jq drops
+              # every pull request before it reads a label, and labelling one
+              # raises pull_request.labeled, which this workflow does not listen
+              # for. Nothing would ever have come back for it, while the label
+              # said something would. The comment says so in words instead --
+              # words are the only thing that actually reaches a person here.
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
             *)
               # agent:failed AND back to agent:ready: the label pair says both
               # "this went wrong" and "somebody should pick it up", and the
