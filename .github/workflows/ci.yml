@@ -251,6 +251,21 @@ jobs:
       - name: Watchdog queue scan
         run: bash .github/tests/watchdog-filter-test.sh
 
+      # What the pipeline says out loud. A silent pipeline and a dead one look
+      # the same from an issue, which cost this project a morning of somebody
+      # asking whether anything was happening. The receipt and the outcome
+      # comment are the fix, and text nobody asserts on drifts back to silence
+      # one edit at a time.
+      - name: What the agent says
+        run: bash .github/tests/agent-say-test.sh
+
+      # The staleness line is the only thing telling an agent that the finding
+      # it is about to implement was made against code that has since moved.
+      # Its previous version truncated at 800 characters and, on issue #26,
+      # ended mid-path on the word "c".
+      - name: The staleness summary
+        run: bash .github/tests/compare-summary-test.sh
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest

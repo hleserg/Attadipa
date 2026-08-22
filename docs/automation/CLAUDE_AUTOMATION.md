@@ -219,6 +219,7 @@ as much as the first.
 | **Empty queue costs nothing** — the watchdog's scan is shell and one API call; Claude is invoked only when there is a task | `agent-queue-watchdog.yml` |
 | **One writer** — a concurrency group on the agent job, so writers queue instead of colliding. On the job and not on the workflow: a workflow-level group also holds the intake gate, and GitHub cancels a *pending* run when a newer one joins the group, so a burst of events loses everything but the last before anything reads it. Three tasks were queued and none started this way on 2026-08-22 | `claude-agent.yml` |
 | **Deduplication** — an issue already claimed is not picked up again | intake gate |
+| **It always answers** — an 👀 reaction within seconds, a receipt saying what was understood, and an outcome comment on every exit path. Silence and a dead pipeline used to be the same experience | `acknowledge` job, `Hand over` step, `agent-say.sh` |
 | **Turn limits** — 60 for implementation, 100 for review, 40 for repair | `claude_args: --max-turns` |
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
@@ -263,9 +264,36 @@ including disabling workflows entirely, are in [RECOVERY](RECOVERY.md).
 the last meaningful gate: an agent does the work, opens a **draft** pull
 request, fixes CI and collects an independent review, and then a human decides.
 
-Auto-merge for Dependabot patch updates and documentation-only changes is a
-reasonable thing to consider later. It is a separate decision, and it is not
-made here.
+Auto-merge for documentation-only changes **has since been decided**, owner
+2026-08-21, and it is narrower than "documentation":
+
+It is expressed as an **allowlist** rather than as `docs/` minus exclusions, and
+that direction is deliberate: a list of what is permitted fails closed when
+somebody adds a directory, a list of what is forbidden fails open. A rule holding
+unattended write access to `main` takes the one that fails closed.
+
+| | May be merged unattended | By what |
+|---|---|---|
+| `docs/architecture/` `docs/community/` `docs/hardware/` `docs/mobile/` `docs/node/` `docs/research/` `docs/testing/` `docs/ui/` `docs/upstream/` `STATUS.md` `TASKS.md` | yes | the backstop routine, under the conditions in [its prompt](attadipa-backstop-routine.md). `STATUS.md` and `TASKS.md` are on the list because CLAUDE.md *requires* them in the same commit — excluding them would disqualify every compliant pull request |
+| `docs/master-prompt-final.md` and the two superseded prompts | **no** | the specification in force. A process that can edit the requirements it is judged against is not a process |
+| `docs/research/OWNER_DECISIONS.md` | **no** | *"not ours to overturn"*, in the file's own words. The one file in `docs/research/` that records authority rather than findings |
+| `docs/adr/` | **no** | decisions of record. ADR-0003 is what stands between this project and assuming a T-Watch has a LoRa transceiver |
+| `docs/automation/` | **no** | that directory governs the automation, including the backstop's own instructions. A gate that can widen itself is not a gate |
+| `docs/index.html` `docs/404.html` `docs/assets/` `docs/brand/` `docs/robots.txt` `docs/sitemap.xml` `docs/manifest.webmanifest` | **no** | GitHub Pages is served from `/docs` and there is no build or deploy workflow at all, so a merge here is a live publication with nothing between it and the public but this rule. `docs/brand/` is an identity decision as well, and identity is the owner's |
+| `core/` `platform/` `link/` `apps/` `sim/` `boards/` `.github/` | **no** | the rule above stands. Green CI proves nothing about a board |
+| anything added to this repository after this table was written | **no** | that is what an allowlist is for |
+
+The backstop does not form an opinion about a change. It merges only where the
+independent reviewer has already published `ai-review:pass`, every check is
+green, no review thread or Codex comment is outstanding, and the **head commit**
+is over six hours old — each of which is a decision taken by something other
+than the backstop. The head commit and not the pull request's `updatedAt`: that
+condition exists to show no session is still pushing, and a label or a bot
+comment bumps `updatedAt` without a line of code arriving. Three per run, and a comment on each naming
+what was checked.
+
+Dependabot is still not auto-merged; that remains a separate decision and is
+still not made here.
 
 **Hardware.** No workflow claims a hardware result, and there is no
 hardware-in-the-loop runner. CI prints

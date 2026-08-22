@@ -174,7 +174,8 @@ a task whose event was lost.
                  ┌──────▼───────┐
                  │ agent:working│  one writer at a time, and the writer job
                  └──┬────┬──────┘  sets this label itself — so a claim never
-      draft PR      │    │         outlives the agent that made it
+      draft PR      │    │         outlives the agent that made it. A receipt
+                    │    │         comment lands here within seconds
                  ┌──▼──┐ │ ┌────▼─────────┐
                  │review│ │ │agent:blocked │ + needs-owner / needs-hardware
                  └──┬──┘ │ └──────────────┘   cannot proceed
@@ -208,6 +209,49 @@ inconsistently with the marker it wrote.
 
 ---
 
+## What the pipeline says, and when
+
+**Rule: a request is never left unanswered.** Silence reads as "thinking", and
+thinking is indistinguishable from dead. Before 2026-08-22 a task could be
+accepted, worked for forty minutes and finished with nothing on the issue but a
+label changing colour — which on a phone is invisible, and which made a working
+pipeline and a broken one produce the same experience.
+
+Three fixed points, and the first and third are structural rather than the
+agent's good intentions — an agent that has to be running before it can say it
+is running cannot report the run that never started.
+
+| | who writes it | when | what it must contain |
+|---|---|---|---|
+| **Receipt** | the `acknowledge` job | seconds after the trigger, in parallel with the agent starting | that it was accepted, what was understood (kind, priority, research or implementation), the run link, what happens next, and the staleness verdict if the tree moved |
+| **Progress** | the agent | once early with a plan; again only when the answer changes | what is actually going to change and where; a finding that does not reproduce, said as soon as it is known; a change of shape from the plan; work that will not fit |
+| **Outcome** | the `Hand over` step | always, on every exit path | the pull request and **what is now being waited on**, or a clean run that produced nothing and why that is suspicious, or the conclusion word and what happens next |
+
+A comment on the triggering comment gets an **👀 reaction within seconds**, before
+any of the above renders. It is the only signal that appears on the comment
+itself rather than below it.
+
+**Bounds, because the failure mode on this side is noise.** At most three agent
+comments before the outcome. A comment that repeats the previous one is worse
+than silence: it teaches people to stop reading, and then the one that mattered
+is missed too. No narrating tool calls, no progress bars, no "working on it".
+
+**A blocked task is the one case the outcome step stays quiet.** The agent's own
+`BLOCKED:` comment says more than the step could, so the step releases the claim
+and does not talk over it.
+
+None of this can loop. Every one of these is written with the built-in
+`GITHUB_TOKEN`, and GitHub deliberately does not start workflow runs from events
+that token creates.
+
+The wording lives in [`.github/scripts/agent-say.sh`](../../.github/scripts/agent-say.sh)
+as pure text renderers with no network and no environment, so
+[`.github/tests/agent-say-test.sh`](../../.github/tests/agent-say-test.sh) can
+assert the exact text rather than the workflow's intentions. Text nobody asserts
+on drifts back to silence one edit at a time.
+
+---
+
 ## What an agent does with a task
 
 1. **Read before writing.** The issue and all its comments, `CLAUDE.md`,
@@ -222,6 +266,19 @@ inconsistently with the marker it wrote.
 4. **One branch, one pull request.** Draft while it moves, ready when it does
    not, and **merged by the orchestrator once CI is green** (owner decision,
    2026-08-21). Nothing waits on a person for the merge itself.
+
+   **Two different actors merge, under two different rules, and conflating them
+   is how a finished `core/` pull request sits forever.** The *orchestrator* is
+   a live session with the owner reachable: it merges anything once CI and the
+   independent review are green, across every path in the repository. The
+   *backstop routine* runs unattended with nobody watching, and it may merge
+   only changes under `docs/` and not `docs/automation/`, at most three per run,
+   under the six conditions in
+   [attadipa-backstop-routine.md](attadipa-backstop-routine.md). So a green
+   `core/` pull request is **not** picked up by the backstop and is not waiting
+   for the owner either — it is waiting for an orchestrator session, and if none
+   is running it waits. That is a real gap and it is named here rather than
+   discovered.
 5. **Never a hardware claim.** Anything needing a board, an instrument or a
    measurement is `NOT EXECUTED — HARDWARE REQUIRED`.
 6. **Leave it continuable.** `STATUS.md` and `TASKS.md` updated in the same
