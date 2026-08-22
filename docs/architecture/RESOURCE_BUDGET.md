@@ -35,20 +35,39 @@ That is the only conclusion this document is currently entitled to draw.
 | Resource | T-Watch S3 Plus | Waveshare AMOLED 2.06 | Status |
 |---|---|---|---|
 | Flash | 16 MB (`W25Q128JW`) | **32 MB** (`GD25Q256EYIGR`, quad) | CEILING |
-| PSRAM | 8 MB — **but see below** | 8 MB — same caveat | CONFLICTING |
+| PSRAM | 8 MB — **quad or octal still open, D12b** | 8 MB **octal**, D12a | T-Watch CONFLICTING, Waveshare CEILING |
 | Internal SRAM | 512 KB (ESP32-S3) | 512 KB (ESP32-S3) | CEILING |
 | Display | 240 × 240 | 410 × 502 | CEILING |
 
-**The PSRAM conflict.** The T-Watch vendor document describes 8 MB **QSPI**
-PSRAM. Both schematics mark the SoC `ESP32-S3R8`, and the `R8` suffix is
-*understood* to denote **octal** SPI PSRAM — that understanding is recollection,
-not something established here, and checking it against Espressif's published
-part-numbering scheme is part of D12 rather than an assumption this document
-gets to make. Quad and octal differ by roughly a factor of two in
-bandwidth and they need different `sdkconfig` settings; getting it wrong is not
-a performance nuance, it is a board that does not boot or a framebuffer that
-cannot keep up. Resolve before pinning any display or LVGL configuration —
-OPEN_QUESTIONS D12.
+**The PSRAM conflict, half resolved.** The recollection this section rested on
+has been checked: ESP32-S3 Series Datasheet v2.2 §1.2 Table 1-1 gives
+`ESP32-S3R8 | 8 MB (Octal SPI)`, and the table contains **no 8 MB quad
+in-package variant at all** — quad in-package exists only at 2 MB. Footnote 3
+names `R8`, `R8V` and `R16V` as the octal parts, and `R8`/`R8V` differ by
+`VDD_SPI` voltage rather than bus width.
+
+For the **Waveshare** that closes it: 8 MB octal, D12a, corroborated by five
+vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y` with
+`CONFIG_SPIRAM_IGNORE_NOTFOUND` unset, and by GPIO33–37 — octal's DQ4–DQ7 and
+DQS — sitting unrouted on the schematic.
+
+For the **T-Watch** it does not, and the shared `R8` marking is not enough to
+make it. The LilyGO vendor document describing that board's PSRAM as **QSPI** is
+a live conflicting source that nobody has read against Table 1-1, and one
+document beating another by inference is how a wrong `sdkconfig` gets pinned.
+D12b, and it wants that board's own `esptool.py flash_id`.
+
+Quad and octal differ by roughly a factor of two in bandwidth and need different
+`sdkconfig` settings; getting it wrong is not a performance nuance, it is a board
+that does not boot or a framebuffer that cannot keep up.
+
+**And the Waveshare answer does not license the obvious next step.** The vendor's
+own BSP does *not* put the LVGL draw buffer in PSRAM — its `.buff_spiram = true`
+is dead code and what ships is one ~80 KiB partial buffer in internal SRAM. There
+is no existence proof to lean on here, and `SOC_PSRAM_DMA_CAPABLE` is 0 on the
+S3, so a draw buffer in PSRAM can never also be DMA-capable. See
+[../research/WAVESHARE_ARRIVAL.md](../research/WAVESHARE_ARRIVAL.md) §3.3 and
+T-093.
 
 Internal SRAM is the number that actually binds. 512 KB is the die's total; what
 a task can allocate after ESP-IDF, the Wi-Fi/BLE stacks and the driver layer
@@ -97,7 +116,7 @@ gets a number, the method it came from goes next to it.
 |---|---|
 | Bootloader + partition table | `idf.py size` after the first embedded build |
 | Application image | `idf.py size` |
-| Assets (fonts, icons) | image manifest, sized before inclusion |
+| Assets (fonts, icons) | image manifest, sized before inclusion. **Two rows now have numbers** — see below |
 | NVS, littlefs / SPIFFS partitions | partition table — an ADR, not an accident |
 | OTA slots — does the image fit twice? | partition table arithmetic against the flash ceiling |
 
@@ -105,6 +124,37 @@ Firmware update needs two application slots plus the data partitions. Neither
 board looks tight: 16 MB on the T-Watch and 32 MB on the Waveshare board — which
 is, conveniently, the board with 3.57× the pixels and therefore the larger asset
 burden. Convenient, not planned; do the arithmetic once there is an image.
+
+#### The two asset pipelines, with numbers
+
+Both are `CALCULATED` from what the generators emit, not `MEASURED` on a device
+— nothing has been linked into a firmware image yet, and `idf.py size` is the
+only thing that will settle the difference between an array's size and its cost
+after alignment and section placement.
+
+| Asset set | Bytes | How |
+|---|---|---|
+| Text fonts — Montserrat Medium, 181 codepoints, 4 bpp, at 14 / 16 / 20 / 28 px | **78 930** | `MEASURED` with xtensa `size -A` on the generated objects: 13 033 + 15 248 + 19 356 + 31 293 |
+| Icons — three masks at 33, 39 and 47 px | **14 457** | `CALCULATED`: `A8` is one byte per pixel with `stride == width`, so an icon costs exactly its pixel count. Reported per asset by `tools/assets/generate_images.py` and repeated in the generated header |
+
+The icon number is the one worth watching, because it is the one that scales
+with the product rather than with the alphabet. Nine masks are 14 kB; the whole
+cross-product of four `IconSize` tokens against two board densities is **seven
+distinct pixel sizes**, so a full set of three icons would be 39 kB and a
+realistic set of thirty would be about 400 kB. That is why
+`tools/assets/manifest.py` names the sizes it generates rather than taking the
+cross-product, and why adding one is a deliberate line rather than a
+consequence.
+
+Two knobs exist and neither has been turned, both for the same reason — nothing
+has been measured:
+
+- **compression.** `LVGLImage.py` offers RLE and LZ4. Both trade flash for
+  decode time and a scratch buffer, on a device whose PSRAM sits behind a QSPI
+  bus nobody has timed. 14 kB is not worth a guess.
+- **fewer sizes.** Dropping to one pixel size per icon and letting LVGL scale
+  would cut the count, and it is exactly what final §86 forbids — a 47-pixel
+  drawing resampled to 33 is a different, worse drawing.
 
 ### Internal RAM
 

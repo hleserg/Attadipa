@@ -327,6 +327,55 @@ Rules that follow from final §41, §86 and §97:
 - Every image has a measured flash cost, tracked per board
   ([RESOURCE_BUDGET](../architecture/RESOURCE_BUDGET.md)).
 
+### 7.1 Icons, and the three rules the pipeline makes mechanical
+
+T-034 turned the second and fourth of those from sentences into checks. The
+pipeline is [`ui/assets/README.md`](../../ui/assets/README.md); what belongs
+here is what a designer needs to know before drawing one.
+
+**An icon carries no colour.** Assets are alpha-only masks and colour arrives at
+draw time through a `ColorRole` — the same route as text, and for the same
+reason. It means a theme reaches an icon without regenerating anything, and it
+means `legible_as_graphic()` can be asked whether a role clears 3:1 before an
+icon is painted in it. §3.2's day table is why that matters: **no accent in the
+day palette clears 3:1 against Warm Ivory**, so an orange icon on the day theme
+is not a stylistic choice, it is an illegible one.
+
+**An icon is drawn at each size it is used at.** Not once and scaled. The
+authored geometry lives in `tools/assets/icon_drawings.py` with an entry per
+pixel size — stroke weight, feature radii, inset — because 33 px and 47 px are
+different drawing problems and the difference is exactly the detail a resampler
+destroys. The pipeline refuses a size it has no drawing for, and the lookup
+returns nothing rather than the nearest one it has.
+
+**A size is a pixel count, never a board.** The four `icon.size.*` tokens across
+the two panel densities land on **seven** distinct pixel sizes, and two of them
+collide: `icon.size.lg` at 261 dpi and `icon.size.md` at 315 dpi are both 39 px
+and share one file. Naming assets by board would ship the same picture twice.
+
+| Token | T-Watch, 261 dpi | Waveshare, 315 dpi |
+|---|---|---|
+| `icon.size.sm` — 16 dp | 26 px | 32 px |
+| `icon.size.md` — 20 dp | **33 px** | **39 px** |
+| `icon.size.lg` — 24 dp | **39 px** | **47 px** |
+| `icon.size.xl` — 32 dp | 52 px | 63 px |
+
+The four sizes in bold are the ones that exist; `sm` and `xl` are not generated,
+because nothing draws them yet and a mask costs its pixel count in flash. Asking
+for one returns nothing, which is the honest answer and not an oversight.
+
+### 7.2 The first three icons
+
+| Icon | What it means | Why it is drawn that way |
+|---|---|---|
+| `mesh` | one node reaching two others | The first attempt was a hub with three peers, and at 33 px the four discs merged into a lump. The second was a triangle of nodes, one row away in silhouette from `warning`. The third has a silhouette that is neither |
+| `position` | a position is known | A pin and deliberately **not** a satellite, an antenna or a phone. An application is never told where a fix came from — the wrist, a companion node, or somebody else's message — so the icon must not draw a source |
+| `warning` | a degraded state | It exists **because** §3.1 forbids signalling state by colour alone. On the day palette that is not merely an accessibility courtesy, since no accent clears 4.5:1 against Warm Ivory. A degraded state has to have a shape |
+
+The review sheet is [`specimens/sheet-icons.png`](specimens/sheet-icons.png) —
+day and night, at 1:1 and not magnified, because an icon that only reads at 3×
+is an icon that does not read.
+
 ## 8. Localization is a design constraint, not a translation step
 
 Every reusable component defines wrap, max lines, ellipsis, flexible width,
