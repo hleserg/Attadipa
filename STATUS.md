@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -81,8 +81,21 @@ in both cases.
   **nowhere** in this repository, so the fix is a fence rather than a
   correction. Filed **T-051 … T-053**.
 - **T-009 — design tokens in code**, resumed. The M1 slice continues in the
-  order final §58 gives: tokens, then the image asset pipeline (T-034), the
-  first Clock (T-037) and the first Settings (T-038).
+  order final §58 gives: tokens, then the image asset pipeline (T-034 —
+  **done**), the first Clock (T-037) and the first Settings (T-038).
+- **T-034 — image asset pipeline — done.** `ui/assets/source/` →
+  `tools/assets/` → `ui/assets/generated/`, with LVGL v9.5.0's `LVGLImage.py`
+  vendored unmodified and pinned by hash. Deterministic, verified by
+  byte-comparing two runs. The staleness digest covers the **converter** as well
+  as the art, because an encoder that changes its output is the asset changing.
+  Three refusals, each with a test that triggers it: a source over 512 px, a
+  source under `docs/` or `pics/`, and a pixel size with no drawing behind it —
+  the last being final §86 made mechanical, since the pipeline never resamples
+  one size into another and the lookup returns `nullptr` rather than the nearest
+  thing it has. Proved with three icons at three sizes: 14 457 B of `.rodata`,
+  reported per asset. **Assets are named by pixels, never by board** — 39 px is
+  `icon.size.lg` on one panel and `icon.size.md` on the other, one file, and a
+  test asserts it.
 - **T-043 … T-053** — the eleven the amendments produced, sitting in READY: the
   node link that is not a BLE link, resynchronisable framing, the `PowerState`
   taxonomy that cannot call a wake-on-LoRa sleep "hibernate", crash-safe
@@ -97,8 +110,14 @@ One to two steps ahead, per final §68 — not twenty.
 
 | | Subject | For |
 |---|---|---|
-| NEXT | `scripts/LVGLImage.py` — RGB565A8, compression, and flash cost per asset | T-034 |
-| AFTER NEXT | LVGL 9.5 on QSPI AMOLED: draw-buffer strategy and realistic frame rate at 410 × 502 | M2, and the PSRAM conflict D12 |
+| NEXT | LVGL 9.5 on QSPI AMOLED: draw-buffer strategy and realistic frame rate at 410 × 502 | M2, and the PSRAM conflict D12 |
+| AFTER NEXT | `SettingsService` persistence on a device with no filesystem yet — what T-038 writes to, and what T-046 has to guarantee about it | T-038 |
+
+`LVGLImage.py` is off this list: T-034 answered it. Compression was examined and
+**not** taken — RLE and LZ4 both trade flash for decode time and a scratch buffer
+on a QSPI bus nobody has timed, and nine masks are 14 kB. `RGB565A8` is present
+and unused: every asset so far is an `A8` mask, because an icon with a baked
+colour cannot follow a theme.
 
 ## Long-running operations
 
@@ -117,17 +136,31 @@ been the expensive order.
 
 ## Owner decisions of 2026-08-22, recorded and not yet started
 
-Five messages in one session, all filed as
-[OD-7 to OD-11](docs/research/OWNER_DECISIONS.md) with the research questions in
+Filed as [OD-7 to OD-13](docs/research/OWNER_DECISIONS.md), with the research
+questions in
 [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-and twelve tasks, T-072 to T-083. **Nothing is implemented.** Recorded here
-because a fact that lives only in a chat log does not exist.
+and thirteen tasks, T-072 to T-083 and T-088. **Nothing is implemented.**
+Recorded here because a fact that lives only in a chat log does not exist —
+which is also why OD-12 and OD-13 exist at all: both were answered in issue
+comments, and an answer sitting in a comment is a fact nobody downstream can
+read.
+
+Two of the seven **close** things rather than open them. OD-12 rejects
+Meshtastic and OD-13 rejects tag emulation, and in both the licence is the
+evidence while the product decision is the decision — recorded in that order, so
+that a future licence change reopens only what it actually affects.
 
 - **The companion is any node, not only ours** — vanilla MeshCore over BLE or
-  LAN, Meshtastic alongside or instead, several providers at once with a local
-  radio, and telemetry as a request/response feed. It fits
+  LAN, several providers at once with a local radio, and telemetry as a
+  request/response feed. It fits
   [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape; what it needs is
-  the protocol facts, which are `UNKNOWN` (T-072, T-073, T-074).
+  the protocol facts, which are `UNKNOWN` (T-072, T-074).
+  **Meshtastic is not one of the providers.** OD-7 asked for it alongside or
+  instead of MeshCore; [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)
+  reversed that on 2026-08-22 and T-073 is `REJECTED`, not awaiting protocol
+  facts. Its protocol definitions are GPL-3.0 with no linking exception, which
+  closed the cheap path, and the owner declined to fund an honest clean-room —
+  the licence is the evidence and the product decision is the decision.
 - **Every source of position, with the watch as the instrument** — the watch's
   receiver, a node's, a phone's, a coordinate inside somebody else's message,
   telemetry, dead reckoning, cell towers. Selection and fusion are different
@@ -171,12 +204,20 @@ because a fact that lives only in a chat log does not exist.
 | A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
-| A7 | [#33](https://github.com/hleserg/Attadipa/issues/33) — **Three features asked for in conversation and absent from the specification — how big is each?** (a) is "the watch can be found by a crowd-sourced network" a requirement, and which one; (b) how long is a track; (c) how far must a reckoned path stay useful. | they compete for one antenna, one coexistence arbiter and one 940 mAh cell, so they are one question in three parts. Every sizing decision in [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is parameterised by these. T-064, T-065 and T-071 are blocked or unsized until answered |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
-None of these blocks M1. All of them block hardware work — except A7, which
-blocks three features that are not in the specification and cannot be sized
-until it is answered.
+None of these blocks M1. All of them block hardware work.
+
+**A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
+2026-08-22, recorded as
+[OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature).
+No tag emulation in any ecosystem, so **T-064 is closed** rather than unblocked;
+a track is scoped by distance from learned familiar ground on foot rather than
+by duration, which **unblocks T-065** and re-sizes it downward; saving a whole
+track on request is a second, independent feature and is filed as **T-088**; and
+T-071 is not blocked, because "get me back on foot" is the one purpose that
+survives the physics. The three numbers the recording rule needs — threshold,
+hysteresis and dwell — are to be computed and shown, not chosen.
 
 ## Build and test state
 
@@ -189,7 +230,7 @@ of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
-| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 16-case hostile-input test passes. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
+| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 40-case hostile-input test and the watchdog filter's 17-case test pass. **Two defects fixed on 2026-08-22, both silent and both found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; and a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
@@ -236,6 +277,31 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **T-070 research — the watch as a tracker detector, and the honest limit is
+  now sourced rather than deferred.**
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md), for
+  [#45](https://github.com/hleserg/Attadipa/issues/45). The owner declined tag
+  emulation and asked for the opposite feature instead: scanning for an
+  unknown BLE identifier that has followed the wearer too long, inspired by
+  `seemoo-lab/AirGuard` (Apache-2.0, reuse-ledger record added). Read from
+  AirGuard's own source rather than its description: its thresholds (3
+  sightings/14 days, ≥2–4 distinct locations 150 m apart, altitude gates), and
+  its own in-product admission that a rotated identifier can still follow the
+  wearer undetected. That admission turns out to be current, not dated: two
+  independent 2025/2026 studies — PoPETs 2025, peer-reviewed, and a February
+  2026 preprint — report that an identifier rotated faster than a detector's
+  correlation window evades or substantially delays Apple's, Google's **and
+  AirGuard's** detection on every ecosystem but Samsung's, and both used an
+  ESP32 to demonstrate it. DULT's accessory-protocol draft is still expired
+  and unreplaced, but its editors' working copy is active into August 2026 and
+  assigns `Watch` its own accessory-category value — a direct hook for T-069,
+  which this research hands off to rather than re-derives. Espressif publishes
+  no BLE-scanning current figure at all; the nearest documented proxy is a 93
+  mA RX peak, and the feature's power story stays incomplete until T-068
+  answers whether either board can reach a 32 kHz sleep floor between scan
+  bursts. One correction along the way: the issue that requested this research
+  described the T-Watch as sharing an RF front end between BLE and LoRa; ADR-0003
+  makes no such claim, and the document says so rather than repeating it.
 - **Heading no longer reads accel+gyro fusion as an absolute reference.**
   [#21](https://github.com/hleserg/Attadipa/issues/21): on the Waveshare
   profile — QMI8658 accel+gyro, no magnetometer, no local GNSS —

@@ -753,3 +753,182 @@ answered from a datasheet: whether Meshtastic's protocol definitions are license
 separately from its firmware, which cellular module the node will carry, and
 which tower database may lawfully be shipped in a product. The first is research
 and is filed; the last two are the owner's.
+
+## OD-12 — Meshtastic is not supported, and the reason is not the licence
+
+**Decided:** 2026-08-22, on [#41](https://github.com/hleserg/Attadipa/issues/41).
+
+**As stated:**
+
+> *"Согласен - принимаю."*
+
+— to the recommendation in that issue: option 4, do not support Meshtastic,
+MeshCore alone answers what [OD-7](#od-7--the-companion-is-any-node-not-only-ours)
+actually asked for.
+
+**What was asked, and what happened to it.** OD-7 said Meshtastic should be a
+companion option *"вместо (или вместе, как получится)"* MeshCore. T-073 checked
+the licence first, as that task required, and found the blocker:
+`meshtastic/protobufs` is a separate repository with its own `LICENSE`, and that
+file is **GPL-3.0** with no linking exception. Generating code from those
+`.proto` files and linking it into the firmware would make Attadipa's firmware a
+derivative work under GPL-3.0, and Attadipa is MIT. The reuse ledger's rule —
+read it, learn from it, copy nothing — applies to protocol definitions exactly
+as it applies to C++.
+
+Four options were put to the owner: a real clean-room from published
+documentation only; shipping the provider as a separately distributed GPL-3.0
+component; asking upstream for an exception; or not supporting Meshtastic. Only
+the first and last are executable by an agent without legal advice, and they
+differ by months.
+
+**The decision is option 4, and the distinction matters for the record.** The
+licence is what made the cheap path impossible. The *decision* is that the
+feature is not worth the expensive one — a genuine clean-room is months, done
+honestly or not at all, and a half-clean-room is worse than neither.
+
+**What MeshCore is, stated at the strength the evidence actually supports.** It
+is MIT, and its source has a `companion_radio` role and a transport abstraction
+— both read, both in the reuse ledger. That is enough to say a companion client
+is *buildable without a licensing problem*, which is the half OD-7's need turns
+on. It is **not** enough to say the protocol is understood: **T-072 is open**,
+and every row of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) §1 is still
+`UNKNOWN` — which transports a stock build exposes, whether a LAN/TCP companion
+transport exists at the pinned revision, which commands it answers, whether
+telemetry carries a position. An earlier draft of this record said T-072 was
+finished and LAN was there. It was not, and the independent review on
+[#48](https://github.com/hleserg/Attadipa/pull/48) caught it.
+
+The decision does not rest on the overstatement. Rejecting Meshtastic follows
+from the licence and the cost of a real clean-room; MeshCore being the remaining
+candidate follows from its licence. What is *not* yet established is how much
+work a MeshCore companion client is — and that is T-072's job to answer, not
+this record's to assume.
+
+So the ledger records `REJECT` for the licence, and this records `REJECT` for
+the product. If Meshtastic's licensing ever changes, the licence half is
+answered and this decision is the only thing to revisit.
+
+**What it changes.**
+
+| | |
+|---|---|
+| **T-073** | closed, `REJECT`. Not blocked, not deferred — decided |
+| **T-074** | keeps its scope but loses its second concrete provider. Written against MeshCore plus a hypothetical second, which is enough to keep `availability(MeshMessaging)` and deduplication honest without inventing a provider to satisfy a list |
+| **OD-7** | stands, minus its Meshtastic clause. The companion is still *any* node, and MeshCore is the one we have a client for |
+| ADR-0008 | unchanged in shape. It was already a list, and a list of one is not a design flaw |
+
+**What is explicitly not decided here.** Whether a Meshtastic *bridge* could
+live outside the firmware — on the Attadipa node, or on a phone — is a different
+question with a different licensing answer, and nobody has asked it.
+
+
+---
+
+## OD-13 — No tag emulation; a track is a way back on foot, and saving one whole is a separate feature
+
+**Decided:** 2026-08-22, answering A7 on
+[#33](https://github.com/hleserg/Attadipa/issues/33).
+
+Three questions were put to the owner because none of the three features has a
+line in the specification and all three compete for one antenna, one coexistence
+arbiter and one 940 mAh cell. All three came back, and the second came back as a
+better question than the one asked.
+
+### 1. The watch does not pretend to be a smart tag
+
+**As stated:**
+
+> *"Не делаем. Ни Apple, ни какую-либо ещё."*
+
+Not deferred, not blocked on the ecosystems. **Decided.**
+
+The obstacles found by the research are real and are not the reason: Google
+needs an approved proposal, an email allowlist and third-party certification,
+and its only readable implementation is licensed for Nordic silicon; Samsung's
+SDK ships for no Espressif part; Apple is reachable but costs an Apple ID
+bootstrapped on Apple hardware, a self-hosted endpoint, and MFi for anything a
+person would recognise as Find My. Those made the feature expensive. The owner
+decided it is not wanted, which is a different sentence and outranks the first.
+
+**[T-063](../../TASKS.md) survives, and it is the reason this costs nothing.**
+The companion phone remembering where it last saw the watch over BLE answers
+*"I have lost my watch"* with no account, no other company's identifier and no
+network at all — and it is the only variant that works with the companion this
+project already specifies.
+
+### 2. A track is not a length of time. It is distance from familiar ground, on foot
+
+The question asked was *how many hours*. The owner replaced it:
+
+> *"трек пишется на случай, когда по нему, вероятно, придётся возвращаться
+> пешком"* — вышел из метро, топаешь, заблудился, посмотрел трек, вернулся.
+
+So the recording rule is about **purpose**, not duration:
+
+- the watch learns **familiar ground** — places where a person stays a long time
+  while moving only locally. A camp is tent ↔ fire ↔ the clearing beside them;
+- inside it, **nothing is recorded**;
+- past a threshold beyond its edge, on foot, **recording starts**;
+- on return, the track is **erased**;
+- going out the same way again records only what lies past the new edge.
+
+**A car, a bicycle or any other vehicle is out of scope — that is what a phone
+is for.** This is the purpose, not a literal specification; the details belong
+to whoever implements it.
+
+**What this does to the sizing.** The upper bound is now a walk somebody has to
+retrace, not a day or a multi-day route. Order of magnitude: a couple of hours,
+single-digit kilometres, hundreds to a few thousand points — materially less
+than the multi-day assumption the research sized against, which takes pressure
+off both the encoding and the mesh carrier. **The number still has to be
+computed**, from the sampling rule and the chosen threshold. Computed, not
+guessed.
+
+**What this rule now depends on, and it is not free.** Naming these is the point
+of writing the decision down:
+
+1. **"On foot" requires motion-mode recognition.** Without it the watch records
+   in a car, which is exactly what was excluded. That rests on the pedometer,
+   which exists only as [OD-6](#od-6--the-watch-counts-steps-and-that-is-not-optional).
+2. **"Familiar ground" is learned anchors** — the watch stores where its wearer
+   habitually is.
+3. **Threshold, hysteresis and dwell are three numbers that do not exist yet.**
+   Too small and it records every trip to the shop; too large and it starts
+   recording once it is already too late. They are proposed with arithmetic, not
+   picked.
+4. **T-069 gets sharper, not softer.** The device now holds a map of its
+   wearer's habitual places, and in Child Mode that is a map of a child's. Erase
+   on return helps and does not answer it. The privacy question grew out of this
+   decision rather than being resolved by it.
+
+### 3. Saving a whole track is a second, independent feature
+
+> *"хочу уметь сохранить трек целиком по запросу и посмотреть его потом на
+> карте"* — on request, so no restriction on how the wearer is travelling; a car
+> is fine here. Shaped as an application, allowed to run in the background so
+> other applications keep working while it records.
+
+It is **not a mode of the first one**. Different consumer, different volume,
+different behaviour when storage fills. Filed separately for that reason.
+
+### 4. The background recording of §2 is configurable, and on by default
+
+Whoever does not want it turns it off.
+
+### What it changes
+
+| | |
+|---|---|
+| **T-064** beacon profiles and the slot scheduler | **closed, `REJECT`** — by owner decision, recorded separately from the licensing and technical obstacles, which are real and are not why |
+| **T-063** last-seen over BLE | stands, and is now the whole of "find my watch" |
+| **T-065** `track/` | **unblocked** and re-sized by §2. The recording rule is a state machine over learned anchors, not a timer |
+| **T-071** dead reckoning | **not blocked.** §2 answers question 3 without being asked it: everything is built around getting back, which is the one purpose that survives the physics. A disk around the last anchor, never a confident line |
+| **T-066** one track, three carriers | unchanged in shape, cheaper in the worst case |
+| **T-069** the tracker threat model | scope grows: learned anchors are stored personal history |
+
+**What is explicitly not decided here.** The threshold, the hysteresis, the
+dwell time and the sampling rate — all four are to be computed and shown. If the
+arithmetic does not close on power or on storage, that is a `BLOCKED` with
+numbers in it, not a quiet simplification.

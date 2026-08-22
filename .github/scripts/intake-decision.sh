@@ -13,17 +13,28 @@
 # which is also what makes the table test possible.
 
 # attadipa_intake_decision ACTOR EVENT ACTION LABEL BODY LABELS STATE PERMISSION
-#                         [TRUSTED_PRODUCERS]
+#                         [TRUSTED_PRODUCERS] [COMMENT]
 #
 # TRUSTED_PRODUCERS is an optional comma-separated list of GitHub App logins,
 # supplied by the workflow from the repository variable ATTADIPA_TRUSTED_PRODUCERS.
 # It is empty by default, and empty behaves exactly as this gate did before it
 # existed.
 #
+# BODY and COMMENT ARE NOT THE SAME TEXT, and collapsing them cost this queue a
+# day. BODY is the issue or pull request body, read from the API, and it is what
+# carries the task marker. COMMENT is the text of the comment or review that
+# raised THIS event, and it is the only place an `@claude` mention can live on a
+# comment event. Until 2026-08-22 the workflow passed the issue body in both
+# roles, so rule 3 below looked for `@claude` in a text that could not contain
+# it: every `@claude` comment ever written on this repository was refused with
+# "nothing asks for an agent", including the owner's. The tests did not catch it
+# because they passed the comment text in the BODY slot — which is to say they
+# tested the function and not the call.
+#
 # Prints `accept`, or `reject: <reason>`. Never exits.
 attadipa_intake_decision() {
   local actor="$1" event="$2" action="$3" label="$4" body="$5" labels="$6" state="$7" permission="$8"
-  local trusted_producers="${9:-}"
+  local trusted_producers="${9:-}" comment="${10:-}"
 
   # 0. Is this actor a producing app the owner has named?
   #
@@ -93,11 +104,20 @@ attadipa_intake_decision() {
   fi
 
   # 3. Does anything in this event actually ask for an agent?
+  #
+  # Matched case-insensitively, on both halves. A person typing `@Claude` at the
+  # start of a sentence is asking for exactly the same thing as one typing
+  # `@claude`, and a gate that silently disagrees teaches people the automation
+  # is broken rather than that their capital letter was. `${x,,}` is bash's own
+  # lowercasing and is multibyte-safe, which matters because these comments are
+  # frequently in Russian.
   local wanted=no
+  local lc_comment="${comment,,}" lc_body="${body,,}"
   case "$event" in
     workflow_dispatch) wanted=yes ;;
     issue_comment|pull_request_review_comment|pull_request_review)
-      case "$body" in *"@claude"*) wanted=yes ;; esac ;;
+      # COMMENT, not BODY. See the header.
+      case "$lc_comment" in *"@claude"*) wanted=yes ;; esac ;;
     issues)
       case "$action" in
         labeled)
@@ -106,8 +126,15 @@ attadipa_intake_decision() {
           if [ "$label" = "agent:ready" ]; then wanted=yes; fi ;;
         assigned) wanted=yes ;;
         *)
-          case "$body" in
-            *"attadipa-agent-task"*) case "$body" in *"@claude"*) wanted=yes ;; esac ;;
+          # One marker string, and ADR-0012 is why there is no second one:
+          # "no compatibility aliases for the previous identifier are retained".
+          # Whether a legacy marker should be honoured is #25's question, and
+          # answering it here would also need queue-scan.jq — the watchdog reads
+          # its own copy of this test, and a marker only half the pipeline knows
+          # is a task that cannot be recovered when a run is lost.
+          case "$lc_body" in
+            *"attadipa-agent-task"*)
+              case "$lc_body" in *"@claude"*) wanted=yes ;; esac ;;
           esac ;;
       esac ;;
   esac
