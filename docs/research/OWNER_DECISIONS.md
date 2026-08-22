@@ -756,6 +756,11 @@ and is filed; the last two are the owner's.
 
 ## OD-12 — Meshtastic is not supported, and the reason is not the licence
 
+> **One premise in the rationale below has expired and the record is left
+> unedited anyway.** It says T-072 is open; T-072 was completed later the same
+> day. The decision is unaffected — see the annotation at the end of this
+> section. Owner decisions are not rewritten to keep their reasoning tidy.
+
 **Decided:** 2026-08-22, on [#41](https://github.com/hleserg/Attadipa/issues/41).
 
 **As stated:**
@@ -809,6 +814,22 @@ this record's to assume.
 So the ledger records `REJECT` for the licence, and this records `REJECT` for
 the product. If Meshtastic's licensing ever changes, the licence half is
 answered and this decision is the only thing to revisit.
+
+> **Annotation, 2026-08-22 — the premise moved, the decision did not.** The
+> paragraphs above are the owner's record and are left exactly as written,
+> because they are the reasoning that was in front of the owner at the time and
+> that is what this file is for. One factual premise in them has since expired:
+> **T-072 is no longer open.** §1 of
+> [COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) is answered
+> on every row and the detail is in
+> [MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md). The record
+> above already said the decision does not rest on that premise, and it does
+> not: the answer is that a MeshCore companion client is a real but bounded
+> amount of work — 58 commands, a 176-byte frame budget, and a TCP transport
+> that makes a host-side client cheap. Nothing in it makes Meshtastic cheaper or
+> its licence gate narrower. **OD-12 stands unchanged.** This note exists so the
+> next agent does not read a stale `UNKNOWN` as current, and so nobody is tempted
+> to edit an owner decision to keep its rationale tidy.
 
 **What it changes.**
 

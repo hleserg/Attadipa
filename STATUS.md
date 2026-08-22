@@ -223,8 +223,11 @@ that a future licence change reopens only what it actually affects.
 - **The companion is any node, not only ours** — vanilla MeshCore over BLE or
   LAN, several providers at once with a local radio, and telemetry as a
   request/response feed. It fits
-  [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape; what it needs is
-  the protocol facts, which are `UNKNOWN` (T-072, T-074).
+  [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape, and since
+  2026-08-22 the protocol facts it needs are **read** — T-072 is done, and
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md)
+  carries transports, framing, the command set and the three position scalings.
+  Read from source and **never observed on a node** (T-072a); T-074 is open.
   **Meshtastic is not one of the providers.** OD-7 asked for it alongside or
   instead of MeshCore; [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)
   reversed that on 2026-08-22 and T-073 is `REJECTED`, not awaiting protocol
@@ -250,6 +253,39 @@ that a future licence change reopens only what it actually affects.
   What is missing is themes as data, an installation gate built from the contrast
   and glyph checks that already exist, and a way back from a theme that makes the
   screen unreadable (T-081, T-082).
+**The MeshCore half of that is now answered** (T-072).
+[MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) has
+the transports, the framing, all 58 commands and the three different position
+scalings, read from the pinned `d929643` and with a provenance section saying
+which claims a second reader confirmed and which rest on one. Three things
+changed what we can plan:
+
+- **LAN is real** — Wi-Fi/TCP and Ethernet/TCP, port 5000, one client at a time.
+  A host-side client can speak to the node behind Home Assistant on `doctor`
+  today, with no ESP32 and no BLE stack involved. That is T-072a, and it would be
+  the first `OBSERVED` fact in this area.
+- **176 bytes is the frame budget**, a bare `#define` with no `#ifndef` guard, so
+  no peer can raise it. Every queue and buffer size on our side is bounded by it.
+- **A companion's position arrives with no provenance and no age.** No fix flag,
+  no satellite count, no timestamp, no HDOP — and `node_lat` is a single slot
+  shared by the GNSS loop, the saved prefs and the client app, written only
+  *inside* an `isValid()` branch, so a lost fix leaves the last value standing. A
+  receiver cannot distinguish a live fix from a six-hour-old one from a
+  hand-typed coordinate. [ADR-0011](docs/adr/0011-gnss-integrity.md) must supply
+  both from outside, and motion-gated GNSS (OD-10) cannot lean on a companion's
+  fix to decide whether the wearer moved.
+
+**The Meshtastic half is closed, and the gate was licensing.**
+`meshtastic/protobufs` *is* a separate repository with its own `LICENSE`, and
+that `LICENSE` is GPL-3.0, the same as the firmware. No exception clause, no SPDX
+header in any `.proto`. That closed the cheap path — a linked client is not
+available under this repository's own rule — and the four options went to the
+owner as [#41](https://github.com/hleserg/Attadipa/issues/41). **They chose
+option 4: not supported.**
+[OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
+2026-08-22. T-073 is `REJECTED` — not blocked, not deferred, and not waiting on
+protocol facts it will never need.
+
 - **And one defect, not a feature.** The simulator draws with LVGL's stock
   Latin-only Montserrat, so `×` renders as `□` and so do the Cyrillic letters in
   the English catalogue's own language names. The check already reports seven

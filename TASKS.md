@@ -1236,24 +1236,44 @@ stale silently. The protocol is
   filed, which is the deliverable the owner actually asked for.
 - **This is a research task.** It produces documentation. A pull request full of
   new subsystems has been guessed at, not done.
-### T-072 · What a vanilla MeshCore node actually exposes
-- **Priority:** P1 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours).
-  It gates T-073 and T-074 and it is cheap: the source is already cloned and MIT.
-- **Dependencies:** none
-- **Goal:** fill in §1 of
-  [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  from `d92964352441e53b93e8667b802e04f6e072b39e` — which transports the
-  `companion_radio` role exposes (BLE, serial, and whether LAN/TCP exists at the
-  pinned revision), which commands a stock build answers, whether telemetry
-  carries a position, and whether the node's own fix is distinguishable from one
-  relayed in a message.
-- **Acceptance:** every row has an answer with a file and line, or stays
-  `UNKNOWN` with the reason. A reuse-ledger record either way, per
-  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
-- **This is a research task.** It produces documentation. A pull request full of
-  new subsystems has been guessed at, not done.
-- **Hardware required:** no. Confirming it against a real vanilla node later is a
-  separate task and would be the first honest `OBSERVED` in this area.
+### T-072 · What a vanilla MeshCore node actually exposes — **DONE** 2026-08-22
+- §1 of [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  is answered, and the detail it summarises is
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  transports, framing, the whole command set, the three position scalings, and a
+  provenance section saying which claims were verified twice and which once.
+- **LAN exists**, which is what OD-7 turned on: Wi-Fi/TCP and Ethernet/TCP, both
+  port 5000 by default, one client at a time. That makes a host-side client the
+  cheapest possible bring-up.
+- **176 bytes is the frame budget** and it cannot be raised by a build flag.
+- **The finding that outranks the rest:** a position from a vanilla node carries
+  **no fix flag, no satellite count, no timestamp and no HDOP**, and `node_lat`
+  is one slot shared by the GNSS loop, saved prefs and the client app. A receiver
+  cannot tell a live fix from a stale one from a hand-typed coordinate. That is a
+  direct input to [ADR-0011](docs/adr/0011-gnss-integrity.md), OD-8 and OD-10.
+- Reuse-ledger records added for both the client (`REIMPLEMENT`) and the
+  Meshtastic gate (`REJECT`).
+- **Read from source, never observed.** `NOT EXECUTED — HARDWARE REQUIRED` —
+  see T-072a.
+
+### T-072a · The same protocol, against a node that exists
+- **Priority:** P2 — it converts a document full of `read from source` into the
+  first `OBSERVED` in this area, and it is now possible where it was not before.
+- **Dependencies:** T-072
+- **Goal:** speak the companion protocol to a **real** vanilla node and record
+  where the reading was wrong. A MeshCore node hangs off Home Assistant on the
+  LAN host `doctor`, and a USB node is coming to the development machine. A host
+  program — not firmware — is enough: open the TCP socket or the serial port,
+  send `CMD_DEVICE_QUERY`, read `RESP_CODE_DEVICE_INFO`, and compare byte for
+  byte against §3 of the protocol document.
+- **Acceptance:** every claim in the protocol document that the exchange touches
+  is marked `OBSERVED` or corrected, with the captured bytes committed as a
+  fixture. Claims the exchange does not touch stay as they are — a partial
+  confirmation must not be written up as a whole one.
+- **Answer first, because it is free:** which transport that node actually has.
+  §1's trap is that the build name does not tell you.
+- **Hardware required:** yes, but not *our* hardware — this needs a MeshCore
+  node, not a T-Watch. That is why it can happen now.
 
 ### T-074 · More than one mesh provider at once
 - **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
@@ -1725,10 +1745,17 @@ Recommended next action:
   expensive one. A real clean-room is months and is done honestly or not at all.
 - **What still answers the need:** MeshCore, MIT. OD-7 asked for a companion for
   people who will not build our node, and MeshCore is the remaining candidate
-  whose licence permits one. **T-072 is still open** — §1 of
+  whose licence permits one. **T-072 has since answered how much work that client
+  is** (2026-08-22): §1 of
   [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  is `UNKNOWN` on every row — so how much work that client is remains unknown.
-  The rejection here does not depend on that number.
+  is answered on every row, with the detail in
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  58 commands, a 176-byte frame budget that no build flag can raise, and a
+  Wi-Fi/Ethernet TCP transport that makes a host-side client the cheapest
+  bring-up there is. It is a real but bounded amount of work. **The rejection
+  here never depended on that number and does not change now that it exists** —
+  it rests on the licence gate and the cost of a clean-room, neither of which
+  T-072 touched.
 - **If this is ever revisited:** the licence question is answered and recorded.
   Only the product decision would need to change.
 
