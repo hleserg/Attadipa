@@ -389,23 +389,35 @@ came off the unit the same day —
   battery connector's pitch, which a photograph cannot establish.
 
 **A magnetometer is coming, and it makes several things here wrong at once.** The
-owner has ordered one and intends to solder it onto the received Waveshare. Until
-now *"neither board has a magnetometer"* has been a premise in this repository —
-it is in [ADR-0009](docs/adr/0009-heading.md), in T-011's blocker, in the hardware
-matrix and in the interference matrix — and a retrofit invalidates all of them
-together rather than one at a time. Research is under way, tracked as **#83**. Three things about it matter before the part arrives, because two cannot
-be fixed afterwards:
+owner has ordered **two** modules — a **CJMCU-9911 (AK09911C)** and a **GY-271
+(QMC5883L)** — and intends to solder one of them onto the received Waveshare.
+Two parts is the plan rather than an accident: `CAD` tied low puts them at
+`0x0C` and `0x0D`, which is the only way to compare them in the same magnetic
+environment on the same wrist, and T-109 holds the measurement that chooses
+between them. Until now *"neither board has a magnetometer"* has been a premise
+in this repository — it is in [ADR-0009](docs/adr/0009-heading.md), in T-011's
+blocker, in the hardware matrix and in the interference matrix — and a retrofit
+invalidates all of them together rather than one at a time. The datasheet work
+is done and written up in
+[MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md); what remains is
+physical, tracked as **#83**. Three things about it matter before the parts
+arrive, because two cannot be fixed afterwards:
 
-- **The bus is ready; the free address is not.** `IO15`/`IO14` are the main I2C
-  bus and both are on the expansion pad row beside `3V3` and `GND`. Six devices
-  are fitted — `0x18`, `0x34`, `0x38`, `0x40`, `0x51`, `0x6B` — but whether
-  `0x6A` is free depends on which QMI8658 address mapping this unit's IMU
-  follows, and [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) marks that
-  `CONFLICTING`, not settled. `0x6A` is `UNKNOWN`, not free, until the bus scan
-  [WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §3
-  already lists as outstanding is actually run — that scan is a precondition of
-  the wiring plan, not a footnote to it, and belongs beside T-106's M1/M2/M3
-  rather than as a task of its own.
+- **The bus is ready, and the retrofit routes around the one contested
+  address.** `IO15`/`IO14` are the main I2C bus and both are on the expansion
+  pad row beside `3V3` and `GND`. Five devices are confirmed — `0x18`, `0x34`,
+  `0x38`, `0x40`, `0x51`. The sixth is the IMU, and `0x6A` versus `0x6B` depends
+  on which QMI8658 datasheet revision this unit follows, which
+  [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) marks `CONFLICTING`:
+  **neither** of that pair is established as free.
+  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §4.3 therefore
+  does not use either — `CAD` tied low puts the AK09911C at `0x0C` and the
+  QMC5883L is fixed at `0x0D`, both clear of everything on the bus, so the
+  conflict never has to be resolved for the retrofit to proceed. The bus scan
+  [WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §3 lists
+  as outstanding is still worth running — it is what would settle which revision
+  is fitted, and it confirms the module once it is on — but it is **not** a gate
+  on the wiring plan and nothing waits behind it.
 - **Placement is the hard part, not the part number.** There is a speaker with a
   permanent magnet in the back cover, bare motor pads, and a battery lead that
   will carry 150–200 mA of charge current. Earth's field is 25–65 µT and all
@@ -416,16 +428,16 @@ be fixed afterwards:
   detachable node, because it does not walk away. That is an ADR question and it
   is being asked as one rather than settled in a research note.
 
-**Note for whoever writes `docs/research/MAGNETOMETER_RETROFIT.md`:** this
-paragraph shipped with two facts stated more confidently here than the
-documents they came from actually support — `0x6A` as free when
-[HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) marks it `CONFLICTING`,
-and T-106 left `## READY`/P1 while this section and
-[BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) call the battery
-`PAUSED`. Same mistake both times: a fact is `UNKNOWN` or `PAUSED` in the
-document that owns it and confident in the one that repeats it. Check for
-that specifically before that document ships, not just in the four places an
-independent review happened to catch it here.
+**A failure mode worth naming, because it has now happened three times in this
+one section.** A fact is `UNKNOWN` or `PAUSED` in the document that owns it and
+confident in the document that repeats it: `0x6A` was written here as free while
+[HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) marked it `CONFLICTING`;
+T-106 sat at `## READY`/P1 while this section and
+[BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) called the battery `PAUSED`;
+and this paragraph itself asked a future author to check for the pattern in a
+document that had already shipped. The repeating copy is the one that goes
+stale, so a claim repeated out of another document is worth a link rather than a
+restatement — that is what makes the drift visible the next time it happens.
 
 **A bigger battery is under consideration and is now PAUSED behind it** — calipers
 are on order, and whatever the sensor occupies comes out of the same cavity, so
@@ -433,8 +445,8 @@ the cell is chosen after it and not before. The owner did establish by hand that
 **there is room under the cover and the fitted cell butts against nothing in any
 axis**: `OBSERVED`, not `MEASURED`. It moves the odds without sizing anything —
 "not touching" and "has 1.1 mm of clearance" are different statements. **And the
-fitted one is probably not 400 mAh.** The cell turns out to be on a removable 2-pin plug rather than
-soldered, which makes it a real option — and researching what to order produced
+fitted one is probably not 400 mAh.** The cell turns out to be on a removable
+2-pin plug rather than soldered, which makes it a real option — and researching what to order produced
 a headline nobody expected. `402728` is 3.024 cm³, so the sticker's 400 mAh at
 3.7 V implies **132.3 mAh/cm³**, against an observed **87–102** band across 51
 datasheet cells from four manufacturers at footprints ≤ 32 mm: +22 % on the

@@ -23,12 +23,17 @@ blocked on four measurements only the owner can take.** Raised by the owner
 > > ширине, ни по длине. Просто китайцы сэкономили."*
 >
 > There is room under the cover, and the fitted cell butts against nothing in any
-> of the three axes. **That is a real finding and it changes the odds**: Row A of
-> §5 — drop-in only, no spare depth — is now the *unlikely* outcome rather than
-> the default one, and Rows B through D become worth taking seriously. It does
-> **not** substitute for M1: "not touching" and "has 1.1 mm of clearance" are
-> different statements, and only one of them sizes a cell. Nothing in §5 has been
-> promoted on the strength of it.
+> of the three axes. **That is a real finding and it moves the odds by exactly
+> one step**: the case §5 describes as *below* Row A — M1 under 4.4 mm, where the
+> fitted cell is already outside its own swell margin — is now the unlikely one,
+> and "Row A or better" is the expectation. It does **not** make Row A itself
+> unlikely. Row A *is* the 4.4–5.1 mm band, and 5.1 mm is where Row B starts, so
+> telling Row A from Row B is telling 0.1 mm of clearance from 1.1 mm — which is
+> precisely what an eye and a hand cannot do. It does **not** substitute for M1
+> for a second reason as well: this was judged with the cover off, and T-106's M1
+> is *closed-case* clearance, because a cell chosen against the recess depth fits
+> until the case is closed on it. Nothing in §5 has been promoted on the strength
+> of it.
 
 ## 0. What this note is
 

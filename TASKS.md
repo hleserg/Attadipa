@@ -1573,22 +1573,29 @@ stale silently. The protocol is
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
   `0x12` and `0x69`, at I²C address `0x34`.
-- **And one bus scan, now a precondition rather than a footnote:** whether
-  `0x6A` is free for the magnetometer retrofit ([#83](https://github.com/hleserg/Attadipa/issues/83))
-  depends on which QMI8658 address mapping this unit's IMU follows —
-  [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) marks that
-  `CONFLICTING` — and the resolving scan on `SDA 15 / SCL 14` is the same one
-  [WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §3
-  already lists as outstanding. Do not resolve the conflict by picking the
-  likelier mapping; run the scan.
+- **And one bus scan, still outstanding and not a gate on anything:** the
+  `0x6A`-versus-`0x6B` question on the IMU is `CONFLICTING` in
+  [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) and a scan on
+  `SDA 15 / SCL 14` settles it —
+  [WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §3 has
+  listed it as outstanding all along, and the bench is open once anyway. It is
+  **not** a precondition of the magnetometer retrofit:
+  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §4.3 routes
+  around the contested pair entirely — `CAD` tied low puts the AK09911C at
+  `0x0C` and the QMC5883L is fixed at `0x0D`, both clear — so nothing in
+  [#83](https://github.com/hleserg/Attadipa/issues/83) waits on it. Do not
+  resolve the conflict by picking the likelier mapping; run the scan when the
+  board is on the bench.
 - **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
-  instrument named, the five register values recorded as read, the bus scan
-  recorded as run with whichever address ACKed, and the sizing table in
+  instrument named, the five register values recorded as read, and the sizing
+  table in
   [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one row.
   `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
 - **What must not be assumed:** that the sticker settles the capacity. Reading
   it was verified; what it means is exactly what is in doubt.
-- **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
+- **Hardware required:** yes — the board, a caliper, a scale, and an I²C
+  session: five register reads at `0x34`, plus the bus scan above while the
+  bench is open.
 - **Update 2026-08-22 — PAUSED behind [#83](https://github.com/hleserg/Attadipa/issues/83).**
   The owner has ordered a magnetometer to solder into the same cavity this
   task's M1/M2 measure, so the cell is chosen after the sensor is sited, not
@@ -1597,7 +1604,10 @@ stale silently. The protocol is
   themselves are still correct and still the ones to take — but they are not
   to be taken, and no cell is to be ordered from them, until #83 sites the
   sensor. Do not pick this task up before then, even though it is still filed
-  under `## READY` rather than moved.
+  under `## READY` rather than moved. **This does not strand #83**: the bus scan
+  listed above is not something #83 waits on — the retrofit uses `0x0C`/`0x0D`
+  and needs nothing from the contested pair — so the pause runs one way only,
+  from #83 to this task, and never back.
 
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do
