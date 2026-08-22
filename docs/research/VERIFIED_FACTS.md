@@ -53,6 +53,12 @@ support code, and published schematics. The full result — every part, pin, I2C
 address, and power rail — lives in [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md).
 Recorded here are only the findings that change architecture.
 
+That promise was half true until 2026-08-22. The Waveshare peripheral table had
+been written without the `I2C addr` and `Power rail` columns the T-Watch table
+carries, so for that board neither existed while this sentence said they did —
+which sends a reader looking for data rather than for its absence. The addresses
+are there now, each cited. The rails are still D13.
+
 **Neither board has been physically inspected.** Nothing requiring measurement
 is verified.
 
@@ -351,14 +357,63 @@ BSP already demonstrated to be an incomplete description of its own board.
   keeping a typed descriptor below the service boundary
   ([ADR-0007](../adr/0007-two-capability-layers.md)).
 
+### The `R8` in ESP32-S3R8 means octal PSRAM, and the datasheet says so
+
+- **Claim:** the PSRAM in an `ESP32-S3R8` is octal, not quad.
+- **Source:** ESP32-S3 Series Datasheet v2.2, §1.2 Table 1-1 "ESP32-S3 Series
+  Comparison", p. 13: `ESP32-S3R8 | — | 8 MB (Octal SPI) | -40 ~ 65 °C | 3.3 V`.
+  The table contains **no 8 MB quad in-package variant at all** — the only quad
+  in-package parts are the 2 MB `RH2`, `R2` (EOL) and `FH4R2`. Footnote 3 names
+  the octal set outright: "For chips with Octal SPI PSRAM (ESP32-S3R8,
+  ESP32-S3R8V, and ESP32-S3R16V)…". `R8` and `R8V` differ by `VDD_SPI` voltage,
+  3.3 V against 1.8 V, not by bus width.
+- **Corroboration:** five of the six vendor examples for the Waveshare board ship
+  `CONFIG_SPIRAM_MODE_OCT=y` with `CONFIG_SPIRAM_IGNORE_NOTFOUND` unset — a build
+  that aborts at boot if octal PSRAM is not found. And GPIO33-37, which Datasheet
+  Table 2-14 populates as DQ4-DQ7 and DQS **only** in the Octal SPI column, sit
+  unrouted on the schematic with no-connect markers. That is a falsification test
+  the board passed: any of those five routed to a peripheral would have refuted
+  octal.
+- **Status:** VERIFIED for the Waveshare (D12a). **Not transferred to the
+  T-Watch** (D12b): the same marking implies the same answer, but a LilyGO
+  document describing that board's PSRAM as QSPI has not been re-read against
+  Table 1-1 and stands as a live conflict.
+- **Why it is written down:** OPEN_QUESTIONS recorded this as recollection —
+  Espressif's scheme is "*understood* to use the `R8` suffix for octal PSRAM —
+  that last part is recollection and must itself be checked against the
+  datasheet". It has been.
+
+### The Waveshare main I2C bus carries six devices, not four
+
+- **Claim:** the ES8311 audio codec and the ES7210 microphone ADC are I2C control
+  slaves on the same bus as the touch, PMU, IMU and RTC.
+- **Source:** the vendor BSP creates one `i2c_master_bus`
+  (`esp32_s3_touch_amoled_2_06.c:93`) and hands that same handle to the ES8311
+  (`:262`), the ES7210 (`:310`) and the touch IO (`:494`).
+- **Why it matters:** both parts appear in HARDWARE_MATRIX as "I2S", which is
+  their *data* path. Their control path is two more addresses on SDA 15 / SCL 14,
+  and a board profile that omits them is wrong about the bus.
+- **Status:** VERIFIED from vendor source. Each address is in HARDWARE_MATRIX
+  with its own citation; `0x18` and `0x40` are both schematic-strapped.
+
 ### Waveshare memory: 32 MB flash, 8 MB PSRAM
 
 - **Claim:** external flash is `GD25Q256EYIGR` (U3) — 256 Mbit quad SPI, i.e.
   **32 MB**. The SoC is a bare `ESP32-S3R8`, not a module.
 - **Source:** S6.
 - **Impact:** resolves D1. Twice the T-Watch's flash, on the board with 3.57×
-  the pixels. Also means **both** boards carry the `R8` marking, so the quad-vs-
-  octal PSRAM question (D12) is one question with one answer for both targets.
+  the pixels.
+- **What this does NOT settle, and an earlier version of this entry said it
+  did:** both boards carry the `R8` marking, and it is tempting to read that as
+  one question with one answer for both. It is not. `R8` is verified as octal on
+  the Waveshare — see *The R8 in ESP32-S3R8 means octal PSRAM* above — and that
+  is **D12a**. **D12b**, the T-Watch, stays `CONFLICTING`: a LilyGO document
+  describes that board's PSRAM as QSPI, and the marking implying otherwise is an
+  inference, not a reading. This paragraph used to assert the transfer, twenty-
+  five lines below the section that splits it, so the answer a reader got
+  depended on which one they landed on first — which is the exact propagation
+  failure this file exists to prevent, committed inside the change that fixed
+  three others.
 
 ### The Waveshare board has buttons; its BSP does not
 

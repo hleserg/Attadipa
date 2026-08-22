@@ -110,14 +110,14 @@ One to two steps ahead, per final §68 — not twenty.
 
 | | Subject | For |
 |---|---|---|
-| NEXT | LVGL 9.5 on QSPI AMOLED: draw-buffer strategy and realistic frame rate at 410 × 502 | M2, and the PSRAM conflict D12 |
+| NEXT | LVGL 9.5 on **octal** PSRAM AMOLED: draw-buffer strategy and realistic frame rate at 410 × 502 | M2. D12a is closed, so this is unblocked on the memory question — but T-093 first: the vendor BSP is not the existence proof it is taken for |
 | AFTER NEXT | `SettingsService` persistence on a device with no filesystem yet — what T-038 writes to, and what T-046 has to guarantee about it | T-038 |
 
 `LVGLImage.py` is off this list: T-034 answered it. Compression was examined and
 **not** taken — RLE and LZ4 both trade flash for decode time and a scratch buffer
-on a QSPI bus nobody has timed, and nine masks are 14 kB. `RGB565A8` is present
-and unused: every asset so far is an `A8` mask, because an icon with a baked
-colour cannot follow a theme.
+on a display bus nobody has timed, and nine masks are 14 kB. `RGB565A8` is
+present and unused: every asset so far is an `A8` mask, because an icon with a
+baked colour cannot follow a theme.
 
 ## Long-running operations
 
@@ -133,6 +133,48 @@ and `ninja`, SDL2 2.30.0, Node v24.19.0 / npm 11.17.0 and `ccache` on the host.
 Node matters more than it looks: `lv_font_conv` is an npm tool, and finding out
 it could not be run *after* designing the font pipeline around it would have
 been the expensive order.
+
+## The Waveshare board is on its way, and the advice about it was checked
+
+The owner was given a bring-up plan for the Waveshare board by another model and
+passed it on. Most of it agrees with what was already established here; its
+headline claim does not. Verified against datasheets, the schematic and vendor
+source, then adversarially re-checked, and written up in
+[docs/research/WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md).
+**No board has been touched. Every hardware result is `NOT EXECUTED — HARDWARE
+REQUIRED`.**
+
+- **D12 is closed for this board and split for the other.** `ESP32-S3R8` is
+  **octal** PSRAM — ESP32-S3 Series Datasheet v2.2 Table 1-1, which contains no
+  8 MB quad in-package variant at all, corroborated by five vendor examples
+  shipping `CONFIG_SPIRAM_MODE_OCT=y` and by GPIO33–37 sitting unrouted. The
+  question had been resting on recollection and now rests on a table. It does
+  **not** transfer to the T-Watch (D12b), where a LilyGO document saying QSPI is
+  still unexamined.
+- **The claim that the board's PSRAM is absent was false** and was already
+  contradicted by our own schematic reading.
+- **The main I2C bus has six devices, not four.** The ES8311 codec and the ES7210
+  microphone ADC are I2C control slaves on the same wire; both were recorded here
+  as "I2S", which is their data path. All six addresses are now in the matrix,
+  each cited — three datasheet-fixed, two schematic-strapped, one
+  driver-source-only, and one (`0x6A` vs `0x6B` on the IMU) in conflict between
+  datasheet revisions, where the revision Waveshare's own wiki links is the one
+  that disagrees.
+- **The vendor BSP is not the existence proof it is taken for.** Its PSRAM
+  draw-buffer configuration is dead code; what ships is one ~80 KiB partial
+  buffer in internal SRAM. T-093.
+- **Its `esp_lcd_sh8601` fork drops an error check**, so a failed frame transfer
+  reports success. T-092.
+- **Two questions went to the owner**: [A9](docs/research/OPEN_QUESTIONS.md) —
+  does the day theme keep its near-white page on an emissive panel, where the
+  rendered face draws an estimated 4.2× to 13.9× the night theme; and A10 — what
+  Attadipa does about static content, where the controller has no pixel-shift
+  command, its Auto Current Limit defaults to off, and no driver in the ecosystem
+  writes it.
+- Corrected while here: the Waveshare peripheral table regained the two columns
+  the T-Watch table has, the reuse ledger pointed at the wrong upstream, and D3
+  asked for the pinout of an expansion connector that does not exist — `J3` is
+  the display FPC. The rest is T-090.
 
 ## Owner decisions of 2026-08-22, recorded and not yet started
 
@@ -262,7 +304,7 @@ needs the owner, and one needs a ruler.
 | D15 | **The T-Watch panel's physical diagonal.** LilyGoLib's spec tables say 1.3" for the S3 and the S3 Plus by name; the schematic's LCD sheet says `QT154C2408` / `LCD_1.54-TOUCH`, and that vendor's sibling part `QT154H2201` is published as 1.54", 240×240, ST7789V — so the part number decodes. 240 × 240 is not in doubt; 261 dpi against 220 is. The code holds 1.3" as the **conservative** reading, not the confident one ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md#display-diagonal--conflicting)) |
 | A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Attadipa Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
 | H8 | The T-Watch vendor document calls ALDO1 unused; the schematic drives the `+3V3` rail from it. If the schematic is right, `+3V3` is switchable and carries five parts |
-| D12 | PSRAM documented as quad; the `R8` part marking is understood to mean octal. Affects both boards, and blocks the LVGL buffer decision |
+| ~~D12~~ → **D12b** | ~~PSRAM documented as quad; the `R8` marking is understood to mean octal~~ **Checked and split.** Table 1-1 of the ESP32-S3 datasheet has no 8 MB quad in-package part, so `R8` is octal. Closed for the Waveshare (D12a). Still open for the **T-Watch**, where a LilyGO document says QSPI and has not been read against that table |
 
 ## Assumptions in force
 

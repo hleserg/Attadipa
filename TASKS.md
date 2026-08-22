@@ -1966,3 +1966,84 @@ Recommended next action:
   published schematics — then the schematics were **read** rather than cited,
   which corrected two rows and produced two documented conflicts with the vendor
   documents.
+
+### T-090 · The corrections the Waveshare verification pass turned up
+
+- **Priority:** P2 — none of these blocks anything today, and every one of them
+  is a wrong fact sitting in a document another agent will read as true.
+- **Dependencies:** none. Each is a small correcting commit.
+- **Goal:** close out the defects listed in
+  [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §7 that are ours
+  rather than the external advice's. **Five of the seven** are already done on
+  the branch that filed this task — the peripheral table's missing columns, the
+  reuse ledger's wrong upstream, D3's mis-stated connector, the false promise in
+  VERIFIED_FACTS §1, and the D12 split propagated to all three of the places it
+  had been left out of. **Two remain:**
+  - [`docs/upstream/research-integration.md:180-181`](docs/upstream/research-integration.md)
+    says "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
+    ~10 µA light-sleep floor on the workaround "must not be deselected on a
+    module rather than a bare chip". [HARDWARE_MATRIX.md:301](docs/research/HARDWARE_MATRIX.md)
+    records the Waveshare SoC as a **bare chip, not a module**, VERIFIED from the
+    schematic. One of the two is wrong, the figure is carried forward into
+    [HIL_PLANS.md:64-67](docs/testing/HIL_PLANS.md) as VENDOR-STATED, and the
+    sleep-current plan depends on which.
+  - The part-ownership table at
+    [ARCHITECTURE.md:396-414](docs/architecture/ARCHITECTURE.md) has no flash or
+    PSRAM row for the Waveshare where the T-Watch table has both. An omission,
+    not a claim — but CLAUDE.md says every part on the board gets a seat.
+- **Not in scope:** D13's rail assignments. That needs the board.
+
+### T-091 · Two more addresses on the Waveshare I2C bus, and a board profile that knows it
+
+- **Priority:** P2 — it is wrong today and it is cheap.
+- **Dependencies:** T-090 is unrelated; this one waits on nothing.
+- **Goal:** the ES8311 codec and the ES7210 microphone ADC are I2C control slaves
+  on the main bus, which the vendor BSP demonstrates by handing all three parts
+  one `i2c_master_bus` handle. The board profile and any future bus-collision
+  check must carry six addresses, not four. Recorded in
+  [VERIFIED_FACTS.md](docs/research/VERIFIED_FACTS.md) and
+  [HARDWARE_MATRIX.md](docs/research/HARDWARE_MATRIX.md); nothing in `platform/`
+  models an I2C bus yet, so this is a note against whoever writes that first.
+- **Carry the trap with it:** SensorLib's `QMI8658_L_SLAVE_ADDRESS` is `0x6B`
+  where `L` means the SA0 *pin level*, and Waveshare's `QMI8658_ADDRESS_HIGH` is
+  also `0x6B` where `HIGH` means the *numeric value*. The two vendor demos look
+  like they disagree and do not. Any Attadipa wrapper that re-exports either name
+  hands the next reader the same trap.
+
+### T-092 · Do not depend on Waveshare's `esp_lcd_sh8601` fork
+
+- **Priority:** P2 — it decides part of T6 with evidence rather than preference.
+- **Dependencies:** feeds open question T6.
+- **Goal:** `waveshare/esp_lcd_sh8601` is a two-line fork of
+  `espressif/esp_lcd_sh8601` — its own files carry Espressif's SPDX headers. One
+  line is inert. The other, at `:280`, calls `tx_color(...)` bare where upstream
+  wraps it in `ESP_RETURN_ON_ERROR`, inside `panel_sh8601_draw_bitmap`, which
+  then returns `ESP_OK` unconditionally: **a failed frame transfer is reported as
+  success.** Present in 1.0.2, which the published demo pins, and in 2.0.0.
+  Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named
+  `esp_lcd_co5300` — QSPI, accepting a custom init table — under the same
+  Apache-2.0. Take the pin map and the init table; depend on upstream.
+- **Evidence:** [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §3.3.
+
+### T-093 · The LVGL draw-buffer ADR has no vendor existence proof to lean on
+
+- **Priority:** P1 — it was about to be written on a false premise.
+- **Dependencies:** the arithmetic is done; the numbers that matter need hardware
+  (§6 rows 9 and 10).
+- **Goal:** it is widely assumed that the vendor BSP proves PSRAM-backed LVGL
+  works at 410 × 502. It does not. `bsp_display_start()` sets
+  `.buff_spiram = true` and it is **dead code** —
+  `bsp_display_start_with_config()` reads only `cfg->lvgl_port_cfg`, and the live
+  allocation in `bsp_display_lcd_init()` is `410 × 100 px` ≈ 80 KiB with
+  `.buff_dma = false` and `.buff_spiram` guarded by `CONFIG_BSP_DISPLAY_LVGL_PSRAM`,
+  a symbol that appears **zero times** in the BSP's Kconfig. So the vendor ships
+  one partial buffer in internal SRAM. If anything that points away from PSRAM.
+- **The hardware constraint to carry in:** on the ESP32-S3
+  `SOC_PSRAM_DMA_CAPABLE` is 0, so a draw buffer in PSRAM can never also be
+  DMA-capable.
+- **The arithmetic, which reproduces independently:** 410 × 502 = 205,820 px; one
+  RGB565 frame is 411,640 B = **402.0 KiB**, 78.5 % of the 512 KB internal SRAM
+  before ESP-IDF, the QSPI driver and BLE exist. Double-buffered internally is
+  arithmetically impossible; double-buffered in 8 MB of PSRAM is 9.8 % of it.
+  Capacity is not the constraint — internal SRAM, PSRAM bandwidth and cache
+  coherency are, and only the board can measure the last two.
