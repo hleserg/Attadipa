@@ -143,10 +143,16 @@ and twelve tasks, T-072 to T-083. **Nothing is implemented.** Recorded here
 because a fact that lives only in a chat log does not exist.
 
 - **The companion is any node, not only ours** — vanilla MeshCore over BLE or
-  LAN, Meshtastic alongside or instead, several providers at once with a local
-  radio, and telemetry as a request/response feed. It fits
+  LAN, several providers at once with a local radio, and telemetry as a
+  request/response feed. It fits
   [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape; what it needs is
-  the protocol facts, which are `UNKNOWN` (T-072, T-073, T-074).
+  the protocol facts, which are `UNKNOWN` (T-072, T-074).
+  **Meshtastic is not one of the providers.** OD-7 asked for it alongside or
+  instead of MeshCore; [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)
+  reversed that on 2026-08-22 and T-073 is `REJECTED`, not awaiting protocol
+  facts. Its protocol definitions are GPL-3.0 with no linking exception, which
+  closed the cheap path, and the owner declined to fund an honest clean-room —
+  the licence is the evidence and the product decision is the decision.
 - **Every source of position, with the watch as the instrument** — the watch's
   receiver, a node's, a phone's, a coordinate inside somebody else's message,
   telemetry, dead reckoning, cell towers. Selection and fusion are different
@@ -208,7 +214,7 @@ of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
-| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 16-case hostile-input test passes. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
+| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 40-case hostile-input test and the watchdog filter's 17-case test pass. **Two defects fixed on 2026-08-22, both silent and both found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; and a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
