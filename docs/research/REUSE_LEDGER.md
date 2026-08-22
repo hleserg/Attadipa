@@ -149,7 +149,6 @@ anything equivalent is written by hand.
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
 | `infinition/waveshare-watch-rs` | a Rust `no_std` watch firmware for the same board — unusable directly, potentially instructive | to check |
-| Meshtastic | mature ESP32 LoRa firmware with T-Watch support; solves overlapping problems | to check |
 | ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement | to check |
 
 Rust and Arduino candidates are still worth reading. `EXTRACT ALGORITHM` and
@@ -952,3 +951,66 @@ is how `claude-agent.yml`'s existing comments arrived at their own findings
 (e.g. the `display_report` fix after smoke test A). Any future version bump
 past the resolved commit above should be re-verified the same way — read the
 source at the new commit — rather than assumed compatible from a changelog.
+
+### A Meshtastic companion client
+
+**Problem:** [OD-7](OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
+asked for Meshtastic as a companion alongside or instead of MeshCore, so that
+somebody who will not build an Attadipa node still has a mesh. That means
+speaking Meshtastic's protocol from the watch.
+
+**Projects investigated:** `meshtastic/protobufs` — the protocol definitions,
+which is the whole question, since a client is generated from them — and
+`meshtastic/firmware` as the reference for how they are used.
+
+**Useful implementation:** the `.proto` definitions themselves. There is no
+partial way to use them: a client that speaks the protocol is generated from
+those files or is a clean-room reimplementation of them.
+
+**License:** **GPL-3.0**, read from `protobufs/LICENSE` in the protocol
+repository itself (submodule `aca181b` under firmware `68bfe015e`) — the full
+text, with **no linking exception**. Corroborated by `packages/ts/package.json`
+(`"license": "GPLV3"`) and `packages/rust/Cargo.toml` (`license-file =
+"LICENSE"`). No `.proto` file carries an SPDX identifier of its own.
+
+The hypothesis worth checking was that protocol definitions might be licensed
+separately from the firmware, as some projects do. They are in a separate
+repository — and under the same licence.
+
+**Strengths:** a large installed base, and the only other ESP32 LoRa mesh with
+comparable reach. Answering OD-7 with it would have cost nothing in hardware.
+
+**Weaknesses:** generating from those `.proto` files and linking the result into
+Attadipa would make an MIT firmware a derivative work under GPL-3.0. The rule in
+this file — read it, learn from it, copy nothing — applies to protocol
+definitions exactly as to C++.
+
+**Decision:** `REJECT`.
+
+**Reason:** two, and they are not the same one.
+
+*The licence* closed the cheap path. That is a fact about the sources and it is
+not a judgement.
+
+*The owner* then closed the expensive one
+([OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
+2026-08-22): a genuine clean-room from published documentation, by somebody who
+has not read the `.proto` files, is months of work and is done honestly or not
+at all — and MeshCore is MIT, which is the half of OD-7's need that a licence
+can answer. How much work a MeshCore companion client actually is stays open:
+T-072 is unfinished and §1 of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) is `UNKNOWN`
+on every row. The rejection above does not depend on that number.
+
+Recording both matters. If Meshtastic's protocol licensing ever changes, the
+licence half of this is answered and only the product decision needs revisiting.
+
+**Source revision:** `meshtastic/protobufs` submodule `aca181b`, under
+`meshtastic/firmware` `68bfe015e`, read 2026-08-21.
+
+**Attadipa integration:** none. MeshCore remains the one companion protocol a
+client may lawfully be written for, under ADR-0008's provider list. No such
+client exists yet.
+
+**Tests required:** none — nothing is taken.
+

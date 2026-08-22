@@ -101,6 +101,21 @@ It finishes by setting exactly one of `ai-review:pass` or `ai-review:blocking`,
 and it is asked to say plainly when it found nothing. A reviewer that always
 finds something is noise, and noise is how a review stops being read.
 
+**When it cannot run, neither label is set and it says so on the pull request.**
+That note is the only signal that `main`'s second protection is absent for a
+commit, so it reads the action's own execution log and quotes the result record —
+`is_error`, the subtype, the turn count, the cost. It used to offer two candidate
+causes instead, and on 2026-08-22 the real cause was a third: the review had run,
+returned `is_error: false`, and been cut off at turn 50 by a 40-turn ceiling. The
+note also carries the head SHA in its HTML marker, because matching on the marker
+alone posted it once per pull request *ever* — so a stale note from an old commit
+sat there while every push after it failed in silence.
+
+A pull request that reaches `main` carrying `<!-- attadipa-review-did-not-run -->`
+and no `ai-review:*` label has been merged on ordinary CI and a person's reading.
+That is a legitimate route — it is the only route for a change to
+`.github/workflows/claude-*.yml` — but it is a decision, not a default.
+
 ## Automatic CI repair
 
 Only on a `claude/*` branch of this repository, only with an open pull request

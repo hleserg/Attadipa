@@ -1151,22 +1151,14 @@ stale silently. The protocol is
 - **Hardware required:** no. Confirming it against a real vanilla node later is a
   separate task and would be the first honest `OBSERVED` in this area.
 
-### T-073 · Meshtastic as a companion — the licence is the gate
-- **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
-- **Dependencies:** none, but pointless before T-072 establishes the shape a
-  companion client takes here
-- **Goal:** answer one question before any other: **are Meshtastic's protocol
-  definitions licensed separately from its GPL-3.0 firmware?** Then, only if the
-  answer permits, §2 of the research file.
-- **Acceptance:** the licence answer cited from the `protobufs` repository's own
-  `LICENSE` file, not inferred from the firmware's. If it does not permit a
-  client, the deliverable is a `BLOCKED:` with options, not a client written
-  carefully.
-- **Hardware required:** no
-
 ### T-074 · More than one mesh provider at once
 - **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
 - **Dependencies:** T-072
+- **Note, 2026-08-22:** T-073 was rejected ([OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)),
+  so this loses its second *concrete* provider. The task stands: write it against
+  MeshCore plus a hypothetical second. A list of one is not a design flaw, and
+  inventing a provider to populate a list would be worse than reasoning about the
+  shape honestly.
 - **Goal:** extend [ADR-0008](docs/adr/0008-mesh-service-providers.md) §3 from two
   providers to a list. What `availability(MeshMessaging)` means when two are up
   and one is degraded; deduplicating a message that arrived twice over different
@@ -1447,6 +1439,42 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-073 · Meshtastic as a companion — **REJECTED**, owner decision 2026-08-22
+- **Outcome:** not supported. [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
+  from [#41](https://github.com/hleserg/Attadipa/issues/41).
+- **Why:** the licence gate closed — `meshtastic/protobufs` is GPL-3.0 in its own
+  repository with no linking exception, so generating from those `.proto` files
+  and linking them would make an MIT firmware a derivative work. That made the
+  cheap path impossible; the *decision* is that the feature is not worth the
+  expensive one. A real clean-room is months and is done honestly or not at all.
+- **What still answers the need:** MeshCore, MIT. OD-7 asked for a companion for
+  people who will not build our node, and MeshCore is the remaining candidate
+  whose licence permits one. **T-072 is still open** — §1 of
+  [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  is `UNKNOWN` on every row — so how much work that client is remains unknown.
+  The rejection here does not depend on that number.
+- **If this is ever revisited:** the licence question is answered and recorded.
+  Only the product decision would need to change.
+
+<details>
+<summary>Original scope, kept for the record</summary>
+
+### T-073 · Meshtastic as a companion — the licence is the gate
+- **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
+- **Dependencies:** none, but pointless before T-072 establishes the shape a
+  companion client takes here
+- **Goal:** answer one question before any other: **are Meshtastic's protocol
+  definitions licensed separately from its GPL-3.0 firmware?** Then, only if the
+  answer permits, §2 of the research file.
+- **Acceptance:** the licence answer cited from the `protobufs` repository's own
+  `LICENSE` file, not inferred from the firmware's. If it does not permit a
+  client, the deliverable is a `BLOCKED:` with options, not a client written
+  carefully.
+- **Hardware required:** no
+
+</details>
+
 
 ### T-009 · Design tokens in code — **DONE** 2026-08-22
 - `ui/` is the code half of [DESIGN_SYSTEM](docs/ui/DESIGN_SYSTEM.md): a `Dp`
