@@ -827,8 +827,12 @@ facts that change what may be written are here.
 - **Source:** S11, same extraction.
 - **Impact:** the factory flash image contains **commercially licensed
   third-party audio under an all-rights-reserved grant**, on top of Waveshare's
-  own proprietary binary. The existing rule that the dump stays off the
-  repository already covered it; this gives it a second and sharper reason,
+  own proprietary binary. Keeping the dump off the repository was until now a
+  convention rather than a written rule — no prior change has committed a vendor
+  binary and none had needed to say why — and review on
+  [#80](https://github.com/hleserg/Attadipa/pull/80) was right that "the
+  existing rule" cited a document that did not exist. **It is a rule as of this
+  record**, and this is the second and sharper reason for it,
   because republishing the dump would redistribute somebody else's licensed
   audio. The extracted files and the rendered PNGs are **not committed** either.
   What is committed is the extractor and the measurements.

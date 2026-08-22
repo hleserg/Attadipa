@@ -202,9 +202,15 @@ Levitate by Ryefield
 
 So the factory image contains **commercially licensed music under an
 all-rights-reserved grant to a third party**, alongside Waveshare's own
-proprietary binary. The existing rule — keep the flash dump off the repository —
-already covered this, but it now has a second and sharper reason: republishing
-that dump would redistribute somebody else's licensed audio. **The extracted
+proprietary binary. Keeping the flash dump off the repository had been a
+convention and not a written rule — review on
+[#80](https://github.com/hleserg/Attadipa/pull/80) checked `CLAUDE.md`,
+`docs/research/` and `docs/adr/` and found it stated nowhere, which was correct.
+**It is written down now, here and in
+[VERIFIED_FACTS](VERIFIED_FACTS.md):** the dump does not go in the repository.
+This licence finding is the second and sharper reason for it, on top of
+Waveshare's own copyright: republishing that dump would redistribute somebody
+else's licensed audio. **The extracted
 files are not committed either**, and neither are the rendered PNGs. What is
 committed is the extractor and the measurements.
 
