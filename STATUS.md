@@ -517,6 +517,83 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 ## Recently completed
 
+- **The movement and altitude baselines measured arrival time, not measurement
+  time — and accepted a `NoFix` sample's retained coordinate as a new one.**
+  [#26](https://github.com/hleserg/Attadipa/issues/26), the T-062 finding
+  restated in TASKS.md: `TrustEvaluator::observe`
+  (`core/src/trust.cpp`) stamped `previous_position_at_` and
+  `previous_altitude_at_` from `now` rather than
+  `observation.observed_at`, and advanced either baseline for any observation
+  carrying a coordinate regardless of `PositionValidity`. On the board's own
+  receiver the two timestamps coincide, so this never showed there; a fix
+  relayed by an Attadipa node over a link that queues and retries can be
+  measured ten seconds apart and arrive one millisecond apart, reading an
+  ordinary walk as a `PositionJump`, and a receiver that reports `NoFix` while
+  still holding the last coordinate on the wire pulled the baseline timestamp
+  forward without the wearer moving, so the next real fix was divided by a
+  far shorter interval than actually passed. Both baselines now advance only
+  on a `Valid` or `Degraded` observation whose `observed_at` is not older
+  than what is already stored; an equal timestamp is safe (elapsed time
+  reads as zero, no division), and an out-of-order one is evaluated for its
+  own trust reasons but not adopted as the new baseline, so it cannot corrupt
+  the interval the next legitimate sample is measured against. Six regression
+  tests added to `tests/test_trust.cpp`; reverting the fix turns all six red.
+  Host suite clean under GCC and Clang with `-Werror -Wshadow -Wconversion
+  -Wsign-conversion -Wold-style-cast` and under ASan+UBSan with
+  `-fno-sanitize-recover=all`. Simulator build `NOT EXECUTED` in this
+  environment — no SDL2 dev package and no permission to install one — but
+  the change does not touch UI or simulator code.
+  **[PR #71](https://github.com/hleserg/Attadipa/pull/71) review found the fix
+  itself opened a new hole: nothing bounded `observed_at` against `now`, so a
+  single observation dated arbitrarily far in the *future* was `in_order` (future
+  is never less than past), became the baseline unchallenged, implied a
+  near-zero speed on arrival (the interval is enormous), and then froze the
+  baseline forever — every genuine sample afterward was "older" than the
+  poisoned one and never re-armed `PositionJump`/`ImplausibleAltitudeRate`.
+  Closed by bounding `observed_at` against `now` with a 50 ms forward-skew
+  tolerance (`TrustPolicy::observed_at_forward_skew`, `core/include/attadipa/
+  core/trust.h`) — not zero, because the two are not read atomically even for
+  a purely local fix, but small enough (2 750 mm of maskable displacement at
+  the 55 000 mm/s implausible-speed ceiling) to matter to nothing else in the
+  policy. A future-dated sample is rejected the same way an out-of-order one
+  already was — evaluated for its own trust reasons, never adopted as the
+  baseline — and now also raises `ClockDisagreement`, reusing the existing
+  reason rather than adding a second one for the same condition. Regression
+  test `test_a_future_dated_observation_is_rejected_without_freezing_the_
+  baseline` walks the full poisoning sequence the review named: a genuine
+  baseline, the future-dated sample, a real jump measured against the
+  *untouched* original baseline (would be missed if the baseline had frozen),
+  and one more ordinary fix afterward (proves the detector keeps working, not
+  just survives one more call). Confirmed red against the pre-fix code.
+  GCC+Clang, `-Werror` strict-warnings and ASan+UBSan all clean.
+  **The second review found that fix had broken something else in the same
+  place, and worse than the defect: the code did not do what its own comments
+  said.** `jumped`, `moved_at_rest` and `climbed_absurd` were computed *inside*
+  `if (usable_for_rate && in_order)` — the same condition that gates the
+  baseline write — so an out-of-order or future-dated sample was neither adopted
+  **nor checked**, while both the header comment and the pull request promised
+  it was "still evaluated for its own trust reasons, never adopted". Only the
+  second half existed. That made the refusal worse than useless against the case
+  it exists for: a sample could report the wrist ~500 km from a wrist the
+  accelerometer says never moved and raise nothing, while `remember()` still
+  stored it as `last_trusted_position()`. **Detecting and adopting are now two
+  decisions**: detect against whatever baseline stands, adopt only in order. A
+  backward interval needs no guard — `elapsed()` saturates it to zero and the
+  existing `dt.value > 0` test skips it. Three regression tests, all three
+  confirmed red against the pre-fix code, and all three use
+  `MotionEvidence{true, false}` — **every earlier test passed
+  `MotionEvidence{}`, motion unknown, which can never raise
+  `MotionDisagreement` whatever the code does, which is why the suite could not
+  see this.** Each also proves the baseline was still not adopted, so the freeze
+  fix survives the detector fix. **A limit stated rather than tested around:**
+  altitude has no interval-free detector, so every altitude check is a rate and
+  a sample dated far enough ahead defeats it arithmetically — the claimed
+  interval grows with the lie. What the split recovers there is the sample dated
+  *slightly* ahead, past the 50 ms tolerance but not past plausibility. Host
+  suite 24/24; GCC `-Werror` strict-warnings with ASan+UBSan clean; Clang
+  strict-warnings clean, **its sanitizer runtime is not installed in this
+  environment so that half is `NOT EXECUTED` here** and runs in CI.
+
 - **A4 is closed, not answered.** [#55](https://github.com/hleserg/Attadipa/issues/55)
   asked which regulatory region governs the radio, concretely — the owner's own
   MeshCore node already transmits 158 mW at 868.731 MHz and its legality here

@@ -342,6 +342,16 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
         clock_disagrees = seconds_between(*observation.receiver_time, *device_time) >
                           policy.clock_disagreement_s;
     }
+
+    // A monotonic measurement instant claimed to be after the instant we are
+    // processing it is not jitter, it is a clock — or an attacker — that does
+    // not add up, and is exactly as suspect as one claimed to be implausibly
+    // old (below). Computed once here, shared by both rate blocks, because it
+    // is a property of the observation, not of either baseline.
+    const bool observed_in_future =
+        elapsed(now, observation.observed_at) > policy.observed_at_forward_skew;
+    clock_disagrees = clock_disagrees || observed_in_future;
+
     set(engine_, TrustReason::ClockDisagreement, clock_disagrees, now);
 
     // --- physics, which needs the previous fix --------------------------------
@@ -349,25 +359,82 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     // Each interval is taken from the timestamp paired with the value it is
     // being compared against, and is read before anything is overwritten.
     //
-    // Both halves of that sentence are bugs this code has had. Reading the
+    // Three bugs this code has had, in the order they were found. Reading the
     // interval after updating the timestamp made every dt zero and switched
     // both rate detectors silently off. Sharing one timestamp between them made
     // a fix dropout look like a teleport: no-fix observations kept advancing it
     // while the last known position stood still, so the first fix after a
-    // minute under a bridge was divided by one second instead of sixty.
+    // minute under a bridge was divided by one second instead of sixty. And
+    // measuring the interval from `now` — when the observation was *processed*
+    // — rather than `observation.observed_at` — when it was *measured* — read
+    // arrival delay as travel time: a fix relayed over a link that queues and
+    // retries could be measured ten seconds apart and arrive one millisecond
+    // apart, which is an ordinary walk reported as a teleport.
     //
-    // Neither is visible to a test of a single observation, which is why the
-    // replay fixtures walk several epochs and why one of them walks through a
-    // dropout.
+    // Measurement time only settles half of it: a receiver that has lost its
+    // fix can still retain the last coordinate in the position field while
+    // reporting `NoFix`, and an out-of-order relay can deliver an
+    // `observed_at` older than the one already accepted. Neither is a sample
+    // this baseline may advance on — the first because it is not a new
+    // position, the second because it would make the *next* legitimate sample
+    // divide by an inflated interval and hide a real jump. Both are still
+    // evaluated for their own trust reasons; only the baseline they would seed
+    // for the following observation is refused.
+    //
+    // Trusting measurement time unconditionally opens a fourth door of the
+    // same shape, and it is worse than the third: an `observed_at` claimed to
+    // be *after* `now` (`observed_in_future`, above) is in_order by the check
+    // below — future is never less than past — so nothing stopped it from
+    // becoming the baseline. Once it did, its own implied speed rounded to
+    // nothing (the interval is enormous), and every genuine sample afterward
+    // was "older" than the poisoned baseline and was rejected the same way,
+    // forever — no path back short of reset(). `observed_in_future` closes
+    // that door the same way the reorder case is closed: refused as a
+    // baseline, still evaluated on its own, never adopted.
+    //
+    // None of this is visible to a test of a single observation, which is why
+    // the replay fixtures walk several epochs and why some of them walk
+    // through a dropout, a reorder, or a poisoning attempt.
     bool jumped         = false;
     bool moved_at_rest  = false;
     bool climbed_absurd = false;
 
-    if (observation.position.has_value() && in_range(*observation.position)) {
-        const Millis dt = have_previous_ ? elapsed(previous_position_at_, now) : Millis{0};
+    // Only a fix good enough to navigate by may seed or advance a rate
+    // baseline. `NoFix` and `Stale` are excluded even when they carry a
+    // coordinate, because that coordinate is retained state, not a new
+    // measurement.
+    const bool usable_for_rate =
+        validity == PositionValidity::Valid || validity == PositionValidity::Degraded;
 
-        if (have_previous_) {
-            const std::uint32_t moved = distance_mm(*observation.position, previous_position_);
+    if (observation.position.has_value() && in_range(*observation.position)) {
+        const bool in_order = !observed_in_future &&
+            (!have_previous_ || observation.observed_at >= previous_position_at_);
+
+        // DETECTING AND ADOPTING ARE TWO DECISIONS, NOT ONE.
+        //
+        // They were one, and it was wrong in the direction that matters. Both
+        // sat inside `usable_for_rate && in_order`, so a sample that arrived
+        // out of order, or claimed to be measured in the future, skipped the
+        // detectors entirely — it was neither adopted NOR checked. That made
+        // the refusal above worse than useless against the case it exists for:
+        // a hostile sample could report the wrist five hundred kilometres from
+        // a wrist the accelerometer says never moved, and raise nothing, while
+        // `remember()` below still stored it as the last trusted position.
+        //
+        // The comment on `observed_in_future` promised the opposite, and so did
+        // the pull request that introduced it — "still evaluated for its own
+        // trust reasons, never adopted as the baseline". Only the second half
+        // was implemented. Found by review on #71, twice, before it merged.
+        //
+        // So: detect against whatever baseline currently stands, whether or not
+        // this sample is fit to replace it; adopt only in order. A backward dt
+        // needs no guard of its own — `elapsed()` saturates `to <= from` to
+        // zero and the `dt.value > 0` test below already skips it, so an
+        // out-of-order sample yields no rate rather than a fabricated one.
+        if (usable_for_rate && have_previous_) {
+            const Millis dt = elapsed(previous_position_at_, observation.observed_at);
+            const std::uint32_t moved =
+                distance_mm(*observation.position, previous_position_);
 
             if (dt.value > 0) {
                 // Millimetres per second without forming a product that could
@@ -381,12 +448,17 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
             // The canonical detector, and the reason the BMA423 is named in
             // ADR-0011: a still wrist is genuinely still, so a position that
             // walks away from a stationary device is evidence in a way it would
-            // not be on a device that cannot tell.
-            moved_at_rest = motion.known && !motion.moving && moved > policy.jump_while_still_mm;
+            // not be on a device that cannot tell. It needs no interval at all,
+            // which is exactly why gating it on `in_order` cost the most.
+            moved_at_rest =
+                motion.known && !motion.moving && moved > policy.jump_while_still_mm;
         }
-        previous_position_    = *observation.position;
-        previous_position_at_ = now;
-        have_previous_        = true;
+
+        if (usable_for_rate && in_order) {
+            previous_position_    = *observation.position;
+            previous_position_at_ = observation.observed_at;
+            have_previous_        = true;
+        }
 
         latest_position_      = *observation.position;
         latest_position_at_   = now;
@@ -394,20 +466,29 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     }
 
     if (observation.altitude_msl_mm.has_value()) {
-        const Millis dt =
-            have_previous_altitude_ ? elapsed(previous_altitude_at_, now) : Millis{0};
-        if (have_previous_altitude_ && dt.value > 0) {
-            std::int64_t delta =
-                static_cast<std::int64_t>(*observation.altitude_msl_mm) - previous_altitude_mm_;
-            if (delta < 0) {
-                delta = -delta;
+        const bool in_order = !observed_in_future &&
+            (!have_previous_altitude_ || observation.observed_at >= previous_altitude_at_);
+
+        // Same split, same reason — see the position block above.
+        if (usable_for_rate && have_previous_altitude_) {
+            const Millis dt = elapsed(previous_altitude_at_, observation.observed_at);
+            if (dt.value > 0) {
+                std::int64_t delta = static_cast<std::int64_t>(*observation.altitude_msl_mm) -
+                                      previous_altitude_mm_;
+                if (delta < 0) {
+                    delta = -delta;
+                }
+                const std::uint64_t rate =
+                    (static_cast<std::uint64_t>(delta) * 1000ULL) / dt.value;
+                climbed_absurd = rate > policy.implausible_altitude_rate_mm_s;
             }
-            const std::uint64_t rate = (static_cast<std::uint64_t>(delta) * 1000ULL) / dt.value;
-            climbed_absurd           = rate > policy.implausible_altitude_rate_mm_s;
         }
-        previous_altitude_mm_   = *observation.altitude_msl_mm;
-        previous_altitude_at_   = now;
-        have_previous_altitude_ = true;
+
+        if (usable_for_rate && in_order) {
+            previous_altitude_mm_   = *observation.altitude_msl_mm;
+            previous_altitude_at_   = observation.observed_at;
+            have_previous_altitude_ = true;
+        }
     }
 
     set(engine_, TrustReason::PositionJump, jumped, now);
