@@ -1062,6 +1062,89 @@ the two that actually conflicted.
 
 ---
 
+## OD-16 — A10: the display wakes on raise, button or touch; the raise gesture reads the accelerometer only
+
+**Decided:** 2026-08-22, on [issue #53](https://github.com/hleserg/Attadipa/issues/53).
+
+**As stated:** *"the display is off by default and comes on for a reason —
+wrist raise, a button, or a finger on the glass. Ideally all three."*
+
+**What was asked.** Issue #53 laid out six options for what Attadipa does about
+static content on the AMOLED — pixel shift, a black-ground always-on face, ACL,
+a brightness cap, or doing nothing — and asked the owner to pick among them.
+
+**What was answered.** A stronger position than any of the six: attack the duty
+cycle rather than the symptom. A screen that is off by default and lights only
+on wrist raise, a button press or a touch is rare-and-brief rather than
+static-and-dimmed, so it needs none of the six to be *chosen* — options **2**
+(screen timeout) and **4** (an always-on face, if one ever exists, constrained
+to a black ground with sparse elements, explicitly not the day theme) follow
+from it; **1** (do nothing further) holds for ACL specifically, because
+enabling `55h` on the strength of a datasheet sentence, with neither its visual
+cost nor its electrical saving measured on this panel, is exactly the kind of
+estimate-read-as-measurement CLAUDE.md forbids. Steps 7 and 8 of the bring-up
+checklist in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §5 measure both before
+ACL is revisited.
+
+**The raise gesture is accelerometer-only, on both boards, and that is a design
+constraint, not an implementation preference.** The T-Watch's BMA423 has **no
+gyroscope** ([HARDWARE_MATRIX.md:30, :86](HARDWARE_MATRIX.md)); the Waveshare's
+QMI8658 does. A raise gesture built on gyro data would therefore be a feature
+that exists on one board and silently does not on the other — precisely what
+`core/` and `apps/` are not allowed to know, per this file's architecture
+paragraph. Built on the accelerometer's gravity vector alone — the same
+technique watches have always used for raise-to-wake, because the accelerometer
+is the half of an IMU cheap enough to leave running — it is one implementation
+and both boards answer yes. The gyroscope stays available to applications that
+ask for it explicitly (it is real hardware, on one board, and the capability
+registry already has a seat for that), but no *display-wake* logic may depend
+on it existing.
+
+**The worry the answer came with, checked against the schematic and settled in
+the feature's favour.** Whether a raise gesture forces the SoC to poll the IMU
+over I2C with the screen off — turning a low-power feature into a moderate-power
+one — turns on whether the QMI8658's interrupt reaches a wake-capable GPIO, and
+`HARDWARE_MATRIX.md:318` recorded no interrupt line at all. Re-reading the
+schematic directly, cross-checked against two independently-known-true facts on
+the same sheet (the FT3168 touch interrupt on GPIO 38, the native USB pins on
+GPIO 19/20) and independently re-verified by a second pass: **INT1 (package pin
+4) is wired to ESP32-S3 GPIO 21**, inside the SoC's RTC-IO range (`0`–`21` on
+the ESP32-S3, per ESP-IDF's `esp_sleep_enable_ext0/1_wakeup()` documentation),
+so it is a valid deep-sleep wake source. INT2 (pin 9) is wired only to a test
+point and does not reach the SoC — the same shape as the T-Watch's BMA423 INT2,
+already recorded as bonded out but not routed. The T-Watch's own BMA423 INT1
+sits on GPIO 14, inside the identical range on the identical SoC family, so the
+wake path is the same shape on both boards, not just the same capability name.
+Full derivation: [WAVESHARE_ARRIVAL.md §3.2a](WAVESHARE_ARRIVAL.md).
+
+**What stays `UNKNOWN`, deliberately.** The electrical configuration of INT1 —
+push-pull or open-drain, active level — is a QMI8658C register field, not a
+schematic fact, and is filed as [OPEN_QUESTIONS H16](OPEN_QUESTIONS.md). Every
+current, latency and battery-life number for wrist-raise wake is `ESTIMATED` at
+best until it runs on a board — `NOT EXECUTED — HARDWARE REQUIRED`. Whether the
+button GPIOs and touch INT line share the wake budget cleanly with this one is
+also unmeasured.
+
+**What it obliges:**
+
+1. Display-off-by-default with wake on raise, button and touch is the product
+   answer to A10, replacing "which of six mitigations" as the live question.
+2. A raise-gesture implementation reads the accelerometer channel only, on
+   both boards, through `Capability::MotionSensing` or its wake-source
+   equivalent — never a gyroscope, and never a board check.
+3. [HARDWARE_MATRIX.md:318](HARDWARE_MATRIX.md), [OPEN_QUESTIONS.md H5 and
+   H16](OPEN_QUESTIONS.md), and the new task filed for this feature
+   ([TASKS.md T-089](../../TASKS.md)) carry this forward; none of it repeats
+   the extraction gap the schematic re-read just closed.
+
+**What it does not do.** It does not implement the wake-source logic, the
+always-on face, or ACL — those remain design and, for ACL, a measurement not
+yet taken. It does not resolve H16, H8 (whether the IMU's rail survives SoC
+sleep) or the button GPIO assignment (D5), all of which the implementation
+still needs.
+
+---
+
 ## Still with the owner
 
 Nothing here answers A1–A3, A5 or the compass question. Those remain in

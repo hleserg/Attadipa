@@ -196,10 +196,16 @@ REQUIRED`.**
   reports success. T-092.
 - **Two questions went to the owner**: [A9](docs/research/OPEN_QUESTIONS.md) —
   does the day theme keep its near-white page on an emissive panel, where the
-  rendered face draws an estimated 4.2× to 13.9× the night theme; and A10 — what
-  Attadipa does about static content, where the controller has no pixel-shift
-  command, its Auto Current Limit defaults to off, and no driver in the ecosystem
-  writes it.
+  rendered face draws an estimated 4.2× to 13.9× the night theme, still open;
+  and **A10 is answered** — [issue #53](https://github.com/hleserg/Attadipa/issues/53),
+  recorded as [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a10-the-display-wakes-on-raise-button-or-touch-the-raise-gesture-reads-the-accelerometer-only):
+  the display is off by default and wakes on wrist raise, a button or touch,
+  attacking the duty cycle rather than mitigating a lit static frame. The
+  worry the answer came with — whether a raise gesture forces I2C polling with
+  the SoC awake — is settled in the feature's favour: a schematic re-read
+  traces the Waveshare QMI8658's INT1 to ESP32-S3 GPIO 21, inside the SoC's
+  RTC-IO wake range, the same shape as the T-Watch's already-`VERIFIED` BMA423
+  INT1 on GPIO 14. Filed as **T-089**.
 - Corrected while here: the Waveshare peripheral table regained the two columns
   the T-Watch table has, the reuse ledger pointed at the wrong upstream, and D3
   asked for the pinout of an expansion connector that does not exist — `J3` is
@@ -531,6 +537,38 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   not VERIFIED.
 
 ## Recently completed
+
+- **A10 answered, and the schematic re-read that came with it closed an
+  extraction gap rather than confirming one.** [Issue #53](https://github.com/hleserg/Attadipa/issues/53):
+  the owner's answer — display off by default, wakes on raise, button or
+  touch — is recorded as
+  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a10-the-display-wakes-on-raise-button-or-touch-the-raise-gesture-reads-the-accelerometer-only).
+  The raise gesture is fixed as accelerometer-only on both boards: the
+  T-Watch's BMA423 has no gyroscope, so a gyro-based gesture would be a
+  capability that silently differs by board, which `core/` and `apps/` may
+  never see. The owner's own worry — that an unrouted IMU interrupt would
+  force I2C polling with the SoC held awake — was checked against the
+  Waveshare schematic rather than assumed either way:
+  `HARDWARE_MATRIX.md:318` recorded no interrupt line for the QMI8658 at all,
+  which was an extraction gap, not a finding of absence. Re-read directly
+  with coordinate-level PDF extraction, cross-checked against two
+  already-`VERIFIED` facts on the same sheet (the FT3168 touch interrupt on
+  GPIO 38, the native USB pins on GPIO 19/20) and independently re-verified by
+  a second pass: **INT1 is wired to ESP32-S3 GPIO 21**, inside the SoC's
+  RTC-IO range (`0`–`21`), so `esp_sleep_enable_ext0/1_wakeup()` can arm it —
+  the same shape as the T-Watch's BMA423 INT1, already `VERIFIED` on GPIO 14.
+  INT2 reaches only a test point on the Waveshare, matching the T-Watch's INT2
+  being bonded out but not routed. Full derivation:
+  [WAVESHARE_ARRIVAL.md §3.2a](docs/research/WAVESHARE_ARRIVAL.md). What
+  stays open: INT1's electrical polarity (`CTRL1`, a register field, not a
+  schematic fact — filed as
+  [OPEN_QUESTIONS H16](docs/research/OPEN_QUESTIONS.md)), and every power or
+  latency number, which is `ESTIMATED` at best until measured on a board.
+  Implementation filed as **T-089** rather than attempted here — the display
+  power model (`PowerState`, T-045), the shared-interrupt design already used
+  by the T-Watch's own board support, and the button GPIO assignment (D5,
+  still unresolved) all need deciding first, and none of that follows from a
+  routing fact alone.
 
 - **The movement and altitude baselines measured arrival time, not measurement
   time — and accepted a `NoFix` sample's retained coordinate as a new one.**
