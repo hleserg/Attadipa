@@ -41,5 +41,17 @@ __pycache__/
 *.tar.gz
 *.tgz
 
+# Pages fetched from vendor and distributor sites while researching a part.
+# Same failure as the archives above and it happened a second time: a scraped
+# Adafruit page reached `main` in #98 through `git add -A` from the repository
+# root. What belongs in the tree is the *reading* of a source in
+# docs/research/, identified by URL and revision — never the source itself,
+# which is somebody else's copyrighted page. Only the two site files at
+# docs/404.html and docs/index.html are tracked HTML; anything at the root is
+# a stray.
+/*.html
+/*.htm
+/*.pdf
+
 # Private notes — not for publication
 EASTER_EGGS.md
