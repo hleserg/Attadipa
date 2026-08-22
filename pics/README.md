@@ -38,12 +38,12 @@ black box on any non-black page or launcher background. The owner said yes on
 [issue #57](https://github.com/hleserg/Attadipa/issues/57) (2026-08-22), and
 both files were re-exported with an alpha channel: the area outside the
 rounded square is now transparent, the pixels inside it are unchanged. See
-OD-12 in [`../docs/research/OWNER_DECISIONS.md`](../docs/research/OWNER_DECISIONS.md).
+OD-15 in [`../docs/research/OWNER_DECISIONS.md`](../docs/research/OWNER_DECISIONS.md).
 
 **A7 — the inks were not the canonical palette.** The art sampled deeper and
 redder than Attadipa Orange `#FF8A40` and lighter and greener than Ink Olive
 `#2F3A2E`. The owner resolved this in favour of the canonical palette (final
 §42) — the values already in use across the design system and the firmware —
 on the same issue. The sampled hex values are retired; the resolution and the
-sampled values that lost are recorded in OD-12 rather than kept here beside
+sampled values that lost are recorded in OD-15 rather than kept here beside
 the canon they disagree with.

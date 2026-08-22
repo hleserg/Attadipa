@@ -740,71 +740,6 @@ bearing question and the default answer is **no**.
 validation — contrast and glyph coverage as an installation gate) and T-083 (the
 shipping font: no box characters in any build, which is a defect today rather
 than a feature). T-034's asset pipeline is amended before it starts.
-
----
-
-## OD-12 — A7 and A8: the canonical palette wins, and the icon may lose its black corners
-
-**Decided:** 2026-08-22, on [issue #57](https://github.com/hleserg/Attadipa/issues/57).
-
-**As stated:**
-
-> *"@claude A7 побеждает то что ты сделал уже последним. Не надо переделывать и
-> перепроверять. A8 буду очень благодарен если ты сам уберешь фон с картинок
-> где надо. Уверен ты справишься"*
-
-**In English:** for A7, what wins is whatever was already done last — no need
-to redo it or re-verify it. For A8: yes, please remove the background from the
-images where it needs it.
-
-**A7 — which orange, which olive.** "What was already done last" is the
-canonical palette: every colour in the design system and the firmware already
-draws from final §42 (`docs/ui/DESIGN_SYSTEM.md`), and nothing in the codebase
-had been changed to the sampled brand-art values. So **§42 wins**: Attadipa
-Orange `#FF8A40`, Ink Olive `#2F3A2E`, and the rest of the canonical table
-stand unmodified. Per the rule the question itself stated — the loser's values
-must leave the repository rather than sit beside the winner — the sampled
-values that [`pics/README.md`](../../pics/README.md) recorded (`#E16439`…
-`#EC552A` for the wordmark and wings, `#595E3A`…`#666A46` for the head and
-tagline) are removed from that file and kept only here, as the record of what
-lost and why. The contrast arithmetic in `DESIGN_SYSTEM.md` §3.2 and
-`tests/test_ui_tokens.cpp` needed no change, because it was already computed
-against §42.
-
-**A8 — transparent corners.** `pics/Ikon.png` and `pics/Favicon.png` were RGB
-with no alpha channel, so the area outside the rounded square was opaque
-`#000000`. Both were re-exported with an alpha channel: every near-black pixel
-connected to the image border (RGB ≤ 50 per channel, flood-filled from the
-edges) was made transparent; every pixel inside the rounded square is
-byte-identical to before. Checked before re-exporting that no near-black pixel
-in either file sits *inside* the mark disconnected from the border — there is
-none, so the flood fill could not have eaten a real dark detail in the
-artwork. New hashes are in `pics/README.md`. `AttadipaBanner.png` is untouched:
-it is full-bleed, so the black-corner problem does not apply to it, and it was
-out of scope for A8.
-
-**What it obliges:** nothing further. Both questions were mechanical once
-answered, and neither reopens a design decision that anything else depends on.
-
-**What it does not do:** it does not touch `AttadipaBanner.png`, the
-typeface question, or the other colour roles in the sampled-versus-canonical
-table (glow, hills/leaves, background) — those were already "close" or
-"between the two" in the original comparison and the owner's answer was about
-the two that actually conflicted.
-
----
-
-## Still with the owner
-
-Nothing here answers A1–A3, A5 or the compass question. Those remain in
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
-
-OD-7 to OD-10 add three of their own, and they are the kind that cannot be
-answered from a datasheet: whether Meshtastic's protocol definitions are licensed
-separately from its firmware, which cellular module the node will carry, and
-which tower database may lawfully be shipped in a product. The first is research
-and is filed; the last two are the owner's.
-
 ## OD-12 — Meshtastic is not supported, and the reason is not the licence
 
 > **One premise in the rationale below has expired and the record is left
@@ -1072,4 +1007,69 @@ just not with a country.
 **Status:** documentation only. No code exists yet that ADR-0006 governs, so
 there is nothing to change in `core/`; this record is the fence for whoever
 writes `SettingsService` next.
+
+
+---
+
+## OD-15 — A7 and A8: the canonical palette wins, and the icon may lose its black corners
+
+**Decided:** 2026-08-22, on [issue #57](https://github.com/hleserg/Attadipa/issues/57).
+
+**As stated:**
+
+> *"@claude A7 побеждает то что ты сделал уже последним. Не надо переделывать и
+> перепроверять. A8 буду очень благодарен если ты сам уберешь фон с картинок
+> где надо. Уверен ты справишься"*
+
+**In English:** for A7, what wins is whatever was already done last — no need
+to redo it or re-verify it. For A8: yes, please remove the background from the
+images where it needs it.
+
+**A7 — which orange, which olive.** "What was already done last" is the
+canonical palette: every colour in the design system and the firmware already
+draws from final §42 (`docs/ui/DESIGN_SYSTEM.md`), and nothing in the codebase
+had been changed to the sampled brand-art values. So **§42 wins**: Attadipa
+Orange `#FF8A40`, Ink Olive `#2F3A2E`, and the rest of the canonical table
+stand unmodified. Per the rule the question itself stated — the loser's values
+must leave the repository rather than sit beside the winner — the sampled
+values that [`pics/README.md`](../../pics/README.md) recorded (`#E16439`…
+`#EC552A` for the wordmark and wings, `#595E3A`…`#666A46` for the head and
+tagline) are removed from that file and kept only here, as the record of what
+lost and why. The contrast arithmetic in `DESIGN_SYSTEM.md` §3.2 and
+`tests/test_ui_tokens.cpp` needed no change, because it was already computed
+against §42.
+
+**A8 — transparent corners.** `pics/Ikon.png` and `pics/Favicon.png` were RGB
+with no alpha channel, so the area outside the rounded square was opaque
+`#000000`. Both were re-exported with an alpha channel: every near-black pixel
+connected to the image border (RGB ≤ 50 per channel, flood-filled from the
+edges) was made transparent; every pixel inside the rounded square is
+byte-identical to before. Checked before re-exporting that no near-black pixel
+in either file sits *inside* the mark disconnected from the border — there is
+none, so the flood fill could not have eaten a real dark detail in the
+artwork. New hashes are in `pics/README.md`. `AttadipaBanner.png` is untouched:
+it is full-bleed, so the black-corner problem does not apply to it, and it was
+out of scope for A8.
+
+**What it obliges:** nothing further. Both questions were mechanical once
+answered, and neither reopens a design decision that anything else depends on.
+
+**What it does not do:** it does not touch `AttadipaBanner.png`, the
+typeface question, or the other colour roles in the sampled-versus-canonical
+table (glow, hills/leaves, background) — those were already "close" or
+"between the two" in the original comparison and the owner's answer was about
+the two that actually conflicted.
+
+---
+
+## Still with the owner
+
+Nothing here answers A1–A3, A5 or the compass question. Those remain in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+
+OD-7 to OD-10 add three of their own, and they are the kind that cannot be
+answered from a datasheet: whether Meshtastic's protocol definitions are licensed
+separately from its firmware, which cellular module the node will carry, and
+which tower database may lawfully be shipped in a product. The first is research
+and is filed; the last two are the owner's.
 

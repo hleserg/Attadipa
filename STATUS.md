@@ -55,7 +55,7 @@ thing a review by eye does not find. Both are tabulated in
 [DESIGN_SYSTEM §3.2](docs/ui/DESIGN_SYSTEM.md) and pinned by tests. The colours
 are the owner's; the published brand art's sampled values disagreed and were
 resolved in favour of these on 2026-08-22
-([OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-12).
+([OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15).
 
 ## Next ready
 
@@ -477,7 +477,7 @@ needs a ruler.
 | ~~D12~~ → **D12b** | ~~PSRAM documented as quad; the `R8` marking is understood to mean octal~~ **Checked and split.** Table 1-1 of the ESP32-S3 datasheet has no 8 MB quad in-package part, so `R8` is octal. Closed for the Waveshare (D12a). Still open for the **T-Watch**, where a LilyGO document says QSPI and has not been read against that table |
 
 The brand-art-versus-§42 palette conflict once recorded here as A7 is
-resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-12.
+resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 ## Assumptions in force
 
