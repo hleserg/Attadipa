@@ -25,12 +25,49 @@ write-capable agent do something?**
 2. **The action's own check.** `anthropics/claude-code-action@v1` performs the
    same check independently, and `allowed_non_write_users` is left empty so
    there is no bypass list to get onto.
-3. **No bots.** `allowed_bots` is empty, which means no bot may trigger the
-   action at all. On a public repository `'*'` would let any installed GitHub
-   App drive a write-capable agent with a prompt it controls. The workflow also
-   refuses bot actors itself, because the loop it prevents — Claude comments,
-   the comment mentions `@claude`, Claude runs — costs money until somebody
-   notices.
+3. **One named bot, and it is this repository's own dispatcher.** On a public
+   repository `'*'` would let any installed GitHub App drive a write-capable
+   agent with a prompt it controls, so the list is never a star. It is also not
+   empty, and the reason is worth reading before anybody "tightens" it back:
+   `allowed_bots: ""` meant the **hourly watchdog had never once started an
+   agent**. It hands a task over with `gh workflow run` under the built-in
+   `GITHUB_TOKEN`, so the dispatching actor is `github-actions[bot]`, and the
+   action refused it in about five seconds — before the agent read a file,
+   without writing an execution log, so the hand-over could only say `no
+   conclusion`. Four issues were written off as unexplained model deaths. The
+   list therefore names exactly that dispatcher:
+
+   | Workflow | `allowed_bots` | Why |
+   |---|---|---|
+   | `claude-agent.yml` | `github-actions` | the watchdog dispatches it as `github-actions[bot]`; nothing else in this repository holds `actions: write` |
+   | `claude-pr-review.yml` | `""` | its trigger is `pull_request`; the actor is whoever opened it — **and on an agent-authored pull request that is `claude[bot]`, which this list does not admit.** Under investigation, see below |
+   | `claude-ci-repair.yml` | `""` | its trigger is `workflow_run`; the actor is whoever pushed, today a person holding `ATTADIPA_AGENT_TOKEN`. It is one token change from the same failure |
+
+   **The reviewer's own list is not settled.** `claude-pr-review.yml`'s `if:`
+   deliberately lets `claude[bot]` through — its comment says a blanket bot
+   guard "skipped the review on exactly the pull requests this workflow exists
+   to review: the agent's own" — and then the step hands the action an empty
+   `allowed_bots`, which is the one list that does not contain `claude`. On
+   2026-08-22 the `Review` step of run `32597016812` (pull request #95, actor
+   `claude[bot]`) lasted five seconds and wrote no execution log, and the job
+   still reported **success**, because that step carries `continue-on-error`.
+   Ruled out by evidence for that run: the three `claude-*.yml` files on its
+   branch are byte-identical to `main`, so the action's workflow-validation
+   refusal does not apply; and a human-authored review ran normally six minutes
+   later, so the credential was not spent. What remains is the actor refusal —
+   stated here as the surviving explanation, not as a read line, until the step
+   log is quoted.
+
+   `github-actions` is not a concession to outside apps: it is the actor of
+   this repository's own workflows, and no third party can present as it. It is
+   also **not** a producer grant — `.github/scripts/queue-scan.jq` still refuses
+   `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so our own
+   output still cannot enqueue a billable writer. Those are two different rules
+   and `.github/tests/watchdog-dispatch-actor-test.sh` asserts both, including
+   that the list never becomes `'*'`. The workflow also refuses bot actors
+   itself where the actor is not the dispatcher, because the loop it prevents —
+   Claude comments, the comment mentions `@claude`, Claude runs — costs money
+   until somebody notices.
 4. **No `pull_request_target`.** That trigger grants secrets to a workflow
    examining untrusted code, and it is how tokens leak. A fork's pull request
    therefore gets ordinary CI and no AI review, which is the correct trade and
@@ -231,7 +268,7 @@ as much as the first.
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
 | **Sticky review comment** — one comment edited in place, not a new one per push | `use_sticky_comment` |
-| **No bots** — nothing can trigger a run by replying to a run | `allowed_bots: ""` |
+| **Bots named, never starred** — the writer admits exactly one, `github-actions`, because that is the actor its own watchdog dispatches as, and an empty list meant the watchdog had never once started it. `'*'` would admit every installed GitHub App, and a test refuses it. The reviewer and the CI repairer still pass `""`, and for the reviewer that is an open question rather than a decision — see item 3 above | `allowed_bots`, `.github/tests/watchdog-dispatch-actor-test.sh` |
 
 The review's limit was 40 until 2026-08-22, and it was the wrong number for the
 wrong reason. On pull request #39 the reviewer read a thirty-file diff, worked
