@@ -15,7 +15,7 @@ items closed plus one the review did not list
 ## Current implementation
 
 **Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
-simulator and twenty tests, and has a font pipeline whose output has been
+simulator and twenty-four tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -507,7 +507,7 @@ hysteresis and dwell — are to be computed and shown, not chosen.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-one tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
