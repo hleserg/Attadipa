@@ -117,11 +117,19 @@ been the expensive order.
 
 ## Owner decisions of 2026-08-22, recorded and not yet started
 
-Five messages in one session, all filed as
-[OD-7 to OD-11](docs/research/OWNER_DECISIONS.md) with the research questions in
+Filed as [OD-7 to OD-13](docs/research/OWNER_DECISIONS.md), with the research
+questions in
 [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-and twelve tasks, T-072 to T-083. **Nothing is implemented.** Recorded here
-because a fact that lives only in a chat log does not exist.
+and thirteen tasks, T-072 to T-083 and T-088. **Nothing is implemented.**
+Recorded here because a fact that lives only in a chat log does not exist —
+which is also why OD-12 and OD-13 exist at all: both were answered in issue
+comments, and an answer sitting in a comment is a fact nobody downstream can
+read.
+
+Two of the seven **close** things rather than open them. OD-12 rejects
+Meshtastic and OD-13 rejects tag emulation, and in both the licence is the
+evidence while the product decision is the decision — recorded in that order, so
+that a future licence change reopens only what it actually affects.
 
 - **The companion is any node, not only ours** — vanilla MeshCore over BLE or
   LAN, several providers at once with a local radio, and telemetry as a
@@ -177,12 +185,20 @@ because a fact that lives only in a chat log does not exist.
 | A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
-| A7 | [#33](https://github.com/hleserg/Attadipa/issues/33) — **Three features asked for in conversation and absent from the specification — how big is each?** (a) is "the watch can be found by a crowd-sourced network" a requirement, and which one; (b) how long is a track; (c) how far must a reckoned path stay useful. | they compete for one antenna, one coexistence arbiter and one 940 mAh cell, so they are one question in three parts. Every sizing decision in [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is parameterised by these. T-064, T-065 and T-071 are blocked or unsized until answered |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
-None of these blocks M1. All of them block hardware work — except A7, which
-blocks three features that are not in the specification and cannot be sized
-until it is answered.
+None of these blocks M1. All of them block hardware work.
+
+**A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
+2026-08-22, recorded as
+[OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature).
+No tag emulation in any ecosystem, so **T-064 is closed** rather than unblocked;
+a track is scoped by distance from learned familiar ground on foot rather than
+by duration, which **unblocks T-065** and re-sizes it downward; saving a whole
+track on request is a second, independent feature and is filed as **T-088**; and
+T-071 is not blocked, because "get me back on foot" is the one purpose that
+survives the physics. The three numbers the recording rule needs — threshold,
+hysteresis and dwell — are to be computed and shown, not chosen.
 
 ## Build and test state
 
