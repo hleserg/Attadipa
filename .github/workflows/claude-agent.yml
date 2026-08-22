@@ -1112,6 +1112,35 @@ jobs:
             "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" "${REASON:-}" > /tmp/outcome.md
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
 
+          # A DRAFT IS NOT A HAND-OVER. The prompt tells the agent to open the
+          # pull request as a draft while it is still moving and to mark it
+          # ready when it is not -- and the second half was left to the agent
+          # remembering, which it reliably did not. On 2026-08-22 five finished
+          # pull requests (#88, #92, #94, #95, #97) sat as drafts with green CI
+          # for hours; nothing merges a draft, so six issues stayed open with
+          # their fix already written and their `Fixes #N` already in place. The
+          # owner asked why. This is why.
+          #
+          # So the step that decides the run is done marks it ready, rather than
+          # asking the model to. `--undo` is never used: a person who puts a
+          # pull request back to draft has said something, and a later run must
+          # not overrule them. Only the four "done" kinds qualify; a cut-off run
+          # (done_pr_cut) leaves the draft alone, because a draft is exactly
+          # what half-finished work should be.
+          # Two of the four "done" kinds carry a pull request this run actually
+          # moved -- done_pr (one was opened or found for the issue) and
+          # done_here (the run started from one and its head advanced). Those
+          # get marked ready. done_here_nopush pushed nothing, and done_nopr has
+          # no pull request at all, so neither has anything to promote.
+          case "$KIND" in
+            done_pr|done_here)
+              if printf '%s' "${DETAIL:-}" | grep -qE '^[0-9]+$'; then
+                gh pr ready "$DETAIL" --repo "$REPO" \
+                  && echo "::notice::marked pull request #$DETAIL ready for review" \
+                  || echo "::warning::could not mark #$DETAIL ready for review; it stays a draft and a person has to press the button"
+              fi ;;
+          esac
+
           case "$KIND" in
             done_pr|done_here|done_here_nopush|done_nopr)
               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;

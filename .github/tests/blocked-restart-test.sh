@@ -105,5 +105,39 @@ else
 fi
 
 echo
+echo "A finished run does not leave its pull request a draft"
+# THE SECOND WAY WORK STOPS SHORT OF AN ANSWER. The prompt says to open the
+# pull request as a draft while it is still moving and to mark it ready when it
+# is not, and the second half was left to the model remembering. On 2026-08-22
+# five finished pull requests -- #88, #92, #94, #95, #97 -- sat as drafts with
+# green CI for hours. Nothing merges a draft, so six issues stayed open with
+# their fix already written and their `Fixes #N` already in place, and the
+# owner had to ask why. The step that decides the run is done marks it ready
+# instead of asking the model to.
+HANDOVER="$(sed -n '/read -r KIND/,/agent:failed --add-label agent:ready/p' "$AGENT")"
+if printf '%s' "$HANDOVER" | grep -q 'gh pr ready'; then
+  ok "the hand-over step marks the pull request ready for review"
+else
+  no "the hand-over step marks the pull request ready for review" \
+     "no 'gh pr ready' in the hand-over; a finished pull request stays a draft until a person notices, and nothing merges a draft"
+fi
+
+# The other direction: promoting a half-finished pull request is worse than
+# leaving it. A cut-off run is exactly what a draft is for.
+if printf '%s' "$HANDOVER" | grep -A3 'gh pr ready' | grep -q 'done_pr_cut\|done_here_cut'; then
+  no "and it does not promote a cut-off run" \
+     "a *_cut kind reaches 'gh pr ready'; half-finished work must stay a draft"
+else
+  ok "and it does not promote a cut-off run"
+fi
+
+if printf '%s' "$HANDOVER" | grep -q 'gh pr ready.*--undo'; then
+  no "and it never puts one back to draft" \
+     "--undo would overrule a person who deliberately marked the pull request draft again"
+else
+  ok "and it never puts one back to draft"
+fi
+
+echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
