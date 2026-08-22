@@ -220,11 +220,14 @@ jobs:
                     *)
                       case "$PERMISSION" in
                         admin|maintain|write)
-                          # bash's own lowercasing rather than `tr`: tr works on
-                          # bytes, and these comments are usually in Russian.
-                          case "${COMMENT_BODY,,}" in
-                            *"@claude"*) ANSWER=mention ;;
-                          esac ;;
+                          # The same question rule 3 asks, asked the same way —
+                          # a mention inside a code span is somebody writing
+                          # about the agent, and answering it would be a bot
+                          # replying to documentation.
+                          if bash .github/scripts/intake-decision.sh \
+                               --mentions "$COMMENT_BODY"; then
+                            ANSWER=mention
+                          fi ;;
                       esac ;;
                   esac ;;
               esac

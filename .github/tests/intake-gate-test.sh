@@ -11,6 +11,11 @@
 # the GitHub API actually returned for these accounts on this repository when
 # the test was written; the network lookup lives in the workflow so that this
 # file can run anywhere, including on a laptop with no token.
+#
+# Some case texts below are single-quoted Markdown carrying backticks and @
+# signs — nothing in them is meant to expand, and inside double quotes a
+# backtick is command substitution rather than a code span.
+# shellcheck disable=SC2016
 set -uo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -199,6 +204,70 @@ check reject "an outsider whose comment mentions @claude" -- \
 check reject "claude[bot] quoting itself" -- \
       "claude[bot]" issue_comment created "" "" "" open write "chatgpt-codex-connector[bot]" \
       "I have asked @claude to look again."
+
+# TALKING ABOUT THE AGENT IS NOT ASKING FOR ONE.
+#
+# Sprung for real on 2026-08-22: a pull request comment explaining why telling
+# somebody to write "@claude" was dangerous started an agent on the pull request
+# it was written on. Every occurrence in that comment was inside a code span,
+# and the gate read all of them as requests — the same shape as the commit
+# message that closed issue #10 by quoting `Fixes #10` as an example.
+#
+# The people most likely to write the mention inside backticks are the ones
+# maintaining this pipeline, so this is not a rare case, and the cost is a
+# billable writer started by a sentence saying a billable writer should not be.
+echo
+echo "A mention inside code is somebody writing about the agent, not to it"
+
+check reject "the exact comment that sprang this, inside a code span" -- \
+      hleserg issue_comment created "" "" "" open admin "" \
+      'The old text ended "`@claude` here starts it again", and the gate does not deduplicate comments.'
+check reject "a fenced block containing the mention" -- \
+      hleserg issue_comment created "" "" "" open admin "" \
+      'Post it like this:
+
+```
+@claude do the thing
+```
+
+and it will be picked up.'
+check reject "a tilde fence" -- \
+      hleserg issue_comment created "" "" "" open admin "" \
+      '~~~
+@claude
+~~~'
+check reject "documentation prose that only quotes the trigger" -- \
+      hleserg issue_comment created "" "" "" open admin "" \
+      'To queue it deliberately, somebody with write access can comment `@claude`.'
+
+# And the other direction, which matters more: a real request must survive.
+check accept "a real ask that also happens to quote some code" -- \
+      hleserg issue_comment created "" "" "" open admin "" \
+      '@claude the bounds check in `geo.cpp` is wrong, please fix it.'
+check accept "a real ask after a fenced block" -- \
+      hleserg issue_comment created "" "" "" open admin "" \
+      'Here is the failing output:
+
+```
+error: signed integer overflow
+```
+
+@claude please fix this.'
+check accept "a real ask with an unmatched backtick somewhere in it" -- \
+      hleserg issue_comment created "" "" "" open admin "" \
+      '@claude the quoting in that shell line is wrong: it opens a ` and never closes it.'
+check accept "capitalised, outside code, still a request" -- \
+      hleserg issue_comment created "" "" "" open admin "" \
+      'Ok @Claude, go ahead — the `agent:ready` label is on it.'
+
+# The marker path reads the issue body through the same filter.
+check reject "a marker issue whose only mention is inside a fence" -- \
+      hleserg issues opened "" '<!-- attadipa-agent-task -->
+
+```
+@claude
+```
+' "" open admin
 
 echo
 echo "  $pass passed, $fail failed"
