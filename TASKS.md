@@ -166,10 +166,11 @@ stale silently. The protocol is
 - **Dependencies:** none
 - **Goal:** close, or consciously decline with reasons, each finding below.
   Every one of them was read in the source before being written here; none is a
-  report taken on trust. Four from the same audit are already fixed —
+  report taken on trust. Five from the same audit are already fixed —
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
-  evaluator) and `7e4c4f9` (the replay rig could not produce Stale) — and the
-  rule from the research prompt applies: **do not stop after the first fix.**
+  evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
+  (the movement/altitude baseline, below) — and the rule from the research
+  prompt applies: **do not stop after the first fix.**
 
 - **A state that cannot say "nobody has checked".** `GnssCapabilities`
   (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
@@ -187,14 +188,22 @@ stale silently. The protocol is
   which is the right instinct; `trust` should be `Untrusted` for the same
   reason, or the field should be optional so that "not evaluated" is sayable.
 
-- **Rates for a relayed fix are divided by the wrong interval.**
-  `TrustEvaluator::observe` sets `previous_position_at_ = now` rather than
-  `observation.observed_at`. For a receiver on the board the two are equal. For
-  a position relayed by an Attadipa node over a link that queues and retries they
-  are not, so the interval is measured from *arrival* and the implied speed is
-  overstated — the same shape as the bug `f46578c` fixed, by a different door.
-  The fix is one line and the reasoning is not: it has to say what happens when
-  observations arrive out of order, which the current code cannot express.
+- **Rates for a relayed fix were divided by the wrong interval — fixed,
+  issue #26.** `TrustEvaluator::observe` used to set `previous_position_at_
+  = now` rather than `observation.observed_at`, and to advance the baseline
+  for any observation carrying a coordinate regardless of `PositionValidity`.
+  For a receiver on the board `now` and `observed_at` are equal so this never
+  showed there; for a position relayed by an Attadipa node over a link that
+  queues and retries they are not, and the interval was measured from
+  *arrival* rather than measurement, overstating the implied speed — the same
+  shape as the bug `f46578c` fixed, by a different door. A `NoFix` sample that
+  retains the last coordinate on the wire had the same effect by pulling the
+  baseline timestamp forward without the position actually moving. Both the
+  position and altitude baselines now advance only on a `Valid` or `Degraded`
+  observation whose `observed_at` is not older than what is already stored;
+  an equal timestamp is measured as zero elapsed time and an out-of-order one
+  is evaluated but not adopted as the new baseline. Regression tests in
+  `tests/test_trust.cpp`.
 
 - **`holds()` and `reasons()` can report evidence that has expired.** Both read
   `live_`, which only `update()` prunes, and both are `const`. A caller that

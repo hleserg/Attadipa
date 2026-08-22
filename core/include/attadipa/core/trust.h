@@ -277,8 +277,9 @@ public:
 private:
     TrustEngine engine_;
 
-    // Each remembered value carries the time it was remembered, and every rate
-    // is computed against its own.
+    // Each remembered value carries the time it was *measured*
+    // (`observation.observed_at`, never `now`), and every rate is computed
+    // against its own.
     //
     // A single shared "previous epoch" looks tidier and is wrong: an
     // observation with no fix still arrives, so a minute spent under a bridge
@@ -287,6 +288,14 @@ private:
     // sixty, and a five-hundred-metre walk reads as five hundred metres per
     // second. That is a detector firing on the most ordinary event there is,
     // which trains the wearer to ignore it.
+    //
+    // Stamping it with `now` instead of `observed_at` has the same shape of
+    // failure by a different door: a position relayed over a link that queues
+    // and retries is measured seconds apart and can arrive milliseconds apart,
+    // and arrival time reads that as a teleport. Only an observation whose
+    // `PositionValidity` is `Valid` or `Degraded`, and whose `observed_at` is
+    // not older than what is already stored, may advance either baseline —
+    // see the comment in trust.cpp above the rate blocks.
     bool          have_previous_    = false;
     Position      previous_position_{};
     MonotonicTime previous_position_at_{};

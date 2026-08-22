@@ -349,44 +349,72 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     // Each interval is taken from the timestamp paired with the value it is
     // being compared against, and is read before anything is overwritten.
     //
-    // Both halves of that sentence are bugs this code has had. Reading the
+    // Three bugs this code has had, in the order they were found. Reading the
     // interval after updating the timestamp made every dt zero and switched
     // both rate detectors silently off. Sharing one timestamp between them made
     // a fix dropout look like a teleport: no-fix observations kept advancing it
     // while the last known position stood still, so the first fix after a
-    // minute under a bridge was divided by one second instead of sixty.
+    // minute under a bridge was divided by one second instead of sixty. And
+    // measuring the interval from `now` — when the observation was *processed*
+    // — rather than `observation.observed_at` — when it was *measured* — read
+    // arrival delay as travel time: a fix relayed over a link that queues and
+    // retries could be measured ten seconds apart and arrive one millisecond
+    // apart, which is an ordinary walk reported as a teleport.
     //
-    // Neither is visible to a test of a single observation, which is why the
-    // replay fixtures walk several epochs and why one of them walks through a
-    // dropout.
+    // Measurement time only settles half of it: a receiver that has lost its
+    // fix can still retain the last coordinate in the position field while
+    // reporting `NoFix`, and an out-of-order relay can deliver an
+    // `observed_at` older than the one already accepted. Neither is a sample
+    // this baseline may advance on — the first because it is not a new
+    // position, the second because it would make the *next* legitimate sample
+    // divide by an inflated interval and hide a real jump. Both are still
+    // evaluated for their own trust reasons; only the baseline they would seed
+    // for the following observation is refused.
+    //
+    // None of this is visible to a test of a single observation, which is why
+    // the replay fixtures walk several epochs and why some of them walk
+    // through a dropout or a reorder.
     bool jumped         = false;
     bool moved_at_rest  = false;
     bool climbed_absurd = false;
 
+    // Only a fix good enough to navigate by may seed or advance a rate
+    // baseline. `NoFix` and `Stale` are excluded even when they carry a
+    // coordinate, because that coordinate is retained state, not a new
+    // measurement.
+    const bool usable_for_rate =
+        validity == PositionValidity::Valid || validity == PositionValidity::Degraded;
+
     if (observation.position.has_value() && in_range(*observation.position)) {
-        const Millis dt = have_previous_ ? elapsed(previous_position_at_, now) : Millis{0};
+        const bool in_order =
+            !have_previous_ || observation.observed_at >= previous_position_at_;
 
-        if (have_previous_) {
-            const std::uint32_t moved = distance_mm(*observation.position, previous_position_);
+        if (usable_for_rate && in_order) {
+            if (have_previous_) {
+                const Millis dt = elapsed(previous_position_at_, observation.observed_at);
+                const std::uint32_t moved =
+                    distance_mm(*observation.position, previous_position_);
 
-            if (dt.value > 0) {
-                // Millimetres per second without forming a product that could
-                // overflow: moved is at most 1e9, and multiplying by 1000 keeps
-                // it inside 64 bits before the division.
-                const std::uint64_t implied =
-                    (static_cast<std::uint64_t>(moved) * 1000ULL) / dt.value;
-                jumped = implied > policy.implausible_speed_mm_s;
+                if (dt.value > 0) {
+                    // Millimetres per second without forming a product that could
+                    // overflow: moved is at most 1e9, and multiplying by 1000 keeps
+                    // it inside 64 bits before the division.
+                    const std::uint64_t implied =
+                        (static_cast<std::uint64_t>(moved) * 1000ULL) / dt.value;
+                    jumped = implied > policy.implausible_speed_mm_s;
+                }
+
+                // The canonical detector, and the reason the BMA423 is named in
+                // ADR-0011: a still wrist is genuinely still, so a position that
+                // walks away from a stationary device is evidence in a way it would
+                // not be on a device that cannot tell.
+                moved_at_rest =
+                    motion.known && !motion.moving && moved > policy.jump_while_still_mm;
             }
-
-            // The canonical detector, and the reason the BMA423 is named in
-            // ADR-0011: a still wrist is genuinely still, so a position that
-            // walks away from a stationary device is evidence in a way it would
-            // not be on a device that cannot tell.
-            moved_at_rest = motion.known && !motion.moving && moved > policy.jump_while_still_mm;
+            previous_position_    = *observation.position;
+            previous_position_at_ = observation.observed_at;
+            have_previous_        = true;
         }
-        previous_position_    = *observation.position;
-        previous_position_at_ = now;
-        have_previous_        = true;
 
         latest_position_      = *observation.position;
         latest_position_at_   = now;
@@ -394,20 +422,27 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     }
 
     if (observation.altitude_msl_mm.has_value()) {
-        const Millis dt =
-            have_previous_altitude_ ? elapsed(previous_altitude_at_, now) : Millis{0};
-        if (have_previous_altitude_ && dt.value > 0) {
-            std::int64_t delta =
-                static_cast<std::int64_t>(*observation.altitude_msl_mm) - previous_altitude_mm_;
-            if (delta < 0) {
-                delta = -delta;
+        const bool in_order =
+            !have_previous_altitude_ || observation.observed_at >= previous_altitude_at_;
+
+        if (usable_for_rate && in_order) {
+            if (have_previous_altitude_) {
+                const Millis dt = elapsed(previous_altitude_at_, observation.observed_at);
+                if (dt.value > 0) {
+                    std::int64_t delta = static_cast<std::int64_t>(*observation.altitude_msl_mm) -
+                                          previous_altitude_mm_;
+                    if (delta < 0) {
+                        delta = -delta;
+                    }
+                    const std::uint64_t rate =
+                        (static_cast<std::uint64_t>(delta) * 1000ULL) / dt.value;
+                    climbed_absurd = rate > policy.implausible_altitude_rate_mm_s;
+                }
             }
-            const std::uint64_t rate = (static_cast<std::uint64_t>(delta) * 1000ULL) / dt.value;
-            climbed_absurd           = rate > policy.implausible_altitude_rate_mm_s;
+            previous_altitude_mm_   = *observation.altitude_msl_mm;
+            previous_altitude_at_   = observation.observed_at;
+            have_previous_altitude_ = true;
         }
-        previous_altitude_mm_   = *observation.altitude_msl_mm;
-        previous_altitude_at_   = now;
-        have_previous_altitude_ = true;
     }
 
     set(engine_, TrustReason::PositionJump, jumped, now);

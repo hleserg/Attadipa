@@ -465,6 +465,32 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **The movement and altitude baselines measured arrival time, not measurement
+  time — and accepted a `NoFix` sample's retained coordinate as a new one.**
+  [#26](https://github.com/hleserg/Attadipa/issues/26), the T-062 finding
+  restated in TASKS.md: `TrustEvaluator::observe`
+  (`core/src/trust.cpp`) stamped `previous_position_at_` and
+  `previous_altitude_at_` from `now` rather than
+  `observation.observed_at`, and advanced either baseline for any observation
+  carrying a coordinate regardless of `PositionValidity`. On the board's own
+  receiver the two timestamps coincide, so this never showed there; a fix
+  relayed by an Attadipa node over a link that queues and retries can be
+  measured ten seconds apart and arrive one millisecond apart, reading an
+  ordinary walk as a `PositionJump`, and a receiver that reports `NoFix` while
+  still holding the last coordinate on the wire pulled the baseline timestamp
+  forward without the wearer moving, so the next real fix was divided by a
+  far shorter interval than actually passed. Both baselines now advance only
+  on a `Valid` or `Degraded` observation whose `observed_at` is not older
+  than what is already stored; an equal timestamp is safe (elapsed time
+  reads as zero, no division), and an out-of-order one is evaluated for its
+  own trust reasons but not adopted as the new baseline, so it cannot corrupt
+  the interval the next legitimate sample is measured against. Six regression
+  tests added to `tests/test_trust.cpp`; reverting the fix turns all six red.
+  Host suite clean under GCC and Clang with `-Werror -Wshadow -Wconversion
+  -Wsign-conversion -Wold-style-cast` and under ASan+UBSan with
+  `-fno-sanitize-recover=all`. Simulator build `NOT EXECUTED` in this
+  environment — no SDL2 dev package and no permission to install one — but
+  the change does not touch UI or simulator code.
 - **T-070 research — the watch as a tracker detector, and the honest limit is
   now sourced rather than deferred.**
   [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md), for

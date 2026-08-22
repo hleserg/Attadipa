@@ -283,6 +283,123 @@ void test_the_altitude_rate_uses_that_same_interval()
     CHECK_NO_REASON(patient.engine(), TrustReason::ImplausibleAltitudeRate);
 }
 
+// THE REGRESSION TEST for the arrival-time bug, issue #26: a position relayed
+// over a link that queues and retries is measured seconds apart and can
+// arrive milliseconds apart. `now` is the arrival time; `observed_at` is the
+// measurement. Dividing by the former reads a walk as a teleport.
+void test_relayed_fix_is_measured_not_by_arrival_time()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(500000));
+
+    // ~500 m measured ten seconds apart — 50 m/s, under the 55 m/s limit —
+    // but delivered to this evaluator one millisecond after the first fix.
+    GnssObservation relayed = good_fix(10000, kLat + 45000);
+    evaluator.observe(relayed, PositionValidity::Valid, MotionEvidence{}, {}, at(500001));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+    CHECK_STATE(evaluator.state(), TrustState::Trusted);
+}
+
+// The altitude branch shares the same baseline policy, so it shares the same
+// witness.
+void test_altitude_rate_is_measured_not_by_arrival_time()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(500000));
+
+    // 60 m climbed, measured over sixty seconds — 1 m/s, a gentle slope — but
+    // delivered one millisecond after the first sample.
+    GnssObservation risen = good_fix(60000);
+    risen.altitude_msl_mm = 150000 + 60000;
+    evaluator.observe(risen, PositionValidity::Valid, MotionEvidence{}, {}, at(500001));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::ImplausibleAltitudeRate);
+}
+
+// A receiver that has lost its fix can still hold the last coordinate in the
+// position field while reporting `NoFix`. That coordinate is retained state,
+// not a new measurement, and must not become the movement baseline: it would
+// pull the timestamp closer to the *next* valid fix and divide that fix's
+// distance by too short an interval.
+void test_retained_coordinate_no_fix_does_not_move_the_baseline()
+{
+    TrustEvaluator evaluator;
+    const MotionEvidence walking{true, true};
+    evaluator.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
+
+    // A no-fix sample that keeps last known coordinate on the wire.
+    GnssObservation retained  = good_fix(9000);
+    retained.fix_type         = FixType::NoFix;
+    retained.satellites_used  = 0;
+    evaluator.observe(retained, PositionValidity::NoFix, walking, {}, at(9000));
+
+    // ~500 m, ten seconds after the *valid* baseline at t=0: 50 m/s, under
+    // the limit. If the retained no-fix sample had become the baseline, this
+    // would be measured from t=9000 instead — one second, five hundred
+    // metres per second, and a false PositionJump.
+    evaluator.observe(good_fix(10000, kLat + 45000), PositionValidity::Valid, walking, {},
+                       at(10000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+}
+
+// The altitude equivalent: a no-fix sample still reporting the old altitude
+// must not shorten the interval the next real altitude reading is divided by.
+void test_no_fix_altitude_sample_does_not_move_the_baseline()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+    GnssObservation retained  = good_fix(9000);
+    retained.fix_type         = FixType::NoFix;
+    retained.satellites_used  = 0;
+    retained.altitude_msl_mm  = 150000;  // the same old altitude, still on the wire
+    evaluator.observe(retained, PositionValidity::NoFix, MotionEvidence{}, {}, at(9000));
+
+    // 250 m of climb over the true ten-second interval is 25 m/s, under the
+    // 30 m/s limit. Divided by the one second since the retained no-fix
+    // sample it would be 250 m/s.
+    GnssObservation risen = good_fix(10000);
+    risen.altitude_msl_mm = 150000 + 250000;
+    evaluator.observe(risen, PositionValidity::Valid, MotionEvidence{}, {}, at(10000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::ImplausibleAltitudeRate);
+}
+
+// Two observations measured at the same instant are not an error — they are
+// what "simultaneous" means — and must be handled without dividing by zero or
+// fabricating a rate.
+void test_equal_measurement_timestamps_are_handled_safely()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    evaluator.observe(good_fix(0, kLat + 100000), PositionValidity::Valid, MotionEvidence{}, {},
+                       at(0));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+    CHECK_STATE(evaluator.state(), TrustState::Trusted);
+}
+
+// An observation that reports an earlier measurement instant than the
+// baseline already accepted must not replace it. If it did, the next
+// legitimately-ordered fix would be divided by whatever tiny interval
+// separates it from the reordered sample instead of the true one.
+void test_out_of_order_observation_does_not_poison_the_baseline()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(10000), PositionValidity::Valid, MotionEvidence{}, {}, at(10000));
+
+    // Arrives late (processed at 10500) but claims to have been measured a
+    // millisecond *before* the baseline already accepted, hundreds of
+    // kilometres away.
+    GnssObservation out_of_order = good_fix(9999, kLat + 45000000);
+    evaluator.observe(out_of_order, PositionValidity::Valid, MotionEvidence{}, {}, at(10500));
+
+    // The wearer has not moved. Measured against the baseline this call must
+    // still be using — t=10000, at the original position — one millisecond
+    // later and no distance at all is unremarkable. Measured against the
+    // reordered sample it would be hundreds of kilometres in two
+    // milliseconds.
+    evaluator.observe(good_fix(10001), PositionValidity::Valid, MotionEvidence{}, {}, at(11000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+}
+
 // The canonical detector, and the one ADR-0011 names the BMA423 for. Note what
 // is being asserted: `known == false` is not evidence of stillness. A device
 // that has not asked the accelerometer knows nothing, and must not treat that
@@ -760,6 +877,12 @@ int main()
     test_the_altitude_rate_has_its_own_clock();
     test_the_same_distance_over_a_longer_interval_is_a_walk();
     test_the_altitude_rate_uses_that_same_interval();
+    test_relayed_fix_is_measured_not_by_arrival_time();
+    test_altitude_rate_is_measured_not_by_arrival_time();
+    test_retained_coordinate_no_fix_does_not_move_the_baseline();
+    test_no_fix_altitude_sample_does_not_move_the_baseline();
+    test_equal_measurement_timestamps_are_handled_safely();
+    test_out_of_order_observation_does_not_poison_the_baseline();
     test_a_still_wrist_is_evidence_and_an_unasked_one_is_not();
     test_satellites_used_cannot_exceed_satellites_in_view();
     test_receiver_time_is_compared_against_device_time();
