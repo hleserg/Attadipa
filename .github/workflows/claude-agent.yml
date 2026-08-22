@@ -276,11 +276,33 @@ jobs:
             CMP=$(gh api "repos/$REPO/compare/$REVIEWED_HEAD...$DEFAULT_BRANCH" 2>/dev/null || echo '')
             if [ -n "$CMP" ]; then
               HEAD_MOVED=$(printf '%s' "$CMP" | jq -r '.ahead_by // "unknown"')
-              FILES=$(printf '%s' "$CMP" | jq -r '[.files[]?.filename] | join(", ")' | cut -c1-800)
+              # A truncated file list is worse than a count, and the receipt
+              # published on issue #26 proved it: 86 commits of drift produced
+              # a list cut at 800 characters that ended mid-path, on the word
+              # "c". Nobody can act on that — not a person and not the agent it
+              # is written for. Past a dozen files the useful summary is HOW
+              # MANY and WHERE, because "400 files, across core/ and docs/" and
+              # "400 files, all under .github/" are different warnings and a
+              # severed list distinguishes neither.
+              NFILES=$(printf '%s' "$CMP" | jq -r '[.files[]?.filename] | length')
+              if [ "${NFILES:-0}" -le 12 ]; then
+                WHERE=$(printf '%s' "$CMP" | jq -r '[.files[]?.filename] | join(", ")')
+                CHANGED="Files changed since: $WHERE"
+              else
+                # Top-level directory of each path, deduplicated. A file at the
+                # repository root keeps its own name, which is what makes
+                # CLAUDE.md or STATUS.md visible rather than folded away.
+                WHERE=$(printf '%s' "$CMP" \
+                  | jq -r '[.files[]?.filename
+                            | split("/")
+                            | if length > 1 then .[0] + "/" else .[0] end]
+                           | unique | join(", ")' | cut -c1-400)
+                CHANGED="$NFILES files changed since, across: $WHERE"
+              fi
               if [ "$HEAD_MOVED" = "0" ]; then
                 STALENESS="reviewed_head $REVIEWED_HEAD is still the tip of $DEFAULT_BRANCH. The finding was made against current code."
               else
-                STALENESS="$DEFAULT_BRANCH is $HEAD_MOVED commit(s) ahead of the reviewed commit $REVIEWED_HEAD. Files changed since: $FILES"
+                STALENESS="$DEFAULT_BRANCH is $HEAD_MOVED commit(s) ahead of the reviewed commit $REVIEWED_HEAD. $CHANGED"
               fi
             else
               STALENESS="reviewed_head $REVIEWED_HEAD could not be compared against $DEFAULT_BRANCH — it is not a commit in this repository."
