@@ -53,8 +53,9 @@ is emphasis and the meaning lives in the icon and the word. And
 *raised* card at 4.44:1, six hundredths under the threshold, which is the kind of
 thing a review by eye does not find. Both are tabulated in
 [DESIGN_SYSTEM §3.2](docs/ui/DESIGN_SYSTEM.md) and pinned by tests. The colours
-are the owner's; open question **A7** already records that the published brand
-art disagrees with the palette text.
+are the owner's; the published brand art's sampled values disagreed and were
+resolved in favour of these on 2026-08-22
+([OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-12).
 
 ## Next ready
 
@@ -214,14 +215,16 @@ is that a result is appended rather than written over the plan.
 ## Open conflicts
 
 Recorded rather than resolved by preference. Two need a powered board, one
-needs the owner, and one needs a ruler.
+needs a ruler.
 
 | # | Conflict |
 |---|---|
 | D15 | **The T-Watch panel's physical diagonal.** LilyGoLib's spec tables say 1.3" for the S3 and the S3 Plus by name; the schematic's LCD sheet says `QT154C2408` / `LCD_1.54-TOUCH`, and that vendor's sibling part `QT154H2201` is published as 1.54", 240×240, ST7789V — so the part number decodes. 240 × 240 is not in doubt; 261 dpi against 220 is. The code holds 1.3" as the **conservative** reading, not the confident one ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md#display-diagonal--conflicting)) |
-| A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Attadipa Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
 | H8 | The T-Watch vendor document calls ALDO1 unused; the schematic drives the `+3V3` rail from it. If the schematic is right, `+3V3` is switchable and carries five parts |
 | D12 | PSRAM documented as quad; the `R8` part marking is understood to mean octal. Affects both boards, and blocks the LVGL buffer decision |
+
+The brand-art-versus-§42 palette conflict once recorded here as A7 is
+resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-12.
 
 ## Assumptions in force
 
