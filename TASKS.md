@@ -1498,6 +1498,74 @@ stale silently. The protocol is
 - **Hardware required:** no for the logic; yes for anything said about what
   continuous recording costs.
 
+### T-095 · What the day theme costs on a 400 mAh emissive board
+- **Priority:** P1 — it is a default, and a default nobody costed.
+- **Dependencies:** none to start; a meter to finish.
+- **Why now:** the received Waveshare carries **400 mAh**
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.2),
+  against the T-Watch's 940, and it is the board with the emissive panel. The
+  day theme's gamma-decoded emissive load is 13.9× the night theme's on the same
+  pixels — `ESTIMATED` from pixel values, never measured.
+- **Goal:** turn that ratio into a number with a unit. Panel current at a known
+  average picture level, day theme and night theme, same screen, meter in series
+  with the cell. Then the same for the Clock, which is the screen that is up
+  longest.
+- **Acceptance:** a measured mA figure per theme with the method written down,
+  and a runtime estimate that says plainly which of its inputs are measured and
+  which are not. If the answer is that the day theme is unaffordable as a
+  default here, say so and let the owner decide — **this task does not get to
+  change the palette**, and a recommendation dressed as a finding is worse than
+  no finding.
+- **What must not be assumed:** that a per-pixel estimate scales to a panel. It
+  ignores the driver, the regulator's efficiency curve and whatever the CO5300
+  does with its own idle modes.
+- **Hardware required:** yes, and it is on the desk. `NOT EXECUTED — HARDWARE
+  REQUIRED` until it is run.
+
+### T-096 · Decide the node link on the pads that actually exist
+- **Priority:** P2 — [ADR-0008](docs/adr/0008-mesh-service-providers.md), and it
+  becomes urgent the moment anybody solders.
+- **Dependencies:** T-072a for what the node speaks.
+- **Why now:** the Waveshare's expansion row is transcribed
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.5)
+  and it offers exactly one uncommitted channel: `RXD`/`TXD`. `IO15` and `IO14`
+  are printed as bare GPIO numbers and are the main I2C bus with six devices on
+  it.
+- **Goal:** decide, and write down, how an Attadipa node attaches to this board —
+  UART on the pad row, or I2C as a seventh device, or USB. Then say what happens
+  electrically when the node browns out or holds a line low, per option.
+- **Acceptance:** an ADR amendment or a new ADR naming the transport, with the
+  failure mode of each rejected option stated rather than implied. A decision
+  that does not say what the *watch* does when the node misbehaves is not
+  finished.
+- **What must not be assumed:** that the pad row is 5 V tolerant, or that `3V3`
+  can source a node's transmit current. Neither is established.
+- **Hardware required:** no to decide; yes to prove.
+
+### T-097 · Haptics on a board with no motor fitted
+- **Priority:** P1 — the specification asks for haptic feedback and OD-6's
+  neighbours assume it.
+- **Dependencies:** none.
+- **Why now:** on the received unit the `MOTOR` pads are bare and the coin-motor
+  footprint is empty
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.7).
+  The GPIO-18 drive circuit is present and correct, so the board can drive a
+  motor it does not have — and nothing in firmware can tell the difference.
+- **Goal:** three separate answers, in this order. (1) Does Waveshare ship a
+  motor loose in the box, and does the product listing promise one? (2) If not,
+  what does `Capability::Haptics` resolve to on this board — `Unsupported`, which
+  is terminal and must be stable at runtime, or something configured? (3) What do
+  the screens that use haptics do when the answer is `Unsupported`, given that a
+  silent no-op is the one thing a haptic cue must not be.
+- **Acceptance:** the capability's value on this board decided and justified in
+  the registry, with the reason in a comment that names this task; every caller
+  audited for what it does without haptics; and if the value is configurable,
+  the mechanism must not be an `#ifdef BOARD_*` anywhere above the BSP.
+- **What must not be assumed:** that a motor can simply be soldered on later and
+  the problem goes away. It can, and firmware still cannot detect it — which
+  makes this a configuration question, not a probing question.
+- **Hardware required:** no for the decision; yes to confirm by feel.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up

@@ -595,3 +595,99 @@ visually rather than greped:
 - which loads sit on which of the three 3.3 V rails (D13).
 
 Recorded as PARTIAL rather than left blank, so the gap is visible.
+
+---
+
+## Read off a physical Waveshare unit (S9)
+
+One `ESP32-S3-Touch-AMOLED-2.06` arrived on 2026-08-22 and was opened. Everything
+below is silkscreen, a printed label, or an empty footprint — the three things a
+photograph is actually good for. Nothing here rests on a marking that needed
+magnification the camera did not have, and the items that do need one are in
+[WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §3 as bench readings
+still to take.
+
+### The Waveshare cell is 400 mAh — less than half the T-Watch's
+
+- **Claim:** the battery is a `402728` pouch cell, **3.7 V, 400 mAh**,
+  manufactured 2026-07-11. `402728` is the geometry: 4.0 mm × 27 mm × 28 mm.
+- **Source:** S9 — printed on the cell's own label.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** `UNKNOWN` — the schematic shows the cell on `BAT1` through the AXP2101
+  charge path and states no capacity, and the vendor README does not either.
+- **Impact, and it is the largest single thing the unit told us.** The T-Watch
+  S3 Plus carries 940 mAh (S1). This board carries 400 and drives an **emissive**
+  panel, where what is drawn decides what is drawn *from*. The day theme's
+  gamma-decoded emissive load is 13.9× the night theme's on the same pixels
+  (`ESTIMATED`, [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §1). The expensive
+  theme and the small cell are on the same board. That does not by itself yield
+  a runtime — that needs a measured panel current at a known APL, which is
+  `UNKNOWN` — but it makes "which theme is default here" a power decision rather
+  than a taste one. T-095.
+
+### The ten-pad expansion row, and two of its pads are the I2C bus
+
+- **Claim:** ten plated pads along the board's bottom edge, silkscreened
+  `VBUS · GND · D+/IO20 · D-/IO19 · IO15 · IO14 · RXD · TXD · GND · 3V3`.
+- **Source:** S9 — each pad is individually labelled in silkscreen.
+- **Board revision:** as above.
+- **Impact:** `IO15` and `IO14` are printed as bare GPIO numbers and are **the
+  main I2C bus** (S6: `SDA 15, SCL 14`), carrying the AXP2101, the PCF85063ATL,
+  the FT3168, the QMI8658, the ES8311 and the ES7210. Driving them as
+  general-purpose pins takes down power management, the clock, touch and motion
+  at once. The only genuinely free channel on this row for an attached Attadipa
+  node is `RXD`/`TXD`. T-096.
+- **Not the same thing as `J3`** — the 29-pin header D3 is still open about. This
+  row is separate and is now fully known.
+
+### The IMU's board-frame axes are printed next to it
+
+- **Claim:** a silkscreened axis triad beside the IMU: **X** toward the battery
+  edge, **Y** toward the USB-C edge, **Z** drawn as ⊙ — out of the face the part
+  is mounted on, which is the face turned away from the display.
+- **Source:** S9.
+- **Board revision:** as above.
+- **Impact:** half of OPEN_QUESTIONS **H15**. The board frame is now known; how
+  the board is rotated inside the case is not, and a wrist-raise gesture needs
+  both. Cheap to finish: tilt the assembled watch through known angles and read
+  raw axes.
+
+### The vibration motor is not fitted
+
+- **Claim:** the `MOTOR` pads (`J1`) are bare — no solder, no wire, no part — and
+  the coin-motor footprint beside them is empty, on the unit received. The drive
+  circuit S6 describes (GPIO 18 → R12 → Q1 → BLDO2) is present and correct.
+- **Source:** S9.
+- **Board revision:** as above. **`OBSERVED` on one unit, not `VERIFIED` for the
+  product** — whether Waveshare ships a motor loose, whether another production
+  run populates it, and what the listing promises are three unanswered questions.
+- **Impact:** `Capability::Haptics` resolves to `Unsupported` on this unit, and
+  `Unsupported` is the terminal value in the `Availability` enum — the one that
+  must be stable at runtime and must never be offered to the user as fixable.
+  Nothing in firmware can tell an NPN driving an absent motor from one driving a
+  present motor, so this cannot be detected and must be configured. T-097.
+
+### The flash is a separate package, and it is GigaDevice
+
+- **Claim:** a GigaDevice-branded SOP-8 sits beside the SoC. The brand is legible;
+  the part number is not.
+- **Source:** S9, corroborating S6's `GD25Q256EYIGR` at `U3`.
+- **Impact:** modest but structural. Whatever is in the SoC package is **not
+  flash**, which is what an `R8` suffix means. It corroborates the octal-PSRAM
+  conclusion without re-deriving it. Capacity remains the schematic's 32 MB,
+  unconfirmed on silicon — `esptool.py flash_id` settles it.
+
+### Both microphones are populated
+
+- **Claim:** two MEMS microphones, silkscreened `MIC1` and `MIC2`, at opposite
+  ends of the board's left edge, both fitted.
+- **Source:** S9, confirming S6's "dual digital microphones" on the ES7210.
+
+### The speaker is an AAC part on wires, not a connector
+
+- **Claim:** `AAC210602A1`, lot `15771`, a metal-can micro-speaker in the back
+  cover, its red/black pair soldered to `+`/`−` pads at the board's bottom-right.
+  Impedance and rated power are not published for this part number — `UNKNOWN`.
+- **Source:** S9.
+- **Impact:** small and practical. Both the speaker and any future motor attach
+  by solder, so opening this watch twice means desoldering twice.
