@@ -30,6 +30,18 @@ void rebuild_current_screen();
 void build_clock_screen(const platform::HardwareInventory& inventory,
                         const core::CapabilityRegistry&    caps);
 
+// What the invented fuel gauge reports.
+//
+// There is no battery behind the simulator, and ADR-0011 will not let a made-up
+// number be presented as a reading — so this exists to make the *states*
+// reviewable, not the value. `percent` outside 0-100 means the gauge has no
+// answer, which draws as the unknown gauge rather than as an empty one.
+//
+// It is a flag for the same reason the theme is: charging, low and unknown had
+// never been drawn once, because 62 % was compiled in and the review matrix had
+// no way to ask for anything else.
+void set_battery(int percent, bool charging);
+
 // Whether Child Mode is on. `K` toggles it, so a reviewer can see both variants
 // without a rebuild — the same argument as the theme and the locale.
 void toggle_child_mode();

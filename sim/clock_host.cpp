@@ -1,5 +1,7 @@
 #include "clock_host.h"
 
+#include <cstdint>
+
 #include "attadipa/apps/clock_screen.h"
 #include "attadipa/ui/metrics.h"
 
@@ -10,6 +12,9 @@ namespace {
 
 bool   g_child_mode = false;
 Screen g_screen     = Screen::Clock;
+
+int  g_battery  = 62;
+bool g_charging = false;
 
 const platform::HardwareInventory* g_inventory = nullptr;
 const core::CapabilityRegistry*    g_caps      = nullptr;
@@ -25,6 +30,12 @@ void toggle_child_mode()
 void set_child_mode(bool on)
 {
     g_child_mode = on;
+}
+
+void set_battery(int percent, bool charging)
+{
+    g_battery  = percent;
+    g_charging = charging;
 }
 
 void set_screen(Screen screen)
@@ -78,12 +89,15 @@ void build_clock_screen(const platform::HardwareInventory& inventory,
 
     // Battery is a hardware fact and nobody has measured one. `BatterySense`
     // being present is not the same as having read it, so the gauge is unknown
-    // unless the part is Ready — and even then the number below is INVENTED for
-    // the simulator and is labelled as such wherever it is reported.
+    // unless the part is Ready — and even then the number is INVENTED for the
+    // simulator and is labelled as such wherever it is reported. `--battery`
+    // moves it so that the low, charging and unknown gauges can be looked at;
+    // it does not make any of them a measurement.
     model.battery_known =
-        inventory.state(platform::HardwareFeature::BatterySense) == platform::HardwareState::Ready;
-    model.battery_percent = 62;
-    model.charging        = false;
+        inventory.state(platform::HardwareFeature::BatterySense) == platform::HardwareState::Ready
+        && g_battery >= 0 && g_battery <= 100;
+    model.battery_percent = model.battery_known ? static_cast<std::uint8_t>(g_battery) : 0;
+    model.charging        = g_charging;
 
     // The status row: three capabilities, and the registry answers for each.
     //

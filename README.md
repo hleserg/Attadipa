@@ -196,6 +196,8 @@ cmake --build build-sim
 --radio <chip>    fit any of the five candidate T-Watch radios
 --node            present a paired, reachable Attadipa node
 --no-bring-up     leave every part untouched, to see the unavailable states
+--battery <n>     invented charge, 0-100, or `unknown`; INVENTED, never a reading
+--charging        draw the gauge as charging
 --screenshot <p>  write the screen to a PNG
 --frames <n>      render n frames and exit; with SDL_VIDEODRIVER=dummy, headless
 ```

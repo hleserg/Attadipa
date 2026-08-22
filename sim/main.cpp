@@ -183,6 +183,7 @@ int main(int argc, char** argv)
 
     attadipa::sim::set_theme(options.theme);
     attadipa::sim::set_child_mode(options.child_mode);
+    attadipa::sim::set_battery(options.battery, options.charging);
     attadipa::sim::set_screen(options.screen);
     // Both screens register the inventory, and the first build has to be the
     // one that does it for the screen actually selected.

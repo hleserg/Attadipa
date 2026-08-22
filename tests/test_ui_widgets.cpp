@@ -10,7 +10,6 @@
 // up an LVGL display to discover that 0 % draws as one pixel would be a test
 // nobody runs.
 
-#include <cassert>
 #include <cstdio>
 
 #include "attadipa/core/availability.h"
@@ -22,14 +21,30 @@ using attadipa::ui::widgets::is_lit;
 
 namespace {
 
+int failures = 0;
+
+// Not `assert`. A release configuration defines NDEBUG, `assert` compiles to
+// nothing, and a test whose every check has been preprocessed away still exits
+// 0 and still prints "ok" — which is worse than having no test, because CI goes
+// green either way. This one fails on its own terms.
+void check(bool condition, const char* what, int line)
+{
+    if (!condition) {
+        std::fprintf(stderr, "FAIL line %d: %s\n", line, what);
+        ++failures;
+    }
+}
+
+#define CHECK(cond) check((cond), #cond, __LINE__)
+
 void the_ends_of_the_scale_are_exact()
 {
     // The two a person actually checks. Anything else may be off by a pixel and
     // nobody will ever know; these two may not.
-    assert(battery_fill_px(0, 100) == 0);
-    assert(battery_fill_px(100, 100) == 100);
-    assert(battery_fill_px(0, 47) == 0);
-    assert(battery_fill_px(100, 47) == 47);
+    CHECK(battery_fill_px(0, 100) == 0);
+    CHECK(battery_fill_px(100, 100) == 100);
+    CHECK(battery_fill_px(0, 47) == 0);
+    CHECK(battery_fill_px(100, 47) == 47);
 }
 
 void a_charge_that_is_not_zero_never_draws_as_zero()
@@ -40,8 +55,8 @@ void a_charge_that_is_not_zero_never_draws_as_zero()
     for (int inner = 1; inner <= 120; ++inner) {
         for (int percent = 1; percent <= 100; ++percent) {
             const auto fill = battery_fill_px(static_cast<std::uint8_t>(percent), inner);
-            assert(fill >= 1);
-            assert(fill <= inner);
+            CHECK(fill >= 1);
+            CHECK(fill <= inner);
         }
     }
 }
@@ -50,11 +65,11 @@ void nothing_ever_overflows_the_box()
 {
     // A fuel gauge that has just been calibrated reports over 100. The widget
     // clamps rather than drawing a fill wider than the shell that contains it.
-    assert(battery_fill_px(101, 40) == 40);
-    assert(battery_fill_px(255, 40) == 40);
+    CHECK(battery_fill_px(101, 40) == 40);
+    CHECK(battery_fill_px(255, 40) == 40);
     // And a degenerate box is not a crash or a negative width.
-    assert(battery_fill_px(50, 0) == 0);
-    assert(battery_fill_px(50, -3) == 0);
+    CHECK(battery_fill_px(50, 0) == 0);
+    CHECK(battery_fill_px(50, -3) == 0);
 }
 
 void the_fill_is_monotonic()
@@ -65,7 +80,7 @@ void the_fill_is_monotonic()
         std::int32_t previous = 0;
         for (int percent = 0; percent <= 100; ++percent) {
             const auto fill = battery_fill_px(static_cast<std::uint8_t>(percent), inner);
-            assert(fill >= previous);
+            CHECK(fill >= previous);
             previous = fill;
         }
     }
@@ -78,13 +93,13 @@ void only_ready_lights_an_icon()
     // the previous design put the reason on the face and it read like a debug
     // line, because a capability name and an availability name joined by a
     // middle dot is one.
-    assert(is_lit(Availability::Ready));
-    assert(!is_lit(Availability::Unsupported));
-    assert(!is_lit(Availability::Unprovisioned));
-    assert(!is_lit(Availability::Unreachable));
-    assert(!is_lit(Availability::Incompatible));
-    assert(!is_lit(Availability::Failed));
-    assert(!is_lit(Availability::Off));
+    CHECK(is_lit(Availability::Ready));
+    CHECK(!is_lit(Availability::Unsupported));
+    CHECK(!is_lit(Availability::Unprovisioned));
+    CHECK(!is_lit(Availability::Unreachable));
+    CHECK(!is_lit(Availability::Incompatible));
+    CHECK(!is_lit(Availability::Failed));
+    CHECK(!is_lit(Availability::Off));
 }
 
 }  // namespace
@@ -96,6 +111,11 @@ int main()
     nothing_ever_overflows_the_box();
     the_fill_is_monotonic();
     only_ready_lights_an_icon();
+
+    if (failures != 0) {
+        std::fprintf(stderr, "ui widgets: %d failure(s)\n", failures);
+        return 1;
+    }
     std::printf("ui widgets: ok\n");
     return 0;
 }

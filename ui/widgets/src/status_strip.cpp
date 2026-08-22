@@ -32,6 +32,12 @@ lv_obj_t* plain(lv_obj_t* parent)
 // half that survives a person who cannot tell the two greys apart.
 constexpr lv_opa_t kDimOpacity = LV_OPA_60;
 
+// Frees the point array a struck line owns, when the line goes.
+void release_points(lv_event_t* e)
+{
+    lv_free(lv_event_get_user_data(e));
+}
+
 // The slash, drawn corner to corner across the glyph's box — twice.
 //
 // Once was not enough, and the reason is specific rather than aesthetic: the
@@ -53,13 +59,6 @@ void strike(lv_obj_t* over, std::int32_t box, std::int32_t width, lv_color_t col
     // picture rather than a struck-out one — the eye needs to see the glyph
     // *and* the mark, not one shape.
     const std::int32_t inset = box / 6;
-    // Static because LVGL keeps the pointer: `lv_line_set_points` does not copy.
-    // One shared array is safe precisely because every strike is the same shape
-    // in its own coordinates — the box is the icon and every icon on a row is
-    // the same size.
-    static lv_point_precise_t points[2];
-    points[0] = {inset, box - inset};
-    points[1] = {box - inset, inset};
 
     const std::int32_t weights[] = {width * 3, width};
     const lv_color_t   colours[] = {page, colour};
@@ -68,6 +67,24 @@ void strike(lv_obj_t* over, std::int32_t box, std::int32_t width, lv_color_t col
     for (int pass = 0; pass < 2; ++pass) {
         lv_obj_t* line = lv_line_create(over);
         lv_obj_remove_style_all(line);
+
+        // One array per line, owned by that line. `lv_line_set_points` keeps the
+        // pointer rather than copying, so the array has to outlive the widget,
+        // and the tempting shortcut — one `static` array, since every strike on
+        // a row is the same shape — holds only while exactly one strip is alive
+        // in the process. It is not a row-wide invariant, it is a program-wide
+        // one, and T-038's Settings screen breaks it the moment a second strip
+        // at a different icon size exists while this one is still on screen.
+        // Sixteen bytes and a delete handler cost less than that class of bug.
+        lv_point_precise_t* points =
+            static_cast<lv_point_precise_t*>(lv_malloc(2 * sizeof(lv_point_precise_t)));
+        if (points == nullptr) {
+            lv_obj_delete(line);
+            continue;
+        }
+        points[0] = {inset, box - inset};
+        points[1] = {box - inset, inset};
+        lv_obj_add_event_cb(line, release_points, LV_EVENT_DELETE, points);
         lv_line_set_points(line, points, 2);
         lv_obj_set_style_line_width(line, weights[pass], 0);
         lv_obj_set_style_line_color(line, colours[pass], 0);

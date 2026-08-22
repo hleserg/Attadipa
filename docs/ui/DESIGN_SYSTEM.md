@@ -422,6 +422,46 @@ The design this replaced put the reason on the face as `Mesh · not set up`, and
 it read like a debug line because a capability name joined to an availability
 name by a middle dot is one.
 
+### 7.4 Four gauges, and one of them is a colour the day palette will not carry
+
+The battery is a shell, a fill and a number, and it has four states rather than
+one. They exist because a percentage on its own drew the question that started
+this redesign — *"is that the battery percentage?"* — and because three of the
+four had never once been rendered while the simulator had `62 %` compiled in.
+`--battery` and `--charging` fixed that; the states are now part of the review
+matrix rather than a branch nobody has looked at.
+
+| State | The fill | The number |
+|---|---|---|
+| a charge | `TextPrimary`, proportional | `n %` |
+| at or below 20 % | `Warning`, proportional | `n %` |
+| charging | `Success`, proportional | `n %`, and the word below it |
+| no reading | a single centred bar, not an empty box | `—` |
+
+Two of those need a note.
+
+**An empty box is a claim.** A gauge with nothing in it says *flat*, and a
+person acts on that — puts the watch on charge, or does not leave the house.
+When there is no reading the box gets one centred bar instead, and the number
+becomes an em dash. The same rule makes `battery_fill_px()` return `1` rather
+than `0` for any charge above zero: 1 % of a 52-pixel gauge floors to nothing,
+and drawing nothing would be the same lie by arithmetic.
+
+**On the day theme, neither colour survives.** `Warning` is Attadipa Orange at
+2.19:1 against Warm Ivory and `Success` is Meadow Green at 2.81:1 — both below
+the 3:1 §3.1 requires of a graphic — so `legible_as_graphic()` refuses them and
+both fills fall back to ink. On the day palette a low battery is carried by the
+*length* of the bar and by the number beside it, and charging by the word
+underneath; only at night (5.08:1 and 3.96:1 against Ink Olive) does either
+state also carry a colour.
+
+This is the contrast API doing its job rather than a gap in it. The alternative
+is an orange nobody can see, on the one screen where being wrong costs a person
+their evening — and it would have shipped, because a fill that fails silently
+looks exactly like a fill that works until somebody renders it and measures.
+If low charge needs a second channel on the day theme, the honest ones are
+shape and motion; not a colour the owner's palette does not contain.
+
 ## 8. Localization is a design constraint, not a translation step
 
 Every reusable component defines wrap, max lines, ellipsis, flexible width,

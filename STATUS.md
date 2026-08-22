@@ -182,11 +182,12 @@ been the expensive order.
 
 ## Owner decisions of 2026-08-22, recorded and not yet started
 
-Six messages in one session, all filed as
+Seven messages in one session, all filed as
 [OD-7 to OD-12](docs/research/OWNER_DECISIONS.md) with the research questions in
 [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-and twelve tasks, T-072 to T-083. **Nothing is implemented.** Recorded here
-because a fact that lives only in a chat log does not exist.
+and fourteen tasks — T-072 to T-083 for the six, and T-088 and T-089 for OD-12's
+distance. **Nothing is implemented.** Recorded here because a fact that lives
+only in a chat log does not exist.
 
 - **The companion is any node, not only ours** — vanilla MeshCore over BLE or
   LAN, Meshtastic alongside or instead, several providers at once with a local
