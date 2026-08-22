@@ -98,13 +98,57 @@ attadipa_receipt() {
 #
 # KIND is one of:
 #   done_pr    DETAIL is the pull request number, no `#`
+#   done_here  DETAIL is the pull request number this comment is being posted on
 #   done_nopr  DETAIL is unused
 #   failed     DETAIL is the conclusion word from the action
+#
+# `done_pr` and `done_here` check that DETAIL is a number before saying it is
+# one. That is not defensive habit: on 2026-08-22 the caller's lookup failed on a
+# pull-request trigger and handed this function a GraphQL error document, which
+# went out verbatim as "### Done — pull request #{"data":{"repository": ...".
+# The caller is fixed; a renderer that prints whatever it is given as a pull
+# request number would let the next such bug out too.
 attadipa_outcome() {
   local kind="$1" run_url="$2" detail="${3:-}"
 
+  case "$kind" in
+    done_pr|done_here)
+      case "$detail" in
+        ""|*[!0-9]*) kind=bad_detail ;;
+      esac ;;
+  esac
+
   echo "<!-- attadipa-outcome -->"
   case "$kind" in
+    done_here)
+      echo "### Done — pushed to this pull request"
+      echo
+      echo "The work is on this branch, in #$detail itself. There is no second"
+      echo "pull request to look for: this run was started from a comment here,"
+      echo "so it pushed to the branch under review rather than opening one."
+      echo
+      echo "**Now waiting on:** CI on the new head, plus a fresh independent"
+      echo "review — the previous verdict was reached against the previous"
+      echo "commit and says nothing about this one."
+      echo
+      echo "**When it needs you:** if the review labels this \`ai-review:blocking\`"
+      echo "and the finding is a product decision rather than a defect, or if it"
+      echo "carries \`needs-owner\`. Otherwise it is merged without asking —"
+      echo "owner decision, 2026-08-21."
+      echo
+      echo "[Run log]($run_url)"
+      ;;
+    bad_detail)
+      echo "### The run finished, and the reporting could not name the result"
+      echo
+      echo "The agent ran and this step could not turn its result into a pull"
+      echo "request number, so it is refusing to print one rather than printing"
+      echo "something that is not a number. **This is a defect in the reporting,"
+      echo "not necessarily in the work** — check for an open pull request on"
+      echo "this branch before starting anything again."
+      echo
+      echo "[Run log]($run_url)"
+      ;;
     done_pr)
       echo "### Done — pull request #$detail"
       echo

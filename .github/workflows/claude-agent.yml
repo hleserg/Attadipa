@@ -842,38 +842,69 @@ jobs:
           # perfectly compliant agent produces a pull request the first query
           # cannot see. Found by review on #58 rather than in production, which
           # is the cheaper of the two places.
+          #
+          # AND THE TRIGGER IS NOT ALWAYS AN ISSUE. `@claude` on a pull request
+          # starts an agent whose $ISSUE is that pull request's number, and
+          # GraphQL's `issue(number:)` does not resolve pull requests — it
+          # returns NOT_FOUND. `gh` then exits non-zero having already written
+          # the error document to stdout, which `|| echo ""` does not undo, so
+          # $PR became the JSON. On #71 that shipped as
+          # `### Done — pull request #{"data":{"repository":{"issue":null}}...`.
+          # `issueOrPullRequest` answers for both, and a pull request that
+          # triggered its own agent is its own answer.
           # shellcheck disable=SC2016  # $owner/$repo/$number are GraphQL
           # variables bound by -F below, not shell expansions.
-          PR=$(gh api graphql -f query='
+          FOUND=$(gh api graphql -f query='
             query($owner:String!, $repo:String!, $number:Int!) {
               repository(owner:$owner, name:$repo) {
-                issue(number:$number) {
-                  closedByPullRequestsReferences(first:5, includeClosedPrs:false) {
-                    nodes { number state }
-                  }
-                  timelineItems(last:30, itemTypes:[CROSS_REFERENCED_EVENT]) {
-                    nodes {
-                      ... on CrossReferencedEvent {
-                        source { ... on PullRequest { number state } }
+                issueOrPullRequest(number:$number) {
+                  __typename
+                  ... on PullRequest { number state }
+                  ... on Issue {
+                    closedByPullRequestsReferences(first:5, includeClosedPrs:false) {
+                      nodes { number state }
+                    }
+                    timelineItems(last:30, itemTypes:[CROSS_REFERENCED_EVENT]) {
+                      nodes {
+                        ... on CrossReferencedEvent {
+                          source { ... on PullRequest { number state } }
+                        }
                       }
                     }
                   }
                 }
               }
             }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
-            --jq '.data.repository.issue as $i
-                  | ([$i.closedByPullRequestsReferences.nodes[]?
-                      | select(.state == "OPEN") | .number]
-                     + [$i.timelineItems.nodes[]?.source?
-                        | select(.state? == "OPEN") | .number])
-                  | first // ""' 2>/dev/null || echo "")
+            --jq '.data.repository.issueOrPullRequest as $i
+                  | if $i.__typename == "PullRequest"
+                    then (if $i.state == "OPEN" then "here \($i.number)" else "" end)
+                    else ([$i.closedByPullRequestsReferences.nodes[]?
+                            | select(.state == "OPEN") | .number]
+                           + [$i.timelineItems.nodes[]?.source?
+                              | select(.state? == "OPEN") | .number]
+                          | first | if . then "pr \(.)" else "" end)
+                    end' 2>/dev/null || echo "")
+
+          # Whatever the query did, only two shapes are allowed out of it. A
+          # lookup that fails is empty, never a fragment of an error document:
+          # that is the specific way the previous version reached a person.
+          WHERE=""; PR=""
+          case "$FOUND" in
+            "here "[0-9]*) WHERE="here"; PR="${FOUND#here }" ;;
+            "pr "[0-9]*)   WHERE="pr";   PR="${FOUND#pr }" ;;
+          esac
+          case "$PR" in
+            ""|*[!0-9]*) WHERE=""; PR="" ;;
+          esac
 
           # A pull request number is the whole story, so it wins over every
           # other signal — including a run whose conclusion never arrived. An
           # agent that opened a pull request and then timed out has still done
           # the work, and reporting that as a failure would send somebody
           # looking for a branch that is already there.
-          if [ -n "$PR" ]; then
+          if [ "$WHERE" = "here" ]; then
+            KIND=done_here; DETAIL="$PR"
+          elif [ -n "$PR" ]; then
             KIND=done_pr; DETAIL="$PR"
           elif [ "$CONCLUSION" = "success" ]; then
             KIND=done_nopr; DETAIL=""
@@ -898,7 +929,7 @@ jobs:
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
 
           case "$KIND" in
-            done_pr|done_nopr)
+            done_pr|done_here|done_nopr)
               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
             *)
               # agent:failed AND back to agent:ready: the label pair says both

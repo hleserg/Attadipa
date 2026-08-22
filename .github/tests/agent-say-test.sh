@@ -141,6 +141,29 @@ UNKNOWN=$(attadipa_outcome something-else "$RUN")
 says "an unrecognised state is reported as a reporting defect, not swallowed" -- \
      "$UNKNOWN" -- "unrecognised state"
 
+# A pull request that started its own agent. Reporting it as "the work is in
+# #71" when the comment is being posted ON #71 sends the reader looking for a
+# pull request that is the one they are reading.
+HERE=$(attadipa_outcome done_here "$RUN" 71)
+says "says the work landed on this pull request, not a second one" -- "$HERE" -- \
+     "pushed to this pull request" "#71" "no second"
+says "says the old review verdict does not carry over to the new head" -- \
+     "$HERE" -- "previous verdict" "says nothing about this one"
+
+# The #71 defect: the caller's lookup failed and handed this a GraphQL error
+# document, which went out as "### Done — pull request #{"data":...".
+BAD=$(attadipa_outcome done_pr "$RUN" '{"data":{"repository":{"issue":null}}}')
+says "a pull request number that is not a number is refused, not printed" -- \
+     "$BAD" -- "could not name the result"
+case "$BAD" in
+  *'{"data"'*) says "FORCED FAIL: the error document was printed" -- "" -- "x" ;;
+  *) says "and the error document itself does not reach the comment" -- "$BAD" -- \
+          "Run log" ;;
+esac
+EMPTY=$(attadipa_outcome done_here "$RUN" "")
+says "an empty detail is refused the same way" -- "$EMPTY" -- \
+     "could not name the result"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
