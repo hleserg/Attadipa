@@ -408,7 +408,24 @@ lines of code, so the rules are written here rather than in one screen's source.
 |---|---|---|
 | `Ready` | the icon, full ink | |
 | anything else that could work here | the icon, dimmed **and struck through** | A dim icon and a lit one differ only in colour, which §3.1 forbids as the sole channel — and on the day palette the two greys are 1.79:1 apart, so it would not carry the meaning even if it were allowed |
-| `Unsupported` | **nothing at all** | A capability that can never exist on this board is absent, not dead. A Waveshare with no LoRa does not need a permanently struck mesh icon to prove it — and because [ADR-0008](../adr/0008-mesh-service-providers.md) lets an attached node supply what the board lacks, that same row lights up the moment a node arrives |
+| `Unsupported` | **nothing at all** | A capability that no configuration of this device could provide is absent, not dead. Nothing is gained by carrying a permanently struck icon for a part that is not fitted and cannot be supplied — an infrared blaster on a board without an emitter, say |
+
+**And on the Clock, that third row never fires — which is the capability model
+being right rather than the rule being useless.** `MeshMessaging` and `Position`
+are both node-providable
+([ADR-0008](../adr/0008-mesh-service-providers.md)), so on a Waveshare with no
+LoRa and no GNSS they resolve to `Unprovisioned` and not to `Unsupported`: the
+board cannot do them, but *this device* can, by having a node attached. The
+remedy is different — buy and pair a node, rather than nothing can be done — and
+`Availability` distinguishes remedies, not parts. So the Waveshare's mesh and
+position icons are struck rather than missing, and they light up the moment a
+node arrives. `CompanionLink` behaves the same way for a different reason: both
+boards have BLE, so it is `Unprovisioned` until a phone is paired.
+
+An earlier draft of this table used the Waveshare as the example of the absent
+case. It was wrong in the most instructive way available: the rule is sound, the
+code implements it, and the one board everybody reaches for to illustrate it is
+the board it does not apply to. Rendering the face is what found that.
 
 **The slash is drawn twice.** A single stroke at 45° disappeared into `mesh`,
 whose own links run at 45°. The mark is now a wide stroke in the page colour

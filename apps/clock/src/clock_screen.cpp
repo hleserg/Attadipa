@@ -174,6 +174,14 @@ void build_clock(lv_obj_t* parent, const ClockModel& model, const Metrics& metri
     // "Unreachable" is not a thing a seven-year-old needs on their wrist (final
     // §58), and neither is a struck-through icon they cannot act on. The adult
     // face gets three; the child face gets a clock.
+    //
+    // All three are drawn on both boards, including the Waveshare that has
+    // neither LoRa nor GNSS. That is not an oversight: a node can supply mesh
+    // and position (ADR-0008), so the registry answers `Unprovisioned` — buy and
+    // pair one — rather than `Unsupported`, and `Unprovisioned` is a struck icon
+    // rather than an absent one. The widget's absent case is for a capability no
+    // configuration of this device could ever provide, which none of these
+    // three is. DESIGN_SYSTEM §7.3.
     if (!child) {
         const ui::widgets::StatusIcon icons[] = {
             {assets::Icon::Mesh, model.mesh},
