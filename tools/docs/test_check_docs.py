@@ -3,8 +3,8 @@
 
 A checker that passes everything is worse than no checker, because it reads as
 evidence. Each case below breaks exactly one thing and asserts the checker
-notices — and the last two assert it does *not* fire where firing would be wrong,
-which is the half that would otherwise land a job that fails on `main`.
+notices — and the cases that assert it does *not* fire are the half that would
+otherwise land a job failing on `main`.
 
 Run: python3 tools/docs/test_check_docs.py
 """
@@ -122,6 +122,93 @@ def main() -> int:
         case(
             "a lettered task ID is matched",
             len(check_docs.check_task_ids(root)) == 1,
+        )
+
+        write(root, "TASKS.md", "## NEXT\n\n### T-001 · One\n- **Priority:** P1.\n- **Goal:** a thing.\n")
+        case(
+            "a live task with a field list is not reported",
+            not check_docs.check_task_bodies(root),
+        )
+
+        write(root, "TASKS.md", "## NEXT\n\n### T-001 · One\n\n### T-002 · Two\n- **Priority:** P1.\n")
+        problems = check_docs.check_task_bodies(root)
+        case(
+            "a live task with no field list is reported",
+            len(problems) == 1 and "T-001" in problems[0] and "Priority" in problems[0],
+        )
+
+        write(
+            root,
+            "TASKS.md",
+            "## NEXT\n\n### T-001 · One — **DONE** 2026-08-22\n- What came of it.\n",
+        )
+        problems = check_docs.check_task_bodies(root)
+        case(
+            "finished work outside ## DONE is reported",
+            len(problems) == 1 and "T-001" in problems[0] and "## NEXT" in problems[0],
+        )
+
+        write(
+            root,
+            "TASKS.md",
+            "## DONE\n\n### T-001 · One — **DONE** 2026-08-22\n- What came of it.\n",
+        )
+        case(
+            "a record under ## DONE needs no field list",
+            not check_docs.check_task_bodies(root),
+        )
+
+        write(
+            root,
+            "TASKS.md",
+            "## BLOCKED\n\n### T-010 · Bring-up\n```\nBLOCKED:\nReason:  No board.\n```\n",
+        )
+        case(
+            "a blocked task is bodied by its blocker, not a priority",
+            not check_docs.check_task_bodies(root),
+        )
+
+        write(root, "TASKS.md", "## BLOCKED\n\n### T-010 · Bring-up\n- Some prose.\n")
+        problems = check_docs.check_task_bodies(root)
+        case(
+            "a blocked task with no blocker is reported, and the message says so",
+            len(problems) == 1 and "BLOCKED: block" in problems[0],
+        )
+
+        write(root, "TASKS.md", "## NEXT\n\n### T-001 · One\n```\n- **Priority:** P1.\n```\n")
+        problems = check_docs.check_task_bodies(root)
+        case(
+            "a priority inside a fence is an example, not a body",
+            len(problems) == 1 and "T-001" in problems[0],
+        )
+
+        # The defect this pull request shipped, seen from the other side: the
+        # span check catches the cause, this catches the effect.
+        write(
+            root,
+            "TASKS.md",
+            "## NOW\n\n### T-100 · One\n- **Priority:** P1, and see `some\n"
+            "### T-102 · Two — **DONE** 2026-08-22\n- **Goal:** a thing.\n",
+        )
+        problems = check_docs.check_task_bodies(root)
+        case(
+            "a spliced heading is caught from at least one side",
+            len(problems) == 1 and "T-102" in problems[0],
+        )
+
+        # Drift with no splice behind it: a record left in a live section, which
+        # is what this check actually found in TASKS.md and no syntactic check
+        # would ever see.
+        write(
+            root,
+            "TASKS.md",
+            "## READY\n\n### T-084 · Research — **DONE** 2026-08-22\n- What came of it.\n"
+            "\n## DONE\n\n### T-102 · Other — **DONE** 2026-08-22\n- And of this.\n",
+        )
+        problems = check_docs.check_task_bodies(root)
+        case(
+            "a record left in a live section is reported, the one under DONE is not",
+            len(problems) == 1 and "T-084" in problems[0],
         )
 
     if FAILURES:
