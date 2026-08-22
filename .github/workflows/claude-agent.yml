@@ -568,8 +568,27 @@ jobs:
           # issue itself, and exits without clearing agent:working. The task is
           # then stuck working forever, the watchdog "unsticks" it two hours
           # later, and a finished task is re-queued on a loop.
+          #
+          # agent:blocked is in the list for a fourth reason, and it is the one
+          # that is easy to get wrong in the other direction. The `Hand over`
+          # step below re-reads the labels at the end and, if it finds
+          # agent:blocked, concludes the AGENT blocked itself during this run,
+          # writes no outcome comment, and exits. It cannot tell that apart
+          # from a label that was already on the issue before the run started.
+          # There is exactly one way an issue carrying agent:blocked can reach
+          # this step at all -- a person commenting `@claude`, because the
+          # comment event skips the claimed-state check by design, while
+          # queue-scan.jq and the intake gate both refuse a labelled or
+          # dispatched start on anything carrying it. So the person deliberately
+          # restarting a blocked task got a run that did the work and then
+          # reported nothing, every time -- which is the route the watchdog's
+          # own escalation comment leads with. Clearing it here makes the check
+          # below mean what it says: agent:blocked at hand-over time is a label
+          # THIS run applied. needs-owner is deliberately left alone -- a
+          # decision only the owner can make is not undone by starting a run.
+          # Found in review of #85; asserted by blocked-restart-test.sh.
           gh issue edit "$ISSUE" --repo "$REPO" "${args[@]}" || true
-          for stale in agent:ready agent:review agent:failed; do
+          for stale in agent:ready agent:review agent:failed agent:blocked; do
             gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$stale" || true
           done
 
@@ -1059,6 +1078,14 @@ jobs:
           # agent:working beside agent:blocked makes the issue invisible to the
           # watchdog while looking finished to a person, which is the worst of
           # both. Smoke test A ended in exactly that state.
+          #
+          # "The agent labels the issue itself" is only true because the claim
+          # step above strips agent:blocked at the START of the run. Without
+          # that, this test also fired on an issue that arrived already blocked
+          # -- exactly what the watchdog's bounded-retry escalation produces,
+          # and what a person restarting it with `@claude` then walked into.
+          # The two halves live in different files and each is correct alone;
+          # `.github/tests/blocked-restart-test.sh` asserts the pair.
           case ",$LABELS," in
             *,agent:blocked,*)
               gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working || true

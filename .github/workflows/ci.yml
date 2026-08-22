@@ -309,6 +309,15 @@ jobs:
       - name: A workflow that admits a bot names it in allowed_bots
         run: bash .github/tests/bot-actor-test.sh
 
+      # A task the bounded retry escalated carries agent:blocked, and the one
+      # restart route that needs no label surgery -- a `@claude` comment -- ran
+      # to completion and then reported NOTHING, because Hand over reads
+      # agent:blocked as "the agent blocked itself this run" and exits. Each
+      # half correct alone, in two different files, which is why it survived
+      # both files' own tests and was found in review.
+      - name: Restarting a blocked task produces an outcome
+        run: bash .github/tests/blocked-restart-test.sh
+
       # The staleness line is the only thing telling an agent that the finding
       # it is about to implement was made against code that has since moved.
       # Its previous version truncated at 800 characters and, on issue #26,
