@@ -236,32 +236,6 @@ stale silently. The protocol is
 - **Tests:** none. It produces a research record.
 - **Hardware required:** no.
 
-### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
-- **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
-  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
-  answering A7 on [#33](https://github.com/hleserg/Attadipa/issues/33): *"Не
-  делаем. Ни Apple, ни какую-либо ещё."*
-- **Why, and the order matters.** The research found the feature expensive
-  before it found it unwanted, and the decision is the second one. Two of the
-  three ecosystems are shut before the radio is involved — Google needs
-  registration, an email allowlist and third-party certification, and its only
-  readable implementation is licensed for Nordic silicon; Samsung's SDK ships
-  for no Espressif part. Apple is reachable and costs an Apple ID bootstrapped
-  on Apple hardware, a self-hosted endpoint and, for anything a person would
-  recognise as Find My, MFi — which excludes individuals. **None of that is the
-  reason.** The owner decided the feature is not wanted, which is a product
-  decision and outranks the obstacles.
-- **What still answers the need:** T-063 — the companion phone remembers where
-  it last saw the watch over BLE. No account, no other company's identifier, no
-  network, and it works with the companion this project already specifies.
-- **What the research keeps, because it is about the device and not the
-  feature:** DULT, rotation intervals and the 2022 fast-rotation evasion are
-  still live input to T-069 and T-070. §1 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is not
-  obsolete; only this task is.
-- **If this is ever revisited:** nothing in the ecosystems changed the answer,
-  so nothing in them would change it back. It is one decision to reverse.
-
 ### T-065 · `track/`: recording, storage, and a simplifier that fits
 - **Priority:** P2 — **sized, unblocked**, by
   [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature) §2
@@ -1457,6 +1431,33 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
+- **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
+  answering A7 on [#33](https://github.com/hleserg/Attadipa/issues/33): *"Не
+  делаем. Ни Apple, ни какую-либо ещё."*
+- **Why, and the order matters.** The research found the feature expensive
+  before it found it unwanted, and the decision is the second one. Two of the
+  three ecosystems are shut before the radio is involved — Google needs
+  registration, an email allowlist and third-party certification, and its only
+  readable implementation is licensed for Nordic silicon; Samsung's SDK ships
+  for no Espressif part. Apple is reachable and costs an Apple ID bootstrapped
+  on Apple hardware, a self-hosted endpoint and, for anything a person would
+  recognise as Find My, MFi — which excludes individuals. **None of that is the
+  reason.** The owner decided the feature is not wanted, which is a product
+  decision and outranks the obstacles.
+- **What still answers the need:** T-063 — the companion phone remembers where
+  it last saw the watch over BLE. No account, no other company's identifier, no
+  network, and it works with the companion this project already specifies.
+- **What the research keeps, because it is about the device and not the
+  feature:** DULT, rotation intervals and the 2022 fast-rotation evasion are
+  still live input to T-069 and T-070. §1 of
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is not
+  obsolete; only this task is.
+- **If this is ever revisited:** nothing in the ecosystems changed the answer,
+  so nothing in them would change it back. It is one decision to reverse.
+
 
 ### T-073 · Meshtastic as a companion — **REJECTED**, owner decision 2026-08-22
 - **Outcome:** not supported. [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
