@@ -258,9 +258,11 @@ Auto-merge for documentation-only changes **has since been decided**, owner
 
 The backstop does not form an opinion about a change. It merges only where the
 independent reviewer has already published `ai-review:pass`, every check is
-green, no review thread or Codex comment is outstanding, and the pull request
-has been untouched for six hours — each of which is a decision taken by
-something other than the backstop. Three per run, and a comment on each naming
+green, no review thread or Codex comment is outstanding, and the **head commit**
+is over six hours old — each of which is a decision taken by something other
+than the backstop. The head commit and not the pull request's `updatedAt`: that
+condition exists to show no session is still pushing, and a label or a bot
+comment bumps `updatedAt` without a line of code arriving. Three per run, and a comment on each naming
 what was checked.
 
 Dependabot is still not auto-merged; that remains a separate decision and is

@@ -131,8 +131,8 @@ STEP 1 — ANOMALIES. Cheap API queries only. Look for exactly these:
     failure), or the Anthropic quota is spent. Only the second is worth
     reporting.
   * A FINISHED PULL REQUEST NOBODY MERGED — open, every check green, carrying
-    `ai-review:pass`, no blocking labels, no unresolved review threads, and
-    untouched for over six hours. Usually a draft whose session ended before
+    `ai-review:pass`, no blocking labels, no unresolved review threads, and a
+    head commit over six hours old. Usually a draft whose session ended before
     anybody flipped the bit. **Merge it**, under the conditions in the limits
     below, which are not negotiable. Observed on 2026-08-21: three of them, all
     11/11 green and reviewed, sat as drafts because the sessions that wrote
@@ -174,8 +174,13 @@ and `agent:ready` where one is genuinely needed.
           **A draft reads `draft` here, never `clean`**, which is why the step
           below exists: the anomaly is usually a draft, so a rule that only
           accepted `clean` would decline every case it was written for;
-        * untouched for over six hours, so an active session is not about to
-          push to it.
+        * **the head commit is over six hours old** — `committedDate` on the
+          head, NOT the pull request's `updatedAt`. This condition exists to
+          establish that no session is still pushing, and `updatedAt` does not
+          answer that question: a label, a bot comment or your own note bumps
+          it, so reading it would make a pull request look freshly active
+          because something commented on it, or freshly touched because you
+          did. What you need to know is when code last arrived.
       Everything else is somebody's decision and none of it is yours. You are
       not judging the change — the reviewer already did, and its label is the
       only place you may read that judgement from.
@@ -185,7 +190,14 @@ and `agent:ready` where one is genuinely needed.
       only then, take it out of draft (`gh pr ready`) and merge. Taking a pull
       request out of draft is a visible act on somebody else's work, so it is
       the last step before the merge and never a way to make a candidate
-      qualify;
+      qualify.
+
+      AND RE-READ `mergeable_state` AFTER `gh pr ready`, immediately before
+      merging. Not because a stale value would corrupt anything — the merge API
+      refuses a real conflict — but because that refusal is the only thing
+      standing between the two reads, and a rule whose safety rests on an
+      error message it never mentions is a rule nobody can check. If it is not
+      `clean` at that moment, stop and say so;
 
     - PATHS. Merge ONLY a pull request whose every changed file is under
       `docs/` — and NOT under `docs/automation/`. Everything else is the

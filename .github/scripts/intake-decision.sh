@@ -107,17 +107,7 @@ attadipa_intake_decision() {
         assigned) wanted=yes ;;
         *)
           case "$body" in
-            # Both spellings, and the legacy one is not a courtesy.
-            #
-            # The project was renamed Firefly OS -> Attadipa on 2026-08-21 and the
-            # marker was renamed with it. ChatGPT's instructions were written
-            # against the old name and cannot be redeployed the moment a
-            # repository renames itself, so for several hours every task it filed
-            # was refused — and the marker is data, not a permission. Write access
-            # is what decides whether an agent may run, and that check is
-            # untouched by which of the two words the producer typed.
-            *"attadipa-agent-task"*|*"firefly-agent-task"*)
-              case "$body" in *"@claude"*) wanted=yes ;; esac ;;
+            *"attadipa-agent-task"*) case "$body" in *"@claude"*) wanted=yes ;; esac ;;
           esac ;;
       esac ;;
   esac

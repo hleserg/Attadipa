@@ -140,42 +140,6 @@ check reject "a listed producer with no marker and no mention" -- \
 check reject "an app whose name merely contains a listed one" -- \
       "evil-chatgpt-codex-connector[bot]" issues opened "" "$MARKER" "" open none "$TRUSTED"
 
-
-# The legacy marker, and why it is still accepted.
-#
-# The project renamed itself on 2026-08-21 and took the marker with it. A
-# producer's instructions live outside this repository and do not change at the
-# same instant, so for several hours ChatGPT filed tasks nobody could see. The
-# marker is data; write access is the permission, and that is unaffected by
-# which word the producer typed.
-LEGACY='<!-- firefly-agent-task
-producer: chatgpt
-task_type: continuous-review
-priority: P1
--->
-
-@claude
-
-Please look at the thing.'
-
-echo
-echo "Both spellings of the marker"
-
-check accept "the legacy firefly-agent-task marker from a trusted actor" -- \
-      hleserg issues opened "" "$LEGACY" "" open admin
-check reject "the legacy marker from a stranger" -- \
-      stranger issues opened "" "$LEGACY" "" open none
-check reject "the legacy marker with no @claude in it" -- \
-      hleserg issues opened "" "<!-- firefly-agent-task -->" "" open admin
-check accept "a listed producer app using the legacy marker" -- \
-      "$CHATGPT" issues opened "" "$LEGACY" "" open none "$TRUSTED"
-# Matching is deliberately a substring, so `attadipa-agent-tasks` would match
-# and that is fine: the marker is data, and the actor check is the permission.
-# What must NOT match is a body that names neither marker at all.
-check reject "a body naming neither marker, @claude notwithstanding" -- \
-      hleserg issues opened "" "<!-- some-other-tool-task -->
-@claude" "" open admin
-
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

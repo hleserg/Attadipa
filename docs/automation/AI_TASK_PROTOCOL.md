@@ -142,25 +142,6 @@ producing agent that files through a **GitHub App** rather than a user account.
 Its login ends in `[bot]`, the gate rejects every bot by design, and without this
 comment the task would simply never be picked up and nobody would be told.
 
-### Both spellings are accepted
-
-The marker is `attadipa-agent-task`. **`firefly-agent-task` is accepted too**,
-and that is not sentiment about the old name.
-
-A producer's instructions live outside this repository. When the project renamed
-itself on 2026-08-21 the marker renamed with it, ChatGPT went on filing tasks
-against the name it had been given, and for several hours every one of them was
-refused — three real P1 findings (#26, #27, #28) sat unqueued, and the producer
-had no way to know. It filed #25 to ask for exactly this.
-
-A rename inside a repository must not silently disconnect a producer outside it.
-Nothing is weakened by accepting both: the marker decides *what kind* of work a
-task is, and write access decides *whether there is any*. Which of the two words
-was typed does not touch the second.
-
-Covered by `.github/tests/intake-gate-test.sh`, including the legacy marker from
-a stranger (refused) and a body naming neither (refused).
-
 ### The marker is data, not a permission
 
 **`producer: chatgpt` proves nothing.** Anybody with a GitHub account can open
