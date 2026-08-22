@@ -267,8 +267,11 @@ attadipa_outcome() {
       echo "left half-applied on this issue: the claim is released and the task is"
       echo "back in the queue."
       echo
-      echo "**What happens without you:** the watchdog picks it up within the"
-      echo "hour. **To start it now:** comment \`@claude\`."
+      echo "**What happens without you:** the watchdog gives it one retry within"
+      echo "the hour. If it fails a second time without anything changing in"
+      echo "between, that is treated as the same failure with a bill attached,"
+      echo "and the watchdog labels it \`needs-owner\` instead of trying again."
+      echo "**To start it now:** comment \`@claude\`."
       echo
       echo "[Run log]($run_url) — the cause is in there, and it is worth reading"
       echo "before retrying, because a retry of a deterministic failure is the"

@@ -133,7 +133,9 @@ says "reports the actual conclusion word" -- "$FAILED" -- '`cancelled`'
 says "says the claim was released, so nobody has to check" -- "$FAILED" -- \
      "claim is released"
 says "says what happens without the owner, and what starts it now" -- "$FAILED" -- \
-     "within the" "hour" '`@claude`'
+     "one retry" "hour" '`@claude`'
+says "says the retry is bounded rather than promising an unconditional pick-up" -- "$FAILED" -- \
+     "fails a second time" "needs-owner"
 says "warns against retrying a deterministic failure" -- "$FAILED" -- \
      "same failure with a bill"
 
