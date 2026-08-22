@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -236,6 +236,31 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **T-070 research — the watch as a tracker detector, and the honest limit is
+  now sourced rather than deferred.**
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md), for
+  [#45](https://github.com/hleserg/Attadipa/issues/45). The owner declined tag
+  emulation and asked for the opposite feature instead: scanning for an
+  unknown BLE identifier that has followed the wearer too long, inspired by
+  `seemoo-lab/AirGuard` (Apache-2.0, reuse-ledger record added). Read from
+  AirGuard's own source rather than its description: its thresholds (3
+  sightings/14 days, ≥2–4 distinct locations 150 m apart, altitude gates), and
+  its own in-product admission that a rotated identifier can still follow the
+  wearer undetected. That admission turns out to be current, not dated: two
+  independent 2025/2026 studies — PoPETs 2025, peer-reviewed, and a February
+  2026 preprint — report that an identifier rotated faster than a detector's
+  correlation window evades or substantially delays Apple's, Google's **and
+  AirGuard's** detection on every ecosystem but Samsung's, and both used an
+  ESP32 to demonstrate it. DULT's accessory-protocol draft is still expired
+  and unreplaced, but its editors' working copy is active into August 2026 and
+  assigns `Watch` its own accessory-category value — a direct hook for T-069,
+  which this research hands off to rather than re-derives. Espressif publishes
+  no BLE-scanning current figure at all; the nearest documented proxy is a 93
+  mA RX peak, and the feature's power story stays incomplete until T-068
+  answers whether either board can reach a 32 kHz sleep floor between scan
+  bursts. One correction along the way: the issue that requested this research
+  described the T-Watch as sharing an RF front end between BLE and LoRa; ADR-0003
+  makes no such claim, and the document says so rather than repeating it.
 - **Heading no longer reads accel+gyro fusion as an absolute reference.**
   [#21](https://github.com/hleserg/Attadipa/issues/21): on the Waveshare
   profile — QMI8658 accel+gyro, no magnetometer, no local GNSS —

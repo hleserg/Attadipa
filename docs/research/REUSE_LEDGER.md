@@ -789,6 +789,88 @@ configure if the scenario glob matches fewer than ten files, because a glob that
 silently matched nothing would produce a test that passes by running no
 scenarios at all.
 
+### BLE tracker detection — the reverse of tag emulation
+
+**Problem:** T-070 — scan for an unknown BLE identifier that has stayed near
+the wearer for an implausibly long time, and say so, without implying the
+detector catches everything.
+
+**Projects investigated:** `seemoo-lab/AirGuard` (Apache-2.0) — the only
+actively-maintained, open-source implementation of exactly this feature.
+`seemoo-lab/AirGuard-iOS` was identified but not read; its detection
+capability is materially constrained by iOS's restriction on third-party BLE
+MAC-address access, which this record cannot quantify.
+
+**Useful implementation:** the detection policy in
+`app/src/main/java/de/seemoo/at_tracking_detection/`: ten ecosystem-specific
+BLE scan filters (`device/types/*.kt`), the risk-evaluation thresholds
+(`util/risk/RiskLevelEvaluator.kt` — sighting count, distinct-location count,
+time-span floor, altitude gates), a scoped identity-rotation stitching
+mechanism for Samsung tags only (`device/DeviceManager.kt`,
+`device/BaseDevice.kt`), and its own in-product admission of what it cannot
+catch (`ui/dashboard/articles/en/limitations_of_the_app.md`).
+
+**License:** **Apache-2.0**, read from `LICENSE` at the repository root, not
+a badge. Compatible with Attadipa's MIT: permissive, no copyleft, requires
+retaining the Apache notice for anything actually taken. Copyright per
+`CITATION.cff`: Niklas Bittner, Alexander Matern, Dennis Arndt, Matthias
+Hollick (SEEMOO, TU Darmstadt).
+
+**Strengths:** the only reference implementation of this exact feature that
+is both readable and actively pushed (last push 2026-08-20); its
+false-positive avoidance — a 150 m distinct-location requirement, owner-
+proximity filtering where the ecosystem exposes it, altitude gates for the
+aeroplane case — is read from source rather than assumed; it states its own
+honest limit in its own shipped strings, which is the same discipline this
+project's `CLAUDE.md` asks for, arrived at independently.
+
+**Weaknesses:** Android/Kotlin — nothing is firmware-reusable as code, only
+as policy; its rotation-evasion countermeasure covers Samsung's aging-counter
+scheme only, and two 2025/2026 papers (one peer-reviewed, one preprint —
+[`docs/research/TRACKER_DETECTION.md`](TRACKER_DETECTION.md) §3) report that
+an identifier rotated faster than its correlation window, on any other
+ecosystem, still evades it; its scan cadence (15-minute period, 20–30 s
+bursts) is tuned for an Android phone's battery, not a device meant to scan
+all day on a 940 mAh cell.
+
+**Decision:** `EXTRACT ALGORITHM` — the detection policy (thresholds, the
+distinct-location false-positive guard, the honest-limit wording discipline),
+not the code, which does not run on this target at all.
+
+**Reason:** there is no embedded/firmware equivalent to port, and porting
+Kotlin/Android APIs to ESP32-S3 firmware is not meaningful. What is worth
+taking is the policy AirGuard arrived at through a WiSec best-paper-award
+process and four years of field use: which thresholds actually distinguish a
+following tracker from a stationary beacon, and — as important — the
+project's own discipline about what it admits it cannot do. `REJECT` was
+considered and set aside because the thresholds themselves (150 m, 3
+sightings, 14-day window) are a genuinely useful starting point rather than
+something Attadipa should re-derive from nothing.
+
+**Lesson from its own commit history, the addendum's rule applied here too:**
+a 2025-03-17 release note claims improved evasion resistance, and reading the
+source behind the claim (§2.7 of `TRACKER_DETECTION.md`) shows the fix is
+scoped to Samsung's aging counter alone — the release note, read in
+isolation, would have overstated what changed. → Attadipa's own detector, if
+built, must not claim a fix's scope more broadly than the code that
+implements it.
+
+**Source revision:** `seemoo-lab/AirGuard`
+`7f71a37d0776acc5f0e8d3046d3daaf8b71ad58d` ("AirGuard 3.1.1", 2026-07-20).
+
+**Attadipa integration:** none yet — T-070 is not implemented. When it is,
+the thresholds above are a starting point to validate against this project's
+own duty-cycle and power constraints
+([`TRACKER_DETECTION.md`](TRACKER_DETECTION.md) §4), not values to copy
+unchanged onto different hardware and a different battery.
+
+**Tests required:** none yet — no code exists. When T-070 is implemented:
+host tests over synthetic scan traces, per `TRACKER_DETECTION.md`'s own
+research and `TASKS.md` T-070's acceptance criteria — a co-travelling
+identifier flagged, a shop full of stationary beacons not.
+
+---
+
 ### The agent queue's driver: `anthropics/claude-code-action`
 
 **Problem:** `claude-agent.yml`, `claude-pr-review.yml` and `claude-ci-repair.yml`
