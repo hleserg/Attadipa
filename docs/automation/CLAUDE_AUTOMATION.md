@@ -219,11 +219,27 @@ as much as the first.
 | **Empty queue costs nothing** — the watchdog's scan is shell and one API call; Claude is invoked only when there is a task | `agent-queue-watchdog.yml` |
 | **One writer** — a repository-wide concurrency group, so writers queue instead of colliding | `claude-agent.yml` |
 | **Deduplication** — an issue already claimed is not picked up again | intake gate |
-| **Turn limits** — 60 for implementation, 40 for review and repair | `claude_args: --max-turns` |
+| **Turn limits** — 60 for implementation, 100 for review, 40 for repair | `claude_args: --max-turns` |
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
 | **Sticky review comment** — one comment edited in place, not a new one per push | `use_sticky_comment` |
 | **No bots** — nothing can trigger a run by replying to a run | `allowed_bots: ""` |
+
+The review's limit was 40 until 2026-08-22, and it was the wrong number for the
+wrong reason. On pull request #39 the reviewer read a thirty-file diff, worked
+for six and a half minutes, returned `is_error: false` — and was killed at turn
+50 for exceeding 40, having posted no comment and set no label. The run cost
+exactly what it would have cost with a higher ceiling and delivered nothing. A
+limit that stops work *after* it has been paid for is not a cost control; the
+control that actually bounds spend is `timeout-minutes`, which is denominated in
+the thing being billed. `--max-turns` bounds a different failure — a session
+stuck in a loop — and for that, 100 is above what a real diff was observed to
+need.
+
+The same incident is why the "review did not happen" note now reads the action's
+own execution log instead of listing two possible causes: it named neither the
+turn limit nor a tool denial, so the first person to hit one went looking for a
+spent quota that was not spent.
 
 To stop all spending immediately:
 
