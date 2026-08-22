@@ -45,6 +45,16 @@ on:
 # the rule was ever about, and the claim moved inside that job so a queued
 # agent that gets cancelled leaves no `agent:working` label behind — an
 # unclaimed task is picked up again, a falsely claimed one is not.
+#
+# THIS NARROWS THE RACE; IT DOES NOT REMOVE IT, and saying so is the difference
+# between a bound and a belief. GitHub's rule still applies to the `agent` job's
+# own group, so two tasks accepted close together can still cost the earlier one
+# its queued run. What changed is the consequence: it is then an unclaimed
+# `agent:ready` issue, which `agent-queue-watchdog.yml` rediscovers on its next
+# hourly tick. The residual failure is a delay of up to about an hour, not a
+# lost task — and that recovery is only true for tasks the watchdog's own filter
+# in .github/scripts/queue-scan.jq can see, which is why that filter and the
+# gate must keep agreeing about what a task looks like.
 
 # Nothing at the top level. Each job asks for exactly what it needs.
 permissions: {}
@@ -193,7 +203,7 @@ jobs:
             # — this job holds no Anthropic credential and posts with `gh`.
             ANSWER=none
             case "$BODY" in
-              *attadipa-agent-task*|*firefly-agent-task*)
+              *attadipa-agent-task*)
                 if [ "$EVENT_NAME" = "issues" ]; then ANSWER=marker; fi ;;
             esac
             if [ "$ANSWER" = none ]; then

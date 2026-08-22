@@ -126,8 +126,14 @@ attadipa_intake_decision() {
           if [ "$label" = "agent:ready" ]; then wanted=yes; fi ;;
         assigned) wanted=yes ;;
         *)
+          # One marker string, and ADR-0012 is why there is no second one:
+          # "no compatibility aliases for the previous identifier are retained".
+          # Whether a legacy marker should be honoured is #25's question, and
+          # answering it here would also need queue-scan.jq — the watchdog reads
+          # its own copy of this test, and a marker only half the pipeline knows
+          # is a task that cannot be recovered when a run is lost.
           case "$lc_body" in
-            *"attadipa-agent-task"*|*"firefly-agent-task"*)
+            *"attadipa-agent-task"*)
               case "$lc_body" in *"@claude"*) wanted=yes ;; esac ;;
           esac ;;
       esac ;;
