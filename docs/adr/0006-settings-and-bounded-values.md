@@ -1,6 +1,6 @@
 # 0006 — Settings, and values the law bounds
 
-Status: **accepted** (2026-08-21) — A4 closed 2026-08-22 by [OD-13](../research/OWNER_DECISIONS.md#od-13--which-region-is-the-owners-problem-not-the-firmwares); the design below is unchanged by it
+Status: **accepted** (2026-08-21) — A4 closed 2026-08-22 by [OD-14](../research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares); the design below is unchanged by it
 Date: 2026-08-21
 Relates to: [ADR-0004](0004-capability-sources.md) · the radio descriptor it constrains is now `RadioInfo` in [ADR-0003](0003-radio-not-lora.md)
 
@@ -308,7 +308,7 @@ T-006.
 
 **No longer open.** A4 — which region — is closed, not answered: the owner
 declined to name one and said legality is his own responsibility, not the
-firmware's ([OD-13](../research/OWNER_DECISIONS.md#od-13--which-region-is-the-owners-problem-not-the-firmwares)).
+firmware's ([OD-14](../research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
 Nothing here changes as a result. This ADR never proposed shipping a region as
 a default, and the transmit-closed-while-`Unknown` gate in §4 does not need to
 know *which* region applies — only that an operator chose one. What A4's

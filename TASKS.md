@@ -39,7 +39,12 @@ stale silently. The protocol is
 
 ## NOW
 
-### T-054 · The agent queue, verified by running it rather than by reading it
+### T-100 · The agent queue, verified by running it rather than by reading it
+- **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
+  different pieces of work carried that ID: this one, and the transport tests
+  in the `DONE` section, which commit `5810e20` names as T-054 in its message.
+  History keeps the number it was recorded under; the live task takes a fresh
+  one. `python3 tools/docs/check_docs.py` fails if this ever happens again.
 - **Priority:** P1
 - **Dependencies:** none — the automation is merged on `main`
 - **Goal:** the loop closes without the owner as transport: a finding becomes an
@@ -79,21 +84,24 @@ stale silently. The protocol is
 
 ## NEXT
 
-### T-034 · Image asset pipeline
-- **Priority:** P0
-- **Dependencies:** T-032 (**done**)
-- **Goal:** reproducible conversion from cleaned source art to board-appropriate
-  LVGL assets — `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`
-  (final §45), using LVGL 9.5.0's `scripts/LVGLImage.py`.
-- **Acceptance:** a script regenerates every asset deterministically; CI reports
-  sizes and detects stale output; no hand-maintained C arrays; the 1448-pixel
-  reference PNGs are never shipped as watch assets; small sizes are drawn
-  deliberately rather than scaled down (final §86).
-- **Research status:** partial — `LVGLImage.py` and `LV_COLOR_FORMAT_RGB565A8`
-  confirmed present at the pinned version
-- **Implementation status:** not started
-- **Tests:** regeneration reproducibility; per-board asset budget
-- **Hardware required:** for decode and render cost, yes
+### T-034a · The mascot, at a size somebody drew
+- **Priority:** P2, and it is **an owner decision before it is work.**
+- **Dependencies:** T-034 (**done**)
+- **Goal:** get one mascot pose into `ui/assets/source/` at a size the pipeline
+  will accept. `docs/ui/reference/lumar_mascot_sheet.png` supplies four named
+  poses and DESIGN_SYSTEM §7 already maps them to states, but the sheet is a
+  1440-pixel desktop concept drawing and the pipeline refuses it — correctly.
+- **The question, and it is not an agent's to answer:** at `image.size.hero`
+  (120 dp — 196 px on the T-Watch, 236 px on the Waveshare) a pose lifted from
+  the sheet is roughly a 2× reduction, which is arguably the *"derived and
+  cleaned artwork"* path `docs/ui/reference/README.md` describes. At icon sizes
+  it is not arguable at all: 40 px of a 450-pixel drawing is noise, and §86
+  forbids it outright. So: **derive at hero size, or redraw?** The owner should
+  decide looking at pixels, not at this paragraph.
+- **Acceptance:** either a committed source asset with its provenance recorded,
+  or a written decision that the mascot is redrawn and by whom. Not a scaled
+  crop committed quietly.
+- **Hardware required:** no. **Owner required:** yes.
 
 ### T-037 · The first Clock
 - **Priority:** P0
@@ -236,47 +244,33 @@ stale silently. The protocol is
 - **Tests:** none. It produces a research record.
 - **Hardware required:** no.
 
-### T-064 · Beacon profiles, and the scheduler that arbitrates them
-- **Priority:** P3 — **blocked on the owner**, question 1 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
-- **Dependencies:** T-063 (which may make it unnecessary), T-068, T-069
-- **Goal:** if the owner wants the watch findable by a crowd-sourced network,
-  build it as a core-owned slot scheduler with one registered profile per
-  ecosystem — never as an application.
-- **The shape, and why it is not an application:** a beacon that stops when the
-  screen goes off is not a beacon; the moment you need it is the moment the
-  device is idle or flat. And several ecosystems at once means several
-  advertising sets on one radio: interval, duty cycle, current and coexistence
-  with Wi-Fi and the node link. Arbitration of a shared radio resource does not
-  live above the platform layer. An application chooses which profiles are on
-  and reads their state; Child Mode's setup is a preset over that, not a second
-  mechanism.
-- **What the research already settled, so it is not re-derived:** two of the
-  three ecosystems are shut before the radio is involved — Google needs
-  registration, an email allowlist and third-party certification, and its only
-  readable implementation is licensed for Nordic silicon only; Samsung's SDK
-  ships for no Espressif part and an unregistered advertisement is inert.
-  OpenHaystack and macless-haystack are AGPL-3.0 and cannot be copied into an
-  MIT repository.
-- **Non-negotiable if it is built at all:** identifier and BLE address rotate
-  together, per DULT — 15 minutes near-owner, 24 hours separated. A tag that
-  does not rotate is a stalking device. A tag that rotates *faster than the
-  platforms' detectors sample* may be one too, and whether that is still true in
-  2026 is `UNKNOWN` (§1.6). Settle it before shipping, not after.
-- **Acceptance:** blocked. Do not start without an answer to §5 question 1.
-- **Research status:** done — §1
-- **Implementation status:** blocked on the owner
-- **Tests:** the profile state machine and the slot scheduler are host-testable;
-  every power and cadence figure is `NOT EXECUTED — HARDWARE REQUIRED`.
-- **Hardware required:** for anything anybody would believe, yes.
-
 ### T-065 · `track/`: recording, storage, and a simplifier that fits
-- **Priority:** P2 — **sized by the owner**, question 2 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
-- **Dependencies:** T-046 (crash-safe persistence), T-047 (two clocks), T-067
+- **Priority:** P2 — **sized, unblocked**, by
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature) §2
+- **Dependencies:** T-046 (crash-safe persistence), T-047 (two clocks), T-067,
+  and now T-060/T-061 — see the recording rule below
 - **Goal:** a core library that records a track and survives the application
   being closed, the device sleeping, and a flat battery — because a breadcrumb
   trail that stops when the screen does is not one.
+- **THE RECORDING RULE IS NOT A TIMER, and this is what the owner answered.** A
+  track exists for a walk somebody may have to retrace on foot. So: the watch
+  learns **familiar ground** — places where the wearer stays a long time while
+  moving only locally; inside it nothing is recorded; past a threshold beyond
+  its edge, **on foot**, recording starts; on return the track is **erased**.
+  Vehicles are out of scope — that is what a phone is for. Background recording
+  is configurable and **on by default**.
+- **What that rule costs, named rather than discovered later:**
+  - **"on foot" needs motion-mode recognition**, or the watch records in a car,
+    which is the one case that was excluded. It rests on the pedometer, which
+    exists only as OD-6 — so this task cannot ship ahead of T-060/T-061;
+  - **"familiar ground" is learned anchors**, i.e. stored personal history. That
+    is a privacy surface and it belongs to T-069, in Child Mode especially;
+  - **threshold, hysteresis and dwell are three numbers that do not exist.**
+    Propose them with arithmetic. Too small records every trip to the shop; too
+    large starts recording once it is already too late;
+  - the **upper bound is now a walk**: order of a couple of hours, single-digit
+    kilometres, hundreds to a few thousand points — not the multi-day route §3
+    sized against. Recompute the encoding budget from that, do not inherit it.
 - **What has to be decided rather than assumed:**
   - **every point carries its source and its uncertainty.** A GNSS point, a
     point reckoned from an anchor and a point with no anchor at all are three
@@ -391,8 +385,16 @@ stale silently. The protocol is
 - **Why it is not hypothetical:** the product as specified is a wearable that
   reports a person's position to a remote party over a mesh; Child Mode makes
   that person a six-year-old; DULT's own scope enumerates "Watch" as an
-  accessory category; and T-066's track exchange is a location-sharing channel
-  that has never been read against a threat model at all.
+  accessory category (value 146 in the Accessory Category table — confirmed in
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md) §1.3); and
+  T-066's track exchange is a location-sharing channel that has never been read
+  against a threat model at all.
+- **Where to start, so this is not re-derived:** `draft-ietf-dult-threat-model-05`
+  is an **active** IETF working-group document (latest revision 2026-08-06,
+  not expired like the accessory protocol) and is the primary source naming
+  what DULT itself considers a threat — found but not read in full by T-070's
+  research; [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md)
+  §"Relationship to T-069" hands it over.
 - **Second half, and it is specific rather than general:** a child's position
   leaving the device engages GDPR Article 8 (consent, thresholds 13–16 by member
   state), the UK Age Appropriate Design Code and COPPA. Google scoping Find Hub
@@ -413,7 +415,8 @@ stale silently. The protocol is
 
 ### T-070 · The watch as a tracker detector, which is the opposite feature
 - **Priority:** P2
-- **Dependencies:** T-069
+- **Dependencies:** T-069 for implementation. The research half did not need
+  T-069 and was done directly — see below.
 - **Goal:** scan for an unknown BLE identifier that has stayed near the wearer
   for an implausibly long time, and say so.
 - **Why it is worth more than emulation for this product:** it **protects** the
@@ -422,19 +425,47 @@ stale silently. The protocol is
   it uses a radio the watch certainly has; and `seemoo-lab/AirGuard` is
   Apache-2.0, MIT-compatible and actively maintained, so there is something to
   learn from rather than invent.
-- **The honest limit, stated up front:** a detector that keys off a repeated
-  identifier is defeated by fast rotation, which §1.6 records as an `UNKNOWN` in
-  2026. Do not ship a detector that implies it catches everything.
+- **The honest limit, stated up front, and now sourced rather than deferred.**
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md) §3: two
+  independent 2025/2026 studies — one peer-reviewed (PoPETs 2025), one an
+  unreviewed 2026 preprint — report that an identifier rotated faster than a
+  detector's correlation window evades or substantially delays Apple's,
+  Google's **and AirGuard's** detection, on every ecosystem except Samsung's
+  aging-counter scheme. Both used an ESP32 to demonstrate it. The exact 2022
+  methodology against a *current* iOS build remains untested and `UNKNOWN`.
+  **Do not ship a detector that implies it catches everything** — AirGuard's
+  own shipped strings do not, and neither should Attadipa's.
+- **What the research also settled, so implementation does not re-derive it —
+  all in [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md):**
+  AirGuard's actual thresholds (3 sightings / 14 days, ≥2–4 distinct locations
+  150 m apart, altitude gates for the aeroplane case — §2); DULT's current
+  broadcast format and rotation intervals, and that no shipping accessory has
+  been observed using DULT's own `0xFCB2` service data yet (§1); that
+  Espressif publishes no BLE-scanning current figure at all — 93 mA RX peak is
+  the nearest documented proxy, and the scanning power story is still gated on
+  T-068's open question of whether either board can reach a 32 kHz sleep floor
+  between scan bursts (§4); that concurrent scan-while-connected is documented
+  as supported and costs 828 B per activity, but its cost to the companion
+  link's latency is undocumented (§5); and a correction — ADR-0003 does not
+  claim a shared T-Watch BLE/LoRa front end, contrary to how this task was
+  first framed (§5.3).
 - **Acceptance:** host tests over recorded advertisement sequences — a
   co-travelling identifier is flagged, a shop full of stationary beacons is not.
-- **Research status:** not started
+- **Research status:** done —
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md); reuse ledger
+  record added.
 - **Implementation status:** not started
 - **Tests:** host, over synthetic scan traces.
-- **Hardware required:** for a real scan, yes.
+- **Hardware required:** for a real scan and for the power figures, yes — see
+  T-068, which this task's power story now depends on explicitly.
 
 ### T-071 · Dead reckoning: odometry, the disk, and what makes it stop
-- **Priority:** P2 — **sized by the owner**, question 3 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
+- **Priority:** P2 — **not blocked.**
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature)
+  §2 answers question 3 without being asked it: everything is built around
+  getting back on foot, which is the one purpose that survives the physics.
+  Build for *"get me back to the tent"*, not for *"reconstruct my route"* —
+  the second is T-088, where GNSS is present and reckoning is not needed.
 - **Dependencies:** T-060, T-061 (it is the same step detector, not a second
   one), T-065, [ADR-0009](docs/adr/0009-heading.md)
 - **Goal:** when GNSS is lost, say how far the wearer has walked and where they
@@ -477,41 +508,30 @@ stale silently. The protocol is
   the field is `NOT EXECUTED — HARDWARE REQUIRED`.
 - **Hardware required:** for accuracy, yes. For the logic, no.
 
-### T-060 · What each IMU actually does about steps
-- **Priority:** P1 — [OD-6](docs/research/OWNER_DECISIONS.md#od-6--the-watch-counts-steps-and-that-is-not-optional)
-  makes the pedometer mandatory, and everything about how it is built depends on
-  this answer
-- **Dependencies:** none. It is reading, not code.
-- **Goal:** establish, from primary sources only, what the BMA423 and the
-  QMI8658 each do about step counting, in the order the GNSS tasks use:
-  datasheet → application note → vendor driver source → vendor example.
-- **What to answer, at minimum:**
-  - **BMA423:** does the part count steps *itself*? Bosch documents step
-    counting and step detection in the BMA4xx wearable family — is it in this
-    part, on this revision, and is it in the feature blob that has to be
-    uploaded at boot? What is the counter's width and what happens when it
-    wraps? Does it keep counting while the host is in deep sleep, and at what
-    current? What survives a soft reset, and what does not? Which interrupt
-    lines does it need — **INT2 is bonded out but not routed** on the T-Watch
-    (R12/R15 not fitted, [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)),
-    so anything requiring two interrupts is already blocked.
-  - **QMI8658:** is there any integrated step counter at all? If not: FIFO depth
-    in samples, watermark interrupt behaviour, the lowest output data rate at
-    which a step algorithm still works, and therefore how often the SoC must
-    wake to drain it.
-- **Acceptance:** a row per part in
-  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md) marked `SUPPORTED`,
-  `UNSUPPORTED` or `UNKNOWN`, each with the document and section it came from.
-  An unsourced `SUPPORTED` is not an answer.
-- **Research status:** not started
-- **Implementation status:** not started — no code comes out of this task
-- **Tests:** none. It produces a research record.
-- **Hardware required:** no for the documents. Confirming a current figure or a
-  wake rate is a HIL plan and is not this task.
+### T-060b · The Bosch application note itself, for what revision 1.1 lacks
+- **Priority:** P3, `nice-to-have`. **Nothing blocks on it** — T-060a closed the
+  questions T-061 needed.
+- **Dependencies:** T-060a (**done**)
+- **Goal:** obtain `BST-MAS-AN032` (*Wearable Feature Set*) and answer what
+  datasheet revision 1.1 does not: BMA423 step-counter behaviour at the 32-bit
+  boundary, and whatever tuning guidance sits behind the datasheet's *"with the
+  support of the corresponding field application engineer"*.
+- **What has already been tried and failed:** `bosch-sensortec.com` (HTTP 403,
+  three attempts), Mouser (403), LCSC (HTML only), Octopart, DigiKey,
+  micro-semiconductor (product flyer), watchy.sqfmi.com (revision 1.1 datasheet,
+  not the note). Untried: Bosch's community forum attachments, the
+  `BMA456`/`BMA400` sibling notes, an account-gated distributor download.
+- **Acceptance:** the boundary question marked in
+  [PEDOMETER_PARTS §1.8](docs/research/PEDOMETER_PARTS.md) with the document
+  revision, or a note saying the note does not answer it either.
+- **This is a research task.** No code comes out of it.
+- **Hardware required:** no.
 
 ### T-061 · Steps, as a capability with a power story
 - **Priority:** P1, after T-060
-- **Dependencies:** T-060, [ADR-0007](docs/adr/0007-two-capability-layers.md),
+- **Dependencies:** T-060 (**done**), T-060a (**done** — the power story is
+  `13–14 µA at 50 Hz, low-power mode`),
+  [ADR-0007](docs/adr/0007-two-capability-layers.md),
   T-046 (crash-safe persistence), T-045 (`PowerState`)
 - **Goal:** implement `Capability::MotionSensing` for step counting, on both
   boards, without either board's answer leaking upwards.
@@ -532,7 +552,22 @@ stale silently. The protocol is
   through the same path the device uses — the replay rig's shape, a second
   reader; both board profiles produce a defensible availability; the daily total
   survives a simulated crash at an arbitrary point.
-- **Research status:** blocked on T-060
+- **Research status:** T-060 and T-060a are **done**; the research that remains
+  is two hardware questions, not one task.
+  - **Which IMU the Waveshare carries.** `QMI8658C` has a pedometer;
+    `QMI8658A` Rev D had it deleted. The board is recorded as
+    "QMI8658 / QMI8658C" and the schematic prints no revision, so a mandatory
+    pedometer (OD-6) may have no hardware on one of the two boards. Same shape
+    as [ADR-0003](docs/adr/0003-radio-not-lora.md)'s radio question, in a
+    second subsystem — [PEDOMETER_PARTS.md](docs/research/PEDOMETER_PARTS.md)
+    §2.1. Settled by reading `WHO_AM_I` and the revision register on a board.
+  - **Whether the PMU keeps the IMU rail up across an SoC sleep.** This is
+    **[H8](docs/research/OPEN_QUESTIONS.md)**, already filed and already
+    holding the schematic-level detail: the vendor document says ALDO1 is
+    unused, the schematic shows it driving `+3V3`, and `+3V3` is what feeds the
+    BMA423. It was raised again in this task's research without the
+    cross-reference, which would have sent two people at the same question from
+    two directions. Whoever resolves H8 unblocks this.
 - **Implementation status:** not started
 - **Tests:** host, plus a HIL plan for the wake rate and the current, which is
   the only way the power claim becomes a measurement.
@@ -1037,7 +1072,11 @@ stale silently. The protocol is
 
 ---
 
-### T-039 · A formatting rule, and CI that enforces it
+### T-101 · A formatting rule, and CI that enforces it
+- **Renumbered from T-039 on 2026-08-22, and do not renumber it back.** That
+  ID already belonged to the M0.5 reconciliation record in `## DONE`, dated
+  2026-08-21. Nothing outside this file referenced either, so the live task is
+  the one that moves. `python3 tools/docs/check_docs.py` fails if it recurs.
 - **Priority:** P2
 - **Dependencies:** none
 - **Goal:** one `.clang-format`, applied to everything under `platform/`,
@@ -1056,67 +1095,24 @@ stale silently. The protocol is
 - **Tests:** the CI job is the test
 - **Hardware required:** no
 
-### T-084 · Deep research: design customisation on wearables
-- **Priority:** P1 — the owner asked for this **instead of** filing the animated
-  watch-face feature, and the sequencing is the point: *"забей на это задание а
-  вместо этого назначь в план исследование по кастомизации дизайна на носимых
-  смарт часах. Че кто и как делает, как реализует, какие-то удачные дизайнерские
-  и программные фишки поищи. Прям нормальный дип ресерч. А по результатам уже
-  назначишь задание себе че делать че не делать."* Tasks come out of the
-  research, not before it.
-- **Dependencies:** T-009 (**done** — it is the substrate that makes any of this
-  possible), and it feeds T-081, T-082 and T-034
-- **Goal:** a written survey, in `docs/research/`, of how wearables actually do
-  customisation — watch faces, themes, icon packs, animations — and what it costs
-  in the places it hurts on this hardware: flash, RAM, battery and the always-on
-  path.
-- **What must be covered**, because these are the questions the product has:
-  - **who does what** — Wear OS watch faces (the XML format and why Google moved
-    to it from executable ones), Apple's complications, Garmin Connect IQ, Fitbit,
-    Pebble's legacy and what its community formats got right, Amazfit/Zepp's
-    downloadable faces, Bangle.js, Flipper Zero's animation packs and its
-    manifest, InfiniTime and Wasp-OS as the LVGL/embedded-scale comparison;
-  - **the format question** — declarative versus executable. Every platform that
-    started with executable faces moved away from it, and the reasons (power,
-    security, review burden, and faces that brick the watch) are the reasons this
-    project would face too;
-  - **animation on a battery** — what an idle animation costs when the panel is
-    an AMOLED versus an IPS, how platforms bound it, and how "raise to wake, play
-    something, then show the time" is done without paying for it all day;
-  - **what stops the layout breaking**, which is the owner's explicit
-    requirement: constraint systems, safe areas, what a face is *not* allowed to
-    control, and what happens on a geometry it was not authored for;
-  - **distribution and trust** — signing, review, sandboxing, size limits, and
-    what a malicious or merely bad pack can do;
-  - **accessibility under customisation** — how, or whether, platforms keep
-    contrast and legibility guarantees when a user installs a stranger's palette.
-    Attadipa already computes contrast, so this is a live question rather than a
-    theoretical one.
-- **Acceptance:** every claim carries a source and a date. Where a platform's
-  behaviour is documented, cite it; where it is folklore, say so. A recommendation
-  section at the end that names the two or three approaches worth copying and the
-  ones worth avoiding, each with the reason. **Then** the follow-on tasks are
-  filed, which is the deliverable the owner actually asked for.
-- **This is a research task.** It produces documentation. A pull request full of
-  new subsystems has been guessed at, not done.
-### T-072 · What a vanilla MeshCore node actually exposes
-- **Priority:** P1 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours).
-  It gates T-073 and T-074 and it is cheap: the source is already cloned and MIT.
-- **Dependencies:** none
-- **Goal:** fill in §1 of
-  [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  from `d92964352441e53b93e8667b802e04f6e072b39e` — which transports the
-  `companion_radio` role exposes (BLE, serial, and whether LAN/TCP exists at the
-  pinned revision), which commands a stock build answers, whether telemetry
-  carries a position, and whether the node's own fix is distinguishable from one
-  relayed in a message.
-- **Acceptance:** every row has an answer with a file and line, or stays
-  `UNKNOWN` with the reason. A reuse-ledger record either way, per
-  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
-- **This is a research task.** It produces documentation. A pull request full of
-  new subsystems has been guessed at, not done.
-- **Hardware required:** no. Confirming it against a real vanilla node later is a
-  separate task and would be the first honest `OBSERVED` in this area.
+### T-072a · The same protocol, against a node that exists
+- **Priority:** P2 — it converts a document full of `read from source` into the
+  first `OBSERVED` in this area, and it is now possible where it was not before.
+- **Dependencies:** T-072
+- **Goal:** speak the companion protocol to a **real** vanilla node and record
+  where the reading was wrong. A MeshCore node hangs off Home Assistant on the
+  LAN host `doctor`, and a USB node is coming to the development machine. A host
+  program — not firmware — is enough: open the TCP socket or the serial port,
+  send `CMD_DEVICE_QUERY`, read `RESP_CODE_DEVICE_INFO`, and compare byte for
+  byte against §3 of the protocol document.
+- **Acceptance:** every claim in the protocol document that the exchange touches
+  is marked `OBSERVED` or corrected, with the captured bytes committed as a
+  fixture. Claims the exchange does not touch stay as they are — a partial
+  confirmation must not be written up as a whole one.
+- **Answer first, because it is free:** which transport that node actually has.
+  §1's trap is that the build name does not tell you.
+- **Hardware required:** yes, but not *our* hardware — this needs a MeshCore
+  node, not a T-Watch. That is why it can happen now.
 
 ### T-074 · More than one mesh provider at once
 - **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
@@ -1250,38 +1246,6 @@ stale silently. The protocol is
   font missing one codepoint, an oversized one, a truncated one.
 - **Hardware required:** no
 
-### T-083 · No box characters in any build
-- **Priority:** P1 — a defect that exists **today**, not a feature. The owner saw
-  it in a screenshot: *"в проде конечно же такого быть не должно"*.
-- **Dependencies:** T-032 (**done** — the font pipeline exists and its output has
-  been compiled for the target and measured)
-- **Goal:** the simulator and every future firmware build draw with a **generated
-  subset** rather than LVGL's stock Montserrat, which is Latin-only. Today
-  `×` (U+00D7) renders as `□` on the diagnostic screen, and all six Cyrillic
-  codepoints in the English catalogue's own language names do too.
-- **The check already exists and already reports it** — `report_undrawable_glyphs()`
-  prints seven codepoints on every run, and `tools/l10n/check_glyphs.py` asks the
-  same question at build time. What is missing is that the answer is a warning
-  rather than a failure, and that nothing consumes the pipeline's output.
-- **Acceptance:** zero undrawable codepoints in either catalogue, in every build
-  that renders; the run-time report becomes a **test failure** rather than a line
-  of output; a screenshot of both boards in both locales shows no box.
-### T-084 · Deep research: design customisation on wearables — **DONE** 2026-08-22
-- [WEARABLE_CUSTOMISATION](docs/research/WEARABLE_CUSTOMISATION.md). Eighteen
-  sources, read and dated. Findings that changed the plan: **every platform that
-  shipped executable watch faces has moved away from them and none has moved
-  back**; Wear OS publishes the only hard numbers anybody publishes (15 % of
-  pixels lit in ambient, 10 MB ambient / 100 MB interactive assets, 12 sp
-  essential text, **48 dp touch targets**); Flipper's passive/active split is the
-  power model and the delight in one mechanism, with wrist-raise as the trigger
-  the owner had already named; and **no platform validates that a user-installed
-  face can be read** — they ship system-level overrides instead, which is a gap
-  Attadipa can fill for free because the contrast arithmetic already exists.
-- Filed out of it: T-085, T-086, T-087. And one finding against existing code:
-  `touch.min.adult` is 44 dp and Wear OS requires 48.
-- **Original brief, kept:** *"Прям нормальный дип ресерч. А по результатам уже
-  назначишь задание себе че делать че не делать."*
-
 ### T-085 · `touch.min.adult`: 44 dp or 48 dp
 - **Priority:** P2 — a token that is already in the code and already wrong on one
   of two sources
@@ -1326,6 +1290,218 @@ stale silently. The protocol is
   on which pixels. `UNKNOWN`, hardware required.
 - **Hardware required:** yes, for every power number
 
+### T-088 · Save a whole track on request — the second track feature, not a mode of the first
+- **Priority:** P2 —
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature) §3
+- **Dependencies:** T-065 (the storage and the simplifier are shared), T-046
+- **Goal:** an application the wearer starts deliberately, which records a track
+  until they stop it and keeps it to look at afterwards on a map.
+- **Why this is a separate task and not a flag on T-065.** They differ in every
+  dimension that matters to an implementation:
+
+  | | T-065, the way back | T-088, saved on request |
+  |---|---|---|
+  | starts | by itself, on leaving familiar ground | because a person asked |
+  | how the wearer is travelling | on foot only | **any** — a car is fine here |
+  | ends | on return, and the track is **erased** | when the wearer stops it, and the track is **kept** |
+  | when storage fills | drop the oldest, the tail is what gets you home | this is a data-loss event and the wearer is told |
+  | consumer | the wearer, right now, lost | the wearer, later, on a map |
+
+  A single mechanism with a flag would have to be right about all five at once,
+  and the erase rule and the keep rule are the same code path with opposite
+  requirements. That is the shape that produces a track deleted while somebody
+  was relying on it.
+- **The form the owner asked for:** an application, allowed to keep recording in
+  the background so other applications keep working. Background here is a
+  capability the platform grants, not a thread an application starts — the
+  ownership question belongs in the design, not in the app.
+- **Acceptance:** host tests over a recording that outlives the application
+  being closed and the device sleeping; an explicit, tested behaviour when
+  storage fills that never silently discards; the "was this simplified" flag
+  honest end to end.
+- **What must not be assumed:** that this shares the recording *rule* with
+  T-065. It shares the storage, the encoding and the simplifier, and nothing
+  above them.
+- **Hardware required:** no for the logic; yes for anything said about what
+  continuous recording costs.
+
+### T-095 · What the day theme costs on a 400 mAh emissive board
+- **Priority:** P1 — it is a default, and a default nobody costed.
+- **Dependencies:** none to start; a meter to finish.
+- **Why now:** the received Waveshare carries **400 mAh**
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.2),
+  against the T-Watch's 940, and it is the board with the emissive panel. The
+  day theme's gamma-decoded emissive load is 13.9× the night theme's on the same
+  pixels — `ESTIMATED` from pixel values, never measured.
+- **Goal:** turn that ratio into a number with a unit. Panel current at a known
+  average picture level, day theme and night theme, same screen, meter in series
+  with the cell. Then the same for the Clock, which is the screen that is up
+  longest.
+- **Acceptance:** a measured mA figure per theme with the method written down,
+  and a runtime estimate that says plainly which of its inputs are measured and
+  which are not. If the answer is that the day theme is unaffordable as a
+  default here, say so and let the owner decide — **this task does not get to
+  change the palette**, and a recommendation dressed as a finding is worse than
+  no finding.
+- **What must not be assumed:** that a per-pixel estimate scales to a panel. It
+  ignores the driver, the regulator's efficiency curve and whatever the CO5300
+  does with its own idle modes.
+- **Hardware required:** yes, and it is on the desk. `NOT EXECUTED — HARDWARE
+  REQUIRED` until it is run.
+
+### T-096 · Decide the node link on the pads that actually exist
+- **Priority:** P2 — [ADR-0008](docs/adr/0008-mesh-service-providers.md), and it
+  becomes urgent the moment anybody solders.
+- **Dependencies:** T-072a for what the node speaks.
+- **Why now:** the Waveshare's expansion row is transcribed
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.5)
+  and it offers exactly one uncommitted channel: `RXD`/`TXD`. `IO15` and `IO14`
+  are printed as bare GPIO numbers and are the main I2C bus with six devices on
+  it.
+- **Goal:** decide, and write down, how an Attadipa node attaches to this board —
+  UART on the pad row, or I2C as a seventh device, or USB. Then say what happens
+  electrically when the node browns out or holds a line low, per option.
+- **Acceptance:** an ADR amendment or a new ADR naming the transport, with the
+  failure mode of each rejected option stated rather than implied. A decision
+  that does not say what the *watch* does when the node misbehaves is not
+  finished.
+- **What must not be assumed:** that the pad row is 5 V tolerant, or that `3V3`
+  can source a node's transmit current. Neither is established.
+- **Hardware required:** no to decide; yes to prove.
+
+### T-097 · Haptics on a board with no motor fitted
+- **Priority:** P1 — the specification asks for haptic feedback and OD-6's
+  neighbours assume it.
+- **Dependencies:** none.
+- **Why now:** on the received unit the `MOTOR` pads are bare and the coin-motor
+  footprint is empty
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.7).
+  The GPIO-18 drive circuit is present and correct, so the board can drive a
+  motor it does not have — and nothing in firmware can tell the difference.
+- **Goal:** three separate answers, in this order. (1) Does Waveshare ship a
+  motor loose in the box, and does the product listing promise one? (2) If not,
+  what does `Capability::Haptics` resolve to on this board — `Unsupported`, which
+  is terminal and must be stable at runtime, or something configured? (3) What do
+  the screens that use haptics do when the answer is `Unsupported`, given that a
+  silent no-op is the one thing a haptic cue must not be.
+- **Acceptance:** the capability's value on this board decided and justified in
+  the registry, with the reason in a comment that names this task; every caller
+  audited for what it does without haptics; and if the value is configurable,
+  the mechanism must not be an `#ifdef BOARD_*` anywhere above the BSP.
+- **What must not be assumed:** that a motor can simply be soldered on later and
+  the problem goes away. It can, and firmware still cannot detect it — which
+  makes this a configuration question, not a probing question.
+- **Hardware required:** no for the decision; yes to confirm by feel.
+
+### T-098 · Read the ESP32-S3 errata against revision v0.2
+- **Priority:** P1 — it gates nothing today and invalidates anything tomorrow.
+- **Dependencies:** none. The revision is known.
+- **Why now:** the received unit is `ESP32-S3` **revision v0.2**
+  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §1.1). The
+  errata sheet has never been read against any revision here, so every workaround
+  ESP-IDF applies silently is currently an assumption rather than a fact — D18.
+- **Goal:** read the ESP32-S3 Errata sheet, list every erratum that applies to
+  v0.2, and for each say whether ESP-IDF works around it automatically, whether
+  the workaround costs anything measurable, and whether it touches octal PSRAM,
+  the quad flash interface, USB-Serial/JTAG, the RTC domain or light sleep —
+  the five things this design leans on hardest.
+- **Acceptance:** the list in `docs/research/`, each entry with its erratum
+  number and the sheet's revision; anything with a firmware consequence raised as
+  its own task rather than left in prose.
+- **What must not be assumed:** that "ESP-IDF handles it" means "it is free".
+  Several ESP32 errata workarounds cost clock speed or current.
+- **Hardware required:** no.
+
+### T-099 · Finish and verify the factory flash backup
+- **Priority:** P0 — it is the only thing standing between this unit and an
+  unrecoverable factory image, and the first flash of our own firmware destroys it.
+- **Dependencies:** none.
+- **Why now:** the backup is in progress and the naive procedure produces a
+  silently corrupt file
+  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2). `esptool`
+  writes its output incrementally, so an aborted read leaves a **short** file
+  that concatenates without complaint into a shifted image.
+- **Goal:** a single `stock_dump.bin` of exactly `33 554 432` bytes, assembled
+  only from chunks whose individual lengths are exactly nominal, verified against
+  the device by on-chip MD5 (`esptool verify-flash 0x0 stock_dump.bin`) and
+  stored somewhere that is not the machine doing the flashing.
+- **Acceptance:** the length check and the verify output both recorded, with the
+  chunk map, in `docs/research/`. **Do not record a `PASS` for a verify that was
+  not run.**
+- **What must not be assumed:** that the stub failing is a transient. It is
+  content-deterministic — the same absolute flash addresses across runs that
+  started at different offsets — so a retry loop that does not change method is a
+  random walk with a budget attached.
+- **Hardware required:** yes — the owner's unit, already connected.
+
+### T-103 · What the vendor's three images actually are
+- **Priority:** P2 — it is a free input to T-034 and it expires the moment
+  somebody guesses instead.
+- **Dependencies:** none. The partition is already dumped.
+- **Why now:** the `storage` SPIFFS holds `/image/image1.bin`, `image2.bin` and
+  `image3.bin` — raw binaries, no encoder in sight
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4). That the
+  vendor bakes raw pixel buffers rather than shipping a PNG decoder is corroboration
+  for the direction T-034 was already leaning, and the file sizes turn it from a
+  guess into a measurement.
+- **Goal:** extract them (`mkspiffs -u out -b 4096 -p 256 -s 0x600000
+  storage.spiffs` — `strings` recovers names but not bodies, because SPIFFS
+  spreads data across pages), compare each size against **411 640** bytes, which
+  is a full 410×502 frame at RGB565. Then say what the format is, including
+  whether an LVGL image header sits in front of the pixels.
+- **Acceptance:** the three sizes and the derived format recorded in
+  `docs/research/`, with the arithmetic shown. If the sizes do not match any clean
+  interpretation, **say so** — a format nobody can account for is a finding, not a
+  failure.
+- **What must not be assumed:** that RGB565 is the answer because it is the
+  obvious one. RGB888, RGB565A8 and a palette all produce different numbers, and
+  the numbers are right there.
+- **Hardware required:** no — the partition is already in hand.
+
+### T-104 · `xiaozhi-esp32`: the licence, then this board's audio path
+- **Priority:** P1 — it is the audio bring-up for the exact board we have,
+  already written by somebody who had it working.
+- **Dependencies:** none.
+- **Why now:** the received unit's `model` partition holds WakeNet9
+  `wn9_nihaoxiaozhi_tts`, so the stock firmware **is**
+  [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §3). That
+  project therefore contains this board's I2S wiring, its ES8311 bring-up and what
+  the two microphones are for — all of which we would otherwise reverse out of a
+  9 MB blob or rediscover on the bench.
+- **Goal, in this order and not the other one:** (1) read its `LICENSE` and record
+  the decision in the [reuse ledger](docs/research/REUSE_LEDGER.md) whichever way
+  it goes; (2) only if the licence permits, read the board's audio path and write
+  it up as facts with file-and-line citations.
+- **Acceptance:** a full ledger record — the template, whole — and, if step 2
+  happens, an audio-path document that cites source rather than paraphrasing it.
+- **What must not be assumed:** that "it is on GitHub" means it may be copied, or
+  that reading a permissively-licensed project entitles us to its structure. The
+  ledger's rule is not a preference.
+- **Wake words are not in scope.** Identifying the vendor's firmware is not a
+  decision to ship a wake word; this repository has no such requirement and adding
+  one is a product change.
+- **Hardware required:** no.
+
+### T-105 · Is `AAC210602A1` the speaker or a haptic actuator?
+- **Priority:** P1 — it decides what `Capability::Haptics` resolves to, and
+  T-097 cannot be answered underneath a wrong answer here.
+- **Dependencies:** none.
+- **Why now:** two readings of the same unit disagree. This repository has the
+  part as the **speaker** in the back cover; a parallel reading calls it a haptic
+  module and concludes the board therefore has haptics after all
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §6). AAC
+  Technologies makes both, so the marking settles nothing.
+- **Goal:** trace the two solder pads. A speaker sits behind the ES8311 and its
+  amplifier; a haptic actuator does not. Continuity from the pads to the codec's
+  output stage answers it in one measurement.
+- **Acceptance:** the [hardware matrix](docs/research/HARDWARE_MATRIX.md) row
+  moves off `CONFLICTING` in one direction with the measurement recorded, and
+  T-097's premise is restated against whichever answer wins.
+- **What must not be assumed:** that the case grille settles it. It is strong
+  evidence and it is still evidence, not a trace.
+- **Hardware required:** yes — a meter on the board.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1345,7 +1521,7 @@ Possible options:
 Recommended next action:
                 Option 3 now, in parallel with option 1. Ask the project owner
                 about hardware availability (A1–A3); A4 is closed, not
-                outstanding (OD-13).
+                outstanding (OD-14).
 ```
 
 ### T-011 · Interference measurement
@@ -1378,7 +1554,7 @@ Recommended next action:
   the node carries one. **A4 (the regulatory region) is no longer on this
   list** — closed 2026-08-22, not by an answer but by the owner declining to
   give one: legality is his problem, not the firmware's
-  ([OD-13](docs/research/OWNER_DECISIONS.md#od-13--which-region-is-the-owners-problem-not-the-firmwares)).
+  ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
   No task here researches a specific jurisdiction's rules on the project's own
   initiative; [ADR-0006](docs/adr/0006-settings-and-bounded-values.md)'s
   transmit-closed-while-`Unknown` gate needs no such research to keep working.
@@ -1412,6 +1588,233 @@ Recommended next action:
 
 ## DONE
 
+### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
+- `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
+  Four checks, each of a failure that had already happened here.
+- **Relative links resolve.** These documents cite each other constantly and a
+  link that 404s reads exactly like one that works until somebody clicks it. The
+  repository was clean at the time this landed; the point is that it stays that
+  way through the next rename. Fenced code, external schemes and root-relative
+  `/paths` are all handled.
+- **Task IDs are unique.** Four pairs had accumulated. Two were stale open copies
+  of tasks already recorded as `DONE` — T-083 and T-084 — and those copies are
+  deleted, their substance already being in the `DONE` records. Two were genuine
+  collisions between unrelated work: T-054 and T-039 each named a live task *and*
+  a historical record. **The historical record keeps the number** — commit
+  `5810e20` names T-054 in its message and history cannot be re-pointed — so the
+  live tasks became **T-100** and **T-101**, each carrying a line saying why so
+  nobody renumbers them back.
+- **Headings inside a `<details>` block are excluded on purpose.** TASKS.md keeps
+  a rejected task's original scope in one — T-073 — and that is a record, not a
+  second live task. Without the exclusion this job would have failed on `main`
+  from its first run, which is the specific way a hygiene check lands broken.
+- **Inline code spans close.** Added after this task's own pull request shipped
+  a `TASKS.md` in which a splice landed inside an inline span, truncating T-100's
+  body and re-parenting its entire field list onto the next heading. Every
+  heading was still unique, so the uniqueness check passed cleanly — which is the
+  point. The rule is CommonMark's: a span opened by a run of N backticks closes
+  at the next run of **exactly** N, scoped to the paragraph. A per-line version
+  was written first and produced 61 false positives on this repository, because a
+  span may wrap a soft line break and this prose does it constantly.
+- **A live task has a body, and finished work is filed under `DONE`.** The span
+  check above catches that splice at its cause; this catches it at its effect,
+  and catches the effect however it got there — the task above a spliced heading
+  loses its fields, the task below inherits a `DONE` mark in a live section, so a
+  splice trips at least one of them wherever it lands. The rule is this file's
+  own, stated two paragraphs into it: a live task carries priority, dependencies,
+  goal, acceptance, status and tests.
+- **What it found that no syntactic check would have.** Four records were sitting
+  in live sections marked `DONE` — T-034, T-060, T-060a and T-084 — drift that
+  predates the splice by weeks, and the same defect the #48 review established
+  for T-064 and T-073. All four are moved into `## DONE` here. T-084 is worth
+  naming: the bullet above says its stale open copy was deleted because the
+  substance was already in the `DONE` records, and it was not — the record itself
+  was in `## READY`.
+- **Under `## BLOCKED` the body is the blocker, not a priority.** T-010 and T-011
+  carry the `BLOCKED:` block CLAUDE.md specifies and no `**Priority:**` field,
+  which is correct rather than missing. That block is written inside a fence, so
+  this is the one place in the checker that reads fenced lines — everywhere else
+  a `**Priority:**` inside a fence is an example and does not count as a body.
+- **Mutation-tested**, and CI runs those tests before it runs the checker:
+  twenty-five cases in `tools/docs/test_check_docs.py`, thirteen of which assert
+  the checker does *not* fire where firing would be wrong. One reproduces the
+  splice defect above verbatim and asserts the span check catches what the
+  uniqueness check cannot; another asserts the body check catches the same splice
+  from the other side.
+- Invoked through `python3`, never as `./check_docs.py` — the working copies this
+  repository is edited from report `core.filemode=false`, so an executable bit
+  set locally never reaches a commit.
+
+### T-034 · Image asset pipeline — **DONE** 2026-08-22
+- `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`, exactly the
+  three directories final §45 names, with LVGL v9.5.0's `LVGLImage.py` vendored
+  unmodified at `tools/assets/vendor/` and pinned by hash.
+- **Deterministic**, verified rather than assumed: two runs, byte-compared.
+- **The staleness gate covers the converter as well as the art.** An encoder
+  that changes its output *is* the asset changing, so its SHA-256 is inside
+  `INPUTS.sha256` and a bump fails `ui_images_are_current` until the tree is
+  regenerated.
+- **Three refusals, each with a test that triggers it:** a source over 512 px
+  (the 1440-pixel concept sheets, §41); a source under `docs/` or `pics/`; and a
+  pixel size with no drawing behind it — which is final §86 made mechanical
+  rather than aspirational, because the pipeline **never resamples one size into
+  another** and `icon()` returns `nullptr` rather than the nearest thing it has.
+- **Proved with three icons** — `mesh`, `position`, `warning` — authored at 33,
+  39 and 47 px with per-size geometry in `tools/assets/icon_drawings.py`. Nine
+  A8 masks, **14 457 B** of `.rodata`, reported per asset rather than estimated.
+- **Assets are named by pixels, never by board.** `icon.size.lg` at 261 dpi and
+  `icon.size.md` at 315 dpi are both 39 px and share one file; a test asserts the
+  two lookups return the same pointer. Four tokens × two densities is seven
+  distinct sizes, and the manifest names the three it generates rather than
+  taking the cross-product, because a mask costs its pixel count in flash.
+- Review sheet: `docs/ui/specimens/sheet-icons.png`, day and night, 1:1.
+  DESIGN_SYSTEM gained §7.1 and §7.2; RESOURCE_BUDGET gained the numbers; the
+  reuse ledger records `USE AS-IS` for the vendored converter.
+- **Not done, and split out rather than quietly dropped:** the mascot — T-034a.
+- **Not measured on hardware.** The byte counts are `CALCULATED` from the
+  format; `idf.py size` is the only thing that settles cost after alignment.
+
+### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22
+- [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md), and four entries in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Read from the datasheets,
+  Bosch's own reference driver and LilyGo's board support, in that order.
+- **BMA423: yes, it counts steps** — a 32-bit counter at `0x1E`–`0x21`. **And
+  its datasheet does not say how.** All four registers carry one line:
+  *"Application note – Wearable feature set"*. Every behavioural question — power
+  mode, required ODR, reset survival, and whether it counts while the SoC sleeps
+  — is in `BST-MAS-AN032`, which returned HTTP 403. **T-060a.**
+- **The feature is a 6 144-byte blob the host uploads at every boot**, with a
+  mandatory **150 ms** wait and a status register that must read
+  `ASIC_INITIALIZED`. Whether a soft reset drops it is `UNKNOWN`, and if it does,
+  every reset is a hole in the day's total.
+- **The watermark is 10 bits and 0 does not mean "every step"** — it selects the
+  separate step-detector interrupt. LilyGo's own board support sets it to 1.
+  *(**Corrected by T-060a:** the field carries an implicit ×20, so that is an
+  interrupt every 20 steps, not every step.)*
+- **One interrupt line, already shared six ways.** INT2 is bonded out but not
+  routed on the T-Watch, and LilyGo maps step counter, any-motion, no-motion,
+  activity, tilt and wake-up all to INT1. A design needing a private interrupt
+  for steps does not fit this board.
+- **QMI8658: it depends which part, and we do not know which.** The **C** variant
+  documents a full pedometer — 24-bit count at `0x5A`–`0x5C`, `CTRL8.Pedo_EN`,
+  two CTRL9 commands, eight tunable parameters. **QMI8658A Rev A documented the
+  identical feature; Rev D has deleted it** — feature list, chapter and registers
+  alike, with no deprecation note. `HARDWARE_MATRIX` records the board's IMU as
+  *"QMI8658 / QMI8658C"* and the vendor BSP does not touch the IMU, so there is
+  no code to read the answer out of. **This is the ADR-0003 pattern in a second
+  subsystem.**
+- **Two findings that change what a step count *means*:** the QMI8658C
+  retroactively counts steps it had discarded once a walk is confirmed
+  (`ped_time_cnt_entry`), and updates its registers only every N steps
+  (`ped_sig_count`) — **a read is stale by design**. A step count is an estimate
+  produced by somebody else's filter, and ADR-0011's language about a position
+  applies to it unchanged.
+- **Power:** QMI8658C 30/35/42/55 µA at 3/11/21/128 Hz low-power; BMA423 13 µA
+  at 50 Hz. The Waveshare board pays **at least** three times as much — the two
+  figures are at different ODRs and matching them widens the gap, PEDOMETER_PARTS §2.4 —
+  before its variant question is settled. Vendor typicals, **not** measurements.
+- **No hardware involved.** `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### T-060a · Read the Bosch application note the datasheet points at — **DONE** 2026-08-22
+- **Answered without the application note.** Bosch's site returned **HTTP 403**
+  a third time, and Mouser, LCSC, Octopart and micro-semiconductor mirror only
+  revision 2.0 or a product flyer. The material turned out not to need it:
+  **the chapter revision 2.0 deletes is still printed in revision 1.1.**
+- **BMA423 Data Sheet revision 1.1, `BST-BMA423-DS000-01`, May 2019** — pp.
+  31–37 — carries the full *"Step Detector / Step Counter"* chapter, the
+  *"Minimum Bandwidth Settings"* section, the phone/wrist preset tables and the
+  per-field configuration list. Revision 1.0 (Aug 2017) is byte-identical there.
+  Revision 2.0 (Aug 2019) replaced it all with a pointer and moved from document
+  series `DS000` to `DS004`. Retrieved from the Watchy project's mirror; SHA-256
+  recorded in [PEDOMETER_PARTS §1.2](docs/research/PEDOMETER_PARTS.md).
+- **Four of the five questions are answered `SUPPORTED`:**
+  - **counts while the host sleeps** — the sensor duty-cycles itself and feeds
+    the feature engine at 50 Hz; register contents are retained in every power
+    configuration. What is left is a *board* question about the rail, not a
+    sensor one;
+  - **required configuration** — features consume samples at 50 Hz. Performance
+    mode: any ODR. Low-power mode: **minimum 50 Hz**, 200 Hz only for tap, and a
+    violation sets `INTERNAL_STATUS.odr_50hz_error` rather than failing quietly;
+  - **feature current** — the budget line is the 50 Hz low-power figure,
+    **13–14 µA `ESTIMATED`**. Not 42 µA, not 150 µA;
+  - **soft reset** — the blob does **not** survive. *"Initialization has to be
+    performed as well after every POR or soft reset."*
+- **One stays `UNKNOWN`:** behaviour at the 32-bit boundary. Not in revision 1.1
+  either. **T-060b**, and it changes nothing — the firmware treats any decrease
+  as reset-or-wrap regardless.
+- **And one earlier claim was wrong.** The 10-bit watermark field *"holds
+  implicitly a 20x factor"*, and Bosch's driver writes the argument raw — so
+  LilyGo's `setStepCounterWatermark(1)` is an interrupt every **20** steps, not
+  every step. Corrected in both documents, marked as a correction.
+- **Two things nobody asked for:** the step algorithm's **wrist preset is
+  already the default**, so T-061 writes none of the 25 parameters; and axis
+  remapping applies **only** to the feature engine, never to `DATA_0`–`DATA_13`
+  or the FIFO, so a driver that remaps once has got one of the two wrong.
+- **This was a research task.** No code came out of it.
+
+### T-084 · Deep research: design customisation on wearables — **DONE** 2026-08-22
+- [WEARABLE_CUSTOMISATION](docs/research/WEARABLE_CUSTOMISATION.md). Eighteen
+  sources, read and dated. Findings that changed the plan: **every platform that
+  shipped executable watch faces has moved away from them and none has moved
+  back**; Wear OS publishes the only hard numbers anybody publishes (15 % of
+  pixels lit in ambient, 10 MB ambient / 100 MB interactive assets, 12 sp
+  essential text, **48 dp touch targets**); Flipper's passive/active split is the
+  power model and the delight in one mechanism, with wrist-raise as the trigger
+  the owner had already named; and **no platform validates that a user-installed
+  face can be read** — they ship system-level overrides instead, which is a gap
+  Attadipa can fill for free because the contrast arithmetic already exists.
+- Filed out of it: T-085, T-086, T-087. And one finding against existing code:
+  `touch.min.adult` is 44 dp and Wear OS requires 48.
+- **Original brief, kept:** *"Прям нормальный дип ресерч. А по результатам уже
+  назначишь задание себе че делать че не делать."*
+
+### T-072 · What a vanilla MeshCore node actually exposes — **DONE** 2026-08-22
+- §1 of [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  is answered, and the detail it summarises is
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  transports, framing, the whole command set, the three position scalings, and a
+  provenance section saying which claims were verified twice and which once.
+- **LAN exists**, which is what OD-7 turned on: Wi-Fi/TCP and Ethernet/TCP, both
+  port 5000 by default, one client at a time. That makes a host-side client the
+  cheapest possible bring-up.
+- **176 bytes is the frame budget** and it cannot be raised by a build flag.
+- **The finding that outranks the rest:** a position from a vanilla node carries
+  **no fix flag, no satellite count, no timestamp and no HDOP**, and `node_lat`
+  is one slot shared by the GNSS loop, saved prefs and the client app. A receiver
+  cannot tell a live fix from a stale one from a hand-typed coordinate. That is a
+  direct input to [ADR-0011](docs/adr/0011-gnss-integrity.md), OD-8 and OD-10.
+- Reuse-ledger records added for both the client (`REIMPLEMENT`) and the
+  Meshtastic gate (`REJECT`).
+- **Read from source, never observed.** `NOT EXECUTED — HARDWARE REQUIRED` —
+  see T-072a.
+
+### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
+- **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
+  answering A7 on [#33](https://github.com/hleserg/Attadipa/issues/33): *"Не
+  делаем. Ни Apple, ни какую-либо ещё."*
+- **Why, and the order matters.** The research found the feature expensive
+  before it found it unwanted, and the decision is the second one. Two of the
+  three ecosystems are shut before the radio is involved — Google needs
+  registration, an email allowlist and third-party certification, and its only
+  readable implementation is licensed for Nordic silicon; Samsung's SDK ships
+  for no Espressif part. Apple is reachable and costs an Apple ID bootstrapped
+  on Apple hardware, a self-hosted endpoint and, for anything a person would
+  recognise as Find My, MFi — which excludes individuals. **None of that is the
+  reason.** The owner decided the feature is not wanted, which is a product
+  decision and outranks the obstacles.
+- **What still answers the need:** T-063 — the companion phone remembers where
+  it last saw the watch over BLE. No account, no other company's identifier, no
+  network, and it works with the companion this project already specifies.
+- **What the research keeps, because it is about the device and not the
+  feature:** DULT, rotation intervals and the 2022 fast-rotation evasion are
+  still live input to T-069 and T-070. §1 of
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is not
+  obsolete; only this task is.
+- **If this is ever revisited:** nothing in the ecosystems changed the answer,
+  so nothing in them would change it back. It is one decision to reverse.
+
+
 ### T-073 · Meshtastic as a companion — **REJECTED**, owner decision 2026-08-22
 - **Outcome:** not supported. [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
   from [#41](https://github.com/hleserg/Attadipa/issues/41).
@@ -1422,10 +1825,17 @@ Recommended next action:
   expensive one. A real clean-room is months and is done honestly or not at all.
 - **What still answers the need:** MeshCore, MIT. OD-7 asked for a companion for
   people who will not build our node, and MeshCore is the remaining candidate
-  whose licence permits one. **T-072 is still open** — §1 of
+  whose licence permits one. **T-072 has since answered how much work that client
+  is** (2026-08-22): §1 of
   [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  is `UNKNOWN` on every row — so how much work that client is remains unknown.
-  The rejection here does not depend on that number.
+  is answered on every row, with the detail in
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  58 commands, a 176-byte frame budget that no build flag can raise, and a
+  Wi-Fi/Ethernet TCP transport that makes a host-side client the cheapest
+  bring-up there is. It is a real but bounded amount of work. **The rejection
+  here never depended on that number and does not change now that it exists** —
+  it rests on the licence gate and the cost of a clean-room, neither of which
+  T-072 touched.
 - **If this is ever revisited:** the licence question is answered and recorded.
   Only the product decision would need to change.
 
@@ -1854,3 +2264,84 @@ Recommended next action:
   published schematics — then the schematics were **read** rather than cited,
   which corrected two rows and produced two documented conflicts with the vendor
   documents.
+
+### T-090 · The corrections the Waveshare verification pass turned up
+
+- **Priority:** P2 — none of these blocks anything today, and every one of them
+  is a wrong fact sitting in a document another agent will read as true.
+- **Dependencies:** none. Each is a small correcting commit.
+- **Goal:** close out the defects listed in
+  [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §7 that are ours
+  rather than the external advice's. **Five of the seven** are already done on
+  the branch that filed this task — the peripheral table's missing columns, the
+  reuse ledger's wrong upstream, D3's mis-stated connector, the false promise in
+  VERIFIED_FACTS §1, and the D12 split propagated to all three of the places it
+  had been left out of. **Two remain:**
+  - [`docs/upstream/research-integration.md:180-181`](docs/upstream/research-integration.md)
+    says "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
+    ~10 µA light-sleep floor on the workaround "must not be deselected on a
+    module rather than a bare chip". [HARDWARE_MATRIX.md:301](docs/research/HARDWARE_MATRIX.md)
+    records the Waveshare SoC as a **bare chip, not a module**, VERIFIED from the
+    schematic. One of the two is wrong, the figure is carried forward into
+    [HIL_PLANS.md:64-67](docs/testing/HIL_PLANS.md) as VENDOR-STATED, and the
+    sleep-current plan depends on which.
+  - The part-ownership table at
+    [ARCHITECTURE.md:396-414](docs/architecture/ARCHITECTURE.md) has no flash or
+    PSRAM row for the Waveshare where the T-Watch table has both. An omission,
+    not a claim — but CLAUDE.md says every part on the board gets a seat.
+- **Not in scope:** D13's rail assignments. That needs the board.
+
+### T-091 · Two more addresses on the Waveshare I2C bus, and a board profile that knows it
+
+- **Priority:** P2 — it is wrong today and it is cheap.
+- **Dependencies:** T-090 is unrelated; this one waits on nothing.
+- **Goal:** the ES8311 codec and the ES7210 microphone ADC are I2C control slaves
+  on the main bus, which the vendor BSP demonstrates by handing all three parts
+  one `i2c_master_bus` handle. The board profile and any future bus-collision
+  check must carry six addresses, not four. Recorded in
+  [VERIFIED_FACTS.md](docs/research/VERIFIED_FACTS.md) and
+  [HARDWARE_MATRIX.md](docs/research/HARDWARE_MATRIX.md); nothing in `platform/`
+  models an I2C bus yet, so this is a note against whoever writes that first.
+- **Carry the trap with it:** SensorLib's `QMI8658_L_SLAVE_ADDRESS` is `0x6B`
+  where `L` means the SA0 *pin level*, and Waveshare's `QMI8658_ADDRESS_HIGH` is
+  also `0x6B` where `HIGH` means the *numeric value*. The two vendor demos look
+  like they disagree and do not. Any Attadipa wrapper that re-exports either name
+  hands the next reader the same trap.
+
+### T-092 · Do not depend on Waveshare's `esp_lcd_sh8601` fork
+
+- **Priority:** P2 — it decides part of T6 with evidence rather than preference.
+- **Dependencies:** feeds open question T6.
+- **Goal:** `waveshare/esp_lcd_sh8601` is a two-line fork of
+  `espressif/esp_lcd_sh8601` — its own files carry Espressif's SPDX headers. One
+  line is inert. The other, at `:280`, calls `tx_color(...)` bare where upstream
+  wraps it in `ESP_RETURN_ON_ERROR`, inside `panel_sh8601_draw_bitmap`, which
+  then returns `ESP_OK` unconditionally: **a failed frame transfer is reported as
+  success.** Present in 1.0.2, which the published demo pins, and in 2.0.0.
+  Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named
+  `esp_lcd_co5300` — QSPI, accepting a custom init table — under the same
+  Apache-2.0. Take the pin map and the init table; depend on upstream.
+- **Evidence:** [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §3.3.
+
+### T-093 · The LVGL draw-buffer ADR has no vendor existence proof to lean on
+
+- **Priority:** P1 — it was about to be written on a false premise.
+- **Dependencies:** the arithmetic is done; the numbers that matter need hardware
+  (§6 rows 9 and 10).
+- **Goal:** it is widely assumed that the vendor BSP proves PSRAM-backed LVGL
+  works at 410 × 502. It does not. `bsp_display_start()` sets
+  `.buff_spiram = true` and it is **dead code** —
+  `bsp_display_start_with_config()` reads only `cfg->lvgl_port_cfg`, and the live
+  allocation in `bsp_display_lcd_init()` is `410 × 100 px` ≈ 80 KiB with
+  `.buff_dma = false` and `.buff_spiram` guarded by `CONFIG_BSP_DISPLAY_LVGL_PSRAM`,
+  a symbol that appears **zero times** in the BSP's Kconfig. So the vendor ships
+  one partial buffer in internal SRAM. If anything that points away from PSRAM.
+- **The hardware constraint to carry in:** on the ESP32-S3
+  `SOC_PSRAM_DMA_CAPABLE` is 0, so a draw buffer in PSRAM can never also be
+  DMA-capable.
+- **The arithmetic, which reproduces independently:** 410 × 502 = 205,820 px; one
+  RGB565 frame is 411,640 B = **402.0 KiB**, 78.5 % of the 512 KB internal SRAM
+  before ESP-IDF, the QSPI driver and BLE exist. Double-buffered internally is
+  arithmetically impossible; double-buffered in 8 MB of PSRAM is 9.8 % of it.
+  Capacity is not the constraint — internal SRAM, PSRAM bandwidth and cache
+  coherency are, and only the board can measure the last two.

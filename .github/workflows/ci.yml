@@ -22,6 +22,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pillow, for the two asset-pipeline checks that have to draw something to
+      # know whether the drawing changed. The apt package rather than pip,
+      # because the runner's Python is externally managed and this needs no
+      # version pin — nothing ships Pillow, it is a tool-time dependency and its
+      # output is committed. Without it CMake registers a deliberately failing
+      # test in their place rather than skipping them quietly.
+      - name: Install Pillow
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pil
+
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
@@ -50,6 +61,17 @@ jobs:
       # The simulator is deliberately not built here: LVGL is a vendored
       # dependency with its own warning profile, and holding somebody else's
       # code to our flags produces noise rather than quality.
+      # Pillow, for the two asset-pipeline checks that have to draw something to
+      # know whether the drawing changed. The apt package rather than pip,
+      # because the runner's Python is externally managed and this needs no
+      # version pin — nothing ships Pillow, it is a tool-time dependency and its
+      # output is committed. Without it CMake registers a deliberately failing
+      # test in their place rather than skipping them quietly.
+      - name: Install Pillow
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pil
+
       - name: Configure
         run: >
           cmake -S . -B build-strict -DCMAKE_BUILD_TYPE=Debug
@@ -71,10 +93,15 @@ jobs:
       # diagnostics, different UB detection, different opinions about what is
       # conforming. This costs one runner and has caught real portability bugs
       # in every project that has tried it.
-      - name: Install Clang
+      # Pillow rides along with clang: the two asset-pipeline checks have to
+      # draw something to know whether the drawing changed, and a second
+      # apt-get update for one package is 10 seconds nobody needs. Without it
+      # CMake registers a deliberately failing test in their place rather than
+      # skipping them quietly.
+      - name: Install Clang and Pillow
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang
+          sudo apt-get install -y --no-install-recommends clang python3-pil
 
       - name: Configure
         run: cmake -S . -B build-clang -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
@@ -97,6 +124,17 @@ jobs:
       #
       # halt_on_error=1 matters: without it UBSan prints and continues, the test
       # passes, and the report scrolls past in a green job.
+      # Pillow, for the two asset-pipeline checks that have to draw something to
+      # know whether the drawing changed. The apt package rather than pip,
+      # because the runner's Python is externally managed and this needs no
+      # version pin — nothing ships Pillow, it is a tool-time dependency and its
+      # output is committed. Without it CMake registers a deliberately failing
+      # test in their place rather than skipping them quietly.
+      - name: Install Pillow
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pil
+
       - name: Configure
         run: >
           cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug
@@ -120,6 +158,17 @@ jobs:
 
       - name: Install gcovr
         run: pipx install gcovr
+
+      # Pillow, for the two asset-pipeline checks that have to draw something to
+      # know whether the drawing changed. The apt package rather than pip,
+      # because the runner's Python is externally managed and this needs no
+      # version pin — nothing ships Pillow, it is a tool-time dependency and its
+      # output is committed. Without it CMake registers a deliberately failing
+      # test in their place rather than skipping them quietly.
+      - name: Install Pillow
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pil
 
       - name: Configure
         run: >
@@ -202,6 +251,62 @@ jobs:
       - name: Watchdog queue scan
         run: bash .github/tests/watchdog-filter-test.sh
 
+      # What the pipeline says out loud. A silent pipeline and a dead one look
+      # the same from an issue, which cost this project a morning of somebody
+      # asking whether anything was happening. The receipt and the outcome
+      # comment are the fix, and text nobody asserts on drifts back to silence
+      # one edit at a time.
+      - name: What the agent says
+        run: bash .github/tests/agent-say-test.sh
+
+      # The staleness line is the only thing telling an agent that the finding
+      # it is about to implement was made against code that has since moved.
+      # Its previous version truncated at 800 characters and, on issue #26,
+      # ended mid-path on the word "c".
+      - name: The staleness summary
+        run: bash .github/tests/compare-summary-test.sh
+
+  docs:
+    name: Documentation consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Four failures that have all already happened here, and none of which
+      # anything else catches. A relative link that 404s reads exactly like one
+      # that works until somebody clicks it, and these documents cite each other
+      # constantly — a rename with a stale reference behind it is the normal way
+      # it breaks. A stray backtick turns everything after it into code until
+      # the next one, so a heading that lands inside the span stops being a
+      # heading. A duplicate task ID means two tasks answer to one name, so an
+      # agent handed "T-054" cannot tell which it was handed; four pairs had
+      # accumulated before this job existed. And a live task with no body cannot
+      # be picked up at all, while a finished one left in a live section reads
+      # as work waiting — four records were sitting like that.
+      #
+      # Headings inside a `<details>` block are excluded on purpose: TASKS.md
+      # keeps a rejected task's original scope in one, and that is a record
+      # rather than a second live task. A check that failed on it would be
+      # landing broken.
+      #
+      # Invoked through `python3` rather than as `./check_docs.py`. The working
+      # copies this repository is edited from report core.filemode=false, so an
+      # executable bit set locally never reaches a commit and the runner would
+      # get `Permission denied` instead of a result.
+
+      # The checker's own mutation tests, run before the checker. A checker that
+      # passes everything is worse than no checker, because it reads as
+      # evidence. Twenty-five cases, thirteen of which assert it does *not* fire
+      # where firing would be wrong, and two that reproduce the splice defect
+      # this pull request's first revision shipped — one from each side, because
+      # a stray backtick both strips the task above of its fields and hands the
+      # task below a DONE mark in a live section.
+      - name: The checker actually checks
+        run: python3 tools/docs/test_check_docs.py
+
+      - name: Links resolve, spans close, IDs are unique, tasks have bodies
+        run: python3 tools/docs/check_docs.py .
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest
@@ -212,10 +317,10 @@ jobs:
       # docs/research/DEPENDENCIES.md. SDL2 is the only system package this
       # build needs; LVGL carries the SDL display, mouse and keyboard drivers
       # in-tree but does not link SDL itself.
-      - name: Install SDL2
+      - name: Install SDL2 and Pillow
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libsdl2-dev
+          sudo apt-get install -y --no-install-recommends libsdl2-dev python3-pil
 
       # CMake's shallow clone is --no-single-branch, so it pulls one commit off
       # every ref and the tree runs to hundreds of megabytes. That is a
