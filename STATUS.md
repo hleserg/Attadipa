@@ -440,39 +440,21 @@ available on this board.
 
 ## Blocked
 
-- **Running any of our own code on the received unit — 2026-08-23, and both
-  non-destructive routes are closed.** The owner authorised flashing, the flash
-  was written, and the answer is that this board does not have a free way in.
-  `ota_1` is the only empty app partition and it sits at exactly `0x1000000`;
-  the ROM and the second-stage bootloader address flash with 24 bits, so that
-  address **aliases to `0x0`** and the slot can never boot — the bootloader read
-  its own image and said so. A `PURE_RAM_APP` loaded with `esptool load-ram`
-  starts and the chip resets itself within milliseconds, **four attempts out of
-  four**, including an image containing no drivers at all. What is left is
-  overwriting a partition that already holds vendor firmware, which is the
-  owner's call and is asked in
-  [#100](https://github.com/hleserg/Attadipa/issues/100). The restore slice for
-  `ota_0` is already extracted and verified against the device, so the option is
-  prepared rather than merely proposed.
-  **The unit was left byte-identical to the T-099 backup** — `verify-flash` over
-  all 33 554 432 bytes, after the fact. The backup did its job the first time it
-  was needed. [WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md).
-  Still unanswered because of it: the bus scan that settles `0x6A` vs `0x6B` and
-  confirms `0x0C`/`0x0D` are free for the magnetometer, the AXP2101 rail states
-  behind D13, and the touch controller's identity.
-
-- **T-061 the pedometer** — partly, and less than before. T-060a settled the
-  BMA423 side: the power story is **13–14 µA at 50 Hz in low-power mode**, the
-  counter runs while the host sleeps, and the wrist preset is already the
-  default. What remains blocked is the **Waveshare** side — the board's IMU
-  variant is unknown, the QMI8658**C** documents a pedometer and the QMI8658A's
-  **current** datasheet revision has deleted one — and one board question that
-  is nobody's datasheet, and which is **already filed as [H8](docs/research/OPEN_QUESTIONS.md)**
-  rather than new: whether the AXP2101 keeps the IMU's rail up across an
-  SoC sleep. If it does not, the 6 kB blob is gone and the 150 ms is owed again
-  on every wake. **Both are now bench questions rather than reading questions** —
-  the Waveshare is on the desk, so `WHO_AM_I` settles the variant and a rail
-  measurement across a sleep settles H8. Neither has been done.
+- **T-061 the pedometer** — down to one question, and it is not a reading
+  question. T-060a settled the BMA423 side: **13–14 µA at 50 Hz in low-power
+  mode**, the counter runs while the host sleeps, and the wrist preset is already
+  the default. The Waveshare side was blocked on *which* QMI8658 document
+  describes the silicon, and **the silicon answered on 2026-08-23**:
+  `REVISION_ID = 0x7C`, the QMI8658A `13-52-25` Rev A value, against `0x79` for
+  the QMI8658C Rev 0.6 document that has no pedometer in it. `CTRL8 = 0x90` was
+  written and read back exactly — the register Rev 0.6 calls *"Reserved: Not
+  Used"*. So the hardware engine is documented and the register map is settled.
+  What is left is **T-112: someone has to walk with the watch.** Step count
+  stayed 0 on a board lying on a desk, which is the correct reading and no
+  evidence either way.
+  Still open beside it, and unchanged: **[H8](docs/research/OPEN_QUESTIONS.md)** —
+  whether the AXP2101 keeps the IMU's rail up across an SoC sleep. If it does
+  not, the 6 kB blob is gone and the 150 ms is owed again on every wake.
 - **T-010 board bring-up** — **half unblocked as of 2026-08-22.** A physical
   Waveshare `ESP32-S3-Touch-AMOLED-2.06` is on the desk; a T-Watch is not, and
   the T-Watch's variant question (which of five radios, which of two GNSS
@@ -604,11 +586,61 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   Labs datasheets, which refused automated retrieval. Recorded as **PARTIAL**,
   not VERIFIED.
 
-## What the vendor's own firmware answered, 2026-08-23
+## The bench session of 2026-08-23
 
-Capturing the unit's boot log from **62 ms** — which took resetting over the CDC
-control lines, because the ordinary route reconnects at ~580 ms and misses the
-bootloader's decision entirely — settled four things at no cost:
+The owner authorised flashing the unit
+([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing
+needed to be flashed** — the bench sequence ran out of RAM, wrote nothing, and
+the unit is byte-identical to the T-099 backup with `verify-flash` over all
+33 554 432 bytes to say so. Full write-up:
+[WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md).
+
+### Two routes tried; the second one works
+
+- **`ota_1` can never boot.** It sits at exactly `0x1000000`, and the ROM and
+  second-stage bootloader address flash with 24 bits, so the address **aliases to
+  `0x0`** — the bootloader read its own image and said so. Waveshare ships a
+  partition table containing an OTA slot their own bootloader cannot use. **For
+  Attadipa: every app partition on this board lives below 16 MB**, unless somebody
+  proves ESP-IDF's experimental `BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH` on it,
+  which nobody has.
+- **A `PURE_RAM_APP` runs fine — if the serial port is never closed.** Four
+  earlier attempts reset within milliseconds and were written up as proof the
+  board refuses RAM images. They were not: the kernel drops DTR and RTS on the
+  *last* close of a `ttyACM`, those lines are GPIO0 and EN here, and `esptool`
+  exiting was itself the reset. `rst:0x15 (USB_UART_CHIP_RESET)` says *the host
+  did it* and should have been read that way the first time. Driving `load-ram`
+  from a single process that never closes the port, the same driverless image
+  that "failed" runs indefinitely.
+
+### What the probes then read off the board, without one flash write
+
+- **The IMU is at `0x6B`, measured** — `0x6A` does not answer. The address
+  conflict is resolved; the schematic and revisions 0.8/0.9/A were right.
+- **H14 resolves, and it matters for OD-6.** The QMI8658 reports
+  `REVISION_ID = 0x7C` — the value in `13-52-25 ∙ QMI8658A ∙ Rev A`, whose
+  chapter 11 documents a hardware pedometer. The QMI8658C Rev 0.6 document, which
+  has no pedometer and calls `CTRL8` *"Reserved: Not Used"*, gives `0x79`. **The
+  schematic prints `QMI8658C` twice and it does not describe this part.**
+  Corroborated by writing: `CTRL2`/`CTRL7`/`CTRL8` all read back exactly as
+  written, and the accelerometer reported gravity at 1.03 g under Rev A's ±8 g
+  scaling. What is left is T-112 — someone has to walk with it.
+- **Touch is held in reset until GPIO 9 is pulsed.** `0x38` is absent from the
+  bus scan; driving GPIO 9 high and holding it changes nothing; **a 10 ms low
+  pulse brings it up**, reading chip ID `0x64`, firmware `0x02`, vendor `0x11`.
+  A BSP that configures GPIO 9 as a high output at init would see an empty bus
+  and report no error. T-113.
+- **`0x0C`, `0x0D` and `0x1E` are free** for the magnetometer retrofit (T-109).
+- **The AXP2101's rail registers are recorded raw** — `IC_TYPE = 0x4A`,
+  `LDO_ON_OFF0 = 0xFF`, the DCDC and ALDO/BLDO voltage bytes — read from the
+  powered board without writing anything. That is the input D13 and H8 were
+  waiting for; decoding it into a rail map still needs the datasheet beside it.
+
+### And the vendor's own boot log, captured from 62 ms
+
+Which took resetting over the CDC control lines, because the ordinary route
+reconnects at ~580 ms and misses the bootloader's decision entirely. It settled
+four more things at no cost:
 
 - **D12a is now confirmed on silicon.** The `octal_psram` driver enumerates the
   part: `vendor id 0x0d (AP)`, `density 0x03 (64 Mbit)`, `VCC 0x01 (3V)`,
@@ -625,7 +657,7 @@ bootloader's decision entirely — settled four things at no cost:
   documented mismatch will not bite at bring-up.
 - **Flash boots QIO at 80 MHz**, `detected chip: gd`, 32 MB; `chip revision
   v0.2`; `efuse block revision v1.4`; `QMI8658 initialized successfully` — which
-  names no address, so `0x6A` vs `0x6B` stays `CONFLICTING`.
+  names no address; the bus scan above settles `0x6B` by measurement instead.
 
 ## Recently completed
 

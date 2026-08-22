@@ -911,25 +911,101 @@ facts that change what may be written are here.
   partition table is not self-validating: `ota_1` is well-formed, correctly sized,
   correctly typed and dead, and no tool in the chain warns about it.
 
-### A PURE_RAM_APP loaded over this board's USB-Serial/JTAG does not run
+### A PURE_RAM_APP runs on this board — but only if the serial port is never closed
 
-- **Claim:** `esptool load-ram` reports success and the chip resets itself within
-  milliseconds — `rst:0x15 (USB_UART_CHIP_RESET)` — booting the factory image
-  instead. **Four attempts out of four**, including a minimal image containing no
-  peripheral driver of any kind.
-- **Source:** S13. Every segment verified internal RAM with `esptool image-info`
-  (DRAM/IRAM/RTC_DATA, no DROM or IROM). The saved PC lands inside the loaded
-  image's own IRAM segment each time, so the code starts and is executing when
-  the reset arrives. Two host-side explanations were tested and eliminated first:
-  `--after` defaulting to a reset, and pyserial asserting DTR/RTS on `open()` —
-  which on this board are GPIO0 and EN, and which destroyed two images before it
-  was noticed.
-- **Impact:** the RAM-diagnostic route proposed in
-  [#100](https://github.com/hleserg/Attadipa/issues/100) is **withdrawn on
-  evidence**, not on judgement. Running our own code on this unit now requires
-  overwriting a partition that already holds vendor firmware, which is an owner
-  decision. `UNKNOWN`: whether JTAG, or a build that leaves the USB peripheral
-  strictly alone, would survive — neither was tried.
+- **Claim:** `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y` images load over
+  USB-Serial/JTAG and **run**, writing nothing to flash. The four earlier runs
+  that reset within milliseconds were killed by `esptool` exiting: the kernel
+  drops DTR and RTS on the *last* close of a `ttyACM`, and on this board those
+  lines are GPIO0 and EN.
+- **Source:** S13. Decisive test — `esptool` used as a library in one process so
+  the port is never closed (`detect_chip` → `cmds.load_ram` → read `esp._port`
+  directly), run against the *same* minimal driverless image that had failed as
+  attempt 4. Thirty seconds watched: no `rst:0x`, no `ESP-ROM:` banner, ESP-IDF's
+  own startup log instead. The full bench probe then ran the same way for two
+  minutes.
+- **The reset cause was the evidence all along.** `rst:0x15
+  (USB_UART_CHIP_RESET)` is by definition a **host-driven** reset through the
+  USB-Serial/JTAG peripheral; no misbehaving image produces it. Two other
+  host-side causes were correctly eliminated first (`--after no-reset`; pyserial
+  asserting DTR/RTS on `open()`), and neither touched esptool's own close.
+- **A second, independent cause of silence** applied to attempt 4: it was built
+  with `CONFIG_ESP_CONSOLE_NONE=y` and
+  `CONFIG_ESP_CONSOLE_ROM_SERIAL_PORT_NUM=-1`, so its `esp_rom_printf` output had
+  nowhere to go. In RAM images on this board, use `ESP_LOGx` or `printf`.
+- **Impact:** **this retracts the earlier entry that recorded the RAM route as
+  dead, and the `BLOCKED` that rested on it.** No partition holding vendor
+  firmware needs overwriting; read-only bench work on this unit costs no flash
+  write at all.
+
+### The main I2C bus, scanned from a RAM app — five devices, and 0x6B settles a conflict
+
+- **Claim:** on SDA 15 / SCL 14 at 100 kHz, exactly five devices acknowledge:
+  `0x18` (ES8311), `0x34` (AXP2101, `IC_TYPE = 0x4A`), `0x40` (ES7210), `0x51`
+  (RTC) and `0x6B` (QMI8658). **`0x6A` does not answer**, and neither does
+  `0x38`.
+- **Source:** S13, the bench probe running from RAM under the vendor's own power
+  configuration. Read-only: every access is an I2C write-then-read whose write
+  phase carries a register address and never a value.
+- **Impact, in descending order:**
+  - The IMU address conflict is **RESOLVED at `0x6B`** by measurement. The
+    schematic and QMI8658 revisions 0.8/0.9/A are right; the Rev 0.6 document
+    Waveshare's own wiki links, which maps SA0-low to `0x6A`, does not describe
+    this board.
+  - **`0x0C`, `0x0D` and `0x1E` are free**, so a magnetometer retrofit (T-109)
+    has an address to live at.
+  - **The touch controller is not reachable** in the state a bare RAM app finds
+    the board in — see the next entry.
+
+### The QMI8658 reports REVISION_ID 0x7C, which is the datasheet with a pedometer in it
+
+- **Claim:** at `0x6B`, `WHO_AM_I = 0x05` and **`REVISION_ID = 0x7C`**. The
+  register-description sections of the two candidate documents give different
+  values for that byte: **`0x7C` in `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`**
+  (© 2022 QST), whose chapter 11 documents a complete hardware pedometer, and
+  `0x79` in the `QMI8658C` Rev 0.6 ADVANCE INFORMATION document, which marks
+  `CTRL8` *"Reserved: Not Used"* and has no step counter.
+- **Corroborated by writing, not only by reading.** With the accelerometer
+  configured per Rev A Table 22 — `CTRL2 = 0x26` (±8 g, 125 Hz), `CTRL7 = 0x01`
+  (`aEN`), `CTRL8 = 0x90` (`Pedo_EN` + `STATUSINT` handshake) — all three
+  registers acknowledged and **read back exactly as written, `CTRL8` included**.
+  The accelerometer then reported a stationary board at
+  `(-0.04, 0.26, -1.00) g`, magnitude **1.03 g**: Rev A's ±8 g / 4096 LSB-per-g
+  scaling produces gravity to within 3.4 %, so the full-scale encoding matches
+  the silicon too. The registers read `CTRL2 = 0x24, CTRL7 = 0x03, CTRL8 = 0x00`
+  beforehand — the vendor's firmware had the IMU configured and running.
+- **Source:** S13, `pedoram` probe from RAM. It writes those three IMU control
+  registers and nothing else on any device; the QMI8658 has no non-volatile
+  configuration, and the probe restores the defaults on exit.
+- **Impact:** **H14 resolves — both halves.** Rev A is the register map to
+  program against, and the part name on the schematic (`QMI8658C`, printed twice)
+  did not predict it. This is [ADR-0003](../adr/0003-radio-not-lora.md)'s lesson
+  in a second subsystem. OD-6's mandatory pedometer has a documented hardware
+  engine to use.
+- **NOT EXECUTED — HARDWARE REQUIRED:** that the pedometer *counts*. Step count
+  stayed 0 and `STATUS1` stayed `0x00` throughout, on a board lying on a desk —
+  which is the correct reading for a stationary board and no evidence either way.
+  Chapter 11's engine has to be walked. T-112.
+
+### The touch controller is held in reset until GPIO 9 is pulsed low then high
+
+- **Claim:** `0x38` does not acknowledge at all when a RAM app that initialises
+  nothing else scans the bus. Driving GPIO 9 **high** and holding it changes
+  nothing. **Pulsing GPIO 9 low for 10 ms and back high** makes it appear, and it
+  then reads chip ID (`0xA3`) `0x64`, firmware version (`0xA6`) `0x02` and vendor
+  ID (`0xA8`) `0x11`.
+- **Source:** S13, a RAM probe that scans, drives, pulses and rescans in one run —
+  five devices, five devices, then six.
+- **Impact:** **touch is not reachable just because the I2C bus is up.** The reset
+  *edge* is what brings the controller up, not the level, so a BSP that merely
+  configures GPIO 9 as a high output at init sees an empty bus and no error. This
+  belongs in the board layer. It also confirms the `0x38` address itself, which
+  [HARDWARE_MATRIX](HARDWARE_MATRIX.md) had as *"driver source only, no datasheet
+  states it"*.
+- **UNKNOWN, and not claimed:** which part number `0x64` denotes. `0x11` is
+  FocalTech's vendor byte and `0x64` is the chip ID the FT5x06/FT6x36-family
+  drivers expect — consistent with an FT3168 behind that driver, but no FT3168
+  datasheet has been obtained. T-113.
 
 ### The vendor's own boot log, and four things it settled for free
 
@@ -947,6 +1023,6 @@ facts that change what may be written are here.
   partition and moved on.
 - **Impact:** this is the vendor's firmware describing the vendor's board, which
   is a better witness than any inference from a datasheet. Note what it does
-  **not** say: the QMI8658 line names no I2C address, so `0x6A` vs `0x6B` stays
-  `CONFLICTING`, and the `sh8601` line is evidence about the driver rather than
-  about the die.
+  **not** say: the QMI8658 line names no I2C address — the bus scan above
+  settles `0x6B` by measurement instead — and the `sh8601` line is evidence about
+  the driver rather than about the die.

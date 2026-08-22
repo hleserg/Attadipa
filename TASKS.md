@@ -1581,36 +1581,62 @@ stale silently. The protocol is
   it was verified; what it means is exactly what is in doubt.
 - **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
 
-### T-111 · The bench sequence, and the one decision that unblocks it
-- **Priority:** P1 — it gates the bus scan that four other tasks are waiting on,
-  and it is one word from the owner away.
-- **Dependencies:** an owner decision on
-  [#100](https://github.com/hleserg/Attadipa/issues/100). Nothing technical.
-- **Why now:** the bench session of 2026-08-23 found that **both
-  non-destructive routes into this board are closed** —
-  [WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md).
-  `ota_1` is at `0x1000000`, which the bootloader cannot address, and a
-  `PURE_RAM_APP` loaded over USB resets the chip four times out of four. What
-  remains is overwriting a partition that already holds vendor firmware.
-- **Goal:** run the I2C bus scan and the read-only AXP2101 register dump from
-  [WAVESHARE_ARRIVAL](docs/research/WAVESHARE_ARRIVAL.md) §5, then restore the
-  flash and re-verify it against the T-099 backup.
-- **What is already prepared, so this is not a from-scratch task:** the
-  diagnostic firmware is written and builds (ESP-IDF v5.5.5, read-only by
-  construction — it writes no device register and does not initialise the
-  display); the `otadata` selector for slot 0 is built and checked against
-  ESP-IDF source; and the 6 MB restore slice for `ota_0` has been extracted from
-  the backup and **verified byte-for-byte against the device**. The session that
-  discovered the blocker also did the work that follows it.
-- **Acceptance:** the scan output recorded in `docs/research/`, `0x6A` vs `0x6B`
-  settled, `0x0C`/`0x0D` confirmed free, the AXP2101 rail bytes recorded **raw**
-  rather than decoded, and `verify-flash 0x0` over all 33 554 432 bytes passing
-  afterwards.
-- **What must not be assumed:** that a read-only probe is a safe probe. **No
-  write to the AXP2101, none**, and no display initialisation until the panel's
-  own registers have been read back. A verified flash backup does not restore a
-  PMU register or a battery. D13's rail-cutting stays deferred.
-- **Hardware required:** yes — the owner's unit.
+### T-112 · The pedometer has a datasheet now; it still needs someone to walk
+- **Priority:** P1 — OD-6 makes the pedometer mandatory and this is the last
+  unverified step between the register map and a step count.
+- **Dependencies:** none technical. It needs a **person holding the watch**, which
+  is the only reason it is not already done.
+- **Why now:** the bench session of 2026-08-23 settled *which* datasheet
+  describes this silicon — `REVISION_ID = 0x7C`, the QMI8658A `13-52-25` Rev A
+  value, against `0x79` for the QMI8658C Rev 0.6 document
+  ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
+  §3.2). Rev A's chapter 11 documents a complete hardware pedometer; Rev 0.6 calls
+  `CTRL8` *"Reserved: Not Used"* and has none. `CTRL8 = 0x90` was written and read
+  back exactly, so the register is real. **What has not been shown is that the
+  engine counts.** Step count stayed 0 throughout — on a board lying on a desk,
+  which is the correct reading and no evidence either way.
+- **Goal:** enable the engine and count real steps.
+- **What is already prepared:** the probe is written and builds — it loads over
+  USB into RAM, writes `CTRL2`/`CTRL7`/`CTRL8` on the IMU and nothing else
+  anywhere, prints accelerometer and step count once a second for four minutes,
+  and restores the defaults on the way out. Running it is one command; the rest is
+  walking twenty steps with the watch in hand.
+- **Acceptance:** step count rises with real steps and the count is within a
+  sensible fraction of the steps actually taken, recorded in `docs/research/`
+  with the number walked beside the number counted. If the engine does **not**
+  count, that is equally a result: the step counter becomes firmware on this
+  board and the power budget changes.
+- **What must not be assumed:** that a matching revision byte proves the feature
+  works. It proves which document applies. Chapter 11 still has to be exercised.
+- **Also worth one minute while the watch is in hand:** H15's other half — tilt
+  the **assembled** watch through known angles and read the raw axes. The board
+  frame is silkscreened; the case rotation is not, and one is useless without the
+  other.
+- **Hardware required:** yes — the owner's unit, and a person.
+
+### T-113 · Touch needs a reset pulse, and the part number is still a guess
+- **Priority:** P2 — the behaviour is understood, which is the part that blocked
+  anything. What remains is provenance.
+- **Dependencies:** none.
+- **Why now:** the FT3168 does not acknowledge on the main I2C bus at all until
+  **GPIO 9 is pulsed low then high** — driving it high and holding it is not
+  enough, the falling edge is what brings the controller up
+  ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
+  §3.3). It then reads chip ID `0x64`, firmware `0x02`, vendor `0x11`. That
+  confirms the `0x38` address, which this repository had on driver source alone.
+- **Goal:** two things the measurement does not give.
+  1. **Which part `0x64` denotes.** `0x11` is FocalTech's vendor byte and `0x64`
+     is the ID the FT5x06/FT6x36-family drivers expect, which is consistent with
+     an FT3168 behind that driver — but no FT3168 datasheet has been obtained and
+     the mapping is `UNKNOWN`. Find the datasheet or record that it is not
+     obtainable, the way [ADR-0003](docs/adr/0003-radio-not-lora.md) had to.
+  2. **The reset pulse belongs in the board layer**, not in an application and
+     not in a probe. A BSP that configures GPIO 9 as a high output at init sees
+     an empty bus and reports no error, which is the worst kind of wrong.
+- **Acceptance:** the part-number question answered or recorded as unobtainable
+  with the search documented, and the reset sequence written into the Waveshare
+  BSP's touch bring-up with a comment saying why a level will not do.
+- **Hardware required:** no for (1), yes to re-verify (2).
 
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do
