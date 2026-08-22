@@ -532,41 +532,108 @@ stale silently. The protocol is
   the field is `NOT EXECUTED — HARDWARE REQUIRED`.
 - **Hardware required:** for accuracy, yes. For the logic, no.
 
-### T-060 · What each IMU actually does about steps
-- **Priority:** P1 — [OD-6](docs/research/OWNER_DECISIONS.md#od-6--the-watch-counts-steps-and-that-is-not-optional)
-  makes the pedometer mandatory, and everything about how it is built depends on
-  this answer
-- **Dependencies:** none. It is reading, not code.
-- **Goal:** establish, from primary sources only, what the BMA423 and the
-  QMI8658 each do about step counting, in the order the GNSS tasks use:
-  datasheet → application note → vendor driver source → vendor example.
-- **What to answer, at minimum:**
-  - **BMA423:** does the part count steps *itself*? Bosch documents step
-    counting and step detection in the BMA4xx wearable family — is it in this
-    part, on this revision, and is it in the feature blob that has to be
-    uploaded at boot? What is the counter's width and what happens when it
-    wraps? Does it keep counting while the host is in deep sleep, and at what
-    current? What survives a soft reset, and what does not? Which interrupt
-    lines does it need — **INT2 is bonded out but not routed** on the T-Watch
-    (R12/R15 not fitted, [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)),
-    so anything requiring two interrupts is already blocked.
-  - **QMI8658:** is there any integrated step counter at all? If not: FIFO depth
-    in samples, watermark interrupt behaviour, the lowest output data rate at
-    which a step algorithm still works, and therefore how often the SoC must
-    wake to drain it.
-- **Acceptance:** a row per part in
-  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md) marked `SUPPORTED`,
-  `UNSUPPORTED` or `UNKNOWN`, each with the document and section it came from.
-  An unsourced `SUPPORTED` is not an answer.
-- **Research status:** not started
-- **Implementation status:** not started — no code comes out of this task
-- **Tests:** none. It produces a research record.
-- **Hardware required:** no for the documents. Confirming a current figure or a
-  wake rate is a HIL plan and is not this task.
+### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22
+- [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md), and four entries in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Read from the datasheets,
+  Bosch's own reference driver and LilyGo's board support, in that order.
+- **BMA423: yes, it counts steps** — a 32-bit counter at `0x1E`–`0x21`. **And
+  its datasheet does not say how.** All four registers carry one line:
+  *"Application note – Wearable feature set"*. Every behavioural question — power
+  mode, required ODR, reset survival, and whether it counts while the SoC sleeps
+  — is in `BST-MAS-AN032`, which returned HTTP 403. **T-060a.**
+- **The feature is a 6 144-byte blob the host uploads at every boot**, with a
+  mandatory **150 ms** wait and a status register that must read
+  `ASIC_INITIALIZED`. Whether a soft reset drops it is `UNKNOWN`, and if it does,
+  every reset is a hole in the day's total.
+- **The watermark is 10 bits and 0 does not mean "every step"** — it selects the
+  separate step-detector interrupt. LilyGo's own board support sets it to 1.
+  *(**Corrected by T-060a:** the field carries an implicit ×20, so that is an
+  interrupt every 20 steps, not every step.)*
+- **One interrupt line, already shared six ways.** INT2 is bonded out but not
+  routed on the T-Watch, and LilyGo maps step counter, any-motion, no-motion,
+  activity, tilt and wake-up all to INT1. A design needing a private interrupt
+  for steps does not fit this board.
+- **QMI8658: it depends which part, and we do not know which.** The **C** variant
+  documents a full pedometer — 24-bit count at `0x5A`–`0x5C`, `CTRL8.Pedo_EN`,
+  two CTRL9 commands, eight tunable parameters. **QMI8658A Rev A documented the
+  identical feature; Rev D has deleted it** — feature list, chapter and registers
+  alike, with no deprecation note. `HARDWARE_MATRIX` records the board's IMU as
+  *"QMI8658 / QMI8658C"* and the vendor BSP does not touch the IMU, so there is
+  no code to read the answer out of. **This is the ADR-0003 pattern in a second
+  subsystem.**
+- **Two findings that change what a step count *means*:** the QMI8658C
+  retroactively counts steps it had discarded once a walk is confirmed
+  (`ped_time_cnt_entry`), and updates its registers only every N steps
+  (`ped_sig_count`) — **a read is stale by design**. A step count is an estimate
+  produced by somebody else's filter, and ADR-0011's language about a position
+  applies to it unchanged.
+- **Power:** QMI8658C 30/35/42/55 µA at 3/11/21/128 Hz low-power; BMA423 13 µA
+  at 50 Hz. The Waveshare board pays **at least** three times as much — the two
+  figures are at different ODRs and matching them widens the gap, PEDOMETER_PARTS §2.4 —
+  before its variant question is settled. Vendor typicals, **not** measurements.
+- **No hardware involved.** `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### T-060a · Read the Bosch application note the datasheet points at — **DONE** 2026-08-22
+- **Answered without the application note.** Bosch's site returned **HTTP 403**
+  a third time, and Mouser, LCSC, Octopart and micro-semiconductor mirror only
+  revision 2.0 or a product flyer. The material turned out not to need it:
+  **the chapter revision 2.0 deletes is still printed in revision 1.1.**
+- **BMA423 Data Sheet revision 1.1, `BST-BMA423-DS000-01`, May 2019** — pp.
+  31–37 — carries the full *"Step Detector / Step Counter"* chapter, the
+  *"Minimum Bandwidth Settings"* section, the phone/wrist preset tables and the
+  per-field configuration list. Revision 1.0 (Aug 2017) is byte-identical there.
+  Revision 2.0 (Aug 2019) replaced it all with a pointer and moved from document
+  series `DS000` to `DS004`. Retrieved from the Watchy project's mirror; SHA-256
+  recorded in [PEDOMETER_PARTS §1.2](docs/research/PEDOMETER_PARTS.md).
+- **Four of the five questions are answered `SUPPORTED`:**
+  - **counts while the host sleeps** — the sensor duty-cycles itself and feeds
+    the feature engine at 50 Hz; register contents are retained in every power
+    configuration. What is left is a *board* question about the rail, not a
+    sensor one;
+  - **required configuration** — features consume samples at 50 Hz. Performance
+    mode: any ODR. Low-power mode: **minimum 50 Hz**, 200 Hz only for tap, and a
+    violation sets `INTERNAL_STATUS.odr_50hz_error` rather than failing quietly;
+  - **feature current** — the budget line is the 50 Hz low-power figure,
+    **13–14 µA `ESTIMATED`**. Not 42 µA, not 150 µA;
+  - **soft reset** — the blob does **not** survive. *"Initialization has to be
+    performed as well after every POR or soft reset."*
+- **One stays `UNKNOWN`:** behaviour at the 32-bit boundary. Not in revision 1.1
+  either. **T-060b**, and it changes nothing — the firmware treats any decrease
+  as reset-or-wrap regardless.
+- **And one earlier claim was wrong.** The 10-bit watermark field *"holds
+  implicitly a 20x factor"*, and Bosch's driver writes the argument raw — so
+  LilyGo's `setStepCounterWatermark(1)` is an interrupt every **20** steps, not
+  every step. Corrected in both documents, marked as a correction.
+- **Two things nobody asked for:** the step algorithm's **wrist preset is
+  already the default**, so T-061 writes none of the 25 parameters; and axis
+  remapping applies **only** to the feature engine, never to `DATA_0`–`DATA_13`
+  or the FIFO, so a driver that remaps once has got one of the two wrong.
+- **This was a research task.** No code came out of it.
+
+### T-060b · The Bosch application note itself, for what revision 1.1 lacks
+- **Priority:** P3, `nice-to-have`. **Nothing blocks on it** — T-060a closed the
+  questions T-061 needed.
+- **Dependencies:** T-060a (**done**)
+- **Goal:** obtain `BST-MAS-AN032` (*Wearable Feature Set*) and answer what
+  datasheet revision 1.1 does not: BMA423 step-counter behaviour at the 32-bit
+  boundary, and whatever tuning guidance sits behind the datasheet's *"with the
+  support of the corresponding field application engineer"*.
+- **What has already been tried and failed:** `bosch-sensortec.com` (HTTP 403,
+  three attempts), Mouser (403), LCSC (HTML only), Octopart, DigiKey,
+  micro-semiconductor (product flyer), watchy.sqfmi.com (revision 1.1 datasheet,
+  not the note). Untried: Bosch's community forum attachments, the
+  `BMA456`/`BMA400` sibling notes, an account-gated distributor download.
+- **Acceptance:** the boundary question marked in
+  [PEDOMETER_PARTS §1.8](docs/research/PEDOMETER_PARTS.md) with the document
+  revision, or a note saying the note does not answer it either.
+- **This is a research task.** No code comes out of it.
+- **Hardware required:** no.
 
 ### T-061 · Steps, as a capability with a power story
 - **Priority:** P1, after T-060
-- **Dependencies:** T-060, [ADR-0007](docs/adr/0007-two-capability-layers.md),
+- **Dependencies:** T-060 (**done**), T-060a (**done** — the power story is
+  `13–14 µA at 50 Hz, low-power mode`),
+  [ADR-0007](docs/adr/0007-two-capability-layers.md),
   T-046 (crash-safe persistence), T-045 (`PowerState`)
 - **Goal:** implement `Capability::MotionSensing` for step counting, on both
   boards, without either board's answer leaking upwards.
@@ -587,7 +654,22 @@ stale silently. The protocol is
   through the same path the device uses — the replay rig's shape, a second
   reader; both board profiles produce a defensible availability; the daily total
   survives a simulated crash at an arbitrary point.
-- **Research status:** blocked on T-060
+- **Research status:** T-060 and T-060a are **done**; the research that remains
+  is two hardware questions, not one task.
+  - **Which IMU the Waveshare carries.** `QMI8658C` has a pedometer;
+    `QMI8658A` Rev D had it deleted. The board is recorded as
+    "QMI8658 / QMI8658C" and the schematic prints no revision, so a mandatory
+    pedometer (OD-6) may have no hardware on one of the two boards. Same shape
+    as [ADR-0003](docs/adr/0003-radio-not-lora.md)'s radio question, in a
+    second subsystem — [PEDOMETER_PARTS.md](docs/research/PEDOMETER_PARTS.md)
+    §2.1. Settled by reading `WHO_AM_I` and the revision register on a board.
+  - **Whether the PMU keeps the IMU rail up across an SoC sleep.** This is
+    **[H8](docs/research/OPEN_QUESTIONS.md)**, already filed and already
+    holding the schematic-level detail: the vendor document says ALDO1 is
+    unused, the schematic shows it driving `+3V3`, and `+3V3` is what feeds the
+    BMA423. It was raised again in this task's research without the
+    cross-reference, which would have sent two people at the same question from
+    two directions. Whoever resolves H8 unblocks this.
 - **Implementation status:** not started
 - **Tests:** host, plus a HIL plan for the wake rate and the current, which is
   the only way the power claim becomes a measurement.

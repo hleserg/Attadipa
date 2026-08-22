@@ -104,6 +104,34 @@ in both cases.
   the three GNSS ones — MIA-M10Q, LS550G, and a simulator that can fail at GNSS
   twelve different ways.
 
+**T-060 — what each IMU does about steps — done**, and it found the ADR-0003
+pattern in a second subsystem. The BMA423 has a 32-bit hardware step counter
+and **the current datasheet does not document it** — all four registers say
+*"Application note – Wearable feature set"*, and that note returns HTTP 403.
+The feature is a 6 144-byte blob the host uploads at every boot with a
+mandatory 150 ms wait.
+
+**T-060a — done, and the answer was not in the application note.** Bosch
+**deleted** the step-counter chapter from its own datasheet between revision 1.1
+(May 2019) and revision 2.0 (August 2019); revision 1.1 is still mirrored and
+still prints all of it. Four of the five open questions are now `SUPPORTED`:
+the counter **runs on the sensor while the host sleeps**, it needs **≥50 Hz**
+and says so via `odr_50hz_error` if it does not get it, the power line is
+**13–14 µA `ESTIMATED`** at that setting rather than 42 or 150, and the blob
+**does not** survive a soft reset. One earlier reading here was wrong and is
+corrected: the watermark field carries an implicit ×20, so LilyGo's default is
+an interrupt every 20 steps rather than every step. The residue — behaviour at
+the 32-bit boundary — is **T-060b** and blocks nothing. The lesson generalises:
+*"the datasheet"* is a document **at a revision**, and the newest is not always
+the most complete. On the Waveshare side the question is worse: the
+QMI8658**C** documents a full pedometer, the QMI8658A's **Rev A** documented the
+identical one, and **Rev D has deleted it** — feature list, chapter and registers
+— with no deprecation note, while `HARDWARE_MATRIX` records the board's part as
+*"QMI8658 / QMI8658C"*. Two findings change what a step count *means* on either
+part: the engine retroactively counts steps it had discarded once it decides a
+walk is real, and updates its registers only every N steps, so **a read is stale
+by design**. [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md).
+
 ## Lookahead research
 
 One to two steps ahead, per final §68 — not twenty.
@@ -231,6 +259,16 @@ that a future licence change reopens only what it actually affects.
 
 ## Blocked
 
+- **T-061 the pedometer** — partly, and less than before. T-060a settled the
+  BMA423 side: the power story is **13–14 µA at 50 Hz in low-power mode**, the
+  counter runs while the host sleeps, and the wrist preset is already the
+  default. What remains blocked is the **Waveshare** side — the board's IMU
+  variant is unknown, the QMI8658**C** documents a pedometer and the QMI8658A's
+  **current** datasheet revision has deleted one — and one board question that
+  is nobody's datasheet, and which is **already filed as [H8](docs/research/OPEN_QUESTIONS.md)**
+  rather than new: whether the AXP2101 keeps the IMU's rail up across an
+  SoC sleep. If it does not, the 6 kB blob is gone and the 150 ms is owed again
+  on every wake.
 - **T-010 board bring-up** — no physical board; exact variant unknown.
 - **T-011 interference measurement** — same, and neither board has a
   magnetometer, so the headline haptics-versus-compass concern is not measurable
