@@ -656,9 +656,9 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
-  job. Four checks: relative links resolve, inline code spans close, task IDs are
-  unique, and a live task has a body while finished work is filed under
-  `## DONE`. The last two exist because the review of
+  job. **Five** checks: relative links resolve, inline code spans close, task
+  IDs are unique, a live task has a body while finished work is filed under
+  `## DONE`, and nothing unexpected is tracked at the repository root. The last two exist because the review of
   [#65](https://github.com/hleserg/Attadipa/pull/65) found the pull request had
   spliced a `### T-102` heading into the middle of an unclosed code span in
   T-100's first bullet — T-100 lost its whole field list to T-102, and **the two

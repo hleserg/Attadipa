@@ -1827,7 +1827,10 @@ Recommended next action:
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
 - `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
-  Four checks, each of a failure that had already happened here.
+  Four checks, each of a failure that had already happened here. **A fifth was
+  added 2026-08-23** — nothing unexpected is tracked at the repository root —
+  after `git add -A` swept a scraped vendor page into `main` through
+  [#98](https://github.com/hleserg/Attadipa/pull/98).
 - **Relative links resolve.** These documents cite each other constantly and a
   link that 404s reads exactly like one that works until somebody clicks it. The
   repository was clean at the time this landed; the point is that it stays that
