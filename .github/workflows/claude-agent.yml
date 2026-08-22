@@ -24,18 +24,37 @@ on:
         required: true
         type: string
 
-# THE ONE WRITER RULE.
+# THE ONE WRITER RULE LIVES ON THE `agent` JOB, NOT HERE, AND THAT IS THE FIX
+# FOR A DEFECT RATHER THAN A PREFERENCE.
 #
-# Every path that can change code shares this group, so two agents can never be
-# editing the same checkout. Research and review are deliberately in other
-# workflows with their own groups, because reading in parallel is free and
-# writing in parallel is a merge conflict with a robot on both ends.
+# It was a workflow-level group until 2026-08-22, which put the intake gate
+# inside it too. `cancel-in-progress: false` protects a RUNNING member of a
+# group; it does not protect a PENDING one. GitHub keeps at most one run queued
+# per group and cancels the previously pending run when a newer one arrives —
+# so a burst of events loses all but the last, before anything has looked at
+# them.
 #
-# cancel-in-progress is false on purpose: cancelling a writer mid-run leaves a
-# half-pushed branch and an issue labelled agent:working forever.
-concurrency:
-  group: attadipa-agent-writer
-  cancel-in-progress: false
+# Observed: at 07:18 on 2026-08-22 the owner labelled #26, #27 and #28
+# `agent:ready`, nine `issues` events fired, six runs were cancelled while
+# pending, and the three that survived were the ones carrying an unrelated
+# label. Three tasks were queued and no agent started. Nothing was red and
+# nothing said so; the hourly watchdog would have recovered them one per hour.
+#
+# The gate is a few seconds of shell and has nothing to serialise, so it now
+# runs for every event. The group is on the job that writes code, which is what
+# the rule was ever about, and the claim moved inside that job so a queued
+# agent that gets cancelled leaves no `agent:working` label behind — an
+# unclaimed task is picked up again, a falsely claimed one is not.
+#
+# THIS NARROWS THE RACE; IT DOES NOT REMOVE IT, and saying so is the difference
+# between a bound and a belief. GitHub's rule still applies to the `agent` job's
+# own group, so two tasks accepted close together can still cost the earlier one
+# its queued run. What changed is the consequence: it is then an unclaimed
+# `agent:ready` issue, which `agent-queue-watchdog.yml` rediscovers on its next
+# hourly tick. The residual failure is a delay of up to about an hour, not a
+# lost task — and that recovery is only true for tasks the watchdog's own filter
+# in .github/scripts/queue-scan.jq can see, which is why that filter and the
+# gate must keep agreeing about what a task looks like.
 
 # Nothing at the top level. Each job asks for exactly what it needs.
 permissions: {}
@@ -60,6 +79,7 @@ jobs:
       head_moved: ${{ steps.decide.outputs.head_moved }}
       staleness: ${{ steps.decide.outputs.staleness }}
       refused_marker: ${{ steps.decide.outputs.refused_marker }}
+      refusal_kind: ${{ steps.decide.outputs.refusal_kind }}
       refusal: ${{ steps.decide.outputs.refusal }}
     steps:
       - name: Kill switch
@@ -145,9 +165,21 @@ jobs:
           LABELS=$(jq -r '[.labels[].name] | join(",")' /tmp/issue.json)
           STATE=$(jq -r '.state' /tmp/issue.json)
 
+          # BODY and COMMENT_BODY are different texts and both are needed. BODY is
+          # the issue, and it carries the marker; COMMENT_BODY is what was just
+          # said, and on a comment event it is the only place `@claude` can be.
+          #
+          # This call used to stop at $PERMISSION plus the producer list, and the
+          # gate's own `@claude` check therefore ran against the ISSUE body on
+          # comment events. Every mention this repository ever received was
+          # refused with "nothing asks for an agent" — the owner's included, on
+          # #41 at 00:54 on 2026-08-22, which is the run that found this. The
+          # gate was right about the text it was given. It was given the wrong
+          # text.
           VERDICT=$(bash .github/scripts/intake-decision.sh \
             "$ACTOR" "$EVENT_NAME" "$ACTION" "$LABEL_NAME" \
-            "$BODY" "$LABELS" "$STATE" "$PERMISSION" "${TRUSTED_PRODUCERS:-}")
+            "$BODY" "$LABELS" "$STATE" "$PERMISSION" "${TRUSTED_PRODUCERS:-}" \
+            "$COMMENT_BODY")
           if [ "$VERDICT" != "accept" ]; then
             say "#$ISSUE_NUMBER ${VERDICT#reject: }"
 
@@ -162,15 +194,49 @@ jobs:
             # Only on `issues` events: a refused comment would otherwise draw a
             # comment per comment. This costs nothing from Anthropic either way —
             # it is a gh call in the gate, not an agent run.
+            #
+            # There is a second shape, and it is the one a person actually
+            # notices: somebody with write access typed `@claude` and nothing
+            # happened. Before 2026-08-22 that was the commonest event on this
+            # repository and it was answered with silence, which reads exactly
+            # like an agent that is thinking. It is not more expensive to say so
+            # — this job holds no Anthropic credential and posts with `gh`.
+            ANSWER=none
             case "$BODY" in
               *attadipa-agent-task*)
-                if [ "$EVENT_NAME" = "issues" ]; then
-                  {
-                    echo "refused_marker=true"
-                    echo "refusal=${VERDICT#reject: }"
-                  } >> "$GITHUB_OUTPUT"
-                fi ;;
+                if [ "$EVENT_NAME" = "issues" ]; then ANSWER=marker; fi ;;
             esac
+            if [ "$ANSWER" = none ]; then
+              case "$EVENT_NAME" in
+                issue_comment|pull_request_review_comment|pull_request_review)
+                  # Bots never get an answer: two automations apologising to
+                  # each other is the loop this gate exists to prevent, and the
+                  # only thing keeping it cheap is that neither of them replies.
+                  # Write access only, for the same reason the gate needs it —
+                  # on a public repository anybody can type `@claude`, and a
+                  # reply each time is a megaphone attached to a stranger.
+                  case "$ACTOR" in
+                    *"[bot]") ;;
+                    *)
+                      case "$PERMISSION" in
+                        admin|maintain|write)
+                          # bash's own lowercasing rather than `tr`: tr works on
+                          # bytes, and these comments are usually in Russian.
+                          case "${COMMENT_BODY,,}" in
+                            *"@claude"*) ANSWER=mention ;;
+                          esac ;;
+                      esac ;;
+                  esac ;;
+              esac
+            fi
+            if [ "$ANSWER" != none ]; then
+              {
+                echo "refused_marker=true"
+                echo "refusal_kind=$ANSWER"
+                echo "issue=$ISSUE_NUMBER"
+                echo "refusal=${VERDICT#reject: }"
+              } >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
 
@@ -245,24 +311,58 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          ISSUE: ${{ github.event.issue.number }}
+          # From the gate, not from the event: a pull_request_review_comment has
+          # no github.event.issue at all, and this job now answers those too.
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          KIND: ${{ needs.gate.outputs.refusal_kind }}
           REFUSAL: ${{ needs.gate.outputs.refusal }}
           ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
 
-          # Once per issue. The marker is what makes that checkable, and the
-          # comment is posted with the built-in GITHUB_TOKEN, whose events GitHub
-          # deliberately does not use to start workflow runs — so this cannot
-          # start another gate run and cannot loop.
+          # Once per issue per shape. The HTML marker is what makes that
+          # checkable, and the comment is posted with the built-in GITHUB_TOKEN,
+          # whose events GitHub deliberately does not use to start workflow runs
+          # — so this cannot start another gate run and cannot loop.
+          case "$KIND" in
+            mention) TAG=attadipa-mention-refused ;;
+            *)       TAG=attadipa-intake-refused ;;
+          esac
           EXISTING=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
-                       --jq '[.[] | select(.body | test("attadipa-intake-refused"))] | length')
+                       --jq "[.[] | select(.body | test(\"$TAG\"))] | length")
           if [ "$EXISTING" != "0" ]; then
             echo "::notice::already explained on #$ISSUE"; exit 0
           fi
 
+          # Somebody with write access asked for an agent by name and did not get
+          # one. That deserves the actual reason rather than the marker lecture,
+          # which is about a producer's task and not about their sentence.
+          if [ "$KIND" = mention ]; then
+            {
+              echo "<!-- $TAG -->"
+              echo "**You mentioned \`@claude\` here and no agent was started.** The reason:"
+              echo
+              echo "> $REFUSAL"
+              echo
+              echo "Nothing is queued. The two causes that produce this in practice:"
+              echo
+              echo "* **the issue is closed** — the gate refuses closed issues, because a task"
+              echo "  nobody can see the state of is worse than no task. Reopen it and mention"
+              echo "  \`@claude\` again;"
+              echo "* **the mention was edited in afterwards** — GitHub raises no event this"
+              echo "  workflow listens to when a comment is edited, so only a new comment"
+              echo "  counts."
+              echo
+              echo "Either way this is a state problem, not a refusal of the request. Adding the"
+              echo "\`agent:ready\` label also queues it, and the hourly watchdog will pick it up"
+              echo "even if no event fires at all."
+            } > /tmp/refused.md
+            gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/refused.md
+            exit 0
+          fi
+
           {
-            echo "<!-- attadipa-intake-refused -->"
+            echo "<!-- $TAG -->"
             echo "**This issue carries a \`attadipa-agent-task\` marker, and the intake gate refused it.**"
             echo
             echo "> $REFUSAL"
@@ -286,14 +386,43 @@ jobs:
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/refused.md
           gh issue edit "$ISSUE" --repo "$REPO" --add-label needs-owner || true
 
-  claim:
-    name: Claim the task
+
+  agent:
+    name: Claude
     needs: gate
     if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # One writer. Two agents editing one checkout is a merge conflict with a
+    # robot on both ends, so a second accepted task waits here rather than
+    # racing. cancel-in-progress is false because cancelling a writer mid-run
+    # leaves a half-pushed branch behind; see the note at the top of this file
+    # for why the group is on this job and not on the workflow.
+    concurrency:
+      group: attadipa-agent-writer
+      cancel-in-progress: false
     permissions:
+      contents: write
+      pull-requests: write
       issues: write
+      actions: read
+      # id-token: write is not optional, and the reason is easy to miss.
+      #
+      # github_token below is ATTADIPA_AGENT_TOKEN, which is deliberately allowed
+      # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
+      # action authenticates as the Claude GitHub App by exchanging this
+      # workflow's GitHub OIDC token for an installation token, and without this
+      # permission that exchange fails with "Unable to get
+      # ACTIONS_ID_TOKEN_REQUEST_URL". The failure looks like an authentication
+      # problem with the Anthropic credential and is not one.
+      id-token: write
     steps:
+      # The claim is the first thing this job does, and it is inside this job
+      # rather than in one of its own so that it happens if and only if the
+      # writer actually starts. A separate job could label an issue
+      # `agent:working` and then have its agent cancelled while queued, leaving
+      # a claim with nobody behind it — which the watchdog only notices two
+      # hours later.
       - name: Normalise labels
         env:
           GH_TOKEN: ${{ github.token }}
@@ -345,28 +474,6 @@ jobs:
             gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$stale" || true
           done
 
-  agent:
-    name: Claude
-    needs: [gate, claim]
-    if: needs.gate.outputs.run == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      actions: read
-      # id-token: write is not optional, and the reason is easy to miss.
-      #
-      # github_token below is ATTADIPA_AGENT_TOKEN, which is deliberately allowed
-      # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
-      # action authenticates as the Claude GitHub App by exchanging this
-      # workflow's GitHub OIDC token for an installation token, and without this
-      # permission that exchange fails with "Unable to get
-      # ACTIONS_ID_TOKEN_REQUEST_URL". The failure looks like an authentication
-      # problem with the Anthropic credential and is not one.
-      id-token: write
-    steps:
       - name: Check that an Anthropic credential exists
         id: auth
         env:

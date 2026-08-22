@@ -149,7 +149,6 @@ anything equivalent is written by hand.
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
 | `infinition/waveshare-watch-rs` | a Rust `no_std` watch firmware for the same board — unusable directly, potentially instructive | to check |
-| Meshtastic | mature ESP32 LoRa firmware with T-Watch support; solves overlapping problems | to check |
 | ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement | to check |
 
 Rust and Arduino candidates are still worth reading. `EXTRACT ALGORITHM` and
@@ -722,6 +721,70 @@ upstream defects held against our own code.
 
 ---
 
+### Turning source art into LVGL assets
+
+**Problem:** convert committed source art into flash-resident LVGL image
+descriptors, reproducibly, with a stale generated tree visible as a failing test
+rather than as a wrong picture on a panel.
+
+**Projects investigated:** LVGL's own `scripts/LVGLImage.py` (MIT, in the pinned
+v9.5.0 tree) · LVGL's online image converter, which is the same conversion
+behind a web form · writing the `lv_image_dsc_t` emitter by hand from
+`src/draw/lv_image_decoder.h` · `imagemagick` plus a hand-written array writer.
+
+**Useful implementation:** `LVGLImage.py` itself. It is the tool LVGL uses to
+produce its own assets, it supports every colour format the header defines
+including `A8` and `RGB565A8`, its output is byte-identical across runs, and it
+takes its input as files and its parameters as flags — which is what makes it
+scriptable rather than a web page somebody has to remember to visit.
+
+**Licence:** **MIT**, read from `LICENCE.txt` in the same clone and copied to
+`tools/assets/vendor/LVGL-LICENCE.txt` beside the file.
+
+**Strengths:** authoritative — it emits the struct the version of LVGL we pinned
+actually reads, so a format mismatch is impossible by construction. Deterministic
+with `--compress NONE`: two runs produce identical bytes, verified rather than
+assumed.
+
+**Weaknesses:** it hardcodes an include block that falls through to
+`lvgl/lvgl.h` with no flag to change it (worked around with
+`LV_LVGL_H_INCLUDE_SIMPLE`); it imports `lz4` at module scope even when
+compression is off; and it has no notion of a manifest, a digest or a refusal —
+point it at a 1440-pixel concept sheet and it will happily convert it. Those
+last three are why there is a pipeline around it rather than a call to it.
+
+**Decision:** `USE AS-IS`, **vendored unmodified** at
+`tools/assets/vendor/LVGLImage.py`, wrapped by
+`tools/assets/generate_images.py`.
+
+**Reason.** Rewriting an encoder for a struct somebody else defines is how a
+format drifts. Vendoring rather than referencing the clone is the part that
+needed a decision: regeneration has to work for the next agent and in CI, and
+neither has `/root/upstream`. LVGL is not a submodule here, and a download
+inside a generation step is a network dependency in a build. One MIT file,
+pinned by hash, unmodified, is cheaper than a submodule and more honest than a
+path that only exists on one machine. **The hash is part of the pipeline's
+inputs digest**, so a converter bump that changes any output byte fails
+`ui_images_are_current` until the tree is regenerated — an encoder that changes
+its output *is* the asset changing.
+
+**Source revision:** LVGL v9.5.0, commit `85aa60d18`. File SHA-256
+`c4b59a99104a7592d38b84747296c5e94e86263ca973137b897d295e39b1bff3`, recorded in
+`tools/assets/vendor/README.md` and re-checkable with `sha256sum`.
+
+**Attadipa integration:** `attadipa_images`, a target that links LVGL and
+`attadipa_ui` — the same separation `attadipa_fonts` has, and for the same
+reason: an `lv_image_dsc_t` knows about LVGL and `attadipa_ui` must not.
+
+**Tests required, and present:** determinism (two runs, byte-compared);
+`--check` catching a stale tree with no converter installed; the refusals
+actually refusing — a source over the dimension cap, a source under `docs/` or
+`pics/`, a size with no drawing, a filename that disagrees with its pixels; and,
+in C++, that every linked descriptor is `A8` with `stride == width` and carries
+a drawing rather than a blank rectangle.
+
+---
+
 ### GNSS integrity and trust
 
 **Problem:** decide whether a position is worth navigating by, and keep the
@@ -788,6 +851,88 @@ fixture nobody can read is a build failure. `tests/CMakeLists.txt` refuses to
 configure if the scenario glob matches fewer than ten files, because a glob that
 silently matched nothing would produce a test that passes by running no
 scenarios at all.
+
+### BLE tracker detection — the reverse of tag emulation
+
+**Problem:** T-070 — scan for an unknown BLE identifier that has stayed near
+the wearer for an implausibly long time, and say so, without implying the
+detector catches everything.
+
+**Projects investigated:** `seemoo-lab/AirGuard` (Apache-2.0) — the only
+actively-maintained, open-source implementation of exactly this feature.
+`seemoo-lab/AirGuard-iOS` was identified but not read; its detection
+capability is materially constrained by iOS's restriction on third-party BLE
+MAC-address access, which this record cannot quantify.
+
+**Useful implementation:** the detection policy in
+`app/src/main/java/de/seemoo/at_tracking_detection/`: ten ecosystem-specific
+BLE scan filters (`device/types/*.kt`), the risk-evaluation thresholds
+(`util/risk/RiskLevelEvaluator.kt` — sighting count, distinct-location count,
+time-span floor, altitude gates), a scoped identity-rotation stitching
+mechanism for Samsung tags only (`device/DeviceManager.kt`,
+`device/BaseDevice.kt`), and its own in-product admission of what it cannot
+catch (`ui/dashboard/articles/en/limitations_of_the_app.md`).
+
+**License:** **Apache-2.0**, read from `LICENSE` at the repository root, not
+a badge. Compatible with Attadipa's MIT: permissive, no copyleft, requires
+retaining the Apache notice for anything actually taken. Copyright per
+`CITATION.cff`: Niklas Bittner, Alexander Matern, Dennis Arndt, Matthias
+Hollick (SEEMOO, TU Darmstadt).
+
+**Strengths:** the only reference implementation of this exact feature that
+is both readable and actively pushed (last push 2026-08-20); its
+false-positive avoidance — a 150 m distinct-location requirement, owner-
+proximity filtering where the ecosystem exposes it, altitude gates for the
+aeroplane case — is read from source rather than assumed; it states its own
+honest limit in its own shipped strings, which is the same discipline this
+project's `CLAUDE.md` asks for, arrived at independently.
+
+**Weaknesses:** Android/Kotlin — nothing is firmware-reusable as code, only
+as policy; its rotation-evasion countermeasure covers Samsung's aging-counter
+scheme only, and two 2025/2026 papers (one peer-reviewed, one preprint —
+[`docs/research/TRACKER_DETECTION.md`](TRACKER_DETECTION.md) §3) report that
+an identifier rotated faster than its correlation window, on any other
+ecosystem, still evades it; its scan cadence (15-minute period, 20–30 s
+bursts) is tuned for an Android phone's battery, not a device meant to scan
+all day on a 940 mAh cell.
+
+**Decision:** `EXTRACT ALGORITHM` — the detection policy (thresholds, the
+distinct-location false-positive guard, the honest-limit wording discipline),
+not the code, which does not run on this target at all.
+
+**Reason:** there is no embedded/firmware equivalent to port, and porting
+Kotlin/Android APIs to ESP32-S3 firmware is not meaningful. What is worth
+taking is the policy AirGuard arrived at through a WiSec best-paper-award
+process and four years of field use: which thresholds actually distinguish a
+following tracker from a stationary beacon, and — as important — the
+project's own discipline about what it admits it cannot do. `REJECT` was
+considered and set aside because the thresholds themselves (150 m, 3
+sightings, 14-day window) are a genuinely useful starting point rather than
+something Attadipa should re-derive from nothing.
+
+**Lesson from its own commit history, the addendum's rule applied here too:**
+a 2025-03-17 release note claims improved evasion resistance, and reading the
+source behind the claim (§2.7 of `TRACKER_DETECTION.md`) shows the fix is
+scoped to Samsung's aging counter alone — the release note, read in
+isolation, would have overstated what changed. → Attadipa's own detector, if
+built, must not claim a fix's scope more broadly than the code that
+implements it.
+
+**Source revision:** `seemoo-lab/AirGuard`
+`7f71a37d0776acc5f0e8d3046d3daaf8b71ad58d` ("AirGuard 3.1.1", 2026-07-20).
+
+**Attadipa integration:** none yet — T-070 is not implemented. When it is,
+the thresholds above are a starting point to validate against this project's
+own duty-cycle and power constraints
+([`TRACKER_DETECTION.md`](TRACKER_DETECTION.md) §4), not values to copy
+unchanged onto different hardware and a different battery.
+
+**Tests required:** none yet — no code exists. When T-070 is implemented:
+host tests over synthetic scan traces, per `TRACKER_DETECTION.md`'s own
+research and `TASKS.md` T-070's acceptance criteria — a co-travelling
+identifier flagged, a shop full of stationary beacons not.
+
+---
 
 ### The agent queue's driver: `anthropics/claude-code-action`
 
@@ -870,3 +1015,122 @@ is how `claude-agent.yml`'s existing comments arrived at their own findings
 (e.g. the `display_report` fix after smoke test A). Any future version bump
 past the resolved commit above should be re-verified the same way — read the
 source at the new commit — rather than assumed compatible from a changelog.
+
+### A Meshtastic companion client
+
+**Problem:** [OD-7](OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
+asked for Meshtastic as a companion alongside or instead of MeshCore, so that
+somebody who will not build an Attadipa node still has a mesh. That means
+speaking Meshtastic's protocol from the watch.
+
+**Projects investigated:** `meshtastic/protobufs` — the protocol definitions,
+which is the whole question, since a client is generated from them — and
+`meshtastic/firmware` as the reference for how they are used.
+
+**Useful implementation:** the `.proto` definitions themselves. There is no
+partial way to use them: a client that speaks the protocol is generated from
+those files or is a clean-room reimplementation of them.
+
+**License:** **GPL-3.0**, read from `protobufs/LICENSE` in the protocol
+repository itself (submodule `aca181b` under firmware `68bfe015e`) — the full
+text, with **no linking exception**. Corroborated by `packages/ts/package.json`
+(`"license": "GPLV3"`) and `packages/rust/Cargo.toml` (`license-file =
+"LICENSE"`). No `.proto` file carries an SPDX identifier of its own.
+
+The hypothesis worth checking was that protocol definitions might be licensed
+separately from the firmware, as some projects do. They are in a separate
+repository — and under the same licence.
+
+**Strengths:** a large installed base, and the only other ESP32 LoRa mesh with
+comparable reach. Answering OD-7 with it would have cost nothing in hardware.
+
+**Weaknesses:** generating from those `.proto` files and linking the result into
+Attadipa would make an MIT firmware a derivative work under GPL-3.0. The rule in
+this file — read it, learn from it, copy nothing — applies to protocol
+definitions exactly as to C++.
+
+**Decision:** `REJECT`.
+
+**Reason:** two, and they are not the same one.
+
+*The licence* closed the cheap path. That is a fact about the sources and it is
+not a judgement.
+
+*The owner* then closed the expensive one
+([OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
+2026-08-22): a genuine clean-room from published documentation, by somebody who
+has not read the `.proto` files, is months of work and is done honestly or not
+at all — and MeshCore is MIT, which is the half of OD-7's need that a licence
+can answer. How much work a MeshCore companion client actually is stays open:
+T-072 is unfinished and §1 of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) is `UNKNOWN`
+on every row. The rejection above does not depend on that number.
+
+Recording both matters. If Meshtastic's protocol licensing ever changes, the
+licence half of this is answered and only the product decision needs revisiting.
+
+**Source revision:** `meshtastic/protobufs` submodule `aca181b`, under
+`meshtastic/firmware` `68bfe015e`, read 2026-08-21.
+
+**Attadipa integration:** none. MeshCore remains the one companion protocol a
+client may lawfully be written for, under ADR-0008's provider list. No such
+client exists yet.
+
+**Tests required:** none — nothing is taken.
+
+
+---
+
+### Crowd-sourced tag emulation — the ecosystems, and why none of them was reached
+
+**Problem:** A7 asked whether the watch should be findable through a
+crowd-sourced finding network the way a smart tag is, so that a lost watch is
+located by strangers' phones rather than only by its owner's.
+
+**Projects investigated:**
+
+| | Licence | Reachable from an MIT ESP32 firmware? |
+|---|---|---|
+| `seemoo-lab/openhaystack` | **AGPL-3.0** | no — copying into an MIT repository is not available, and AGPL is the strongest copyleft here |
+| `dchristl/macless-haystack` | **AGPL-3.0** | no, same |
+| Google's Find My Device reference | proprietary, and licensed *"only … with a Nordic Semiconductor ASA integrated circuit"* | no — the silicon clause alone ends it, before the approval form, the email allowlist and the third-party certification |
+| Samsung SmartThings Find SDK | proprietary | no — ships for no Espressif part, and an unregistered advertisement is inert by construction |
+
+**Useful implementation:** the *specifications* rather than the code. DULT's
+rotation requirements — identifier and BLE address rotating together, 15 minutes
+near-owner and 24 hours separated — are a published contract and are readable
+without touching an AGPL implementation. Those stay relevant to T-069 and T-070
+whatever happens to this feature.
+
+**Decision:** `REJECT`.
+
+**Reason:** two, in this order, and the second is the decisive one.
+
+*The licences and the platform gates* made it expensive. Both open
+implementations are AGPL-3.0; both proprietary SDKs are closed to this hardware.
+Apple's network is the one that is technically reachable, and reaching it costs
+an Apple ID bootstrapped on physical Apple hardware, a self-hosted endpoint and
+SMS-only 2FA — and the watch would still never appear in Apple's own Find My
+app, because that is the MFi pairing flow and MFi excludes individuals. Median
+latency is 26 minutes: recovery, not live tracking.
+
+*The owner* then rejected the feature itself
+([OD-13](OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
+2026-08-22, on [#33](https://github.com/hleserg/Attadipa/issues/33)): *"Не
+делаем. Ни Apple, ни какую-либо ещё."* That is a product decision and it does
+not rest on any of the above.
+
+Recording both matters, and the order matters more here than usual. If a
+crowd-sourced network ever became reachable under a permissive licence, the
+first half of this record would be obsolete and the second half would still
+stand. This is not a blocked feature waiting for the ecosystems to change.
+
+**Source revision:** licences read 2026-08-21;
+`docs/research/TAGS_TRACKS_RECKONING.md` §1 carries the detail and the citations.
+
+**Attadipa integration:** none, and T-064 is closed. The need A7 was aimed at is
+answered by **T-063** instead — the companion phone remembers where it last saw
+the watch over BLE. No account, no membership, no other company's identifier, no
+server, and it works with the companion ADR-0002 already specifies.
+
+**Tests required:** none — nothing is taken.

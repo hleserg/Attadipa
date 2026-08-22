@@ -172,17 +172,17 @@ a task whose event was lost.
                  └──────┬───────┘
                         │  claude-agent.yml accepts it
                  ┌──────▼───────┐
-                 │ agent:working│  one writer at a time, repository-wide
-                 └──┬────┬──────┘
-      draft PR      │    │      cannot proceed
+                 │ agent:working│  one writer at a time, and the writer job
+                 └──┬────┬──────┘  sets this label itself — so a claim never
+      draft PR      │    │         outlives the agent that made it
                  ┌──▼──┐ │ ┌────▼─────────┐
                  │review│ │ │agent:blocked │ + needs-owner / needs-hardware
-                 └──┬──┘ │ └──────────────┘
-     CI green,     │    │
-     merged       │    │
-                 ┌──▼───▼──┐
+                 └──┬──┘ │ └──────────────┘   cannot proceed
+     CI green,      │    │
+     merged         │    │
+                 ┌──▼────▼──┐
                  │agent:done│
-                 └─────────┘
+                 └──────────┘
 ```
 
 The labels are the state. There is no separate database, and no field in a
@@ -304,6 +304,9 @@ recommendation. "What should I do?" is not a question, it is an absence of one.
 - **Duplicate work**: the intake workflow refuses an issue that already carries
   `agent:working`, `agent:review`, `agent:blocked` or `agent:done`. A fresh
   `@claude` comment overrides that, because a human asking again is a decision.
+  The mention has to be in the comment you are writing: the gate reads the
+  comment for it, and the issue body only for the marker. Case does not matter
+  — `@Claude` and `@CLAUDE` are the same request.
 - **Stranded tasks**: `agent:working` with no activity for two hours goes back
   to `agent:ready` with a comment saying so.
 - **CI failures**: repaired automatically at most twice per problem chain, from
