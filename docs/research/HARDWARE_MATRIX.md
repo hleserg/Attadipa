@@ -468,4 +468,6 @@ a typed descriptor rather than a flag.
 
 | S11 | **the flash of that same unit** — the partition table dumped from `0x8000` and parsed byte for byte, plus the `model` and `storage` partitions dumped whole, 2026-08-22. [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) |
 
-S1–S8 checked 2026-08-21; S9, S10 and S11 on 2026-08-22.
+| S12 | **the complete 32 MB flash of that same unit**, read whole and verified against the device — three independent complete passes (the owner's on Windows over native USB, two on Linux over USB/IP) agreeing byte for byte, plus `esptool verify-flash 0x0` returning `Verification successful` over all 33 554 432 bytes, 2026-08-22. Extends S11 from three partitions to the whole part. The image itself is **not committed** — Waveshare's binary plus third-party licensed audio; see [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §2.2 |
+
+S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22.
