@@ -210,10 +210,68 @@ is verified.
   `bma423_step_counter_output()` reads four bytes from
   `BMA4_STEP_CNT_OUT_0_ADDR = 0x1E` into a `uint32_t`.
 - **Checked:** 2026-08-22, for the T-Watch S3 Plus.
-- **Impact:** the pedometer is mandatory ([OD-6](OWNER_DECISIONS.md)) and its
-  most basic power question — does it count while the SoC sleeps — is
-  **`UNKNOWN`** until that application note is read. Filed as T-060a. Full
-  reading in [PEDOMETER_PARTS](PEDOMETER_PARTS.md).
+- **Impact:** the pedometer is mandatory ([OD-6](OWNER_DECISIONS.md)).
+  **Superseded 2026-08-22 by the entry below** — the behaviour is documented,
+  in a revision of this same datasheet that Bosch withdrew. Full reading in
+  [PEDOMETER_PARTS](PEDOMETER_PARTS.md).
+
+### Bosch deleted the step-counter chapter from the BMA423 datasheet between revisions
+
+- **Claim:** the behaviour revision 2.0 defers to application note
+  `BST-MAS-AN032` was **printed in the datasheet itself** until three months
+  earlier. Revision 1.0 (`BST-BMA423-DS000-00`, August 2017) and revision 1.1
+  (`BST-BMA423-DS000-01`, May 2019) both carry a *"Step Detector / Step
+  Counter"* chapter, a *"Minimum Bandwidth Settings"* section, the phone/wrist
+  preset tables and the per-field configuration list, pp. 32–37 — and the text
+  is byte-identical between the two. Revision 2.0 (`BST-BMA423-DS004-00`,
+  August 2019) replaces all of it with a pointer, and changes the document
+  number series from `DS000` to `DS004`.
+- **Source:** revision 1.1 retrieved 2026-08-22 from the Watchy project's
+  mirror, `watchy.sqfmi.com/assets/files/BST-BMA423-DS000-1509600-950150f51058597a6234dd3eaafbb1f0.pdf`,
+  SHA-256 `98b85747bd983435b2921266401cbeb095a57e2274b1f5c49f7f04145f22de04`,
+  2 363 646 bytes. Revision 1.0 from `opensourceinstruments.com`, used only to
+  confirm the chapter is unchanged. Revision 2.0 from DigiKey. Bosch's own site
+  returned **HTTP 403** for both the note and the datasheet.
+- **Checked:** 2026-08-22.
+- **Impact:** four questions this file recorded as `UNKNOWN` are answered, and
+  one claim it recorded is **wrong** — see the two entries below. The general
+  lesson is the one [ADR-0003](../adr/0003-radio-not-lora.md) already teaches in
+  another subsystem: *"the datasheet"* is not a document, it is a document **at
+  a revision**, and the newest is not always the most complete. Where a current
+  datasheet defers to something unobtainable, look backwards before declaring
+  the fact unknowable.
+
+### The BMA423 step counter runs in low-power mode, and 50 Hz is the floor
+
+- **Claim:** the feature engine takes acceleration samples *"acquired at 50Hz"*.
+  In performance mode (`ACC_CONF.acc_perf_mode = 0b1`) the features work at any
+  ODR; in low-power mode (`0b0`) *"the ODR must be set to minimum 50 Hz for the
+  most features except Double Tap/Tap"*, and 200 Hz for tap. Violating it sets
+  `INTERNAL_STATUS.odr_50hz_error` — it is detectable, not silent. Counting
+  itself needs no host transaction: the sensor duty-cycles itself, and *"in all
+  global power configurations both register contents and FIFO contents are
+  retained."*
+- **Source:** BMA423 Data Sheet revision 1.1, pp. 20–21 and 32; register `0x2A`.
+- **Checked:** 2026-08-22.
+- **Impact:** the power line for step counting is the **50 Hz low-power figure,
+  13–14 µA `ESTIMATED`** — not 42 µA and not 150 µA. Wanting double-tap as well
+  costs 3×. Whether the counter survives *the board's* sleep is now a rail
+  question about the AXP2101, not a sensor question.
+
+### CORRECTION — the BMA423 watermark field carries an implicit ×20
+
+- **Claim:** `BMA423_STEP_CNTR_WM_MSK = 0x03FF` is 10 bits, but the field
+  *"holds implicitly a 20x factor, so the range is 0 to 20460, with resolution
+  of 20 steps"*. A written 10 interrupts every 200 steps, and *"as the steps are
+  buffered internally, the output may be triggered between 200-210 steps."*
+  Bosch's driver does **not** apply the factor —
+  `bma423_step_counter_set_watermark()` writes the argument raw.
+- **Source:** BMA423 Data Sheet revision 1.1, p. 36; `bma423.c` v1.1.4 l. 1049.
+- **Checked:** 2026-08-22.
+- **Impact:** **this corrects an earlier reading in this repository.** LilyGo's
+  `setStepCounterWatermark(1)` was recorded as an interrupt *per step*; it is an
+  interrupt every **20** steps. Roughly every 15 s at walking cadence, not
+  ~1 Hz — an order of magnitude, and it lands in the T-061 power arithmetic.
 
 ### The BMA423's step counter lives in a 6 144-byte blob the host uploads at every boot
 
@@ -221,16 +279,20 @@ is verified.
   bytes are streamed to `BMA4_FEATURE_CONFIG_ADDR` (`0x5E`), after which the host
   must **wait 150 ms** and then read `BMA4_INTERNAL_STAT` (`0x2A`) expecting
   `BMA4_ASIC_INITIALIZED` (`0x01`). The step-counter watermark is **10 bits**
-  (`0x03FF`, so 0–1023), and **value 0 does not mean "every step"** — it selects
+  (`0x03FF`, so 0–1023 **as written; the sensor multiplies by 20** — see the
+  correction above), and **value 0 does not mean "every step"** — it selects
   the separate *step detector* interrupt.
 - **Source:** Bosch BMA423 reference driver v1.1.4 —
   `bma4_write_config_file()` in `bma4.c`, and the masks in `bma423.h` /
   `bma4_defs.h`.
 - **Checked:** 2026-08-22.
 - **Impact:** 150 ms of the boot budget is spent before a step can be counted,
-  every time. Whether a soft reset (`0xB6` → `0x7E`) drops the blob is
-  **`UNKNOWN`** — and if it does, every reset is a hole in the day's total that
-  OD-6's *no interpolation* rule requires be reported rather than filled.
+  every time. A soft reset (`0xB6` → `0x7E`) **does** drop it — revision 1.1
+  §4.2: *"Initialization has to be performed as well after every POR or soft
+  reset"*, the reset being *"largely equivalent to a power cycle"* — so every
+  reset is a hole in the day's total that OD-6's *no interpolation* rule
+  requires be reported rather than filled. The block is also read–modify–write
+  as a whole, so two callers cannot configure two features independently.
 
 ### The QMI8658A's datasheet has deleted its pedometer
 

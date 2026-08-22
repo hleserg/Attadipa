@@ -491,8 +491,9 @@ stale silently. The protocol is
   `ASIC_INITIALIZED`. Whether a soft reset drops it is `UNKNOWN`, and if it does,
   every reset is a hole in the day's total.
 - **The watermark is 10 bits and 0 does not mean "every step"** — it selects the
-  separate step-detector interrupt. LilyGo's own board support sets it to 1, an
-  interrupt per step, which is a power decision we should not inherit unexamined.
+  separate step-detector interrupt. LilyGo's own board support sets it to 1.
+  *(**Corrected by T-060a:** the field carries an implicit ×20, so that is an
+  interrupt every 20 steps, not every step.)*
 - **One interrupt line, already shared six ways.** INT2 is bonded out but not
   routed on the T-Watch, and LilyGo maps step counter, any-motion, no-motion,
   activity, tilt and wake-up all to INT1. A design needing a private interrupt
@@ -516,30 +517,67 @@ stale silently. The protocol is
   before its variant question is settled. Vendor typicals, **not** measurements.
 - **No hardware involved.** `NOT EXECUTED — HARDWARE REQUIRED`.
 
-### T-060a · Read the Bosch application note the datasheet points at
-- **Priority:** P1. It is the gate on T-061's power story, and it is *reading*.
-- **Dependencies:** T-060 (**done**)
-- **Goal:** obtain Bosch's *Wearable Feature Set* application note
-  `BST-MAS-AN032` and answer the five questions the BMA423 datasheet defers to
-  it: does the step counter run on the sensor's own ASIC while the host sleeps;
-  what accelerometer configuration does it require; what does the feature add to
-  the acquisition current; does the uploaded feature blob survive a soft reset;
-  and what happens at the 32-bit boundary.
-- **The obstacle, and it is the whole task:** `bosch-sensortec.com` returned
-  **HTTP 403** to two retrieval attempts on 2026-08-22. A distributor mirror
-  (Mouser, DigiKey, LCSC) is the obvious next place — the BMA423 datasheet
-  itself was obtained from DigiKey after Bosch refused it.
-- **Acceptance:** each of the five marked `SUPPORTED`, `UNSUPPORTED` or
-  `UNKNOWN` in [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md) with the
-  section it came from, and the document's revision recorded. An unsourced
-  `SUPPORTED` is not an answer.
+### T-060a · Read the Bosch application note the datasheet points at — **DONE** 2026-08-22
+- **Answered without the application note.** Bosch's site returned **HTTP 403**
+  a third time, and Mouser, LCSC, Octopart and micro-semiconductor mirror only
+  revision 2.0 or a product flyer. The material turned out not to need it:
+  **the chapter revision 2.0 deletes is still printed in revision 1.1.**
+- **BMA423 Data Sheet revision 1.1, `BST-BMA423-DS000-01`, May 2019** — pp.
+  31–37 — carries the full *"Step Detector / Step Counter"* chapter, the
+  *"Minimum Bandwidth Settings"* section, the phone/wrist preset tables and the
+  per-field configuration list. Revision 1.0 (Aug 2017) is byte-identical there.
+  Revision 2.0 (Aug 2019) replaced it all with a pointer and moved from document
+  series `DS000` to `DS004`. Retrieved from the Watchy project's mirror; SHA-256
+  recorded in [PEDOMETER_PARTS §1.2](docs/research/PEDOMETER_PARTS.md).
+- **Four of the five questions are answered `SUPPORTED`:**
+  - **counts while the host sleeps** — the sensor duty-cycles itself and feeds
+    the feature engine at 50 Hz; register contents are retained in every power
+    configuration. What is left is a *board* question about the rail, not a
+    sensor one;
+  - **required configuration** — features consume samples at 50 Hz. Performance
+    mode: any ODR. Low-power mode: **minimum 50 Hz**, 200 Hz only for tap, and a
+    violation sets `INTERNAL_STATUS.odr_50hz_error` rather than failing quietly;
+  - **feature current** — the budget line is the 50 Hz low-power figure,
+    **13–14 µA `ESTIMATED`**. Not 42 µA, not 150 µA;
+  - **soft reset** — the blob does **not** survive. *"Initialization has to be
+    performed as well after every POR or soft reset."*
+- **One stays `UNKNOWN`:** behaviour at the 32-bit boundary. Not in revision 1.1
+  either. **T-060b**, and it changes nothing — the firmware treats any decrease
+  as reset-or-wrap regardless.
+- **And one earlier claim was wrong.** The 10-bit watermark field *"holds
+  implicitly a 20x factor"*, and Bosch's driver writes the argument raw — so
+  LilyGo's `setStepCounterWatermark(1)` is an interrupt every **20** steps, not
+  every step. Corrected in both documents, marked as a correction.
+- **Two things nobody asked for:** the step algorithm's **wrist preset is
+  already the default**, so T-061 writes none of the 25 parameters; and axis
+  remapping applies **only** to the feature engine, never to `DATA_0`–`DATA_13`
+  or the FIFO, so a driver that remaps once has got one of the two wrong.
+- **This was a research task.** No code came out of it.
+
+### T-060b · The Bosch application note itself, for what revision 1.1 lacks
+- **Priority:** P3, `nice-to-have`. **Nothing blocks on it** — T-060a closed the
+  questions T-061 needed.
+- **Dependencies:** T-060a (**done**)
+- **Goal:** obtain `BST-MAS-AN032` (*Wearable Feature Set*) and answer what
+  datasheet revision 1.1 does not: BMA423 step-counter behaviour at the 32-bit
+  boundary, and whatever tuning guidance sits behind the datasheet's *"with the
+  support of the corresponding field application engineer"*.
+- **What has already been tried and failed:** `bosch-sensortec.com` (HTTP 403,
+  three attempts), Mouser (403), LCSC (HTML only), Octopart, DigiKey,
+  micro-semiconductor (product flyer), watchy.sqfmi.com (revision 1.1 datasheet,
+  not the note). Untried: Bosch's community forum attachments, the
+  `BMA456`/`BMA400` sibling notes, an account-gated distributor download.
+- **Acceptance:** the boundary question marked in
+  [PEDOMETER_PARTS §1.8](docs/research/PEDOMETER_PARTS.md) with the document
+  revision, or a note saying the note does not answer it either.
 - **This is a research task.** No code comes out of it.
 - **Hardware required:** no.
 
 ### T-061 · Steps, as a capability with a power story
 - **Priority:** P1, after T-060
-- **Dependencies:** T-060 (**done**), **T-060a** (the power story is `UNKNOWN`
-  without it), [ADR-0007](docs/adr/0007-two-capability-layers.md),
+- **Dependencies:** T-060 (**done**), T-060a (**done** — the power story is
+  `13–14 µA at 50 Hz, low-power mode`),
+  [ADR-0007](docs/adr/0007-two-capability-layers.md),
   T-046 (crash-safe persistence), T-045 (`PowerState`)
 - **Goal:** implement `Capability::MotionSensing` for step counting, on both
   boards, without either board's answer leaking upwards.
