@@ -1609,10 +1609,20 @@ stale silently. The protocol is
     QST part at its fixed `0x0D`, so both can be on the bus at once — which is
     the only way to compare them in the same magnetic environment on the same
     wrist. `0x34`, `0x38` and `0x6A`/`0x6B` are taken; these two are free.
-  - **The IMU cannot read the magnetometer for us.** QMI8658C Mag Mode supports
-    AK09915C, AK09918CZ and QMC6308 and nothing else, and it needs pins that
-    Mode 1 requires be tied off. The host reads the sensor and the host does the
-    fusion.
+  - **The IMU will not read the magnetometer for us, and the reason is stronger
+    than "wrong part".** QMI8658C Mag Mode names AK09915C, AK09918CZ and QMC6308
+    — neither ordered part among them — but the decisive point is that `CTRL4`
+    `mDEV<3:0>` has **no published encoding for any device at all**, including
+    those three, and QST *deleted* the magnetometer description from the
+    datasheet at Rev 0.8. So Mag Mode is undrivable from published documentation
+    whichever part is fitted, and buying a listed part would not change that.
+    The host reads the sensor and the host does the fusion.
+    [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §5.1.
+  - **Withdrawn, so nobody reinstates it:** an earlier draft gave a second
+    "fatal" reason — that Mag Mode needs pins Mode 1 requires be tied off. That
+    was an inference and it was wrong; Mode 2 is entered in firmware via `CTRL7`
+    `mEN`. Whether `SDx`/`SCx` are actually tied off on this board is `UNKNOWN`
+    and now merely interesting. §5.3.
 - **The measurement that decides the part:** the field at the candidate mounting
   position, motor idle and motor driven. The QMC5883L is the recommendation on
   current alone — 250 µA against 2.4 mA at 100 Hz — but it saturates at ±800 µT
