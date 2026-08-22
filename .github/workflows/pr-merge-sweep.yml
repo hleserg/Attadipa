@@ -1,0 +1,197 @@
+name: Merge what is finished
+
+# THE LAST LINK IN THE QUEUE HAD NO AUTOMATION IN IT.
+#
+# An agent opens a pull request, CI goes green, the independent reviewer sets
+# `ai-review:pass` -- and then nothing happens, because CLAUDE.md makes the
+# merge an *orchestrator* act and an orchestrator is a live session. On
+# 2026-08-22 six finished pull requests sat green for hours, each carrying
+# `Fixes #N`, and the six issues behind them stayed open. The complaint was
+# about the issues; the cause was that nobody merged.
+#
+# The unattended backstop routine does merge, but `docs/` only, never
+# `docs/automation/`, three per run. A green pull request touching `core/` was
+# waiting for a human-shaped event the design never scheduled.
+#
+# This closes that gap with the SAME six conditions the owner already approved
+# for the backstop (docs/automation/attadipa-backstop-routine.md, STEP 2),
+# transcribed rather than reinvented, and applied over every path.
+#
+# WHAT THIS IS NOT. It is not GitHub's native auto-merge, which cannot read a
+# label -- and `ai-review:blocking` is a label rather than a required check,
+# deliberately, because the reviewer's verdict is a judgement and a red tick is
+# a fact. Arming native auto-merge would merge exactly the pull requests the
+# reviewer blocked.
+#
+# COST AND SAFETY. Shell and the GitHub API; no Claude, no Anthropic spend. It
+# never checks out a pull request's code and never runs anything from a branch,
+# so a hostile contributor's tree cannot execute here -- the only inputs are API
+# facts, and the decision itself is a file that a test can execute:
+# .github/scripts/merge-candidate.sh, .github/tests/merge-candidate-test.sh.
+
+on:
+  schedule:
+    # Every half hour, deliberately off both :00 and :30 -- every scheduled
+    # workflow on GitHub fires on the hour and queues behind everybody else's.
+    - cron: "23,53 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: attadipa-pr-merge-sweep
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sweep:
+    name: Merge what is finished
+    runs-on: ubuntu-latest
+    if: vars.CLAUDE_AUTOMATION_ENABLED != 'false'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Sparse and pinned to the default branch, for the reason the intake
+      # gate's checkout is: this job can put a commit in `main`, so the rule it
+      # applies comes from `main` or from nowhere. A schedule event already runs
+      # from the default branch; saying so here means a future trigger cannot
+      # quietly change that.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Decide, and merge what qualifies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+
+          # One pass over the open pull requests. `--slurp` because `--paginate`
+          # alone emits one JSON array per page, which `jq` reads as several
+          # documents rather than one.
+          PRS="$(gh api --paginate --slurp \
+            "repos/$REPO/pulls?state=open&per_page=100" \
+            --jq 'if type=="array" and (.[0]|type)=="array" then add else . end
+                  | map(.number) | .[]' 2>/dev/null || true)"
+
+          if [ -z "$PRS" ]; then
+            echo "::notice::no open pull requests"
+            exit 0
+          fi
+
+          MERGED=0
+          for PR in $PRS; do
+            # --- gather, per pull request. Nothing here is inferred. ---------
+            # GraphQL in one round trip for the facts REST splits across four
+            # endpoints, including the two REST cannot answer at all:
+            # mergeStateStatus and whether a review thread is resolved.
+            FACTS="$(gh api graphql -f query='
+              query($owner:String!, $name:String!, $number:Int!) {
+                repository(owner:$owner, name:$name) {
+                  pullRequest(number:$number) {
+                    isDraft
+                    mergeStateStatus
+                    labels(first:50) { nodes { name } }
+                    reviewThreads(first:100) { nodes { isResolved } }
+                    commits(last:1) { nodes { commit {
+                      committedDate
+                      statusCheckRollup { contexts(first:100) { nodes {
+                        __typename
+                        ... on CheckRun { conclusion status }
+                        ... on StatusContext { state }
+                      } } }
+                    } } }
+                  }
+                }
+              }' -F owner="${REPO%%/*}" -F name="${REPO##*/}" -F number="$PR" \
+              2>/dev/null)" || FACTS=""
+
+            # An empty or error document means the facts were not established.
+            # Not establishing a fact is not the same as the fact being benign,
+            # so this declines rather than defaulting.
+            if [ -z "$FACTS" ] || ! printf '%s' "$FACTS" | jq -e '.data.repository.pullRequest' >/dev/null 2>&1; then
+              echo "::notice::#$PR: could not read its state, leaving it alone"
+              continue
+            fi
+
+            IS_DRAFT="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.isDraft')"
+            MERGEABLE="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.mergeStateStatus // "" | ascii_downcase')"
+            LABELS="$(printf '%s' "$FACTS" | jq -r '[.data.repository.pullRequest.labels.nodes[].name] | join(" ")')"
+            UNRESOLVED="$(printf '%s' "$FACTS" | jq -r '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length')"
+            COMMITTED="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.commits.nodes[0].commit.committedDate')"
+
+            # A run still in flight has a null conclusion. It must reach the
+            # decision as something, and `pending` is what the rule refuses on
+            # -- reporting it as empty would drop the token and shorten the
+            # list, which is how "all green" over nothing gets to be true.
+            CHECKS="$(printf '%s' "$FACTS" | jq -r '
+              [ .data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes[]?
+                | if .__typename == "CheckRun"
+                  then (if .status == "COMPLETED" then (.conclusion // "pending") else "pending" end)
+                  else (.state // "pending") end
+                | ascii_downcase ] | join(" ")')"
+
+            HEAD_AGE=""
+            if [ -n "$COMMITTED" ] && [ "$COMMITTED" != "null" ]; then
+              HEAD_AGE=$(( $(date -u +%s) - $(date -u -d "$COMMITTED" +%s) ))
+            fi
+
+            # The other reviewer. Codex is configured on ChatGPT's side and does
+            # not set `ai-review:pass`, so a finding of its reaches us only as a
+            # comment -- and that it always arrives as a review thread was
+            # observed once, on #19, not promised anywhere. Both shapes count.
+            # An issue comment is "unanswered" when nothing was posted after it.
+            CODEX="$(gh api --paginate --slurp \
+              "repos/$REPO/issues/$PR/comments?per_page=100" \
+              --jq 'if type=="array" and (.[0]|type)=="array" then add else . end
+                    | (map(select(.user.login == "chatgpt-codex-connector[bot]") | .created_at) | max) as $last
+                    | if $last == null then 0
+                      else (map(select(.created_at > $last)) | length | if . > 0 then 0 else 1 end)
+                      end' 2>/dev/null)" || CODEX=1
+
+            VERDICT="$(bash .github/scripts/merge-candidate.sh \
+              "$CHECKS" "$LABELS" "$UNRESOLVED" "$CODEX" \
+              "$MERGEABLE" "$IS_DRAFT" "$HEAD_AGE")"
+
+            case "$VERDICT" in
+              HOLD*)
+                echo "::notice::#$PR: ${VERDICT#HOLD }"
+                continue ;;
+              READY)
+                # Undrafting is a visible act on somebody else's work, so it
+                # happens only once every other condition already holds -- never
+                # as a way to make a candidate qualify.
+                #
+                # AND IT IS ITSELF A TRIGGER. `ready_for_review` is what
+                # claude-pr-review.yml fires on, so this starts a fresh review
+                # of the very pull request about to be merged. Merging straight
+                # afterwards would rest on an `ai-review:pass` read BEFORE the
+                # step that can replace it, and a second-pass finding would land
+                # as `ai-review:blocking` on a commit already in `main`. So this
+                # merges nothing this run: the next sweep re-gathers every fact
+                # from scratch and asks again.
+                if gh pr ready "$PR" --repo "$REPO"; then
+                  echo "::notice::#$PR: taken out of draft; the next sweep decides it, after the review this just started"
+                else
+                  echo "::warning::#$PR: could not take it out of draft"
+                fi
+                continue ;;
+              MERGE) : ;;
+              *)
+                echo "::warning::#$PR: unrecognised verdict '$VERDICT', leaving it alone"
+                continue ;;
+            esac
+
+            if gh pr merge "$PR" --repo "$REPO" --squash --delete-branch; then
+              MERGED=$((MERGED + 1))
+              echo "::notice::#$PR: merged"
+            else
+              echo "::warning::#$PR: merge refused by GitHub; nothing changed"
+            fi
+          done
+
+          echo "::notice::sweep finished, $MERGED merged"
