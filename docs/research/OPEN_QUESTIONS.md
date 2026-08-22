@@ -36,7 +36,7 @@ nobody is asked is not a question.
 | A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
 | A4 | Which regulatory region governs LoRa operation here? | **CLOSED — not this project's to answer** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-14, 2026-08-22: asked as [#55](https://github.com/hleserg/Attadipa/issues/55), and the owner declined to name one — *"legality is my problem, not the firmware's."* No country or region is coming; nothing here researches a specific jurisdiction's rule table. [ADR-0006](../adr/0006-settings-and-bounded-values.md)'s transmit-closed-while-`Unknown` gate is unchanged by this and still applies to whoever configures the device |
 | ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch** | the project owner, on [#56](https://github.com/hleserg/Attadipa/issues/56) and [#83](https://github.com/hleserg/Attadipa/issues/83), 2026-08-22: an external module is ordered for the Waveshare unit (CJMCU-9911/AK09911C and GY-271/QMC5883L). **Hardware in prospect, not in hand** — placement is undecided and gates every compass feature (T-109). [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-16. This is a retrofit on one unit, not a fact about the board type: [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md)'s magnetometer row stays absent |
-| ~~A6~~ | ~~Does the Attadipa node carry a magnetometer?~~ | **RESOLVED — no, deliberately** | the project owner, on [#56](https://github.com/hleserg/Attadipa/issues/56), 2026-08-22: *"в нодах магнитометр реально лишний"* — no magnetometer on the nodes, ever. [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-16. The node gets an accelerometer and probably a gyroscope instead, for GNSS power optimisation, not heading — filed as its own capability question, [#93](https://github.com/hleserg/Attadipa/issues/93) (T-111), rather than resolved here |
+| ~~A6~~ | ~~Does the Attadipa node carry a magnetometer?~~ | **RESOLVED — no, deliberately** | the project owner, on [#56](https://github.com/hleserg/Attadipa/issues/56), 2026-08-22: no magnetometer on the nodes, ever. [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-16. The node gets an accelerometer and probably a gyroscope instead, for GNSS power optimisation, not heading — filed as its own capability question, [#93](https://github.com/hleserg/Attadipa/issues/93) (T-111), rather than resolved here. "Yes" would not have given the watch a compass in any case: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform |
 | ~~A7~~ | ~~Which orange, and which olive?~~ | **RESOLVED** | the project owner, on [issue #57](https://github.com/hleserg/Attadipa/issues/57), 2026-08-22: §42 wins — Attadipa Orange `#FF8A40`, Ink Olive `#2F3A2E`. The sampled brand-art values that lost have left [`../../pics/README.md`](../../pics/README.md) and are recorded in [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-15 |
 | ~~A8~~ | ~~May the icon and favicon be re-exported with transparent corners?~~ | **RESOLVED — yes** | the project owner, same issue. `pics/Ikon.png` and `pics/Favicon.png` are re-exported RGBA with transparent corners; the pixels inside the rounded square are unchanged. OD-15 |
 | A9 | **Does the day theme keep its near-white page on the AMOLED board?** The Waveshare panel is emissive: every lit pixel draws its own current and ages in proportion. Rendered on the 410×502 face, the day theme's mean per-subpixel drive is 4.2× the night theme's on the raw 8-bit mean and 13.9× gamma-decoded (ESTIMATED — no panel, no efficiency curve; method in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1). The T-Watch's IPS panel does not care, so this is the first design question whose answer differs by board | **UNKNOWN** | the project owner. Four options and their costs are tabulated in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1. Not an engineering call: it decides whether the two boards look like one product — **asked as [#52](https://github.com/hleserg/Attadipa/issues/52)** |
@@ -63,8 +63,8 @@ to promise — a specific profile this project would write and ship as a
 default — is not coming, and per ADR-0006 was never supposed to ship as a
 default anyway.
 
-A5 is answered as **dormant, not dead**: five epics in §67 have a physical part
-in prospect and stay gated on placement (T-109), not on the owner.
+A5 is answered as **dormant, not dead**: the five epics in §67 have a physical
+part in prospect and stay gated on placement (T-109), not on the owner.
 
 Until A1–A3 are answered: simulator, architecture, host tests and protocol work
 proceed; hardware work does not.
@@ -100,7 +100,7 @@ proceed; hardware work does not.
 |---|---|---|---|
 | ~~D1~~ | ~~Waveshare flash and PSRAM size~~ | **RESOLVED** | schematic: `GD25Q256EYIGR` = 32 MB quad flash; SoC is `ESP32-S3R8` = 8 MB PSRAM. Type of PSRAM rolls into D12. **Confirmed on silicon 2026-08-22**: JEDEC `0xC8 0x4019` and eFuse `PSRAM_CAP = 8M` — [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2–1.3 |
 | D2 | Waveshare battery capacity and charge path details | **PARTIAL** | **Capacity answered**: 400 mAh / 3.7 V, cell `402728`, read off a received unit 2026-08-22 — [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2. The cell is on a **removable 2-pin plug**, not soldered. **Charge path traced 2026-08-22** — [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §4: Waveshare's own demo sets **400 mA**, upstream XPowersLib's copy of the same file sets 200 mA, and the `REG 0x62` power-on default cannot be quoted at all because the datasheet prints it eFuse-trimmed. The Waveshare BSP configures the charger **not at all**, so whatever is in that register at boot is what charges the cell. `REG 0x16` defaults to a **1500 mA** input limit, which is not USB-compliant on a port that granted 500. **And the sticker is the thing now in doubt**: `402728` is 3.024 cm³, so 400 mAh at 3.7 V implies 132.3 mAh/cm³ against an 87–102 band across 51 datasheet cells from four manufacturers — honest expectation 250–310 mAh, which makes the vendor's own 400 mA setting **1.33C** on a pouch whose class maximum is 1.0C. **Still `UNKNOWN`**: the value actually in `REG 0x62` on this board (never read), the `TS`/NTC termination, and the `BAT1` connector part and pitch. The reading of the sticker is not in doubt; what it means is |
-| D18 | **Which ESP32-S3 errata apply to revision v0.2?** The received unit is `v0.2`; nobody has read the ESP32-S3 Errata sheet against it, so whether any erratum touches octal PSRAM, USB-Serial/JTAG or the flash interface is unknown | UNKNOWN | the ESP32-S3 Errata sheet, read against `WAFER_VERSION_MAJOR = 0` / `MINOR = 2` — [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §3.1 |
+| ~~D18~~ | ~~**Which ESP32-S3 errata apply to revision v0.2?**~~ | **RESOLVED — and the answer is "all of them"** | ESP32-S3 Series SoC Errata **v1.3** (2025-03-31), read 2026-08-22. All **eight** errata carry `Affected revisions: v0.0 v0.1 v0.2`, and seven say `No fix scheduled.` **There is no newer revision to want**: the sheet knows only three, and ESP-IDF's `COMPATIBILITY.md` agrees. The one revision-dependent improvement, USBOTG-4289, lands *inside* v0.2 in the owner's favour. [ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md) — and the one with teeth for this design is **CACHE-126**, whose workaround masks every interrupt and freezes the data cache, at a cost Espressif never publish |
 | ~~D3~~ | ~~Waveshare expansion connector pinout~~ **The question was mis-stated: there is no expansion connector.** Read visually, `J3` is the 34-pin AMOLED display FPC — its block is titled AMOLED and carries `QSPI_SIO0`–`SIO3`, `QSPI_SCL`, `LCD_CS`/`RESET`/`TE`, the MIPI pairs, `VCI`, `VDDIO`, `IM0`/`IM1` and `TP_SCL`/`TP_SDA`/`TP_INT`/`TP_RESET` | **CLOSED — mis-stated** | [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.4. This retires the hot-unplug and bus-capacitance worry D3 inherited from the T-Watch, where main-I2C `SDA` genuinely does reach a detachable GNSS connector — but it confirms the touch half of the main I2C bus leaves the mainboard over a flex cable |
 | ~~D4~~ | ~~Does the Waveshare board have any haptic output?~~ | **RESOLVED — and the earlier answer was wrong** | **Yes, as a circuit.** A vibration motor on pads `P1`/`P2` (recorded as `J1` until 2026-08-22 — `J1` is the *battery* connector, see [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1.1), driven from GPIO 18 through R12 (4.7 kΩ) and Q1 (MMBT3904), supplied from BLDO2. No driver IC — which is why searching for a haptic part found nothing. **The pads are bare on the received unit and no motor is fitted** — T-097 |
 | D5 | Waveshare button/wake inputs — BSP declares none; is that the board or the BSP? | **PARTIAL — it is the BSP** | schematic shows at least two tactile keys (`Key1` by `BOOT`, `Key3`) plus `PWRON`. Which GPIO each key uses is still unresolved |
@@ -203,7 +203,7 @@ with someone competent reviewing it — not in a paragraph here.
 | # | Question | Status | Resolved by |
 |---|---|---|---|
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
-| ~~Q2~~ | ~~Is a magnetometer expected to be added externally, or is heading GNSS-only for good?~~ | **RESOLVED — externally, on the watch** | same answer as A5: [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-16. The node does not carry one (A6), so it never answers this question by itself |
+| Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83), [OD-16](OWNER_DECISIONS.md)). A6 also settles that the node will never be the source. The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
@@ -214,9 +214,25 @@ strongest argument for the capability model: two boards that share almost no
 hardware run the same applications, because applications ask what the device can
 do and never which device it is.
 
-Q2 was the part of the compass question that OD-1 did not answer. It is now
-answered the same way as A5: an external module on the watch, not the node —
-the node was never going to be the source, per A6.
+Q2 is the part of the compass question that OD-1 did *not* answer, and it got
+sharper, and then on 2026-08-22 it got **split**. The owner named "компас" among
+the applications the node enables. No board has a magnetometer. The original
+framing was: either the node carries one — which would answer both Q2 and A5 —
+or "compass" means GNSS course-over-ground, which only works while moving and
+shows nothing at all when the user stands still. Those are different products and
+the difference is visible to the user in the first ten seconds.
+
+Both halves of that framing are now decided, and neither decides Q2. A5 was
+answered by a **third** route neither branch anticipated: the owner is soldering
+a magnetometer into one unit — yes, one is expected to be added externally, and
+**a soldered part on one wrist is not a shipping capability**. A6 was answered
+in the negative and deliberately: the node will never carry one, so it was never
+going to be the source, and node orientation would not have been watch
+orientation in any case ([ADR-0009](../adr/0009-heading.md) §3).
+
+What Q2 now asks is the narrow, still-open thing: **on a board nobody has
+modified, is heading GNSS-course-only for good?** That is a product decision and
+the retrofit does not make it.
 
 ---
 
