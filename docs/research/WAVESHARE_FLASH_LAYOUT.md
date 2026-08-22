@@ -120,25 +120,99 @@ anything is taken from it.
 Nothing here is a decision to ship a wake word. This repository has no such
 requirement and adding one would be a product change.
 
-## 4. `storage` — raw pixel buffers, not encoded images
+## 4. `storage` — extracted, and the format is settled
 
-SPIFFS, not littlefs — the index page signature at `0x8001` and the object-id
-page structure both say so. It holds three real files, all in an `/image/`
-directory: `/image/image1.bin`, `/image/image2.bin`, `/image/image3.bin`.
+SPIFFS, not littlefs. Extracted with `tools/flash/spiffs_extract.py`, which was
+written for this because `mkspiffs -u` needs a toolchain nobody had to hand and
+`strings` recovers a SPIFFS image's file *names* and none of its file *bodies* —
+the data is scattered across pages that are neither contiguous nor in order.
 
-**The vendor stores images as raw pixel buffers with no on-device decoder.** For
-a QSPI AMOLED that is almost certainly RGB565 at 2 bytes per pixel, DMA'd
-straight at the panel. A full 410×502 frame is **411 640 bytes**; comparing the
-extracted file sizes against that number is what would confirm full-frame against
-icon-sized, and it has not been done — `strings` recovers the names but not the
-bodies, because SPIFFS spreads data across pages. `mkspiffs -u out -b 4096
--p 256 -s 0x600000 storage.spiffs` extracts them properly.
+**There are six files, not three.** The parallel document recorded *"only three
+real files, all raw binaries in an `/image/` dir"*; there is also a `/music/`
+directory, and what is in it changes an argument elsewhere in this repository.
 
-**This is a real input to T-034**, the asset pipeline: it says the target format
-should be raw `RGB565`/`RGB565A8` blobs baked at build time rather than a PNG
-decoder on the device. The vendor's choice is corroboration for that direction,
-not proof of it — they had different constraints — but on a bandwidth-limited
-part with a 410×502 emissive panel it points the same way our own arithmetic does.
+| File | Size | What it is |
+|---|---|---|
+| `/image/image1.bin` | 411 652 | 410 × 502 RGB565 — §4.1 |
+| `/image/image2.bin` | 411 652 | the same |
+| `/image/image3.bin` | 411 652 | the same |
+| `/music/BGM_1.mp3` | 207 713 | MPEG-1 Layer III, 112 kbps, 44.1 kHz, **mono** |
+| `/music/BGM_2.mp3` | 199 664 | MPEG-1 Layer III, 112 kbps, 44.1 kHz, **stereo** |
+| `/music/BGM_3.mp3` | 380 917 | MPEG-1 Layer III, 128 kbps, 44.1 kHz, stereo; ID3v2.4 tag of 139 756 bytes, so most of it is embedded artwork |
+
+### 4.1 The image format, decoded rather than guessed
+
+Every one of the three images is **exactly 411 652 bytes**, which is
+411 640 + 12. 411 640 is a full 410 × 502 frame at two bytes per pixel. The
+twelve bytes are a header, and it decodes cleanly:
+
+| Offset | Size | Value | Meaning |
+|---|---|---|---|
+| 0 | `u32` LE | `0x00001219` | constant across all three; a magic or format code. Its meaning is `UNKNOWN` |
+| 4 | `u16` LE | `410` | width |
+| 6 | `u16` LE | `502` | height |
+| 8 | `u32` LE | `820` | stride in bytes = width × 2 |
+
+`12 + width × height × 2` equals the file length exactly, for all three files.
+Pixels follow the header, row-major, no row padding.
+
+**The byte order is little-endian, and this was settled by rendering rather than
+by argument.** Decoded as little-endian RGB565 the files are coherent artwork —
+a neon figure, a bird over a synthwave skyline, a third scene. Decoded
+big-endian they are noise. That is the whole test and it is not ambiguous.
+
+So the format is: **a 12-byte header, then 410 × 502 RGB565 little-endian, no
+compression, no palette, no alpha.**
+
+### 4.2 What it means for T-034
+
+The vendor bakes **full-frame, uncompressed, panel-native pixel buffers** and
+ships **no image decoder on the device**. Three full frames cost 1.18 MB of the
+6 MB partition.
+
+That corroborates where the asset pipeline was already heading — raw
+`RGB565`/`RGB565A8` blobs baked at build time rather than a PNG decoder — and it
+is corroboration rather than proof: the vendor had different constraints and only
+needed three wallpapers. What it does establish beyond argument is the panel's
+native pixel format and byte order, which is a fact about the hardware and not
+about their taste. Their header is worth *noticing* and not worth *copying*: it
+carries width, height and stride but no format field, which is exactly the field
+you need the moment a second format exists.
+
+### 4.3 The music settles an argument two sections down
+
+The board ships **three MP3 background tracks**, two of them stereo, at 112–128
+kbps. They are decoded and played by the factory demo's `MusicPlayer`.
+
+A device that ships 788 kB of licensed music and an app to play it **has a
+speaker**. Taken with the grille slot in the case wall and the separate motor
+pads at `P1`/`P2`, the reading in §6 that `AAC210602A1` is a *haptic actuator*
+becomes very hard to sustain. It is not yet `VERIFIED` — stereo source material
+decoded to one transducer is still mono output, and only tracing the pads settles
+it — but T-105 now has a strong prior and should be quick.
+
+### 4.4 The dump carries third-party rights, and this is why it stays out
+
+`BGM_1.mp3`'s ID3 frames read, verbatim:
+
+```
+All Rights Reserved to www.Art-list.io
+Levitate by Ryefield
+```
+
+So the factory image contains **commercially licensed music under an
+all-rights-reserved grant to a third party**, alongside Waveshare's own
+proprietary binary. Keeping the flash dump off the repository had been a
+convention and not a written rule — review on
+[#80](https://github.com/hleserg/Attadipa/pull/80) checked `CLAUDE.md`,
+`docs/research/` and `docs/adr/` and found it stated nowhere, which was correct.
+**It is written down now, here and in
+[VERIFIED_FACTS](VERIFIED_FACTS.md):** the dump does not go in the repository.
+This licence finding is the second and sharper reason for it, on top of
+Waveshare's own copyright: republishing that dump would redistribute somebody
+else's licensed audio. **The extracted
+files are not committed either**, and neither are the rendered PNGs. What is
+committed is the extractor and the measurements.
 
 ## 5. What this changes, and what it does not
 
@@ -148,7 +222,7 @@ part with a 410×502 emissive panel it points the same way our own arithmetic do
 | Partition table as parsed | **VERIFIED** — §2, parsed from the raw entries |
 | `factory` cannot be restored by OTA | **VERIFIED** — 9 MB image, 6 MB slots |
 | `model` is ESP-SR / xiaozhi | **VERIFIED** — the two model names are in the container |
-| `storage` is SPIFFS holding three raw images | **VERIFIED** for the format and the names; the **pixel format is `LIKELY` RGB565 and unconfirmed** until the file sizes are compared against 411 640 |
+| `storage` is SPIFFS holding three raw images | **Superseded.** It holds **six** files — three images and three MP3s. The image format is now **VERIFIED**: a 12-byte header, then 410 × 502 RGB565 **little-endian**, confirmed by rendering. §4 |
 | `AAC210602A1` is a haptic module | **CONFLICTING** — §6 |
 | The battery connector is MX1.25 | **LIKELY**, photo-derived — §6 |
 
@@ -188,8 +262,7 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
 
 ## 7. Still open
 
-- **Confirm the image format** — extract the three `/image/*.bin` with
-  `mkspiffs -u` and compare their sizes against 411 640. Feeds T-034.
+- ~~Confirm the image format~~ — **done**, §4. `tools/flash/spiffs_extract.py` did it without mkspiffs.
 - **Check `xiaozhi-esp32`'s licence** before reading it for the audio path, and
   record the decision in the ledger either way.
 - **Run the `octal_psram` boot-log check** in §1 and close D12a against silicon

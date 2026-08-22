@@ -1244,3 +1244,76 @@ the watch over BLE. No account, no membership, no other company's identifier, no
 server, and it works with the companion ADR-0002 already specifies.
 
 **Tests required:** none — nothing is taken.
+
+### Reading a SPIFFS image without an ESP-IDF build
+
+**Problem:** the Waveshare factory flash dump holds a SPIFFS partition, and
+T-103 needed the files out of it — the UI assets whose format and count were the
+whole question. `strings` recovers file *names* and no file *bodies*: SPIFFS
+scatters a file's pages non-contiguously and out of order, so reading it means
+parsing the object lookup table, the 5-byte page headers and the object index
+header. That is a non-trivial reimplementation of a standard on-disk format,
+which is exactly what this ledger exists for. Review on
+[#80](https://github.com/hleserg/Attadipa/pull/80) caught that it had been done
+without a record; this is the record, written after the fact and saying so.
+
+**Projects investigated:**
+
+| Candidate | What it is | Why it was not used |
+|---|---|---|
+| `espressif/esp-idf` `components/spiffs/spiffsgen.py` | Espressif's own pure-Python SPIFFS tool, Apache-2.0 | **Generates only.** Its header reads *"spiffsgen is a tool used to generate a spiffs image from a directory"* and its CLI describes itself as *"SPIFFS Image Generator"*; the file contains no parsing path at all. The obvious first candidate, and it cannot do this. |
+| `igrr/mkspiffs` | The reference builder/unpacker, MIT | `-u <dest_dir>` does exactly this job. It is **C++**, and building it needs gcc ≥ 4.8 or clang ≥ 600.0.57, `make`, and `git submodule update --init` — a toolchain, for a one-off read of one partition. |
+| `octopus-framework/spiffs-dumper` | Dumps SPIFFS off a live ESP32, C/C++ plus Python | Wrong shape twice over: it reads from **a running board over serial**, not from an image already on disk, and it needs ESP-IDF and CMake to build the firmware it uploads. **No licence is stated in the repository**, which on its own would have ruled it out. |
+
+**Useful implementation:** the SPIFFS on-disk layout itself, taken from the
+upstream sources rather than from any of the above — the object lookup table,
+the `spiffs_page_header` (`obj_id` u16, `span_ix` u16, `flags` u8), the
+`SPIFFS_OBJ_ID_IX_FLAG` high bit distinguishing index pages from data pages, and
+the object index header at `span_ix == 0` carrying size and name.
+
+**License:** `spiffsgen.py` Apache-2.0, `mkspiffs` MIT, `spiffs-dumper`
+**unstated**. Nothing is copied from any of them, so no licence is inherited.
+
+**Strengths (of the rejected options):** `mkspiffs -u` is the reference
+implementation and would be right for anyone who already has the toolchain.
+
+**Weaknesses:** all three need something this task did not have — a generator
+that cannot read, a C++ build, or a board on the end of a cable.
+
+**Decision:** `REIMPLEMENT` — `tools/flash/spiffs_extract.py`, 115 lines, host
+Python with no dependencies.
+
+**Reason:** the only pure-Python option in the ecosystem cannot read images, and
+the two that can each require a build environment to recover six files from one
+partition once. The cost of the reimplementation is bounded and visible: it is a
+read-only offline parser over a file that is already on disk, it writes nothing
+back, and being wrong about the format shows up immediately as garbage instead
+of as a corrupted image.
+
+**What it deliberately does not hard-code:** the offsets of size and name inside
+the object index header, which move between SPIFFS versions and with
+`SPIFFS_OBJ_META_LEN`. It finds the name as the first NUL-terminated printable
+run beginning with `/` and reads the size from the `u32` immediately before it,
+then **checks that against the number of data-page bytes actually recovered** —
+a file whose declared size exceeds its recovered bytes is reported and not
+written, rather than written short. Review on #80 walked that assumption against
+the real `spiffs_page_object_ix_header` layout and found it matches.
+
+**Source revision:** `spiffsgen.py` read from `espressif/esp-idf` `master`,
+2026-08-22; `mkspiffs` and `spiffs-dumper` read from their repository pages the
+same day. `docs.espressif.com` is unreachable from this environment, so the
+ESP-IDF claim rests on the **source file itself** rather than on the
+documentation page — which is the better source anyway.
+
+**Attadipa integration:** none, and there must not be any. This is a `tools/`
+script for reading a vendor image on a workstation. Nothing in `core/`,
+`platform/` or `boards/` links against it, and Attadipa does not use SPIFFS —
+if it ever needs an on-device filesystem that is a separate decision with its
+own record.
+
+**Tests required:** none automated, and that is a real gap rather than a
+judgement. It has been run against exactly one image — the Waveshare factory
+dump — which cannot be committed (Waveshare's own copyright, plus
+all-rights-reserved third-party audio found inside it), so there is no fixture
+to test against. A synthetic image built by `spiffsgen.py` would be one, and
+that is worth doing if this script is ever needed twice.
