@@ -79,21 +79,53 @@ stale silently. The protocol is
 
 ## NEXT
 
-### T-034 · Image asset pipeline
-- **Priority:** P0
-- **Dependencies:** T-032 (**done**)
-- **Goal:** reproducible conversion from cleaned source art to board-appropriate
-  LVGL assets — `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`
-  (final §45), using LVGL 9.5.0's `scripts/LVGLImage.py`.
-- **Acceptance:** a script regenerates every asset deterministically; CI reports
-  sizes and detects stale output; no hand-maintained C arrays; the 1448-pixel
-  reference PNGs are never shipped as watch assets; small sizes are drawn
-  deliberately rather than scaled down (final §86).
-- **Research status:** partial — `LVGLImage.py` and `LV_COLOR_FORMAT_RGB565A8`
-  confirmed present at the pinned version
-- **Implementation status:** not started
-- **Tests:** regeneration reproducibility; per-board asset budget
-- **Hardware required:** for decode and render cost, yes
+### T-034 · Image asset pipeline — **DONE** 2026-08-22
+- `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`, exactly the
+  three directories final §45 names, with LVGL v9.5.0's `LVGLImage.py` vendored
+  unmodified at `tools/assets/vendor/` and pinned by hash.
+- **Deterministic**, verified rather than assumed: two runs, byte-compared.
+- **The staleness gate covers the converter as well as the art.** An encoder
+  that changes its output *is* the asset changing, so its SHA-256 is inside
+  `INPUTS.sha256` and a bump fails `ui_images_are_current` until the tree is
+  regenerated.
+- **Three refusals, each with a test that triggers it:** a source over 512 px
+  (the 1440-pixel concept sheets, §41); a source under `docs/` or `pics/`; and a
+  pixel size with no drawing behind it — which is final §86 made mechanical
+  rather than aspirational, because the pipeline **never resamples one size into
+  another** and `icon()` returns `nullptr` rather than the nearest thing it has.
+- **Proved with three icons** — `mesh`, `position`, `warning` — authored at 33,
+  39 and 47 px with per-size geometry in `tools/assets/icon_drawings.py`. Nine
+  A8 masks, **14 457 B** of `.rodata`, reported per asset rather than estimated.
+- **Assets are named by pixels, never by board.** `icon.size.lg` at 261 dpi and
+  `icon.size.md` at 315 dpi are both 39 px and share one file; a test asserts the
+  two lookups return the same pointer. Four tokens × two densities is seven
+  distinct sizes, and the manifest names the three it generates rather than
+  taking the cross-product, because a mask costs its pixel count in flash.
+- Review sheet: `docs/ui/specimens/sheet-icons.png`, day and night, 1:1.
+  DESIGN_SYSTEM gained §7.1 and §7.2; RESOURCE_BUDGET gained the numbers; the
+  reuse ledger records `USE AS-IS` for the vendored converter.
+- **Not done, and split out rather than quietly dropped:** the mascot — T-034a.
+- **Not measured on hardware.** The byte counts are `CALCULATED` from the
+  format; `idf.py size` is the only thing that settles cost after alignment.
+
+### T-034a · The mascot, at a size somebody drew
+- **Priority:** P2, and it is **an owner decision before it is work.**
+- **Dependencies:** T-034 (**done**)
+- **Goal:** get one mascot pose into `ui/assets/source/` at a size the pipeline
+  will accept. `docs/ui/reference/lumar_mascot_sheet.png` supplies four named
+  poses and DESIGN_SYSTEM §7 already maps them to states, but the sheet is a
+  1440-pixel desktop concept drawing and the pipeline refuses it — correctly.
+- **The question, and it is not an agent's to answer:** at `image.size.hero`
+  (120 dp — 196 px on the T-Watch, 236 px on the Waveshare) a pose lifted from
+  the sheet is roughly a 2× reduction, which is arguably the *"derived and
+  cleaned artwork"* path `docs/ui/reference/README.md` describes. At icon sizes
+  it is not arguable at all: 40 px of a 450-pixel drawing is noise, and §86
+  forbids it outright. So: **derive at hero size, or redraw?** The owner should
+  decide looking at pixels, not at this paragraph.
+- **Acceptance:** either a committed source asset with its provenance recorded,
+  or a written decision that the mascot is redrawn and by whom. Not a scaled
+  crop committed quietly.
+- **Hardware required:** no. **Owner required:** yes.
 
 ### T-038 · The first Settings
 - **Priority:** P0
