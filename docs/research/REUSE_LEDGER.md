@@ -148,6 +148,7 @@ anything equivalent is written by hand.
 | `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | to check |
 | XPowersLib | AXP2101 driver used by **both** vendors — covers the one shared part | to check |
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
+| `78/xiaozhi-esp32` | **the firmware the received board actually shipped with** — its `model` partition holds WakeNet9 `wn9_nihaoxiaozhi_tts`, so the launcher's AIChats app is this project. It therefore contains this exact board's **audio path** written out: I2S wiring, ES8311 bring-up, and what the two microphones are for. See [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §3 | to check — **and the check comes first** |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
 | `infinition/waveshare-watch-rs` | a Rust `no_std` watch firmware for the same board — unusable directly, potentially instructive | to check |
 | ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement | to check |

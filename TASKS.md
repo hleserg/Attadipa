@@ -39,7 +39,12 @@ stale silently. The protocol is
 
 ## NOW
 
-### T-054 · The agent queue, verified by running it rather than by reading it
+### T-100 · The agent queue, verified by running it rather than by reading it
+- **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
+  different pieces of work carried that ID: this one, and the transport tests
+  in the `DONE` section, which commit `5810e20` names as T-054 in its message.
+  History keeps the number it was recorded under; the live task takes a fresh
+  one. `python3 tools/docs/check_docs.py` fails if this ever happens again.
 - **Priority:** P1
 - **Dependencies:** none — the automation is merged on `main`
 - **Goal:** the loop closes without the owner as transport: a finding becomes an
@@ -78,35 +83,6 @@ stale silently. The protocol is
 
 
 ## NEXT
-
-### T-034 · Image asset pipeline — **DONE** 2026-08-22
-- `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`, exactly the
-  three directories final §45 names, with LVGL v9.5.0's `LVGLImage.py` vendored
-  unmodified at `tools/assets/vendor/` and pinned by hash.
-- **Deterministic**, verified rather than assumed: two runs, byte-compared.
-- **The staleness gate covers the converter as well as the art.** An encoder
-  that changes its output *is* the asset changing, so its SHA-256 is inside
-  `INPUTS.sha256` and a bump fails `ui_images_are_current` until the tree is
-  regenerated.
-- **Three refusals, each with a test that triggers it:** a source over 512 px
-  (the 1440-pixel concept sheets, §41); a source under `docs/` or `pics/`; and a
-  pixel size with no drawing behind it — which is final §86 made mechanical
-  rather than aspirational, because the pipeline **never resamples one size into
-  another** and `icon()` returns `nullptr` rather than the nearest thing it has.
-- **Proved with three icons** — `mesh`, `position`, `warning` — authored at 33,
-  39 and 47 px with per-size geometry in `tools/assets/icon_drawings.py`. Nine
-  A8 masks, **14 457 B** of `.rodata`, reported per asset rather than estimated.
-- **Assets are named by pixels, never by board.** `icon.size.lg` at 261 dpi and
-  `icon.size.md` at 315 dpi are both 39 px and share one file; a test asserts the
-  two lookups return the same pointer. Four tokens × two densities is seven
-  distinct sizes, and the manifest names the three it generates rather than
-  taking the cross-product, because a mask costs its pixel count in flash.
-- Review sheet: `docs/ui/specimens/sheet-icons.png`, day and night, 1:1.
-  DESIGN_SYSTEM gained §7.1 and §7.2; RESOURCE_BUDGET gained the numbers; the
-  reuse ledger records `USE AS-IS` for the vendored converter.
-- **Not done, and split out rather than quietly dropped:** the mascot — T-034a.
-- **Not measured on hardware.** The byte counts are `CALCULATED` from the
-  format; `idf.py size` is the only thing that settles cost after alignment.
 
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
@@ -548,84 +524,6 @@ stale silently. The protocol is
 - **Tests:** host, through the replay rig. Every accuracy figure that matters in
   the field is `NOT EXECUTED — HARDWARE REQUIRED`.
 - **Hardware required:** for accuracy, yes. For the logic, no.
-
-### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22
-- [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md), and four entries in
-  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Read from the datasheets,
-  Bosch's own reference driver and LilyGo's board support, in that order.
-- **BMA423: yes, it counts steps** — a 32-bit counter at `0x1E`–`0x21`. **And
-  its datasheet does not say how.** All four registers carry one line:
-  *"Application note – Wearable feature set"*. Every behavioural question — power
-  mode, required ODR, reset survival, and whether it counts while the SoC sleeps
-  — is in `BST-MAS-AN032`, which returned HTTP 403. **T-060a.**
-- **The feature is a 6 144-byte blob the host uploads at every boot**, with a
-  mandatory **150 ms** wait and a status register that must read
-  `ASIC_INITIALIZED`. Whether a soft reset drops it is `UNKNOWN`, and if it does,
-  every reset is a hole in the day's total.
-- **The watermark is 10 bits and 0 does not mean "every step"** — it selects the
-  separate step-detector interrupt. LilyGo's own board support sets it to 1.
-  *(**Corrected by T-060a:** the field carries an implicit ×20, so that is an
-  interrupt every 20 steps, not every step.)*
-- **One interrupt line, already shared six ways.** INT2 is bonded out but not
-  routed on the T-Watch, and LilyGo maps step counter, any-motion, no-motion,
-  activity, tilt and wake-up all to INT1. A design needing a private interrupt
-  for steps does not fit this board.
-- **QMI8658: it depends which part, and we do not know which.** The **C** variant
-  documents a full pedometer — 24-bit count at `0x5A`–`0x5C`, `CTRL8.Pedo_EN`,
-  two CTRL9 commands, eight tunable parameters. **QMI8658A Rev A documented the
-  identical feature; Rev D has deleted it** — feature list, chapter and registers
-  alike, with no deprecation note. `HARDWARE_MATRIX` records the board's IMU as
-  *"QMI8658 / QMI8658C"* and the vendor BSP does not touch the IMU, so there is
-  no code to read the answer out of. **This is the ADR-0003 pattern in a second
-  subsystem.**
-- **Two findings that change what a step count *means*:** the QMI8658C
-  retroactively counts steps it had discarded once a walk is confirmed
-  (`ped_time_cnt_entry`), and updates its registers only every N steps
-  (`ped_sig_count`) — **a read is stale by design**. A step count is an estimate
-  produced by somebody else's filter, and ADR-0011's language about a position
-  applies to it unchanged.
-- **Power:** QMI8658C 30/35/42/55 µA at 3/11/21/128 Hz low-power; BMA423 13 µA
-  at 50 Hz. The Waveshare board pays **at least** three times as much — the two
-  figures are at different ODRs and matching them widens the gap, PEDOMETER_PARTS §2.4 —
-  before its variant question is settled. Vendor typicals, **not** measurements.
-- **No hardware involved.** `NOT EXECUTED — HARDWARE REQUIRED`.
-
-### T-060a · Read the Bosch application note the datasheet points at — **DONE** 2026-08-22
-- **Answered without the application note.** Bosch's site returned **HTTP 403**
-  a third time, and Mouser, LCSC, Octopart and micro-semiconductor mirror only
-  revision 2.0 or a product flyer. The material turned out not to need it:
-  **the chapter revision 2.0 deletes is still printed in revision 1.1.**
-- **BMA423 Data Sheet revision 1.1, `BST-BMA423-DS000-01`, May 2019** — pp.
-  31–37 — carries the full *"Step Detector / Step Counter"* chapter, the
-  *"Minimum Bandwidth Settings"* section, the phone/wrist preset tables and the
-  per-field configuration list. Revision 1.0 (Aug 2017) is byte-identical there.
-  Revision 2.0 (Aug 2019) replaced it all with a pointer and moved from document
-  series `DS000` to `DS004`. Retrieved from the Watchy project's mirror; SHA-256
-  recorded in [PEDOMETER_PARTS §1.2](docs/research/PEDOMETER_PARTS.md).
-- **Four of the five questions are answered `SUPPORTED`:**
-  - **counts while the host sleeps** — the sensor duty-cycles itself and feeds
-    the feature engine at 50 Hz; register contents are retained in every power
-    configuration. What is left is a *board* question about the rail, not a
-    sensor one;
-  - **required configuration** — features consume samples at 50 Hz. Performance
-    mode: any ODR. Low-power mode: **minimum 50 Hz**, 200 Hz only for tap, and a
-    violation sets `INTERNAL_STATUS.odr_50hz_error` rather than failing quietly;
-  - **feature current** — the budget line is the 50 Hz low-power figure,
-    **13–14 µA `ESTIMATED`**. Not 42 µA, not 150 µA;
-  - **soft reset** — the blob does **not** survive. *"Initialization has to be
-    performed as well after every POR or soft reset."*
-- **One stays `UNKNOWN`:** behaviour at the 32-bit boundary. Not in revision 1.1
-  either. **T-060b**, and it changes nothing — the firmware treats any decrease
-  as reset-or-wrap regardless.
-- **And one earlier claim was wrong.** The 10-bit watermark field *"holds
-  implicitly a 20x factor"*, and Bosch's driver writes the argument raw — so
-  LilyGo's `setStepCounterWatermark(1)` is an interrupt every **20** steps, not
-  every step. Corrected in both documents, marked as a correction.
-- **Two things nobody asked for:** the step algorithm's **wrist preset is
-  already the default**, so T-061 writes none of the 25 parameters; and axis
-  remapping applies **only** to the feature engine, never to `DATA_0`–`DATA_13`
-  or the FIFO, so a driver that remaps once has got one of the two wrong.
-- **This was a research task.** No code came out of it.
 
 ### T-060b · The Bosch application note itself, for what revision 1.1 lacks
 - **Priority:** P3, `nice-to-have`. **Nothing blocks on it** — T-060a closed the
@@ -1191,7 +1089,11 @@ stale silently. The protocol is
 
 ---
 
-### T-039 · A formatting rule, and CI that enforces it
+### T-101 · A formatting rule, and CI that enforces it
+- **Renumbered from T-039 on 2026-08-22, and do not renumber it back.** That
+  ID already belonged to the M0.5 reconciliation record in `## DONE`, dated
+  2026-08-21. Nothing outside this file referenced either, so the live task is
+  the one that moves. `python3 tools/docs/check_docs.py` fails if it recurs.
 - **Priority:** P2
 - **Dependencies:** none
 - **Goal:** one `.clang-format`, applied to everything under `platform/`,
@@ -1209,69 +1111,6 @@ stale silently. The protocol is
 - **Implementation status:** not started
 - **Tests:** the CI job is the test
 - **Hardware required:** no
-
-### T-084 · Deep research: design customisation on wearables
-- **Priority:** P1 — the owner asked for this **instead of** filing the animated
-  watch-face feature, and the sequencing is the point: *"забей на это задание а
-  вместо этого назначь в план исследование по кастомизации дизайна на носимых
-  смарт часах. Че кто и как делает, как реализует, какие-то удачные дизайнерские
-  и программные фишки поищи. Прям нормальный дип ресерч. А по результатам уже
-  назначишь задание себе че делать че не делать."* Tasks come out of the
-  research, not before it.
-- **Dependencies:** T-009 (**done** — it is the substrate that makes any of this
-  possible), and it feeds T-081, T-082 and T-034
-- **Goal:** a written survey, in `docs/research/`, of how wearables actually do
-  customisation — watch faces, themes, icon packs, animations — and what it costs
-  in the places it hurts on this hardware: flash, RAM, battery and the always-on
-  path.
-- **What must be covered**, because these are the questions the product has:
-  - **who does what** — Wear OS watch faces (the XML format and why Google moved
-    to it from executable ones), Apple's complications, Garmin Connect IQ, Fitbit,
-    Pebble's legacy and what its community formats got right, Amazfit/Zepp's
-    downloadable faces, Bangle.js, Flipper Zero's animation packs and its
-    manifest, InfiniTime and Wasp-OS as the LVGL/embedded-scale comparison;
-  - **the format question** — declarative versus executable. Every platform that
-    started with executable faces moved away from it, and the reasons (power,
-    security, review burden, and faces that brick the watch) are the reasons this
-    project would face too;
-  - **animation on a battery** — what an idle animation costs when the panel is
-    an AMOLED versus an IPS, how platforms bound it, and how "raise to wake, play
-    something, then show the time" is done without paying for it all day;
-  - **what stops the layout breaking**, which is the owner's explicit
-    requirement: constraint systems, safe areas, what a face is *not* allowed to
-    control, and what happens on a geometry it was not authored for;
-  - **distribution and trust** — signing, review, sandboxing, size limits, and
-    what a malicious or merely bad pack can do;
-  - **accessibility under customisation** — how, or whether, platforms keep
-    contrast and legibility guarantees when a user installs a stranger's palette.
-    Attadipa already computes contrast, so this is a live question rather than a
-    theoretical one.
-- **Acceptance:** every claim carries a source and a date. Where a platform's
-  behaviour is documented, cite it; where it is folklore, say so. A recommendation
-  section at the end that names the two or three approaches worth copying and the
-  ones worth avoiding, each with the reason. **Then** the follow-on tasks are
-  filed, which is the deliverable the owner actually asked for.
-- **This is a research task.** It produces documentation. A pull request full of
-  new subsystems has been guessed at, not done.
-### T-072 · What a vanilla MeshCore node actually exposes — **DONE** 2026-08-22
-- §1 of [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  is answered, and the detail it summarises is
-  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
-  transports, framing, the whole command set, the three position scalings, and a
-  provenance section saying which claims were verified twice and which once.
-- **LAN exists**, which is what OD-7 turned on: Wi-Fi/TCP and Ethernet/TCP, both
-  port 5000 by default, one client at a time. That makes a host-side client the
-  cheapest possible bring-up.
-- **176 bytes is the frame budget** and it cannot be raised by a build flag.
-- **The finding that outranks the rest:** a position from a vanilla node carries
-  **no fix flag, no satellite count, no timestamp and no HDOP**, and `node_lat`
-  is one slot shared by the GNSS loop, saved prefs and the client app. A receiver
-  cannot tell a live fix from a stale one from a hand-typed coordinate. That is a
-  direct input to [ADR-0011](docs/adr/0011-gnss-integrity.md), OD-8 and OD-10.
-- Reuse-ledger records added for both the client (`REIMPLEMENT`) and the
-  Meshtastic gate (`REJECT`).
-- **Read from source, never observed.** `NOT EXECUTED — HARDWARE REQUIRED` —
-  see T-072a.
 
 ### T-072a · The same protocol, against a node that exists
 - **Priority:** P2 — it converts a document full of `read from source` into the
@@ -1423,38 +1262,6 @@ stale silently. The protocol is
 - **Acceptance:** host tests with deliberately bad themes — an unreadable one, a
   font missing one codepoint, an oversized one, a truncated one.
 - **Hardware required:** no
-
-### T-083 · No box characters in any build
-- **Priority:** P1 — a defect that exists **today**, not a feature. The owner saw
-  it in a screenshot: *"в проде конечно же такого быть не должно"*.
-- **Dependencies:** T-032 (**done** — the font pipeline exists and its output has
-  been compiled for the target and measured)
-- **Goal:** the simulator and every future firmware build draw with a **generated
-  subset** rather than LVGL's stock Montserrat, which is Latin-only. Today
-  `×` (U+00D7) renders as `□` on the diagnostic screen, and all six Cyrillic
-  codepoints in the English catalogue's own language names do too.
-- **The check already exists and already reports it** — `report_undrawable_glyphs()`
-  prints seven codepoints on every run, and `tools/l10n/check_glyphs.py` asks the
-  same question at build time. What is missing is that the answer is a warning
-  rather than a failure, and that nothing consumes the pipeline's output.
-- **Acceptance:** zero undrawable codepoints in either catalogue, in every build
-  that renders; the run-time report becomes a **test failure** rather than a line
-  of output; a screenshot of both boards in both locales shows no box.
-### T-084 · Deep research: design customisation on wearables — **DONE** 2026-08-22
-- [WEARABLE_CUSTOMISATION](docs/research/WEARABLE_CUSTOMISATION.md). Eighteen
-  sources, read and dated. Findings that changed the plan: **every platform that
-  shipped executable watch faces has moved away from them and none has moved
-  back**; Wear OS publishes the only hard numbers anybody publishes (15 % of
-  pixels lit in ambient, 10 MB ambient / 100 MB interactive assets, 12 sp
-  essential text, **48 dp touch targets**); Flipper's passive/active split is the
-  power model and the delight in one mechanism, with wrist-raise as the trigger
-  the owner had already named; and **no platform validates that a user-installed
-  face can be read** — they ship system-level overrides instead, which is a gap
-  Attadipa can fill for free because the contrast arithmetic already exists.
-- Filed out of it: T-085, T-086, T-087. And one finding against existing code:
-  `touch.min.adult` is 44 dp and Wear OS requires 48.
-- **Original brief, kept:** *"Прям нормальный дип ресерч. А по результатам уже
-  назначишь задание себе че делать че не делать."*
 
 ### T-085 · `touch.min.adult`: 44 dp or 48 dp
 - **Priority:** P2 — a token that is already in the code and already wrong on one
@@ -1644,6 +1451,74 @@ stale silently. The protocol is
   random walk with a budget attached.
 - **Hardware required:** yes — the owner's unit, already connected.
 
+### T-103 · What the vendor's three images actually are
+- **Priority:** P2 — it is a free input to T-034 and it expires the moment
+  somebody guesses instead.
+- **Dependencies:** none. The partition is already dumped.
+- **Why now:** the `storage` SPIFFS holds `/image/image1.bin`, `image2.bin` and
+  `image3.bin` — raw binaries, no encoder in sight
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4). That the
+  vendor bakes raw pixel buffers rather than shipping a PNG decoder is corroboration
+  for the direction T-034 was already leaning, and the file sizes turn it from a
+  guess into a measurement.
+- **Goal:** extract them (`mkspiffs -u out -b 4096 -p 256 -s 0x600000
+  storage.spiffs` — `strings` recovers names but not bodies, because SPIFFS
+  spreads data across pages), compare each size against **411 640** bytes, which
+  is a full 410×502 frame at RGB565. Then say what the format is, including
+  whether an LVGL image header sits in front of the pixels.
+- **Acceptance:** the three sizes and the derived format recorded in
+  `docs/research/`, with the arithmetic shown. If the sizes do not match any clean
+  interpretation, **say so** — a format nobody can account for is a finding, not a
+  failure.
+- **What must not be assumed:** that RGB565 is the answer because it is the
+  obvious one. RGB888, RGB565A8 and a palette all produce different numbers, and
+  the numbers are right there.
+- **Hardware required:** no — the partition is already in hand.
+
+### T-104 · `xiaozhi-esp32`: the licence, then this board's audio path
+- **Priority:** P1 — it is the audio bring-up for the exact board we have,
+  already written by somebody who had it working.
+- **Dependencies:** none.
+- **Why now:** the received unit's `model` partition holds WakeNet9
+  `wn9_nihaoxiaozhi_tts`, so the stock firmware **is**
+  [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §3). That
+  project therefore contains this board's I2S wiring, its ES8311 bring-up and what
+  the two microphones are for — all of which we would otherwise reverse out of a
+  9 MB blob or rediscover on the bench.
+- **Goal, in this order and not the other one:** (1) read its `LICENSE` and record
+  the decision in the [reuse ledger](docs/research/REUSE_LEDGER.md) whichever way
+  it goes; (2) only if the licence permits, read the board's audio path and write
+  it up as facts with file-and-line citations.
+- **Acceptance:** a full ledger record — the template, whole — and, if step 2
+  happens, an audio-path document that cites source rather than paraphrasing it.
+- **What must not be assumed:** that "it is on GitHub" means it may be copied, or
+  that reading a permissively-licensed project entitles us to its structure. The
+  ledger's rule is not a preference.
+- **Wake words are not in scope.** Identifying the vendor's firmware is not a
+  decision to ship a wake word; this repository has no such requirement and adding
+  one is a product change.
+- **Hardware required:** no.
+
+### T-105 · Is `AAC210602A1` the speaker or a haptic actuator?
+- **Priority:** P1 — it decides what `Capability::Haptics` resolves to, and
+  T-097 cannot be answered underneath a wrong answer here.
+- **Dependencies:** none.
+- **Why now:** two readings of the same unit disagree. This repository has the
+  part as the **speaker** in the back cover; a parallel reading calls it a haptic
+  module and concludes the board therefore has haptics after all
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §6). AAC
+  Technologies makes both, so the marking settles nothing.
+- **Goal:** trace the two solder pads. A speaker sits behind the ES8311 and its
+  amplifier; a haptic actuator does not. Continuity from the pads to the codec's
+  output stage answers it in one measurement.
+- **Acceptance:** the [hardware matrix](docs/research/HARDWARE_MATRIX.md) row
+  moves off `CONFLICTING` in one direction with the measurement recorded, and
+  T-097's premise is restated against whichever answer wins.
+- **What must not be assumed:** that the case grille settles it. It is strong
+  evidence and it is still evidence, not a trace.
+- **Hardware required:** yes — a meter on the board.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1724,6 +1599,206 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
+- `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
+  Four checks, each of a failure that had already happened here.
+- **Relative links resolve.** These documents cite each other constantly and a
+  link that 404s reads exactly like one that works until somebody clicks it. The
+  repository was clean at the time this landed; the point is that it stays that
+  way through the next rename. Fenced code, external schemes and root-relative
+  `/paths` are all handled.
+- **Task IDs are unique.** Four pairs had accumulated. Two were stale open copies
+  of tasks already recorded as `DONE` — T-083 and T-084 — and those copies are
+  deleted, their substance already being in the `DONE` records. Two were genuine
+  collisions between unrelated work: T-054 and T-039 each named a live task *and*
+  a historical record. **The historical record keeps the number** — commit
+  `5810e20` names T-054 in its message and history cannot be re-pointed — so the
+  live tasks became **T-100** and **T-101**, each carrying a line saying why so
+  nobody renumbers them back.
+- **Headings inside a `<details>` block are excluded on purpose.** TASKS.md keeps
+  a rejected task's original scope in one — T-073 — and that is a record, not a
+  second live task. Without the exclusion this job would have failed on `main`
+  from its first run, which is the specific way a hygiene check lands broken.
+- **Inline code spans close.** Added after this task's own pull request shipped
+  a `TASKS.md` in which a splice landed inside an inline span, truncating T-100's
+  body and re-parenting its entire field list onto the next heading. Every
+  heading was still unique, so the uniqueness check passed cleanly — which is the
+  point. The rule is CommonMark's: a span opened by a run of N backticks closes
+  at the next run of **exactly** N, scoped to the paragraph. A per-line version
+  was written first and produced 61 false positives on this repository, because a
+  span may wrap a soft line break and this prose does it constantly.
+- **A live task has a body, and finished work is filed under `DONE`.** The span
+  check above catches that splice at its cause; this catches it at its effect,
+  and catches the effect however it got there — the task above a spliced heading
+  loses its fields, the task below inherits a `DONE` mark in a live section, so a
+  splice trips at least one of them wherever it lands. The rule is this file's
+  own, stated two paragraphs into it: a live task carries priority, dependencies,
+  goal, acceptance, status and tests.
+- **What it found that no syntactic check would have.** Four records were sitting
+  in live sections marked `DONE` — T-034, T-060, T-060a and T-084 — drift that
+  predates the splice by weeks, and the same defect the #48 review established
+  for T-064 and T-073. All four are moved into `## DONE` here. T-084 is worth
+  naming: the bullet above says its stale open copy was deleted because the
+  substance was already in the `DONE` records, and it was not — the record itself
+  was in `## READY`.
+- **Under `## BLOCKED` the body is the blocker, not a priority.** T-010 and T-011
+  carry the `BLOCKED:` block CLAUDE.md specifies and no `**Priority:**` field,
+  which is correct rather than missing. That block is written inside a fence, so
+  this is the one place in the checker that reads fenced lines — everywhere else
+  a `**Priority:**` inside a fence is an example and does not count as a body.
+- **Mutation-tested**, and CI runs those tests before it runs the checker:
+  twenty-five cases in `tools/docs/test_check_docs.py`, thirteen of which assert
+  the checker does *not* fire where firing would be wrong. One reproduces the
+  splice defect above verbatim and asserts the span check catches what the
+  uniqueness check cannot; another asserts the body check catches the same splice
+  from the other side.
+- Invoked through `python3`, never as `./check_docs.py` — the working copies this
+  repository is edited from report `core.filemode=false`, so an executable bit
+  set locally never reaches a commit.
+
+### T-034 · Image asset pipeline — **DONE** 2026-08-22
+- `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`, exactly the
+  three directories final §45 names, with LVGL v9.5.0's `LVGLImage.py` vendored
+  unmodified at `tools/assets/vendor/` and pinned by hash.
+- **Deterministic**, verified rather than assumed: two runs, byte-compared.
+- **The staleness gate covers the converter as well as the art.** An encoder
+  that changes its output *is* the asset changing, so its SHA-256 is inside
+  `INPUTS.sha256` and a bump fails `ui_images_are_current` until the tree is
+  regenerated.
+- **Three refusals, each with a test that triggers it:** a source over 512 px
+  (the 1440-pixel concept sheets, §41); a source under `docs/` or `pics/`; and a
+  pixel size with no drawing behind it — which is final §86 made mechanical
+  rather than aspirational, because the pipeline **never resamples one size into
+  another** and `icon()` returns `nullptr` rather than the nearest thing it has.
+- **Proved with three icons** — `mesh`, `position`, `warning` — authored at 33,
+  39 and 47 px with per-size geometry in `tools/assets/icon_drawings.py`. Nine
+  A8 masks, **14 457 B** of `.rodata`, reported per asset rather than estimated.
+- **Assets are named by pixels, never by board.** `icon.size.lg` at 261 dpi and
+  `icon.size.md` at 315 dpi are both 39 px and share one file; a test asserts the
+  two lookups return the same pointer. Four tokens × two densities is seven
+  distinct sizes, and the manifest names the three it generates rather than
+  taking the cross-product, because a mask costs its pixel count in flash.
+- Review sheet: `docs/ui/specimens/sheet-icons.png`, day and night, 1:1.
+  DESIGN_SYSTEM gained §7.1 and §7.2; RESOURCE_BUDGET gained the numbers; the
+  reuse ledger records `USE AS-IS` for the vendored converter.
+- **Not done, and split out rather than quietly dropped:** the mascot — T-034a.
+- **Not measured on hardware.** The byte counts are `CALCULATED` from the
+  format; `idf.py size` is the only thing that settles cost after alignment.
+
+### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22
+- [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md), and four entries in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Read from the datasheets,
+  Bosch's own reference driver and LilyGo's board support, in that order.
+- **BMA423: yes, it counts steps** — a 32-bit counter at `0x1E`–`0x21`. **And
+  its datasheet does not say how.** All four registers carry one line:
+  *"Application note – Wearable feature set"*. Every behavioural question — power
+  mode, required ODR, reset survival, and whether it counts while the SoC sleeps
+  — is in `BST-MAS-AN032`, which returned HTTP 403. **T-060a.**
+- **The feature is a 6 144-byte blob the host uploads at every boot**, with a
+  mandatory **150 ms** wait and a status register that must read
+  `ASIC_INITIALIZED`. Whether a soft reset drops it is `UNKNOWN`, and if it does,
+  every reset is a hole in the day's total.
+- **The watermark is 10 bits and 0 does not mean "every step"** — it selects the
+  separate step-detector interrupt. LilyGo's own board support sets it to 1.
+  *(**Corrected by T-060a:** the field carries an implicit ×20, so that is an
+  interrupt every 20 steps, not every step.)*
+- **One interrupt line, already shared six ways.** INT2 is bonded out but not
+  routed on the T-Watch, and LilyGo maps step counter, any-motion, no-motion,
+  activity, tilt and wake-up all to INT1. A design needing a private interrupt
+  for steps does not fit this board.
+- **QMI8658: it depends which part, and we do not know which.** The **C** variant
+  documents a full pedometer — 24-bit count at `0x5A`–`0x5C`, `CTRL8.Pedo_EN`,
+  two CTRL9 commands, eight tunable parameters. **QMI8658A Rev A documented the
+  identical feature; Rev D has deleted it** — feature list, chapter and registers
+  alike, with no deprecation note. `HARDWARE_MATRIX` records the board's IMU as
+  *"QMI8658 / QMI8658C"* and the vendor BSP does not touch the IMU, so there is
+  no code to read the answer out of. **This is the ADR-0003 pattern in a second
+  subsystem.**
+- **Two findings that change what a step count *means*:** the QMI8658C
+  retroactively counts steps it had discarded once a walk is confirmed
+  (`ped_time_cnt_entry`), and updates its registers only every N steps
+  (`ped_sig_count`) — **a read is stale by design**. A step count is an estimate
+  produced by somebody else's filter, and ADR-0011's language about a position
+  applies to it unchanged.
+- **Power:** QMI8658C 30/35/42/55 µA at 3/11/21/128 Hz low-power; BMA423 13 µA
+  at 50 Hz. The Waveshare board pays **at least** three times as much — the two
+  figures are at different ODRs and matching them widens the gap, PEDOMETER_PARTS §2.4 —
+  before its variant question is settled. Vendor typicals, **not** measurements.
+- **No hardware involved.** `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### T-060a · Read the Bosch application note the datasheet points at — **DONE** 2026-08-22
+- **Answered without the application note.** Bosch's site returned **HTTP 403**
+  a third time, and Mouser, LCSC, Octopart and micro-semiconductor mirror only
+  revision 2.0 or a product flyer. The material turned out not to need it:
+  **the chapter revision 2.0 deletes is still printed in revision 1.1.**
+- **BMA423 Data Sheet revision 1.1, `BST-BMA423-DS000-01`, May 2019** — pp.
+  31–37 — carries the full *"Step Detector / Step Counter"* chapter, the
+  *"Minimum Bandwidth Settings"* section, the phone/wrist preset tables and the
+  per-field configuration list. Revision 1.0 (Aug 2017) is byte-identical there.
+  Revision 2.0 (Aug 2019) replaced it all with a pointer and moved from document
+  series `DS000` to `DS004`. Retrieved from the Watchy project's mirror; SHA-256
+  recorded in [PEDOMETER_PARTS §1.2](docs/research/PEDOMETER_PARTS.md).
+- **Four of the five questions are answered `SUPPORTED`:**
+  - **counts while the host sleeps** — the sensor duty-cycles itself and feeds
+    the feature engine at 50 Hz; register contents are retained in every power
+    configuration. What is left is a *board* question about the rail, not a
+    sensor one;
+  - **required configuration** — features consume samples at 50 Hz. Performance
+    mode: any ODR. Low-power mode: **minimum 50 Hz**, 200 Hz only for tap, and a
+    violation sets `INTERNAL_STATUS.odr_50hz_error` rather than failing quietly;
+  - **feature current** — the budget line is the 50 Hz low-power figure,
+    **13–14 µA `ESTIMATED`**. Not 42 µA, not 150 µA;
+  - **soft reset** — the blob does **not** survive. *"Initialization has to be
+    performed as well after every POR or soft reset."*
+- **One stays `UNKNOWN`:** behaviour at the 32-bit boundary. Not in revision 1.1
+  either. **T-060b**, and it changes nothing — the firmware treats any decrease
+  as reset-or-wrap regardless.
+- **And one earlier claim was wrong.** The 10-bit watermark field *"holds
+  implicitly a 20x factor"*, and Bosch's driver writes the argument raw — so
+  LilyGo's `setStepCounterWatermark(1)` is an interrupt every **20** steps, not
+  every step. Corrected in both documents, marked as a correction.
+- **Two things nobody asked for:** the step algorithm's **wrist preset is
+  already the default**, so T-061 writes none of the 25 parameters; and axis
+  remapping applies **only** to the feature engine, never to `DATA_0`–`DATA_13`
+  or the FIFO, so a driver that remaps once has got one of the two wrong.
+- **This was a research task.** No code came out of it.
+
+### T-084 · Deep research: design customisation on wearables — **DONE** 2026-08-22
+- [WEARABLE_CUSTOMISATION](docs/research/WEARABLE_CUSTOMISATION.md). Eighteen
+  sources, read and dated. Findings that changed the plan: **every platform that
+  shipped executable watch faces has moved away from them and none has moved
+  back**; Wear OS publishes the only hard numbers anybody publishes (15 % of
+  pixels lit in ambient, 10 MB ambient / 100 MB interactive assets, 12 sp
+  essential text, **48 dp touch targets**); Flipper's passive/active split is the
+  power model and the delight in one mechanism, with wrist-raise as the trigger
+  the owner had already named; and **no platform validates that a user-installed
+  face can be read** — they ship system-level overrides instead, which is a gap
+  Attadipa can fill for free because the contrast arithmetic already exists.
+- Filed out of it: T-085, T-086, T-087. And one finding against existing code:
+  `touch.min.adult` is 44 dp and Wear OS requires 48.
+- **Original brief, kept:** *"Прям нормальный дип ресерч. А по результатам уже
+  назначишь задание себе че делать че не делать."*
+
+### T-072 · What a vanilla MeshCore node actually exposes — **DONE** 2026-08-22
+- §1 of [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  is answered, and the detail it summarises is
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  transports, framing, the whole command set, the three position scalings, and a
+  provenance section saying which claims were verified twice and which once.
+- **LAN exists**, which is what OD-7 turned on: Wi-Fi/TCP and Ethernet/TCP, both
+  port 5000 by default, one client at a time. That makes a host-side client the
+  cheapest possible bring-up.
+- **176 bytes is the frame budget** and it cannot be raised by a build flag.
+- **The finding that outranks the rest:** a position from a vanilla node carries
+  **no fix flag, no satellite count, no timestamp and no HDOP**, and `node_lat`
+  is one slot shared by the GNSS loop, saved prefs and the client app. A receiver
+  cannot tell a live fix from a stale one from a hand-typed coordinate. That is a
+  direct input to [ADR-0011](docs/adr/0011-gnss-integrity.md), OD-8 and OD-10.
+- Reuse-ledger records added for both the client (`REIMPLEMENT`) and the
+  Meshtastic gate (`REJECT`).
+- **Read from source, never observed.** `NOT EXECUTED — HARDWARE REQUIRED` —
+  see T-072a.
 
 ### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
 - **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
