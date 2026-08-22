@@ -148,7 +148,7 @@ anything equivalent is written by hand.
 | `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | to check |
 | XPowersLib | AXP2101 driver used by **both** vendors — covers the one shared part | to check |
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
-| `78/xiaozhi-esp32` | **the firmware the received board actually shipped with** — its `model` partition holds WakeNet9 `wn9_nihaoxiaozhi_tts`, so the launcher's AIChats app is this project. It therefore contains this exact board's **audio path** written out: I2S wiring, ES8311 bring-up, and what the two microphones are for. See [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §3 | to check — **and the check comes first** |
+| ~~`78/xiaozhi-esp32`~~ | **evaluated 2026-08-22 — see the record below.** MIT, and it carries a board directory for this exact board. Its *audio-path dependencies* are the finding: `esp-sr`, `esp_audio_codec` and `esp_audio_effects` are **not** MIT | MIT; deps vary |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
 | `infinition/waveshare-watch-rs` | a Rust `no_std` watch firmware for the same board — unusable directly, potentially instructive | to check |
 | ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement | to check |
@@ -1244,3 +1244,291 @@ the watch over BLE. No account, no membership, no other company's identifier, no
 server, and it works with the companion ADR-0002 already specifies.
 
 **Tests required:** none — nothing is taken.
+
+### Reading a SPIFFS image without an ESP-IDF build
+
+**Problem:** the Waveshare factory flash dump holds a SPIFFS partition, and
+T-103 needed the files out of it — the UI assets whose format and count were the
+whole question. `strings` recovers file *names* and no file *bodies*: SPIFFS
+scatters a file's pages non-contiguously and out of order, so reading it means
+parsing the object lookup table, the 5-byte page headers and the object index
+header. That is a non-trivial reimplementation of a standard on-disk format,
+which is exactly what this ledger exists for. Review on
+[#80](https://github.com/hleserg/Attadipa/pull/80) caught that it had been done
+without a record; this is the record, written after the fact and saying so.
+
+**Projects investigated:**
+
+| Candidate | What it is | Why it was not used |
+|---|---|---|
+| `espressif/esp-idf` `components/spiffs/spiffsgen.py` | Espressif's own pure-Python SPIFFS tool, Apache-2.0 | **Generates only.** Its header reads *"spiffsgen is a tool used to generate a spiffs image from a directory"* and its CLI describes itself as *"SPIFFS Image Generator"*; the file contains no parsing path at all. The obvious first candidate, and it cannot do this. |
+| `igrr/mkspiffs` | The reference builder/unpacker, MIT | `-u <dest_dir>` does exactly this job. It is **C++**, and building it needs gcc ≥ 4.8 or clang ≥ 600.0.57, `make`, and `git submodule update --init` — a toolchain, for a one-off read of one partition. |
+| `octopus-framework/spiffs-dumper` | Dumps SPIFFS off a live ESP32, C/C++ plus Python | Wrong shape twice over: it reads from **a running board over serial**, not from an image already on disk, and it needs ESP-IDF and CMake to build the firmware it uploads. **No licence is stated in the repository**, which on its own would have ruled it out. |
+
+**Useful implementation:** the SPIFFS on-disk layout itself, taken from the
+upstream sources rather than from any of the above — the object lookup table,
+the `spiffs_page_header` (`obj_id` u16, `span_ix` u16, `flags` u8), the
+`SPIFFS_OBJ_ID_IX_FLAG` high bit distinguishing index pages from data pages, and
+the object index header at `span_ix == 0` carrying size and name.
+
+**License:** `spiffsgen.py` Apache-2.0, `mkspiffs` MIT, `spiffs-dumper`
+**unstated**. Nothing is copied from any of them, so no licence is inherited.
+
+**Strengths (of the rejected options):** `mkspiffs -u` is the reference
+implementation and would be right for anyone who already has the toolchain.
+
+**Weaknesses:** all three need something this task did not have — a generator
+that cannot read, a C++ build, or a board on the end of a cable.
+
+**Decision:** `REIMPLEMENT` — `tools/flash/spiffs_extract.py`, 115 lines, host
+Python with no dependencies.
+
+**Reason:** the only pure-Python option in the ecosystem cannot read images, and
+the two that can each require a build environment to recover six files from one
+partition once. The cost of the reimplementation is bounded and visible: it is a
+read-only offline parser over a file that is already on disk, it writes nothing
+back, and being wrong about the format shows up immediately as garbage instead
+of as a corrupted image.
+
+**What it deliberately does not hard-code:** the offsets of size and name inside
+the object index header, which move between SPIFFS versions and with
+`SPIFFS_OBJ_META_LEN`. It finds the name as the first NUL-terminated printable
+run beginning with `/` and reads the size from the `u32` immediately before it,
+then **checks that against the number of data-page bytes actually recovered** —
+a file whose declared size exceeds its recovered bytes is reported and not
+written, rather than written short. Review on #80 walked that assumption against
+the real `spiffs_page_object_ix_header` layout and found it matches.
+
+**Source revision:** `spiffsgen.py` read from `espressif/esp-idf` `master`,
+2026-08-22; `mkspiffs` and `spiffs-dumper` read from their repository pages the
+same day. `docs.espressif.com` is unreachable from this environment, so the
+ESP-IDF claim rests on the **source file itself** rather than on the
+documentation page — which is the better source anyway.
+
+**Attadipa integration:** none, and there must not be any. This is a `tools/`
+script for reading a vendor image on a workstation. Nothing in `core/`,
+`platform/` or `boards/` links against it, and Attadipa does not use SPIFFS —
+if it ever needs an on-device filesystem that is a separate decision with its
+own record.
+
+**Tests required:** none automated, and that is a real gap rather than a
+judgement. It has been run against exactly one image — the Waveshare factory
+dump — which cannot be committed (Waveshare's own copyright, plus
+all-rights-reserved third-party audio found inside it), so there is no fixture
+to test against. A synthetic image built by `spiffsgen.py` would be one, and
+that is worth doing if this script is ever needed twice.
+
+### This board's audio path — the I2S wiring, the ES8311 bring-up, and what the two microphones are for
+
+**Problem:** the Waveshare `ESP32-S3-Touch-AMOLED-2.06` carries an ES8311 codec,
+an ES7210 microphone ADC with **both** microphones fitted, and one I2S bus shared
+between them. [HARDWARE_MATRIX](HARDWARE_MATRIX.md) already has the pins and the
+I2C addresses from the schematic and the physical unit. What it does not have is
+the *sequence*: which part is configured first, how the codec is clocked against
+those pins, what sample rates the board actually runs, and what the second
+microphone is for — one microphone is a microphone, two are a decision. The
+received unit shipped with a firmware in which all of that already works.
+
+**Projects investigated:** `78/xiaozhi-esp32` — identified as the stock firmware
+because the `model` partition of the received unit holds WakeNet9
+`wn9_nihaoxiaozhi_tts` ([WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §3,
+source **S11**). Its audio-path dependencies were licence-checked in the same
+pass, because the audio path is the thing we came for: `espressif/esp-sr`,
+`espressif/esp_audio_codec`, `espressif/esp_audio_effects`,
+`espressif/esp_codec_dev`. Display dependencies `waveshare/esp_lcd_sh8601` and
+`espressif/esp_lcd_co5300` were checked incidentally. Already in this ledger and
+adjacent to the same problem: `waveshare-components`, the vendor BSP, which does
+drive audio per its declared capabilities but not the IMU, PMU or RTC.
+
+**Useful implementation:** `main/boards/waveshare/esp32-s3-touch-amoled-2.06/` —
+**the exact board, not a sibling**. Four files: `README.md`, `config.h`,
+`config.json`, `esp32-s3-touch-amoled-2.06.cc` (12 917 bytes). Its `README.md`
+links `waveshare.com/esp32-s3-touch-amoled-2.06.htm` and names the **ESP32-S3R8**,
+which matches the `espefuse` readback of the owner's unit (source **S10**,
+[WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md)): 8 MB in-package OCTAL PSRAM.
+`config.json` declares manufacturer `waveshare`, target `esp32s3`, with
+`CONFIG_USE_DEVICE_AEC=y` and `CONFIG_USE_WECHAT_MESSAGE_STYLE=n`. The board
+instantiates `BoxAudioCodec` with `AUDIO_CODEC_ES8311_ADDR`
+(`esp32-s3-touch-amoled-2.06.cc:5`, `:321–335`), and `box_audio_codec.cc` reaches
+the codec through `esp_codec_dev.h` / `esp_codec_dev_defaults.h` — so this
+board's codec bring-up runs over the one dependency that is cleanly licensed.
+`main/audio/` (35 files) holds the engine above it.
+
+Two traps in the same tree. `main/boards/waveshare/esp32-c6-touch-amoled-2.06/`
+is the **same 2.06″ panel on an ESP32-C6** — three characters different in the
+directory name, a different SoC, no PSRAM of this kind; usable for panel and
+touch, actively misleading for anything I2S, CPU or memory. And there are 42
+Waveshare directories under `main/boards/waveshare/` (46 vendor directories in
+all), including `-1.8`, `-1.8-v2`, `-1.75`, `-1.43c`, `-1.32` and `-2.16` — near
+relatives that are not this board.
+
+**License:** **MIT** for `78/xiaozhi-esp32` itself. Read from the file in the
+tree, not from a badge: `LICENSE`, verbatim MIT, sha256
+`0a5a839033bfe18fe75d32b50d9d028912cf876f69ef59c2791aeb2971335d05`, identical in
+the clone and at
+[the commit-pinned raw URL](https://raw.githubusercontent.com/78/xiaozhi-esp32/bb9122ab08c3083eeb4f67b3974b7afe771723b8/LICENSE).
+Copyright holders, to be preserved in any substantial copy:
+`Copyright (c) 2025 Shenzhen Xinzhi Future Technology Co., Ltd.` and
+`Copyright (c) 2025 Project Contributors`. `README.md:159` agrees in prose.
+
+**One verdict for the project would be wrong. Per component, which is which:**
+
+| Component | Licence, read from the file | What Attadipa may do |
+|---|---|---|
+| `78/xiaozhi-esp32` tree — incl. the 2.06 board directory and `main/audio/` | **MIT** (no per-file SPDX or copyright headers anywhere in the board directory; the four files inherit the repository `LICENSE`) | read, copy, modify, ship — with the notice preserved |
+| 23 vendored Espressif LCD / IO-expander driver files + 2 build scripts (`scripts/build_default_assets.py`, `scripts/spiffs_assets_gen.py`) | **Apache-2.0**, SPDX-tagged, 25 files; all in *other* vendors' board directories, **none** in the Waveshare 2.06 one | use and modify, with attribution |
+| vendored `gifdec` (`main/display/lvgl_display/gif/`, own `LICENSE.txt`) | **public domain** — "released into the public domain and provided without warranty of any kind" | anything |
+| `espressif/esp-sr` `~2.4.7` — WakeNet/MultiNet/AFE **and the model blobs** | **ESPRESSIF MIT License**: "Permission is hereby granted **for use on all ESPRESSIF SYSTEMS products**" (registry `license.txt` at 2.4.7, sha256 `7d916fb00bc0742c47cafb0d0144b67f826d76779730b1cb8796045ea6ba1b9a`, byte-identical to the master `LICENSE`). The registry's own version labels put the change at **1.3.2** — "Custom" from there onward, while 1.3.1 and earlier are labelled `MIT` or `ESPRESSIF MIT` — but labels are labels: what was read here is the 2.4.7 file | **not MIT.** A field-of-use restriction. Does not enter this repository |
+| `espressif/esp_audio_codec` `~2.5.0` — Opus | **`LicenseRef-Espressif-Modified-MIT`**, clause 3: "Redistribution … for use with **non-Espressif products** is strictly prohibited". Registry metadata gives its repository as `espressif/esp-adf-libs` — **this is esp-adf**, arriving through the component manager rather than a submodule | **not MIT.** Does not enter this repository |
+| `espressif/esp_audio_effects` `~1.3.0` — rate conversion | same Espressif Modified MIT, licence text byte-identical to `esp_audio_codec`'s; also `esp-adf-libs` | **not MIT.** Does not enter this repository |
+| `espressif/esp_codec_dev` **1.x line** (`~1.5.6`) — the ES8311/ES7210 drivers | genuine **Apache-2.0**, full text, no extra clauses (sha256 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` at 1.5.6, 1.5.10, 1.5.11, 1.6.1, 1.6.2 alike) | use and modify, with attribution — **the clean path.** See the 2.0 warning below |
+| `waveshare/esp_lcd_sh8601` `==1.0.2`, `espressif/esp_lcd_co5300` `^2.0.3` — display, not audio | **Apache-2.0**, verified at the *pinned* versions, same sha256 as above | use and modify, with attribution |
+
+No GPL, LGPL, AGPL or MPL anywhere in the tree — grepped for all of them, zero
+hits. No git submodules: `.gitmodules` is absent and `git submodule status` is
+empty. Only two licence files exist in the whole tree, `./LICENSE` and the
+`gifdec` one.
+
+**Strengths:** it targets **this** board, and it is the firmware the received
+unit **shipped with** — a stronger claim than any vendor example in this ledger
+can make, and it is why the record exists. MIT, so the licence closes nothing. No
+submodules and no copyleft, so the tree can be read and copied without tracing a
+graph first. The whole dependency footprint is legible from
+`main/idf_component.yml` without opening a source file. The board's codec
+bring-up goes through `esp_codec_dev`, which is the one audio dependency that is
+cleanly licensed — the knowledge we want is on the clean side of the line.
+
+**Weaknesses:** the audio *engine* is welded to components Attadipa may not
+depend on — `main/audio/` includes `esp_afe_sr_models.h`, `esp_wn_iface.h`,
+`esp_wn_models.h`, `esp_mn_iface.h`, `esp_mn_models.h`,
+`esp_mn_speech_commands.h`, `esp_vadn_models.h`, `model_path.h` from esp-sr and
+`esp_audio_enc.h`, `esp_opus_enc.h`, `esp_opus_dec.h`, `esp_ae_rate_cvt.h`,
+`esp_audio_types.h` from esp-adf-libs. It is a whole application built around a
+cloud voice assistant, not a component — its architecture answers a question
+Attadipa is not asking. It is a **third-party application, not a vendor source
+and not a schematic**, so nothing in it is a hardware fact on its own authority.
+The wake-word model it ships is separately encumbered (below). And the licence
+review covered **6 of roughly 60 manifest dependencies** — the audio path, plus
+the two display drivers — which is the right scope for the decision taken here
+and is **not** a full-manifest audit; anything that later proposes consuming
+xiaozhi as a whole would have to start that audit from the beginning.
+
+**Decision:** **two decisions, scoped separately.**
+
+- `ADAPT` — `78/xiaozhi-esp32` itself. This is the **ceiling the licence
+  permits**, recorded so nobody has to re-derive it. The verb actually exercised
+  is settled by T-104 step 2 once the code has been read, and may honestly
+  become the weaker `EXTRACT ALGORITHM` or `INSPIRE ARCHITECTURE` if nothing is
+  literally taken. It is not `USE AS DEPENDENCY`: xiaozhi is an application, not
+  a component.
+- `REJECT` — `espressif/esp-sr`, `espressif/esp_audio_codec` and
+  `espressif/esp_audio_effects`, **as dependencies of Attadipa**. Not on
+  quality; on licence.
+- `espressif/esp_codec_dev` **1.x** is licence-cleared for `USE AS DEPENDENCY`
+  and nothing more is decided here — whether Attadipa takes it is a step-2 and
+  implementation call, not a licence one.
+
+**Reason.** The gate is passed for the repository and failed for three of its
+four audio dependencies, and the two facts are independent: an MIT project that
+calls a restricted component does not become restricted, and Attadipa reading
+that MIT source is unaffected. The restriction is also wider than "avoid
+esp-adf" — it arrives through the component manager under Espressif names, and
+`esp_audio_codec`'s own registry metadata is what reveals it as esp-adf-libs. A
+field-of-use restriction is not MIT; this ledger's rule is that anything
+incompatible with MIT does not enter the repository, so those three do not.
+
+**The precise constraint on `main/audio/` is functional, not legal, and the
+distinction matters.** Those files are MIT and lawful to copy verbatim. They
+will not *build* without the rejected components. So the useful thing to take is
+the wiring and the codec sequence; the engine has to be left where it is. Take a
+fact, not an architecture — this ledger's own rule about vendor examples,
+applying with unusual force here because the shape of xiaozhi's `AudioService`
+carries its dependencies with it.
+
+**Three constraints that survive the licence being clean:**
+
+1. **xiaozhi is corroboration, not the pin source.** The matrix already holds
+   this board's I2S wiring as **VERIFIED** from the schematic and the physical
+   unit — MCLK 16, SCLK 41, LCLK/WS 45, DOUT 40, DSIN 42; ES8311 at `0x18`,
+   ES7210 at `0x40`. Where xiaozhi agrees, it corroborates a fact we already
+   own. Where xiaozhi asserts something the matrix does not have — sample rates,
+   MCLK ratios, register sequences, which microphone is which — that is a
+   **lead**, `LIKELY` at best, and it must be cross-checked against the
+   schematic or the Waveshare BSP before it is written down as `VERIFIED`.
+   `CLAUDE.md` wants a datasheet, a schematic for this revision, or vendor
+   source; a third-party application is none of the three.
+2. **`esp_codec_dev`'s clean licence is a property of the 1.x line, not of the
+   component.** The 2.0 line abandons Apache-2.0: `2.0.0-beta1/beta2/beta3` ship
+   the Espressif Modified MIT text (sha256
+   `c2e554675571a5370ea38c89131529d235db368fac12673cd5c569473f118d81`,
+   "Copyright (c) 2023-2026") — the same field-of-use restriction as
+   `esp_audio_codec`. The `~1.5.6` pin cannot reach it, so nothing is wrong
+   today; **any bump past 1.x re-opens this question.** A related trap for a
+   future auditor: registry *metadata* labels 1.5.11, 1.6.1 and 1.6.2 "Custom"
+   while their `license.txt` is byte-identical Apache-2.0. The label is wrong;
+   the file is the licence, and the file is what this ledger reads.
+3. **T-104 step 2 is research.** Its deliverable is a `docs/research/`
+   document citing file and line, not a pull request full of new subsystems.
+
+**Wake words are not in scope, and identifying the vendor's firmware is not a
+decision to ship one.** This repository has no such requirement and adding one
+would be a product change — T-104 and
+[WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §3 both say so. The licence
+position is recorded anyway, so that nobody re-derives it in six months.
+`wn9_nihaoxiaozhi_tts` is **not** vendored by xiaozhi: `main/CMakeLists.txt`
+(1136–1138) locates the esp-sr component at build time and points
+`ESP_SR_MODEL_PATH` at `${ESP_SR_COMPONENT_PATH}/model`, so the blobs are
+packaged out of the dependency. Upstream the directory holds `_MODEL_INFO_`
+(44 B), `wn9_data` (289 638 B) and `wn9_index` (1 200 B), which **corroborates**
+— it does not exactly match — the owner's `model` partition, an esp-sr
+`srmodels` container carrying two 32-byte name records, `wn9_nihaoxiaozhi_tts`
+and `wn9_data`, with no sizes and no `wn9_index`: a packed container is not the
+source directory. Redistribution is a **qualified no** for an MIT repository:
+there is no `LICENSE` or `NOTICE` anywhere under `esp-sr/model/`, so the blobs
+inherit the ESPRESSIF MIT field-of-use restriction and cannot be shipped under
+Attadipa's MIT licence. A second, independent encumbrance sits on top of the
+first: esp-sr's own README warns that wake-word names and brands belong to their
+rights holders and that commercial use requires being, or being authorised by,
+that holder. 你好小智 is the xiaozhi project's wake word and Attadipa is not its
+rights holder.
+
+**One question is flagged, not decided — `needs-owner`.** Both Attadipa targets
+are Espressif silicon, so the Espressif-only field of use would in fact be
+satisfied *in operation*. Whether Attadipa may ever consume esp-sr or
+esp-adf-libs as pinned components on that basis — accepting that Attadipa's
+source stays MIT while its **build** stops being redistributable to non-Espressif
+targets — is a licence-policy call above a research task. It blocks nothing:
+T-104 step 2 does not need it.
+
+**Source revision:** `78/xiaozhi-esp32`
+`bb9122ab08c3083eeb4f67b3974b7afe771723b8` ("Add streamed notify playback
+(#2191)", 2026-08-21), read 2026-08-22. Dependency versions are those pinned by
+`main/idf_component.yml` at that commit; their licences were read from the ESP
+Component Registry's `license.txt` **at the pinned versions**
+(`components-file.espressif.com/components/<ns>/<name>/<version>/license.txt`).
+One provenance caveat, because "pin a revision" is this ledger's rule: the
+esp-sr model-directory listing is **master provenance — esp-sr 2.5.1**, not the
+pinned `~2.4.7`. GitHub has no `v2.4.7` tag (its tags stop at `v2.0.0`), so
+2.4.7 is reachable only through the registry archive; the licence conclusion is
+unaffected because the master `LICENSE` and the registry's 2.4.7 `license.txt`
+are byte-identical.
+
+**Attadipa integration:** none yet, and none of xiaozhi's code is in the tree.
+What follows is the T-104 step 2 write-up: this board's audio path as a
+`docs/research/` document citing file and line, feeding the `AUDIO_OUT` and
+`AUDIO_IN` capability rows in [HARDWARE_MATRIX](HARDWARE_MATRIX.md) and whatever
+resolves them behind the capability registry. The ES8311/ES7210 bring-up, if it
+is taken as code rather than as knowledge, comes via Apache-2.0 `esp_codec_dev`
+1.x, not via xiaozhi's engine. One entry in this ledger moves as a
+result: `78/xiaozhi-esp32` leaves the "candidates identified, not yet evaluated"
+table, where the licence column above is the answer to its "to check — **and the
+check comes first**".
+
+**Tests required:** the licence question needs no test and is answered. For
+anything taken from it: I2S loopback and a codec-register readback on a
+**physical** board — the ES8311 and ES7210 are I2C control slaves on the main
+bus, so a bring-up that reports success without a register read has proved
+nothing. Any pin, rate or register sequence sourced from xiaozhi is `LIKELY`
+until an instrument or a schematic says otherwise, and none of it may be written
+`PASS` until it has run on the unit. `NOT EXECUTED — HARDWARE REQUIRED` is the
+honest status of every one of these today.

@@ -112,7 +112,44 @@ jobs:
           # One comment, edited in place. A new wall of text on every push is how
           # a review becomes something people scroll past.
           use_sticky_comment: "true"
-          allowed_bots: ""
+          # claude, and the reason is a measured failure rather than a
+          # preference. This job's `if:` above deliberately admits
+          # claude[bot] -- its own comment says a blanket bot guard "skipped
+          # the review on exactly the pull requests this workflow exists to
+          # review: the agent's own" -- and then this line handed the action
+          # the one list that does not contain claude. So the guard let the
+          # job start and the action refused it, in about five seconds,
+          # before the model was reached:
+          #
+          #   Checking permissions for actor: claude[bot]
+          #   Actor is a GitHub App: claude[bot]
+          #   Actor type: Bot
+          #   ##[error]Action failed with error: Workflow initiated by
+          #   non-human actor: claude (type: Bot). Add bot to allowed_bots
+          #   list or use '*' to allow all bots.
+          #
+          # Byte-identical on runs 32597016812 (#95), 32596445164 (#94),
+          # 32595947792 (#92) and 32595273274 (#88) -- four seconds, five
+          # seconds, five seconds, five seconds. **No agent-authored pull
+          # request has ever been reviewed**, and the job reported success
+          # every time, because the Review step below carries
+          # continue-on-error. The three alternatives were ruled out rather
+          # than argued away: the claude-*.yml files on those branches are
+          # byte-identical to main, so the action's workflow-validation
+          # refusal cannot apply; a human-authored review ran normally for
+          # six minutes at 20:39, so the credential was not spent; and no
+          # execution log exists at all, which excludes the tool-list cause
+          # that needs real work to show up.
+          #
+          # Not '*': that would let any installed GitHub App drive this, and
+          # .github/tests/bot-actor-test.sh refuses it. Not a producer grant
+          # either -- .github/scripts/queue-scan.jq still refuses claude in
+          # ATTADIPA_TRUSTED_PRODUCERS, so our own output cannot enqueue a
+          # billable writer. And not a loop: this job's output is a comment
+          # and a label, a comment cannot raise a pull_request event, and the
+          # job holds contents: read, so the widest thing it can do is have
+          # an opinion twice.
+          allowed_bots: "claude"
           allowed_non_write_users: ""
           show_full_output: "false"
           # display_report posts Claude's own summary to the run's Step Summary
@@ -171,8 +208,23 @@ jobs:
           # spend in the only unit that maps to it. This number now bounds
           # something else — a reviewer stuck in a loop — and 100 is above what a
           # thirty-file diff was observed to need, not a blank cheque.
+          # WHICH MODEL, AND HOW HARD IT THINKS. Neither was pinned until
+          # 2026-08-22, and the action has no `model:` input -- so every run
+          # this loop has ever made used whatever the CLI defaulted to, and
+          # nothing in the repository recorded which model that was. A result
+          # you cannot attribute to a model is a result you cannot compare
+          # against the next one.
+          #
+          # Verified against `claude --help` rather than assumed: `--model`
+          # takes an alias ('opus', 'sonnet', 'fable') or a full name, and
+          # `--effort` takes one of low, medium, high, xhigh, max. The full
+          # name is pinned rather than the alias so that a new Opus does not
+          # silently change what this loop is: the cost of that choice is that
+          # somebody must come here to move it, which is the intended cost.
+          #
+          # Owner decision, 2026-08-22: Opus 5 at the top effort level.
           claude_args: |
-            --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git blame:*),Bash(git ls-files:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(wc:*),Bash(sort:*),Bash(uniq:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
+            --model claude-opus-5 --effort max --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git blame:*),Bash(git ls-files:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(wc:*),Bash(sort:*),Bash(uniq:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }}
             in ${{ github.repository }}. You did not write this code. Read the
@@ -251,9 +303,53 @@ jobs:
       # a 40-turn ceiling. Somebody spent twenty minutes reading credential
       # documentation for a limit written three lines above it. A diagnostic that
       # offers a menu is not a diagnostic.
+      - name: Did the review actually happen
+        # A GREEN JOB IS NOT A REVIEW, and until this step existed the two were
+        # the same event on the pull request page.
+        #
+        # `continue-on-error: true` on the step above means a failed review
+        # still leaves the job green; the reporting below keys off
+        # `steps.review.outcome == 'failure'` to catch that. What it did not
+        # catch is the action deciding not to run at all, which it reports as
+        # SUCCESS:
+        #
+        #   ##[warning]Skipping action due to workflow validation: Workflow
+        #   validation failed. The workflow file must exist and have identical
+        #   content to the version on the repository's default branch.
+        #   Exiting due to workflow validation skip
+        #
+        # That is the action refusing to run a version of itself that a pull
+        # request has edited, and it is a good rule: without it a pull request
+        # could edit this reviewer into rubber-stamping the same pull request.
+        # But the outcome on the page is a green check, no comment and no
+        # label — indistinguishable from a review that ran and found nothing,
+        # which is the reading somebody will take. Observed on #81 at
+        # 7a4d0f1, run 32591032435, 1.6 s.
+        #
+        # The signal is structural rather than textual: the action writes its
+        # execution log only once the model has been invoked, so a step that
+        # succeeded and left no log never reached the model. That covers the
+        # validation skip, a refused credential and anything future that exits
+        # early, without this step having to recognise each one by name.
+        id: happened
+        if: always() && steps.auth.outputs.ok == 'true'
+        env:
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
+          OUTCOME: ${{ steps.review.outcome }}
+        run: |
+          set -uo pipefail
+          ran=yes
+          if [ -z "${EXEC_FILE:-}" ] || [ ! -f "${EXEC_FILE}" ]; then
+            ran=no
+          fi
+          echo "ran=${ran}" >> "$GITHUB_OUTPUT"
+          if [ "$ran" = "no" ] && [ "${OUTCOME}" = "success" ]; then
+            echo "::warning::The review step reported success and never reached the model — see the note on the pull request."
+          fi
+
       - name: Work out why the review did not happen
         id: why
-        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        if: always() && steps.auth.outputs.ok == 'true' && (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no')
         env:
           EXEC_FILE: ${{ steps.review.outputs.execution_file }}
         run: |
@@ -272,6 +368,19 @@ jobs:
                 else "is_error=\(.is_error), subtype=\(.subtype), turns=\(.num_turns), cost=$\(.total_cost_usd // 0)"
                 end' "${EXEC_FILE}" 2>/dev/null || echo "the execution log could not be parsed")"
             detail="The session's own result record says: ${summary}"
+            # AND THE PART THE STRUCTURAL FIELDS CANNOT REACH. `is_error=true,
+            # subtype=success` is a true sentence that names nothing, and the
+            # agent workflow lost an afternoon to exactly that shape on #67
+            # (run 32589375744). .github/scripts/failure-reason.sh reads the
+            # same log for text matching a whitelist of error grammars only --
+            # an API status, a context refusal, a credit balance, an expired
+            # token -- so the free-text `result` still never reaches a comment
+            # we author, but a recognised failure gets to say its own name.
+            reason="$(bash .github/scripts/failure-reason.sh "${EXEC_FILE}")"
+            case "${reason}" in
+              unclassified*|"the run reported no error"*) ;;
+              *) detail="${detail}"$'\n'"Reason: ${reason}" ;;
+            esac
           fi
           {
             echo "detail<<ATTADIPA_EOF"
@@ -280,7 +389,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Say that the review did not happen
-        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        if: always() && steps.auth.outputs.ok == 'true' && (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no')
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -304,10 +413,19 @@ jobs:
             echo
             echo "The usual causes, in the order they are worth checking:"
             echo
-            echo "1. **A turn or time ceiling.** \`is_error: false\` with a turn count at or"
+            echo "1. **A bot opened this pull request and \`allowed_bots\` does not name it.**"
+            echo "   The action refuses a non-User actor absent from that list, in about"
+            echo "   five seconds, before the model is reached and with no execution log —"
+            echo "   the same shape as causes 3 to 5, and for months it was not on this"
+            echo "   list, so every reader of it was steered somewhere else. The run log"
+            echo "   says \`Workflow initiated by non-human actor: NAME (type: Bot)\`. The"
+            echo "   fix is to name that actor in \`allowed_bots\`, never to widen it to"
+            echo "   \`'*'\`, which would let any installed GitHub App drive this."
+            echo "   Add a case to \`.github/tests/bot-actor-test.sh\` in the same commit."
+            echo "2. **A turn or time ceiling.** \`is_error: false\` with a turn count at or"
             echo "   near \`--max-turns\` means the review worked and was cut off — the whole"
             echo "   bill, none of the verdict. Raise the ceiling; do not re-run into it."
-            echo "2. **This pull request is BEHIND a \`main\` that changed"
+            echo "3. **This pull request is BEHIND a \`main\` that changed"
             echo "   \`.github/workflows/claude-*.yml\`** — the commonest cause by far, and"
             echo "   the one that looks like all the others. The action requires the"
             echo "   workflow file it runs to be byte-identical to the copy on the default"
@@ -317,21 +435,24 @@ jobs:
             echo "   \"Workflow validation failed\". **The fix is to update the branch from"
             echo "   \`main\`, not to re-run.** Observed on #50 at 08:26 on 2026-08-22 — a"
             echo "   documentation-only pull request that touches no workflow at all."
-            echo "3. **This pull request edits \`.github/workflows/claude-*.yml\` itself.** The"
+            echo "4. **This pull request edits \`.github/workflows/claude-*.yml\` itself.** The"
             echo "   action refuses to run a version of itself that a pull request has"
             echo "   modified — otherwise a pull request could supply the prompt that"
             echo "   reviews it. That refusal is correct, and it means changes to those"
             echo "   files are merged on ordinary CI and a human reading them, never on an"
-            echo "   AI review. Same log line as cause 2, and no execution log either way."
-            echo "4. **The Anthropic credential.** A spent quota fails before the model is"
+            echo "   AI review. Same log line as cause 3, and no execution log either way."
+            echo "5. **The Anthropic credential.** A spent quota fails before the model is"
             echo "   reached, in a second or so, and also writes no execution log."
-            echo "5. **A tool the session needed was not in \`--allowedTools\`.** This shows"
+            echo "6. **A tool the session needed was not in \`--allowedTools\`.** This shows"
             echo "   as \`is_error: true\` after real work — a non-trivial turn count and a"
-            echo "   non-zero cost, which is what tells it apart from causes 2 to 4."
+            echo "   non-zero cost, which is what tells it apart from causes 1 to 5."
             echo "   **The log does not name the tool**, because \`show_full_output\` is off"
             echo "   and tool results are where that name would appear. Turning it on is"
             echo "   not the answer: tool results can carry tokens into a world-readable"
-            echo "   log. Reason from what the review was trying to do instead."
+            echo "   log. The \`Reason:\` line above, when there is one, is the most that"
+            echo "   can be said safely — \`.github/scripts/failure-reason.sh\` matches the"
+            echo "   log against a whitelist of error grammars and prints nothing else."
+            echo "   Where it says nothing, reason from what the review was trying to do."
             echo
             echo "Run: $RUN_URL"
             echo

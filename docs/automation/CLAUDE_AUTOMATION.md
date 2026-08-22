@@ -25,12 +25,69 @@ write-capable agent do something?**
 2. **The action's own check.** `anthropics/claude-code-action@v1` performs the
    same check independently, and `allowed_non_write_users` is left empty so
    there is no bypass list to get onto.
-3. **No bots.** `allowed_bots` is empty, which means no bot may trigger the
-   action at all. On a public repository `'*'` would let any installed GitHub
-   App drive a write-capable agent with a prompt it controls. The workflow also
-   refuses bot actors itself, because the loop it prevents — Claude comments,
-   the comment mentions `@claude`, Claude runs — costs money until somebody
-   notices.
+3. **One named bot, and it is this repository's own dispatcher.** On a public
+   repository `'*'` would let any installed GitHub App drive a write-capable
+   agent with a prompt it controls, so the list is never a star. It is also not
+   empty, and the reason is worth reading before anybody "tightens" it back:
+   `allowed_bots: ""` meant the **hourly watchdog had never once started an
+   agent**. It hands a task over with `gh workflow run` under the built-in
+   `GITHUB_TOKEN`, so the dispatching actor is `github-actions[bot]`, and the
+   action refused it in about five seconds — before the agent read a file,
+   without writing an execution log, so the hand-over could only say `no
+   conclusion`. Four issues were written off as unexplained model deaths. The
+   list therefore names exactly that dispatcher:
+
+   | Workflow | `allowed_bots` | Why |
+   |---|---|---|
+   | `claude-agent.yml` | `github-actions` | the watchdog dispatches it as `github-actions[bot]`; nothing else in this repository holds `actions: write` |
+   | `claude-pr-review.yml` | `claude` | its `if:` deliberately admits `claude[bot]`, because a blanket bot guard skipped the review on the agent's own pull requests — the ones it exists for |
+   | `claude-ci-repair.yml` | `""` | its trigger is `workflow_run`; the actor is whoever pushed, today a person holding `ATTADIPA_AGENT_TOKEN`. It admits no bot, so it needs to name none — but it is one token change from the same failure |
+
+   **The reviewer had the identical defect, and it hid better.** Its `if:`
+   deliberately lets `claude[bot]` through — the comment there says a blanket
+   bot guard "skipped the review on exactly the pull requests this workflow
+   exists to review: the agent's own" — and then the step handed the action the
+   one list that does not contain `claude`. So the guard let the job start and
+   the action refused it:
+
+   ```
+   Checking permissions for actor: claude[bot]
+   Actor is a GitHub App: claude[bot]
+   Actor type: Bot
+   ##[error]Action failed with error: Workflow initiated by non-human actor:
+   claude (type: Bot). Add bot to allowed_bots list or use '*' to allow all bots.
+   ```
+
+   Byte-identical on runs `32597016812` (#95), `32596445164` (#94),
+   `32595947792` (#92) and `32595273274` (#88) — five, five, five and four
+   seconds. **No agent-authored pull request had ever been reviewed.** Worse
+   than the watchdog's version, because every one of those jobs reported
+   **success**: the `Review` step carries `continue-on-error`, which is correct
+   for its own reason — a red check meaning "we ran out of quota" is
+   indistinguishable from "the reviewer found something" — and it turned a
+   silent refusal into a green tick.
+
+   The three alternatives were ruled out by evidence rather than argued away:
+   the `claude-*.yml` files on those branches are byte-identical to `main`, so
+   the action's workflow-validation refusal cannot apply; a human-authored
+   review ran normally for six minutes at 20:39, so the credential was not
+   spent; and no execution log exists at all, which excludes the tool-list
+   cause, since that one needs real work before it shows up.
+
+   The workflow's own "the review did not run" comment listed five candidate
+   causes and **this was not among them** — it steered every reader towards the
+   branch-behind-`main` case, which was the wrong answer. It is now cause 1.
+
+   `github-actions` is not a concession to outside apps: it is the actor of
+   this repository's own workflows, and no third party can present as it. It is
+   also **not** a producer grant — `.github/scripts/queue-scan.jq` still refuses
+   `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so our own
+   output still cannot enqueue a billable writer. Those are two different rules
+   and `.github/tests/bot-actor-test.sh` asserts both, including
+   that the list never becomes `'*'`. The workflow also refuses bot actors
+   itself where the actor is not the dispatcher, because the loop it prevents —
+   Claude comments, the comment mentions `@claude`, Claude runs — costs money
+   until somebody notices.
 4. **No `pull_request_target`.** That trigger grants secrets to a workflow
    examining untrusted code, and it is how tokens leak. A fork's pull request
    therefore gets ordinary CI and no AI review, which is the correct trade and
@@ -191,6 +248,13 @@ Verified against `anthropics/claude-code-action` at the `v1` tag (v1.0.198,
   pull request — that was the missing tool list above, and the two fixes are
   independent. `show_full_output` stays off; it is the one that leaks.
 
+  It stays off, and the price is paid elsewhere rather than waived: with it off,
+  a failure's cause is on the runner and nowhere else, so both agent workflows
+  now read the unpublished execution log through
+  [`failure-reason.sh`](../../.github/scripts/failure-reason.sh) and put one
+  whitelisted line on the issue. Turning `show_full_output` on to answer the
+  same question would publish every tool result to answer one of them.
+
 ### One live hazard
 
 `base-action/src/parse-sdk-options.ts`:
@@ -219,12 +283,13 @@ as much as the first.
 | **Empty queue costs nothing** — the watchdog's scan is shell and one API call; Claude is invoked only when there is a task | `agent-queue-watchdog.yml` |
 | **One writer** — a concurrency group on the agent job, so writers queue instead of colliding. On the job and not on the workflow: a workflow-level group also holds the intake gate, and GitHub cancels a *pending* run when a newer one joins the group, so a burst of events loses everything but the last before anything reads it. Three tasks were queued and none started this way on 2026-08-22 | `claude-agent.yml` |
 | **Deduplication** — an issue already claimed is not picked up again | intake gate |
-| **It always answers** — an 👀 reaction within seconds, a receipt saying what was understood, and an outcome comment on every exit path. Silence and a dead pipeline used to be the same experience | `acknowledge` job, `Hand over` step, `agent-say.sh` |
-| **Turn limits** — 60 for implementation, 100 for review, 40 for repair | `claude_args: --max-turns` |
+| **It always answers, and says why** — an 👀 reaction within seconds, a receipt saying what was understood, and an outcome comment on every exit path. A failure carries the reason, extracted on the runner from a log that is not published | `acknowledge` job, `Hand over` step, `agent-say.sh`, `failure-reason.sh` |
+| **Turn limits** — 200 for implementation, 100 for review, 40 for repair. The writer's was 60 until 2026-08-22, when six runs died at turn 61 with an accurate plan posted and nothing on the branch | `claude_args: --max-turns` |
+| **Model and effort are pinned, not defaulted** — `claude-opus-5` at `--effort max` in all three. The action has **no `model:` input**, so the model is a string inside `claude_args` and its absence is not an error: it silently falls back to whatever the CLI defaults to. This loop ran that way from the day it was built until 2026-08-22, so no past run can be attributed to a model and no two runs can be compared. Flags read off `claude --help`: `--model` takes an alias or a full name, `--effort` takes one of `low, medium, high, xhigh, max`. The full name is pinned rather than the `opus` alias so a new Opus cannot silently change what this loop is — somebody has to come and move it, which is the intended cost. Owner decision, 2026-08-22 | `claude_args: --model`, `--effort`, `.github/tests/bot-actor-test.sh` |
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
 | **Sticky review comment** — one comment edited in place, not a new one per push | `use_sticky_comment` |
-| **No bots** — nothing can trigger a run by replying to a run | `allowed_bots: ""` |
+| **Bots named, never starred** — a workflow that admits a bot actor must name it, and nothing may name `'*'`. The writer admits `github-actions`, the actor its own watchdog dispatches as; the reviewer admits `claude`, the actor that opens the pull requests it exists to review; the CI repairer admits none and names none. Empty lists had made the first two refuse silently — the watchdog had never started an agent, and no agent-authored pull request had ever been reviewed. The test asserts the rule rather than the three instances, so a fourth workflow is checked the day it grows an exemption | `allowed_bots`, `.github/tests/bot-actor-test.sh` |
 
 The review's limit was 40 until 2026-08-22, and it was the wrong number for the
 wrong reason. On pull request #39 the reviewer read a thirty-file diff, worked
@@ -263,6 +328,85 @@ actually being billed.
 `claude-ci-repair.yml` is still at 40 and has **not** been examined against this;
 nothing has been observed hitting it, and raising a limit on a hunch is how the
 review got 40 in the first place.
+
+### Raising the ceiling exposed the failure underneath it
+
+The very next run of #67 on the raised ceiling died again, in ninety seconds
+instead of nine minutes, and said something new by saying nothing:
+
+```json
+{ "type": "result", "subtype": "success", "is_error": true,
+  "duration_ms": 84607, "num_turns": 20, "total_cost_usd": 0.689,
+  "permission_denials_count": 0 }
+```
+
+Run `32589375744`. `subtype: success` with `is_error: true` is a real session
+that ended badly under a name reserved for one that did not — and unlike
+`error_max_turns` it names no cause. `permission_denials_count: 0` rules out the
+tool-list failure this document describes above. Twenty turns and sixty-nine
+cents rule out never starting. The published run log contains the SDK options,
+an init line, and that object; there is nothing else in it, because
+`show_full_output` is off and that is correct.
+
+So the outcome comment on the issue said *"the cause is in there, and it is worth
+reading before retrying"* about a log that had been emptied of the cause on
+purpose. The advice was right and the address was wrong, and an afternoon went
+into guessing at what the address would have said.
+
+**[`failure-reason.sh`](../../.github/scripts/failure-reason.sh) is the fix.** The
+action writes its *full* execution log to `$RUNNER_TEMP` and that file is never
+published; the extractor reads it there and prints one line, chosen by a
+whitelist of error grammars — an API status line, a context refusal, a credit
+balance, an expired OAuth token, a service `overloaded_error`. Anything it does
+not recognise is reported as `unclassified` together with facts that are
+structural rather than textual: the SDK's own subtype, the turn count, and
+whether a final message existed at all.
+
+**The whitelist is the security model, not a convenience.** The same log holds
+every tool result — file contents, `gh` output, environment echoes — which is
+exactly why it is not published, and an extractor that printed "whatever was
+last" would have published it one line at a time.
+[`failure-reason-test.sh`](../../.github/tests/failure-reason-test.sh) therefore
+puts an API key, a token-shaped string and a private key into a log beside a real
+error and asserts that only the error comes out, including on the fallback path
+where nothing matched. An `unclassified` failure is a gap in that list, and the
+honest response is to widen the list rather than to widen the grammar until
+something matches — the failure comment says so, in those words, on the issue.
+
+### A green check is not a review, and until now they looked the same
+
+The reviewer's own reporting keyed off `steps.review.outcome == 'failure'`,
+which catches a review that ran and died. It did not catch the action deciding
+not to run at all, because the action reports that as **success**:
+
+```
+##[warning]Skipping action due to workflow validation: Workflow validation
+failed. The workflow file must exist and have identical content to the version
+on the repository's default branch.
+Exiting due to workflow validation skip
+```
+
+Observed on [#81](https://github.com/hleserg/Attadipa/pull/81) at `7a4d0f1`,
+run `32591032435`, 1.6 seconds. The rule is a good one — without it a pull
+request could edit this reviewer into rubber-stamping the same pull request, and
+#81 edits `claude-pr-review.yml` — but what a reader saw on the page was a green
+check, no comment and no label. That is indistinguishable from a review that ran
+and found nothing, and it is the reading somebody will take.
+
+The note listing the causes already described this one, in full, as cause 3. It
+had simply never fired for it.
+
+The detector is **structural, not textual**: the action writes its execution log
+only once the model has been invoked, so a step that reports success and left no
+log never reached the model. That covers the validation skip, a refused
+credential, and anything future that exits early, without the workflow having to
+recognise each by name.
+
+What #67 was doing when it died is still **UNKNOWN**, and this document will not
+guess at it: the next occurrence names itself. One measurement is worth
+recording as motive rather than conclusion, though — the reading order the prompt
+mandates is over 500 KB of Markdown before the agent opens a file of its own,
+with `TASKS.md` alone at 149 KB.
 
 To stop all spending immediately:
 

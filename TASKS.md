@@ -82,6 +82,65 @@ stale silently. The protocol is
   removed from the loop.
 
 
+### T-110 · The mandated reading list is 500 KB before the agent opens a file
+- **Priority:** P2
+- **Dependencies:** none. Spun out of T-107, which measured this while looking
+  for a cause and then found a different one.
+- **Goal:** decide whether the reading order the agent prompt mandates is
+  affordable, on its own merits rather than as a suspect.
+- **What is measured, and it is only a measurement:**
+
+  | File | Size |
+  |---|---|
+  | `TASKS.md` | 149 KB |
+  | `docs/research/REUSE_LEDGER.md` | 69 KB |
+  | `STATUS.md` | 63 KB |
+  | `docs/research/OWNER_DECISIONS.md` | 62 KB |
+  | `docs/master-prompt-final.md` | 62 KB |
+  | `.github/workflows/claude-agent.yml` | 54 KB |
+  | the rest of the mandated order | 47 KB |
+
+  Over 500 KB — roughly 140k tokens — before the agent opens a file the task is
+  actually about, and an automation task then opens the workflows on top of it.
+- **This is no longer evidence of anything.** T-107 treated it as the likely
+  cause of the unexplained agent deaths. It was not: the cause was
+  `allowed_bots: ""` refusing the watchdog's dispatcher before the model was
+  ever reached. The sizes stayed true and stopped being a clue, which is the
+  ordinary fate of a plausible theory and worth leaving written down.
+- **Acceptance:** either a measured statement that the reading order fits with
+  room to work — from a real run's own token accounting, not an estimate — or a
+  restructuring that makes it fit. An agent is never permitted to skip
+  `CLAUDE.md` or the specification; if something gives, it is the *form* of the
+  reading, such as a summary the prompt points at, not the obligation.
+- **Do not** trim a document or reorder the prompt to chase a number. The last
+  time this file recorded a hunch acted on early, `--max-turns` went to 40 and
+  cost six runs in an afternoon.
+- **Tests:** `.github/tests/*.sh` stay green, and any change is observed on a
+  real run of a real issue rather than asserted.
+- **Hardware required:** no.
+
+
+### T-108 · An `unclassified` agent failure is a gap in a whitelist, and it should not stay one
+- **Priority:** P2
+- **Dependencies:** none. T-107 is **done** and its cause turned out not to be
+  a model failure at all, so the two are no longer the same investigation.
+- **Goal:** keep [`failure-reason.sh`](.github/scripts/failure-reason.sh)
+  answering. Its whitelist covers the failures this project has actually had —
+  an API status line, a context refusal, a credit balance, an expired OAuth
+  token, a service `overloaded_error`. Anything else is reported as
+  `unclassified`, honestly and uselessly.
+- **Acceptance:** when a failure comment says `unclassified`, the pattern that
+  would have named it is added with a test case, and the run that motivated it
+  is cited in the test the way every other case there is. The whitelist is the
+  security model — the same log holds every tool result — so a pattern is added
+  by shape, anchored and length-bounded, and never by widening one until
+  something matches.
+- **Tests:** `.github/tests/failure-reason-test.sh`, which must keep its
+  leak cases: an API key, a token-shaped string and a private key sitting in the
+  log beside a real error, asserting only the error comes out.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-034a · The mascot, at a size somebody drew
@@ -1410,95 +1469,58 @@ stale silently. The protocol is
   makes this a configuration question, not a probing question.
 - **Hardware required:** no for the decision; yes to confirm by feel.
 
-### T-098 · Read the ESP32-S3 errata against revision v0.2
-- **Priority:** P1 — it gates nothing today and invalidates anything tomorrow.
-- **Dependencies:** none. The revision is known.
-- **Why now:** the received unit is `ESP32-S3` **revision v0.2**
-  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §1.1). The
-  errata sheet has never been read against any revision here, so every workaround
-  ESP-IDF applies silently is currently an assumption rather than a fact — D18.
-- **Goal:** read the ESP32-S3 Errata sheet, list every erratum that applies to
-  v0.2, and for each say whether ESP-IDF works around it automatically, whether
-  the workaround costs anything measurable, and whether it touches octal PSRAM,
-  the quad flash interface, USB-Serial/JTAG, the RTC domain or light sleep —
-  the five things this design leans on hardest.
-- **Acceptance:** the list in `docs/research/`, each entry with its erratum
-  number and the sheet's revision; anything with a firmware consequence raised as
-  its own task rather than left in prose.
-- **What must not be assumed:** that "ESP-IDF handles it" means "it is free".
-  Several ESP32 errata workarounds cost clock speed or current.
-- **Hardware required:** no.
-
-### T-099 · Finish and verify the factory flash backup
-- **Priority:** P0 — it is the only thing standing between this unit and an
-  unrecoverable factory image, and the first flash of our own firmware destroys it.
-- **Dependencies:** none.
-- **Why now:** the backup is in progress and the naive procedure produces a
-  silently corrupt file
-  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2). `esptool`
-  writes its output incrementally, so an aborted read leaves a **short** file
-  that concatenates without complaint into a shifted image.
-- **Goal:** a single `stock_dump.bin` of exactly `33 554 432` bytes, assembled
-  only from chunks whose individual lengths are exactly nominal, verified against
-  the device by on-chip MD5 (`esptool verify-flash 0x0 stock_dump.bin`) and
-  stored somewhere that is not the machine doing the flashing.
-- **Acceptance:** the length check and the verify output both recorded, with the
-  chunk map, in `docs/research/`. **Do not record a `PASS` for a verify that was
-  not run.**
-- **What must not be assumed:** that the stub failing is a transient. It is
-  content-deterministic — the same absolute flash addresses across runs that
-  started at different offsets — so a retry loop that does not change method is a
-  random walk with a budget attached.
-- **Hardware required:** yes — the owner's unit, already connected.
-
-### T-103 · What the vendor's three images actually are
-- **Priority:** P2 — it is a free input to T-034 and it expires the moment
-  somebody guesses instead.
-- **Dependencies:** none. The partition is already dumped.
-- **Why now:** the `storage` SPIFFS holds `/image/image1.bin`, `image2.bin` and
-  `image3.bin` — raw binaries, no encoder in sight
-  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4). That the
-  vendor bakes raw pixel buffers rather than shipping a PNG decoder is corroboration
-  for the direction T-034 was already leaning, and the file sizes turn it from a
-  guess into a measurement.
-- **Goal:** extract them (`mkspiffs -u out -b 4096 -p 256 -s 0x600000
-  storage.spiffs` — `strings` recovers names but not bodies, because SPIFFS
-  spreads data across pages), compare each size against **411 640** bytes, which
-  is a full 410×502 frame at RGB565. Then say what the format is, including
-  whether an LVGL image header sits in front of the pixels.
-- **Acceptance:** the three sizes and the derived format recorded in
-  `docs/research/`, with the arithmetic shown. If the sizes do not match any clean
-  interpretation, **say so** — a format nobody can account for is a finding, not a
-  failure.
-- **What must not be assumed:** that RGB565 is the answer because it is the
-  obvious one. RGB888, RGB565A8 and a palette all produce different numbers, and
-  the numbers are right there.
-- **Hardware required:** no — the partition is already in hand.
-
-### T-104 · `xiaozhi-esp32`: the licence, then this board's audio path
+### T-104 · `xiaozhi-esp32`: the licence — **step 1 DONE** 2026-08-22, step 2 open
 - **Priority:** P1 — it is the audio bring-up for the exact board we have,
-  already written by somebody who had it working.
-- **Dependencies:** none.
-- **Why now:** the received unit's `model` partition holds WakeNet9
-  `wn9_nihaoxiaozhi_tts`, so the stock firmware **is**
-  [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)
-  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §3). That
-  project therefore contains this board's I2S wiring, its ES8311 bring-up and what
-  the two microphones are for — all of which we would otherwise reverse out of a
-  9 MB blob or rediscover on the bench.
-- **Goal, in this order and not the other one:** (1) read its `LICENSE` and record
-  the decision in the [reuse ledger](docs/research/REUSE_LEDGER.md) whichever way
-  it goes; (2) only if the licence permits, read the board's audio path and write
-  it up as facts with file-and-line citations.
-- **Acceptance:** a full ledger record — the template, whole — and, if step 2
-  happens, an audio-path document that cites source rather than paraphrasing it.
-- **What must not be assumed:** that "it is on GitHub" means it may be copied, or
-  that reading a permissively-licensed project entitles us to its structure. The
-  ledger's rule is not a preference.
-- **Wake words are not in scope.** Identifying the vendor's firmware is not a
-  decision to ship a wake word; this repository has no such requirement and adding
-  one is a product change.
-- **Hardware required:** no.
+  already written by somebody who had it working, and the licence now permits
+  reading it.
+- **Dependencies:** none. Step 1 is done and it was the gate.
+- **Goal, what remains:** read
+  `main/boards/waveshare/esp32-s3-touch-amoled-2.06/` and `main/audio/` at the
+  pinned commit and write this board's audio path up as facts with
+  file-and-line citations — which part is configured first, how the codec is
+  clocked against the pins the schematic gives, what sample rates the board
+  actually runs, and **what the second microphone is for**. One microphone is a
+  microphone; two are a decision.
+- **Acceptance:** a document that cites source rather than paraphrasing it, and
+  that separates what is a fact about the *hardware* from what is a choice of
+  *theirs*. The `esp_codec_dev` path is the one to follow, being Apache-2.0.
+- **What must not be assumed:** that a permissive licence on the repository
+  extends to what it depends on. It does not, and this task found out the hard
+  way — see below.
+- **Hardware required:** no for the reading; yes to confirm any of it.
+
+#### What step 1 established
+- **The gate is passed for the repository itself, and closed for three of its
+  dependencies.** Two decisions, and they do not get the same verb — the record
+  is in the [reuse ledger](docs/research/REUSE_LEDGER.md).
+- **`78/xiaozhi-esp32` is verbatim MIT.** The `LICENSE` file was fetched and
+  hashed rather than read off a GitHub sidebar label; no submodules, no GPL
+  anywhere in the tree. It carries a board directory for **this exact board**,
+  `main/boards/waveshare/esp32-s3-touch-amoled-2.06/`. So step 2 may read it, and
+  may copy under MIT provided the notice is preserved.
+- **Its audio-path dependencies are the finding, and it is worse than the trap we
+  were watching for.** `espressif/esp-sr`, `espressif/esp_audio_codec` and
+  `espressif/esp_audio_effects` are **not** MIT: they carry a field-of-use
+  restriction — *"for use on all Espressif Systems products"*, and clause 3 of
+  the modified licence forbids redistribution *"for use with non-Espressif
+  products"*. The ledger's rule is that anything incompatible with MIT does not
+  enter this repository, so as **dependencies of Attadipa** they are `REJECT`.
+  Note what this is not: an MIT project calling a restricted component does not
+  become restricted, and reading xiaozhi's own source is unaffected.
+- **`esp_audio_codec` *is* `esp-adf`**, arriving through the component manager
+  rather than as a submodule — its registry metadata gives its repository as
+  `espressif/esp-adf-libs`. That is exactly the dependency this task was told to
+  look for, wearing a different name.
+- **The clean path exists**: `espressif/esp_codec_dev` is genuine Apache-2.0 and
+  is what supplies the ES8311 / ES7210 drivers, which is the bring-up knowledge
+  step 2 actually wants.
+- **One question is the owner's and is filed as such** — both Attadipa targets
+  *are* Espressif silicon, so the field of use would be satisfied in operation.
+  Whether that is a bargain worth taking is a licence-policy call, not a research
+  one. It blocks nothing in step 2.
+- **Step 2 remains open**: read the board's audio path and write it up with
+  file-and-line citations. Identifying the vendor's firmware is **not** a decision
+  to ship a wake word.
 
 ### T-105 · Is `AAC210602A1` the speaker or a haptic actuator?
 - **Priority:** P1 — it decides what `Capability::Haptics` resolves to, and
@@ -1515,8 +1537,16 @@ stale silently. The protocol is
 - **Acceptance:** the [hardware matrix](docs/research/HARDWARE_MATRIX.md) row
   moves off `CONFLICTING` in one direction with the measurement recorded, and
   T-097's premise is restated against whichever answer wins.
-- **What must not be assumed:** that the case grille settles it. It is strong
-  evidence and it is still evidence, not a trace.
+- **Update 2026-08-22, and it shortens the job:** the `storage` partition turns
+  out to hold **three MP3 background tracks**, two of them stereo, at 112–128
+  kbps, played by the factory demo's `MusicPlayer`
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4.3). A
+  board that ships 788 kB of licensed music and an app to play it has a speaker.
+  Combined with the grille and the separate `P1`/`P2` motor pads, the haptic
+  reading is now hard to sustain — but the trace is still what closes it.
+- **What must not be assumed:** that the case grille settles it, or that the
+  music does. Both are strong evidence and both are still evidence, not a trace.
+  Stereo source material decoded to one transducer is still mono output.
 - **Hardware required:** yes — a meter on the board.
 
 ### T-106 · Three measurements and five registers, before any cell is ordered
@@ -1569,6 +1599,51 @@ stale silently. The protocol is
   sensor. Do not pick this task up before then, even though it is still filed
   under `## READY` rather than moved.
 
+### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
+- **Priority:** P2 — nothing can start until the parts land, but what to do
+  when they land is decided now, while there is time to be wrong about it
+  cheaply.
+- **Dependencies:** the datasheet work is done —
+  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md). What remains
+  is physical.
+- **What is already settled, so that nobody re-opens it:**
+  - Both parts run at 3.3 V. The AK09911C is *not* a 1.8 V part; `VDD` is
+    2.4–3.6 V.
+  - **`CAD` goes to ground.** That puts the AKM part at `0x0C` and leaves the
+    QST part at its fixed `0x0D`, so both can be on the bus at once — which is
+    the only way to compare them in the same magnetic environment on the same
+    wrist. `0x34`, `0x38` and `0x6A`/`0x6B` are taken; these two are free.
+  - **The IMU will not read the magnetometer for us, and the reason is stronger
+    than "wrong part".** QMI8658C Mag Mode names AK09915C, AK09918CZ and QMC6308
+    — neither ordered part among them — but the decisive point is that `CTRL4`
+    `mDEV<3:0>` has **no published encoding for any device at all**, including
+    those three, and QST *deleted* the magnetometer description from the
+    datasheet at Rev 0.8. So Mag Mode is undrivable from published documentation
+    whichever part is fitted, and buying a listed part would not change that.
+    The host reads the sensor and the host does the fusion.
+    [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §5.1.
+  - **Withdrawn, so nobody reinstates it:** an earlier draft gave a second
+    "fatal" reason — that Mag Mode needs pins Mode 1 requires be tied off. That
+    was an inference and it was wrong; Mode 2 is entered in firmware via `CTRL7`
+    `mEN`. Whether `SDx`/`SCx` are actually tied off on this board is `UNKNOWN`
+    and now merely interesting. §5.3.
+- **The measurement that decides the part:** the field at the candidate mounting
+  position, motor idle and motor driven. The QMC5883L is the recommendation on
+  current alone — 250 µA against 2.4 mA at 100 Hz — but it saturates at ±800 µT
+  where the AKM part reaches ±4900 µT, and a vibration motor magnet a few
+  millimetres away is exactly the thing that closes a six-fold range advantage.
+  If the QMC sits near overflow wherever it physically fits, the AKM part is not
+  a fallback, it is the answer.
+- **Acceptance:** both module footprints recorded as `MEASURED` with the caliper
+  named; the field at the chosen position recorded with the motor in both
+  states; the rotation between module frame and board frame written down for
+  *this assembly* rather than inferred; overflow surfaced by the driver as a
+  state an application can see, never as a clipped number passed upward.
+- **What must not be assumed:** that a module which fits on the bench fits under
+  a closed cover — the same trap as T-106's M1 — or that the axis arrows on a
+  purple PCB survive being glued in at whatever angle it fits.
+- **Hardware required:** yes. The parts are not here.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1603,27 +1678,18 @@ Possible options:
                 2. Defer entirely.
 Recommended next action:
                 Option 1 — the tooling is host-testable, and it is what turns a
-                theory into a measurement. Note that neither board has a
-                magnetometer, so the haptics-versus-compass case cannot be
-                measured on current hardware in any configuration.
+                theory into a measurement.
 ```
-- **Update 2026-08-22 — the last sentence is about to stop being true, for two
-  of its three interference cases and not the third.** The owner has ordered a
-  magnetometer and intends to solder it onto the received Waveshare
-  ([#83](https://github.com/hleserg/Attadipa/issues/83)). The speaker- and
-  charging-interference cases become measurable on this unit once it is
-  fitted — a speaker with a permanent magnet and a charge lead carrying
-  150–200 mA both already sit in the same case. **The haptics-versus-compass
-  case (G-08) does not**: this unit's motor pads are bare and haptics is
-  recorded unsupported ([STATUS.md](STATUS.md), the T-097 paragraph: "No
-  vibration motor is fitted... `Capability::Haptics` is `Unsupported`"), so
-  fitting the magnetometer alone leaves G-08 blocked on an actuator that
-  does not exist, or on T-105 first establishing that `AAC210602A1` is one
-  rather than the speaker it is currently read as. **The blocker above is left
-  exactly as written** until the part is in and working — a retrofit that has
-  been ordered is not a retrofit that exists — but the tooling under Option 1
-  now has a customer for two of its three cases, which it did not before.
-```
+- **The blocker changed on 2026-08-22 and is now smaller.** This task used to be
+  impossible in principle: neither board has a magnetometer, so the headline
+  haptics-versus-compass case had nothing to measure with. **A5 is answered** —
+  the owner has ordered two magnetometer modules and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83),
+  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)). It is now
+  waiting for a part in the post, not for a device that does not exist.
+- **On the Waveshare unit it stays doubly blocked**, for a second and unrelated
+  reason: that unit has **no vibration motor fitted**, so there is nothing to
+  interfere with the compass even once the compass exists.
 
 ---
 
@@ -1633,9 +1699,13 @@ Recommended next action:
 - **Priority:** P0
 - **Waiting on:** the project owner
 - **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3,
-  A5, A6 — hardware availability and revision · which radio and GNSS variant ·
-  a second mesh device · whether an external magnetometer is intended · whether
-  the node carries one. **A4 (the regulatory region) is no longer on this
+  A6 — hardware availability and revision · which radio and GNSS variant ·
+  a second mesh device · whether the node carries a magnetometer. **A5 is
+  answered** — 2026-08-22, the owner has ordered a CJMCU-9911 (AK09911C) and a
+  GY-271 (QMC5883L) and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
+  that: a node's magnetometer and a wrist's magnetometer answer different
+  questions. **A4 (the regulatory region) is no longer on this
   list** — closed 2026-08-22, not by an answer but by the owner declining to
   give one: legality is his problem, not the firmware's
   ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
@@ -1648,7 +1718,10 @@ Recommended next action:
   decides whether the watch has a local mesh path at all. A5 and A6 decide
   whether five magnetometer epics are dormant or dead, and A6 does **not** give
   the watch a compass even if the answer is yes
-  ([ADR-0009](docs/adr/0009-heading.md) §3).
+  ([ADR-0009](docs/adr/0009-heading.md) §3). A5's answer moves those five epics
+  from *possibly dead* to *dormant with a delivery date*, and hands
+  [ADR-0009](docs/adr/0009-heading.md) a second possible provider for heading —
+  see [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md).
 - **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification
@@ -1659,10 +1732,18 @@ Recommended next action:
   [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md),
   [COEXISTENCE_BACKLOG](docs/hardware/COEXISTENCE_BACKLOG.md).
 - **What the exercise surfaced:** two coexistence epics — haptic/magnetometer and
-  audio/magnetometer interference — **cannot be run on either target board**,
-  because neither has a magnetometer. They are marked NOT POSSIBLE rather than
-  left looking pending. Five magnetometer epics are blocked on hardware that does
-  not exist (A5).
+  audio/magnetometer interference — could not be run on either target board,
+  because neither has a magnetometer, and five magnetometer epics were blocked on
+  hardware that did not exist (A5).
+- **Superseded 2026-08-22, and the status word has to change with it.** A5 is
+  answered: the owner ordered a CJMCU-9911 and a GY-271 and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83)). Those seven epics are
+  **blocked pending a part in the post**, not `NOT POSSIBLE`. The distinction the
+  other files are careful about holds here too: a **stock** board still has no
+  magnetometer and the firmware still has to run on one, so the epics describe a
+  capability that will exist on exactly one physical device — which is a registry
+  problem, not a board problem
+  ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §0).
 - **Startable now without hardware:** C-02 bus ownership, C-03 rail arbitration
   and C-12 diagnostic trace. The trace in particular should be finished *while*
   waiting for hardware — every blocked coexistence test needs it to produce
@@ -1672,9 +1753,148 @@ Recommended next action:
 
 ## DONE
 
+### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
+- **The cause was not the model, the context or the turn ceiling.** It was
+  `allowed_bots: ""` in `claude-agent.yml`. The hourly watchdog hands a task
+  over with `gh workflow run` under the built-in `GITHUB_TOKEN`, so the
+  dispatching actor is `github-actions[bot]`, and
+  `anthropics/claude-code-action` refuses a non-User actor that is not on that
+  list: *"Workflow initiated by non-human actor: github-actions (type: Bot)"*.
+  Five seconds, no execution log, and the hand-over could only say
+  `no conclusion`.
+- **The autonomous queue had therefore never worked.** Every agent run that
+  succeeded on this repository was started by a person commenting `@claude`;
+  every run the watchdog started died before reading a file. That is what made
+  it read as random — the deaths correlated with *how the task was started*,
+  which nothing displayed, rather than with the task, the size or the model.
+- **Found by the previous task's own output.** `failure-reason.sh` (#81, merged
+  the same day) replaced "the cause is in the run log" with *"no execution log
+  was written — the agent step did not get far enough to leave one"*. That
+  sentence is what sent anybody to the step log instead of the model, and it is
+  the whole return on that work.
+- **Fixed by naming one dispatcher rather than opening the gate.** `'*'` would
+  let any GitHub App drive a write-capable agent on a public repository, which
+  the original comment was right about. `github-actions` is the actor of
+  workflows in this repository and nothing else.
+- **`queue-scan.jq` is untouched**, and the distinction matters: `claude` and
+  `github-actions` are still non-listable in `ATTADIPA_TRUSTED_PRODUCERS`, so
+  our own output still cannot enqueue a billable writer. Being allowed to press
+  the button on an approved task is not the same as being allowed to file one.
+- **`.github/tests/bot-actor-test.sh`** holds the two files in
+  agreement, because each was defensible alone and only the pair was wrong —
+  nothing either file's own review could have caught. It fails on the
+  pre-fix state, which was checked rather than assumed.
+- **T-110 carries the 500 KB reading list forward** as a concern of its own. It
+  was this task's leading theory and it was wrong.
+- **Then the same question was asked of the other two workflows, and the
+  reviewer had it too.** `claude-pr-review.yml` admits `claude[bot]` in its
+  `if:` deliberately — a blanket bot guard had been skipping the review on the
+  agent's own pull requests, which are the ones it exists for — and then handed
+  the action `allowed_bots: ""`. Runs `32597016812` (#95), `32596445164` (#94),
+  `32595947792` (#92) and `32595273274` (#88) all died in four or five seconds
+  with the identical *"Workflow initiated by non-human actor: claude (type:
+  Bot)"*, so **no agent-authored pull request has ever been reviewed** — and all
+  four reported **success**, because that step carries `continue-on-error`. Now
+  `allowed_bots: "claude"`, and the test asserts the rule over all three agent
+  workflows rather than the two instances that happened to be found.
+- **`claude-ci-repair.yml` is left at `""` on purpose.** It admits no bot actor,
+  so it needs to name none. It is one token change away from the same failure,
+  and the test will say so the moment it grows an exemption.
+### T-099 · Finish and verify the factory flash backup — **DONE** 2026-08-22
+- **Verified, by the only test that settles it.** `esptool verify-flash 0x0` over
+  all **33 554 432** bytes returns `Verification successful` — the device
+  computes the MD5 itself, so the comparison is against the flash, not against
+  another copy of the same read.
+- **Three complete reads agree byte for byte**: the owner's first pass on
+  Windows over native USB, and two passes here on Linux over USB/IP. All three
+  hash to `2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5`.
+  Chunk map, method and the per-chunk lengths are in
+  [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §2.2.
+- **The `--no-stub` fallback is the procedure**, not a workaround: the stub
+  aborts at five addresses, reproducibly, ten failures out of ten predicted
+  across two passes on a host sharing nothing with the first but the board.
+  `--no-stub` reads them at ~65 KB/s, which is *faster* than the stub managed on
+  the original host. "No-stub is unusably slow" was a fact about that host.
+- **The task's own warning was right, and it caught me wearing a different hat.**
+  T-099 warned that a short chunk concatenates silently into a shifted image. The
+  chunks here were all full length; they were concatenated in the **wrong order**,
+  by `ls -v` on hexadecimal filenames, and the resulting image failed
+  `verify-flash`. I published a mismatch and a paragraph inviting suspicion of the
+  owner's dump before finding my own bug. Both are retracted in §2.2. **Sort
+  chunk files by numeric offset, never by name.**
+- **What this unblocks:** the first flash of our own firmware is now reversible,
+  which is the whole point of the task. It is the precondition
+  T-104 and the bench sequence in
+  [WAVESHARE_ARRIVAL](docs/research/WAVESHARE_ARRIVAL.md) §5 were waiting on.
+- **The dump is not committed and never will be** — Waveshare's binaries plus
+  third-party all-rights-reserved audio. It lives on the owner's machine.
+- **One line of the goal is still open, and it is the owner's to close.** T-099
+  asked for the image *"stored somewhere that is not the machine doing the
+  flashing"*. It is not: the owner's copy and this WSL host are the same physical
+  machine, and that machine is the one that will do the flashing. A second
+  location is asked for in
+  [#100](https://github.com/hleserg/Attadipa/issues/100). The verification —
+  which is what actually made the flash reversible — does not depend on it.
+
+### T-098 · Read the ESP32-S3 errata against revision v0.2 — **DONE** 2026-08-22
+- [ESP32S3_ERRATA_V02](docs/research/ESP32S3_ERRATA_V02.md). Document identified
+  by version and hash: **ESP32-S3 Series SoC Errata v1.3**, 2025-03-31, md5
+  `64ffc580e78b5ab3c6c5d990e0500e38`. Completeness cross-checked against
+  Espressif's own `v0-2` tag page, which lists the same eight identifiers.
+- **All eight errata apply to v0.2. There is no row this chip escapes**, and
+  seven of the eight say `No fix scheduled.`
+- **And there is no newer revision to want.** The sheet knows exactly three
+  revisions and ESP-IDF's `COMPATIBILITY.md` agrees. The single
+  revision-dependent improvement — USBOTG-4289 — lands *inside* v0.2, in the
+  owner's favour. So "the chip is old" is not a finding; v0.2 is the best silicon
+  that exists.
+- **The one with teeth for this design is CACHE-126.** Its ESP-IDF workaround
+  masks **every** interrupt at `XCHAL_NMILEVEL` and **freezes the data cache**
+  around the unaligned head and tail of a cache write-back. Mechanism `CERTAIN`
+  from vendor source; magnitude **`UNKNOWN`, `NOT MEASURED`** — Espressif publish
+  no number and nothing has run on the board. It is on the octal-PSRAM path,
+  which is the path this design leans on hardest, and it is not switchable: the
+  patch is gated by a hidden SoC-caps symbol with no `menuconfig` prompt.
+- **The note records where its own first reading was wrong**, in §6, rather than
+  silently replacing it — LCD-239's workaround was attributed to the wrong
+  register, CACHE-126 was wrongly said to run on the sleep path, and one bullet
+  was stated as fact when it was an inference. That section is the reason to
+  trust the rest.
+- Answers **D18**. Nothing transfers to the T-Watch: that board's silicon
+  revision has never been read.
+
+### T-103 · What the vendor's three images actually are — **DONE** 2026-08-22
+- **Six files, not three.** `/image/image1..3.bin` and a `/music/` directory
+  holding three MP3s. The earlier record came from `strings` and was incomplete.
+- **The image format is settled, not inferred**: each image is exactly
+  **411 652** bytes = a **12-byte header** plus **410 × 502 RGB565
+  little-endian**. Header is `u32` magic `0x00001219`, `u16` width, `u16` height,
+  `u32` stride (820 = width × 2). `12 + w·h·2` equals the file length exactly.
+- **The byte order was settled by rendering**, which is the only thing that could
+  settle it: little-endian gives coherent artwork, big-endian gives noise.
+- **`tools/flash/spiffs_extract.py`** does the extraction without `mkspiffs` and
+  without an ESP-IDF build — the blocker the original task named. `strings`
+  recovers a SPIFFS image's names and none of its bodies.
+- **Feeds T-034**, and the distinction matters: the panel's pixel format and byte
+  order are facts about the hardware; the vendor's header is not, and is worth
+  noticing rather than copying — it has width, height and stride but **no format
+  field**, which is the field needed the moment a second format exists. Three
+  full frames cost 1.18 MB.
+- **Two findings outside the task's scope**, both recorded in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md): the music gives T-105 a
+  strong prior that `AAC210602A1` is the speaker, and the factory image carries
+  third-party all-rights-reserved audio, which is a second reason the dump never
+  goes near this repository.
+- Extracted files and rendered PNGs are **not committed**. The extractor and the
+  measurements are.
+
+
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
 - `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
-  Four checks, each of a failure that had already happened here.
+  Four checks, each of a failure that had already happened here. **A fifth was
+  added 2026-08-23** — nothing unexpected is tracked at the repository root —
+  after `git add -A` swept a scraped vendor page into `main` through
+  [#98](https://github.com/hleserg/Attadipa/pull/98).
 - **Relative links resolve.** These documents cite each other constantly and a
   link that 404s reads exactly like one that works until somebody clicks it. The
   repository was clean at the time this landed; the point is that it stays that
