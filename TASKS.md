@@ -82,20 +82,13 @@ stale silently. The protocol is
   removed from the loop.
 
 
-### T-107 · The agent's mandated reading list is 500 KB before it opens a file
-- **Priority:** P1
-- **Dependencies:** none. `.github/scripts/failure-reason.sh` is merged, so the
-  next occurrence of the failure below reports its own cause rather than being
-  reasoned about from a result object.
-- **Goal:** know whether the agent workflow is failing because the reading order
-  its prompt mandates does not fit in the session, and if it is, make the
-  reading order affordable without making it optional.
-- **Why this is a task and not a hunch.** Run `32589375744` on
-  [#67](https://github.com/hleserg/Attadipa/issues/67) died after 20 turns and
-  84 seconds with `subtype: success`, `is_error: true`,
-  `permission_denials_count: 0`. That rules out the turn ceiling (raised to 200
-  the same hour) and the tool list (zero denials), and names nothing else. The
-  measurement that makes context worth checking first:
+### T-109 · The mandated reading list is 500 KB before the agent opens a file
+- **Priority:** P2
+- **Dependencies:** none. Spun out of T-107, which measured this while looking
+  for a cause and then found a different one.
+- **Goal:** decide whether the reading order the agent prompt mandates is
+  affordable, on its own merits rather than as a suspect.
+- **What is measured, and it is only a measurement:**
 
   | File | Size |
   |---|---|
@@ -109,22 +102,28 @@ stale silently. The protocol is
 
   Over 500 KB — roughly 140k tokens — before the agent opens a file the task is
   actually about, and an automation task then opens the workflows on top of it.
-- **Acceptance:** the cause is established from a run's own reported reason
-  rather than inferred, and **written down either way**. If it is context, the
-  reading order is restructured so an agent can obey it — a summary the prompt
-  points at, or per-section reads — without an agent being permitted to skip
-  `CLAUDE.md` or the specification. If it is not context, this task closes with
-  the real cause recorded and the sizes above left as a separate concern.
-- **Do not** raise a limit, trim a document or reorder the prompt before the
-  cause is known. Raising `--max-turns` on a hunch is how the reviewer got 40,
-  and it cost six runs and roughly $18 in one afternoon.
-- **Tests:** whatever change follows must keep `.github/tests/*.sh` green and be
-  observed on a real run of a real issue, not asserted.
+- **This is no longer evidence of anything.** T-107 treated it as the likely
+  cause of the unexplained agent deaths. It was not: the cause was
+  `allowed_bots: ""` refusing the watchdog's dispatcher before the model was
+  ever reached. The sizes stayed true and stopped being a clue, which is the
+  ordinary fate of a plausible theory and worth leaving written down.
+- **Acceptance:** either a measured statement that the reading order fits with
+  room to work — from a real run's own token accounting, not an estimate — or a
+  restructuring that makes it fit. An agent is never permitted to skip
+  `CLAUDE.md` or the specification; if something gives, it is the *form* of the
+  reading, such as a summary the prompt points at, not the obligation.
+- **Do not** trim a document or reorder the prompt to chase a number. The last
+  time this file recorded a hunch acted on early, `--max-turns` went to 40 and
+  cost six runs in an afternoon.
+- **Tests:** `.github/tests/*.sh` stay green, and any change is observed on a
+  real run of a real issue rather than asserted.
 - **Hardware required:** no.
+
 
 ### T-108 · An `unclassified` agent failure is a gap in a whitelist, and it should not stay one
 - **Priority:** P2
-- **Dependencies:** T-107 (they will often be the same investigation)
+- **Dependencies:** none. T-107 is **done** and its cause turned out not to be
+  a model failure at all, so the two are no longer the same investigation.
 - **Goal:** keep [`failure-reason.sh`](.github/scripts/failure-reason.sh)
   answering. Its whitelist covers the failures this project has actually had —
   an API status line, a context refusal, a credit balance, an expired OAuth
@@ -1680,6 +1679,40 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
+- **The cause was not the model, the context or the turn ceiling.** It was
+  `allowed_bots: ""` in `claude-agent.yml`. The hourly watchdog hands a task
+  over with `gh workflow run` under the built-in `GITHUB_TOKEN`, so the
+  dispatching actor is `github-actions[bot]`, and
+  `anthropics/claude-code-action` refuses a non-User actor that is not on that
+  list: *"Workflow initiated by non-human actor: github-actions (type: Bot)"*.
+  Five seconds, no execution log, and the hand-over could only say
+  `no conclusion`.
+- **The autonomous queue had therefore never worked.** Every agent run that
+  succeeded on this repository was started by a person commenting `@claude`;
+  every run the watchdog started died before reading a file. That is what made
+  it read as random — the deaths correlated with *how the task was started*,
+  which nothing displayed, rather than with the task, the size or the model.
+- **Found by the previous task's own output.** `failure-reason.sh` (#81, merged
+  the same day) replaced "the cause is in the run log" with *"no execution log
+  was written — the agent step did not get far enough to leave one"*. That
+  sentence is what sent anybody to the step log instead of the model, and it is
+  the whole return on that work.
+- **Fixed by naming one dispatcher rather than opening the gate.** `'*'` would
+  let any GitHub App drive a write-capable agent on a public repository, which
+  the original comment was right about. `github-actions` is the actor of
+  workflows in this repository and nothing else.
+- **`queue-scan.jq` is untouched**, and the distinction matters: `claude` and
+  `github-actions` are still non-listable in `ATTADIPA_TRUSTED_PRODUCERS`, so
+  our own output still cannot enqueue a billable writer. Being allowed to press
+  the button on an approved task is not the same as being allowed to file one.
+- **`.github/tests/watchdog-dispatch-actor-test.sh`** holds the two files in
+  agreement, because each was defensible alone and only the pair was wrong —
+  nothing either file's own review could have caught. It fails on the
+  pre-fix state, which was checked rather than assumed.
+- **T-109 carries the 500 KB reading list forward** as a concern of its own. It
+  was this task's leading theory and it was wrong.
 
 ### T-103 · What the vendor's three images actually are — **DONE** 2026-08-22
 - **Six files, not three.** `/image/image1..3.bin` and a `/music/` directory

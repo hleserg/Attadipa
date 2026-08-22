@@ -687,9 +687,48 @@ jobs:
           # docs/automation/CLAUDE_AUTOMATION.md explains both.
           github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
           branch_prefix: "claude/issue-"
-          # Empty means no bot may trigger this action. On a public repository
-          # '*' would let any GitHub App drive a write-capable agent.
-          allowed_bots: ""
+          # THIS LINE WAS EMPTY, AND IT DISABLED THE ENTIRE AUTONOMOUS QUEUE.
+          #
+          # The hourly watchdog hands a task over with `gh workflow run` using
+          # the default GITHUB_TOKEN, so the dispatching actor is
+          # `github-actions[bot]`. With allowed_bots empty, this action refused
+          # every one of those runs before reading a single file:
+          #
+          #   Actor type: Bot
+          #   Workflow initiated by non-human actor: github-actions (type: Bot).
+          #
+          # Five seconds, no execution log, and the hand-over could only report
+          # `no conclusion`. Every "unexplained" agent death on this repository
+          # traces here -- #27, #28, #67, #69 -- and they all shared one
+          # property nobody had noticed: they were started by the watchdog
+          # rather than by a person commenting. Anything a human started ran
+          # fine, which is exactly why it read as random. Found 2026-08-22 by
+          # reading the step log after .github/scripts/failure-reason.sh (#81)
+          # made the failure say "no execution log was written" instead of
+          # pointing at a redacted run log.
+          #
+          # Naming one bot is not the same concession as '*'. The comment this
+          # replaces was right that '*' would let ANY GitHub App drive a
+          # write-capable agent on a public repository. `github-actions` is the
+          # actor of workflows in THIS repository and nothing else -- an
+          # outside app cannot present as it -- so the surface added is "a
+          # workflow already in this repository may start the agent", which is
+          # the design, and those workflows are protected by branch protection
+          # and by CI.
+          #
+          # What this does NOT relax, and must not be read as relaxing:
+          # .github/scripts/queue-scan.jq still refuses to honour `claude` or
+          # `github-actions` in ATTADIPA_TRUSTED_PRODUCERS, so our own output
+          # still cannot enqueue a billable writer. That rule is the allowlist
+          # that matters; this input only decides who may press the button on a
+          # task that rule already approved.
+          #
+          # The action lowercases both sides and strips a trailing `[bot]`
+          # (src/github/validation/actor.ts, isAllowedBot at the v1 tag), so
+          # `github-actions` and `github-actions[bot]` are the same entry.
+          # .github/tests/watchdog-dispatch-actor-test.sh asserts this stays in
+          # agreement with the watchdog rather than trusting the comment.
+          allowed_bots: "github-actions"
           allowed_non_write_users: ""
           # Two different things, and only one of them is a leak.
           #
