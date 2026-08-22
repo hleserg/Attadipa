@@ -199,46 +199,70 @@ here — roughly 65 KB/s, over a *network* USB transport — against the ~15 KB/
 the first pass measured. "No-stub is unusably slow" was a fact about that host,
 not about the tool.
 
-### Verification, and one number that does not match
+### Verification: three independent reads agree, and the scare was mine
 
-Two complete 32 MB passes, taken back to back, are **byte-for-byte identical**:
-all sixteen chunks match and both images hash to
-`028841362db08c64fbdf3928a273a3921407abe228506ce0be27ce419ce98d2f`.
+Two complete 32 MB passes taken back to back are **byte-for-byte identical**, all
+sixteen chunks matching. Assembled in the correct order they hash to
 
-That does **not** match the `2AB0FADC…` recorded for the owner's first pass, and
-the discrepancy is **unresolved**.
+```
+2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5
+```
 
-The obvious explanation was tested and **did not hold**. The hypothesis was that
-the device writes its own flash — `nvs`, `phy_init` — and that between the two
-dumps it had been unplugged, carried and booted an unknown number of times. So:
-read `0x9000`–`0x12000` (`nvs`, `otadata`, `phy_init`), let the device hard-reset
-and run for 90 seconds, read again, and again. **Three reads across two boot
-cycles are byte-identical**, all hashing to
-`803798ee52013c09e9dd55a72226d0195ec6a3582f85af3b43315f9247b3e26e`.
+which is **exactly** the SHA256 the owner recorded for their own first pass on
+Windows. `esptool verify-flash 0x0` over all 33 554 432 bytes returns
+**`Verification successful`**.
 
-> **One caveat on that experiment, stated because it is the weak point.** The
-> reads used `--after hard-reset`, so the device *should* have booted and run the
-> factory app between them. Nothing here confirms that it did — no screen was
-> observed, no serial output captured. If the device never left the bootloader,
-> the test proves only that flash is stable in download mode, which was never in
-> doubt. **`UNKNOWN` until somebody watches the screen.**
+So **three complete reads of this flash — one on Windows over native USB, two on
+Linux over USB/IP — agree byte for byte, and the device's own MD5 agrees with all
+three.** The backup is verified. The `storage` partition did not change; nothing
+changed.
 
-So the mismatch is not explained. What is left is either a genuine difference in
-flash content at the two times that these three partitions do not capture, or a
-defect in the first dump — and the first dump was assembled by concatenating
-chunks some of which had aborted, which is the trap
-[WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §2.4 already warns about.
-**Neither image is declared the true one here.**
+> **This section previously said the hashes did not match and left it
+> "unresolved", with a paragraph inviting the reader to suspect the owner's dump.
+> That was wrong and it is retracted.** The owner's dump was correct all along.
+>
+> **The defect was in my own reassembly, and it is worth recording because it is
+> the exact trap [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §2.4 warns
+> about wearing a different hat.** §2.4 says concatenating aborted chunks is
+> silently wrong. The chunks here were not aborted — they were *concatenated in
+> the wrong order*, by `ls -v` on filenames like `c_0x0a00000.bin`. Version sort
+> reads a hexadecimal name as a version string, so it produced
+>
+> ```
+> c_0x0000000  c_0x0a00000  c_0x0c00000  c_0x0e00000  c_0x1a00000 …
+> ```
+>
+> putting every chunk whose address contains a letter ahead of every chunk whose
+> address does not. **Sort chunk files by their numeric offset, never by their
+> name.** A careful chunked reader with retries and a `--no-stub` fallback was
+> undone in the last line of the script by `ls`.
+>
+> It also explains why the first round of targeted verification looked so
+> alarming: `0x0`, `0x1000` and `0x100000` all verified, and `0x1600000` did not.
+> All three passing offsets fall inside chunk `0x0000000`, which is first in both
+> the wrong order and the right one. The one failing slice was the first that
+> did not.
 
-Two things follow regardless of how it resolves:
+**The general lesson survives its own false alarm**, and is worth keeping for the
+day something really does differ: compare **per chunk**, not per image. A
+whole-image hash is a single bit of information that tells you *that* two reads
+disagree and never *where*, and on a live device it also mixes in partitions the
+firmware is entitled to rewrite.
 
-- **A whole-image hash is not usable as an identity for this device.** It mixes
-  immutable partitions with ones the device is entitled to rewrite. Compare per
-  partition, or at least per chunk, and let `nvs`, `otadata` and `phy_init` be
-  free to differ.
-- **Per-chunk hashes are how to localise a disagreement**, and this pass's
-  sixteen are recorded in the working notes so the owner's file can be split the
-  same way and the differing chunk named rather than guessed at.
+### `nvs`, `otadata` and `phy_init` did not move either
+
+Read three times with a hard reset and 90 seconds of running between each:
+identical, all hashing to
+`803798ee52013c09e9dd55a72226d0195ec6a3582f85af3b43315f9247b3e26e`. Recorded
+because it was originally an attempt to explain a mismatch that turned out not to
+exist, and it stands on its own as a fact about this firmware: **it does not
+rewrite its own configuration partitions on an ordinary boot.**
+
+> The same caveat as before, undiminished: `--after hard-reset` *should* have
+> booted the device between reads, but no screen was watched and no serial
+> captured, so **whether the application actually ran is `UNKNOWN`**. If it did
+> not, this measures only that flash is stable in download mode, which nobody
+> doubted.
 
 ## 3. `model` — a wake-word model, and what it does not prove
 
