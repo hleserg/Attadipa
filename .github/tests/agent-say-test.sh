@@ -172,6 +172,22 @@ says "offers the three readings rather than asserting one" -- "$NOPUSH" -- \
 says "and warns that a second @claude is a second billed agent" -- "$NOPUSH" -- \
      "second billed agent"
 
+# The second review's finding: a moved head on a run that never finished is
+# neither "done" nor "nothing happened". Real work is on the branch AND it may
+# be half of it.
+CUT=$(attadipa_outcome done_here_cut "$RUN" 71 cancelled)
+says "says a commit landed and the run did not finish, both" -- "$CUT" -- \
+     "commit landed" "did not finish" "#71"
+says "names the conclusion word rather than gesturing at the log" -- "$CUT" -- \
+     '`cancelled`'
+says "warns that it may be half the work and nothing here knows which half" -- \
+     "$CUT" -- "may be half" "which half"
+says "and that green CI proves nothing about the part never written" -- "$CUT" -- \
+     "never got written"
+CUT_NO=$(attadipa_outcome done_here_cut "$RUN" 71 "")
+says "a missing conclusion is named rather than left as an empty quote" -- \
+     "$CUT_NO" -- "no conclusion"
+
 EMPTY=$(attadipa_outcome done_here "$RUN" "")
 says "an empty detail is refused the same way" -- "$EMPTY" -- \
      "could not name the result"

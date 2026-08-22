@@ -99,6 +99,7 @@ attadipa_receipt() {
 # KIND is one of:
 #   done_pr    DETAIL is the pull request number, no `#`
 #   done_here  DETAIL is the pull request number this comment is being posted on
+#   done_here_cut     same, but the run did not finish -- EXTRA is the conclusion
 #   done_here_nopush  same, but the head did not move -- it ran and pushed nothing
 #   done_nopr  DETAIL is unused
 #   failed     DETAIL is the conclusion word from the action
@@ -110,10 +111,10 @@ attadipa_receipt() {
 # The caller is fixed; a renderer that prints whatever it is given as a pull
 # request number would let the next such bug out too.
 attadipa_outcome() {
-  local kind="$1" run_url="$2" detail="${3:-}"
+  local kind="$1" run_url="$2" detail="${3:-}" extra="${4:-}"
 
   case "$kind" in
-    done_pr|done_here|done_here_nopush)
+    done_pr|done_here|done_here_cut|done_here_nopush)
       case "$detail" in
         ""|*[!0-9]*) kind=bad_detail ;;
       esac ;;
@@ -138,6 +139,24 @@ attadipa_outcome() {
       echo "owner decision, 2026-08-21."
       echo
       echo "[Run log]($run_url)"
+      ;;
+    done_here_cut)
+      echo "### A commit landed on this pull request, and the run did not finish"
+      echo
+      echo "The head of #$detail moved, so real work is on the branch — this is not"
+      echo "a run that did nothing. But it ended as \`${extra:-no conclusion}\` rather"
+      echo "than reaching a conclusion, so **what is on the branch may be half of"
+      echo "what was asked for**, and nothing here can tell you which half."
+      echo
+      echo "**Read the diff before the review does.** A partial change that compiles"
+      echo "is the expensive kind: CI will go green on it and say nothing about the"
+      echo "part that never got written."
+      echo
+      echo "**Now waiting on:** CI on the new head and a fresh independent review."
+      echo "Both run automatically. Neither of them knows the run was cut off."
+      echo
+      echo "[Run log]($run_url) — the reason it stopped is in there, and it decides"
+      echo "whether the rest is worth restarting or the branch is worth dropping."
       ;;
     done_here_nopush)
       echo "### Ran on this pull request, and pushed nothing"

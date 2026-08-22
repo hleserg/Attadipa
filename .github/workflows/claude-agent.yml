@@ -81,7 +81,6 @@ jobs:
       refused_marker: ${{ steps.decide.outputs.refused_marker }}
       refusal_kind: ${{ steps.decide.outputs.refusal_kind }}
       refusal: ${{ steps.decide.outputs.refusal }}
-      pr_head_before: ${{ steps.prhead.outputs.sha }}
     steps:
       - name: Kill switch
         id: switch
@@ -310,40 +309,6 @@ jobs:
             echo "staleness=$STALENESS"
           } >> "$GITHUB_OUTPUT"
           echo "::notice::accepted #$ISSUE_NUMBER type=$TASK_TYPE priority=$PRIORITY producer=$PRODUCER"
-
-      # WHERE THE BRANCH WAS BEFORE THE AGENT TOUCHED IT.
-      #
-      # Only meaningful when the task is a pull request -- `@claude` on #71
-      # rather than on an issue. The hand-over step needs it to tell "the agent
-      # pushed a fix here" from "the agent ran and pushed nothing", and those
-      # two are indistinguishable from the trigger alone: the pull request is
-      # open and is its own number either way. Empty for an issue, and empty is
-      # the safe value -- an unknown starting point can never be read as proof
-      # that the head moved.
-      - name: Where the pull request head was
-        id: prhead
-        if: steps.decide.outputs.run == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          ISSUE: ${{ steps.decide.outputs.issue }}
-        run: |
-          set -euo pipefail
-          # shellcheck disable=SC2016  # GraphQL variables, bound by -F below.
-          SHA=$(gh api graphql -f query='
-            query($owner:String!, $repo:String!, $number:Int!) {
-              repository(owner:$owner, name:$repo) {
-                issueOrPullRequest(number:$number) {
-                  ... on PullRequest { headRefOid }
-                }
-              }
-            }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
-            --jq '.data.repository.issueOrPullRequest.headRefOid // ""' 2>/dev/null || echo "")
-          case "$SHA" in
-            *[!0-9a-f]*) SHA="" ;;
-          esac
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "::notice::pull request head before the agent: ${SHA:-not a pull request}"
 
   acknowledge:
     # THE RECEIPT. Somebody asked for an agent; they hear back in seconds.
@@ -656,6 +621,54 @@ jobs:
         with:
           fetch-depth: 0
 
+      # WHERE THE BRANCH WAS BEFORE THIS RUN TOUCHED IT.
+      #
+      # Only meaningful when the task is a pull request -- `@claude` on #71
+      # rather than on an issue. The hand-over step needs it to tell "this run
+      # pushed a fix here" from "this run pushed nothing", and those two are
+      # indistinguishable from the trigger alone: the pull request is open and
+      # is its own number either way.
+      #
+      # IT HAS TO BE READ HERE, NOT IN THE GATE, and the reason is the writer
+      # queue directly above. The gate has no concurrency group and runs the
+      # instant the event arrives; this job waits in `attadipa-agent-writer`
+      # until whatever is ahead of it finishes, which can be most of an hour.
+      # A snapshot taken in the gate would therefore predate any push made in
+      # that window -- a second `@claude` that queued ahead of this one, or a
+      # person pushing a fixup to the same branch, neither of which "one
+      # writer" serialises against. The head would differ at hand-over time for
+      # a reason that has nothing to do with this run, and the step would post
+      # "Done — pushed to this pull request" for a run that pushed nothing.
+      # That is the same false claim by a different door, and review caught it
+      # on the previous revision of this file rather than in production.
+      #
+      # Empty for an issue, and empty is the safe value: an unknown starting
+      # point can never be read as proof that anything happened.
+      - name: Where the pull request head was
+        id: prhead
+        if: steps.auth.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016  # GraphQL variables, bound by -F below.
+          SHA=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $number:Int!) {
+              repository(owner:$owner, name:$repo) {
+                issueOrPullRequest(number:$number) {
+                  ... on PullRequest { headRefOid }
+                }
+              }
+            }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
+            --jq '.data.repository.issueOrPullRequest.headRefOid // ""' 2>/dev/null || echo "")
+          case "$SHA" in
+            *[!0-9a-f]*) SHA="" ;;
+          esac
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "::notice::pull request head before this run: ${SHA:-not a pull request}"
+
       - name: Run Claude
         if: steps.auth.outputs.ok == 'true'
         id: claude
@@ -846,7 +859,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
-          HEAD_BEFORE: ${{ needs.gate.outputs.pr_head_before }}
+          HEAD_BEFORE: ${{ steps.prhead.outputs.sha }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -939,9 +952,10 @@ jobs:
           {
             read -r KIND
             read -r DETAIL
+            read -r EXTRA
           } < <(bash .github/scripts/handover-decision.sh \
                   "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}")
-          echo "::notice::hand over as $KIND (${DETAIL:-no detail})"
+          echo "::notice::hand over as $KIND (${DETAIL:-no detail}${EXTRA:+, $EXTRA})"
 
           # The agent labels the issue itself when it blocks — and a BLOCKED
           # comment written by the agent says far more than this step could, so
@@ -956,12 +970,18 @@ jobs:
               exit 0 ;;
           esac
 
-          bash .github/scripts/agent-say.sh outcome "$KIND" "$RUN_URL" "$DETAIL" > /tmp/outcome.md
+          bash .github/scripts/agent-say.sh outcome "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" > /tmp/outcome.md
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
 
           case "$KIND" in
             done_pr|done_here|done_here_nopush|done_nopr)
               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
+            done_here_cut)
+              # Both labels, because both are true: a commit is on the branch
+              # for a reviewer to read, AND the run that made it never
+              # finished, so somebody has to pick the rest up. agent:review
+              # alone would file half-done work as done.
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --add-label agent:ready --remove-label agent:working || true ;;
             *)
               # agent:failed AND back to agent:ready: the label pair says both
               # "this went wrong" and "somebody should pick it up", and the

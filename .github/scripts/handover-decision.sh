@@ -42,7 +42,9 @@
 #
 # CONCLUSION is the action's own conclusion word, possibly empty.
 #
-# Prints two lines: the kind, then the detail.
+# Prints three lines: the kind, the detail, then an extra field that only
+# done_here_cut uses (the conclusion word). The third line is always printed,
+# empty when unused, so a caller can read a fixed number of lines.
 attadipa_handover_decision() {
   local found="$1" head_before="$2" conclusion="$3"
   local where="" pr="" head_now="" rest=""
@@ -84,17 +86,27 @@ attadipa_handover_decision() {
   # is already there. That reasoning does NOT extend to `here`: there, the
   # pull request's existence is not the agent's doing.
   if [ "$where" = "here" ] && [ "$moved" = "yes" ]; then
-    printf 'done_here\n%s\n' "$pr"
+    # A moved head is real work that landed, so this is never a bare failure --
+    # "nothing was left half-applied" would be a lie about a branch that has a
+    # commit on it. But an unfinished run may have landed HALF the work, and
+    # saying "done" over that is the same false claim in a smaller font. So the
+    # two are separate outcomes rather than one with a footnote. Review asked
+    # for this to be gated or stated; it is stated, in the text a person reads.
+    if [ "$conclusion" = "success" ]; then
+      printf 'done_here\n%s\n\n' "$pr"
+    else
+      printf 'done_here_cut\n%s\n%s\n' "$pr" "${conclusion:-no conclusion}"
+    fi
   elif [ "$where" = "here" ] && [ "$conclusion" = "success" ]; then
-    printf 'done_here_nopush\n%s\n' "$pr"
+    printf 'done_here_nopush\n%s\n\n' "$pr"
   elif [ "$where" = "here" ]; then
-    printf 'failed\n%s\n' "${conclusion:-no conclusion}"
+    printf 'failed\n%s\n\n' "${conclusion:-no conclusion}"
   elif [ -n "$pr" ]; then
-    printf 'done_pr\n%s\n' "$pr"
+    printf 'done_pr\n%s\n\n' "$pr"
   elif [ "$conclusion" = "success" ]; then
-    printf 'done_nopr\n\n'
+    printf 'done_nopr\n\n\n'
   else
-    printf 'failed\n%s\n' "${conclusion:-no conclusion}"
+    printf 'failed\n%s\n\n' "${conclusion:-no conclusion}"
   fi
 }
 
