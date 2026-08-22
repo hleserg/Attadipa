@@ -183,9 +183,9 @@ been the expensive order.
 ## Owner decisions of 2026-08-22, recorded and not yet started
 
 Seven messages in one session, all filed as
-[OD-7 to OD-12](docs/research/OWNER_DECISIONS.md) with the research questions in
+[OD-7 to OD-11, and OD-14](docs/research/OWNER_DECISIONS.md) with the research questions in
 [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-and fourteen tasks — T-072 to T-083 for the six, and T-088 and T-089 for OD-12's
+and fourteen tasks — T-072 to T-083 for the six, and T-088 and T-089 for OD-14's
 distance. **Nothing is implemented.** Recorded here because a fact that lives
 only in a chat log does not exist.
 

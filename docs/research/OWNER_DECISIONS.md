@@ -743,7 +743,14 @@ than a feature). T-034's asset pipeline is amended before it starts.
 
 ---
 
-## OD-12 — Distance, but only the distance the wearer moved themselves
+## OD-14 — Distance, but only the distance the wearer moved themselves
+
+*Numbered 14, not 12. It was filed as OD-12 on 2026-08-22 while another branch
+was concurrently filing a different OD-12 — the owner's answer on #41, that
+Meshtastic is not supported — with an OD-13 stacked on top of it. Two decisions
+sharing a number is worse than a gap in the sequence, so this one moved. The
+collision is what "one writer" in CLAUDE.md exists to prevent, and it happened
+because two branches were open at once rather than because either was wrong.*
 
 **Decided:** 2026-08-22.
 
@@ -826,7 +833,7 @@ separately from its firmware, which cellular module the node will carry, and
 which tower database may lawfully be shipped in a product. The first is research
 and is filed; the last two are the owner's.
 
-OD-12 adds one more, and it is a product question rather than a technical one:
+OD-14 adds one more, and it is a product question rather than a technical one:
 **what a rejected distance looks like to the wearer.** A watch that silently
 declines to count a bus ride and a watch that is broken are the same watch from
 the outside.

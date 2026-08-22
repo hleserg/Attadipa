@@ -1353,7 +1353,7 @@ stale silently. The protocol is
 - **Hardware required:** yes, for every power number
 
 ### T-088 · Distance, walking and running, as one capability
-- **Priority:** P1 — [OD-12](docs/research/OWNER_DECISIONS.md#od-12--distance-but-only-the-distance-the-wearer-moved-themselves)
+- **Priority:** P1 — [OD-14](docs/research/OWNER_DECISIONS.md#od-14--distance-but-only-the-distance-the-wearer-moved-themselves)
 - **Dependencies:** T-061 (the step counter this is built on), T-046
   (crash-safe persistence), and on the Waveshare the IMU variant question that
   T-060 left open
@@ -1412,7 +1412,7 @@ stale silently. The protocol is
     case where the check must not fire.
 - **The question the owner still owns:** what a rejected distance looks like to
   the wearer. A watch that silently declines to count a bus ride and a watch
-  that is broken are the same watch from the outside — recorded in OD-12 under
+  that is broken are the same watch from the outside — recorded in OD-14 under
   *Still with the owner*.
 - **Acceptance:** each case marked with what the firmware does and where the
   answer came from. **A gate with no measurement behind it is written down as
