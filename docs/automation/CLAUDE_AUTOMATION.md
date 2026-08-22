@@ -219,6 +219,7 @@ as much as the first.
 | **Empty queue costs nothing** — the watchdog's scan is shell and one API call; Claude is invoked only when there is a task | `agent-queue-watchdog.yml` |
 | **One writer** — a concurrency group on the agent job, so writers queue instead of colliding. On the job and not on the workflow: a workflow-level group also holds the intake gate, and GitHub cancels a *pending* run when a newer one joins the group, so a burst of events loses everything but the last before anything reads it. Three tasks were queued and none started this way on 2026-08-22 | `claude-agent.yml` |
 | **Deduplication** — an issue already claimed is not picked up again | intake gate |
+| **It always answers** — an 👀 reaction within seconds, a receipt saying what was understood, and an outcome comment on every exit path. Silence and a dead pipeline used to be the same experience | `acknowledge` job, `Hand over` step, `agent-say.sh` |
 | **Turn limits** — 60 for implementation, 100 for review, 40 for repair | `claude_args: --max-turns` |
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
