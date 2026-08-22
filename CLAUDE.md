@@ -121,6 +121,13 @@ If you are working from an issue:
   and reverts anything they disagree with; `main` is protected by CI and the
   independent reviewer, not by a person waiting. The body
   carries `Fixes #<issue>` and says what was tested and what was not.
+
+  That is the *orchestrator* — a live session, over every path in the
+  repository. The unattended **backstop routine** merges far less: `docs/`
+  only, never `docs/automation/`, three per run, under six conditions it checks
+  rather than infers. So a green pull request touching `core/` is not waiting
+  for the owner, and the backstop will not sweep it up either — it is waiting
+  for an orchestrator session to look at it.
 - **Hardware facts are verified or they are `UNKNOWN`.** Never a `PASS` for a
   test that did not run on a board — the rule above, and it does not relax
   because a workflow is watching.
