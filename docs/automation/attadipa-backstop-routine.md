@@ -192,12 +192,40 @@ and `agent:ready` where one is genuinely needed.
       the last step before the merge and never a way to make a candidate
       qualify.
 
-      AND RE-READ `mergeable_state` AFTER `gh pr ready`, immediately before
-      merging. Not because a stale value would corrupt anything — the merge API
-      refuses a real conflict — but because that refusal is the only thing
-      standing between the two reads, and a rule whose safety rests on an
-      error message it never mentions is a rule nobody can check. If it is not
-      `clean` at that moment, stop and say so;
+      `gh pr ready` IS ITSELF A TRIGGER, AND YOU MUST WAIT FOR WHAT IT STARTS.
+      This is the one part of the merge rule that is not obvious from reading
+      it, and it was found by review rather than by writing: taking a pull
+      request out of draft raises GitHub's `ready_for_review` event, and
+      `.github/workflows/claude-pr-review.yml` fires on exactly that. So the
+      last thing you do before merging kicks off a fresh independent review of
+      the very pull request you are about to merge.
+
+      Merging straight afterwards would mean the `ai-review:pass` your decision
+      rests on was read BEFORE the step that can replace it. A second-pass
+      finding would then land as `ai-review:blocking` on a commit already in
+      `main`, with nobody watching for it — and "no `ai-review:pass`, no merge"
+      would be false in exactly the sequence this routine always takes.
+
+      So after `gh pr ready`:
+
+        1. WAIT for the `Independent review` check on the head commit to leave
+           `queued`/`in_progress`. Give it up to twenty minutes; if it has not
+           finished by then, say so and leave the pull request open and
+           undrafted — a merge is never the thing you do because waiting got
+           boring.
+        2. RE-READ the labels. `ai-review:pass` must still be present and
+           `ai-review:blocking` still absent. The second pass is a second
+           opinion on the final state, which makes it worth having rather than
+           waste; treat a new blocking verdict as the answer, not as noise from
+           a run you caused.
+        3. RE-READ `mergeable_state`. Not because a stale value would corrupt
+           anything — the merge API refuses a real conflict — but because that
+           refusal is the only thing standing between the two reads, and a rule
+           whose safety rests on an error message it never mentions is a rule
+           nobody can check. If it is not `clean` at that moment, stop and say
+           so.
+
+      Only then merge;
 
     - PATHS. Merge ONLY a pull request whose every changed file is under
       `docs/` — and NOT under `docs/automation/`. Everything else is the
