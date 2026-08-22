@@ -1677,6 +1677,60 @@ Recommended next action:
 
 ## WAITING
 
+### T-112 · One MeshCore identity across several physical nodes
+- **Priority:** **P4 — backlog.** The scale in
+  [AI_TASK_PROTOCOL](docs/automation/AI_TASK_PROTOCOL.md) stops at `P3`, so the
+  number lives here rather than in a marker that has no value for it. Owner
+  instruction, 2026-08-23: this must not interrupt current work or displace
+  anything higher on the roadmap.
+- **Waiting on:** the owner saying to start it. [#114](https://github.com/hleserg/Attadipa/issues/114)
+  deliberately carries **no task marker and no `@claude`**, so the intake gate
+  refuses it and the queue cannot pick it up by accident.
+- **Goal:** let one person own several MeshCore radios — a Heltec V4 and a T114
+  were the example — and appear to friends as **one contact**, with one
+  conversation, one set of contacts and private channels, and one message
+  history, switching between devices at will. Fully offline: no cloud and no
+  internet for the basics, and no modification required of ordinary MeshCore
+  clients, repeaters or friends' devices.
+- **Why copying the private key is not the answer.** It does produce one public
+  key and one apparent contact, and that is where it stops: MeshCore keeps one
+  current outgoing route per contact, so the route can flap between live nodes;
+  both nodes can receive a message and both can ACK it; the unread queue is
+  local to each companion node; contacts, channels and configuration drift; and
+  advert timestamps from differently-set clocks can be refused by replay
+  protection. Losing **either** node compromises the shared key.
+- **What must be verified before anything is designed.** Every claim in the
+  bullet above is the owner's description of upstream behaviour, and this
+  repository does not take a technical claim as a fact. Read the identity,
+  routing, ACK, replay-protection, offline-queue and configuration-export code
+  in the pinned MeshCore revision and cite lines, per
+  [CLAUDE.md](CLAUDE.md)'s never-trust-verify rule.
+- **Options to compare:** safe hot/cold standby on a shared identity · Attadipa
+  owning the identity with the radios as interchangeable transports · local
+  sync between companion nodes over BLE/USB/Wi-Fi with no mandatory internet ·
+  true parallel multi-radio identity, answering explicitly whether it is
+  possible **without** a MeshCore protocol change · per-device keys bound into
+  one logical user identity, answering whether stock clients still see one
+  contact.
+- **Acceptance for the research stage:** a document under `docs/research/` —
+  MeshCore's current architecture, the upstream limits with links to specific
+  code and issues, the option comparison, a recommended architecture, the
+  security threats and how each closes, a staged plan, the list of Attadipa
+  changes, a hardware and software test plan, and an assessment of what needs no
+  fork and what needs upstream. An ADR if a decision is genuinely made.
+- **What must not happen:** no implementation, and no change to the stable
+  MeshCore subsystem, inside the research stage. A research task that arrives as
+  a pull request full of new subsystems has been guessed at, not done.
+- **Security, non-negotiable:** the private key never reaches a log, telemetry, a
+  dump or an unencrypted backup; moving an identity to a new node takes explicit
+  owner confirmation; encryption at rest, protected export/import and a recovery
+  procedure a person can follow; a design for a node being lost or stolen; no
+  home-grown cryptography where a proven mechanism exists; any protocol change
+  keeps compatibility or ships a documented fallback.
+- **Hardware required:** yes — Heltec V4, T114, a friend's separate companion
+  node and at least one stock MeshCore repeater. `NOT EXECUTED — HARDWARE
+  REQUIRED` until that bench exists.
+
 ### T-012 · Answers from the project owner
 - **Priority:** P0
 - **Waiting on:** the project owner
