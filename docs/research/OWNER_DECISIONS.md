@@ -740,20 +740,6 @@ bearing question and the default answer is **no**.
 validation — contrast and glyph coverage as an installation gate) and T-083 (the
 shipping font: no box characters in any build, which is a defect today rather
 than a feature). T-034's asset pipeline is amended before it starts.
-
----
-
-## Still with the owner
-
-Nothing here answers A1–A3, A5 or the compass question. Those remain in
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
-
-OD-7 to OD-10 add three of their own, and they are the kind that cannot be
-answered from a datasheet: whether Meshtastic's protocol definitions are licensed
-separately from its firmware, which cellular module the node will carry, and
-which tower database may lawfully be shipped in a product. The first is research
-and is filed; the last two are the owner's.
-
 ## OD-12 — Meshtastic is not supported, and the reason is not the licence
 
 > **One premise in the rationale below has expired and the record is left
@@ -953,3 +939,137 @@ Whoever does not want it turns it off.
 dwell time and the sampling rate — all four are to be computed and shown. If the
 arithmetic does not close on power or on storage, that is a `BLOCKED` with
 numbers in it, not a quiet simplification.
+
+---
+
+## OD-14 — Which region is the owner's problem, not the firmware's
+
+**Decided:** 2026-08-22, on [#55](https://github.com/hleserg/Attadipa/issues/55).
+
+**As stated:** *«Законность моя проблема а не прошивки»* — *legality is my
+problem, not the firmware's.*
+
+**What was asked.** [OPEN_QUESTIONS](OPEN_QUESTIONS.md) A4: which country or
+regulatory region does the device operate in. The question was concrete rather
+than theoretical — OD-2 already records the owner's own MeshCore node
+transmitting 158 mW at 868.731 MHz, and whether that is lawful there has never
+been established. The issue asked for a country name so this project could go
+read the applicable rule and record it, the same as any other fact.
+
+**What was answered, and what was not.** The owner declined to name one. That
+is the whole content of the decision: **no country or region is coming**, now
+or later, and this project stops asking. It is not an answer to "which region",
+it is an answer to "whose job is it to know" — and the owner's is the answer.
+
+**What this does and does not change.** It is tempting to read this as
+licence to relax [ADR-0006](../adr/0006-settings-and-bounded-values.md)'s
+transmit-closed-while-`Unknown` gate (final §35, §37), and that reading is
+wrong. Nothing about *that* mechanism required this project to know which
+region applies — ADR-0006 already rejected shipping a default region, rejected
+compiling a jurisdiction into `core/`, and built the gate to hold exactly the
+state this project is *in* rather than the state it hoped to reach. What the
+owner's answer removes is the expectation that a **specific region's rule
+table** was ever going to arrive from this side: nobody is going to research UK
+or ETSI or GKRCh limits for this project and file them as a `RegulatoryProfile`
+data record, because there is no region to research them for. The gate does not
+need that answer to do its job — it needs to know that *some* profile was
+chosen, never which one, and it stays exactly as ADR-0006 designed it: closed
+until a profile is selected, by whoever configures the device.
+[REUSE_LEDGER](REUSE_LEDGER.md) already calls this gate "Attadipa's single most
+safety-critical line" after reading how Meshtastic's own version of it went
+silently dead (issue #2205) — that finding does not become less true because
+the owner named no country.
+
+**What it obliges:**
+
+1. **A4 is closed, permanently, as "operator's choice, not this project's
+   research."** No task researches "which region" as a prerequisite for
+   anything in `core/` or `apps/`. [OPEN_QUESTIONS](OPEN_QUESTIONS.md) A4 is
+   updated to say so rather than left looking like a pending question with an
+   owner who has not yet replied.
+2. **The `Unknown`-blocks-transmit fail-safe is unchanged, and is not open for
+   reinterpretation by a future agent reading this record loosely.** Any
+   firmware built from this repository — the owner's or anyone else's, since it
+   is MIT — still refuses to transmit until an operator has explicitly chosen a
+   `RegulatoryProfile`. That protects users this decision was never about, not
+   only the owner.
+3. **Choosing and validating the specific profile for his own device is the
+   owner's task, done through the settings mechanism ADR-0006 already
+   specifies** — the same schema, the same typed bounds, the same three
+   ceilings — when that mechanism exists. Nothing about this decision brings
+   that forward; T-025 (partitions/settings persistence) is still not started.
+
+**What it invalidates.** The framing in
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md) and [TASKS](../../TASKS.md) T-012 that A4
+is one of a batch of questions still awaiting an owner reply. It is answered —
+just not with a country.
+
+**Status:** documentation only. No code exists yet that ADR-0006 governs, so
+there is nothing to change in `core/`; this record is the fence for whoever
+writes `SettingsService` next.
+
+
+---
+
+## OD-15 — A7 and A8: the canonical palette wins, and the icon may lose its black corners
+
+**Decided:** 2026-08-22, on [issue #57](https://github.com/hleserg/Attadipa/issues/57).
+
+**As stated:**
+
+> *"@claude A7 побеждает то что ты сделал уже последним. Не надо переделывать и
+> перепроверять. A8 буду очень благодарен если ты сам уберешь фон с картинок
+> где надо. Уверен ты справишься"*
+
+**In English:** for A7, what wins is whatever was already done last — no need
+to redo it or re-verify it. For A8: yes, please remove the background from the
+images where it needs it.
+
+**A7 — which orange, which olive.** "What was already done last" is the
+canonical palette: every colour in the design system and the firmware already
+draws from final §42 (`docs/ui/DESIGN_SYSTEM.md`), and nothing in the codebase
+had been changed to the sampled brand-art values. So **§42 wins**: Attadipa
+Orange `#FF8A40`, Ink Olive `#2F3A2E`, and the rest of the canonical table
+stand unmodified. Per the rule the question itself stated — the loser's values
+must leave the repository rather than sit beside the winner — the sampled
+values that [`pics/README.md`](../../pics/README.md) recorded (`#E16439`…
+`#EC552A` for the wordmark and wings, `#595E3A`…`#666A46` for the head and
+tagline) are removed from that file and kept only here, as the record of what
+lost and why. The contrast arithmetic in `DESIGN_SYSTEM.md` §3.2 and
+`tests/test_ui_tokens.cpp` needed no change, because it was already computed
+against §42.
+
+**A8 — transparent corners.** `pics/Ikon.png` and `pics/Favicon.png` were RGB
+with no alpha channel, so the area outside the rounded square was opaque
+`#000000`. Both were re-exported with an alpha channel: every near-black pixel
+connected to the image border (RGB ≤ 50 per channel, flood-filled from the
+edges) was made transparent; every pixel inside the rounded square is
+byte-identical to before. Checked before re-exporting that no near-black pixel
+in either file sits *inside* the mark disconnected from the border — there is
+none, so the flood fill could not have eaten a real dark detail in the
+artwork. New hashes are in `pics/README.md`. `AttadipaBanner.png` is untouched:
+it is full-bleed, so the black-corner problem does not apply to it, and it was
+out of scope for A8.
+
+**What it obliges:** nothing further. Both questions were mechanical once
+answered, and neither reopens a design decision that anything else depends on.
+
+**What it does not do:** it does not touch `AttadipaBanner.png`, the
+typeface question, or the other colour roles in the sampled-versus-canonical
+table (glow, hills/leaves, background) — those were already "close" or
+"between the two" in the original comparison and the owner's answer was about
+the two that actually conflicted.
+
+---
+
+## Still with the owner
+
+Nothing here answers A1–A3, A5 or the compass question. Those remain in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+
+OD-7 to OD-10 add three of their own, and they are the kind that cannot be
+answered from a datasheet: whether Meshtastic's protocol definitions are licensed
+separately from its firmware, which cellular module the node will carry, and
+which tower database may lawfully be shipped in a product. The first is research
+and is filed; the last two are the owner's.
+

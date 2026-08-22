@@ -53,8 +53,9 @@ is emphasis and the meaning lives in the icon and the word. And
 *raised* card at 4.44:1, six hundredths under the threshold, which is the kind of
 thing a review by eye does not find. Both are tabulated in
 [DESIGN_SYSTEM §3.2](docs/ui/DESIGN_SYSTEM.md) and pinned by tests. The colours
-are the owner's; open question **A7** already records that the published brand
-art disagrees with the palette text.
+are the owner's; the published brand art's sampled values disagreed and were
+resolved in favour of these on 2026-08-22
+([OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15).
 
 ## Next ready
 
@@ -355,15 +356,40 @@ came off the unit the same day —
   speaker or a haptic actuator (**T-105**, and T-097 sits on top of it), and the
   battery connector's pitch, which a photograph cannot establish.
 
-**A bigger battery is under consideration.** The cell turns out to be on a
-removable 2-pin plug rather than soldered, which makes it a real option. What to
-order is open — see D2, now PARTIAL rather than UNKNOWN.
+**A bigger battery is under consideration, and the fitted one is probably not
+400 mAh.** The cell turns out to be on a removable 2-pin plug rather than
+soldered, which makes it a real option — and researching what to order produced
+a headline nobody expected. `402728` is 3.024 cm³, so the sticker's 400 mAh at
+3.7 V implies **132.3 mAh/cm³**, against an observed **87–102** band across 51
+datasheet cells from four manufacturers at footprints ≤ 32 mm: +22 % on the
+densest cell found in any footprint in that sample, +52 % on the median. Honest
+expectation **250–310 mAh** — so a same-size replacement buys no capacity at
+all, and 400 mAh in this footprint costs 5.5 mm of thickness rather than 4.0.
+[BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) — ESTIMATED from published
+datasheets, not measured. **What to order now has a decision tree rather than an
+open question**, gated on three measurements only the owner can take: the
+closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
+the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
+280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
+need. **T-106** holds all three, and the register reads that go with them.
 
-- **The cell is 400 mAh**, where the row said `UNKNOWN` and the T-Watch carries
-  940. The board with less than half the energy is the board with the emissive
-  panel, and the day theme costs 13.9× the night theme on the same pixels
-  (`ESTIMATED`). "Which theme is default on the Waveshare" is now a power
-  question — **T-095**.
+**Both inheritable charge currents are wrong for the real cell.** Waveshare's own
+demo sets 400 mA, which is 1.33C on ~300 mAh against a 1.0C class maximum, and
+it is a deliberate change — upstream XPowersLib's copy of the same file sets
+200 mA. The power-on default cannot be quoted at all: `REG 0x62`'s reset value is
+eFuse-trimmed and has never been read on this board. The Waveshare BSP configures
+the charger not at all, so whichever value is there at boot is the one charging
+the cell. Precharge and termination both default four times higher than the
+convention, and the input limit defaults to 1500 mA on a port that granted 500.
+
+- **The cell's sticker says 400 mAh**, where the row said `UNKNOWN` and the
+  T-Watch carries 940 — and the sticker is now the thing in doubt, not the
+  reading of it: see the paragraphs above, `ESTIMATED` 250–310 mAh. Either way
+  the board with far less energy is the board with the emissive panel, and the
+  day theme costs 13.9× the night theme on the same pixels (`ESTIMATED`).
+  "Which theme is default on the Waveshare" is now a power question — **T-095**,
+  and a sharper one if the real figure is a third of the T-Watch rather than
+  a half.
 - **A ten-pad expansion row** nobody had transcribed, and the trap in it: `IO15`
   and `IO14` are printed as bare GPIO numbers and are the main I2C bus, with six
   devices already on them. The one free channel for an attached node is the UART
@@ -414,7 +440,6 @@ available on this board.
 | A1 | Is either board physically available, and which revision? | everything hardware |
 | A2 | If a T-Watch: which radio chip and which GNSS module? | decides whether the watch can join a MeshCore network at all — two of the five candidate radios cannot ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 | A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
-| A4 | Which regulatory region governs the radio? | **legal.** Until answered, the region profile is `Unknown` and the transmit path stays closed ([ADR-0006](docs/adr/0006-settings-and-bounded-values.md)) |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
@@ -443,7 +468,7 @@ of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
-| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 40-case hostile-input test and the watchdog filter's 17-case test pass. **Two defects fixed on 2026-08-22, both silent and both found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; and a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
+| Agent automation | **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 40-case hostile-input test and the watchdog filter's 17-case test pass. **Three defects fixed on 2026-08-22, all silent and all found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all; and the hand-over step's pull-request lookup asked GraphQL for `issue(number:)`, which does not resolve pull requests, so an agent started from a comment **on a pull request** got a `NOT_FOUND` document that `gh` had already written to stdout — `|| echo ""` does not undo that — and the outcome comment on #71 went out as ``### Done — pull request #{"data":{"repository":{"issue":null}}…``. `issueOrPullRequest` answers for both, and — the review's finding on the first fix — *pushed to this pull request* now requires the head to have actually moved, because a pull request is open before the agent starts and open after whatever it does; a clean run that pushed nothing says so instead. And the *before* head is read inside the writer queue rather than at event time — the gate fires the instant an event arrives while the agent job waits in `attadipa-agent-writer` for up to an hour, so a gate-time snapshot would have credited this run with a push made by whoever moved the branch in that window. A run that pushed a commit and then died says both things: work landed, and it may be half of it. And a cross-reference is evidence only if it was made **during** the run: #75 cites #71 five times, so filing #75 created that reference before any agent started, and the step announced *"Done — pull request #71"* for a run that produced nothing — then labelled the issue `agent:review`, so nothing would re-queue it. A `Fixes #N` still needs no timestamp; a bare mention does. A cut-off run is also told, in words, that **nothing automated will come back for the unfinished part**: the watchdog scans issues, not pull requests, so no label on a pull request queues anything — the first version added `agent:ready` there and review pointed out the label was promising something that could not happen. The whole decision moved into `.github/scripts/handover-decision.sh` with a 37-case test, because every defect this step has had lived in shell embedded in a workflow where nothing could execute it. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
@@ -468,14 +493,16 @@ is that a result is appended rather than written over the plan.
 ## Open conflicts
 
 Recorded rather than resolved by preference. Two need a powered board, one
-needs the owner, and one needs a ruler.
+needs a ruler.
 
 | # | Conflict |
 |---|---|
 | D15 | **The T-Watch panel's physical diagonal.** LilyGoLib's spec tables say 1.3" for the S3 and the S3 Plus by name; the schematic's LCD sheet says `QT154C2408` / `LCD_1.54-TOUCH`, and that vendor's sibling part `QT154H2201` is published as 1.54", 240×240, ST7789V — so the part number decodes. 240 × 240 is not in doubt; 261 dpi against 220 is. The code holds 1.3" as the **conservative** reading, not the confident one ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md#display-diagonal--conflicting)) |
-| A7 | The published brand art (`pics/`) and the §42 palette disagree by more than rounding — the wordmark samples at `#E16439` against Attadipa Orange `#FF8A40`. An identity decision, so it waits for the owner ([pics/README.md](pics/README.md)) |
 | H8 | The T-Watch vendor document calls ALDO1 unused; the schematic drives the `+3V3` rail from it. If the schematic is right, `+3V3` is switchable and carries five parts |
 | ~~D12~~ → **D12b** | ~~PSRAM documented as quad; the `R8` marking is understood to mean octal~~ **Checked and split.** Table 1-1 of the ESP32-S3 datasheet has no 8 MB quad in-package part, so `R8` is octal. Closed for the Waveshare (D12a). Still open for the **T-Watch**, where a LilyGO document says QSPI and has not been read against that table |
+
+The brand-art-versus-§42 palette conflict once recorded here as A7 is
+resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 ## Assumptions in force
 
@@ -566,6 +593,21 @@ needs the owner, and one needs a ruler.
   suite 24/24; GCC `-Werror` strict-warnings with ASan+UBSan clean; Clang
   strict-warnings clean, **its sanitizer runtime is not installed in this
   environment so that half is `NOT EXECUTED` here** and runs in CI.
+
+- **A4 is closed, not answered.** [#55](https://github.com/hleserg/Attadipa/issues/55)
+  asked which regulatory region governs the radio, concretely — the owner's own
+  MeshCore node already transmits 158 mW at 868.731 MHz and its legality here
+  was never established. The owner declined to name a region: *"Законность моя
+  проблема а не прошивки"* — legality is his problem, not the firmware's
+  ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
+  Nothing in [ADR-0006](docs/adr/0006-settings-and-bounded-values.md) changes:
+  the design never required this project to know which region applies, only
+  that an operator has chosen one, and the transmit-closed-while-`Unknown` gate
+  — called "Attadipa's single most safety-critical line" in the reuse ledger —
+  stays exactly as designed, for any operator of any build. What closes is the
+  expectation that this project would research and ship a specific
+  jurisdiction's rule table; there is no subject left to research one for.
+
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
   job. Four checks: relative links resolve, inline code spans close, task IDs are

@@ -192,7 +192,7 @@ jobs:
                 --txt build-cov/coverage.txt --print-summary
           cat build-cov/coverage.txt >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: host-coverage
@@ -258,6 +258,14 @@ jobs:
       # one edit at a time.
       - name: What the agent says
         run: bash .github/tests/agent-say-test.sh
+
+      # And whether what it says is true. The hand-over step has shipped two
+      # defects, both in shell embedded in this workflow's sibling where nothing
+      # could execute it: a GraphQL error document printed as a pull request
+      # number, and then a claim of "pushed to this pull request" on a run that
+      # pushed nothing. The decision is a file now, so it can be run.
+      - name: What the agent decides it did
+        run: bash .github/tests/handover-decision-test.sh
 
       # The staleness line is the only thing telling an agent that the finding
       # it is about to implement was made against code that has since moved.
@@ -353,7 +361,7 @@ jobs:
 
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: simulator-screenshots
           path: build-sim/screenshots/*.png

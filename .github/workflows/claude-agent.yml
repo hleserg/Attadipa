@@ -621,6 +621,64 @@ jobs:
         with:
           fetch-depth: 0
 
+      # WHERE THE BRANCH WAS BEFORE THIS RUN TOUCHED IT.
+      #
+      # Only meaningful when the task is a pull request -- `@claude` on #71
+      # rather than on an issue. The hand-over step needs it to tell "this run
+      # pushed a fix here" from "this run pushed nothing", and those two are
+      # indistinguishable from the trigger alone: the pull request is open and
+      # is its own number either way.
+      #
+      # IT HAS TO BE READ HERE, NOT IN THE GATE, and the reason is the writer
+      # queue directly above. The gate has no concurrency group and runs the
+      # instant the event arrives; this job waits in `attadipa-agent-writer`
+      # until whatever is ahead of it finishes, which can be most of an hour.
+      # A snapshot taken in the gate would therefore predate any push made in
+      # that window -- a second `@claude` that queued ahead of this one, or a
+      # person pushing a fixup to the same branch, neither of which "one
+      # writer" serialises against. The head would differ at hand-over time for
+      # a reason that has nothing to do with this run, and the step would post
+      # "Done — pushed to this pull request" for a run that pushed nothing.
+      # That is the same false claim by a different door, and review caught it
+      # on the previous revision of this file rather than in production.
+      #
+      # Empty for an issue, and empty is the safe value: an unknown starting
+      # point can never be read as proof that anything happened.
+      - name: Where the pull request head was
+        id: prhead
+        if: steps.auth.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016  # GraphQL variables, bound by -F below.
+          SHA=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $number:Int!) {
+              repository(owner:$owner, name:$repo) {
+                issueOrPullRequest(number:$number) {
+                  ... on PullRequest { headRefOid }
+                }
+              }
+            }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
+            --jq '.data.repository.issueOrPullRequest.headRefOid // ""' 2>/dev/null || echo "")
+          case "$SHA" in
+            *[!0-9a-f]*) SHA="" ;;
+          esac
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "::notice::pull request head before this run: ${SHA:-not a pull request}"
+
+          # AND WHEN THIS RUN BEGAN. The hand-over step's second question is
+          # "which open pull request mentions this issue at all", and a mention
+          # is only evidence of THIS run's work if it was made during it. An
+          # issue that cites a pull request as evidence -- #75 cites #71 five
+          # times -- creates that same cross-reference the moment it is filed,
+          # and the step reported "Done — pull request #71" for a run that
+          # produced nothing. Stamped here rather than in the gate for the same
+          # reason as the head above: this is where the writer queue lets go.
+          date -u +%Y-%m-%dT%H:%M:%SZ | sed 's/^/started=/' >> "$GITHUB_OUTPUT"
+
       - name: Run Claude
         if: steps.auth.outputs.ok == 'true'
         id: claude
@@ -811,6 +869,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
+          HEAD_BEFORE: ${{ steps.prhead.outputs.sha }}
+          RUN_STARTED: ${{ steps.prhead.outputs.started }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -842,44 +902,73 @@ jobs:
           # perfectly compliant agent produces a pull request the first query
           # cannot see. Found by review on #58 rather than in production, which
           # is the cheaper of the two places.
+          #
+          # AND THE TRIGGER IS NOT ALWAYS AN ISSUE. `@claude` on a pull request
+          # starts an agent whose $ISSUE is that pull request's number, and
+          # GraphQL's `issue(number:)` does not resolve pull requests — it
+          # returns NOT_FOUND. `gh` then exits non-zero having already written
+          # the error document to stdout, which `|| echo ""` does not undo, so
+          # $PR became the JSON. On #71 that shipped as
+          # `### Done — pull request #{"data":{"repository":{"issue":null}}...`.
+          # `issueOrPullRequest` answers for both, and a pull request that
+          # triggered its own agent is its own answer.
           # shellcheck disable=SC2016  # $owner/$repo/$number are GraphQL
           # variables bound by -F below, not shell expansions.
-          PR=$(gh api graphql -f query='
+          FOUND=$(gh api graphql -f query='
             query($owner:String!, $repo:String!, $number:Int!) {
               repository(owner:$owner, name:$repo) {
-                issue(number:$number) {
-                  closedByPullRequestsReferences(first:5, includeClosedPrs:false) {
-                    nodes { number state }
-                  }
-                  timelineItems(last:30, itemTypes:[CROSS_REFERENCED_EVENT]) {
-                    nodes {
-                      ... on CrossReferencedEvent {
-                        source { ... on PullRequest { number state } }
+                issueOrPullRequest(number:$number) {
+                  __typename
+                  ... on PullRequest { number state headRefOid }
+                  ... on Issue {
+                    closedByPullRequestsReferences(first:5, includeClosedPrs:false) {
+                      nodes { number state }
+                    }
+                    timelineItems(last:30, itemTypes:[CROSS_REFERENCED_EVENT]) {
+                      nodes {
+                        ... on CrossReferencedEvent {
+                          referencedAt
+                          source { ... on PullRequest { number state } }
+                        }
                       }
                     }
                   }
                 }
               }
             }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
-            --jq '.data.repository.issue as $i
-                  | ([$i.closedByPullRequestsReferences.nodes[]?
-                      | select(.state == "OPEN") | .number]
-                     + [$i.timelineItems.nodes[]?.source?
-                        | select(.state? == "OPEN") | .number])
-                  | first // ""' 2>/dev/null || echo "")
+            --jq '.data.repository.issueOrPullRequest as $i
+                  | if $i.__typename == "PullRequest"
+                    then (if $i.state == "OPEN"
+                          then "here \($i.number) \($i.headRefOid)" else "" end)
+                    else (([$i.closedByPullRequestsReferences.nodes[]?
+                             | select(.state == "OPEN") | "pr \(.number)"]
+                            + [$i.timelineItems.nodes[]?
+                               | select(.source?.state? == "OPEN")
+                               | "xref \(.source.number) \(.referencedAt)"])
+                          | first // "")
+                    end' 2>/dev/null || echo "")
 
-          # A pull request number is the whole story, so it wins over every
-          # other signal — including a run whose conclusion never arrived. An
-          # agent that opened a pull request and then timed out has still done
-          # the work, and reporting that as a failure would send somebody
-          # looking for a branch that is already there.
-          if [ -n "$PR" ]; then
-            KIND=done_pr; DETAIL="$PR"
-          elif [ "$CONCLUSION" = "success" ]; then
-            KIND=done_nopr; DETAIL=""
-          else
-            KIND=failed; DETAIL="${CONCLUSION:-no conclusion}"
-          fi
+          # Everything from here is .github/scripts/handover-decision.sh, which
+          # is a file so that .github/tests/handover-decision-test.sh can run
+          # it. Both defects this step has had were in a shell block embedded in
+          # a workflow, where nothing could execute it — the same reason the
+          # intake gate and the watchdog filter are files.
+          #
+          # It decides four things at once: that only "here <n> <sha>" and
+          # "pr <n>" mean anything and everything else is "found nothing"; that
+          # a pull request which triggered its own agent is only "done" if its
+          # head actually moved; that a clean run which pushed nothing says so
+          # rather than claiming a push; and that a pull request number found
+          # for an issue outranks even a missing conclusion, because an agent
+          # that opened a pull request and then timed out has still done the
+          # work.
+          {
+            read -r KIND
+            read -r DETAIL
+            read -r EXTRA
+          } < <(bash .github/scripts/handover-decision.sh \
+                  "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}" "$RUN_STARTED")
+          echo "::notice::hand over as $KIND (${DETAIL:-no detail}${EXTRA:+, $EXTRA})"
 
           # The agent labels the issue itself when it blocks — and a BLOCKED
           # comment written by the agent says far more than this step could, so
@@ -894,11 +983,22 @@ jobs:
               exit 0 ;;
           esac
 
-          bash .github/scripts/agent-say.sh outcome "$KIND" "$RUN_URL" "$DETAIL" > /tmp/outcome.md
+          bash .github/scripts/agent-say.sh outcome "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" > /tmp/outcome.md
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
 
           case "$KIND" in
-            done_pr|done_nopr)
+            done_pr|done_here|done_here_nopush|done_nopr)
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
+            done_here_cut)
+              # agent:review only, and NOT agent:ready. The first version added
+              # both -- a commit to read, and somebody to pick up the rest --
+              # and review pointed out that the second label is inert on a pull
+              # request and therefore a lie: .github/scripts/queue-scan.jq drops
+              # every pull request before it reads a label, and labelling one
+              # raises pull_request.labeled, which this workflow does not listen
+              # for. Nothing would ever have come back for it, while the label
+              # said something would. The comment says so in words instead --
+              # words are the only thing that actually reaches a person here.
               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
             *)
               # agent:failed AND back to agent:ready: the label pair says both

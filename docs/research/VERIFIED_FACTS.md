@@ -482,7 +482,7 @@ BSP already demonstrated to be an incomplete description of its own board.
 
 ### The Waveshare board **does** have haptics — the earlier entry was wrong
 
-- **Claim:** a vibration motor on connector `J1`, driven from **GPIO 18** through
+- **Claim:** a vibration motor on pads `P1`/`P2`, driven from **GPIO 18** through
   R12 (4.7 kΩ) into Q1 (MMBT3904, NPN), with the motor supplied from **BLDO2**.
 - **Source:** S6, net `MOTOR`.
 - **Correction:** the matrix previously recorded "Haptics — none found", because
@@ -607,10 +607,17 @@ magnification the camera did not have, and the items that do need one are in
 [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §3 as bench readings
 still to take.
 
-### The Waveshare cell is 400 mAh — less than half the T-Watch's
+### The Waveshare cell is *marked* 400 mAh — and probably does not hold it
 
-- **Claim:** the battery is a `402728` pouch cell, **3.7 V, 400 mAh**,
-  manufactured 2026-07-11. `402728` is the geometry: 4.0 mm × 27 mm × 28 mm.
+- **Claim:** the battery is a `402728` pouch cell manufactured 2026-07-11,
+  **labelled 3.7 V, 400 mAh**. `402728` is the geometry: 4.0 mm × 27 mm × 28 mm.
+  **What is verified is the reading of the label, not the capacity behind it.**
+  400 mAh at 3.7 V in 3.024 cm³ implies 132.3 mAh/cm³, against an 87–102 band
+  observed across 51 datasheet cells from four manufacturers at footprints
+  ≤ 32 mm — +22 % on the densest cell in that sample. Honest expectation
+  **250–310 mAh**, `ESTIMATED` —
+  [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1. One weighing settles it (T-106 M3):
+  6.0–6.5 g is consistent with 280–330 mAh, and only 7.5–8 g with a real 400.
 - **Source:** S9 — printed on the cell's own label.
 - **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
 - **Was:** `UNKNOWN` — the schematic shows the cell on `BAT1` through the AXP2101
@@ -654,10 +661,14 @@ still to take.
 
 ### The vibration motor is not fitted
 
-- **Claim:** the `MOTOR` pads (`J1`) are bare — no solder, no wire, no part — and
+- **Claim:** the `MOTOR` pads (`P1`/`P2`) are bare — no solder, no wire, no part — and
   the coin-motor footprint beside them is empty, on the unit received. The drive
   circuit S6 describes (GPIO 18 → R12 → Q1 → BLDO2) is present and correct.
-- **Source:** S9.
+- **Source:** S9. **Designator corrected 2026-08-22** — these pads were recorded
+  as `J1`, which is in fact the *battery* connector; see
+  [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1.1. The correction also resolves an
+  internal contradiction: the battery plug is visibly mated to a two-pin header on
+  this unit, so `J1` cannot have been two bare pads. **The finding is unchanged.**
 - **Board revision:** as above. **`OBSERVED` on one unit, not `VERIFIED` for the
   product** — whether Waveshare ships a motor loose, whether another production
   run populates it, and what the listing promises are three unanswered questions.

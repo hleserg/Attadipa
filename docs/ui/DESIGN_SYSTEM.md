@@ -180,9 +180,11 @@ legible doing it, which is the condition that makes the fall-through in
 `color()` defensible at all.
 
 None of this is a proposal to change the palette. The colours are the owner's
-(final §42) and open question **A7** already records that the published brand art
-disagrees with the text. What changed here is that the numbers now exist, are
-computed rather than eyeballed, and break a test if they move.
+(final §42), and the published brand art's sampled values — which disagreed —
+were resolved in favour of these on 2026-08-22
+([OWNER_DECISIONS.md](../research/OWNER_DECISIONS.md) OD-15). What changed here
+is that the numbers now exist, are computed rather than eyeballed, and break a
+test if they move.
 
 ## 4. Typography
 

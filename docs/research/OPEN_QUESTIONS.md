@@ -5,7 +5,11 @@ resolve it, so answering is a task rather than a search.
 
 Status: **UNKNOWN** (no source) · **CONFLICTING** (sources disagree) ·
 **ASSUMPTION** (plausible, unconfirmed, must stay flagged in code) ·
-**RESOLVED** (moved to [VERIFIED_FACTS.md](VERIFIED_FACTS.md)).
+**RESOLVED** — a question that was answered. A *fact* moves to
+[VERIFIED_FACTS.md](VERIFIED_FACTS.md); a **decision** does not, because it is
+not a fact about the world and would read as one there. It stays struck through
+in place, pointing at its record in
+[OWNER_DECISIONS.md](OWNER_DECISIONS.md). A7 and A8 are the first of these.
 
 An UNKNOWN that blocks work is a blocker — record it in
 [../../TASKS.md](../../TASKS.md) in the blocker format rather than coding past it.
@@ -30,11 +34,11 @@ nobody is asked is not a question.
 | A1 | Does the developer have either board physically, and which revision? | **UNKNOWN** | ask the project owner — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
 | A2 | If a T-Watch is present: which of the five radio chips, and which of the two GNSS modules? | **UNKNOWN** | inspect the unit / order details — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
 | A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
-| A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN — now concrete** | ask the project owner. The owner's existing MeshCore node runs 868.731 MHz at 22 dBm ([OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-2). 22 dBm is 158 mW; whether that is lawful on that frequency in the region of operation is unestablished — **asked as [#55](https://github.com/hleserg/Attadipa/issues/55)** |
+| A4 | Which regulatory region governs LoRa operation here? | **CLOSED — not this project's to answer** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-14, 2026-08-22: asked as [#55](https://github.com/hleserg/Attadipa/issues/55), and the owner declined to name one — *"legality is my problem, not the firmware's."* No country or region is coming; nothing here researches a specific jurisdiction's rule table. [ADR-0006](../adr/0006-settings-and-bounded-values.md)'s transmit-closed-while-`Unknown` gate is unchanged by this and still applies to whoever configures the device |
 | A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **UNKNOWN** | ask the project owner — see [../hardware/MAGNETOMETER_BACKLOG.md](../hardware/MAGNETOMETER_BACKLOG.md) — **asked as [#56](https://github.com/hleserg/Attadipa/issues/56)** |
 | A6 | **Does the Attadipa node carry a magnetometer?** | **UNKNOWN** | ask the project owner. Note that "yes" does *not* give the watch a compass: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform. The ADR exists so that this answer does not arrive before the model does — **asked as [#56](https://github.com/hleserg/Attadipa/issues/56)** |
-| A7 | **Which orange, and which olive?** The published brand art (`pics/`) and the canonical palette in final §42 disagree: the wordmark and wings sample at `#E16439`…`#EC552A` against Attadipa Orange `#FF8A40`, and the head and tagline at `#595E3A`…`#666A46` against Ink Olive `#2F3A2E` | **UNKNOWN — conflict recorded** | the project owner. This is identity, not engineering. [`../../pics/README.md`](../../pics/README.md) holds the sampled values; [`../ui/DESIGN_SYSTEM.md`](../ui/DESIGN_SYSTEM.md) keeps the §42 values until this is answered. Whichever wins, the loser's values must leave the repository rather than sit beside them — **asked as [#57](https://github.com/hleserg/Attadipa/issues/57)** |
-| A8 | **May the icon and favicon be re-exported with transparent corners?** Both are RGB with no alpha, so the area outside the rounded square is opaque black — visible on any non-black page or launcher background | **UNKNOWN** | the project owner. A mechanical conversion, but it alters supplied art, so it has not been done — **asked as [#57](https://github.com/hleserg/Attadipa/issues/57)** |
+| ~~A7~~ | ~~Which orange, and which olive?~~ | **RESOLVED** | the project owner, on [issue #57](https://github.com/hleserg/Attadipa/issues/57), 2026-08-22: §42 wins — Attadipa Orange `#FF8A40`, Ink Olive `#2F3A2E`. The sampled brand-art values that lost have left [`../../pics/README.md`](../../pics/README.md) and are recorded in [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-15 |
+| ~~A8~~ | ~~May the icon and favicon be re-exported with transparent corners?~~ | **RESOLVED — yes** | the project owner, same issue. `pics/Ikon.png` and `pics/Favicon.png` are re-exported RGBA with transparent corners; the pixels inside the rounded square are unchanged. OD-15 |
 | A9 | **Does the day theme keep its near-white page on the AMOLED board?** The Waveshare panel is emissive: every lit pixel draws its own current and ages in proportion. Rendered on the 410×502 face, the day theme's mean per-subpixel drive is 4.2× the night theme's on the raw 8-bit mean and 13.9× gamma-decoded (ESTIMATED — no panel, no efficiency curve; method in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1). The T-Watch's IPS panel does not care, so this is the first design question whose answer differs by board | **UNKNOWN** | the project owner. Four options and their costs are tabulated in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1. Not an engineering call: it decides whether the two boards look like one product — **asked as [#52](https://github.com/hleserg/Attadipa/issues/52)** |
 | A10 | **What does Attadipa do about static content on the AMOLED?** Adjacent to A9 and not the same question: a uniformly bright page ages the panel evenly, while a dark page with bright static elements leaves their shape behind, and a mitigation for one does nothing for the other. The CO5300 has no pixel-shift and no scroll command, its Auto Current Limit (`55h`) defaults to disabled and no driver in the ecosystem writes it, and the vendor BSP boots the panel at 100 % brightness with the hardware dimming ramp turned off | **UNKNOWN** | the project owner. Six options with their costs are tabulated in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.5. Should not be answered before §5 steps 7 and 8 have been run — today both sides of it are unmeasured — **asked as [#53](https://github.com/hleserg/Attadipa/issues/53)** |
 
@@ -44,15 +48,20 @@ which changes region rules and mesh interoperability, not just a driver.
 
 A4 is not a preference. Which frequencies, power levels and duty cycles are
 lawful is set by the region the device operates in, and the answer changes what
-the radio may legally do. It has to be settled before anything transmits.
+the radio may legally do. It has to be settled before anything transmits — by
+whoever operates a given device, not by this project on their behalf.
 
 A4 stopped being theoretical on 2026-08-21. The owner's own node is already on
 air at 868.731 MHz and 22 dBm. Attadipa is not responsible for that node — but
-the numbers it ships as *defaults* are Attadipa's responsibility, and a default
-cannot be chosen before A4 is answered. Note also that A4 no longer decides what
-the core is built to do: per OD-2 these are settings, so the core is built to
-carry a bounded, user-settable value either way. A4 decides the bounds and the
-default, which is a smaller question than it was — but a legal one still.
+the numbers it ships as *defaults* are Attadipa's responsibility, and it ships
+none: [OD-14](OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)
+closes A4 as the owner's to answer for his own device, not this project's to
+research a table for. Note also that A4 was never going to decide what the core
+is built to do: per OD-2 these are settings, so the core carries a bounded,
+user-settable value regardless of which region turns out to apply. What A4 used
+to promise — a specific profile this project would write and ship as a
+default — is not coming, and per ADR-0006 was never supposed to ship as a
+default anyway.
 
 A5 decides whether five epics in §67 are dormant or dead.
 
@@ -89,10 +98,10 @@ proceed; hardware work does not.
 | # | Question | Status | Resolved by |
 |---|---|---|---|
 | ~~D1~~ | ~~Waveshare flash and PSRAM size~~ | **RESOLVED** | schematic: `GD25Q256EYIGR` = 32 MB quad flash; SoC is `ESP32-S3R8` = 8 MB PSRAM. Type of PSRAM rolls into D12. **Confirmed on silicon 2026-08-22**: JEDEC `0xC8 0x4019` and eFuse `PSRAM_CAP = 8M` — [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2–1.3 |
-| D2 | Waveshare battery capacity and charge path details | **PARTIAL** | **Capacity answered**: 400 mAh / 3.7 V, cell `402728`, read off a received unit 2026-08-22 — [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2. The cell is on a **removable 2-pin plug**, not soldered. **Charge path still open**: the AXP2101's `TS`/NTC termination on this board, the `BAT1` connector part and pitch, and what charge current the vendor firmware sets — none of it traced. Answer from the schematic's AXP2101 sheet and the AXP2101 datasheet |
+| D2 | Waveshare battery capacity and charge path details | **PARTIAL** | **Capacity answered**: 400 mAh / 3.7 V, cell `402728`, read off a received unit 2026-08-22 — [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2. The cell is on a **removable 2-pin plug**, not soldered. **Charge path traced 2026-08-22** — [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §4: Waveshare's own demo sets **400 mA**, upstream XPowersLib's copy of the same file sets 200 mA, and the `REG 0x62` power-on default cannot be quoted at all because the datasheet prints it eFuse-trimmed. The Waveshare BSP configures the charger **not at all**, so whatever is in that register at boot is what charges the cell. `REG 0x16` defaults to a **1500 mA** input limit, which is not USB-compliant on a port that granted 500. **And the sticker is the thing now in doubt**: `402728` is 3.024 cm³, so 400 mAh at 3.7 V implies 132.3 mAh/cm³ against an 87–102 band across 51 datasheet cells from four manufacturers — honest expectation 250–310 mAh, which makes the vendor's own 400 mA setting **1.33C** on a pouch whose class maximum is 1.0C. **Still `UNKNOWN`**: the value actually in `REG 0x62` on this board (never read), the `TS`/NTC termination, and the `BAT1` connector part and pitch. The reading of the sticker is not in doubt; what it means is |
 | D18 | **Which ESP32-S3 errata apply to revision v0.2?** The received unit is `v0.2`; nobody has read the ESP32-S3 Errata sheet against it, so whether any erratum touches octal PSRAM, USB-Serial/JTAG or the flash interface is unknown | UNKNOWN | the ESP32-S3 Errata sheet, read against `WAFER_VERSION_MAJOR = 0` / `MINOR = 2` — [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §3.1 |
 | ~~D3~~ | ~~Waveshare expansion connector pinout~~ **The question was mis-stated: there is no expansion connector.** Read visually, `J3` is the 34-pin AMOLED display FPC — its block is titled AMOLED and carries `QSPI_SIO0`–`SIO3`, `QSPI_SCL`, `LCD_CS`/`RESET`/`TE`, the MIPI pairs, `VCI`, `VDDIO`, `IM0`/`IM1` and `TP_SCL`/`TP_SDA`/`TP_INT`/`TP_RESET` | **CLOSED — mis-stated** | [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.4. This retires the hot-unplug and bus-capacitance worry D3 inherited from the T-Watch, where main-I2C `SDA` genuinely does reach a detachable GNSS connector — but it confirms the touch half of the main I2C bus leaves the mainboard over a flex cable |
-| ~~D4~~ | ~~Does the Waveshare board have any haptic output?~~ | **RESOLVED — and the earlier answer was wrong** | **Yes.** A vibration motor on connector J1, driven from GPIO 18 through R12 (4.7 kΩ) and Q1 (MMBT3904), supplied from BLDO2. No driver IC — which is why searching for a haptic part found nothing |
+| ~~D4~~ | ~~Does the Waveshare board have any haptic output?~~ | **RESOLVED — and the earlier answer was wrong** | **Yes, as a circuit.** A vibration motor on pads `P1`/`P2` (recorded as `J1` until 2026-08-22 — `J1` is the *battery* connector, see [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1.1), driven from GPIO 18 through R12 (4.7 kΩ) and Q1 (MMBT3904), supplied from BLDO2. No driver IC — which is why searching for a haptic part found nothing. **The pads are bare on the received unit and no motor is fitted** — T-097 |
 | D5 | Waveshare button/wake inputs — BSP declares none; is that the board or the BSP? | **PARTIAL — it is the BSP** | schematic shows at least two tactile keys (`Key1` by `BOOT`, `Key3`) plus `PWRON`. Which GPIO each key uses is still unresolved |
 | D6 | T-Watch: which PMU rail powers GNSS on the *specific* unit (BLDO1 vs DC3) | UNKNOWN | inspect the unit for rear BOOT/RST buttons |
 | D7 | Exact ST7789V3 and CO5300 init sequences and their timing | UNKNOWN | vendor driver source |

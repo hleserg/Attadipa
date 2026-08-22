@@ -1519,6 +1519,38 @@ stale silently. The protocol is
   evidence and it is still evidence, not a trace.
 - **Hardware required:** yes — a meter on the board.
 
+### T-106 · Three measurements and five registers, before any cell is ordered
+- **Priority:** P1 — it gates the battery decision, and every part of it is
+  cheap. Nothing here needs a soldering iron.
+- **Dependencies:** the research is done —
+  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md). What is missing is
+  physical, and only the owner can take it.
+- **Why it is not one measurement.** The note's sizing table branches on all
+  three, and each answers a different way of being wrong:
+  - **M1 — closed-case clearance**, *not* the depth of the recess. Three
+    plasticine balls, the cover screwed to normal torque, and the **smallest**
+    of the three is the number. A cell chosen against the recess depth fits
+    until the case is closed on it.
+  - **M2 — the clear rectangle, the length the connector actually leaves, and
+    the diagonal.** The diagonal is the one that gets forgotten: a rectangle
+    that fits on paper can fail to lie flat inside a body 42.00 mm across.
+  - **M3 — weigh the fitted cell**, which is the lie detector. Pouches in this
+    class run 1.74–2.26 g/cm³ across four manufacturers. **6.0–6.5 g is
+    consistent with 280–330 mAh; 7.5–8 g is the only mass consistent with a
+    genuine 400 mAh**, and no sampled pouch reaches that density. A kitchen
+    scale settles what 51 datasheets can only estimate.
+- **And five registers, on the board, whenever convenient:** `0x62` (charge
+  current — the one value that has never been read and cannot be quoted from
+  the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
+  `0x12` and `0x69`, at I²C address `0x34`.
+- **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
+  instrument named, the five register values recorded as read, and the sizing
+  table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
+  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
+- **What must not be assumed:** that the sticker settles the capacity. Reading
+  it was verified; what it means is exactly what is in doubt.
+- **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1537,7 +1569,8 @@ Possible options:
                    hardware is not spent improvising.
 Recommended next action:
                 Option 3 now, in parallel with option 1. Ask the project owner
-                about hardware availability (A1–A4).
+                about hardware availability (A1–A3); A4 is closed, not
+                outstanding (OD-14).
 ```
 
 ### T-011 · Interference measurement
@@ -1564,19 +1597,23 @@ Recommended next action:
 ### T-012 · Answers from the project owner
 - **Priority:** P0
 - **Waiting on:** the project owner
-- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1–A6 —
-  hardware availability and revision · which radio and GNSS variant · a second
-  mesh device · the regulatory region · whether an external magnetometer is
-  intended · whether the node carries one.
+- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3,
+  A5, A6 — hardware availability and revision · which radio and GNSS variant ·
+  a second mesh device · whether an external magnetometer is intended · whether
+  the node carries one. **A4 (the regulatory region) is no longer on this
+  list** — closed 2026-08-22, not by an answer but by the owner declining to
+  give one: legality is his problem, not the firmware's
+  ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
+  No task here researches a specific jurisdiction's rules on the project's own
+  initiative; [ADR-0006](docs/adr/0006-settings-and-bounded-values.md)'s
+  transmit-closed-while-`Unknown` gate needs no such research to keep working.
 - **Impact:** A1–A2 gate all hardware work, and A2 got sharper: of the five
   candidate radios, two cannot do LoRa at all and only one is supported by the
   pinned MeshCore ([ADR-0003](docs/adr/0003-radio-not-lora.md)), so the answer
-  decides whether the watch has a local mesh path at all. **A4 is a legal
-  constraint, not a preference.** It does not gate the build — the values are
-  runtime settings either way — but it gates *transmitting*: while the region
-  profile is `Unknown` the transmit path stays closed. A5 and A6 decide whether
-  five magnetometer epics are dormant or dead, and A6 does **not** give the watch
-  a compass even if the answer is yes ([ADR-0009](docs/adr/0009-heading.md) §3).
+  decides whether the watch has a local mesh path at all. A5 and A6 decide
+  whether five magnetometer epics are dormant or dead, and A6 does **not** give
+  the watch a compass even if the answer is yes
+  ([ADR-0009](docs/adr/0009-heading.md) §3).
 - **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification
@@ -1893,7 +1930,9 @@ Recommended next action:
   surface (4.95) and then fails on a **raised** card at 4.44 — six hundredths
   under 4.5:1, on the most ordinary thing the system draws. Both are pinned in
   `tests/test_ui_tokens.cpp`, both are tabulated in DESIGN_SYSTEM §3.2, and both
-  break a test if the palette moves. See also open question **A7**.
+  break a test if the palette moves. The brand-art-versus-§42 conflict once
+  recorded as open question A7 is resolved — see
+  [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 - **Still hardware-blocked, as it always was:** final §55 forbids preserving a
   concept-board value that fails on the real display. Every number in `ui/` is
   **PROPOSED**; none has been shown on a panel. `color.danger` stays UNKNOWN.

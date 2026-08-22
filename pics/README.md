@@ -7,9 +7,9 @@ they are.
 
 | File | Format | SHA-256 | Intended use |
 |---|---|---|---|
-| `AttadipaBanner.png` | PNG, 1788 × 894, RGB (no alpha) | regenerated for Attadipa | repository banner — in use at the top of [`../README.md`](../README.md) |
-| `Ikon.png` | PNG, 1254 × 1254, RGB (no alpha) | `6e1fa8e735eff4aa2008c6dd01403adf2bcf20a9e01e65af6f3cbefc66969676` | application / launcher icon — **not yet used** |
-| `Favicon.png` | PNG, 1254 × 1254, RGB (no alpha) | `9605119b0a297352004ca18c918c5336cdf256e759d3966af1e178e7d2debfac` | site favicon — **not yet used** |
+| `AttadipaBanner.png` | PNG, 1788 × 894, RGB (no alpha) | `ad7c60d4bb0f808265ecb8a6f17704af054fbd2098276774ab7cc7d2a9e473a3` | repository banner — in use at the top of [`../README.md`](../README.md) |
+| `Ikon.png` | PNG, 1254 × 1254, **RGBA** | `46f3b9cf4bfd931f37635f473dd064212ad46ff79179c958dced24ebe78a76cb` | application / launcher icon — **not yet used** |
+| `Favicon.png` | PNG, 1254 × 1254, **RGBA** | `f24025e4ae7c68533af964fc1dad9ac0bb2d29063653dcff3da811c552f22891` | site favicon — **not yet used** |
 
 ## What the banner establishes
 
@@ -29,31 +29,21 @@ they are.
 only in the corner radius and the crop, and in the background tint — `#FDF0DF`
 against `#FEF6EC`.
 
-## Two things a later reader needs to know
+## Two questions the owner has now answered
 
-**The corners are opaque black, not transparent.** All three files are RGB with
-no alpha channel, so the area outside the rounded square in `Ikon.png` and
-`Favicon.png` is `#000000`. On the banner that is invisible, because the banner
-is full-bleed. On an icon it is not: a favicon on any non-black page, and a
-launcher icon on any non-black background, will show black corners. Converting
-them is a five-line job, but it changes the owner's art, so it has not been
-done — see A8 in
-[`../docs/research/OPEN_QUESTIONS.md`](../docs/research/OPEN_QUESTIONS.md).
+**A8 — the corners were opaque black, not transparent.** `Ikon.png` and
+`Favicon.png` were RGB with no alpha channel, so the area outside the rounded
+square was `#000000` — invisible on the banner, which is full-bleed, but a
+black box on any non-black page or launcher background. The owner said yes on
+[issue #57](https://github.com/hleserg/Attadipa/issues/57) (2026-08-22), and
+both files were re-exported with an alpha channel: the area outside the
+rounded square is now transparent, the pixels inside it are unchanged. See
+OD-15 in [`../docs/research/OWNER_DECISIONS.md`](../docs/research/OWNER_DECISIONS.md).
 
-**The inks are not the canonical palette.** Sampled from the art — approximate,
-because everything here is gradient-filled and carries a paper texture:
-
-| Role | Sampled from the art | Canonical token (final §42) | Same? |
-|---|---|---|---|
-| wordmark / wings | `#E16439` … `#EC552A` | Attadipa Orange `#FF8A40` | **no** — the art is deeper and redder |
-| glow | `#FECD5C`, `#FDBC29` | Glow Amber `#FFC857` | close |
-| head, thorax, tagline | `#595E3A` … `#666A46` | Ink Olive `#2F3A2E` | **no** — the art is much lighter |
-| hills, leaves | `#9BB4A7`, `#BBC7B6` | Leaf Sage `#A7B49C` / Meadow Green `#6FA07A` | between the two |
-| background | `#FAEEE0`, `#FDF0DF`, `#FEF6EC` | Warm Ivory `#FFF6E8` | close, but three different values across three files |
-
-This is a real conflict and it is recorded rather than smoothed over: the
-design system says one thing and the published mark says another. It is an
-identity decision, so it belongs to the owner — A7 in
-[`../docs/research/OPEN_QUESTIONS.md`](../docs/research/OPEN_QUESTIONS.md).
-Until it is answered, `DESIGN_SYSTEM.md` keeps the §42 values and this file
-keeps the sampled ones, and neither pretends to be the other.
+**A7 — the inks were not the canonical palette.** The art sampled deeper and
+redder than Attadipa Orange `#FF8A40` and lighter and greener than Ink Olive
+`#2F3A2E`. The owner resolved this in favour of the canonical palette (final
+§42) — the values already in use across the design system and the firmware —
+on the same issue. The sampled hex values are retired; the resolution and the
+sampled values that lost are recorded in OD-15 rather than kept here beside
+the canon they disagree with.
