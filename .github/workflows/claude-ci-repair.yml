@@ -268,8 +268,23 @@ jobs:
           # This one writes, so it gets Edit, Write and Bash. The boundary that
           # matters for it is the job's `permissions:` block and the branch it
           # is checked out on, not the tool list.
+          # WHICH MODEL, AND HOW HARD IT THINKS. Neither was pinned until
+          # 2026-08-22, and the action has no `model:` input -- so every run
+          # this loop has ever made used whatever the CLI defaulted to, and
+          # nothing in the repository recorded which model that was. A result
+          # you cannot attribute to a model is a result you cannot compare
+          # against the next one.
+          #
+          # Verified against `claude --help` rather than assumed: `--model`
+          # takes an alias ('opus', 'sonnet', 'fable') or a full name, and
+          # `--effort` takes one of low, medium, high, xhigh, max. The full
+          # name is pinned rather than the alias so that a new Opus does not
+          # silently change what this loop is: the cost of that choice is that
+          # somebody must come here to move it, which is the intended cost.
+          #
+          # Owner decision, 2026-08-22: Opus 5 at the top effort level.
           claude_args: |
-            --max-turns 40 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,TodoWrite"
+            --model claude-opus-5 --effort max --max-turns 40 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,TodoWrite"
           prompt: |
             CI failed on branch `${{ needs.gate.outputs.branch }}`, pull request
             #${{ needs.gate.outputs.pr }}. The failing job is
