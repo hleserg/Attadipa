@@ -410,28 +410,51 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
         const bool in_order = !observed_in_future &&
             (!have_previous_ || observation.observed_at >= previous_position_at_);
 
-        if (usable_for_rate && in_order) {
-            if (have_previous_) {
-                const Millis dt = elapsed(previous_position_at_, observation.observed_at);
-                const std::uint32_t moved =
-                    distance_mm(*observation.position, previous_position_);
+        // DETECTING AND ADOPTING ARE TWO DECISIONS, NOT ONE.
+        //
+        // They were one, and it was wrong in the direction that matters. Both
+        // sat inside `usable_for_rate && in_order`, so a sample that arrived
+        // out of order, or claimed to be measured in the future, skipped the
+        // detectors entirely — it was neither adopted NOR checked. That made
+        // the refusal above worse than useless against the case it exists for:
+        // a hostile sample could report the wrist five hundred kilometres from
+        // a wrist the accelerometer says never moved, and raise nothing, while
+        // `remember()` below still stored it as the last trusted position.
+        //
+        // The comment on `observed_in_future` promised the opposite, and so did
+        // the pull request that introduced it — "still evaluated for its own
+        // trust reasons, never adopted as the baseline". Only the second half
+        // was implemented. Found by review on #71, twice, before it merged.
+        //
+        // So: detect against whatever baseline currently stands, whether or not
+        // this sample is fit to replace it; adopt only in order. A backward dt
+        // needs no guard of its own — `elapsed()` saturates `to <= from` to
+        // zero and the `dt.value > 0` test below already skips it, so an
+        // out-of-order sample yields no rate rather than a fabricated one.
+        if (usable_for_rate && have_previous_) {
+            const Millis dt = elapsed(previous_position_at_, observation.observed_at);
+            const std::uint32_t moved =
+                distance_mm(*observation.position, previous_position_);
 
-                if (dt.value > 0) {
-                    // Millimetres per second without forming a product that could
-                    // overflow: moved is at most 1e9, and multiplying by 1000 keeps
-                    // it inside 64 bits before the division.
-                    const std::uint64_t implied =
-                        (static_cast<std::uint64_t>(moved) * 1000ULL) / dt.value;
-                    jumped = implied > policy.implausible_speed_mm_s;
-                }
-
-                // The canonical detector, and the reason the BMA423 is named in
-                // ADR-0011: a still wrist is genuinely still, so a position that
-                // walks away from a stationary device is evidence in a way it would
-                // not be on a device that cannot tell.
-                moved_at_rest =
-                    motion.known && !motion.moving && moved > policy.jump_while_still_mm;
+            if (dt.value > 0) {
+                // Millimetres per second without forming a product that could
+                // overflow: moved is at most 1e9, and multiplying by 1000 keeps
+                // it inside 64 bits before the division.
+                const std::uint64_t implied =
+                    (static_cast<std::uint64_t>(moved) * 1000ULL) / dt.value;
+                jumped = implied > policy.implausible_speed_mm_s;
             }
+
+            // The canonical detector, and the reason the BMA423 is named in
+            // ADR-0011: a still wrist is genuinely still, so a position that
+            // walks away from a stationary device is evidence in a way it would
+            // not be on a device that cannot tell. It needs no interval at all,
+            // which is exactly why gating it on `in_order` cost the most.
+            moved_at_rest =
+                motion.known && !motion.moving && moved > policy.jump_while_still_mm;
+        }
+
+        if (usable_for_rate && in_order) {
             previous_position_    = *observation.position;
             previous_position_at_ = observation.observed_at;
             have_previous_        = true;
@@ -446,20 +469,22 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
         const bool in_order = !observed_in_future &&
             (!have_previous_altitude_ || observation.observed_at >= previous_altitude_at_);
 
-        if (usable_for_rate && in_order) {
-            if (have_previous_altitude_) {
-                const Millis dt = elapsed(previous_altitude_at_, observation.observed_at);
-                if (dt.value > 0) {
-                    std::int64_t delta = static_cast<std::int64_t>(*observation.altitude_msl_mm) -
-                                          previous_altitude_mm_;
-                    if (delta < 0) {
-                        delta = -delta;
-                    }
-                    const std::uint64_t rate =
-                        (static_cast<std::uint64_t>(delta) * 1000ULL) / dt.value;
-                    climbed_absurd = rate > policy.implausible_altitude_rate_mm_s;
+        // Same split, same reason — see the position block above.
+        if (usable_for_rate && have_previous_altitude_) {
+            const Millis dt = elapsed(previous_altitude_at_, observation.observed_at);
+            if (dt.value > 0) {
+                std::int64_t delta = static_cast<std::int64_t>(*observation.altitude_msl_mm) -
+                                      previous_altitude_mm_;
+                if (delta < 0) {
+                    delta = -delta;
                 }
+                const std::uint64_t rate =
+                    (static_cast<std::uint64_t>(delta) * 1000ULL) / dt.value;
+                climbed_absurd = rate > policy.implausible_altitude_rate_mm_s;
             }
+        }
+
+        if (usable_for_rate && in_order) {
             previous_altitude_mm_   = *observation.altitude_msl_mm;
             previous_altitude_at_   = observation.observed_at;
             have_previous_altitude_ = true;

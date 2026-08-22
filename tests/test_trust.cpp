@@ -441,6 +441,114 @@ void test_a_future_dated_observation_is_rejected_without_freezing_the_baseline()
     CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
 }
 
+// THE DETECTORS RUN ON A SAMPLE THAT IS NOT FIT TO BE THE BASELINE.
+//
+// Refusing an out-of-order or future-dated sample as a baseline is right.
+// Refusing to *look* at it is not, and for a while this file could not tell the
+// two apart: every existing test above passes `MotionEvidence{}` — motion
+// unknown — which can never raise MotionDisagreement whatever the code does.
+// So the detector could be skipped entirely for exactly the class of sample
+// these tests are about, and nothing here would notice. It was, and review
+// found it rather than the suite.
+//
+// All three below use `still` — known, and not moving — which is the only
+// evidence that makes MotionDisagreement possible, and each ends by proving the
+// baseline was still not adopted. A test that only checked the reason fires
+// would pass against an implementation that reopened the freeze.
+void test_a_reordered_sample_is_still_checked_against_the_standing_baseline()
+{
+    const MotionEvidence still{true, false};
+
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(10000), PositionValidity::Valid, still, {}, at(10000));
+
+    // Measured a second BEFORE the accepted baseline, and reporting the wrist
+    // ~500 km away while the accelerometer says it never left the desk. It must
+    // not become the baseline — it is older — and it must not pass unexamined
+    // either, which is what it did.
+    evaluator.observe(good_fix(9000, kLat + 45000000), PositionValidity::Valid, still, {},
+                      at(10500));
+    CHECK_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+
+    // And the baseline is still the t=10000 one, not the reordered sample's.
+    // Proved from the other side: a fix at the ORIGINAL position, measured
+    // later, is not a movement at all. Against an implementation that had
+    // adopted the reordered position, this would be a 500 km move from it and
+    // MotionDisagreement would latch again rather than clear.
+    evaluator.observe(good_fix(20000), PositionValidity::Valid, still, {}, at(20000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+}
+
+// The same gap seen through the poisoning sequence, which the existing
+// future-dated test walks with motion unknown and therefore cannot see.
+void test_a_future_dated_sample_is_checked_as_well_as_refused()
+{
+    const MotionEvidence still{true, false};
+
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, still, {}, at(0));
+
+    // ~11.5 days in the future, ~500 km away, one millisecond after the first
+    // fix. ClockDisagreement for the timestamp, MotionDisagreement for the
+    // movement — the second is the one that used to be missing. PositionJump
+    // still must not fire: its implied speed is computed over a claimed
+    // interval nobody should believe, and the whole point is not to act on
+    // that number.
+    GnssObservation poisoned = good_fix(1000000000, kLat + 45000000);
+    evaluator.observe(poisoned, PositionValidity::Valid, still, {}, at(1));
+    CHECK_REASON(evaluator.engine(), TrustReason::ClockDisagreement);
+    CHECK_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+
+    // The baseline is untouched, so a genuine jump measured against t=0 is
+    // still caught — the freeze fix has to survive the detector fix.
+    evaluator.observe(good_fix(2, kLat + 45000000), PositionValidity::Valid, MotionEvidence{}, {},
+                      at(2));
+    CHECK_REASON(evaluator.engine(), TrustReason::PositionJump);
+}
+
+// The altitude block had the identical shape and nothing covered it at all.
+//
+// It also has a limit worth stating rather than testing around: altitude has no
+// equivalent of MotionDisagreement. Every altitude check is a RATE, so a sample
+// dated far enough ahead defeats it arithmetically — the claimed interval grows
+// with the lie, and 2 km over a claimed eleven days is a gentle drift. That is
+// why the position test above asserts MotionDisagreement rather than
+// PositionJump for its poisoned sample: the interval-free detector is the one
+// that survives a bad timestamp, and altitude does not have one.
+//
+// So the case this split actually recovers for altitude is the sample dated
+// only a little ahead — past the 50 ms skew tolerance, not past plausibility.
+// The interval stays short, the rate stays absurd, and before the split nothing
+// looked at it at all.
+void test_a_future_dated_altitude_is_checked_as_well_as_refused()
+{
+    TrustEvaluator evaluator;
+
+    GnssObservation ground = good_fix(0);
+    ground.altitude_msl_mm = 150000;
+    evaluator.observe(ground, PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+    // Measured, it claims, at t=200 — but handed over at t=100, so 100 ms in
+    // the future against a 50 ms tolerance. Refused as a baseline, correctly.
+    // Two kilometres of climb over that 200 ms interval is 10 km/s, and the
+    // refusal must not stop anybody noticing.
+    GnssObservation absurd = good_fix(200);
+    absurd.altitude_msl_mm = 2150000;
+    evaluator.observe(absurd, PositionValidity::Valid, MotionEvidence{}, {}, at(100));
+    CHECK_REASON(evaluator.engine(), TrustReason::ImplausibleAltitudeRate);
+    CHECK_REASON(evaluator.engine(), TrustReason::ClockDisagreement);
+
+    // And it was refused: the baseline is still t=0 at 150 m, so an ordinary
+    // climb against it — 100 m over 100 s, 1 m/s — is not implausible. Against
+    // an implementation that had adopted the poisoned altitude this would be a
+    // 2 km descent in the same interval and would fire.
+    GnssObservation gentle = good_fix(100000);
+    gentle.altitude_msl_mm = 250000;
+    evaluator.observe(gentle, PositionValidity::Valid, MotionEvidence{}, {}, at(100000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::ImplausibleAltitudeRate);
+}
+
 // The canonical detector, and the one ADR-0011 names the BMA423 for. Note what
 // is being asserted: `known == false` is not evidence of stillness. A device
 // that has not asked the accelerometer knows nothing, and must not treat that
@@ -925,6 +1033,9 @@ int main()
     test_equal_measurement_timestamps_are_handled_safely();
     test_out_of_order_observation_does_not_poison_the_baseline();
     test_a_future_dated_observation_is_rejected_without_freezing_the_baseline();
+    test_a_reordered_sample_is_still_checked_against_the_standing_baseline();
+    test_a_future_dated_sample_is_checked_as_well_as_refused();
+    test_a_future_dated_altitude_is_checked_as_well_as_refused();
     test_a_still_wrist_is_evidence_and_an_unasked_one_is_not();
     test_satellites_used_cannot_exceed_satellites_in_view();
     test_receiver_time_is_compared_against_device_time();

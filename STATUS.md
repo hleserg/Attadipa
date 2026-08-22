@@ -539,6 +539,33 @@ needs the owner, and one needs a ruler.
   and one more ordinary fix afterward (proves the detector keeps working, not
   just survives one more call). Confirmed red against the pre-fix code.
   GCC+Clang, `-Werror` strict-warnings and ASan+UBSan all clean.
+  **The second review found that fix had broken something else in the same
+  place, and worse than the defect: the code did not do what its own comments
+  said.** `jumped`, `moved_at_rest` and `climbed_absurd` were computed *inside*
+  `if (usable_for_rate && in_order)` — the same condition that gates the
+  baseline write — so an out-of-order or future-dated sample was neither adopted
+  **nor checked**, while both the header comment and the pull request promised
+  it was "still evaluated for its own trust reasons, never adopted". Only the
+  second half existed. That made the refusal worse than useless against the case
+  it exists for: a sample could report the wrist ~500 km from a wrist the
+  accelerometer says never moved and raise nothing, while `remember()` still
+  stored it as `last_trusted_position()`. **Detecting and adopting are now two
+  decisions**: detect against whatever baseline stands, adopt only in order. A
+  backward interval needs no guard — `elapsed()` saturates it to zero and the
+  existing `dt.value > 0` test skips it. Three regression tests, all three
+  confirmed red against the pre-fix code, and all three use
+  `MotionEvidence{true, false}` — **every earlier test passed
+  `MotionEvidence{}`, motion unknown, which can never raise
+  `MotionDisagreement` whatever the code does, which is why the suite could not
+  see this.** Each also proves the baseline was still not adopted, so the freeze
+  fix survives the detector fix. **A limit stated rather than tested around:**
+  altitude has no interval-free detector, so every altitude check is a rate and
+  a sample dated far enough ahead defeats it arithmetically — the claimed
+  interval grows with the lie. What the split recovers there is the sample dated
+  *slightly* ahead, past the 50 ms tolerance but not past plausibility. Host
+  suite 24/24; GCC `-Werror` strict-warnings with ASan+UBSan clean; Clang
+  strict-warnings clean, **its sanitizer runtime is not installed in this
+  environment so that half is `NOT EXECUTED` here** and runs in CI.
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
   job. Four checks: relative links resolve, inline code spans close, task IDs are
