@@ -1629,9 +1629,11 @@ Possible options:
                 2. Defer entirely.
 Recommended next action:
                 Option 1 — the tooling is host-testable, and it is what turns a
-                theory into a measurement. Note that neither board has a
-                magnetometer, so the haptics-versus-compass case cannot be
-                measured on current hardware in any configuration.
+                theory into a measurement. Note that no stock board has a
+                magnetometer, and the one being retrofitted onto a Waveshare
+                unit ([OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one))
+                is not yet placed (T-109), so the haptics-versus-compass case
+                still cannot be measured on any hardware in hand today.
 ```
 
 ---
@@ -1641,23 +1643,22 @@ Recommended next action:
 ### T-012 · Answers from the project owner
 - **Priority:** P0
 - **Waiting on:** the project owner
-- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3,
-  A5, A6 — hardware availability and revision · which radio and GNSS variant ·
-  a second mesh device · whether an external magnetometer is intended · whether
-  the node carries one. **A4 (the regulatory region) is no longer on this
-  list** — closed 2026-08-22, not by an answer but by the owner declining to
-  give one: legality is his problem, not the firmware's
+- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3 —
+  hardware availability and revision · which radio and GNSS variant · a second
+  mesh device. **A4 (the regulatory region) is no longer on this list** —
+  closed 2026-08-22, not by an answer but by the owner declining to give one:
+  legality is his problem, not the firmware's
   ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
   No task here researches a specific jurisdiction's rules on the project's own
   initiative; [ADR-0006](docs/adr/0006-settings-and-bounded-values.md)'s
   transmit-closed-while-`Unknown` gate needs no such research to keep working.
+  **A5 and A6 are also no longer on this list** — answered 2026-08-22 on
+  [#56](https://github.com/hleserg/Attadipa/issues/56):
+  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one).
 - **Impact:** A1–A2 gate all hardware work, and A2 got sharper: of the five
   candidate radios, two cannot do LoRa at all and only one is supported by the
   pinned MeshCore ([ADR-0003](docs/adr/0003-radio-not-lora.md)), so the answer
-  decides whether the watch has a local mesh path at all. A5 and A6 decide
-  whether five magnetometer epics are dormant or dead, and A6 does **not** give
-  the watch a compass even if the answer is yes
-  ([ADR-0009](docs/adr/0009-heading.md) §3).
+  decides whether the watch has a local mesh path at all.
 - **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification
@@ -1668,14 +1669,38 @@ Recommended next action:
   [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md),
   [COEXISTENCE_BACKLOG](docs/hardware/COEXISTENCE_BACKLOG.md).
 - **What the exercise surfaced:** two coexistence epics — haptic/magnetometer and
-  audio/magnetometer interference — **cannot be run on either target board**,
-  because neither has a magnetometer. They are marked NOT POSSIBLE rather than
-  left looking pending. Five magnetometer epics are blocked on hardware that does
-  not exist (A5).
+  audio/magnetometer interference — **cannot currently be run on either target
+  board**, because neither stock board has a magnetometer. They are marked NOT
+  POSSIBLE rather than left looking pending. Five magnetometer epics are
+  blocked, not on an owner decision any more (A5/A6 answered,
+  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one))
+  but on a sensor that is ordered and not yet placed (T-109).
 - **Startable now without hardware:** C-02 bus ownership, C-03 rail arbitration
   and C-12 diagnostic trace. The trace in particular should be finished *while*
   waiting for hardware — every blocked coexistence test needs it to produce
   anything more than an anecdote.
+
+### T-111 · The node IMU needs a capability model of its own
+- **Priority:** P2
+- **State:** filed, not started.
+- **Issue:** [#93](https://github.com/hleserg/Attadipa/issues/93).
+- **What:** [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)
+  ordered a 6-axis IMU (accelerometer + gyroscope) for the node, for GNSS power
+  optimisation — motion-gating, not heading. Explicitly not resolved inside
+  #56: whether it needs a seat in the application-facing capability enum at all
+  or is purely internal to the node's own `LocationService`
+  ([ADR-0007](docs/adr/0007-two-capability-layers.md) §4's capability-vs-feed
+  test), what its `Availability`/`Origin`/walk-away state is if it is surfaced
+  ([ADR-0004](docs/adr/0004-capability-sources.md)), and how it composes with
+  [OD-10](docs/research/OWNER_DECISIONS.md#od-10--a-standing-person-does-not-need-a-new-fix)'s
+  wearer-stillness gate without the two being conflated — the node standing
+  still is not the wearer standing still, even though (unlike heading) the
+  node's own IMU correcting the node's own GNSS needs no cross-body transform
+  ([ADR-0009](docs/adr/0009-heading.md) §3a).
+- **Dependencies:** none for the design; no node hardware exists yet, so
+  nothing here is `NOT EXECUTED — HARDWARE REQUIRED`, it is un-started design.
+- **Not blocked on hardware.** The shape of the model does not depend on which
+  IMU part the node ends up carrying.
 
 ---
 
