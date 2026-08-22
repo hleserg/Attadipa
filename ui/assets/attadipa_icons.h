@@ -8,7 +8,7 @@ namespace attadipa::assets {
 
 // The icons that exist. Adding one is a line in `tools/assets/manifest.py`, a
 // drawing in `icon_drawings.py`, and a regeneration — not an edit here.
-enum class Icon : std::uint8_t { Mesh, Position, Warning };
+enum class Icon : std::uint8_t { Mesh, Position, Companion, Warning };
 
 // The asset for this icon at this token size on this panel, or `nullptr`.
 //

@@ -15,6 +15,7 @@ struct Entry {
 // name nobody has taught this file about: `icon_named_battery` will not exist.
 constexpr Icon icon_named_mesh() { return Icon::Mesh; }
 constexpr Icon icon_named_position() { return Icon::Position; }
+constexpr Icon icon_named_companion() { return Icon::Companion; }
 constexpr Icon icon_named_warning() { return Icon::Warning; }
 
 // Built from the generator's own list, so the table cannot outlive an asset
@@ -48,6 +49,7 @@ const char* name_of(Icon which)
     switch (which) {
         case Icon::Mesh:     return "icon.mesh";
         case Icon::Position: return "icon.position";
+        case Icon::Companion: return "icon.companion";
         case Icon::Warning:  return "icon.warning";
     }
     return "icon.unknown";

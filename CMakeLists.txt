@@ -45,8 +45,9 @@ if(ATTADIPA_BUILD_SIMULATOR)
     # the simulator does: LVGL's built-in Montserrat cannot draw Cyrillic.
     add_subdirectory(assets/fonts)
     add_subdirectory(ui/assets)
-    # Applications that draw. They need LVGL, so they come after it — and they
-    # link attadipa_apps, which still cannot see attadipa_platform.
+    # Widgets, then the applications made of them. Both need LVGL, so both come
+    # after it — and neither links attadipa_platform.
+    add_subdirectory(ui/widgets)
     add_subdirectory(apps/clock)
     add_subdirectory(sim)
 endif()

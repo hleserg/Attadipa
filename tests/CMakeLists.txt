@@ -252,6 +252,15 @@ if(ATTADIPA_BUILD_SIMULATOR)
     target_link_libraries(test_ui_icons PRIVATE attadipa_images)
     add_test(NAME ui_icons COMMAND test_ui_icons)
     set_tests_properties(ui_icons PROPERTIES LABELS design)
+
+    # The arithmetic inside the widgets. Here rather than with the host tests for
+    # the same reason as the icons: the header includes LVGL's, because a widget
+    # returns an `lv_obj_t*`. What is tested needs no display — that is the whole
+    # point of the two functions being out in the header.
+    add_executable(test_ui_widgets test_ui_widgets.cpp)
+    target_link_libraries(test_ui_widgets PRIVATE attadipa_widgets)
+    add_test(NAME ui_widgets COMMAND test_ui_widgets)
+    set_tests_properties(ui_widgets PROPERTIES LABELS design)
 endif()
 
 # ---------------------------------------------------------------------------

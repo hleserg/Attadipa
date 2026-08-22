@@ -108,6 +108,32 @@ constexpr Dp dp_of(IconSize s)
     return Dp{0};
 }
 
+// How thick a drawn line is.
+//
+// **Not in the specification's token list, and here for the reason `Radius::Pill`
+// needed a rule rather than a number:** final §54 names spacing, radius, motion,
+// icon and image scales, but every outlined element — the elevation borders §54
+// itself describes, a battery gauge, a divider — needs a *width*, and without a
+// token that width is a pixel count somebody typed. One panel is 261 dpi and the
+// other 315, so a 2-pixel border is 0.19 mm on one and 0.16 mm on the other and
+// only one of them is what was drawn.
+//
+// The three weights match what the icon pipeline already chose by hand for its
+// own drawings: at 33 px an icon's stroke is 3 px, which is `Regular` at 261 dpi.
+// So a widget outlined at `Regular` sits beside an icon of the same weight, and
+// that is the whole point of having the scale rather than three numbers.
+enum class Stroke : std::uint8_t { Hairline, Regular, Heavy };
+
+constexpr Dp dp_of(Stroke w)
+{
+    switch (w) {
+        case Stroke::Hairline: return Dp{1};
+        case Stroke::Regular:  return Dp{2};
+        case Stroke::Heavy:    return Dp{3};
+    }
+    return Dp{0};
+}
+
 enum class ImageSize : std::uint8_t { Inline, Spot, Hero, HeroLarge };
 
 constexpr Dp dp_of(ImageSize s)

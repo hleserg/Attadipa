@@ -5,13 +5,12 @@
 #include "attadipa/apps/app_manifest.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/ui/tokens.h"
+#include "attadipa/ui/widgets.h"
 #include "attadipa_fonts.h"
 
 namespace attadipa::apps {
 namespace {
 
-using core::Availability;
-using core::Capability;
 using l10n::StringId;
 using l10n::tr;
 using ui::ColorRole;
@@ -99,55 +98,6 @@ StringId month_id(std::uint8_t month)
     return kMonths[(month == 0 ? 0 : month - 1) % 12];
 }
 
-// Availability, as a colour. Three roles for seven states, which loses
-// information on purpose — the word beside it carries the meaning, because
-// DESIGN_SYSTEM §3.1 forbids signalling state by colour alone and because on
-// the day palette the accents measure 1.44:1 to 2.81:1 and could not carry it
-// even if they were allowed to.
-ColorRole role_for(Availability availability)
-{
-    switch (availability) {
-        case Availability::Ready:       return ColorRole::Success;
-        case Availability::Unsupported: return ColorRole::TextMuted;
-        case Availability::Off:         return ColorRole::TextMuted;
-        default:                        return ColorRole::Warning;
-    }
-}
-
-StringId status_word(Availability availability)
-{
-    switch (availability) {
-        case Availability::Unsupported:   return StringId::AvailabilityUnsupported;
-        case Availability::Unprovisioned: return StringId::AvailabilityUnprovisioned;
-        case Availability::Unreachable:   return StringId::AvailabilityUnreachable;
-        case Availability::Incompatible:  return StringId::AvailabilityIncompatible;
-        case Availability::Failed:        return StringId::AvailabilityFailed;
-        case Availability::Off:           return StringId::AvailabilityOff;
-        case Availability::Ready:         return StringId::AvailabilityReady;
-    }
-    return StringId::AvailabilityUnsupported;
-}
-
-StringId capability_word(Capability capability)
-{
-    switch (capability) {
-        case Capability::Time:              return StringId::CapabilityTime;
-        case Capability::Position:          return StringId::CapabilityPosition;
-        case Capability::Heading:           return StringId::CapabilityHeading;
-        case Capability::MotionSensing:     return StringId::CapabilityMotion;
-        case Capability::MeshMessaging:     return StringId::CapabilityMesh;
-        case Capability::Haptics:           return StringId::CapabilityHaptics;
-        case Capability::AudioPlayback:     return StringId::CapabilityAudioOut;
-        case Capability::AudioCapture:      return StringId::CapabilityAudioIn;
-        case Capability::NotificationRelay: return StringId::CapabilityNotifications;
-        case Capability::InfraredBlast:     return StringId::CapabilityInfrared;
-        case Capability::PersistentStorage: return StringId::CapabilityStorage;
-        case Capability::RemovableStorage:  return StringId::CapabilityRemovable;
-        case Capability::CompanionLink:     return StringId::CapabilityCompanion;
-    }
-    return StringId::CapabilityTime;
-}
-
 }  // namespace
 
 void build_clock(lv_obj_t* parent, const ClockModel& model, const Metrics& metrics, Theme theme)
@@ -198,24 +148,19 @@ void build_clock(lv_obj_t* parent, const ClockModel& model, const Metrics& metri
         lv_obj_set_style_text_color(date_label, paint(ColorRole::TextMuted, theme), 0);
     }
 
-    // --- Battery. Unknown is a state, and it looks like one.
-    lv_obj_t* battery_label = lv_label_create(parent);
-    if (model.battery_known) {
-        lv_label_set_text_fmt(battery_label, tr(StringId::ClockBattery),
-                              static_cast<unsigned>(model.battery_percent));
-        // Under a fifth left is the one number on this screen that changes what
-        // a person does next, so it is the one that changes colour. The word is
-        // still there: a percentage is not a colour-only signal.
-        lv_obj_set_style_text_color(
-            battery_label,
-            paint_readable(model.battery_percent <= 20 ? ColorRole::Warning
-                                                       : ColorRole::TextMuted, theme),
-            0);
-    } else {
-        lv_label_set_text(battery_label, tr(StringId::ClockNoTime));
-        lv_obj_set_style_text_color(battery_label, paint(ColorRole::TextMuted, theme), 0);
-    }
-    lv_obj_set_style_text_font(battery_label, font_for(TypeRole::Caption, metrics, child), 0);
+    // --- Battery: a gauge that fills to the charge, and the number beside it.
+    //
+    // It was a bare "62%" until the owner's review on 2026-08-22 asked what the
+    // percentage was of — which is the question a number with no picture always
+    // gets. The widget owns both halves so that Settings cannot draw a
+    // different-looking battery next week.
+    ui::widgets::Battery battery;
+    battery.known    = model.battery_known;
+    battery.percent  = model.battery_percent;
+    battery.charging = model.charging;
+    battery.large    = child;
+    ui::widgets::build_battery(parent, battery, metrics, theme,
+                               font_for(TypeRole::Caption, metrics, child));
 
     if (model.charging) {
         lv_obj_t* charging_label = lv_label_create(parent);
@@ -224,19 +169,19 @@ void build_clock(lv_obj_t* parent, const ClockModel& model, const Metrics& metri
         lv_obj_set_style_text_color(charging_label, paint_readable(ColorRole::Success, theme), 0);
     }
 
-    // --- One status line, and never in Child Mode: "unreachable" is not a
-    //     sentence a seven-year-old needs on their wrist (final §58).
-    if (model.status_shown && !child) {
-        lv_obj_t* status = lv_label_create(parent);
-        lv_label_set_text_fmt(status, "%s · %s", tr(capability_word(model.status_of)),
-                              tr(status_word(model.status)));
-        lv_obj_set_style_text_font(status, font_for(TypeRole::Caption, metrics, child), 0);
-        lv_obj_set_style_text_color(status, paint_readable(role_for(model.status), theme), 0);
-        lv_label_set_long_mode(status, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(status, lv_pct(100));
-        lv_obj_set_height(status, lv_font_get_line_height(font_for(TypeRole::Caption, metrics,
-                                                                  child)));
-        lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
+    // --- The status row, and never in Child Mode.
+    //
+    // "Unreachable" is not a thing a seven-year-old needs on their wrist (final
+    // §58), and neither is a struck-through icon they cannot act on. The adult
+    // face gets three; the child face gets a clock.
+    if (!child) {
+        const ui::widgets::StatusIcon icons[] = {
+            {assets::Icon::Mesh, model.mesh},
+            {assets::Icon::Position, model.position},
+            {assets::Icon::Companion, model.phone},
+        };
+        ui::widgets::build_status_strip(parent, icons,
+                                        sizeof icons / sizeof icons[0], metrics, theme);
     }
 }
 

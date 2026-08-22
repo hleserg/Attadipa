@@ -141,7 +141,8 @@ int main()
     // Every icon resolves at every size the manifest generates, on whichever
     // panel asks for it.
     for (const assets::Icon which :
-         {assets::Icon::Mesh, assets::Icon::Position, assets::Icon::Warning}) {
+         {assets::Icon::Mesh, assets::Icon::Position, assets::Icon::Companion,
+          assets::Icon::Warning}) {
         CHECK(assets::icon(which, IconSize::Md, t_watch) != nullptr);       // 33
         CHECK(assets::icon(which, IconSize::Lg, t_watch) != nullptr);       // 39
         CHECK(assets::icon(which, IconSize::Md, waveshare) != nullptr);     // 39
@@ -162,7 +163,8 @@ int main()
     CHECK(t_watch.px(dp_of(IconSize::Sm)) == 26);
     CHECK(waveshare.px(dp_of(IconSize::Xl)) == 63);
     for (const assets::Icon which :
-         {assets::Icon::Mesh, assets::Icon::Position, assets::Icon::Warning}) {
+         {assets::Icon::Mesh, assets::Icon::Position, assets::Icon::Companion,
+          assets::Icon::Warning}) {
         CHECK(assets::icon(which, IconSize::Sm, t_watch) == nullptr);
         CHECK(assets::icon(which, IconSize::Sm, waveshare) == nullptr);
         CHECK(assets::icon(which, IconSize::Xl, t_watch) == nullptr);
@@ -175,19 +177,20 @@ int main()
     // ---------------------------------------------------------------------
     // The icons are different pictures.
     //
-    // Three lookups returning one descriptor would satisfy every assertion
+    // Four lookups returning one descriptor would satisfy every assertion
     // above. They are distinct assets and their ink differs, which is the
     // cheapest available proof that `warning` is not `mesh` with another name.
     std::set<const lv_image_dsc_t*> distinct;
     std::set<int>                   inks;
     for (const assets::Icon which :
-         {assets::Icon::Mesh, assets::Icon::Position, assets::Icon::Warning}) {
+         {assets::Icon::Mesh, assets::Icon::Position, assets::Icon::Companion,
+          assets::Icon::Warning}) {
         const lv_image_dsc_t* d = assets::icon(which, IconSize::Lg, t_watch);
         distinct.insert(d);
         inks.insert(ink_centi(*d));
     }
-    CHECK(distinct.size() == 3);
-    CHECK(inks.size() == 3);
+    CHECK(distinct.size() == 4);
+    CHECK(inks.size() == 4);
 
     // Every symbol the generator listed is named once. A list with a duplicate
     // would silently drop an asset from the table without dropping it from the

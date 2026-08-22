@@ -69,6 +69,10 @@ ICONS = {
     "position": "A location pin. A position that is known — the shape says "
                 "'a place', not 'a satellite', because the source of a fix is "
                 "deliberately not visible to an application.",
+    "companion": "A handset with a speaker slot and a home dot. The phone the "
+                 "watch is paired with, in the Clock's status row. Portrait "
+                 "where the battery gauge is landscape, and marked inside, "
+                 "because an unmarked rounded rectangle is not a phone.",
     "warning": "A triangle with a bar and a dot. Exists because DESIGN_SYSTEM "
                "§3.1 forbids signalling a state by colour alone: a degraded "
                "state needs a shape, and on the day palette no accent clears "

@@ -1,7 +1,9 @@
 # The Clock.
 #
 # Links `attadipa_apps` (core + l10n), `attadipa_ui` (the design tokens),
-# `attadipa_fonts` and LVGL — and **not** `attadipa_platform`. The omission is
+# `attadipa_widgets` (the battery gauge and the status row, which are drawings
+# and therefore not tokens), `attadipa_fonts` and LVGL — and **not**
+# `attadipa_platform`. The omission is
 # the architecture: this screen cannot include a hardware header because the
 # include directory is not on its compile line, so it cannot learn which board
 # it is on even by accident. tests/boundary/ already asserts that for
@@ -17,6 +19,7 @@ target_include_directories(attadipa_app_clock PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(attadipa_app_clock PUBLIC
     attadipa_apps
     attadipa_ui
+    attadipa_widgets
     attadipa_fonts
     lvgl
 )

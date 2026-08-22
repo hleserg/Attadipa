@@ -20,6 +20,7 @@ target_link_libraries(attadipa_sim PRIVATE
     attadipa_app_clock
     attadipa_l10n
     attadipa_ui
+    attadipa_widgets
     attadipa_fonts
     lvgl
     SDL2::SDL2

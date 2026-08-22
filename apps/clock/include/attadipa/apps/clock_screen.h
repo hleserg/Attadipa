@@ -45,12 +45,22 @@ struct ClockModel {
     std::uint8_t  battery_percent = 0;
     bool          charging        = false;
 
-    // The one status the face carries. Which capability, and how it is doing —
-    // the screen turns that into a word and a colour, and never into a claim
-    // about a chip.
-    core::Capability   status_of     = core::Capability::MeshMessaging;
-    core::Availability status         = core::Availability::Unprovisioned;
-    bool               status_shown   = false;
+    // The status row: three capabilities, as icons.
+    //
+    // It used to be one sentence — "Mesh · not set up" — and the owner's review
+    // on 2026-08-22 rejected it in both languages, for two separate reasons that
+    // are both right. It read like a debug line, because a capability name
+    // joined to an availability name by a middle dot *is* a debug line; and it
+    // spent a third of a 240-pixel face saying one thing about one subsystem
+    // while GNSS and the phone said nothing at all.
+    //
+    // So: three states in the height of one, each an icon that is lit or struck
+    // through, and the sentence moves to the screen that has room for a
+    // sentence. `Unsupported` draws nothing — a Waveshare board with no LoRa
+    // does not need a permanently dead mesh icon to tell it so.
+    core::Availability mesh     = core::Availability::Unsupported;
+    core::Availability position = core::Availability::Unsupported;
+    core::Availability phone    = core::Availability::Unsupported;
 
     // Child Mode (final §58): larger type, larger targets, fewer things.
     bool child_mode = false;

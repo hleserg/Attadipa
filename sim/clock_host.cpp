@@ -85,12 +85,16 @@ void build_clock_screen(const platform::HardwareInventory& inventory,
     model.battery_percent = 62;
     model.charging        = false;
 
-    // The one status line: the mesh, because on both boards it is the thing most
-    // likely not to be Ready, and a watch that quietly hides that is a watch
-    // that lets somebody walk out of range believing they are connected.
-    model.status_of    = core::Capability::MeshMessaging;
-    model.status       = caps.availability(core::Capability::MeshMessaging);
-    model.status_shown = true;
+    // The status row: three capabilities, and the registry answers for each.
+    //
+    // The composition root is where this belongs — an application asks what the
+    // device can do and gets an `Availability`, never a chip. On the Waveshare
+    // that means `Unsupported` for both the mesh and a position, and the row
+    // draws neither: a board with no LoRa and no GNSS should not carry two dead
+    // icons to prove it.
+    model.mesh     = caps.availability(core::Capability::MeshMessaging);
+    model.position = caps.availability(core::Capability::Position);
+    model.phone    = caps.availability(core::Capability::CompanionLink);
 
     model.child_mode = g_child_mode;
 

@@ -424,6 +424,14 @@ ru = "%u%%"
 en = "charging"
 ru = "заряжается"
 
+[value_unknown]
+en = "—"
+ru = "—"
+# An em dash, and it is not decoration. A quantity nobody has measured has to be
+# shown as *absent* rather than as zero — ADR-0011's rule, which the Clock meets
+# in the battery gauge and Settings will meet in a dozen more places. One string
+# so that every one of them looks the same.
+
 [clock_no_time]
 en = "--:--"
 ru = "--:--"
