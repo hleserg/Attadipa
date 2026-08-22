@@ -726,7 +726,7 @@ jobs:
           # The action lowercases both sides and strips a trailing `[bot]`
           # (src/github/validation/actor.ts, isAllowedBot at the v1 tag), so
           # `github-actions` and `github-actions[bot]` are the same entry.
-          # .github/tests/watchdog-dispatch-actor-test.sh asserts this stays in
+          # .github/tests/bot-actor-test.sh asserts this stays in
           # agreement with the watchdog rather than trusting the comment.
           allowed_bots: "github-actions"
           allowed_non_write_users: ""

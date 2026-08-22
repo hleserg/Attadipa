@@ -40,30 +40,50 @@ write-capable agent do something?**
    | Workflow | `allowed_bots` | Why |
    |---|---|---|
    | `claude-agent.yml` | `github-actions` | the watchdog dispatches it as `github-actions[bot]`; nothing else in this repository holds `actions: write` |
-   | `claude-pr-review.yml` | `""` | its trigger is `pull_request`; the actor is whoever opened it — **and on an agent-authored pull request that is `claude[bot]`, which this list does not admit.** Under investigation, see below |
-   | `claude-ci-repair.yml` | `""` | its trigger is `workflow_run`; the actor is whoever pushed, today a person holding `ATTADIPA_AGENT_TOKEN`. It is one token change from the same failure |
+   | `claude-pr-review.yml` | `claude` | its `if:` deliberately admits `claude[bot]`, because a blanket bot guard skipped the review on the agent's own pull requests — the ones it exists for |
+   | `claude-ci-repair.yml` | `""` | its trigger is `workflow_run`; the actor is whoever pushed, today a person holding `ATTADIPA_AGENT_TOKEN`. It admits no bot, so it needs to name none — but it is one token change from the same failure |
 
-   **The reviewer's own list is not settled.** `claude-pr-review.yml`'s `if:`
-   deliberately lets `claude[bot]` through — its comment says a blanket bot
-   guard "skipped the review on exactly the pull requests this workflow exists
-   to review: the agent's own" — and then the step hands the action an empty
-   `allowed_bots`, which is the one list that does not contain `claude`. On
-   2026-08-22 the `Review` step of run `32597016812` (pull request #95, actor
-   `claude[bot]`) lasted five seconds and wrote no execution log, and the job
-   still reported **success**, because that step carries `continue-on-error`.
-   Ruled out by evidence for that run: the three `claude-*.yml` files on its
-   branch are byte-identical to `main`, so the action's workflow-validation
-   refusal does not apply; and a human-authored review ran normally six minutes
-   later, so the credential was not spent. What remains is the actor refusal —
-   stated here as the surviving explanation, not as a read line, until the step
-   log is quoted.
+   **The reviewer had the identical defect, and it hid better.** Its `if:`
+   deliberately lets `claude[bot]` through — the comment there says a blanket
+   bot guard "skipped the review on exactly the pull requests this workflow
+   exists to review: the agent's own" — and then the step handed the action the
+   one list that does not contain `claude`. So the guard let the job start and
+   the action refused it:
+
+   ```
+   Checking permissions for actor: claude[bot]
+   Actor is a GitHub App: claude[bot]
+   Actor type: Bot
+   ##[error]Action failed with error: Workflow initiated by non-human actor:
+   claude (type: Bot). Add bot to allowed_bots list or use '*' to allow all bots.
+   ```
+
+   Byte-identical on runs `32597016812` (#95), `32596445164` (#94),
+   `32595947792` (#92) and `32595273274` (#88) — five, five, five and four
+   seconds. **No agent-authored pull request had ever been reviewed.** Worse
+   than the watchdog's version, because every one of those jobs reported
+   **success**: the `Review` step carries `continue-on-error`, which is correct
+   for its own reason — a red check meaning "we ran out of quota" is
+   indistinguishable from "the reviewer found something" — and it turned a
+   silent refusal into a green tick.
+
+   The three alternatives were ruled out by evidence rather than argued away:
+   the `claude-*.yml` files on those branches are byte-identical to `main`, so
+   the action's workflow-validation refusal cannot apply; a human-authored
+   review ran normally for six minutes at 20:39, so the credential was not
+   spent; and no execution log exists at all, which excludes the tool-list
+   cause, since that one needs real work before it shows up.
+
+   The workflow's own "the review did not run" comment listed five candidate
+   causes and **this was not among them** — it steered every reader towards the
+   branch-behind-`main` case, which was the wrong answer. It is now cause 1.
 
    `github-actions` is not a concession to outside apps: it is the actor of
    this repository's own workflows, and no third party can present as it. It is
    also **not** a producer grant — `.github/scripts/queue-scan.jq` still refuses
    `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so our own
    output still cannot enqueue a billable writer. Those are two different rules
-   and `.github/tests/watchdog-dispatch-actor-test.sh` asserts both, including
+   and `.github/tests/bot-actor-test.sh` asserts both, including
    that the list never becomes `'*'`. The workflow also refuses bot actors
    itself where the actor is not the dispatcher, because the loop it prevents —
    Claude comments, the comment mentions `@claude`, Claude runs — costs money
@@ -268,7 +288,7 @@ as much as the first.
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
 | **Sticky review comment** — one comment edited in place, not a new one per push | `use_sticky_comment` |
-| **Bots named, never starred** — the writer admits exactly one, `github-actions`, because that is the actor its own watchdog dispatches as, and an empty list meant the watchdog had never once started it. `'*'` would admit every installed GitHub App, and a test refuses it. The reviewer and the CI repairer still pass `""`, and for the reviewer that is an open question rather than a decision — see item 3 above | `allowed_bots`, `.github/tests/watchdog-dispatch-actor-test.sh` |
+| **Bots named, never starred** — a workflow that admits a bot actor must name it, and nothing may name `'*'`. The writer admits `github-actions`, the actor its own watchdog dispatches as; the reviewer admits `claude`, the actor that opens the pull requests it exists to review; the CI repairer admits none and names none. Empty lists had made the first two refuse silently — the watchdog had never started an agent, and no agent-authored pull request had ever been reviewed. The test asserts the rule rather than the three instances, so a fourth workflow is checked the day it grows an exemption | `allowed_bots`, `.github/tests/bot-actor-test.sh` |
 
 The review's limit was 40 until 2026-08-22, and it was the wrong number for the
 wrong reason. On pull request #39 the reviewer read a thirty-file diff, worked

@@ -286,8 +286,13 @@ jobs:
       # reading a file. Four issues were written off as unexplained model
       # deaths. Nothing either file's own review could have caught, which is
       # what makes it a test rather than a comment.
-      - name: The watchdog dispatches an actor the agent accepts
-        run: bash .github/tests/watchdog-dispatch-actor-test.sh
+      # Two workflows admitted a bot actor and then handed the action a list
+      # that did not name it: the watchdog dispatching claude-agent.yml as
+      # github-actions[bot], and the reviewer's own claude[bot] exemption.
+      # Both died in about five seconds with no execution log, and the
+      # reviewer's died GREEN, because its step carries continue-on-error.
+      - name: A workflow that admits a bot names it in allowed_bots
+        run: bash .github/tests/bot-actor-test.sh
 
       # The staleness line is the only thing telling an agent that the finding
       # it is about to implement was made against code that has since moved.

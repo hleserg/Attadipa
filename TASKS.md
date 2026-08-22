@@ -1707,12 +1707,26 @@ Recommended next action:
   `github-actions` are still non-listable in `ATTADIPA_TRUSTED_PRODUCERS`, so
   our own output still cannot enqueue a billable writer. Being allowed to press
   the button on an approved task is not the same as being allowed to file one.
-- **`.github/tests/watchdog-dispatch-actor-test.sh`** holds the two files in
+- **`.github/tests/bot-actor-test.sh`** holds the two files in
   agreement, because each was defensible alone and only the pair was wrong —
   nothing either file's own review could have caught. It fails on the
   pre-fix state, which was checked rather than assumed.
 - **T-109 carries the 500 KB reading list forward** as a concern of its own. It
   was this task's leading theory and it was wrong.
+- **Then the same question was asked of the other two workflows, and the
+  reviewer had it too.** `claude-pr-review.yml` admits `claude[bot]` in its
+  `if:` deliberately — a blanket bot guard had been skipping the review on the
+  agent's own pull requests, which are the ones it exists for — and then handed
+  the action `allowed_bots: ""`. Runs `32597016812` (#95), `32596445164` (#94),
+  `32595947792` (#92) and `32595273274` (#88) all died in four or five seconds
+  with the identical *"Workflow initiated by non-human actor: claude (type:
+  Bot)"*, so **no agent-authored pull request has ever been reviewed** — and all
+  four reported **success**, because that step carries `continue-on-error`. Now
+  `allowed_bots: "claude"`, and the test asserts the rule over all three agent
+  workflows rather than the two instances that happened to be found.
+- **`claude-ci-repair.yml` is left at `""` on purpose.** It admits no bot actor,
+  so it needs to name none. It is one token change away from the same failure,
+  and the test will say so the moment it grows an exemption.
 
 ### T-103 · What the vendor's three images actually are — **DONE** 2026-08-22
 - **Six files, not three.** `/image/image1..3.bin` and a `/music/` directory

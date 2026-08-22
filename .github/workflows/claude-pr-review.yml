@@ -112,7 +112,44 @@ jobs:
           # One comment, edited in place. A new wall of text on every push is how
           # a review becomes something people scroll past.
           use_sticky_comment: "true"
-          allowed_bots: ""
+          # claude, and the reason is a measured failure rather than a
+          # preference. This job's `if:` above deliberately admits
+          # claude[bot] -- its own comment says a blanket bot guard "skipped
+          # the review on exactly the pull requests this workflow exists to
+          # review: the agent's own" -- and then this line handed the action
+          # the one list that does not contain claude. So the guard let the
+          # job start and the action refused it, in about five seconds,
+          # before the model was reached:
+          #
+          #   Checking permissions for actor: claude[bot]
+          #   Actor is a GitHub App: claude[bot]
+          #   Actor type: Bot
+          #   ##[error]Action failed with error: Workflow initiated by
+          #   non-human actor: claude (type: Bot). Add bot to allowed_bots
+          #   list or use '*' to allow all bots.
+          #
+          # Byte-identical on runs 32597016812 (#95), 32596445164 (#94),
+          # 32595947792 (#92) and 32595273274 (#88) -- four seconds, five
+          # seconds, five seconds, five seconds. **No agent-authored pull
+          # request has ever been reviewed**, and the job reported success
+          # every time, because the Review step below carries
+          # continue-on-error. The three alternatives were ruled out rather
+          # than argued away: the claude-*.yml files on those branches are
+          # byte-identical to main, so the action's workflow-validation
+          # refusal cannot apply; a human-authored review ran normally for
+          # six minutes at 20:39, so the credential was not spent; and no
+          # execution log exists at all, which excludes the tool-list cause
+          # that needs real work to show up.
+          #
+          # Not '*': that would let any installed GitHub App drive this, and
+          # .github/tests/bot-actor-test.sh refuses it. Not a producer grant
+          # either -- .github/scripts/queue-scan.jq still refuses claude in
+          # ATTADIPA_TRUSTED_PRODUCERS, so our own output cannot enqueue a
+          # billable writer. And not a loop: this job's output is a comment
+          # and a label, a comment cannot raise a pull_request event, and the
+          # job holds contents: read, so the widest thing it can do is have
+          # an opinion twice.
+          allowed_bots: "claude"
           allowed_non_write_users: ""
           show_full_output: "false"
           # display_report posts Claude's own summary to the run's Step Summary
@@ -361,10 +398,19 @@ jobs:
             echo
             echo "The usual causes, in the order they are worth checking:"
             echo
-            echo "1. **A turn or time ceiling.** \`is_error: false\` with a turn count at or"
+            echo "1. **A bot opened this pull request and \`allowed_bots\` does not name it.**"
+            echo "   The action refuses a non-User actor absent from that list, in about"
+            echo "   five seconds, before the model is reached and with no execution log —"
+            echo "   the same shape as causes 3 to 5, and for months it was not on this"
+            echo "   list, so every reader of it was steered somewhere else. The run log"
+            echo "   says \`Workflow initiated by non-human actor: NAME (type: Bot)\`. The"
+            echo "   fix is to name that actor in \`allowed_bots\`, never to widen it to"
+            echo "   \`'*'\`, which would let any installed GitHub App drive this."
+            echo "   Add a case to \`.github/tests/bot-actor-test.sh\` in the same commit."
+            echo "2. **A turn or time ceiling.** \`is_error: false\` with a turn count at or"
             echo "   near \`--max-turns\` means the review worked and was cut off — the whole"
             echo "   bill, none of the verdict. Raise the ceiling; do not re-run into it."
-            echo "2. **This pull request is BEHIND a \`main\` that changed"
+            echo "3. **This pull request is BEHIND a \`main\` that changed"
             echo "   \`.github/workflows/claude-*.yml\`** — the commonest cause by far, and"
             echo "   the one that looks like all the others. The action requires the"
             echo "   workflow file it runs to be byte-identical to the copy on the default"
@@ -374,17 +420,17 @@ jobs:
             echo "   \"Workflow validation failed\". **The fix is to update the branch from"
             echo "   \`main\`, not to re-run.** Observed on #50 at 08:26 on 2026-08-22 — a"
             echo "   documentation-only pull request that touches no workflow at all."
-            echo "3. **This pull request edits \`.github/workflows/claude-*.yml\` itself.** The"
+            echo "4. **This pull request edits \`.github/workflows/claude-*.yml\` itself.** The"
             echo "   action refuses to run a version of itself that a pull request has"
             echo "   modified — otherwise a pull request could supply the prompt that"
             echo "   reviews it. That refusal is correct, and it means changes to those"
             echo "   files are merged on ordinary CI and a human reading them, never on an"
-            echo "   AI review. Same log line as cause 2, and no execution log either way."
-            echo "4. **The Anthropic credential.** A spent quota fails before the model is"
+            echo "   AI review. Same log line as cause 3, and no execution log either way."
+            echo "5. **The Anthropic credential.** A spent quota fails before the model is"
             echo "   reached, in a second or so, and also writes no execution log."
-            echo "5. **A tool the session needed was not in \`--allowedTools\`.** This shows"
+            echo "6. **A tool the session needed was not in \`--allowedTools\`.** This shows"
             echo "   as \`is_error: true\` after real work — a non-trivial turn count and a"
-            echo "   non-zero cost, which is what tells it apart from causes 2 to 4."
+            echo "   non-zero cost, which is what tells it apart from causes 1 to 5."
             echo "   **The log does not name the tool**, because \`show_full_output\` is off"
             echo "   and tool results are where that name would appear. Turning it on is"
             echo "   not the answer: tool results can carry tokens into a world-readable"
