@@ -183,10 +183,9 @@ afternoon again:
   were read without complaint. Not the mechanism.
 - **A silicon erratum.** The ESP32-S3 errata sheet v1.3 has nothing on the
   USB-Serial/JTAG read path; its only USB entry, USBOTG-4289, concerns USB-OTG
-  download mode and names USB-Serial/JTAG as the *remedy*. (`ESP32S3_ERRATA_V02.md`
-  carries the full reading; it lands with PR #86 and this link is deliberately
-  left unmade until it does, because a link to a file that does not exist is
-  caught by CI and a link written in advance is caught by nobody.)
+  download mode and names USB-Serial/JTAG as the *remedy*.
+  [ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md) carries the full reading — all
+  eight errata apply to this chip and none of them is this one.
 
 **Still `UNKNOWN`:** what those five addresses have in common. It is not the byte
 histogram, not the host, and not a documented defect. The content at two of them
