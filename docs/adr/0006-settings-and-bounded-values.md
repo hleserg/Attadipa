@@ -1,6 +1,6 @@
 # 0006 — Settings, and values the law bounds
 
-Status: **accepted** (2026-08-21)
+Status: **accepted** (2026-08-21) — A4 closed 2026-08-22 by [OD-13](../research/OWNER_DECISIONS.md#od-13--which-region-is-the-owners-problem-not-the-firmwares); the design below is unchanged by it
 Date: 2026-08-21
 Relates to: [ADR-0004](0004-capability-sources.md) · the radio descriptor it constrains is now `RadioInfo` in [ADR-0003](0003-radio-not-lora.md)
 
@@ -301,8 +301,17 @@ outcomes need six designed screen states.
 is idempotent and reversible. The device does not transmit until somebody has
 said where it is.
 
-**Open.** A4 — which region — remains the owner's to answer, and now bounds a
-profile rather than fixing a constant. Antenna gain is unknown on both boards and
-on the node, so ERP cannot yet be computed; the type admits that rather than
-hiding it. Whether MeshCore's own parameters are runtime-settable and where it
-persists them is part of T-006.
+**Open.** Antenna gain is unknown on both boards and on the node, so ERP cannot
+yet be computed; the type admits that rather than hiding it. Whether MeshCore's
+own parameters are runtime-settable and where it persists them is part of
+T-006.
+
+**No longer open.** A4 — which region — is closed, not answered: the owner
+declined to name one and said legality is his own responsibility, not the
+firmware's ([OD-13](../research/OWNER_DECISIONS.md#od-13--which-region-is-the-owners-problem-not-the-firmwares)).
+Nothing here changes as a result. This ADR never proposed shipping a region as
+a default, and the transmit-closed-while-`Unknown` gate in §4 does not need to
+know *which* region applies — only that an operator chose one. What A4's
+closure removes is the expectation that this project would research and ship a
+specific jurisdiction's profile; that research now has no subject and nobody
+is waiting on it.

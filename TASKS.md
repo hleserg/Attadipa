@@ -1344,7 +1344,8 @@ Possible options:
                    hardware is not spent improvising.
 Recommended next action:
                 Option 3 now, in parallel with option 1. Ask the project owner
-                about hardware availability (A1–A4).
+                about hardware availability (A1–A3); A4 is closed, not
+                outstanding (OD-13).
 ```
 
 ### T-011 · Interference measurement
@@ -1371,19 +1372,23 @@ Recommended next action:
 ### T-012 · Answers from the project owner
 - **Priority:** P0
 - **Waiting on:** the project owner
-- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1–A6 —
-  hardware availability and revision · which radio and GNSS variant · a second
-  mesh device · the regulatory region · whether an external magnetometer is
-  intended · whether the node carries one.
+- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3,
+  A5, A6 — hardware availability and revision · which radio and GNSS variant ·
+  a second mesh device · whether an external magnetometer is intended · whether
+  the node carries one. **A4 (the regulatory region) is no longer on this
+  list** — closed 2026-08-22, not by an answer but by the owner declining to
+  give one: legality is his problem, not the firmware's
+  ([OD-13](docs/research/OWNER_DECISIONS.md#od-13--which-region-is-the-owners-problem-not-the-firmwares)).
+  No task here researches a specific jurisdiction's rules on the project's own
+  initiative; [ADR-0006](docs/adr/0006-settings-and-bounded-values.md)'s
+  transmit-closed-while-`Unknown` gate needs no such research to keep working.
 - **Impact:** A1–A2 gate all hardware work, and A2 got sharper: of the five
   candidate radios, two cannot do LoRa at all and only one is supported by the
   pinned MeshCore ([ADR-0003](docs/adr/0003-radio-not-lora.md)), so the answer
-  decides whether the watch has a local mesh path at all. **A4 is a legal
-  constraint, not a preference.** It does not gate the build — the values are
-  runtime settings either way — but it gates *transmitting*: while the region
-  profile is `Unknown` the transmit path stays closed. A5 and A6 decide whether
-  five magnetometer epics are dormant or dead, and A6 does **not** give the watch
-  a compass even if the answer is yes ([ADR-0009](docs/adr/0009-heading.md) §3).
+  decides whether the watch has a local mesh path at all. A5 and A6 decide
+  whether five magnetometer epics are dormant or dead, and A6 does **not** give
+  the watch a compass even if the answer is yes
+  ([ADR-0009](docs/adr/0009-heading.md) §3).
 - **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification
