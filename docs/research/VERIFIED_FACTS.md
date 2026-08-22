@@ -565,6 +565,20 @@ BSP already demonstrated to be an incomplete description of its own board.
   the same pattern as `BSP_CAPS_IMU 0` — the BSP describes what the BSP drives,
   never what the board carries. Which GPIO each key uses is not resolved from
   text extraction and remains D5.
+- **Updated 2026-08-23 from the physical unit (S9): there are exactly two
+  pressable buttons on the assembled case.** The owner counted them
+  ([#99](https://github.com/hleserg/Attadipa/issues/99)). This settles the
+  schematic's *"at least two"* and immediately raises the question that matters
+  more: the drawing names **three** candidate inputs — `Key1`, `Key3` and
+  `PWRON` — so **at most two of the three reach a finger, and which two is
+  `UNKNOWN`**.
+- **Why that residue is a design constraint rather than a wiring detail.**
+  `PWRON` is an AXP2101 input, not an SoC GPIO, and it can bring the system up
+  from a state in which the SoC is not running at all. A key on a GPIO cannot
+  always do that. So *which* of the two physical buttons is which decides what
+  the wake story can be, and whether Child Mode can have a physical control that
+  works when the screen does not. One long-press on each button answers it, and
+  no instrument is required — the watch either turns off or it does not.
 
 ### Waveshare AXP2101 rail map, and a 1.8 V rail
 
