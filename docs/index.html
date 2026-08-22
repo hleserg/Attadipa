@@ -5,15 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#FFF6E8">
   <meta name="color-scheme" content="light dark">
-  <title>Attadipa — Independent by design</title>
-  <meta name="description" content="Attadipa is an open-source wearable firmware/application platform for ESP32-S3: mesh messaging, offline navigation, clean app APIs and a product-grade UI.">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="Attadipa — Independent by design">
-  <meta property="og:description" content="An open, hardware-aware wearable platform for mesh messaging, offline navigation and useful apps without depending on a phone.">
-  <meta property="og:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
-  <meta property="og:url" content="https://hleserg.github.io/Attadipa/">
-  <meta name="twitter:card" content="summary_large_image">
+  <title>Attadipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS</title>
+  <meta name="description" content="Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — not yet run on hardware.">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <link rel="canonical" href="https://hleserg.github.io/Attadipa/">
+  <link rel="alternate" type="text/html" hreflang="x-default" href="https://hleserg.github.io/Attadipa/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Attadipa">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="ru_RU">
+  <meta property="og:title" content="Attadipa — open-source ESP32-S3 smartwatch firmware">
+  <meta property="og:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, for two ESP32-S3 wearables. Early implementation — no board has run it yet.">
+  <meta property="og:url" content="https://hleserg.github.io/Attadipa/">
+  <meta property="og:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1734">
+  <meta property="og:image:height" content="907">
+  <meta property="og:image:alt" content="The Attadipa firefly mark over the wordmark Attadipa and the line Independent by design.">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Attadipa — open-source ESP32-S3 smartwatch firmware">
+  <meta name="twitter:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, for two ESP32-S3 wearables. Early implementation — no board has run it yet.">
+  <meta name="twitter:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
+  <meta name="twitter:image:alt" content="The Attadipa firefly mark over the wordmark Attadipa and the line Independent by design.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -33,6 +48,62 @@
       } catch (_) {}
     })();
   </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://hleserg.github.io/Attadipa/#website",
+        "url": "https://hleserg.github.io/Attadipa/",
+        "name": "Attadipa",
+        "description": "Open-source ESP32-S3 smartwatch firmware platform: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS.",
+        "inLanguage": ["en", "ru"],
+        "publisher": { "@id": "https://github.com/hleserg#person" }
+      },
+      {
+        "@type": "Person",
+        "@id": "https://github.com/hleserg#person",
+        "name": "hleserg",
+        "url": "https://github.com/hleserg"
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "@id": "https://hleserg.github.io/Attadipa/#source",
+        "name": "Attadipa",
+        "alternateName": "Attadipa smartwatch firmware platform",
+        "description": "Firmware and application platform for ESP32-S3 smartwatches. Board differences live behind a capability registry, so an application asks what the device can do rather than which device it is. Targets the LilyGO T-Watch S3 Plus and the Waveshare ESP32-S3-Touch-AMOLED-2.06. Early implementation: the host libraries and a two-geometry simulator build and pass their tests, and no Attadipa firmware has yet run on a physical board.",
+        "codeRepository": "https://github.com/hleserg/Attadipa",
+        "url": "https://hleserg.github.io/Attadipa/",
+        "programmingLanguage": [
+          { "@type": "ComputerLanguage", "name": "C++" },
+          { "@type": "ComputerLanguage", "name": "C" }
+        ],
+        "runtimePlatform": ["ESP-IDF", "FreeRTOS"],
+        "targetProduct": {
+          "@type": "SoftwareApplication",
+          "name": "Attadipa",
+          "applicationCategory": "Smartwatch firmware",
+          "operatingSystem": "FreeRTOS (ESP-IDF) on ESP32-S3",
+          "featureList": [
+            "LoRa mesh messaging over MeshCore",
+            "Offline GNSS navigation without a phone",
+            "LVGL user interface at two screen geometries",
+            "Hardware capability registry shared across boards",
+            "Day and night themes",
+            "Child Mode"
+          ]
+        },
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "author": { "@id": "https://github.com/hleserg#person" },
+        "maintainer": { "@id": "https://github.com/hleserg#person" },
+        "keywords": "ESP32-S3, smartwatch firmware, smartwatch OS, LoRa, MeshCore, mesh networking, GNSS, offline navigation, LVGL, FreeRTOS, ESP-IDF, wearable, open source",
+        "inLanguage": "en"
+      }
+    ]
+  }
+  </script>
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/site.js" defer></script>
 </head>
@@ -45,7 +116,7 @@
   <header class="topbar" id="top">
     <div class="shell nav-shell">
       <a class="brand" href="#top" aria-label="Attadipa home">
-        <img src="assets/favicon.png" alt="" width="34" height="34">
+        <img src="assets/favicon.png" alt="" width="34" height="34" decoding="async">
         <span>Attadipa</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
@@ -78,8 +149,8 @@
           <span class="lang-en" lang="en">Useful when your phone isn't.</span>
           <span class="lang-ru" lang="ru">Часы, которые полезны без телефона.</span>
         </h1>
-        <p class="hero-lead lang-en" lang="en">Attadipa is an open firmware/application platform being built for ESP32-S3 wearables: mesh messaging, offline navigation, clean app APIs, and a UI meant to feel like a real product.</p>
-        <p class="hero-lead lang-ru" lang="ru">Attadipa — открытая прошивка и платформа приложений для носимых устройств на ESP32-S3: mesh-связь, офлайн-навигация, чистые API для приложений и интерфейс, который должен ощущаться как настоящий продукт.</p>
+        <p class="hero-lead lang-en" lang="en">Attadipa is an open-source firmware and application platform being built for ESP32-S3 smartwatches: LoRa mesh messaging over MeshCore, offline GNSS navigation, clean app APIs over LVGL and FreeRTOS, and a UI meant to feel like a real product.</p>
+        <p class="hero-lead lang-ru" lang="ru">Attadipa — открытая прошивка и платформа приложений для умных часов на ESP32-S3: LoRa mesh-связь через MeshCore, офлайн-навигация по GNSS, чистые API для приложений поверх LVGL и FreeRTOS и интерфейс, который должен ощущаться как настоящий продукт.</p>
         <p class="project-name-note lang-en" lang="en"><em>Attadipa</em> comes from Pāli <em>attadīpa</em>: “self-reliant; one’s own island or refuge.” It is a quiet reminder that the essentials should work without a phone or cloud.</p>
         <p class="project-name-note lang-ru" lang="ru"><em>Attadipa</em> — от палийского <em>attadīpa</em>: «опирающийся на себя; собственный остров или прибежище». Это ненавязчивое напоминание: главное должно работать без телефона и облака.</p>
         <div class="hero-actions">
@@ -96,7 +167,8 @@
         </div>
       </div>
       <div class="hero-art reveal reveal-delay" aria-label="Attadipa brand banner">
-        <img src="assets/attadipa-banner.png" width="1788" height="894" alt="Attadipa — Independent by design">
+        <img src="assets/banner.webp" width="1774" height="887" fetchpriority="high" decoding="async"
+             alt="The Attadipa wordmark beside a firefly, over the line Independent by design.">
         <span class="glow g1"></span><span class="glow g2"></span><span class="glow g3"></span>
       </div>
     </section>
@@ -224,7 +296,8 @@
     <section class="section design-band">
       <div class="shell design-grid">
         <div class="design-board reveal">
-          <img src="assets/attadipa-style-board.png" width="1440" height="1086" alt="Attadipa visual design board">
+          <img src="assets/style-board.webp" width="1448" height="1086" loading="lazy" decoding="async"
+               alt="Attadipa design board: the Warm Ivory and Ink Olive palette, Nunito Sans type scale, rounded card shapes and the firefly mark.">
         </div>
         <div class="design-copy reveal reveal-delay">
           <span class="kicker lang-en">Design is architecture too</span><span class="kicker lang-ru">Дизайн — тоже часть архитектуры</span>
@@ -271,7 +344,7 @@
     <section class="section ideas-band" id="ideas">
       <div class="shell ideas-grid">
         <div class="ideas-art reveal" aria-hidden="true">
-          <img src="assets/mascot.webp" width="720" height="708" alt="">
+          <img src="assets/mascot.webp" width="1270" height="1239" loading="lazy" decoding="async" alt="">
           <div class="idea-orbit o1"></div><div class="idea-orbit o2"></div><div class="idea-orbit o3"></div>
         </div>
         <div class="ideas-copy reveal reveal-delay">
@@ -315,7 +388,7 @@
 
   <footer class="footer">
     <div class="shell footer-inner">
-      <div class="footer-brand"><img src="assets/favicon.png" width="28" height="28" alt=""><span>Attadipa</span><small>Independent by design</small></div>
+      <div class="footer-brand"><img src="assets/favicon.png" width="28" height="28" alt="" loading="lazy" decoding="async"><span>Attadipa</span><small>Independent by design</small></div>
       <p><span class="lang-en">Open source under the MIT License. Early development — claims on this page describe both current state and explicit product goals as labelled.</span><span class="lang-ru">Открытый проект под лицензией MIT. Разработка на раннем этапе: на странице отдельно описаны текущее состояние и заявленные цели продукта.</span></p>
       <a href="#top"><span class="lang-en">Back to top</span><span class="lang-ru">Наверх</span> ↑</a>
     </div>

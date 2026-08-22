@@ -8,8 +8,19 @@
 
 # Attadipa
 
-A wearable firmware platform for ESP32-S3 smartwatches — mesh messaging,
-offline navigation, and a UI that is meant to be genuinely pleasant to use.
+**Open-source firmware and application platform for ESP32-S3 smartwatches** —
+LoRa mesh messaging over MeshCore, offline GNSS navigation that needs no phone
+and no network, and an LVGL interface on FreeRTOS that is meant to be genuinely
+pleasant to use. MIT licensed, built with ESP-IDF.
+
+It targets two very different wearables from one codebase — the **LilyGO T-Watch
+S3 Plus** and the **Waveshare ESP32-S3-Touch-AMOLED-2.06** — which share almost
+nothing but the SoC and the PMU. One has LoRa and GNSS in five hardware variants
+the product name does not distinguish; the other has neither. So an application
+here asks *what the device can do*, never *which device it is*: board
+differences live behind a capability registry, and a capability that arrives
+over the air from an attached node is answered by the same registry as one
+soldered to the board.
 
 > **Status: early implementation.** The host-testable layers exist and are
 > tested — the hardware inventory, the capability registry, the transport, the

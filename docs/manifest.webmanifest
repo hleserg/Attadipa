@@ -1,13 +1,19 @@
 {
-  "name": "Attadipa",
+  "id": "/Attadipa/",
+  "name": "Attadipa — ESP32-S3 smartwatch firmware",
   "short_name": "Attadipa",
-  "description": "Open-source wearable platform for ESP32-S3.",
+  "description": "Open-source firmware and application platform for ESP32-S3 smartwatches: LoRa MeshCore messaging, offline GNSS navigation and an LVGL interface on FreeRTOS.",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["developer", "utilities"],
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#FFF6E8",
   "theme_color": "#FFF6E8",
   "icons": [
-    {"src":"assets/icon-512.png","sizes":"512x512","type":"image/png"},
-    {"src":"assets/apple-touch-icon.png","sizes":"180x180","type":"image/png"}
+    {"src":"assets/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
+    {"src":"assets/icon-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"},
+    {"src":"assets/apple-touch-icon.png","sizes":"180x180","type":"image/png","purpose":"any"}
   ]
 }
