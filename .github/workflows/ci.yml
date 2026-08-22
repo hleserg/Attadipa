@@ -275,12 +275,15 @@ jobs:
       # executable bit set locally never reaches a commit and the runner would
       # get `Permission denied` instead of a result.
       # The checker's own mutation tests. A checker that passes everything is
-      # worse than no checker, because it reads as evidence. Ten cases, five of
-      # which assert it does *not* fire where firing would be wrong.
+      # worse than no checker, because it reads as evidence. Sixteen cases,
+      # eight of which assert it does *not* fire where firing would be wrong,
+      # and one that reproduces the splice defect this PR's first revision
+      # shipped -- a stray backtick that re-parented a task's whole field list
+      # while leaving every heading unique.
       - name: The checker actually checks
         run: python3 tools/docs/test_check_docs.py
 
-      - name: Links resolve and task IDs are unique
+      - name: Links resolve, code spans close, task IDs are unique
         run: python3 tools/docs/check_docs.py .
 
   simulator:

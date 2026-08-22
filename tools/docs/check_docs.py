@@ -6,7 +6,15 @@
    somebody clicks it. A rename with a stale reference behind it is the normal
    way this happens.
 
-2. Task IDs in TASKS.md are unique. A duplicate ID means two tasks answer to one
+2. Inline code spans close on the line that opens them. A stray backtick is
+   invisible in a diff and turns everything after it into code until the next
+   one, so a heading that lands inside the span stops being a heading. That is
+   not hypothetical: this checker's own pull request shipped a `TASKS.md` where a
+   splice landed inside `` `## DONE` ``, truncating one task's body and
+   re-parenting its entire field list onto the next heading. The uniqueness check
+   passed cleanly, because every heading was still unique.
+
+3. Task IDs in TASKS.md are unique. A duplicate ID means two tasks answer to one
    name and an agent picking work up cannot tell which it was handed. Headings
    inside a `<details>` block are deliberately excluded: TASKS.md keeps a
    rejected task's original scope in one, and that is a record rather than a
@@ -30,6 +38,10 @@ import sys
 LINK = re.compile(r"\]\(\s*([^)\s#]+)(#[^)\s]*)?\s*\)")
 FENCE = re.compile(r"^\s*(```|~~~)")
 TASK_HEADING = re.compile(r"^###\s+(T-\d+[a-z]?)\b")
+# Runs of backticks delimit an inline code span, and a span does not survive a
+# blank line. Counting runs rather than characters is what makes ``a `b` c``
+# work.
+TICK_RUN = re.compile(r"`+")
 DETAILS_OPEN = re.compile(r"<details\b", re.I)
 DETAILS_CLOSE = re.compile(r"</details\s*>", re.I)
 
@@ -81,6 +93,48 @@ def check_links(root: str) -> list[str]:
     return problems
 
 
+def check_code_spans(root: str) -> list[str]:
+    """Paragraphs whose inline code spans do not close.
+
+    Scoped to the paragraph, not the line: CommonMark lets a code span wrap a
+    soft line break, and this repository's prose does that constantly. A blank
+    line does end it, so an odd number of backtick runs between two blank lines
+    means one of them never closes.
+    """
+    problems = []
+    for path in markdown_files(root):
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        rel = os.path.relpath(path, root)
+        runs: list[int] = []
+        first = 0
+        for lineno, line in strip_fences(text) + [(0, "")]:
+            if not line.strip():
+                if runs and _unclosed(runs):
+                    problems.append(
+                        f"{rel}:{first}: unclosed inline code span in this paragraph"
+                    )
+                runs, first = [], 0
+                continue
+            if not runs:
+                first = lineno
+            runs.extend(len(run) for run in TICK_RUN.findall(line))
+    return problems
+
+
+def _unclosed(runs: list[int]) -> bool:
+    """CommonMark's rule: a span opened by a run of N backticks closes at the
+    next run of *exactly* N. Counting backticks would misread ``a ` b``, which
+    is three runs and perfectly balanced."""
+    i = 0
+    while i < len(runs):
+        try:
+            i = runs.index(runs[i], i + 1) + 1
+        except ValueError:
+            return True
+    return False
+
+
 def check_task_ids(root: str) -> list[str]:
     path = os.path.join(root, "TASKS.md")
     if not os.path.exists(path):
@@ -117,6 +171,7 @@ def main() -> int:
     failed = False
     for title, problems in (
         ("Broken relative links", check_links(root)),
+        ("Unclosed inline code spans", check_code_spans(root)),
         ("Duplicate task IDs", check_task_ids(root)),
     ):
         if problems:

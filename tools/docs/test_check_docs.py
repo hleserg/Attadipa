@@ -56,6 +56,36 @@ def main() -> int:
         write(root, "a.md", "[root](/docs/real.md)\n")
         case("a root-relative link resolves against the repo root", not check_docs.check_links(root))
 
+        write(root, "a.md", "A `span` on one line, and `another` one.\n")
+        case("a balanced span is not reported", not check_docs.check_code_spans(root))
+
+        # The per-line version of this check produced 61 false positives on this
+        # repository, all of them this shape. CommonMark lets a span wrap a soft
+        # line break and the prose here does it constantly.
+        write(root, "a.md", "A span that wraps `the line\nbreak` and closes.\n")
+        case("a span across a soft break is not reported", not check_docs.check_code_spans(root))
+
+        write(root, "a.md", "Prose with `an unclosed span.\n\nA new paragraph.\n")
+        problems = check_docs.check_code_spans(root)
+        case("an unclosed span is reported", len(problems) == 1 and ":1:" in problems[0])
+
+        # The real defect this check was added for: a splice landed inside
+        # `` `## DONE` ``, leaving one backtick behind and re-parenting a task's
+        # entire field list onto the next heading. Every heading stayed unique,
+        # so the uniqueness check passed.
+        write(root, "a.md", "### T-100 \u00b7 One\n- the tests in `## DONE\n\n### T-102 \u00b7 Two\n- **Priority:** P1\n")
+        case(
+            "the splice defect is caught",
+            len(check_docs.check_code_spans(root)) == 1
+            and not check_docs.check_task_ids(root),
+        )
+
+        write(root, "a.md", "Prose.\n\n```\nlone ` backtick in a fence\n```\n")
+        case("backticks inside a fence are ignored", not check_docs.check_code_spans(root))
+
+        write(root, "a.md", "A ``span with a ` inside`` it.\n")
+        case("a double-backtick span is counted by runs", not check_docs.check_code_spans(root))
+
         os.remove(os.path.join(root, "a.md"))
 
         write(root, "TASKS.md", "### T-001 · One\n\n### T-002 · Two\n")

@@ -42,36 +42,9 @@ stale silently. The protocol is
 ### T-100 · The agent queue, verified by running it rather than by reading it
 - **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
   different pieces of work carried that ID: this one, and the transport tests
-  in `## DONE
-
-### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
-- `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
-  Two checks, both of failures that had already happened here.
-- **Relative links resolve.** These documents cite each other constantly and a
-  link that 404s reads exactly like one that works until somebody clicks it. The
-  repository was clean at the time this landed; the point is that it stays that
-  way through the next rename. Fenced code, external schemes and root-relative
-  `/paths` are all handled.
-- **Task IDs are unique.** Four pairs had accumulated. Two were stale open copies
-  of tasks already recorded as `DONE` — T-083 and T-084 — and those copies are
-  deleted, their substance already being in the `DONE` records. Two were genuine
-  collisions between unrelated work: T-054 and T-039 each named a live task *and*
-  a historical record. **The historical record keeps the number** — commit
-  `5810e20` names T-054 in its message and history cannot be re-pointed — so the
-  live tasks became **T-100** and **T-101**, each carrying a line saying why so
-  nobody renumbers them back.
-- **Headings inside a `<details>` block are excluded on purpose.** TASKS.md keeps
-  a rejected task's original scope in one — T-073 — and that is a record, not a
-  second live task. Without the exclusion this job would have failed on `main`
-  from its first run, which is the specific way a hygiene check lands broken.
-- **Mutation-tested**, and CI runs those tests before it runs the checker:
-  ten cases in `tools/docs/test_check_docs.py`, five of which assert the checker
-  does *not* fire where firing would be wrong.
-- Invoked through `python3`, never as `./check_docs.py` — the working copies this
-  repository is edited from report `core.filemode=false`, so an executable bit
-  set locally never reaches a commit.`, which commit `5810e20` names as T-054 in its message. History
-  keeps the number it was recorded under; the live task takes a fresh one.
-  `python3 tools/docs/check_docs.py` fails if this ever happens again.
+  in the `DONE` section, which commit `5810e20` names as T-054 in its message.
+  History keeps the number it was recorded under; the live task takes a fresh
+  one. `python3 tools/docs/check_docs.py` fails if this ever happens again.
 - **Priority:** P1
 - **Dependencies:** none — the automation is merged on `main`
 - **Goal:** the loop closes without the owner as transport: a finding becomes an
@@ -1623,6 +1596,43 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
+- `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
+  Two checks, both of failures that had already happened here.
+- **Relative links resolve.** These documents cite each other constantly and a
+  link that 404s reads exactly like one that works until somebody clicks it. The
+  repository was clean at the time this landed; the point is that it stays that
+  way through the next rename. Fenced code, external schemes and root-relative
+  `/paths` are all handled.
+- **Task IDs are unique.** Four pairs had accumulated. Two were stale open copies
+  of tasks already recorded as `DONE` — T-083 and T-084 — and those copies are
+  deleted, their substance already being in the `DONE` records. Two were genuine
+  collisions between unrelated work: T-054 and T-039 each named a live task *and*
+  a historical record. **The historical record keeps the number** — commit
+  `5810e20` names T-054 in its message and history cannot be re-pointed — so the
+  live tasks became **T-100** and **T-101**, each carrying a line saying why so
+  nobody renumbers them back.
+- **Headings inside a `<details>` block are excluded on purpose.** TASKS.md keeps
+  a rejected task's original scope in one — T-073 — and that is a record, not a
+  second live task. Without the exclusion this job would have failed on `main`
+  from its first run, which is the specific way a hygiene check lands broken.
+- **Inline code spans close.** Added after this task's own pull request shipped
+  a `TASKS.md` in which a splice landed inside an inline span, truncating T-100's
+  body and re-parenting its entire field list onto the next heading. Every
+  heading was still unique, so the uniqueness check passed cleanly — which is the
+  point. The rule is CommonMark's: a span opened by a run of N backticks closes
+  at the next run of **exactly** N, scoped to the paragraph. A per-line version
+  was written first and produced 61 false positives on this repository, because a
+  span may wrap a soft line break and this prose does it constantly.
+- **Mutation-tested**, and CI runs those tests before it runs the checker:
+  sixteen cases in `tools/docs/test_check_docs.py`, eight of which assert the
+  checker does *not* fire where firing would be wrong. One reproduces the splice
+  defect above verbatim and asserts the span check catches what the uniqueness
+  check cannot.
+- Invoked through `python3`, never as `./check_docs.py` — the working copies this
+  repository is edited from report `core.filemode=false`, so an executable bit
+  set locally never reaches a commit.
 
 ### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
 - **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
