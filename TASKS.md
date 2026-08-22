@@ -236,47 +236,59 @@ stale silently. The protocol is
 - **Tests:** none. It produces a research record.
 - **Hardware required:** no.
 
-### T-064 · Beacon profiles, and the scheduler that arbitrates them
-- **Priority:** P3 — **blocked on the owner**, question 1 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
-- **Dependencies:** T-063 (which may make it unnecessary), T-068, T-069
-- **Goal:** if the owner wants the watch findable by a crowd-sourced network,
-  build it as a core-owned slot scheduler with one registered profile per
-  ecosystem — never as an application.
-- **The shape, and why it is not an application:** a beacon that stops when the
-  screen goes off is not a beacon; the moment you need it is the moment the
-  device is idle or flat. And several ecosystems at once means several
-  advertising sets on one radio: interval, duty cycle, current and coexistence
-  with Wi-Fi and the node link. Arbitration of a shared radio resource does not
-  live above the platform layer. An application chooses which profiles are on
-  and reads their state; Child Mode's setup is a preset over that, not a second
-  mechanism.
-- **What the research already settled, so it is not re-derived:** two of the
+### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
+- **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
+  answering A7 on [#33](https://github.com/hleserg/Attadipa/issues/33): *"Не
+  делаем. Ни Apple, ни какую-либо ещё."*
+- **Why, and the order matters.** The research found the feature expensive
+  before it found it unwanted, and the decision is the second one. Two of the
   three ecosystems are shut before the radio is involved — Google needs
   registration, an email allowlist and third-party certification, and its only
-  readable implementation is licensed for Nordic silicon only; Samsung's SDK
-  ships for no Espressif part and an unregistered advertisement is inert.
-  OpenHaystack and macless-haystack are AGPL-3.0 and cannot be copied into an
-  MIT repository.
-- **Non-negotiable if it is built at all:** identifier and BLE address rotate
-  together, per DULT — 15 minutes near-owner, 24 hours separated. A tag that
-  does not rotate is a stalking device. A tag that rotates *faster than the
-  platforms' detectors sample* may be one too, and whether that is still true in
-  2026 is `UNKNOWN` (§1.6). Settle it before shipping, not after.
-- **Acceptance:** blocked. Do not start without an answer to §5 question 1.
-- **Research status:** done — §1
-- **Implementation status:** blocked on the owner
-- **Tests:** the profile state machine and the slot scheduler are host-testable;
-  every power and cadence figure is `NOT EXECUTED — HARDWARE REQUIRED`.
-- **Hardware required:** for anything anybody would believe, yes.
+  readable implementation is licensed for Nordic silicon; Samsung's SDK ships
+  for no Espressif part. Apple is reachable and costs an Apple ID bootstrapped
+  on Apple hardware, a self-hosted endpoint and, for anything a person would
+  recognise as Find My, MFi — which excludes individuals. **None of that is the
+  reason.** The owner decided the feature is not wanted, which is a product
+  decision and outranks the obstacles.
+- **What still answers the need:** T-063 — the companion phone remembers where
+  it last saw the watch over BLE. No account, no other company's identifier, no
+  network, and it works with the companion this project already specifies.
+- **What the research keeps, because it is about the device and not the
+  feature:** DULT, rotation intervals and the 2022 fast-rotation evasion are
+  still live input to T-069 and T-070. §1 of
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is not
+  obsolete; only this task is.
+- **If this is ever revisited:** nothing in the ecosystems changed the answer,
+  so nothing in them would change it back. It is one decision to reverse.
 
 ### T-065 · `track/`: recording, storage, and a simplifier that fits
-- **Priority:** P2 — **sized by the owner**, question 2 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
-- **Dependencies:** T-046 (crash-safe persistence), T-047 (two clocks), T-067
+- **Priority:** P2 — **sized, unblocked**, by
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature) §2
+- **Dependencies:** T-046 (crash-safe persistence), T-047 (two clocks), T-067,
+  and now T-060/T-061 — see the recording rule below
 - **Goal:** a core library that records a track and survives the application
   being closed, the device sleeping, and a flat battery — because a breadcrumb
   trail that stops when the screen does is not one.
+- **THE RECORDING RULE IS NOT A TIMER, and this is what the owner answered.** A
+  track exists for a walk somebody may have to retrace on foot. So: the watch
+  learns **familiar ground** — places where the wearer stays a long time while
+  moving only locally; inside it nothing is recorded; past a threshold beyond
+  its edge, **on foot**, recording starts; on return the track is **erased**.
+  Vehicles are out of scope — that is what a phone is for. Background recording
+  is configurable and **on by default**.
+- **What that rule costs, named rather than discovered later:**
+  - **"on foot" needs motion-mode recognition**, or the watch records in a car,
+    which is the one case that was excluded. It rests on the pedometer, which
+    exists only as OD-6 — so this task cannot ship ahead of T-060/T-061;
+  - **"familiar ground" is learned anchors**, i.e. stored personal history. That
+    is a privacy surface and it belongs to T-069, in Child Mode especially;
+  - **threshold, hysteresis and dwell are three numbers that do not exist.**
+    Propose them with arithmetic. Too small records every trip to the shop; too
+    large starts recording once it is already too late;
+  - the **upper bound is now a walk**: order of a couple of hours, single-digit
+    kilometres, hundreds to a few thousand points — not the multi-day route §3
+    sized against. Recompute the encoding budget from that, do not inherit it.
 - **What has to be decided rather than assumed:**
   - **every point carries its source and its uncertainty.** A GNSS point, a
     point reckoned from an anchor and a point with no anchor at all are three
@@ -433,8 +445,12 @@ stale silently. The protocol is
 - **Hardware required:** for a real scan, yes.
 
 ### T-071 · Dead reckoning: odometry, the disk, and what makes it stop
-- **Priority:** P2 — **sized by the owner**, question 3 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
+- **Priority:** P2 — **not blocked.**
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature)
+  §2 answers question 3 without being asked it: everything is built around
+  getting back on foot, which is the one purpose that survives the physics.
+  Build for *"get me back to the tent"*, not for *"reconstruct my route"* —
+  the second is T-088, where GNSS is present and reckoning is not needed.
 - **Dependencies:** T-060, T-061 (it is the same step detector, not a second
   one), T-065, [ADR-0009](docs/adr/0009-heading.md)
 - **Goal:** when GNSS is lost, say how far the wearer has walked and where they
@@ -1325,6 +1341,41 @@ stale silently. The protocol is
   and on a 410 × 502 AMOLED are two different answers, and the AMOLED's depends
   on which pixels. `UNKNOWN`, hardware required.
 - **Hardware required:** yes, for every power number
+
+### T-088 · Save a whole track on request — the second track feature, not a mode of the first
+- **Priority:** P2 —
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature) §3
+- **Dependencies:** T-065 (the storage and the simplifier are shared), T-046
+- **Goal:** an application the wearer starts deliberately, which records a track
+  until they stop it and keeps it to look at afterwards on a map.
+- **Why this is a separate task and not a flag on T-065.** They differ in every
+  dimension that matters to an implementation:
+
+  | | T-065, the way back | T-088, saved on request |
+  |---|---|---|
+  | starts | by itself, on leaving familiar ground | because a person asked |
+  | how the wearer is travelling | on foot only | **any** — a car is fine here |
+  | ends | on return, and the track is **erased** | when the wearer stops it, and the track is **kept** |
+  | when storage fills | drop the oldest, the tail is what gets you home | this is a data-loss event and the wearer is told |
+  | consumer | the wearer, right now, lost | the wearer, later, on a map |
+
+  A single mechanism with a flag would have to be right about all five at once,
+  and the erase rule and the keep rule are the same code path with opposite
+  requirements. That is the shape that produces a track deleted while somebody
+  was relying on it.
+- **The form the owner asked for:** an application, allowed to keep recording in
+  the background so other applications keep working. Background here is a
+  capability the platform grants, not a thread an application starts — the
+  ownership question belongs in the design, not in the app.
+- **Acceptance:** host tests over a recording that outlives the application
+  being closed and the device sleeping; an explicit, tested behaviour when
+  storage fills that never silently discards; the "was this simplified" flag
+  honest end to end.
+- **What must not be assumed:** that this shares the recording *rule* with
+  T-065. It shares the storage, the encoding and the simplifier, and nothing
+  above them.
+- **Hardware required:** no for the logic; yes for anything said about what
+  continuous recording costs.
 
 ## BLOCKED
 

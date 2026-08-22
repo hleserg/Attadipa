@@ -932,3 +932,59 @@ client exists yet.
 
 **Tests required:** none — nothing is taken.
 
+
+---
+
+### Crowd-sourced tag emulation — the ecosystems, and why none of them was reached
+
+**Problem:** A7 asked whether the watch should be findable through a
+crowd-sourced finding network the way a smart tag is, so that a lost watch is
+located by strangers' phones rather than only by its owner's.
+
+**Projects investigated:**
+
+| | Licence | Reachable from an MIT ESP32 firmware? |
+|---|---|---|
+| `seemoo-lab/openhaystack` | **AGPL-3.0** | no — copying into an MIT repository is not available, and AGPL is the strongest copyleft here |
+| `dchristl/macless-haystack` | **AGPL-3.0** | no, same |
+| Google's Find My Device reference | proprietary, and licensed *"only … with a Nordic Semiconductor ASA integrated circuit"* | no — the silicon clause alone ends it, before the approval form, the email allowlist and the third-party certification |
+| Samsung SmartThings Find SDK | proprietary | no — ships for no Espressif part, and an unregistered advertisement is inert by construction |
+
+**Useful implementation:** the *specifications* rather than the code. DULT's
+rotation requirements — identifier and BLE address rotating together, 15 minutes
+near-owner and 24 hours separated — are a published contract and are readable
+without touching an AGPL implementation. Those stay relevant to T-069 and T-070
+whatever happens to this feature.
+
+**Decision:** `REJECT`.
+
+**Reason:** two, in this order, and the second is the decisive one.
+
+*The licences and the platform gates* made it expensive. Both open
+implementations are AGPL-3.0; both proprietary SDKs are closed to this hardware.
+Apple's network is the one that is technically reachable, and reaching it costs
+an Apple ID bootstrapped on physical Apple hardware, a self-hosted endpoint and
+SMS-only 2FA — and the watch would still never appear in Apple's own Find My
+app, because that is the MFi pairing flow and MFi excludes individuals. Median
+latency is 26 minutes: recovery, not live tracking.
+
+*The owner* then rejected the feature itself
+([OD-13](OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
+2026-08-22, on [#33](https://github.com/hleserg/Attadipa/issues/33)): *"Не
+делаем. Ни Apple, ни какую-либо ещё."* That is a product decision and it does
+not rest on any of the above.
+
+Recording both matters, and the order matters more here than usual. If a
+crowd-sourced network ever became reachable under a permissive licence, the
+first half of this record would be obsolete and the second half would still
+stand. This is not a blocked feature waiting for the ecosystems to change.
+
+**Source revision:** licences read 2026-08-21;
+`docs/research/TAGS_TRACKS_RECKONING.md` §1 carries the detail and the citations.
+
+**Attadipa integration:** none, and T-064 is closed. The need A7 was aimed at is
+answered by **T-063** instead — the companion phone remembers where it last saw
+the watch over BLE. No account, no membership, no other company's identifier, no
+server, and it works with the companion ADR-0002 already specifies.
+
+**Tests required:** none — nothing is taken.
