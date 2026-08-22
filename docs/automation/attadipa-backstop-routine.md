@@ -146,7 +146,13 @@ and `agent:ready` where one is genuinely needed.
         * `ai-review:pass` is present — the independent reviewer put it there,
           and its absence means no verdict, not a silent yes;
         * `ai-review:blocking`, `agent:blocked` and `needs-owner` are absent;
-        * no unresolved review threads;
+        * no unresolved review threads — and note this is the condition that
+          carries the OTHER reviewer. Codex (`chatgpt-codex-connector[bot]`) is
+          configured on ChatGPT's side, not in this repository, and it does NOT
+          set `ai-review:pass`. Its findings reach a pull request only as review
+          threads, so this line is the only thing standing between a Codex P1
+          and an automatic merge. It has been load-bearing once already: on
+          #19 Codex found a real hole that Claude's reviewer did not;
         * `mergeable_state` is `clean` — never resolve a conflict to merge one;
         * untouched for over six hours, so an active session is not about to
           push to it.
@@ -196,6 +202,23 @@ REPORT, in Russian, technical terms in English, short:
   * an OWNER DECISION REQUIRED block only if one is genuinely needed.
 All healthy → one line. Do not write a report for the sake of a report.
 ```
+
+## Resolving a thread is part of addressing it
+
+The rule above reads an unresolved review thread as "not finished", which is
+correct and has a consequence somebody has to carry: **whoever addresses a
+review finding must resolve the thread**, not merely reply to it.
+
+This is not bookkeeping. Replying and leaving the thread open makes the pull
+request permanently unmergeable by the backstop — which reintroduces the exact
+stalled-pull-request problem the merge rule was added to solve, one layer down.
+Observed on 2026-08-21: the Codex thread on #19 was fixed, verified by running
+both halves, and answered in detail — and is still open, because a reply is not
+a resolution.
+
+So: fix it, say what you did, **resolve the thread**. If you disagree with the
+finding, say why and resolve it anyway — a thread left open to mean "I disagree"
+is indistinguishable from one left open because nobody looked.
 
 ## Why it merges, and what that costs
 
