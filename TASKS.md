@@ -1664,10 +1664,18 @@ Possible options:
                 2. Defer entirely.
 Recommended next action:
                 Option 1 — the tooling is host-testable, and it is what turns a
-                theory into a measurement. Note that neither board has a
-                magnetometer, so the haptics-versus-compass case cannot be
-                measured on current hardware in any configuration.
+                theory into a measurement.
 ```
+- **The blocker changed on 2026-08-22 and is now smaller.** This task used to be
+  impossible in principle: neither board has a magnetometer, so the headline
+  haptics-versus-compass case had nothing to measure with. **A5 is answered** —
+  the owner has ordered two magnetometer modules and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83),
+  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)). It is now
+  waiting for a part in the post, not for a device that does not exist.
+- **On the Waveshare unit it stays doubly blocked**, for a second and unrelated
+  reason: that unit has **no vibration motor fitted**, so there is nothing to
+  interfere with the compass even once the compass exists.
 
 ---
 
@@ -1710,10 +1718,18 @@ Recommended next action:
   [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md),
   [COEXISTENCE_BACKLOG](docs/hardware/COEXISTENCE_BACKLOG.md).
 - **What the exercise surfaced:** two coexistence epics — haptic/magnetometer and
-  audio/magnetometer interference — **cannot be run on either target board**,
-  because neither has a magnetometer. They are marked NOT POSSIBLE rather than
-  left looking pending. Five magnetometer epics are blocked on hardware that does
-  not exist (A5).
+  audio/magnetometer interference — could not be run on either target board,
+  because neither has a magnetometer, and five magnetometer epics were blocked on
+  hardware that did not exist (A5).
+- **Superseded 2026-08-22, and the status word has to change with it.** A5 is
+  answered: the owner ordered a CJMCU-9911 and a GY-271 and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83)). Those seven epics are
+  **blocked pending a part in the post**, not `NOT POSSIBLE`. The distinction the
+  other files are careful about holds here too: a **stock** board still has no
+  magnetometer and the firmware still has to run on one, so the epics describe a
+  capability that will exist on exactly one physical device — which is a registry
+  problem, not a board problem
+  ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §0).
 - **Startable now without hardware:** C-02 bus ownership, C-03 rail arbitration
   and C-12 diagnostic trace. The trace in particular should be finished *while*
   waiting for hardware — every blocked coexistence test needs it to produce

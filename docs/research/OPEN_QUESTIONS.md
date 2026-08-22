@@ -203,7 +203,7 @@ with someone competent reviewing it — not in a paragraph here.
 | # | Question | Status | Resolved by |
 |---|---|---|---|
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
-| Q2 | Is a magnetometer expected to be added externally, or is heading GNSS-only for good? | UNKNOWN | product decision by the owner |
+| Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83)). The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
@@ -215,11 +215,24 @@ hardware run the same applications, because applications ask what the device can
 do and never which device it is.
 
 Q2 is the part of the compass question that OD-1 did *not* answer, and it got
-sharper. The owner named "компас" among the applications the node enables. No
-board has a magnetometer. Either the node carries one — which would answer both
-Q2 and A5 — or "compass" means GNSS course-over-ground, which only works while
-moving and shows nothing at all when the user stands still. Those are different
-products and the difference is visible to the user in the first ten seconds.
+sharper, and then on 2026-08-22 it got **split**. The owner named "компас" among
+the applications the node enables. No board has a magnetometer. The original
+framing was: either the node carries one — which would answer both Q2 and A5 —
+or "compass" means GNSS course-over-ground, which only works while moving and
+shows nothing at all when the user stands still. Those are different products and
+the difference is visible to the user in the first ten seconds.
+
+A5 has since been answered by a **third** route neither branch anticipated: the
+owner is soldering a magnetometer into one unit. That answers "is one expected to
+be added externally" — yes — and leaves the product question untouched, because
+**a soldered part on one wrist is not a shipping capability**. A6 also remains
+open and remains independent: node orientation is not watch orientation
+([ADR-0009](../adr/0009-heading.md) §3), so a node's magnetometer answers a
+different question than a wrist's does.
+
+What Q2 now asks is the narrow, still-open thing: **on a board nobody has
+modified, is heading GNSS-course-only for good?** That is a product decision and
+the retrofit does not make it.
 
 ---
 

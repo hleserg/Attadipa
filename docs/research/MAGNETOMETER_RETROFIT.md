@@ -35,7 +35,7 @@ This document does the first. The second is a separate task.
 
 | Key | Source |
 |---|---|
-| M1 | **AKM `AK09911` Short Datasheet**, `ShortDatasheet-E-00`, 2014/1, md5 `1d7e1960c86b2a1fb38ecc862196c4a7`. Names the `AK09911C` explicitly in the package line, so it is the right document for the C part — but see §2.4, it is a *short* datasheet and it stops before the register map |
+| M1 | **AKM `AK09911` Short Datasheet**, `ShortDatasheet-E-00`, 2014/1, md5 `1d7e1960c86b2a1fb38ecc862196c4a7`. It is the right document for the ordered part — `AK09911C` is the only variant named, in the package line and again in the recommended-connection schematic. It is a *short* datasheet: it runs to §9 but contains **no register address map** (see §2.4) |
 | M2 | **QST `QMC5883L` Datasheet Rev. B**, document `13-52-04`, `QST-PD-B002-22`, fetched from `qstcorp.com`, md5 `d13221b15c034c3f9b24befa48c8f4ab`. Rev B, not the Rev 1.0 that most of the internet mirrors |
 | M3 | **QST `QMI8658C` Rev 0.6**, md5 `3d2bd7b24172e5d3448f2c9ecf2ef752` — the IMU already on the board, consulted for §5 |
 | M4 | Owner's photographs of both AliExpress listings, 2026-08-22 — silkscreen, pin labels and the die marking only. A photograph of a module is evidence about *labels*, not about *nets* |
@@ -64,14 +64,24 @@ which is worth having in a device that will be assembled by hand. (M1 §1, §2)
 
 **3.3 V is inside the range**, and this needed correcting because I had it wrong
 first: I called the part a low-voltage sensor in [#83](https://github.com/hleserg/Attadipa/issues/83)
-before reading M1, on a half-remembered "AK0991x is 1.8 V". **M1 is titled
-`AK09911`, gives `VDD` 2.4–3.6 V, and names `AK09911C` in the package line —
-so the `C` is a package, not a voltage variant.** Where the 1.8 V recollection
-comes from is `UNKNOWN` and is not worth chasing; it may belong to another part
-in the family, but no source here says so and inventing one to explain a mistake
-is worse than the mistake. `VID` may be run below `VDD` if the host wants, but on
-this board there is no reason to: everything else on the main I2C bus is at
-3.3 V.
+before reading M1, on a half-remembered "AK0991x is 1.8 V". **M1 covers the
+`AK09911C` — it is the only variant named, appearing in the package line (§1) and
+in the recommended external connection (§7) — and specifies `VDD` 2.4–3.6 V. So
+3.3 V is in range for the ordered part.** What the suffix `C` denotes is *not
+stated by M1* and does not need to be; §8.1 Marking gives the die mark as
+"Product name: 9911" with no suffix at all. Where the 1.8 V recollection comes
+from is `UNKNOWN`, and inventing a part to explain a mistake is worse than the
+mistake.
+
+`VID` may be run below `VDD` if the host wants, but on this board there is no
+reason to: everything else on the main I2C bus is at 3.3 V.
+
+**The same power-state prohibition that §3.5 describes for the QMC5883L applies
+here too**, and it is recorded in both places so that neither part looks like the
+safe one. M1 §6.1: *"the transition from state 2 to state 3 and the transition
+from state 3 to state 2 are prohibited"*, where state 2 is `VDD` off with `VID`
+at 1.65–3.6 V and state 3 is `VDD` on with `VID` off. This is not a difference
+between the two candidates.
 
 ### 2.3 Sensing
 
@@ -82,11 +92,18 @@ this board there is no reason to: everything else on the main I2C bus is at
   `01000` → 100 Hz. Single measurement is `00001` and returns to power-down by
   itself, which is the mode a watch actually wants
 - Magnetic sensor overflow monitor, and a `DRDY` status for data-ready
+- **Time for one measurement `TSM` = 7.2 ms typ, 8.5 ms max** (M1 §5.3.3, analog
+  circuit characteristics). This is the number §4.1 needs and an earlier draft of
+  this document wrongly said M1 did not give
 
 ### 2.4 I2C
 
-**Standard, fast and high-speed to 2.5 MHz** (M1 §1), open-drain, external
-pull-ups required, max 400 pF bus capacitance per line (M1 note 3).
+Standard and Fast mode; **High-speed mode reaches 2.5 MHz only with bus
+capacitance ≤ 100 pF, and falls to 1.7 MHz at the 400 pF maximum** (M1 §5.3.4).
+The headline "up to 2.5 MHz" in M1 §1 and the "maximum capacitive load 400 pF"
+in M1 note 3 are both true and **cannot be had together** — a driver author who
+reads them as one sentence will set 2.5 MHz on a shared watch bus that is
+nowhere near 100 pF. Open-drain, external pull-ups required.
 
 Address is strapped by the `CAD` pin, which the module breaks out:
 
@@ -99,10 +116,12 @@ Address is strapped by the `CAD` pin, which the module breaks out:
 has no strap of its own, so `0x0C` is the only address that keeps both options
 open.
 
-**What M1 does not contain:** the register address map. The short datasheet runs
-to §6.3 and stops. `WIA1`/`WIA2` company and device ID values, the `ST1`/`ST2`
-status bits and the `HXL…HZH` data register addresses are **`UNKNOWN` from a
-primary source**. The full datasheet is available from AKM on request; failing
+**What M1 does not contain:** the register address map. M1 is not truncated — it
+runs through §7 recommended connection, §8 package and §9 field-to-output-code —
+it simply never prints register addresses. `WIA1`/`WIA2` company and device ID
+values, the `ST1`/`ST2` status bits and the `HXL…HZH` data register addresses are
+**`UNKNOWN` from a primary source**. Only the names `CNTL2`, `MODE[4:0]` and the
+`SRST` bit appear, and never with an address. The full datasheet is available from AKM on request; failing
 that, the Linux IIO driver `drivers/iio/magnetometer/ak8975.c` carries an
 `AK09911` entry and is a defensible secondary source. **Do not** copy register
 numbers out of an Arduino library without checking them against one of those two.
@@ -112,7 +131,7 @@ numbers out of an Arduino library without checking them against one of those two
 `AK09911C` is an **8-pin WL-CSP (BGA), 1.2 × 1.2 × 0.5 mm** typical (M1 §1).
 
 That is a wafer-level chip-scale ball grid array a bit over a millimetre on a
-side. It is not hand-solderable in any ordinary sense. This matters for §6: if
+side, with eight balls. It is not hand-solderable in any ordinary sense. This matters for §6: if
 the intention is to move the bare die off its breakout board and place it inside
 the watch, this part is the harder of the two by a wide margin.
 
@@ -122,9 +141,14 @@ the watch, this part is the harder of the two by a wide margin.
 
 **It is not an HMC5883L.** The GY-271 is the board sold for a decade as a
 Honeywell HMC5883L breakout and populated with the QST part for most of that
-time. Here the listing title says `QMC5883L` and the die marking in the
-photograph reads `DA 5883` — QST's marking — and the two agree, so **this
-particular purchase carries no bait-and-switch**. But the consequence stands:
+time. Here the listing title says `QMC5883L` and the die marking in the photograph
+reads `DA 5883`. M2 §3.2.3 documents a tracking code whose only fixed element is
+a leading `D`, so the datasheet does not itself certify `5883` as part of the
+mark — the honest statement is that **`DA…` is consistent with QST's scheme and
+inconsistent with a Honeywell HMC5883L, which marks its parts `L883`**. Together
+with a listing title that says `QMC5883L`, that is good enough to proceed on and
+short of proof. It will be settled in one line the moment the part is on a bus:
+`0x0D` answers, or it does not. But the consequence stands:
 the register map, the full-scale coding and the I2C address are all different
 from Honeywell's, and every HMC5883L driver on the internet is the wrong driver.
 Anisotropic magneto-resistive, not Hall — which is why it has a set/reset strap
@@ -138,13 +162,21 @@ and the AKM part does not.
 | `VDDIO` | 1.65 | | 3.6 | V | M2 Table 2 |
 | Absolute max, either | −0.3 | | 5.4 | V | M2 Table 3 |
 | Standby current | | **3** | | **µA** | M2 Table 2 |
-| Continuous, ODR 10 Hz | | **75 / 100** | | µA | M2 Table 2, low / high `OSR` |
-| Continuous, ODR 50 Hz | | 150 / 250 | | µA | M2 Table 2 |
-| Continuous, ODR 100 Hz | | **250 / 450** | | µA | M2 Table 2 |
-| Continuous, ODR 200 Hz | | 450 / 850 | | µA | M2 Table 2 |
+| Continuous, ODR 10 Hz | | 75 / **100** | | µA | M2 Table 2 |
+| Continuous, ODR 50 Hz | | 150 / **250** | | µA | M2 Table 2 |
+| Continuous, ODR 100 Hz | | 250 / **450** | | µA | M2 Table 2 |
+| Continuous, ODR 200 Hz | | 450 / **850** | | µA | M2 Table 2 |
 | Peak during measurement | | 2.6 | | mA | M2 Table 2 |
 | Operating temperature | −40 | | 85 | °C | M2 Table 2 |
 | POR completion `PORT` | | | 350 | µs | M2 Table 7 |
+
+**Read the two current columns the right way round.** M2's condition column says
+`Low/High Power Mode (OSR=64 or 512)`, so the *first* number is the low-power
+setting and the second is high power — and **the reset default is `OSR=00`,
+which is 512**, the highest oversample and the higher current (M2 §9.2.4 and
+Table 16). Out of the box this part draws the **bolded** figure. Getting the
+lower one means writing `OSR=11` (64), which widens the filter bandwidth and
+raises in-band noise. It is available, it is not free, and it is not the default.
 
 **One internal inconsistency, recorded rather than resolved:** Table 2 gives
 `VDDIO` min as **1.65 V**, and the pin table (M2 Table 5, pin 13) says
@@ -161,11 +193,22 @@ of the two readings was a transcription error of ours.
 - ODR programmable 10 / 50 / 100 / 200 Hz
 - X-Y-Z orthogonality **90 ± 1 degree** — a specified error, which the AKM short
   datasheet does not give at all
-- Sensitivity tempco ±0.05 %/°C; sensor sensitivity 100 LSB/°C over −40…85 °C
+- Sensitivity tempco **±0.05 %/°C** over −40…85 °C — this is the magnetic
+  sensitivity's drift
+- **100 LSB/°C is a different thing**: M2 Table 2 names that row *"Temperature
+  Sensor Sensitivity"*, and §9.2.3 confirms it is the scale factor of the `TOUT`
+  registers at `0x07`–`0x08`. An earlier draft dropped the word "Sensor" and
+  turned a temperature-readout gain into a magnetic drift figure. §9.2.3 also
+  warns the temperature gain is factory-calibrated but the **offset is not**, so
+  `TOUT` gives relative temperature, not absolute
 
 ### 3.4 I2C and registers
 
-**Address `0x0D`** (`0b0001101`), fixed — **no address-select pin** (M2 §5.4).
+**Address `0x0D`** (`0b0001101`) — **no address-select pin**, confirmed by the
+pin table, so nothing on the module can move it. M2 §5.4 calls it the *default*
+and adds *"If other I2C address options are required, please contact factory"*,
+which is not a route open to anyone buying a module from AliExpress. For our
+purposes it is immovable; "fixed" was the wrong word for the right conclusion.
 
 | Reg | Contents |
 |---|---|
@@ -185,22 +228,61 @@ on a floating bus. **`0xFF` is a valid ID here and simultaneously the classic
 signature of nothing being there.** Probe by checking the address ACKs, not by
 reading `0x0D` and comparing.
 
+**And there is a typo in M2 that is dangerous specifically for §4.3's plan.**
+M2's I2C read sequence figure prints the repeated-start address byte as
+`0 0 0 1 1 0 0 1` = `0x19`. That is address **`0x0C`** with the read bit set. The
+correct byte for `0x0D` is `0b00011011` = `0x1B`, which is what the write
+sequences in the same section use (`0 0 0 1 1 0 1 0` = `0x1A`). A driver
+transcribed literally from that figure reads from `0x0C` — **which, under the
+recommendation in §4.3, is where the AK09911C lives.** Two magnetometers on one
+bus and a datasheet figure that silently points at the wrong one is a debugging
+session nobody should have to have twice.
+
+Three further internal inconsistencies in M2, recorded rather than resolved, in
+the same spirit as the `VDDIO` one in §3.2: Table 12 marks `0x0C` "Reserved"
+while §9.2.2 opens by saying there are status registers at `0x06` **and `0x0C`**;
+and §3.2.3's marking scheme fixes only a leading `D`, so the datasheet does not
+by itself define `5883` as part of the die mark — see §3.1.
+
 ### 3.5 Package and the power-gating trap
 
-**LGA, 3 × 3 × 0.9 mm** (M2 §3.2.2). Sixteen lands, four of them `NC`, two `GND`.
-Needs a reservoir capacitor on `C1` and a set/reset capacitor across
-`SETP`/`SETC` — those are on the breakout board and would have to be carried
-across if the die is moved.
+**LGA, 3 × 3 × 0.9 mm** (M2 §3.2.2). Sixteen lands, **five** of them `NC`
+(3, 5, 6, 7, 14) and two `GND`.
 
-**The trap** (M2 Table 6, power states): with `VDD` at 0 V and `VDDIO` powered,
-the device is off but draws *unpredictable leakage on `VDD` due to a floating
-node*, and the datasheet says **transitions between that state and the
-`VDD`-on/`VDDIO`-off state are prohibited**. In plain terms: **you may not
-power-gate `VDD` alone while the I2C rail stays up.** In a watch that is exactly
-the thing one is tempted to do — kill the sensor, keep the bus. Both rails go
-together or neither does, and if both rails come from the same 3.3 V net (which
-they will, on the breakout), the question never arises. It arises the moment
-someone gets clever about the power budget.
+**What has to travel with the die if it is moved off the breakout**, which §6
+contemplates and which an incomplete list would sabotage:
+
+- **`C1` reservoir capacitor — nominally 4.7 µF ceramic, ESR under 200 mΩ**
+  (M2 §4.4.3), with the datasheet's own warning that many 0402 parts will not
+  meet the ESR and one should be prepared to up-size
+- the **set/reset capacitor across `SETP`/`SETC`** — the AMR technology needs it
+  and the Hall-effect AKM part has no equivalent
+- **pin 4 `S1` tied to `VDDIO`** (M2 Table 5). Not a signal, not optional, and
+  easy to lose because it is not a supply, a ground or a bus line
+
+And the assembly constraint that undercuts the cheerful reading of "3 mm is
+solderable": M2 §4.4.2 says in as many words **"Hand soldering is not
+recommended"**, recommends a 4 mil stencil with 100 % paste coverage (§4.4.1),
+and classifies the part **MSL 3**, requiring a bake before reflow unless it has
+been kept below 10 % RH. Buying it already reflowed onto a GY-271 sidesteps all
+of that. Taking it off again does not.
+
+**The power-state trap** (M2 §5.2 and Table 6), stated precisely, because an
+earlier draft overstated it. What the datasheet prohibits is the **direct
+transition between state 2 and state 3** — state 2 being `VDD` off with `VDDIO`
+up, state 3 being `VDD` up with `VDDIO` off. Going from *running* (state 4) to
+state 2, i.e. **cutting `VDD` while the I2C rail stays up, is permitted**. It is
+merely a bad idea: Table 6 describes state 2 as drawing *unpredictable leakage
+current on `VDD` due to a floating node*, so the gating saves less than it
+promises and by an amount the datasheet declines to bound.
+
+The rule to carry forward is therefore narrower than "both rails together":
+**never hop straight between the two single-rail states.** If both rails come
+from one 3.3 V net, as they will on the breakout, none of this can arise.
+
+**And this is not a difference between the candidates.** M1 §6.1 imposes the
+identical prohibition on the AK09911C — see §2.2. Neither part is the safe one
+here.
 
 ## 4. The comparison that actually decides it
 
@@ -212,37 +294,73 @@ someone gets clever about the power budget.
 | Continuous 10 Hz | *not specified separately* | **75 µA** | — |
 | Continuous 100 Hz | **2.4 mA** average | **250 µA** (low `OSR`) | **≈ 10× worse** |
 
-**The QMC5883L is about an order of magnitude cheaper to run**, and that is not
-a close call. AKM specify only the 100 Hz average, so the 10 Hz comparison
-cannot be made from primary sources — but the mechanism is not in doubt: the
-AKM part draws 3 mA *while the sensor is driven* and the drive is what costs,
-so duty-cycling helps it and single-measurement mode is how one would use it.
-At a watch-plausible 10 Hz the gap should narrow. **How far it narrows is
-`UNKNOWN` and cannot be computed from M1 without the per-measurement drive
-duration, which M1 does not give.**
+**The QMC5883L is cheaper to run, and by how much depends on settings that must
+be named.** An earlier draft of this section made two errors in the owner's
+disfavour and both are corrected here.
+
+**First, the QMC figure.** 250 µA at 100 Hz is the *low-power* `OSR` column and
+the reset default is the other one, so the honest out-of-the-box comparison at
+100 Hz is **2.4 mA against 450 µA — about 5×**, not 10×. Configuring `OSR=11`
+gets 250 µA and about 10×, at the cost of filter bandwidth.
+
+**Second, the AKM figure at a useful rate is computable after all.** M1 §5.3.3
+gives `TSM` = 7.2 ms typ / 8.5 ms max, which the earlier draft wrongly said was
+absent. That closes the model:
+
+| | typ | worst case |
+|---|---|---|
+| Drive current `IDD2` | 3 mA | 6 mA |
+| Measurement time `TSM` | 7.2 ms | 8.5 ms |
+| At 10 measurements/s, plus `IDD1` idle | **≈ 0.22 mA** | ≈ 0.51 mA |
+
+`3 mA × 7.2 ms × 10 s⁻¹ + 3 µA ≈ 219 µA`. **Labelled `ESTIMATED`, not
+`MEASURED`.** The model is worth trusting this far because it reproduces AKM's
+own published headline at the one rate they specify: `3 mA × 7.2 ms × 100 s⁻¹ =
+2.16 mA` against a datasheet figure of 2.4 mA typ — the right answer with a
+sensible margin for the digital block and the I2C traffic the model omits.
+
+So at a watch-plausible 10 Hz the two parts are **≈ 220 µA against 75–100 µA**,
+a factor of two or three — not an order of magnitude. The gap is a duty-cycle
+artefact and it closes as the rate drops, which is exactly the direction a watch
+wants to go.
 
 Against a 400 mAh cell, 2.4 mA continuous is roughly 0.6 % of the pack per hour
-for a compass alone. That is a real number in a device whose whole power story
-is still open ([BATTERY_UPGRADE](BATTERY_UPGRADE.md)).
+for a compass alone — but nothing in this product needs a 100 Hz compass. At
+10 Hz the same cell sees ≈ 0.05 % per hour from the AKM part and ≈ 0.02 % from
+the QST one, and **at that point the magnetometer is not what is draining the
+watch** ([BATTERY_UPGRADE](BATTERY_UPGRADE.md)). Choosing on current alone was
+the wrong frame, and §8's recommendation is revised accordingly.
 
 ### 4.2 Everything else
 
-| | AK09911C | QMC5883L |
-|---|---|---|
-| Technology | Hall + concentrator | AMR with set/reset |
-| Bits | 14 | 16 |
-| Quantisation | 0.6 µT/LSB | 0.0083 µT/LSB at ±2 G |
-| **Honest noise floor** | not specified | **0.2 µT** (2 mG) |
-| Range | **±4900 µT** | ±800 µT (±8 G) |
-| Orthogonality spec | absent | 90 ± 1° |
-| Package | 1.2 × 1.2 × 0.5 mm WL-CSP | 3 × 3 × 0.9 mm LGA |
-| Register map from a primary source | **no** (§2.4) | **yes** |
-| Self-test with internal source | **yes** | no |
+The QMC5883L's range and its resolution are **two settings, not one part**. Its
+`RNG` bit picks ±2 G or ±8 G, and quoting the fine quantisation of one next to
+the wide range of the other describes a device that does not exist. The table
+below keeps them apart.
 
-Earth's field is 25–65 µT, so both have range to spare *in free air*. In a watch
-they are not in free air — §6. The AKM part's ±4900 µT is six times the QST
-part's ceiling, and that is the one axis on which it wins outright: it is far
-harder to saturate next to a vibration motor.
+| | AK09911C | QMC5883L at ±2 G | QMC5883L at ±8 G |
+|---|---|---|---|
+| Technology | Hall + concentrator | AMR with set/reset | same |
+| Bits | 14 | 16 | 16 |
+| Range | **±4900 µT** | ±200 µT | ±800 µT |
+| Quantisation | 0.6 µT/LSB | 0.0083 µT/LSB | 0.033 µT/LSB |
+| **Honest noise floor** | not specified | **0.2 µT** (2 mG) | not specified |
+| Orthogonality spec | absent | 90 ± 1° | 90 ± 1° |
+| Package | 1.2 × 1.2 × 0.5 mm WL-CSP | 3 × 3 × 0.9 mm LGA | same |
+| Register map from a primary source | **no** (§2.4) | **yes** | **yes** |
+| Self-test with internal source | **yes** | no | no |
+
+Note what the ±2 G column costs: **±200 µT is only three to eight times Earth's
+field**, which in a watch is not much headroom at all. The setting that gives
+the QST part its resolution advantage is also the one most likely to saturate
+next to a motor magnet, and the setting that survives the motor (±8 G) gives up
+most of it.
+
+Earth's field is 25–65 µT, so all three columns have range to spare *in free
+air*. In a watch they are not in free air — §6. The AKM part's ±4900 µT is six
+times the QST part's widest setting and twenty-four times its precise one, and
+that is the axis on which it wins outright: it is far harder to saturate next to
+a vibration motor, and it does not have to trade resolution away to get there.
 
 ### 4.3 The bus, and why `CAD` goes to ground
 
@@ -264,42 +382,102 @@ sit on the same bus at the same time — which is not a hypothetical, because
 having both present is the only way to compare them against each other in the
 same magnetic environment, on the same wrist, in one sitting.
 
-## 5. The IMU cannot do this for us
+## 5. The IMU probably cannot do this for us — one good reason, not two
+
+> **This section was rewritten on 2026-08-22 after an adversarial re-read.** The
+> first version gave two "independent, either alone fatal" reasons. The second
+> one was an inference, it was wrong, and withdrawing it changes what the owner
+> should do. The corrected version is below; the withdrawal is §5.3.
 
 The QMI8658C has an I2C *master* interface for exactly this purpose — Mode 2,
 "Mag Mode", in which the IMU reads the magnetometer itself and **time-aligns the
-magnetometer samples with the accelerometer and gyroscope samples** (M3 §11.1).
-For a fusion problem that is a genuine prize; sample alignment is one of the
-things that makes nine-axis fusion hard on a host.
+magnetometer samples with the accelerometer and gyroscope samples** (M3 §11.1,
+paraphrasing *"To simplify data acquisition between the magnetometer and the
+IMU, the QMI8658C can time align the magnetometer samples with the gyroscope and
+accelerometer samples"*). For a fusion problem that is a genuine prize; sample
+alignment is one of the things that makes nine-axis fusion hard on a host.
 
-It is not available to us, for two independent reasons, either of which alone is
-fatal:
+### 5.1 The reason that stands: the supported-device list
 
-**First, the part list is closed.** M3 §11.1: *"the QMI8658C can support the
-following magnetometers: **AK09915C, AK09918CZ, and QMC6308**."* `CTRL4`
-`mDEV<3:0>` designates the device from that list. **Neither ordered part is on
-it** — not the AK09911C, not the QMC5883L. Same two vendors, adjacent part
+M3 §11.1, quoted in full this time — the earlier draft dropped the first word:
+
+> *"**Currently** the QMI8658C can support the following magnetometers: AK09915C,
+> AK09918CZ, and QMC6308."*
+
+`CTRL4` `mDEV<3:0>` designates the device. **Neither ordered part is on that
+list** — not the AK09911C, not the QMC5883L. Same two vendors, adjacent part
 numbers, wrong parts.
 
-**Second, and this is the one that closes the door properly:** Mode 2 needs
-pins `SDx` (2) and `SCx` (3) as `MSDA`/`MSCL`. In Mode 1 — the default, and what
-this board uses — those same pins must be **"Connect to VDDIO or GND"** (M3
-Table 2). They are tie-off pins on an LGA14 measuring 3 × 3 mm. If the board
-ties them, and Mode 1 requires that it does, then Mag Mode is unreachable
-without lifting two lands on a leadless package inside a watch.
+Two honest qualifications on that sentence:
 
-> **`UNKNOWN`:** whether the Waveshare schematic routes `SDx`/`SCx` anywhere or
-> ties them at the pad. [HARDWARE_MATRIX](HARDWARE_MATRIX.md)'s IMU row records
-> `SDO/SA0` to GND and `CS` to `VCC3V3` from the schematic (S6) and is silent on
-> these two. A targeted re-read would settle it. It changes nothing about which
-> part to buy — see the first reason — but it should be recorded rather than
-> assumed.
+- **"Currently" is the datasheet's word, and it matters.** M3's own revision
+  history shows the list was edited at Rev 0.5 ("Magnetometer Sensors
+  supported"), so it is a snapshot of a firmware-and-revision state, not a
+  property of the silicon. `mDEV` is four bits and could encode sixteen values;
+  M3 enumerates three. Whether a later revision adds more is `UNKNOWN`.
+- **M3 is marked `ADVANCE INFORMATION — CONFIDENTIAL AND PROPRIETARY`** and is
+  Rev 0.6. It is the version Waveshare's own wiki links, which is why this
+  repository uses it, but it is a pre-release document and the `CONFLICTING`
+  I2C-address row in [HARDWARE_MATRIX](HARDWARE_MATRIX.md) already shows it
+  disagreeing with later revisions.
 
-**Therefore: the magnetometer goes on the host I2C bus, the host reads it, and
-the host does the fusion and the time alignment.** The owner did not order the
-wrong parts; the option that would have preferred different ones was never
-open. Worth writing down precisely so that nobody later reads "the IMU supports
-an external magnetometer" and re-opens it.
+### 5.2 A third path, named so it can be closed
+
+M3 Table 30 documents `CTRL_CMD_I2CM_WRITE` (`0x06`, via `WCtrl9`), which
+programs a device on the I2C master bus by writing `CAL1_[H,L]`, `CAL2_[H,L]`
+and `CAL3_L`, with `I2CM_STATUS` at `0x2C` reporting completion. So a
+**host-driven arbitrary I2C-master transaction does exist** and is not textually
+gated on `mDEV`. It does not rescue us: M3 never publishes the I2CM sub-register
+map that `CAL3_L` indexes, so the command cannot be issued from this document.
+Recorded because "the datasheet lists three parts" and "the hardware can only
+talk to three parts" are different claims, and only the first is supported.
+
+### 5.3 The reason that was withdrawn
+
+The first version of this section argued that Mode 2 needs pins `SDx` (2) and
+`SCx` (3) as `MSDA`/`MSCL`, that M3 Table 2 requires those pins be **"Connect to
+VDDIO or GND"** in Mode 1, and that a board using Mode 1 must therefore have
+tied them off — making Mag Mode physically unreachable.
+
+**That inference does not hold.** Mode 2 is entered *in firmware*: `CTRL7` bit 2
+is `mEN`, reset default `0`, and `CTRL4` selects the device and rate (M3 Table
+24). There is no pin that selects the mode. Table 2's "Connect to VDDIO or GND"
+is design guidance for a board that will only ever use Mode 1 — it tells you what
+to do with two pins you are not using — not a constraint that forecloses Mode 2
+for a board that wires them.
+
+So the honest status is: **`UNKNOWN` whether the Waveshare board leaves `SDx`
+and `SCx` usable.** [HARDWARE_MATRIX](HARDWARE_MATRIX.md)'s IMU row records
+`SDO/SA0` to GND and `CS` to `VCC3V3` from the schematic (S6) and is silent on
+these two. A targeted re-read of the schematic would settle it, and unlike last
+time it is worth doing, because §5.4 now depends on the answer.
+
+*(A related claim that is true but not from M3: the QMI8658**A** Rev A datasheet
+states there are internal 200 kΩ pull-ups on `SCL`, `SDA`, `CS`, `SDx`, `SCx`
+and `RESV`. M3 Rev 0.6's note 1 attaches its 200 kΩ pull-up only to pin 1. Do not
+carry a pin characteristic across part numbers on this project.)*
+
+### 5.4 What this changes for the owner
+
+The practical recommendation is unchanged: **put the magnetometer on the host
+I2C bus, and let the host read it and do the fusion.** Neither ordered part can
+use Mag Mode, so for the two modules in the post nothing is lost.
+
+What changed is the advice about *future* parts, and this is the part worth
+acting on:
+
+- The earlier draft said the option "was never open" and that the owner
+  therefore could not have ordered better. **That is no longer supported.** If
+  `SDx`/`SCx` are free on this board, then an **AK09918CZ** or a **QMC6308** —
+  both on M3's supported list, both cheap, both in the same class as what was
+  ordered — would unlock hardware sample alignment that neither the AK09911C nor
+  the QMC5883L can offer.
+- That is not a reason to regret the order. Both ordered parts work on the host
+  bus, host-side fusion is what most of the world does, and the alignment
+  benefit is real but not decisive. It **is** a reason to read the schematic
+  before the next order, and to consider adding one supported part to a basket
+  that is already shipping — which costs a rounding error and answers a question
+  measurement otherwise cannot.
 
 ## 6. Placement, which is the part that gets skipped
 
@@ -369,20 +547,40 @@ None of this is measurable from a datasheet. What *can* be said now:
 
 ## 8. Recommendation, and what would overturn it
 
-**Fit the QMC5883L first**, on the strength of §4.1 — an order of magnitude of
-current, a specified noise floor, a specified orthogonality, a register map from
-a primary source, and a package a human can actually solder.
+> **Revised 2026-08-22 after the adversarial re-read.** The first version
+> recommended the QMC5883L on two grounds that did not survive: "an order of
+> magnitude of current" (it is 5× at the default `OSR`, and ~2–3× at a rate a
+> watch would actually use — §4.1) and "a package a human can actually solder"
+> (M2 §4.4.2: *"Hand soldering is not recommended"* — §3.5). Both corrections
+> push the same way, so the recommendation is now weaker and more conditional.
 
-**Keep the AK09911C**, and strap its `CAD` low so both can be on the bus at once.
-It wins on range (§4.2), and range is the axis most likely to matter next to a
-motor magnet. If the QMC5883L turns out to saturate or to sit permanently near
-overflow wherever it physically fits, the AKM part is not a fallback but the
-correct answer, and the extra current buys a compass that works.
+**Fit the GY-271 (QMC5883L) first — as a module, not as a transplanted die.**
+What survives of the case for it: a register map from a primary source, a
+specified noise floor and a specified orthogonality where the AKM part specifies
+neither, genuinely lower current, and — decisively for a first attempt — **it is
+already reflowed onto a board with its reservoir and set/reset capacitors
+fitted**. Nothing has to be got right about MSL 3 baking, 4 mil stencils or a
+4.7 µF low-ESR part, because somebody already did it.
 
-**What would overturn this:** a measurement. Specifically, the field at the
-candidate mounting position with the motor driven. That is one measurement, it
-needs both parts and a board, and it decides the question — which is why nothing
-above §6 should be treated as settled until it exists.
+**Keep the CJMCU-9911 (AK09911C) and strap its `CAD` low** so both can be on the
+bus at once. It wins on range without a resolution trade (§4.2), it has a
+self-test with an internal magnetic source — worth real money on a hand-built
+assembly — and if the QST part sits near overflow wherever it physically fits,
+the AKM part is not a fallback but the answer.
+
+**Do not plan on transplanting either die.** §3.5 lists what has to travel with
+the QST part and §2.5 gives the AKM part's dimensions: 1.2 × 1.2 mm, eight balls,
+wafer-level CSP. If neither module fits under the cover as a module, that is a
+finding to report, not a soldering challenge to accept.
+
+**Consider adding one supported part to the next order** — an AK09918CZ or a
+QMC6308 — if and only if the schematic shows `SDx`/`SCx` free on the IMU (§5.4).
+That is a cheap option on a capability neither ordered part has.
+
+**What would overturn all of this: a measurement.** The field at the candidate
+mounting position with the motor driven. It needs both parts and a board, it
+takes minutes, and it decides the question — which is why nothing above §6
+should be treated as settled until it exists.
 
 ---
 
