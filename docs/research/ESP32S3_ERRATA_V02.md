@@ -553,16 +553,21 @@ builds the sleep-current budget.
 
 ## 5. What changes in the record
 
-Not applied here; listed so the next writer can apply them in the commit that
-carries this note.
+This list said "not applied here; listed so the next writer can apply them" —
+and this **is** the commit that carries the note, so leaving three of five rows
+undone would have left the repository contradicting itself in exactly the way
+[T-102's checker](../../tools/docs/check_docs.py) exists to catch and cannot,
+because contradictions in prose are not a syntax error. An adversarial re-read
+caught it. Applied state as of this commit:
 
-| Where | Change |
-|---|---|
-| [OPEN_QUESTIONS](OPEN_QUESTIONS.md) D18 | was `UNKNOWN`; now **answered** — all eight v0.2 errata listed here, with what each touches |
-| `STATUS.md` | the line reading "Which errata apply to v0.2 is **D18**, unread" is no longer true |
-| [VERIFIED_FACTS](VERIFIED_FACTS.md) | the errata document identity (v1.3, 2025-03-31, md5 above) and the "v0.2 is the newest revision" finding of §3 |
-| [HARDWARE_MATRIX](HARDWARE_MATRIX.md) | the Waveshare SoC row can cite this note beside its `REV_MIN` sentence |
-| `TASKS.md` | two consequences want their own tasks — the ANALOG-160 register rule and CI grep (§7.4), and the CACHE-126 measurement that gates the interrupt-latency budget (§7.2). T-004 gains the version floor in §7.5 |
+| Where | Change | Done |
+|---|---|---|
+| [OPEN_QUESTIONS](OPEN_QUESTIONS.md) D18 | was `UNKNOWN`; now **answered** — all eight v0.2 errata listed here, with what each touches | **yes** |
+| `STATUS.md` | the line reading "Which errata apply to v0.2 is **D18**, unread" is no longer true | **yes** |
+| [VERIFIED_FACTS](VERIFIED_FACTS.md) | the errata document identity (v1.3, 2025-03-31, md5 above) and the "v0.2 is the newest revision" finding of §3 | **yes** |
+| [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) | §3.1 said "nobody has read that sheet against v0.2"; §4 carried it as an open question | **yes** |
+| [HARDWARE_MATRIX](HARDWARE_MATRIX.md) | the Waveshare SoC row can cite this note beside its `REV_MIN` sentence | **yes** |
+| `TASKS.md` | two consequences want their own tasks — the ANALOG-160 register rule and CI grep (§7.4), and the CACHE-126 measurement that gates the interrupt-latency budget (§7.2). T-004 gains the version floor in §7.5 | **yes** |
 
 ## 6. Where the first reading of this document was wrong
 

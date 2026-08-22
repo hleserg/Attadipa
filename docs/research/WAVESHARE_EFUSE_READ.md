@@ -219,13 +219,19 @@ must keep the minimum at revision 0. Nothing in the repository sets it higher
 today; this is recorded so that nobody raises it without knowing what it costs.
 
 The revision is also the input to the errata list in the ESP32-S3 Errata sheet.
-Nobody has read that sheet against v0.2 — see D18 in [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
+**That sheet has now been read against v0.2** — v1.3, md5
+`64ffc580e78b5ab3c6c5d990e0500e38`, on 2026-08-22 — and the answer is that all
+eight of its errata apply, seven of them permanently
+([ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md)). D18 in
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md) is resolved.
 
 ## 4. Still open
 
-- **Which ESP32-S3 errata apply to revision v0.2**, and whether any of them touch
-  octal PSRAM, USB-Serial/JTAG or the flash interface. The errata sheet has not
-  been read. `UNKNOWN`.
+- ~~**Which ESP32-S3 errata apply to revision v0.2**~~ — **answered 2026-08-22**:
+  all eight, seven of them with no fix scheduled, and one of them (CACHE-126)
+  does touch octal PSRAM. Nothing touches USB-Serial/JTAG or the flash interface.
+  [ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md). What the CACHE-126 workaround
+  costs in interrupt latency is the residue and stays `UNKNOWN`, `NOT MEASURED`.
 - **Why the stub read fails on specific flash content.** Recorded as an
   observation with a working remedy; the mechanism is `UNKNOWN` and does not need
   to be known to take a backup.
