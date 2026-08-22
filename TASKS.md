@@ -1581,6 +1581,37 @@ stale silently. The protocol is
   it was verified; what it means is exactly what is in doubt.
 - **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
 
+### T-111 · The bench sequence, and the one decision that unblocks it
+- **Priority:** P1 — it gates the bus scan that four other tasks are waiting on,
+  and it is one word from the owner away.
+- **Dependencies:** an owner decision on
+  [#100](https://github.com/hleserg/Attadipa/issues/100). Nothing technical.
+- **Why now:** the bench session of 2026-08-23 found that **both
+  non-destructive routes into this board are closed** —
+  [WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md).
+  `ota_1` is at `0x1000000`, which the bootloader cannot address, and a
+  `PURE_RAM_APP` loaded over USB resets the chip four times out of four. What
+  remains is overwriting a partition that already holds vendor firmware.
+- **Goal:** run the I2C bus scan and the read-only AXP2101 register dump from
+  [WAVESHARE_ARRIVAL](docs/research/WAVESHARE_ARRIVAL.md) §5, then restore the
+  flash and re-verify it against the T-099 backup.
+- **What is already prepared, so this is not a from-scratch task:** the
+  diagnostic firmware is written and builds (ESP-IDF v5.5.5, read-only by
+  construction — it writes no device register and does not initialise the
+  display); the `otadata` selector for slot 0 is built and checked against
+  ESP-IDF source; and the 6 MB restore slice for `ota_0` has been extracted from
+  the backup and **verified byte-for-byte against the device**. The session that
+  discovered the blocker also did the work that follows it.
+- **Acceptance:** the scan output recorded in `docs/research/`, `0x6A` vs `0x6B`
+  settled, `0x0C`/`0x0D` confirmed free, the AXP2101 rail bytes recorded **raw**
+  rather than decoded, and `verify-flash 0x0` over all 33 554 432 bytes passing
+  afterwards.
+- **What must not be assumed:** that a read-only probe is a safe probe. **No
+  write to the AXP2101, none**, and no display initialisation until the panel's
+  own registers have been read back. A verified flash backup does not restore a
+  PMU register or a battery. D13's rail-cutting stays deferred.
+- **Hardware required:** yes — the owner's unit.
+
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do
   when they land is decided now, while there is time to be wrong about it

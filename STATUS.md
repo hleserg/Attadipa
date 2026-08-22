@@ -440,6 +440,27 @@ available on this board.
 
 ## Blocked
 
+- **Running any of our own code on the received unit — 2026-08-23, and both
+  non-destructive routes are closed.** The owner authorised flashing, the flash
+  was written, and the answer is that this board does not have a free way in.
+  `ota_1` is the only empty app partition and it sits at exactly `0x1000000`;
+  the ROM and the second-stage bootloader address flash with 24 bits, so that
+  address **aliases to `0x0`** and the slot can never boot — the bootloader read
+  its own image and said so. A `PURE_RAM_APP` loaded with `esptool load-ram`
+  starts and the chip resets itself within milliseconds, **four attempts out of
+  four**, including an image containing no drivers at all. What is left is
+  overwriting a partition that already holds vendor firmware, which is the
+  owner's call and is asked in
+  [#100](https://github.com/hleserg/Attadipa/issues/100). The restore slice for
+  `ota_0` is already extracted and verified against the device, so the option is
+  prepared rather than merely proposed.
+  **The unit was left byte-identical to the T-099 backup** — `verify-flash` over
+  all 33 554 432 bytes, after the fact. The backup did its job the first time it
+  was needed. [WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md).
+  Still unanswered because of it: the bus scan that settles `0x6A` vs `0x6B` and
+  confirms `0x0C`/`0x0D` are free for the magnetometer, the AXP2101 rail states
+  behind D13, and the touch controller's identity.
+
 - **T-061 the pedometer** — partly, and less than before. T-060a settled the
   BMA423 side: the power story is **13–14 µA at 50 Hz in low-power mode**, the
   counter runs while the host sleeps, and the wrist preset is already the
@@ -582,6 +603,29 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   from RadioLib 7.7.1 and MeshCore `d929643` source, not from the TI and Silicon
   Labs datasheets, which refused automated retrieval. Recorded as **PARTIAL**,
   not VERIFIED.
+
+## What the vendor's own firmware answered, 2026-08-23
+
+Capturing the unit's boot log from **62 ms** — which took resetting over the CDC
+control lines, because the ordinary route reconnects at ~580 ms and misses the
+bootloader's decision entirely — settled four things at no cost:
+
+- **D12a is now confirmed on silicon.** The `octal_psram` driver enumerates the
+  part: `vendor id 0x0d (AP)`, `density 0x03 (64 Mbit)`, `VCC 0x01 (3V)`,
+  `Readlatency 0x02 (10 cycles@Fixed)`, `Found 8MB PSRAM device`, `Speed: 80MHz`.
+  A quad part would not have loaded that driver. This is step 4 of
+  `WAVESHARE_ARRIVAL` §5, executed — and the latency and burst figures are the
+  real numbers to redo §3.3's bandwidth arithmetic against.
+- **D14 closes: the SD card is SDMMC.** The vendor's firmware calls
+  `sdmmc_common`/`vfs_fat_sdmmc`, not `sdspi`. The schematic's `MOSI`/`SCK`/`MISO`
+  net names are labels, not a mode.
+- **`esp_lcd_sh8601` initialises this panel** — `LCD panel create success,
+  version: 1.0.2`, then `Backlight on`. That is evidence about the driver, not
+  about the die, so the CO5300 row stands; what it settles is that the
+  documented mismatch will not bite at bring-up.
+- **Flash boots QIO at 80 MHz**, `detected chip: gd`, 32 MB; `chip revision
+  v0.2`; `efuse block revision v1.4`; `QMI8658 initialized successfully` — which
+  names no address, so `0x6A` vs `0x6B` stays `CONFLICTING`.
 
 ## Recently completed
 

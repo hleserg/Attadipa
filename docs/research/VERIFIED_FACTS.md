@@ -890,3 +890,63 @@ facts that change what may be written are here.
 - **Impact:** modest but real — a bench procedure on this unit can reset it
   repeatedly without the stock firmware quietly changing the bytes underneath.
   It says nothing about what the firmware writes when a user touches it.
+
+### Only the low 16 MB of this board's flash is bootable, and the vendor ships a partition above the line
+
+- **Claim:** the ESP32-S3 ROM and this board's second-stage bootloader address
+  flash with **24 bits**, so `0x1000000` aliases to `0x0`. The vendor's `ota_1`
+  partition sits at exactly `0x1000000` and **can never boot**.
+- **Source:** S13. A valid, verified app image was written into the erased
+  `ota_1` and selected via `otadata`. The bootloader reported
+  `segment 0: paddr=01000020 vaddr=3fce2820 size=01700h` and rejected it —
+  and `vaddr=0x3fce2820, size=0x1700` is byte-identical to the segment-0 header
+  of **the bootloader itself at flash `0x0`**. Independently, `esptool --no-stub`
+  refuses the address in words: *"Can't access flash regions larger than 16MB"*.
+  The stub flasher has 32-bit addressing, which is why the write verified and the
+  boot did not.
+- **Impact, and it is a design constraint rather than a curiosity.** **Every app
+  partition Attadipa places on this board must live below 16 MB.** On a 32 MB part
+  that leaves the upper half for data only, and even that depends on the
+  *application's* flash driver having 32-bit addressing — untested here. A
+  partition table is not self-validating: `ota_1` is well-formed, correctly sized,
+  correctly typed and dead, and no tool in the chain warns about it.
+
+### A PURE_RAM_APP loaded over this board's USB-Serial/JTAG does not run
+
+- **Claim:** `esptool load-ram` reports success and the chip resets itself within
+  milliseconds — `rst:0x15 (USB_UART_CHIP_RESET)` — booting the factory image
+  instead. **Four attempts out of four**, including a minimal image containing no
+  peripheral driver of any kind.
+- **Source:** S13. Every segment verified internal RAM with `esptool image-info`
+  (DRAM/IRAM/RTC_DATA, no DROM or IROM). The saved PC lands inside the loaded
+  image's own IRAM segment each time, so the code starts and is executing when
+  the reset arrives. Two host-side explanations were tested and eliminated first:
+  `--after` defaulting to a reset, and pyserial asserting DTR/RTS on `open()` —
+  which on this board are GPIO0 and EN, and which destroyed two images before it
+  was noticed.
+- **Impact:** the RAM-diagnostic route proposed in
+  [#100](https://github.com/hleserg/Attadipa/issues/100) is **withdrawn on
+  evidence**, not on judgement. Running our own code on this unit now requires
+  overwriting a partition that already holds vendor firmware, which is an owner
+  decision. `UNKNOWN`: whether JTAG, or a build that leaves the USB peripheral
+  strictly alone, would survive — neither was tried.
+
+### The vendor's own boot log, and four things it settled for free
+
+- **Claim, all read from the unit's own firmware booting unaided:** octal PSRAM
+  enumerated by the `octal_psram` driver at 80 MHz with 10-cycle fixed read
+  latency and 32-byte hybrid-wrap bursts (**D12a confirmed on silicon**); the SD
+  card driven through `sdmmc_common`/`vfs_fat_sdmmc` rather than `sdspi`
+  (**D14 resolved**); `sh8601: LCD panel create success, version: 1.0.2` followed
+  by `Backlight on`; flash booted **QIO at 80 MHz**, `detected chip: gd`, 32 MB;
+  `chip revision: v0.2`; `efuse block revision: v1.4`;
+  `QMI8658 initialized successfully`.
+- **Source:** S13 — the boot log captured from **62 ms** after reset, which took
+  resetting over the CDC control lines rather than with esptool; the ordinary
+  route reconnects at ~580 ms, by which time the bootloader has already chosen a
+  partition and moved on.
+- **Impact:** this is the vendor's firmware describing the vendor's board, which
+  is a better witness than any inference from a datasheet. Note what it does
+  **not** say: the QMI8658 line names no I2C address, so `0x6A` vs `0x6B` stays
+  `CONFLICTING`, and the `sh8601` line is evidence about the driver rather than
+  about the die.
