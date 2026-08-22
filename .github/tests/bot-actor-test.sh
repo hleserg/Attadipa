@@ -242,5 +242,44 @@ else
 fi
 
 echo
+echo "Every agent workflow pins its model and its effort level"
+# WHY THIS IS A TEST. The action has no `model:` input, so the model is a
+# string inside claude_args and an absent string is not an error -- it is a
+# silent fall back to whatever the CLI defaults to. That is how this loop ran
+# from the day it was built until 2026-08-22 without anything recording which
+# model was answering, which makes every past result unattributable and every
+# comparison between two runs meaningless.
+#
+# The flags themselves were read off `claude --help`, not guessed:
+#   --model <model>   an alias ('opus', 'sonnet', 'fable') or a full name
+#   --effort <level>  one of low, medium, high, xhigh, max
+# So a typo'd level is a real failure mode, and the set is closed and short
+# enough to assert against rather than pattern-match loosely.
+for wf in "$AGENT" "$REVIEW" "$REPAIR"; do
+  name="$(basename "$wf")"
+  args="$(sed -n '/claude_args:[[:space:]]*|/,/^[[:space:]]*prompt:/p' "$wf")"
+
+  model="$(printf '%s' "$args" | sed -n 's/.*--model[[:space:]]\{1,\}\([^[:space:]]*\).*/\1/p' | head -n 1)"
+  if [ -n "$model" ]; then
+    ok "$name pins a model (--model $model)"
+  else
+    no "$name pins a model" \
+       "no --model in claude_args; the run silently uses the CLI default and nothing records which model answered"
+  fi
+
+  effort="$(printf '%s' "$args" | sed -n 's/.*--effort[[:space:]]\{1,\}\([^[:space:]]*\).*/\1/p' | head -n 1)"
+  case "$effort" in
+    low|medium|high|xhigh|max)
+      ok "$name pins an effort level the CLI accepts (--effort $effort)" ;;
+    "")
+      no "$name pins an effort level" \
+         "no --effort in claude_args; the run uses the default and the setting is invisible to a reader" ;;
+    *)
+      no "$name pins an effort level the CLI accepts" \
+         "--effort $effort is not one of low, medium, high, xhigh, max -- the CLI will reject it and the run dies before the model is reached" ;;
+  esac
+done
+
+echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

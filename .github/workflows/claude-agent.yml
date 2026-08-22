@@ -819,8 +819,23 @@ jobs:
           # 20 to 30 turns before a line is written, and run 32587675386 was
           # still mid-implementation at 61. Spend stays bounded by
           # timeout-minutes: 60 above, which is the thing actually being billed.
+          # WHICH MODEL, AND HOW HARD IT THINKS. Neither was pinned until
+          # 2026-08-22, and the action has no `model:` input -- so every run
+          # this loop has ever made used whatever the CLI defaulted to, and
+          # nothing in the repository recorded which model that was. A result
+          # you cannot attribute to a model is a result you cannot compare
+          # against the next one.
+          #
+          # Verified against `claude --help` rather than assumed: `--model`
+          # takes an alias ('opus', 'sonnet', 'fable') or a full name, and
+          # `--effort` takes one of low, medium, high, xhigh, max. The full
+          # name is pinned rather than the alias so that a new Opus does not
+          # silently change what this loop is: the cost of that choice is that
+          # somebody must come here to move it, which is the intended cost.
+          #
+          # Owner decision, 2026-08-22: Opus 5 at the top effort level.
           claude_args: |
-            --max-turns 200 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task"
+            --model claude-opus-5 --effort max --max-turns 200 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task"
           prompt: |
             You are the implementation agent for Attadipa, working from GitHub
             issue #${{ needs.gate.outputs.issue }} in ${{ github.repository }}.

@@ -9,6 +9,11 @@ REQUIRED` until a person writes a result into it with a date and an instrument.
 That marker is the point of the document: a claim with a plan attached and no
 result is visibly unproven, where the same claim in a comment reads as settled.
 
+**Which nodes the plans below mean** by "a second Attadipa node" is in
+[`TEST_FLEET`](../research/TEST_FLEET.md), along with the measured fact that a
+cloud agent session can reach none of them — no serial device, no USB
+enumeration, no flashing tool. That is why the marker above is not a formality.
+
 ## How to record a result
 
 Append to the plan, never edit the plan to match what happened:

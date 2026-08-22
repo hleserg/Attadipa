@@ -13,9 +13,25 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
 > **Status: early implementation.** The host-testable layers exist and are
 > tested — the hardware inventory, the capability registry, the transport, the
-> GNSS trust evaluator, the desktop simulator, and 17 host tests. Nothing has
-> run on a physical board yet, and nothing here is written as if it had. See
-> [STATUS.md](STATUS.md) for exactly where things stand.
+> GNSS trust evaluator, the design-token system, the desktop simulator, and 24
+> host tests. One target board is now on the owner's desk and has been read over
+> its own USB port, which is the first evidence in this repository that came
+> from silicon rather than from a document. **No Attadipa firmware has run on
+> it**, no power, timing or GNSS number has been measured, and nothing here is
+> written as if any of that had happened. See [STATUS.md](STATUS.md) for exactly
+> where things stand.
+
+### What exists today
+
+| | |
+|---|---|
+| **Builds and is tested on a host** | six libraries, the desktop simulator and **24 tests**, under GCC and Clang, under `-Werror` and under ASan+UBSan. Two of them compile one fixture against two different libraries to prove an application still cannot include a hardware header |
+| **Runs two geometries from one binary** | 240 × 240 and 410 × 502, selected at run time, fitting any of the five candidate T-Watch radios and a present-or-absent node without a rebuild |
+| **Draws through design tokens** | twelve colour roles across day and night themes with WCAG contrast arithmetic, plus a CI check that refuses a raw hex value or a pixel count back into screen code |
+| **Renders every character it claims to** | four generated Montserrat subsets covering all 181 codepoints of the charset; an undrawable codepoint **fails the run** rather than printing a warning |
+| **Has one board on the desk** | a Waveshare ESP32-S3 Touch AMOLED 2.06, read over its own USB-Serial/JTAG port: every eFuse still at its factory default, 8 MB PSRAM on the `VDD_SPI` rail, external quad flash `0xC8 0x4019`, chip revision v0.2 — which decides `CONFIG_ESP32S3_REV_MIN` and brings all eight errata of sheet v1.3 into scope |
+| **Has not been measured** | there is no Attadipa firmware to flash yet, and no power, timing, GNSS or interference number exists. Ten hardware-in-the-loop plans are written with equipment, procedure and pass/fail criteria, so each unproven claim is visibly unproven rather than merely absent |
+| **Runs its own engineering queue** | work arrives as a GitHub issue, an agent opens a branch and a draft pull request, and a second agent reviews it independently. The workflows, their security model and their cost controls are in [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Attadipa is not a Linux-like OS. It is a single embedded
 firmware/application platform on top of ESP32-S3 and ESP-IDF/FreeRTOS,
