@@ -212,8 +212,11 @@ in any collision check.
 | 0x51 | PCF85063ATL RTC | **Datasheet-fixed.** NXP PCF85063A Rev. 7 §9.5.1: "One I2C-bus slave address (1010001) is reserved for the PCF85063A" |
 | 0x6B | QMI8658C IMU | Schematic prints `0X6B` inside the U5 block; pin 1 SDO/SA0 is tied to GND and pin 12 CS to VCC3V3, selecting I2C. See the conflict below |
 
-Nothing collides, and 0x6A is unoccupied — which is what makes one scan
-decisive.
+Five of the six are fixed or confirmed and none of them collides. **The sixth
+address is the IMU's, and whether 0x6A is occupied or free is exactly what is
+in conflict below** — 0x6A is one of the two candidate addresses for the same
+device printed as 0x6B, not a separate, empty slot. Calling it "unoccupied" begs
+the question a scan is supposed to answer.
 
 **A datasheet conflict on the IMU, reported rather than resolved.** The board
 grounds SA0. QMI8658C Rev 0.6 (2021-01-13, marked ADVANCE INFORMATION) maps

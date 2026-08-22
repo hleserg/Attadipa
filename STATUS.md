@@ -386,7 +386,10 @@ open question**, gated on three measurements only the owner can take: the
 closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
 the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
 280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
-need. **T-106** holds all three, and the register reads that go with them.
+need. **T-106** holds all three, a bus scan that settles a stale `0x6A`-is-free
+claim and confirms the magnetometer modules once they arrive
+([#83](https://github.com/hleserg/Attadipa/issues/83)), and the register reads
+that go with them.
 
 **Both inheritable charge currents are wrong for the real cell.** Waveshare's own
 demo sets 400 mA, which is 1.33C on ~300 mAh against a 1.0C class maximum, and

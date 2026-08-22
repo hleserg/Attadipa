@@ -1563,14 +1563,19 @@ stale silently. The protocol is
   Stereo source material decoded to one transducer is still mono output.
 - **Hardware required:** yes — a meter on the board.
 
-### T-106 · Three measurements and five registers, before any cell is ordered
+### T-106 · Four measurements and five registers, before any cell is ordered
 - **Priority:** P1 — it gates the battery decision, and every part of it is
   cheap. Nothing here needs a soldering iron.
 - **Dependencies:** the research is done —
-  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md). What is missing is
-  physical, and only the owner can take it.
-- **Why it is not one measurement.** The note's sizing table branches on all
-  three, and each answers a different way of being wrong:
+  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) and the magnetometer
+  datasheet comparison from [#83](https://github.com/hleserg/Attadipa/issues/83)
+  (not yet linkable: its write-up lands with
+  [#87](https://github.com/hleserg/Attadipa/pull/87), still open). What is
+  missing is physical, and only the owner can take it.
+- **Why it is not one measurement.** The note's sizing table branches on the
+  first three, and each answers a different way of being wrong. The fourth
+  answers a separate question — the bus, not the cell — and rides along because
+  it needs the same board on the same bench:
   - **M1 — closed-case clearance**, *not* the depth of the recess. Three
     plasticine balls, the cover screwed to normal torque, and the **smallest**
     of the three is the number. A cell chosen against the recess depth fits
@@ -1583,17 +1588,58 @@ stale silently. The protocol is
     consistent with 280–330 mAh; 7.5–8 g is the only mass consistent with a
     genuine 400 mAh**, and no sampled pouch reaches that density. A kitchen
     scale settles what 51 datasheets can only estimate.
+  - **M4 — the bus scan**, folded in here rather than filed as a task of its
+    own ([#83](https://github.com/hleserg/Attadipa/issues/83)). One
+    `i2cdetect`-equivalent pass on `SDA 15` / `SCL 14` settles whether `0x6A`
+    is free or is the IMU's own address under the other datasheet revision
+    ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md), IMU row —
+    `address CONFLICTING`), and, once the magnetometer modules are on flying
+    leads, confirms both `0x0C` (AK09911C, `CAD` tied to `VSS`) and `0x0D`
+    (QMC5883L) actually ACK. The QMC5883L confirmation is not optional: cheap
+    GY-271 modules sold under that name are regularly relabelled HMC5883L at
+    `0x1E` instead, and unlike the AK09911C there is no `WIA1`/`WIA2`-style ID
+    register to catch the swap — the address it answers at *is* the check.
 - **And five registers, on the board, whenever convenient:** `0x62` (charge
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
   `0x12` and `0x69`, at I²C address `0x34`.
-- **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
+- **Acceptance:** each of M1, M2, M3 and M4 recorded as `MEASURED` with the
   instrument named, the five register values recorded as read, and the sizing
   table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
-  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
+  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken. M4's `0x0C`
+  and `0x0D` legs stay `UNKNOWN` until the magnetometer modules have arrived —
+  M1 through M3 do not wait on that.
 - **What must not be assumed:** that the sticker settles the capacity. Reading
   it was verified; what it means is exactly what is in doubt.
-- **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
+- **Hardware required:** yes — the board, a caliper, a scale, a bus scan, and
+  the five-register read.
+
+### T-110 · A third capability source, for hardware that is neither the board's nor the node's
+- **Priority:** P2 — no code depends on the answer yet, but the registry design
+  ([ADR-0007](docs/adr/0007-two-capability-layers.md)) is the thing every
+  application trusts not to leak where an answer came from, and this is the
+  first hardware that does not fit either of the two sources it already knows.
+- **Dependencies:** none — this is a design question, answerable on paper. Not
+  gated on T-106 or on the modules arriving.
+- **Goal:** [#83](https://github.com/hleserg/Attadipa/issues/83) asked this as a
+  question rather than answering it, and it stays asked here rather than
+  decided inline in a research note. An owner-soldered magnetometer is a
+  capability that is a property of neither the board type (other units of the
+  same model do not have it) nor an attached Attadipa node (it does not walk
+  away). Whether the registry needs a third source class, and how to add one
+  **without** letting an application learn which source answered — the
+  invariant [ADR-0007](docs/adr/0007-two-capability-layers.md) exists to
+  protect — is an ADR question. Related: `Availability::Unsupported` is
+  documented as terminal and must be stable at runtime, and an I2C probe that
+  finds nothing is indistinguishable from a cold solder joint, so "probe at
+  boot" is not by itself an answer to how a soldered-on source announces
+  itself.
+- **Acceptance:** an ADR, accepted or explicitly deferred with a reason, that
+  says whether a third source class exists, what state a per-device (not
+  per-board-type) capability is in before that specific unit has been probed,
+  and how [ADR-0009](docs/adr/0009-heading.md) is superseded or amended once it
+  does.
+- **Hardware required:** no.
 
 ## BLOCKED
 
