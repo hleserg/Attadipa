@@ -318,7 +318,7 @@ is verified.
   the part number does not tell you what you have — arriving in a second
   subsystem.
 
-### The QMI8658 costs about three times the BMA423 for the same duty
+### The QMI8658 costs at least three times the BMA423
 
 - **Claim:** accelerometer-only, gyroscope disabled, typical at 1.8 V and 25 °C:
   the QMI8658C draws **30 / 35 / 42 / 55 µA** at low-power ODRs of 3 / 11 / 21 /

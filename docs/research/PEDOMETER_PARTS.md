@@ -365,15 +365,26 @@ again, at an arbitrary moment, so the capability has to have a state for
 
 ## 2. QMI8658 — Waveshare ESP32-S3-Touch-AMOLED-2.06
 
-### 2.1 The variant question comes first, and it is not answered.
+### 2.1 The variant question comes first, and it is half answered.
 
 [HARDWARE_MATRIX](HARDWARE_MATRIX.md) records the part as **"QMI8658 /
-QMI8658C"** — the board's own documentation does not pin the variant, and the
-Waveshare BSP does not drive the IMU at all
+QMI8658C"**, and the Waveshare BSP does not drive the IMU at all
 ([VERIFIED_FACTS](VERIFIED_FACTS.md)), so there is no vendor code to read the
-answer out of. **Which part is on the board is `UNKNOWN` and is now a
-first-order question**, because the two variants differ on precisely the feature
-OD-6 makes mandatory.
+answer out of. But this repository is not silent on it:
+[TAGS_TRACKS_RECKONING §2.2](TAGS_TRACKS_RECKONING.md) reports that **the
+schematic names `QMI8658C` twice**, and that the datasheet the vendor wiki links
+is byte-identical to the C document. That is evidence, and this section was
+written without it.
+
+So the A-versus-C question is **not** wide open: the schematic says C. What it
+does not do is *prove* C — a schematic symbol is a drawing, silkscreen on a
+2.5 × 3.0 mm LGA is unreadable, and a part substitution never reaches either.
+`WHO_AM_I` at `0x00` on a powered board settles it in one transaction.
+
+**The half that is genuinely open is which C document is the real one**, and it
+is the half that decides whether the feature exists at all — see the note at the
+end of §2.2. Both halves matter because the two variants differ on precisely the
+feature OD-6 makes mandatory.
 
 ### 2.2 QMI8658C — the pedometer is documented and complete. `SUPPORTED`.
 
@@ -413,6 +424,24 @@ a step count *means*:
 
 With QST's example parameters at 50 Hz, the engine detects steps between **0.4 s
 and 4 s apart** — 0.25 to 2.5 steps per second. Slower or faster is not counted.
+
+**CONFLICTING — this repository holds two readings of the QMI8658C, and they
+disagree about whether it has a pedometer at all.** This section reads document
+`13-52-27` **Rev A, 20 June 2022**, in which chapter 11 is present and `CTRL8`
+bit 4 is `Pedo_EN`. [TAGS_TRACKS_RECKONING §2.2](TAGS_TRACKS_RECKONING.md)
+reports instead that *"the only obtainable C datasheet is Rev 0.6 of January
+2021 marked ADVANCE INFORMATION"*, that its `CTRL8` reads *"Reserved: Not
+Used"*, and that therefore **no hardware pedometer is documented** on the C.
+Those cannot both describe the same part.
+
+Neither reading is withdrawn here, because withdrawing one on the strength of
+the other is guessing with extra steps. What can be said: the two cite different
+document numbers and different dates, so the likeliest explanation is that one
+of them found a revision the other could not — and if `13-52-27` Rev A exists,
+it supersedes an ADVANCE INFORMATION draft from eighteen months earlier. That is
+a plausible reconciliation, not a verified one. Filed as **H14**, and it is now
+cheap: writing `Pedo_EN` and reading `0x5A`–`0x5C` on a powered board tells you
+which document describes the silicon, whatever the paper says.
 
 ### 2.3 QMI8658A — the pedometer was documented, and then it was not. `UNKNOWN`, urgently.
 
