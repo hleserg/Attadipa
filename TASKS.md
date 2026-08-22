@@ -1352,6 +1352,74 @@ stale silently. The protocol is
   on which pixels. `UNKNOWN`, hardware required.
 - **Hardware required:** yes, for every power number
 
+### T-088 · Distance, walking and running, as one capability
+- **Priority:** P1 — [OD-12](docs/research/OWNER_DECISIONS.md#od-12--distance-but-only-the-distance-the-wearer-moved-themselves)
+- **Dependencies:** T-061 (the step counter this is built on), T-046
+  (crash-safe persistence), and on the Waveshare the IMU variant question that
+  T-060 left open
+- **Goal:** a daily distance the wearer covered **themselves**, split into
+  walking and running, alongside the step total that OD-6 already requires.
+- **The one design decision that has to be made first, because everything
+  follows from it:** distance is **steps × stride**, never displacement. A
+  wearer sitting in a car takes no steps, so a step-derived figure excludes a
+  journey for free, while a GNSS-derived one would count every kilometre of it.
+  Reaching for the receiver because it is more accurate gets the requirement
+  exactly backwards, and this line exists so nobody has that idea twice.
+- **The split is a register read on the T-Watch.** The BMA423's walking activity
+  recognition classifies **walking / running / still** into
+  `ACTIVITY_TYPE.activity_type_out`, enabled by
+  `FEATURES_IN.step_counter.settings_26.en_activity` with the step counter —
+  *source: datasheet revision 1.1, p. 37, via
+  [PEDOMETER_PARTS §1.9](docs/research/PEDOMETER_PARTS.md).* It is a Bosch
+  filter's opinion, not a measurement, and it is labelled as one.
+- **What has to be decided rather than assumed:**
+  - **stride is a setting with an honest default.** Distance is steps × stride
+    and a stride derived from nothing is a distance derived from nothing. It is
+    reported as an estimate, in the same language the GNSS work uses;
+  - **three numbers, not one** — walking, running, and the sum. A split that is
+    computed and then folded into a total is a split nobody can check;
+  - **`Still` is a claim**, and a claim that fails is a hole in the day rather
+    than an interpolation. OD-6's rule, unchanged;
+  - one counter, one persistence story. Steps and distance survive a reboot, a
+    crash and a flat battery together, and are zeroed by midnight and by nothing
+    else.
+- **Acceptance:** a host test replaying a synthetic trace through the same path
+  the device uses, containing at least one walking segment, one running segment
+  and one gap, and asserting that the gap is reported rather than filled.
+- **Hardware required:** for the numbers, yes. For the capability and its tests,
+  no.
+
+### T-089 · What a vehicle looks like to an accelerometer
+- **Priority:** P1, and it is **research before it is code** — nobody has
+  measured what a scooter looks like to a BMA423, and a gate written from a
+  guess is a feature that quietly deletes real walks.
+- **Dependencies:** T-060 (**done**), T-088
+- **Goal:** decide how a step that was not taken by the wearer is rejected, and
+  say what the rule costs when it is wrong in each direction.
+- **The cases, in the order they are hard:** sitting in a car, a bus or a train
+  is already free — no steps. **Standing** is the whole problem: a scooter, an
+  escalator, a train carriage that shakes at a walking cadence. A wrist on a
+  handlebar at 25 km/h produces a rhythm, and a rhythm is what a step detector
+  is looking for.
+- **Two gates, and only one of them always exists:**
+  - the **activity classifier** — steps arriving while the wearer reads `Still`
+    are not distance. Present on the BMA423, `UNKNOWN` on the Waveshare's IMU;
+  - a **cadence-versus-ground-speed check** — a step rate implying 4 km/h beside
+    a ground speed of 25 km/h is a scooter. This needs a position, so it is an
+    *improvement* to the gate and never a precondition for it. And a position on
+    this watch may come from a node in somebody else's pocket
+    ([ADR-0008](docs/adr/0008-mesh-service-providers.md)), which is exactly the
+    case where the check must not fire.
+- **The question the owner still owns:** what a rejected distance looks like to
+  the wearer. A watch that silently declines to count a bus ride and a watch
+  that is broken are the same watch from the outside — recorded in OD-12 under
+  *Still with the owner*.
+- **Acceptance:** each case marked with what the firmware does and where the
+  answer came from. **A gate with no measurement behind it is written down as
+  `UNKNOWN` and not shipped as a heuristic.**
+- **Hardware required:** yes, eventually — this ends in a person on a scooter
+  with a watch on. Until then it is a document.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1489,9 +1557,25 @@ Recommended next action:
 - **Mutation-tested:** adding a line to `charset.py` turns `ui_fonts_are_current`
   red; putting a Latin-only font back turns the simulator run red.
 
-### T-037 · The first Clock — **DONE** 2026-08-22
+### T-037 · The first Clock — **DONE** 2026-08-22, **revised the same day**
 - `apps/clock/` — the first screen that is not a diagnostic. Time, date,
-  battery, one status line, day and night, EN and RU, and a Child variant.
+  battery, a status row, day and night, EN and RU, and a Child variant.
+- **The owner reviewed it and rejected two things, both rightly.** The battery
+  was a bare `62%` — a number with no picture, which gets asked what it is a
+  percentage of — and the status line read `Mesh · not set up`, which is a
+  capability name and an availability name joined by a middle dot, in a third of
+  a 240-pixel face, saying one thing about one subsystem while GNSS and the
+  phone said nothing.
+- **Now:** a gauge that fills to the charge with the digits beside it, and three
+  icons in the height of one — mesh, position, phone — each lit or struck
+  through. `Unsupported` draws nothing, so a Waveshare with no LoRa and no GNSS
+  carries no dead icons, and lights both the moment a node is attached. The
+  capability model, visible on a watch face.
+- **Two new pieces came out of it:** `ui/widgets/` (a drawing is not a token, and
+  a battery written in an application is a battery written once per application)
+  and a `stroke` token, because every outlined element needs a width and without
+  one that width is a pixel count somebody typed. See
+  [DESIGN_SYSTEM §5, §7.3](docs/ui/DESIGN_SYSTEM.md).
 - **It is an application and the link line proves it.** `attadipa_app_clock`
   links `attadipa_apps`, `attadipa_ui`, `attadipa_fonts` and LVGL, and **not**
   `attadipa_platform`. It draws a `ClockModel` filled by the composition root, so

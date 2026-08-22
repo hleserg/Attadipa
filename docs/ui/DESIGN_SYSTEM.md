@@ -228,6 +228,7 @@ Seeded from the style board's generous spacing and rounded forms; all values are
 | `icon.size` | `sm 16` · `md 20` · `lg 24` · `xl 32` |
 | `image.size` | `inline 32` · `spot 64` · `hero 120` · `hero.large 200` |
 | `touch.min` | `44` adult · `56` Child Mode |
+| `stroke` | `hairline 1` · `regular 2` · `heavy 3` — **added 2026-08-22**, see below |
 | `elevation` | `flat` · `raised` · `overlay` — realised as a border and a tint, not a blurred shadow, which costs fill rate |
 
 Spacing is expressed in **density-independent units resolved per board**, not in
@@ -257,6 +258,21 @@ either panel. In code it is a *rule* — half the shorter side of the thing bein
 drawn — and `is_pill()` says so in the type system rather than leaving a magic
 number to be multiplied by accident.
 
+**`stroke` is an addition to the specification's list, and it is here because
+the list could not be used without it.** Final §54 names spacing, radius, motion,
+icon and image scales — and then `elevation` in the same table is *"realised as a
+border"*, which is a width. So is a battery gauge's wall, a divider, and the
+slash across a struck-out status icon. Without a token every one of those is a
+pixel count somebody typed, and a 2-pixel border is 0.19 mm on the T-Watch and
+0.16 mm on the Waveshare from one source line — the exact failure `Dp` exists to
+prevent, arriving through the one gap in the scale.
+
+The three weights are not invented either: they are what the icon pipeline had
+already chosen by hand for its own drawings. A 33-pixel icon is stroked at 3 px,
+which is `stroke.regular` at 261 dpi — so a widget outlined at `regular` sits
+beside an icon of the same weight, which is the entire reason for having a scale
+rather than three numbers.
+
 **Durations are not scaled.** A denser panel does not make time pass differently.
 `motion.duration.instant` exists so that "reduce motion" and low-power modes have
 somewhere to go without an `if` in every animation.
@@ -269,6 +285,14 @@ somewhere to go without an `if` in every animation.
 `attadipa_platform`: a screen asks for `space.md`, and only the composition root
 knows which panel answered. That is [ADR-0007](../adr/0007-two-capability-layers.md)
 applied to pixels.
+
+`ui/widgets/` is a **second** target, and the split is deliberate. A battery that
+fills to the charge is a drawing, so it needs LVGL — and `attadipa_ui` must not,
+because a token that could reach a panel is a token that will. So the tokens stay
+arithmetic and the drawings live one layer up, where they are shared between
+screens instead of being rewritten per screen with a different answer about what
+4 % looks like. `ui/widgets/` cannot see `platform` either: it receives a
+`Metrics` and a `Theme`, never a board.
 
 Three tests hold the line. `tests/test_ui_tokens.cpp` asserts the properties —
 one token is one physical size on both panels, no gap rounds away, the night
@@ -362,17 +386,41 @@ The four sizes in bold are the ones that exist; `sm` and `xl` are not generated,
 because nothing draws them yet and a mask costs its pixel count in flash. Asking
 for one returns nothing, which is the honest answer and not an oversight.
 
-### 7.2 The first three icons
+### 7.2 The first four icons
 
 | Icon | What it means | Why it is drawn that way |
 |---|---|---|
 | `mesh` | one node reaching two others | The first attempt was a hub with three peers, and at 33 px the four discs merged into a lump. The second was a triangle of nodes, one row away in silhouette from `warning`. The third has a silhouette that is neither |
 | `position` | a position is known | A pin and deliberately **not** a satellite, an antenna or a phone. An application is never told where a fix came from — the wrist, a companion node, or somebody else's message — so the icon must not draw a source |
+| `companion` | the phone the watch is paired with | Three drawings. A bare rounded-rectangle outline is a phone to nobody — it is equally a door or a toggle, and it sits one row from the battery gauge. Two interior marks fix it: a speaker slot and a home dot. It is a **phone, not a Bluetooth rune**, because which transport carries the link is precisely what an application is never told |
 | `warning` | a degraded state | It exists **because** §3.1 forbids signalling state by colour alone. On the day palette that is not merely an accessibility courtesy, since no accent clears 4.5:1 against Warm Ivory. A degraded state has to have a shape |
 
 The review sheet is [`specimens/sheet-icons.png`](specimens/sheet-icons.png) —
 day and night, at 1:1 and not magnified, because an icon that only reads at 3×
 is an icon that does not read.
+
+### 7.3 Lit, struck, or absent — the status row
+
+The Clock's status row is where §3.1 stops being a principle and becomes three
+lines of code, so the rules are written here rather than in one screen's source.
+
+| The capability is | It looks like | Because |
+|---|---|---|
+| `Ready` | the icon, full ink | |
+| anything else that could work here | the icon, dimmed **and struck through** | A dim icon and a lit one differ only in colour, which §3.1 forbids as the sole channel — and on the day palette the two greys are 1.79:1 apart, so it would not carry the meaning even if it were allowed |
+| `Unsupported` | **nothing at all** | A capability that can never exist on this board is absent, not dead. A Waveshare with no LoRa does not need a permanently struck mesh icon to prove it — and because [ADR-0008](../adr/0008-mesh-service-providers.md) lets an attached node supply what the board lacks, that same row lights up the moment a node arrives |
+
+**The slash is drawn twice.** A single stroke at 45° disappeared into `mesh`,
+whose own links run at 45°. The mark is now a wide stroke in the page colour
+followed by a thin one in ink, which cuts a clean gap through whatever it
+crosses — the way every "no signal" glyph has always been drawn, for the same
+reason.
+
+**The row says whether, never why.** "Not set up" and "no signal" look identical
+here on purpose. The face has room for a state; the reason lives one tap away.
+The design this replaced put the reason on the face as `Mesh · not set up`, and
+it read like a debug line because a capability name joined to an availability
+name by a middle dot is one.
 
 ## 8. Localization is a design constraint, not a translation step
 
