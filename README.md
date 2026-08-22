@@ -142,11 +142,14 @@ platform/                      the hardware inventory — chips, pins, rails, bo
 core/                          services, and the capability registry that owns the mapping
 link/                          transport framing, the frame queue, the session state machine
 l10n/                          the string catalogue and the code generated from it
+ui/                            design tokens: roles, spacing, contrast — no LVGL, no board
+ui/assets/                     source art, the generated LVGL masks, and the one lookup
+assets/fonts/                  the generated Montserrat subsets, with their provenance
 apps/                          applications; links core and cannot reach platform
 sim/                           the desktop simulator, and its LVGL configuration
 tests/                         host tests, including the two that check the layer boundary
 tests/replay/                  the deterministic navigation rig, and its recorded traces
-tools/                         the font subsetter and the checks CI runs
+tools/                         the font subsetter, the image pipeline, and the checks CI runs
 cmake/                         the pinned LVGL dependency
 
 docs/master-prompt-final.md    product specification (source of truth)

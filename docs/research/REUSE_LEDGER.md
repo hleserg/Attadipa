@@ -721,6 +721,70 @@ upstream defects held against our own code.
 
 ---
 
+### Turning source art into LVGL assets
+
+**Problem:** convert committed source art into flash-resident LVGL image
+descriptors, reproducibly, with a stale generated tree visible as a failing test
+rather than as a wrong picture on a panel.
+
+**Projects investigated:** LVGL's own `scripts/LVGLImage.py` (MIT, in the pinned
+v9.5.0 tree) · LVGL's online image converter, which is the same conversion
+behind a web form · writing the `lv_image_dsc_t` emitter by hand from
+`src/draw/lv_image_decoder.h` · `imagemagick` plus a hand-written array writer.
+
+**Useful implementation:** `LVGLImage.py` itself. It is the tool LVGL uses to
+produce its own assets, it supports every colour format the header defines
+including `A8` and `RGB565A8`, its output is byte-identical across runs, and it
+takes its input as files and its parameters as flags — which is what makes it
+scriptable rather than a web page somebody has to remember to visit.
+
+**Licence:** **MIT**, read from `LICENCE.txt` in the same clone and copied to
+`tools/assets/vendor/LVGL-LICENCE.txt` beside the file.
+
+**Strengths:** authoritative — it emits the struct the version of LVGL we pinned
+actually reads, so a format mismatch is impossible by construction. Deterministic
+with `--compress NONE`: two runs produce identical bytes, verified rather than
+assumed.
+
+**Weaknesses:** it hardcodes an include block that falls through to
+`lvgl/lvgl.h` with no flag to change it (worked around with
+`LV_LVGL_H_INCLUDE_SIMPLE`); it imports `lz4` at module scope even when
+compression is off; and it has no notion of a manifest, a digest or a refusal —
+point it at a 1440-pixel concept sheet and it will happily convert it. Those
+last three are why there is a pipeline around it rather than a call to it.
+
+**Decision:** `USE AS-IS`, **vendored unmodified** at
+`tools/assets/vendor/LVGLImage.py`, wrapped by
+`tools/assets/generate_images.py`.
+
+**Reason.** Rewriting an encoder for a struct somebody else defines is how a
+format drifts. Vendoring rather than referencing the clone is the part that
+needed a decision: regeneration has to work for the next agent and in CI, and
+neither has `/root/upstream`. LVGL is not a submodule here, and a download
+inside a generation step is a network dependency in a build. One MIT file,
+pinned by hash, unmodified, is cheaper than a submodule and more honest than a
+path that only exists on one machine. **The hash is part of the pipeline's
+inputs digest**, so a converter bump that changes any output byte fails
+`ui_images_are_current` until the tree is regenerated — an encoder that changes
+its output *is* the asset changing.
+
+**Source revision:** LVGL v9.5.0, commit `85aa60d18`. File SHA-256
+`c4b59a99104a7592d38b84747296c5e94e86263ca973137b897d295e39b1bff3`, recorded in
+`tools/assets/vendor/README.md` and re-checkable with `sha256sum`.
+
+**Attadipa integration:** `attadipa_images`, a target that links LVGL and
+`attadipa_ui` — the same separation `attadipa_fonts` has, and for the same
+reason: an `lv_image_dsc_t` knows about LVGL and `attadipa_ui` must not.
+
+**Tests required, and present:** determinism (two runs, byte-compared);
+`--check` catching a stale tree with no converter installed; the refusals
+actually refusing — a source over the dimension cap, a source under `docs/` or
+`pics/`, a size with no drawing, a filename that disagrees with its pixels; and,
+in C++, that every linked descriptor is `A8` with `stride == width` and carries
+a drawing rather than a blank rectangle.
+
+---
+
 ### GNSS integrity and trust
 
 **Problem:** decide whether a position is worth navigating by, and keep the

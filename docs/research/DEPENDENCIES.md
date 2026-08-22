@@ -24,6 +24,10 @@ Required for every entry:
 | **MeshCore** | `d92964352441e53b93e8667b802e04f6e072b39e`, 2026-08-14, tag `companion-v1.17.1` | MIT | upstream is active. Re-run the radio census (`grep RADIO_CLASS variants/`) on every bump — [ADR-0003](../adr/0003-radio-not-lora.md) is *about* this revision |
 | **RadioLib** | `510e00cfb05bbc3c2b7b524262785454944adb6e`, tag **7.7.1**, 2026-08-13 | MIT | follows MeshCore's pin |
 | **`lv_font_conv`** | **1.5.3** — npm, integrity `sha512-0xJQThBOw2ipt…TuBIbQ==` | MIT (read from the tarball, not the manifest) | it generates a build artefact that ships in flash, so a bump means re-measuring the subset. [FONT_MEASUREMENTS](FONT_MEASUREMENTS.md) |
+| **`LVGLImage.py`** | **v9.5.0**, commit `85aa60d18`, SHA-256 `c4b59a99…1bff3` — **vendored** at `tools/assets/vendor/LVGLImage.py`, unmodified | MIT, copied beside it from the same tree | it emits a build artefact that ships in flash, so a bump re-encodes every asset. Its hash is inside the pipeline's inputs digest, so a bump that changes bytes fails `ui_images_are_current` until the tree is regenerated |
+| **`pypng`** | whatever the environment has — `LVGLImage.py` imports it | MIT | a **tool-time** dependency of the vendored converter, not of the firmware. Nothing links it and nothing ships it. Its output is committed, so a machine with no `pypng` can still build and test everything except a regeneration |
+| **`lz4` (Python)** | the same | MIT | imported at module scope by `LVGLImage.py` and then never used, because Attadipa passes `--compress NONE`. Required to import the module at all, which is why it is listed |
+| **Pillow** | whatever the environment has — `python3-pil` on the CI runners | HPND (MIT-compatible) | tool-time only, for `tools/assets/` — authoring the source masks, the dimension cap, and the contact sheet. Deliberately **not** needed by `generate_images.py --check`, so the primary staleness gate never depends on a package being installed; the two checks that do need it are replaced by a failing test when it is absent |
 | **Inter** | `Inter[opsz,wght].ttf`, `google/fonts`, SHA-256 `29160a80…c559031` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; used **unmodified**, because instancing it costs its kerning |
 | **Nunito Sans** | `NunitoSans[YTLC,opsz,wdth,wght].ttf`, `google/fonts`, SHA-256 `f934d714…ae2491d` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; must be instanced to `wght=400`, because its default is 200 |
 
@@ -128,7 +132,9 @@ The three facts that change what "pick a font" means:
 
 - **Nunito Sans has no arrows.** U+2190–U+2193 are absent, and `lv_font_conv`
   refuses the range rather than substituting. Either the arrows become icons
-  from the image pipeline (T-034), or Nunito Sans is not the whole answer.
+  from the image pipeline (T-034 — **done**, and it emits A8 masks, so an arrow
+  drawn as an icon would be recoloured through a `ColorRole` exactly like a
+  glyph), or Nunito Sans is not the whole answer.
 - **Both ship as variable fonts only**, and the converter takes the *default*
   instance. Inter's default is Regular 400. Nunito Sans's is **200,
   ExtraLight** — converting the downloaded file gives a font nobody chose.

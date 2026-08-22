@@ -81,8 +81,21 @@ in both cases.
   **nowhere** in this repository, so the fix is a fence rather than a
   correction. Filed **T-051 … T-053**.
 - **T-009 — design tokens in code**, resumed. The M1 slice continues in the
-  order final §58 gives: tokens, then the image asset pipeline (T-034), the
-  first Clock (T-037) and the first Settings (T-038).
+  order final §58 gives: tokens, then the image asset pipeline (T-034 —
+  **done**), the first Clock (T-037) and the first Settings (T-038).
+- **T-034 — image asset pipeline — done.** `ui/assets/source/` →
+  `tools/assets/` → `ui/assets/generated/`, with LVGL v9.5.0's `LVGLImage.py`
+  vendored unmodified and pinned by hash. Deterministic, verified by
+  byte-comparing two runs. The staleness digest covers the **converter** as well
+  as the art, because an encoder that changes its output is the asset changing.
+  Three refusals, each with a test that triggers it: a source over 512 px, a
+  source under `docs/` or `pics/`, and a pixel size with no drawing behind it —
+  the last being final §86 made mechanical, since the pipeline never resamples
+  one size into another and the lookup returns `nullptr` rather than the nearest
+  thing it has. Proved with three icons at three sizes: 14 457 B of `.rodata`,
+  reported per asset. **Assets are named by pixels, never by board** — 39 px is
+  `icon.size.lg` on one panel and `icon.size.md` on the other, one file, and a
+  test asserts it.
 - **T-043 … T-053** — the eleven the amendments produced, sitting in READY: the
   node link that is not a BLE link, resynchronisable framing, the `PowerState`
   taxonomy that cannot call a wake-on-LoRa sleep "hibernate", crash-safe
@@ -97,8 +110,14 @@ One to two steps ahead, per final §68 — not twenty.
 
 | | Subject | For |
 |---|---|---|
-| NEXT | `scripts/LVGLImage.py` — RGB565A8, compression, and flash cost per asset | T-034 |
-| AFTER NEXT | LVGL 9.5 on QSPI AMOLED: draw-buffer strategy and realistic frame rate at 410 × 502 | M2, and the PSRAM conflict D12 |
+| NEXT | LVGL 9.5 on QSPI AMOLED: draw-buffer strategy and realistic frame rate at 410 × 502 | M2, and the PSRAM conflict D12 |
+| AFTER NEXT | `SettingsService` persistence on a device with no filesystem yet — what T-038 writes to, and what T-046 has to guarantee about it | T-038 |
+
+`LVGLImage.py` is off this list: T-034 answered it. Compression was examined and
+**not** taken — RLE and LZ4 both trade flash for decode time and a scratch buffer
+on a QSPI bus nobody has timed, and nine masks are 14 kB. `RGB565A8` is present
+and unused: every asset so far is an `A8` mask, because an icon with a baked
+colour cannot follow a theme.
 
 ## Long-running operations
 
