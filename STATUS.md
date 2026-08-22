@@ -524,6 +524,28 @@ that decision no longer blocks M1, because M1 is the simulator.
 All of them. No board has been powered on by this project and no measurement
 has been taken. Nothing here may be described as hardware-tested.
 
+**There is now a fleet to test against, and it is out of reach from here.**
+[TEST_FLEET](docs/research/TEST_FLEET.md) records what the owner has: two T114
+nodes — one headless on Home Assistant, one with GNSS and a screen and free —
+and a V4 companion running `dt267/MeshCore-Low-Power-Firmware`, physically on
+USB to the owner's machine. Both advertise over BLE under the *same* name, so
+anything selecting by name picks whichever answered first. The pairing PIN is
+deliberately **not** in this repository: it is a device access credential and
+this repository is public.
+
+What is measured rather than assumed is the other half: a cloud agent session
+has no `/dev/ttyUSB*`, no `/dev/ttyACM*`, no `usbip`, no `lsusb` and no
+`esptool`. It cannot open a port, enumerate USB, or flash anything. So the
+fleet's existence changes which plans are *specifiable*, not which are done —
+and an agent reporting a hardware result from a session like this has not run
+what it says it ran. Three things about those nodes are still unknown and each
+has an issue: the band ([#89](https://github.com/hleserg/Attadipa/issues/89),
+which gates every LoRa interoperability plan), the firmware revisions
+([#90](https://github.com/hleserg/Attadipa/issues/90) — three across the fleet,
+and the pinned `d929643` is none of them), and that neither T114 sees GNSS
+indoors ([#91](https://github.com/hleserg/Attadipa/issues/91) — expected
+physics, not a defect, written down so nobody files it as one).
+
 What changed is that they are now *specified*.
 [HIL_PLANS](docs/testing/HIL_PLANS.md) holds ten of them — which parts are
 actually on the board, sleep current per state, whether deep sleep is deep and
