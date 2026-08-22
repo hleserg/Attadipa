@@ -106,6 +106,38 @@ trade against final §47's "warm and calm, not harsh blue-black". It is
 **unresolved** and needs measurement on hardware, not a preference. Recorded in
 [RESOURCE_BUDGET](../architecture/RESOURCE_BUDGET.md) rather than decided here.
 
+### Day, on an emissive panel
+
+A9 ([OWNER_DECISIONS.md](../research/OWNER_DECISIONS.md) OD-16, 2026-08-22): the
+day theme does not keep the near-white page above on a panel where a lit pixel
+draws its own current. It renders against this column instead, chosen
+automatically from the panel — the theme toggle is unchanged, and a user still
+only ever picks day or night.
+
+| Token | Seed | Role |
+|---|---|---|
+| `color.background.primary` | Ink Olive `#2F3A2E` | the page — night's value, not a new one |
+| `color.background.surface` | Dark Olive `#3C4033` | cards |
+| `color.text.primary` | Warm Ivory `#FFF6E8` | body — the day page's own colour, now the ink |
+| `color.text.muted` | Leaf Sage `#A7B49C` | secondary |
+| `color.accent.primary` | Attadipa Orange `#FF8A40` | **kept at day's own value** — see below |
+| `color.accent.glow` | Glow Amber `#FFC857` | unchanged in every column |
+
+Every other foreground role (`success`, `warning`, `navigation`,
+`border.subtle`) takes the value night already resolves to by fall-through —
+day's own, since night does not redefine them either. `color.background.raised`
+and `color.danger` are undefined here, the same two gaps night already has.
+
+**`color.accent.primary` is the one row that does not just borrow night's.**
+Reusing night's palette wholesale for day-on-an-emissive-panel would make the
+theme toggle invisible on that board — day and night would be the same
+picture under two names, which is exactly what option 4 was chosen over
+option 3 to avoid having to accept as a design cost. Keeping Attadipa Orange
+here is deliberate: on this page it clears **5.08:1**, comfortably past body
+text, where none of it clears even 2.2:1 on Warm Ivory (§3.2) — a colour that
+could only ever be emphasis on the day page turns out to be legible prose on
+this one, for free, because the failure was never the hue.
+
 ### 3.1 The gap
 
 There is **no red** in either owner palette. Attadipa's warmest accent, Attadipa
@@ -153,7 +185,31 @@ named in the column, in the theme named in the section.
 | `color.navigation` | 5.16 | 4.62 |
 | `color.border.subtle` | 5.47 | 4.89 |
 
-Two things follow, and both are consequences rather than complaints.
+**Day, on an emissive panel** — `ui::PixelCost::PerPixel`, OD-16. Also no raised
+layer: it borrows the same background column as night and inherits the same
+gap.
+
+| Foreground | on the page | on a surface |
+|---|---|---|
+| `color.text.primary` | 11.10 | 9.93 |
+| `color.text.muted` | 5.47 | 4.89 |
+| `color.accent.primary` | **5.08** | **4.54** |
+| `color.accent.glow` | 7.73 | 6.92 |
+| `color.success` | 3.96 | 3.54 |
+| `color.warning` | 5.08 | 4.54 |
+| `color.navigation` | 5.16 | 4.62 |
+| `color.border.subtle` | 5.47 | 4.89 |
+
+Identical to night's table row for row, except `color.accent.primary`: night
+carries Glow Amber there and this column keeps Attadipa Orange, at 5.08:1
+against 7.73:1. Both clear body text; the difference is not a legibility
+finding, it is the one place this table was built to differ from night's on
+purpose (see "Day, on an emissive panel" above). Its tightest case is the same
+as night's and for the same reason — it *is* night's value: `color.success` at
+3.96:1 on the page, enough to be seen, not enough to be read as a word.
+
+Two things follow from the two backlit tables above, and both are consequences
+rather than complaints.
 
 **The day accents cannot carry meaning on their own.** Every accent in the day
 palette is under 3:1 even against the brightest background it will ever sit on.
@@ -184,7 +240,9 @@ None of this is a proposal to change the palette. The colours are the owner's
 were resolved in favour of these on 2026-08-22
 ([OWNER_DECISIONS.md](../research/OWNER_DECISIONS.md) OD-15). What changed here
 is that the numbers now exist, are computed rather than eyeballed, and break a
-test if they move.
+test if they move. The emissive-day column above is built from the same seed
+set for the same reason (OD-16) — it is a new combination of existing values,
+not a new value.
 
 ## 4. Typography
 
@@ -271,6 +329,12 @@ somewhere to go without an `if` in every animation.
 `attadipa_platform`: a screen asks for `space.md`, and only the composition root
 knows which panel answered. That is [ADR-0007](../adr/0007-two-capability-layers.md)
 applied to pixels.
+
+`ui::PixelCost` (OD-16) is the same rule applied to the emissive-day column:
+`color.h` declares only a two-valued "does a lit pixel cost power here", never
+a panel or a chip. `sim/boot_screen.cpp`'s `pixel_cost()` is the one function
+in the codebase that maps `platform::PanelTechnology` to it — the composition
+root's job, the same as `metrics()` immediately above it in that file.
 
 Three tests hold the line. `tests/test_ui_tokens.cpp` asserts the properties —
 one token is one physical size on both panels, no gap rounds away, the night

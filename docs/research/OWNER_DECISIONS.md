@@ -1062,6 +1062,90 @@ the two that actually conflicted.
 
 ---
 
+## OD-16 — A9: automatic by panel technology, and the theme toggle is unchanged
+
+**Decided:** 2026-08-22, on [issue #52](https://github.com/hleserg/Attadipa/issues/52).
+
+**Numbering note.** Two other pull requests open the same day ([#92](https://github.com/hleserg/Attadipa/pull/92),
+[#94](https://github.com/hleserg/Attadipa/pull/94)) also record their decision as
+OD-16, for A1–A3 and A5/A6 respectively. Whichever of the three merges last
+takes the next free number, the same way TASKS.md's T-100 note already
+describes for a task-ID collision — this is not something a branch can resolve
+against branches it cannot see.
+
+**As stated:**
+
+> *"A9: option 4. Automatic by panel technology, and the theme toggle stays
+> exactly as it is — the user picks day or night, and day simply renders
+> differently on an emissive panel."*
+
+Of the four options [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1 costed —
+unchanged day everywhere; day only on the T-Watch; a third palette the user
+must pick; or day rendering automatically per panel — the owner took the
+fourth. It keeps the two boards one product with one toggle, at the cost of
+the same design work option 3 would have needed anyway: a dark-page, warm-ink
+day palette with its own §3.1-style contrast audit.
+
+**The implementation, and the three constraints the owner attached to it:**
+
+1. *"It expresses the consequence, not the part."* `ui::PixelCost` (`Fixed` /
+   `PerPixel`) is the new value — `ui/include/attadipa/ui/color.h`. It answers
+   only "does a lit pixel cost power here"; nothing in `ui/` ever spells
+   `PanelTechnology`, `Amoled` or a chip name. The mapping from
+   `platform::PanelTechnology` to `ui::PixelCost` happens in exactly one
+   function, `pixel_cost()` in `sim/boot_screen.cpp`, which is the composition
+   root's territory the same way `metrics()` three lines above it already is.
+2. *"`ui` still must not link `platform`."* Unchanged — `ui/CMakeLists.txt`
+   still links only `attadipa_headers`. `PixelCost` is a two-valued enum with
+   no platform knowledge in it.
+3. *"No `#ifdef BOARD_X` anywhere in `core/`, `ui/` or `apps/`."* None was
+   added; the branch is a panel property flowing through a function argument,
+   the same shape `Theme` already used.
+
+**The palette itself.** `ui::color()` gained a fourth column,
+`day_emissive`, consulted only when `Theme::Day` is asked with
+`PixelCost::PerPixel`. It invents no colour — every value in it was already in
+the canonical seed set (final §42) before this decision:
+
+| Role | Day (Fixed) | Night | Day (PerPixel) |
+|---|---|---|---|
+| `color.background.primary` | Warm Ivory | Ink Olive | **Ink Olive** |
+| `color.background.surface` | Sand Beige | Dark Olive | **Dark Olive** |
+| `color.text.primary` | Ink Olive | Warm Ivory | **Warm Ivory** |
+| `color.text.muted` | Cocoa Brown | Leaf Sage | **Leaf Sage** |
+| `color.accent.primary` | Attadipa Orange | Glow Amber | **Attadipa Orange** |
+
+Background and text reuse night's already-audited dark values. `AccentPrimary`
+is the one deliberate exception, kept at Day's own Attadipa Orange rather than
+Night's Amber — the single difference left between day and night once both
+sit on a dark canvas, and the reason the theme toggle still does something
+visible on the Waveshare rather than becoming two names for one palette. The
+contrast audit that follows from it is pinned in
+`tests/test_ui_tokens.cpp`: every emissive-day foreground clears the 3:1
+graphic threshold on its own page, and the accent — illegible as a graphic at
+2.19:1 on Warm Ivory — clears body text too at 5.08:1 against Ink Olive.
+`BackgroundRaised` and `color.danger` stay undefined in this column, the same
+gaps DESIGN_SYSTEM already records for night.
+
+**What was not done, and why.** No screenshot was produced for the review
+sheet the issue asked for. The simulator needs SDL2, and this environment has
+neither the library nor permission to install it (`apt-get install` failed
+with a lock-file permission error, not a missing-package one) — an
+environment limitation, distinct from and not to be confused with the
+`NOT EXECUTED — HARDWARE REQUIRED` marker, which is about a physical board.
+Whoever next has a machine with SDL2 can run
+`cmake -S . -B build -DATTADIPA_BUILD_SIMULATOR=ON && cmake --build build`
+and `sim/attadipa_sim --board waveshare --theme day` (then `T` to compare) to
+produce it.
+
+**What it does not do.** It does not touch the still-open A10 (static-content
+ageing) or the true-black-versus-Ink-Olive question DESIGN_SYSTEM already
+flags as unresolved for night — this decision inherits Ink Olive for the same
+reason night already uses it, and does not reopen that question on its way
+past.
+
+---
+
 ## Still with the owner
 
 Nothing here answers A1–A3, A5 or the compass question. Those remain in

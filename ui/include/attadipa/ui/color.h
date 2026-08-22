@@ -34,6 +34,23 @@ struct Rgb {
 
 enum class Theme : std::uint8_t { Day, Night };
 
+// Whether a lit pixel on this panel draws current of its own, so that a
+// brighter drawing costs more than a darker one at the same point. A backlit,
+// transmissive panel answers no: the backlight burns the same watts whatever
+// is drawn over it. An emissive panel answers yes.
+//
+// This is the *consequence*, not the part — issue #52 / OD-16's constraint.
+// Nothing in this file, and nothing that calls into it, ever learns
+// `platform::PanelTechnology`, a chip name or a board. The composition root
+// is the only place the two concepts meet: it maps a panel's technology to
+// this value and hands the value down, the same way it hands down `Metrics`
+// from a panel's dpi without ever passing the panel itself.
+//
+// Defaults to `Fixed` wherever a caller does not say otherwise, matching
+// `Metrics::unscaled()` — a context with no panel information gets the
+// assumption that was true before this property existed at all.
+enum class PixelCost : std::uint8_t { Fixed, PerPixel };
+
 // Semantic roles. A screen asks for `Accent Primary`, never for orange —
 // DESIGN_SYSTEM §3. The enumerator names are the token names with the dots
 // removed, so that a diagnostic can print one and a designer recognises it.
@@ -81,12 +98,20 @@ ColorKind kind_of(ColorRole role);
 // sunset. That fall-through is only safe while the result stays legible on the
 // night page, which is not a matter of taste and is checked: see
 // `contrast_ratio` and the test that walks every role.
-std::optional<Rgb> color(ColorRole role, Theme theme);
+//
+// `pixel_cost` only changes anything on `Theme::Day`: a day theme on a
+// `PerPixel` panel resolves against a fourth, explicit column — dark page,
+// warm ink, and `AccentPrimary` stays Day's own Attadipa Orange rather than
+// Night's Amber, which is the one deliberate difference left between day and
+// night once both sit on a dark canvas. `Theme::Night` is unaffected: it is
+// already the cheap option on either panel technology, so there is nothing
+// for this property to change there.
+std::optional<Rgb> color(ColorRole role, Theme theme, PixelCost pixel_cost = PixelCost::Fixed);
 
 // Whether this role's value in this theme came from the theme's own table
 // rather than from the day fall-through above. For diagnostics and for the
 // tests that pin the fall-through rule; a screen has no reason to care.
-bool is_defined_for(ColorRole role, Theme theme);
+bool is_defined_for(ColorRole role, Theme theme, PixelCost pixel_cost = PixelCost::Fixed);
 
 // WCAG 2.1 relative luminance and contrast ratio, in the standard formulation.
 //
@@ -101,7 +126,8 @@ std::uint16_t contrast_ratio_centi(Rgb a, Rgb b);
 // The contrast between a role and the page it is painted on, in hundredths.
 // Zero when either side is UNKNOWN, which a caller must distinguish from "no
 // contrast" — the two are not the same and only one of them is a design fault.
-std::uint16_t contrast_against_page_centi(ColorRole role, Theme theme);
+std::uint16_t contrast_against_page_centi(ColorRole role, Theme theme,
+                                          PixelCost pixel_cost = PixelCost::Fixed);
 
 // WCAG 2.1 AA, the two thresholds that matter here: 4.5:1 for body text, 3:1
 // for large text, icons and the boundary of a control. Expressed in hundredths
@@ -119,10 +145,11 @@ inline constexpr std::uint16_t kContrastLargeOrGraphic = 300;
 // to do. It is also, independently, why DESIGN_SYSTEM §3.1 forbids signalling
 // any state by colour alone — a rule that was written for colour-blindness and
 // turns out to be load-bearing for everyone.
-bool legible_as_graphic(ColorRole role, Theme theme);
-bool legible_as_body_text(ColorRole role, Theme theme);
+bool legible_as_graphic(ColorRole role, Theme theme, PixelCost pixel_cost = PixelCost::Fixed);
+bool legible_as_body_text(ColorRole role, Theme theme, PixelCost pixel_cost = PixelCost::Fixed);
 
 const char* name_of(ColorRole role);
 const char* name_of(Theme theme);
+const char* name_of(PixelCost pixel_cost);
 
 }  // namespace attadipa::ui
