@@ -62,10 +62,16 @@ which is worth having in a device that will be assembled by hand. (M1 §1, §2)
 | Average at 100 Hz | | **2.4** | | **mA** | M1 §1, §2 |
 | Operating temperature | −30 | | +85 | °C | M1 §1 |
 
-**3.3 V is inside the range.** The part is not a 1.8 V-only sensor — that is the
-plain `AK09911` in some other packaging, and it is not what this is. `VID` may be
-run lower than `VDD` if the host wants, but on this board there is no reason to:
-everything else on the main I2C bus is at 3.3 V.
+**3.3 V is inside the range**, and this needed correcting because I had it wrong
+first: I called the part a low-voltage sensor in [#83](https://github.com/hleserg/Attadipa/issues/83)
+before reading M1, on a half-remembered "AK0991x is 1.8 V". **M1 is titled
+`AK09911`, gives `VDD` 2.4–3.6 V, and names `AK09911C` in the package line —
+so the `C` is a package, not a voltage variant.** Where the 1.8 V recollection
+comes from is `UNKNOWN` and is not worth chasing; it may belong to another part
+in the family, but no source here says so and inventing one to explain a mistake
+is worse than the mistake. `VID` may be run below `VDD` if the host wants, but on
+this board there is no reason to: everything else on the main I2C bus is at
+3.3 V.
 
 ### 2.3 Sensing
 
