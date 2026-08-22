@@ -447,6 +447,14 @@ becomes an em dash. The same rule makes `battery_fill_px()` return `1` rather
 than `0` for any charge above zero: 1 % of a 52-pixel gauge floors to nothing,
 and drawing nothing would be the same lie by arithmetic.
 
+**A hairline of page between the wall and the fill.** Without it a 12 % fill is
+five pixels of the same ink the shell is drawn in, flush against a two-pixel
+wall, and the two merge into one thick left edge — which is what the first
+render showed on the day theme, where the fill has no colour of its own to
+separate it. One pixel of gap turns it back into a gauge. Every battery glyph
+ever drawn has this gap; ours has it because a render found the version without
+it, not because it was copied.
+
 **On the day theme, neither colour survives.** `Warning` is Attadipa Orange at
 2.19:1 against Warm Ivory and `Success` is Meadow Green at 2.81:1 — both below
 the 3:1 §3.1 requires of a graphic — so `legible_as_graphic()` refuses them and

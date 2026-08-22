@@ -107,8 +107,16 @@ lv_obj_t* build_battery(lv_obj_t* parent, const Battery& battery, const Metrics&
     // --- the fill, which is the whole reason this is a drawing and not a word.
     if (battery.known) {
         const std::uint8_t percent = battery.percent > 100 ? 100 : battery.percent;
-        const std::int32_t inner   = body_w - 2 * wall;
-        const std::int32_t fill    = battery_fill_px(battery.percent, inner);
+        // A hairline of page between the wall and the fill. It is one pixel and
+        // it is the difference between a gauge and a box with a thick left
+        // edge: at 12 % the fill is five pixels of the same ink the wall is
+        // drawn in, and flush against it the two merge into one stroke. The
+        // render showed exactly that, on the day theme, where `Warning` is
+        // refused for contrast and the fill has no colour of its own to
+        // separate it. Every battery glyph ever drawn has this gap.
+        const std::int32_t gap   = metrics.px(dp_of(Stroke::Hairline));
+        const std::int32_t inner = body_w - 2 * wall - 2 * gap;
+        const std::int32_t fill  = battery_fill_px(battery.percent, inner);
 
         const ColorRole role = battery.charging ? ColorRole::Success
                                : percent <= kLowWater ? ColorRole::Warning
@@ -116,8 +124,8 @@ lv_obj_t* build_battery(lv_obj_t* parent, const Battery& battery, const Metrics&
 
         if (fill > 0) {
             lv_obj_t* level = plain(body);
-            lv_obj_set_size(level, fill, body_h - 2 * wall);
-            lv_obj_align(level, LV_ALIGN_LEFT_MID, 0, 0);
+            lv_obj_set_size(level, fill, body_h - 2 * wall - 2 * gap);
+            lv_obj_align(level, LV_ALIGN_LEFT_MID, gap, 0);
             lv_obj_set_style_bg_color(level, paint_graphic(role, theme), 0);
             lv_obj_set_style_bg_opa(level, LV_OPA_COVER, 0);
             // The fill is square. Rounding both ends of it is what made the
