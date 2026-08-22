@@ -206,14 +206,15 @@ and `agent:ready` where one is genuinely needed.
       `main`, with nobody watching for it — and "no `ai-review:pass`, no merge"
       would be false in exactly the sequence this routine always takes.
 
-      **AND IT IS NOT ONLY THE CLAUDE REVIEW.** Two rounds of review on the
-      pull request that wrote this found the same mistake twice, because the
-      first fix re-checked the condition that had been on my mind rather than
-      every condition the undraft could invalidate. So the rule is the general
-      one and the list below is its enumeration: **after `gh pr ready`, treat
-      EVERY condition as unread and check all of them again.** If you find
-      yourself deciding which ones could not have changed, you are making the
-      mistake this paragraph exists to stop.
+      **AND IT IS NOT ONLY THE CLAUDE REVIEW.** Three rounds of review on the
+      pull request that wrote this found the same mistake three times, each
+      fix re-checking the conditions that had been on somebody's mind and
+      quietly dropping the rest. So: **after `gh pr ready`, treat EVERY
+      condition as unread and re-run the list, not a summary of it.** If you
+      find yourself deciding which ones could not have changed, you are making
+      the mistake this paragraph exists to stop — and so was the paragraph
+      that used to sit here, which said this and was then followed by a
+      shortened list of its own.
 
       So after `gh pr ready`:
 
@@ -222,38 +223,51 @@ and `agent:ready` where one is genuinely needed.
            finished by then, say so and leave the pull request open and
            undrafted — a merge is never the thing you do because waiting got
            boring.
-        2. CHECK THAT A VERDICT WAS ACTUALLY REACHED. A run that dies fast
-           leaves `queued`/`in_progress` too, so step 1 is satisfied by a
-           failure. If a fresh `attadipa-review-did-not-run` comment names this
-           head commit, there was no second opinion — the label you are about
-           to read is the old one, still sitting there because nothing touched
-           it. Treat that exactly as a blocking result and stop. This is the
-           likeliest of all these cases to recur, because a daily routine and a
-           daily quota exhaust together.
-        3. RE-READ the labels. `ai-review:pass` must still be present and
-           `ai-review:blocking` still absent. The second pass is a second
-           opinion on the final state, which makes it worth having rather than
-           waste; treat a new blocking verdict as the answer, not as noise from
-           a run you caused.
-        4. RE-CHECK THE THREADS AND THE OTHER REVIEWER. `gh pr ready` is one of
-           Codex's own stated triggers — it says so in its comments: *"Reviews
-           are triggered when you Open a pull request for review, Mark a draft
-           as ready, Comment @codex review."* Marking a draft ready is
-           precisely what you just did, so the undraft restarts Codex as well,
-           and Codex does not set a label — its findings arrive as comments.
-           Re-check for unresolved review threads and for an unanswered
-           `chatgpt-codex-connector[bot]` comment, in both shapes, exactly as
-           required before the undraft. Merging past a Codex finding posted in
-           this window is the failure the condition was written for, arriving
-           one event later than the condition looked.
-        5. RE-READ `mergeable_state`. Not because a stale value would corrupt
-           anything — the merge API refuses a real conflict — but because that
-           refusal is the only thing standing between the two reads, and a rule
-           whose safety rests on an error message it never mentions is a rule
-           nobody can check. If it is not `clean` at that moment, stop and say
-           so.
 
-      Only then merge;
+        2. CHECK THAT A VERDICT WAS ACTUALLY REACHED, which step 1 does not
+           establish. A run that dies fast leaves `queued`/`in_progress` too,
+           so a failure satisfies the wait. If a fresh
+           `attadipa-review-did-not-run` comment names this head commit, there
+           was no second opinion — the label you are about to read is the old
+           one, still sitting there because nothing touched it. Treat that as a
+           blocking result and stop. This is the likeliest of these to recur,
+           because a daily routine and a daily quota exhaust together.
+
+        3. **RUN THE WHOLE CONDITION LIST ABOVE AGAIN — every bullet, in
+           order, as if you had never read it.** Not a summary of it, not the
+           interesting parts of it, not the ones this document happens to
+           explain at length below. All of them.
+
+           This is written as a re-run of the list rather than as its own list
+           of things to re-check, and that is the fix rather than a style
+           choice. Three consecutive rounds of review on this pull request
+           found the same defect: a re-check that covered the conditions
+           somebody had been thinking about and silently dropped the rest.
+           First the labels were re-read and the threads were not. Then the
+           threads were added and `agent:blocked` and `needs-owner` were still
+           missed — two of the three labels in one bullet — in a paragraph
+           sitting directly below the sentence telling you not to do that.
+
+           A second enumeration is a copy, and a copy drifts from its original
+           every time somebody edits one of them. There is now one list, and
+           this step points at it.
+
+        4. RE-READ THE HEAD SHA and confirm it is the same commit whose age and
+           check runs you established before the undraft. If it moved, a new
+           push arrived during the wait: everything you checked was about a
+           commit that is no longer the one you would merge, so start over or
+           stop. Do not reason about whether the CI checks are required status
+           checks and would therefore have moved `mergeable_state` — that is
+           branch-protection configuration this document cannot see, and a rule
+           that depends on an unread setting is a rule nobody can check.
+
+      Only then merge. And note what the undraft has already restarted, because
+      step 3 is checking for the results of both: `gh pr ready` triggers the
+      Claude review through `ready_for_review`, and it is also one of Codex's
+      own stated triggers — *"Reviews are triggered when you Open a pull
+      request for review, Mark a draft as ready, Comment @codex review."*
+      Codex sets no label; its findings arrive as comments, which is why the
+      list you just re-ran asks about both shapes;
 
     - PATHS. **An allowlist, not `docs/` minus exclusions**, and the direction
       is the whole point: a list of what is permitted fails closed when
