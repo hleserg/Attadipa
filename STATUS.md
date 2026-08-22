@@ -124,10 +124,16 @@ and twelve tasks, T-072 to T-083. **Nothing is implemented.** Recorded here
 because a fact that lives only in a chat log does not exist.
 
 - **The companion is any node, not only ours** — vanilla MeshCore over BLE or
-  LAN, Meshtastic alongside or instead, several providers at once with a local
-  radio, and telemetry as a request/response feed. It fits
+  LAN, several providers at once with a local radio, and telemetry as a
+  request/response feed. It fits
   [ADR-0008](docs/adr/0008-mesh-service-providers.md)'s shape; what it needs is
-  the protocol facts, which are `UNKNOWN` (T-072, T-073, T-074).
+  the protocol facts, which are `UNKNOWN` (T-072, T-074).
+  **Meshtastic is not one of the providers.** OD-7 asked for it alongside or
+  instead of MeshCore; [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)
+  reversed that on 2026-08-22 and T-073 is `REJECTED`, not awaiting protocol
+  facts. Its protocol definitions are GPL-3.0 with no linking exception, which
+  closed the cheap path, and the owner declined to fund an honest clean-room —
+  the licence is the evidence and the product decision is the decision.
 - **Every source of position, with the watch as the instrument** — the watch's
   receiver, a node's, a phone's, a coordinate inside somebody else's message,
   telemetry, dead reckoning, cell towers. Selection and fusion are different
