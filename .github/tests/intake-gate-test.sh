@@ -46,7 +46,14 @@ check() {
 
 echo "Intake gate — who may drive a write-capable agent"
 
-#     want    description                              actor  event  action  label  body  labels  state  permission
+# want  description                actor event action label body labels state permission [trusted] [comment]
+#
+# The last two are optional and the last one is the one that matters here: BODY
+# is the issue, COMMENT is the text of the comment that fired the event. They
+# are different arguments because they are different texts, and the version of
+# this file that passed comment text in the BODY slot passed while production
+# refused every @claude ever written. A test that does not call the function the
+# way the workflow calls it is a test of something else.
 check accept "the owner, with a proper task marker" -- \
       hleserg issues opened "" "$MARKER" "" open admin
 
@@ -54,7 +61,7 @@ check accept "the owner, with a proper task marker" -- \
 check reject "a stranger with the very same marker" -- \
       octocat issues opened "" "$MARKER" "" open none
 check reject "a stranger commenting @claude" -- \
-      octocat issue_comment created "" "@claude do the thing" "" open none
+      octocat issue_comment created "" "" "" open none "" "@claude do the thing"
 check reject "a read-only collaborator" -- \
       somebody issues opened "" "$MARKER" "" open read
 check reject "a triage collaborator, who can label but not write" -- \
@@ -62,7 +69,7 @@ check reject "a triage collaborator, who can label but not write" -- \
 
 # The loop that costs money until somebody notices.
 check reject "a bot replying to its own comment" -- \
-      "claude[bot]" issue_comment created "" "@claude again" "" open write
+      "claude[bot]" issue_comment created "" "" "" open write "" "@claude again"
 check reject "github-actions[bot] opening an issue" -- \
       "github-actions[bot]" issues opened "" "$MARKER" "" open write
 
@@ -81,7 +88,7 @@ check reject "a closed issue" -- \
 check reject "a task somebody has already claimed" -- \
       hleserg issues opened "" "$MARKER" "agent:working,type:review" open admin
 check accept "an owner asking again in a comment" -- \
-      hleserg issue_comment created "" "@claude have another go" "agent:working" open admin
+      hleserg issue_comment created "" "" "agent:working" open admin "" "@claude have another go"
 check reject "a dispatch for an already-claimed task" -- \
       github-actions workflow_dispatch "" "" "" "agent:done" open ""
 
@@ -116,9 +123,9 @@ check reject "an app nobody listed" -- \
 
 # The loop lives in comments, so nothing in the list may exempt one.
 check reject "a listed producer COMMENTING @claude" -- \
-      "$CHATGPT" issue_comment created "" "@claude do it" "" open none "$TRUSTED"
+      "$CHATGPT" issue_comment created "" "" "" open none "$TRUSTED" "@claude do it"
 check reject "a listed producer on a pull request review comment" -- \
-      "$CHATGPT" pull_request_review_comment created "" "@claude do it" "" open none "$TRUSTED"
+      "$CHATGPT" pull_request_review_comment created "" "" "" open none "$TRUSTED" "@claude do it"
 
 # Our own output can never be listed, however hard somebody tries.
 check reject "claude[bot] named in the list anyway" -- \
@@ -139,6 +146,59 @@ check reject "a listed producer with no marker and no mention" -- \
 # A substring of a listed login is not that login.
 check reject "an app whose name merely contains a listed one" -- \
       "evil-chatgpt-codex-connector[bot]" issues opened "" "$MARKER" "" open none "$TRUSTED"
+
+# THE BUG THIS SECTION EXISTS FOR.
+#
+# On 2026-08-22 the owner commented "@claude принято, вариант 4 ..." on issue #41
+# and the gate answered "#41 nothing asks for an agent". The workflow was passing
+# the ISSUE body in the BODY slot for a comment event, so the mention — which is
+# only ever in the comment — was invisible. Two things were wrong at once, and
+# the second one hid the first: the call, and a test suite that made the same
+# mistake in the same direction. Every case below fails against the old code.
+echo
+echo "A comment is not the issue it is on"
+
+ORDINARY='A bug report with no marker and no mention in it at all.'
+
+check accept "the owner mentioning @claude in a comment on an ordinary issue" -- \
+      hleserg issue_comment created "" "$ORDINARY" "" open admin "" \
+      "@claude принято, вариант 4 — Meshtastic не поддерживаем."
+check reject "the same comment with no mention in it" -- \
+      hleserg issue_comment created "" "$ORDINARY" "" open admin "" \
+      "Принято, вариант 4."
+# The issue body may not stand in for the comment. This is the exact shape of the
+# defect: a marker-bearing issue, an unrelated comment, and no request in it.
+check reject "a comment with no mention on an issue whose BODY says @claude" -- \
+      hleserg issue_comment created "" "$MARKER" "" open admin "" \
+      "Thanks, looks right."
+check accept "a review comment asking for a change" -- \
+      hleserg pull_request_review_comment created "" "PR body, no mention." "" open write "" \
+      "@claude this needs a bounds check."
+check accept "a submitted review whose body mentions @claude" -- \
+      hleserg pull_request_review submitted "" "PR body, no mention." "" open write "" \
+      "@claude please fix the two blocking findings."
+
+# Capital letters. The owner typed "@Claude" on #41 on 2026-08-22, which under a
+# case-sensitive match is a second silent refusal for a different reason.
+check accept "@Claude, capitalised" -- \
+      hleserg issue_comment created "" "$ORDINARY" "" open admin "" "@Claude do the thing"
+check accept "@CLAUDE, shouted" -- \
+      hleserg issue_comment created "" "$ORDINARY" "" open admin "" "@CLAUDE DO THE THING"
+check accept "a marker issue written in mixed case" -- \
+      hleserg issues opened "" "<!-- Attadipa-Agent-Task -->
+@Claude please" "" open admin
+
+# A closed issue stays closed however loudly it is asked. The owner hit this one
+# too: commenting on an issue they had just closed themselves.
+check reject "@claude on a closed issue" -- \
+      hleserg issue_comment created "" "$ORDINARY" "" closed admin "" "@claude do the thing"
+
+# The comment slot never overrides the actor rules.
+check reject "an outsider whose comment mentions @claude" -- \
+      octocat pull_request_review_comment created "" "" "" open none "" "@claude ship it"
+check reject "claude[bot] quoting itself" -- \
+      "claude[bot]" issue_comment created "" "" "" open write "chatgpt-codex-connector[bot]" \
+      "I have asked @claude to look again."
 
 echo
 echo "  $pass passed, $fail failed"
