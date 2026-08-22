@@ -1163,10 +1163,14 @@ not a judgement.
 2026-08-22): a genuine clean-room from published documentation, by somebody who
 has not read the `.proto` files, is months of work and is done honestly or not
 at all — and MeshCore is MIT, which is the half of OD-7's need that a licence
-can answer. How much work a MeshCore companion client actually is stays open:
-T-072 is unfinished and §1 of
-[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) is `UNKNOWN`
-on every row. The rejection above does not depend on that number.
+can answer. How much work a MeshCore companion client actually is was open when
+that decision was taken and is not any more: T-072 answered §1 of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) on every row
+later the same day, and the detail is in
+[MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md) — 58 commands, a
+176-byte frame budget no build flag can raise, and a TCP transport that makes a
+host-side client the cheapest bring-up available. **The rejection above never
+depended on that number and does not change now that it exists.**
 
 Recording both matters. If Meshtastic's protocol licensing ever changes, the
 licence half of this is answered and only the product decision needs revisiting.

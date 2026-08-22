@@ -1554,10 +1554,17 @@ Recommended next action:
   expensive one. A real clean-room is months and is done honestly or not at all.
 - **What still answers the need:** MeshCore, MIT. OD-7 asked for a companion for
   people who will not build our node, and MeshCore is the remaining candidate
-  whose licence permits one. **T-072 is still open** — §1 of
+  whose licence permits one. **T-072 has since answered how much work that client
+  is** (2026-08-22): §1 of
   [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  is `UNKNOWN` on every row — so how much work that client is remains unknown.
-  The rejection here does not depend on that number.
+  is answered on every row, with the detail in
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  58 commands, a 176-byte frame budget that no build flag can raise, and a
+  Wi-Fi/Ethernet TCP transport that makes a host-side client the cheapest
+  bring-up there is. It is a real but bounded amount of work. **The rejection
+  here never depended on that number and does not change now that it exists** —
+  it rests on the licence gate and the cost of a clean-room, neither of which
+  T-072 touched.
 - **If this is ever revisited:** the licence question is answered and recorded.
   Only the product decision would need to change.
 
