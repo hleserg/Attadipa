@@ -490,6 +490,26 @@ needs the owner, and one needs a ruler.
 
 ## Recently completed
 
+- **T-102 — documentation consistency in CI, and the defect its own pull request
+  shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
+  job. Four checks: relative links resolve, inline code spans close, task IDs are
+  unique, and a live task has a body while finished work is filed under
+  `## DONE`. The last two exist because the review of
+  [#65](https://github.com/hleserg/Attadipa/pull/65) found the pull request had
+  spliced a `### T-102` heading into the middle of an unclosed code span in
+  T-100's first bullet — T-100 lost its whole field list to T-102, and **the two
+  checks the pull request added both passed on that file**, so a green job read
+  as *TASKS.md is fine* while the roadmap carried a task nobody could pick up.
+  The span check catches that at its cause; the body check catches it at its
+  effect, and catches the effect however it got there. Once the body check
+  existed it found four records left in live sections marked `DONE` — T-034,
+  T-060, T-060a, T-084 — drift predating the splice by weeks and the same defect
+  the #48 review established for T-064 and T-073; all four are now under
+  `## DONE`. Under `## BLOCKED` the body is the `BLOCKED:` block CLAUDE.md
+  specifies rather than a priority, so T-010 and T-011 are correct and not
+  flagged. Twenty-five mutation tests, thirteen of which assert the checker does
+  *not* fire.
+
 - **T-070 research — the watch as a tracker detector, and the honest limit is
   now sourced rather than deferred.**
   [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md), for
