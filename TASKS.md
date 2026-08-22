@@ -1566,6 +1566,47 @@ stale silently. The protocol is
   makes this a configuration question, not a probing question.
 - **Hardware required:** no for the decision; yes to confirm by feel.
 
+### T-098 · Read the ESP32-S3 errata against revision v0.2
+- **Priority:** P1 — it gates nothing today and invalidates anything tomorrow.
+- **Dependencies:** none. The revision is known.
+- **Why now:** the received unit is `ESP32-S3` **revision v0.2**
+  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §1.1). The
+  errata sheet has never been read against any revision here, so every workaround
+  ESP-IDF applies silently is currently an assumption rather than a fact — D18.
+- **Goal:** read the ESP32-S3 Errata sheet, list every erratum that applies to
+  v0.2, and for each say whether ESP-IDF works around it automatically, whether
+  the workaround costs anything measurable, and whether it touches octal PSRAM,
+  the quad flash interface, USB-Serial/JTAG, the RTC domain or light sleep —
+  the five things this design leans on hardest.
+- **Acceptance:** the list in `docs/research/`, each entry with its erratum
+  number and the sheet's revision; anything with a firmware consequence raised as
+  its own task rather than left in prose.
+- **What must not be assumed:** that "ESP-IDF handles it" means "it is free".
+  Several ESP32 errata workarounds cost clock speed or current.
+- **Hardware required:** no.
+
+### T-099 · Finish and verify the factory flash backup
+- **Priority:** P0 — it is the only thing standing between this unit and an
+  unrecoverable factory image, and the first flash of our own firmware destroys it.
+- **Dependencies:** none.
+- **Why now:** the backup is in progress and the naive procedure produces a
+  silently corrupt file
+  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2). `esptool`
+  writes its output incrementally, so an aborted read leaves a **short** file
+  that concatenates without complaint into a shifted image.
+- **Goal:** a single `stock_dump.bin` of exactly `33 554 432` bytes, assembled
+  only from chunks whose individual lengths are exactly nominal, verified against
+  the device by on-chip MD5 (`esptool verify-flash 0x0 stock_dump.bin`) and
+  stored somewhere that is not the machine doing the flashing.
+- **Acceptance:** the length check and the verify output both recorded, with the
+  chunk map, in `docs/research/`. **Do not record a `PASS` for a verify that was
+  not run.**
+- **What must not be assumed:** that the stub failing is a transient. It is
+  content-deterministic — the same absolute flash addresses across runs that
+  started at different offsets — so a retry loop that does not change method is a
+  random walk with a budget attached.
+- **Hardware required:** yes — the owner's unit, already connected.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
