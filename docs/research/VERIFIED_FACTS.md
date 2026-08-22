@@ -482,7 +482,7 @@ BSP already demonstrated to be an incomplete description of its own board.
 
 ### The Waveshare board **does** have haptics — the earlier entry was wrong
 
-- **Claim:** a vibration motor on connector `J1`, driven from **GPIO 18** through
+- **Claim:** a vibration motor on pads `P1`/`P2`, driven from **GPIO 18** through
   R12 (4.7 kΩ) into Q1 (MMBT3904, NPN), with the motor supplied from **BLDO2**.
 - **Source:** S6, net `MOTOR`.
 - **Correction:** the matrix previously recorded "Haptics — none found", because
@@ -654,10 +654,14 @@ still to take.
 
 ### The vibration motor is not fitted
 
-- **Claim:** the `MOTOR` pads (`J1`) are bare — no solder, no wire, no part — and
+- **Claim:** the `MOTOR` pads (`P1`/`P2`) are bare — no solder, no wire, no part — and
   the coin-motor footprint beside them is empty, on the unit received. The drive
   circuit S6 describes (GPIO 18 → R12 → Q1 → BLDO2) is present and correct.
-- **Source:** S9.
+- **Source:** S9. **Designator corrected 2026-08-22** — these pads were recorded
+  as `J1`, which is in fact the *battery* connector; see
+  [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1.1. The correction also resolves an
+  internal contradiction: the battery plug is visibly mated to a two-pin header on
+  this unit, so `J1` cannot have been two bare pads. **The finding is unchanged.**
 - **Board revision:** as above. **`OBSERVED` on one unit, not `VERIFIED` for the
   product** — whether Waveshare ships a motor loose, whether another production
   run populates it, and what the listing promises are three unanswered questions.
