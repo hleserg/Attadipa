@@ -1627,6 +1627,74 @@ stale silently. The protocol is
   random walk with a budget attached.
 - **Hardware required:** yes — the owner's unit, already connected.
 
+### T-103 · What the vendor's three images actually are
+- **Priority:** P2 — it is a free input to T-034 and it expires the moment
+  somebody guesses instead.
+- **Dependencies:** none. The partition is already dumped.
+- **Why now:** the `storage` SPIFFS holds `/image/image1.bin`, `image2.bin` and
+  `image3.bin` — raw binaries, no encoder in sight
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4). That the
+  vendor bakes raw pixel buffers rather than shipping a PNG decoder is corroboration
+  for the direction T-034 was already leaning, and the file sizes turn it from a
+  guess into a measurement.
+- **Goal:** extract them (`mkspiffs -u out -b 4096 -p 256 -s 0x600000
+  storage.spiffs` — `strings` recovers names but not bodies, because SPIFFS
+  spreads data across pages), compare each size against **411 640** bytes, which
+  is a full 410×502 frame at RGB565. Then say what the format is, including
+  whether an LVGL image header sits in front of the pixels.
+- **Acceptance:** the three sizes and the derived format recorded in
+  `docs/research/`, with the arithmetic shown. If the sizes do not match any clean
+  interpretation, **say so** — a format nobody can account for is a finding, not a
+  failure.
+- **What must not be assumed:** that RGB565 is the answer because it is the
+  obvious one. RGB888, RGB565A8 and a palette all produce different numbers, and
+  the numbers are right there.
+- **Hardware required:** no — the partition is already in hand.
+
+### T-104 · `xiaozhi-esp32`: the licence, then this board's audio path
+- **Priority:** P1 — it is the audio bring-up for the exact board we have,
+  already written by somebody who had it working.
+- **Dependencies:** none.
+- **Why now:** the received unit's `model` partition holds WakeNet9
+  `wn9_nihaoxiaozhi_tts`, so the stock firmware **is**
+  [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §3). That
+  project therefore contains this board's I2S wiring, its ES8311 bring-up and what
+  the two microphones are for — all of which we would otherwise reverse out of a
+  9 MB blob or rediscover on the bench.
+- **Goal, in this order and not the other one:** (1) read its `LICENSE` and record
+  the decision in the [reuse ledger](docs/research/REUSE_LEDGER.md) whichever way
+  it goes; (2) only if the licence permits, read the board's audio path and write
+  it up as facts with file-and-line citations.
+- **Acceptance:** a full ledger record — the template, whole — and, if step 2
+  happens, an audio-path document that cites source rather than paraphrasing it.
+- **What must not be assumed:** that "it is on GitHub" means it may be copied, or
+  that reading a permissively-licensed project entitles us to its structure. The
+  ledger's rule is not a preference.
+- **Wake words are not in scope.** Identifying the vendor's firmware is not a
+  decision to ship a wake word; this repository has no such requirement and adding
+  one is a product change.
+- **Hardware required:** no.
+
+### T-105 · Is `AAC210602A1` the speaker or a haptic actuator?
+- **Priority:** P1 — it decides what `Capability::Haptics` resolves to, and
+  T-097 cannot be answered underneath a wrong answer here.
+- **Dependencies:** none.
+- **Why now:** two readings of the same unit disagree. This repository has the
+  part as the **speaker** in the back cover; a parallel reading calls it a haptic
+  module and concludes the board therefore has haptics after all
+  ([WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §6). AAC
+  Technologies makes both, so the marking settles nothing.
+- **Goal:** trace the two solder pads. A speaker sits behind the ES8311 and its
+  amplifier; a haptic actuator does not. Continuity from the pads to the codec's
+  output stage answers it in one measurement.
+- **Acceptance:** the [hardware matrix](docs/research/HARDWARE_MATRIX.md) row
+  moves off `CONFLICTING` in one direction with the measurement recorded, and
+  T-097's premise is restated against whichever answer wins.
+- **What must not be assumed:** that the case grille settles it. It is strong
+  evidence and it is still evidence, not a trace.
+- **Hardware required:** yes — a meter on the board.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up

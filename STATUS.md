@@ -330,6 +330,31 @@ guaranteed to fail identically — `--no-stub` completes the same ranges. And
 without checking each one's length produces a silently shifted image.
 [WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2.
 
+**And then the flash was read.** The partition table and two data partitions
+came off the unit the same day —
+[WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md).
+
+- **28 of 32 MB is partitioned**, with a 9 MB `factory` image and two 6 MB OTA
+  slots — so the vendor's own update path can never restore the build that
+  shipped, which is one more reason T-099 is P0.
+- **The stock firmware is `xiaozhi-esp32`.** The `model` partition holds WakeNet9
+  `wn9_nihaoxiaozhi_tts`, so the launcher's AIChats app is that project — which
+  means this board's audio path is already written down by somebody who had it
+  working. Licence first: **T-104**.
+- **The vendor bakes raw pixel buffers**, not encoded images, with no decoder on
+  the device. Corroboration for where T-034 was already heading; **T-103** turns
+  the file sizes into the confirmation.
+- **One claim had to be withdrawn.** A parallel reading of the same unit concluded
+  the PSRAM is *quad*, on the reasoning that "octal PSRAM would be 1.8 V". It is
+  not: Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` at
+  **3.3 V** in one row, and the table has no 8 MB quad in-package part at all.
+  That mattered because the conclusion drawn from it — plan LVGL draw buffers
+  against quad throughput — is an architectural constraint on the tightest budget
+  this board has.
+- **Two rows are `CONFLICTING`**, not overwritten: whether `AAC210602A1` is the
+  speaker or a haptic actuator (**T-105**, and T-097 sits on top of it), and the
+  battery connector's pitch, which a photograph cannot establish.
+
 **A bigger battery is under consideration.** The cell turns out to be on a
 removable 2-pin plug rather than soldered, which makes it a real option. What to
 order is open — see D2, now PARTIAL rather than UNKNOWN.
