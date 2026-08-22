@@ -116,6 +116,18 @@ struct GnssStatus {
     TrustState                    trust      = TrustState::Trusted;
     std::uint32_t                 trust_reasons = 0;   // the TrustReason bitmask
     PositionSource                source     = PositionSource::Unknown;
+
+    // Whose receiver this is, and what an accelerometer says about that same
+    // body. This is the only place the node's IMU surfaces at all: it is not a
+    // capability, no application may ask for it, and inspecting the machine is
+    // what Diagnostics is for (docs/adr/0013-node-motion.md §1).
+    //
+    // Nothing populates `motion` yet, and it defaults to "nobody asked" rather
+    // than to "still" — the distinction this whole ADR is about. A seat in the
+    // snapshot exists before a service fills it because a field nobody can see
+    // is a field nobody notices is missing.
+    SensorBody                    body       = SensorBody::Unknown;
+    MotionEvidence                motion{};
     std::optional<std::uint8_t>   satellites_used;
     std::optional<std::uint8_t>   satellites_in_view;
     std::optional<std::uint8_t>   cn0_max_dbhz;

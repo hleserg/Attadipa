@@ -397,7 +397,7 @@ bool load(const std::string& path, Scenario& out, std::string& error)
                     error = parser.error;
                     return false;
                 }
-                step.motion = MotionEvidence{true, what == "moving", body};
+                step.motion = MotionEvidence{body, true, what == "moving"};
             } else {
                 parser.fail("`motion` needs unknown, or still|moving and a body");
                 error = parser.error;

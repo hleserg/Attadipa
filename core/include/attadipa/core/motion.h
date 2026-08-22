@@ -49,10 +49,17 @@ inline constexpr std::uint8_t kSensorBodyCount =
 // navigation system; nothing here may quietly become dead reckoning
 // (ADR-0009, ADR-0011 §6 and §8). The node's part is a 6-axis IMU (OD-16) and
 // answers the same one question for its own chassis.
+// The body comes first, and that ordering is the enforcement rather than a
+// preference. `MotionEvidence{true, false}` — the two-field literal this type
+// used to have, meaning "known, still, about nobody" — no longer compiles, and
+// cannot be revived by accident: `bool` does not convert to a scoped enum. So
+// every literal in the tree had to name a subject to keep building, which is
+// ADR-0007's rule for `has()` applied to a struct instead of a function: do not
+// leave a shape that survives the change by meaning something subtly different.
 struct MotionEvidence {
+    SensorBody body   = SensorBody::Unknown;
     bool       known  = false;
     bool       moving = false;
-    SensorBody body   = SensorBody::Unknown;
 
     // Is this evidence about `about`, at all?
     //

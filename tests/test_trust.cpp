@@ -189,7 +189,7 @@ void test_the_interval_is_taken_before_it_is_overwritten()
 void test_a_fix_dropout_is_not_a_teleport()
 {
     TrustEvaluator evaluator;
-    const MotionEvidence walking{true, true, SensorBody::Watch};
+    const MotionEvidence walking{SensorBody::Watch, true, true};
 
     evaluator.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
 
@@ -323,7 +323,7 @@ void test_altitude_rate_is_measured_not_by_arrival_time()
 void test_retained_coordinate_no_fix_does_not_move_the_baseline()
 {
     TrustEvaluator evaluator;
-    const MotionEvidence walking{true, true, SensorBody::Watch};
+    const MotionEvidence walking{SensorBody::Watch, true, true};
     evaluator.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
 
     // A no-fix sample that keeps last known coordinate on the wire.
@@ -457,7 +457,7 @@ void test_a_future_dated_observation_is_rejected_without_freezing_the_baseline()
 // would pass against an implementation that reopened the freeze.
 void test_a_reordered_sample_is_still_checked_against_the_standing_baseline()
 {
-    const MotionEvidence still{true, false, SensorBody::Watch};
+    const MotionEvidence still{SensorBody::Watch, true, false};
 
     TrustEvaluator evaluator;
     evaluator.observe(good_fix(10000), PositionValidity::Valid, still, {}, at(10000));
@@ -483,7 +483,7 @@ void test_a_reordered_sample_is_still_checked_against_the_standing_baseline()
 // future-dated test walks with motion unknown and therefore cannot see.
 void test_a_future_dated_sample_is_checked_as_well_as_refused()
 {
-    const MotionEvidence still{true, false, SensorBody::Watch};
+    const MotionEvidence still{SensorBody::Watch, true, false};
 
     TrustEvaluator evaluator;
     evaluator.observe(good_fix(0), PositionValidity::Valid, still, {}, at(0));
@@ -559,7 +559,7 @@ void test_a_future_dated_altitude_is_checked_as_well_as_refused()
 // four tests after this one are the cases where they are not.
 void test_a_still_wrist_is_evidence_and_an_unasked_one_is_not()
 {
-    const MotionEvidence still{true, false, SensorBody::Watch};
+    const MotionEvidence still{SensorBody::Watch, true, false};
     const MotionEvidence unasked{};
 
     {
@@ -597,7 +597,7 @@ GnssObservation node_fix(std::uint64_t ms, std::int32_t lat = kLat, std::int32_t
 // that is fine — on the Waveshare board, the only fix there is.
 void test_a_node_walking_away_from_a_still_wrist_is_not_a_disagreement()
 {
-    const MotionEvidence wrist_still{true, false, SensorBody::Watch};
+    const MotionEvidence wrist_still{SensorBody::Watch, true, false};
 
     TrustEvaluator evaluator;
     evaluator.observe(node_fix(0), PositionValidity::Valid, wrist_still, {}, at(0));
@@ -614,7 +614,7 @@ void test_a_node_walking_away_from_a_still_wrist_is_not_a_disagreement()
 // detector that had simply been switched off.
 void test_a_still_node_is_evidence_about_the_nodes_own_position()
 {
-    const MotionEvidence node_still{true, false, SensorBody::Node};
+    const MotionEvidence node_still{SensorBody::Node, true, false};
 
     TrustEvaluator evaluator;
     evaluator.observe(node_fix(0), PositionValidity::Valid, node_still, {}, at(0));
@@ -633,10 +633,10 @@ void test_a_walking_wrist_does_not_suppress_a_still_nodes_disagreement()
     TrustEvaluator evaluator;
     // The node is still. The wrist is walking. Only the node's own evidence may
     // decide, and it says the node did not move.
-    const MotionEvidence node_still{true, false, SensorBody::Node};
+    const MotionEvidence node_still{SensorBody::Node, true, false};
 
     evaluator.observe(node_fix(0), PositionValidity::Valid,
-                      MotionEvidence{true, true, SensorBody::Watch}, {}, at(0));
+                      MotionEvidence{SensorBody::Watch, true, true}, {}, at(0));
     evaluator.observe(node_fix(600000, kLat + 45000), PositionValidity::Valid, node_still, {},
                       at(600000));
 
@@ -657,7 +657,7 @@ void test_a_source_that_names_no_body_gets_no_motion_evidence()
 
         for (std::uint8_t b = 0; b < kSensorBodyCount; ++b) {
             TrustEvaluator       evaluator;
-            const MotionEvidence still{true, false, static_cast<SensorBody>(b)};
+            const MotionEvidence still{static_cast<SensorBody>(b), true, false};
 
             GnssObservation first = good_fix(0);
             first.source          = source;

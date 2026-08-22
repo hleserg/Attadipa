@@ -102,7 +102,11 @@ receiver's own defences, and the argument transfers without modification:
   last layer that may read it;
 - **Diagnostics and Settings may show it**, because inspecting the machine is
   what they are for (ADR-0004 §2, final §9). "node: still / moving / not
-  known" is a diagnostic line, not a capability.
+  known" is a diagnostic line, not a capability. `GnssStatus` carries the seat
+  — a body and a `MotionEvidence`, defaulting to *nobody asked* rather than to
+  *still* — before anything fills it, because a field nobody can see is a field
+  nobody notices is missing. `CLAUDE.md`'s rule that every part gets a seat in
+  the core, applied to a part that is not on the board.
 
 The case for surfacing it anyway — diagnostics wanting to show it — is
 therefore satisfied without a capability, which is what makes the trade the
@@ -231,14 +235,22 @@ discipline, one subsystem over.
 enum class SensorBody : std::uint8_t { Unknown, Watch, Node, Companion };
 
 struct MotionEvidence {
+    SensorBody body   = SensorBody::Unknown;   // first, and that is enforcement
     bool       known  = false;
     bool       moving = false;
-    SensorBody body   = SensorBody::Unknown;
 
     // Evidence about `body` is evidence about nothing else.
     bool speaks_for(SensorBody about) const;
 };
 ```
+
+**The body is the first member on purpose.** `MotionEvidence{true, false}` — the
+two-field literal this type used to have, meaning *known, still, about nobody* —
+now fails to compile, because `bool` does not convert to a scoped enum. Every
+literal in the tree had to name a subject to keep building, and none can come
+back by accident. That is ADR-0007's rule for `has()` applied to a struct rather
+than a function: do not leave behind a shape that survives the change while
+quietly meaning something else.
 
 `SensorBody::Unknown` is a fourth state and not a default worth defaulting to:
 a sample that claims to know something must know whose. The two consumers name

@@ -354,12 +354,12 @@ void test_a_body_at_rest_sleeps_its_own_receiver()
     GnssContext context;
     context.capabilities  = kFull;
     context.receiver_body = SensorBody::Watch;
-    context.motion        = MotionEvidence{true, false, SensorBody::Watch};
+    context.motion        = MotionEvidence{SensorBody::Watch, true, false};
 
     CHECK(next_state(GnssState::Tracking, context) == GnssState::PowerSave);
 
     // And it comes back when that same body moves again.
-    context.motion = MotionEvidence{true, true, SensorBody::Watch};
+    context.motion = MotionEvidence{SensorBody::Watch, true, true};
     CHECK(next_state(GnssState::PowerSave, context) == GnssState::Acquiring);
     CHECK(next_state(GnssState::Backup, context) == GnssState::Acquiring);
 }
@@ -388,7 +388,7 @@ void test_unknown_motion_moves_the_receiver_in_neither_direction()
     GnssContext nameless;
     nameless.capabilities  = kFull;
     nameless.receiver_body = SensorBody::Unknown;
-    nameless.motion        = MotionEvidence{true, false, SensorBody::Watch};
+    nameless.motion        = MotionEvidence{SensorBody::Watch, true, false};
     CHECK(next_state(GnssState::Tracking, nameless) == GnssState::Tracking);
 }
 
@@ -401,19 +401,19 @@ void test_a_wrist_at_rest_does_not_sleep_a_nodes_receiver()
     GnssContext node;
     node.capabilities  = kFull;
     node.receiver_body = SensorBody::Node;
-    node.motion        = MotionEvidence{true, false, SensorBody::Watch};
+    node.motion        = MotionEvidence{SensorBody::Watch, true, false};
 
     CHECK(next_state(GnssState::Tracking, node) == GnssState::Tracking);
 
     // The node's own IMU is the only thing that may sleep it...
-    node.motion = MotionEvidence{true, false, SensorBody::Node};
+    node.motion = MotionEvidence{SensorBody::Node, true, false};
     CHECK(next_state(GnssState::Tracking, node) == GnssState::PowerSave);
 
     // ...and the wrist walking is not what wakes it up again either.
-    node.motion = MotionEvidence{true, true, SensorBody::Watch};
+    node.motion = MotionEvidence{SensorBody::Watch, true, true};
     CHECK(next_state(GnssState::PowerSave, node) == GnssState::PowerSave);
 
-    node.motion = MotionEvidence{true, true, SensorBody::Node};
+    node.motion = MotionEvidence{SensorBody::Node, true, true};
     CHECK(next_state(GnssState::PowerSave, node) == GnssState::Acquiring);
 }
 
@@ -424,7 +424,7 @@ void test_a_still_node_does_not_sleep_the_watchs_receiver()
     GnssContext watch;
     watch.capabilities  = kFull;
     watch.receiver_body = SensorBody::Watch;
-    watch.motion        = MotionEvidence{true, false, SensorBody::Node};
+    watch.motion        = MotionEvidence{SensorBody::Node, true, false};
 
     CHECK(next_state(GnssState::Tracking, watch) == GnssState::Tracking);
 }
@@ -437,7 +437,7 @@ void test_a_waiting_application_outranks_a_still_body()
     GnssContext context;
     context.capabilities        = kFull;
     context.receiver_body       = SensorBody::Watch;
-    context.motion              = MotionEvidence{true, false, SensorBody::Watch};
+    context.motion              = MotionEvidence{SensorBody::Watch, true, false};
     context.fresh_fix_requested = true;
 
     CHECK(next_state(GnssState::Tracking, context) == GnssState::Tracking);
@@ -450,8 +450,8 @@ void test_a_waiting_application_outranks_a_still_body()
 void test_evidence_that_knows_something_knows_whose()
 {
     const MotionEvidence nobody_asked{};
-    const MotionEvidence knows_without_a_subject{true, false, SensorBody::Unknown};
-    const MotionEvidence proper{true, false, SensorBody::Watch};
+    const MotionEvidence knows_without_a_subject{SensorBody::Unknown, true, false};
+    const MotionEvidence proper{SensorBody::Watch, true, false};
 
     CHECK(nobody_asked.is_coherent());
     CHECK(!knows_without_a_subject.is_coherent());
@@ -509,8 +509,8 @@ void test_next_state_never_proposes_an_illegal_move()
     samples[sample_count++]     = MotionEvidence{};
     for (std::uint8_t b = 0; b < kSensorBodyCount; ++b) {
         const SensorBody body   = static_cast<SensorBody>(b);
-        samples[sample_count++] = MotionEvidence{true, false, body};
-        samples[sample_count++] = MotionEvidence{true, true, body};
+        samples[sample_count++] = MotionEvidence{body, true, false};
+        samples[sample_count++] = MotionEvidence{body, true, true};
     }
 
     for (const GnssCapabilities& caps : sets) {
@@ -569,8 +569,8 @@ void test_evidence_about_another_body_changes_nothing()
                         blind.receiver_body = static_cast<SensorBody>(rb);
 
                         GnssContext told = blind;
-                        told.motion      = MotionEvidence{true, moving != 0,
-                                                          static_cast<SensorBody>(sb)};
+                        told.motion      = MotionEvidence{static_cast<SensorBody>(sb), true,
+                                                          moving != 0};
 
                         const GnssState from = static_cast<GnssState>(f);
                         if (next_state(from, blind) != next_state(from, told)) {
