@@ -259,6 +259,13 @@ jobs:
       - name: What the agent says
         run: bash .github/tests/agent-say-test.sh
 
+      # The staleness line is the only thing telling an agent that the finding
+      # it is about to implement was made against code that has since moved.
+      # Its previous version truncated at 800 characters and, on issue #26,
+      # ended mid-path on the word "c".
+      - name: The staleness summary
+        run: bash .github/tests/compare-summary-test.sh
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest
