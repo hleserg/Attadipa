@@ -227,19 +227,57 @@ and `agent:ready` where one is genuinely needed.
 
       Only then merge;
 
-    - PATHS. Merge ONLY a pull request whose every changed file is under
-      `docs/` — and NOT under `docs/automation/`. Everything else is the
-      owner's, and two of those exclusions have specific reasons:
-        * `core/`, `platform/`, `link/`, `apps/`, `sim/`, `boards/`, `.github/`
-          — CLAUDE_AUTOMATION.md's standing rule, which this does not overturn.
-          Green CI proves nothing about a board: it can only print
-          `NOT EXECUTED — HARDWARE REQUIRED`, and a wrong rail or a wrong radio
-          chip is exactly where an unverified assumption does the most damage;
+    - PATHS. **An allowlist, not `docs/` minus exclusions**, and the direction
+      is the whole point: a list of what is permitted fails closed when
+      somebody adds a directory, and a list of what is forbidden fails open. A
+      rule holding unattended write access to `main` gets the one that fails
+      closed.
+
+      Merge ONLY a pull request whose EVERY changed file is under one of:
+
+        `docs/architecture/` · `docs/community/` · `docs/hardware/` ·
+        `docs/mobile/` · `docs/node/` · `docs/research/` ·
+        `docs/testing/` · `docs/ui/` · `docs/upstream/` ·
+        `STATUS.md` · `TASKS.md`
+
+      Anything else, including any path added to this repository after this was
+      written, is not yours. `STATUS.md` and `TASKS.md` are on the list because
+      CLAUDE.md REQUIRES them to be updated in the same commit as the change
+      they describe — a rule that excluded them would have disqualified every
+      compliant pull request, which is a rule that never fires.
+
+      NEVER, and each of these has a reason worth reading before anybody
+      "simplifies" the list back to `docs/`:
+
+        * `docs/master-prompt-final.md`, `docs/master-prompt.md`,
+          `docs/development-addendum.md` — the specification in force and its
+          superseded history. CLAUDE.md calls the first *"the specification in
+          force… Product requirements there are binding"*. A process that can
+          edit the requirements it is judged against is not a process;
+        * `docs/research/OWNER_DECISIONS.md` — the file's own header says these
+          are *"not ours to overturn"*. It is the one file in `docs/research/`
+          that records authority rather than findings, which is why it is
+          carved out of an otherwise allowed directory;
+        * `docs/adr/` — decisions of record. ADR-0003 is what stands between
+          this project and assuming a T-Watch has a LoRa transceiver;
         * `docs/automation/` — **including this file**. This document is the
           literal source of your own instructions. A pull request that loosened
           a condition here would otherwise reach `main` by the path this rule
           created, and you would paste your own widened authority into yourself
           on the next run. A gate that can widen itself is not a gate;
+        * **the website**: `docs/index.html`, `docs/404.html`, `docs/assets/`,
+          `docs/brand/`, `docs/robots.txt`, `docs/sitemap.xml`,
+          `docs/manifest.webmanifest`. This repository serves GitHub Pages from
+          `/docs` and there is **no build or deploy workflow at all** — checked,
+          `.github/workflows/` has six files and none of them is a Pages job.
+          So a merge here is a publication, live, with nothing between it and
+          the public but this rule. `docs/brand/` is also an identity decision
+          and identity is the owner's;
+        * `core/`, `platform/`, `link/`, `apps/`, `sim/`, `boards/`, `.github/`
+          — CLAUDE_AUTOMATION.md's standing rule, which this does not overturn.
+          Green CI proves nothing about a board: it can only print
+          `NOT EXECUTED — HARDWARE REQUIRED`, and a wrong rail or a wrong radio
+          chip is exactly where an unverified assumption does the most damage;
     - at most THREE such merges per run. If more qualify, take the oldest three
       and say how many are left. A backstop that empties the queue in one go is
       indistinguishable from one that has gone wrong;
