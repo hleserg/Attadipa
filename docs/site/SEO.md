@@ -94,6 +94,29 @@ visual design board"* now says what is actually on the board. `alt=""` is kept
 on the two decorative images, which is correct: an empty `alt` tells a screen
 reader to skip a decoration, and inventing text for one is worse than none.
 
+### `docs/assets/site.js` — the head is rewritten at run time, and it had the old strings
+
+This is the finding that would have silently undone the whole pass, and it was
+caught by review rather than by writing. `site.js` is `defer`-loaded and its
+`setLanguage()` assigns `document.title`, the `description` and `og:description`
+**unconditionally on every load**, from a hardcoded `copy` object. That object
+still held the pre-audit strings. Googlebot renders JavaScript, so the rendered
+DOM — the one that gets indexed — would have carried the old title and the old
+description no matter what `index.html` said.
+
+The mechanism itself is right: a Russian visitor should get a Russian title and
+a Russian description, and the page has no other way to do that. So the fix is
+to keep the strings in step, and the code now says so where somebody will read
+it before editing the head again. `og:title`, `og:locale`, `twitter:title` and
+`twitter:description` were added to the same assignment, because a language
+switch that updates four of eight head fields leaves the page in a state neither
+language describes.
+
+**The rule this leaves behind:** `index.html`'s head and `site.js`'s `copy`
+object are one thing in two files. A CI check asserting the English pair match
+byte for byte would be worth having and does not exist; today they are verified
+by hand, and they do match.
+
 ### `docs/manifest.webmanifest`
 
 Was four keys and a one-line description. Now carries `id`, `scope`, `lang`,
@@ -168,9 +191,16 @@ HTML as `.lang-en` / `.lang-ru` spans, with `.lang-ru { display: none }` by
 default and a visible toggle switching them. Consequences:
 
 - there is no separate URL for the Russian version, so there is nothing for
-  `hreflang` to point at. `?lang=ru` is honoured by the script but serves
-  byte-identical HTML, so declaring it an alternate would announce duplicate
-  content rather than a translation;
+  `hreflang` to point at. `?lang=ru` is honoured by the script and, since the
+  fix above, does produce a genuinely different rendered head — Russian title,
+  Russian description, `og:locale` `ru_RU`. That makes an `hreflang` pair look
+  *more* defensible than it did. It was still not added, for one reason: the
+  bytes GitHub Pages serves at `?lang=ru` are identical to `/`, and the
+  difference exists only after JavaScript has run. Declaring a URL as the
+  Russian alternate and having a crawler that did not run the script find
+  English there is worse than declaring nothing. The canonical would also have
+  to be rewritten per language, in JavaScript, to stop `/` absorbing the
+  alternate — which stacks a second run-time-only signal on the first;
 - the Russian text is in the DOM but hidden by CSS, and a crawler that does not
   run the toggle will not weigh it. **The Russian content is effectively
   unindexed.** This is a legitimate i18n pattern with a visible control, not

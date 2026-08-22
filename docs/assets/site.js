@@ -3,15 +3,29 @@
   const buttons = [...document.querySelectorAll('[data-set-lang]')];
   const metaDescription = document.querySelector('meta[name="description"]');
   const ogDescription = document.querySelector('meta[property="og:description"]');
+  const ogTitle = document.querySelector('meta[property="og:title"]');
+  const ogLocale = document.querySelector('meta[property="og:locale"]');
+  const twitterTitle = document.querySelector('meta[name="twitter:title"]');
+  const twitterDescription = document.querySelector('meta[name="twitter:description"]');
 
+  // THESE STRINGS ARE THE RENDERED <title> AND description, NOT A FALLBACK.
+  // setLanguage() assigns them unconditionally on every load, and a crawler
+  // that runs JavaScript sees what this object says rather than what
+  // index.html says. So when the head changes, this changes with it -- an
+  // earlier SEO pass rewrote the <title> and left these behind, which would
+  // have put the old strings straight back into the rendered DOM.
   const copy = {
     en: {
-      title: 'Attadipa — Independent by design',
-      description: 'Attadipa is an open-source wearable firmware/application platform for ESP32-S3: mesh messaging, offline navigation, clean app APIs and a product-grade UI.'
+      title: 'Attadipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS',
+      ogTitle: 'Attadipa — open-source ESP32-S3 smartwatch firmware',
+      locale: 'en_US',
+      description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — not yet run on hardware.'
     },
     ru: {
-      title: 'Attadipa — Independent by design',
-      description: 'Attadipa — открытая платформа прошивки и приложений для носимых устройств на ESP32-S3: mesh-связь, офлайн-навигация, чистые API и продуманный интерфейс.'
+      title: 'Attadipa — открытая прошивка для умных часов на ESP32-S3, LoRa mesh, GNSS офлайн',
+      ogTitle: 'Attadipa — открытая прошивка для умных часов на ESP32-S3',
+      locale: 'ru_RU',
+      description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — на плате ещё не запускалась.'
     }
   };
 
@@ -44,6 +58,10 @@
     document.title = copy[lang].title;
     if (metaDescription) metaDescription.content = copy[lang].description;
     if (ogDescription) ogDescription.content = copy[lang].description;
+    if (ogTitle) ogTitle.content = copy[lang].ogTitle;
+    if (ogLocale) ogLocale.content = copy[lang].locale;
+    if (twitterTitle) twitterTitle.content = copy[lang].ogTitle;
+    if (twitterDescription) twitterDescription.content = copy[lang].description;
     buttons.forEach(btn => btn.setAttribute('aria-pressed', btn.dataset.setLang === lang ? 'true' : 'false'));
     if (persist) localStorage.setItem('attadipa-site-lang', lang);
     if (updateUrl) {

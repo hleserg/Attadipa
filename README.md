@@ -15,8 +15,12 @@ pleasant to use. MIT licensed, built with ESP-IDF.
 
 It targets two very different wearables from one codebase — the **LilyGO T-Watch
 S3 Plus** and the **Waveshare ESP32-S3-Touch-AMOLED-2.06** — which share almost
-nothing but the SoC and the PMU. One has LoRa and GNSS in five hardware variants
-the product name does not distinguish; the other has neither. So an application
+nothing but the SoC and the PMU. The T-Watch ships with **one of five** radio
+chips and one of two GNSS modules, and the product name tells you which of
+neither — and **two of those five are not LoRa transceivers at all**, so "it has
+a radio" and "it can join the mesh" are different sentences
+([ADR-0003](docs/adr/0003-radio-not-lora.md)). The Waveshare board has no LoRa
+and no GNSS whatsoever. So an application
 here asks *what the device can do*, never *which device it is*: board
 differences live behind a capability registry, and a capability that arrives
 over the air from an attached node is answered by the same registry as one
