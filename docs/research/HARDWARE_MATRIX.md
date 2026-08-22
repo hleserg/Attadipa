@@ -70,7 +70,7 @@ unit is still unknown — see OPEN_QUESTIONS A1.
 |---|---|---|
 | SoC | ESP32-S3 | VERIFIED |
 | Flash | 16 MB QSPI | VERIFIED |
-| PSRAM | 8 MB QSPI | VERIFIED |
+| PSRAM | 8 MB. **QSPI per the LilyGO vendor document; the `ESP32-S3R8` marking says octal** by ESP32-S3 Series Datasheet v2.2 Table 1-1, which contains no 8 MB quad in-package part. Nobody has read the vendor document against the table — D12b | CONFLICTING |
 | Battery | 940 mAh, 3.7 V | VERIFIED |
 | Charge current | 0–1024 mA programmable; vendor recommends ≤300–400 mA; vendor header default 125 mA | VERIFIED |
 | USB | Micro-USB, charge + programming only, no external supply function | VERIFIED |
@@ -298,10 +298,10 @@ of the board.
 
 | Item | Value | Status |
 |---|---|---|
-| SoC | **ESP32-S3R8** — bare chip, not a module | VERIFIED |
-| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3) | VERIFIED |
-| PSRAM | 8 MB (the `R8` suffix) — **quad or octal is unresolved, see D12** | CONFLICTING |
-| Battery | present, on connector `BAT1` via the AXP2101 charge path; capacity not stated | UNKNOWN |
+| SoC | **ESP32-S3R8** — bare chip, not a module. `ESP32-S3 (QFN56)`, **revision v0.2**; 40 MHz crystal; ADC and temperature calibration fuses burned. A build must keep `CONFIG_ESP32S3_REV_MIN` at 0 or the bootloader refuses the chip | VERIFIED — S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1 |
+| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3). JEDEC read back `0xC8 0x4019` = GigaDevice, 2^25 bytes; eFuse `FLASH_TYPE = 4 data lines`, rail forced to 3.3 V by `VDD_SPI_TIEH`, and `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` all unprogrammed — **no in-package flash** | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.3 |
+| PSRAM | 8 MB **octal** — ESP32-S3 Series Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` and the table contains no 8 MB quad in-package variant. Corroborated by five vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y`, and by GPIO33–37 — octal's DQ4–DQ7 and DQS — sitting unrouted on the schematic. **The die's own fuses now agree**: `PSRAM_CAP = 8M`, `PSRAM_VENDOR = AP_3v3` — so `R8`, not the 1.8 V `R8V` — and `PIN_POWER_SELECTION = VDD_SPI` puts GPIO33–37 on the memory rail, which is where octal's DQ4–DQ7 and DQS go. The eFuse states capacity and rail, not bus width; the step to *octal* remains Table 1-1's, and is sound because no 8 MB quad in-package part exists. D12a | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2 |
+| Battery | **400 mAh, 3.7 V** — cell `402728` (4.0 × 27 × 28 mm), on connector `BAT1` via the AXP2101 charge path | VERIFIED — read off the cell of a received unit, 2026-08-22, [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2 |
 
 The SoC marking is `ESP32-S3R8` on **both** target boards, so D12 — quad or octal
 PSRAM — is a single question with a single answer that unblocks both. The flash
@@ -310,25 +310,35 @@ the board with 3.57× the pixels. That is a convenient coincidence, not a plan.
 
 ### Peripherals
 
-| Peripheral | Part | Bus / pins | Status |
-|---|---|---|---|
-| Display | **CO5300**, 2.06" 410×502 AMOLED, RGB565 | QSPI: CS 12, PCLK 11, D0 4, D1 5, D2 6, D3 7, RST 8 | VERIFIED |
-| Touch | FT3168 (driven by the FT5x06-family driver) | INT 38, RST 9, on main I2C | VERIFIED |
-| PMU | AXP2101 | main I2C | VERIFIED |
-| IMU | QMI8658 / QMI8658C, 6-axis | main I2C | VERIFIED |
-| RTC | PCF85063ATL | main I2C | VERIFIED |
-| Audio codec | ES8311 | I2S | VERIFIED |
-| Mic ADC | ES7210, **dual** digital microphones | I2S | VERIFIED |
-| Amplifier enable | — | GPIO 46 | VERIFIED |
-| **Vibration motor** | **no driver IC** — GPIO 18 → R12 (4.7 kΩ) → Q1 (MMBT3904, NPN) → motor on connector J1 | net `MOTOR`; motor supply from **BLDO2** | VERIFIED |
-| Buttons | at least two tactile keys on the board (`Key1` adjacent to `BOOT`, `Key3`) plus `PWRON` on the PMU. **The vendor BSP declares none** | specific GPIO assignment not resolved from the extraction — D5 | PARTIAL |
-| SD card | — | SDMMC 1-bit: CLK 2, CMD 1, D0 3 | VERIFIED |
-| Main I2C bus | — | SDA 15, SCL 14 | VERIFIED |
-| I2S bus | — | MCLK 16, SCLK 41, LCLK/WS 45, DOUT 40, DSIN 42 | VERIFIED |
-| Expansion connector | header `J3`, at least 29 pins on the drawing | pinout not resolved from text extraction — D3 | PARTIAL |
-| USB | `USB_N` / `USB_P` through 22 Ω series resistors (R19, R20) to the SoC native USB pins | — | VERIFIED |
-| Sub-GHz radio | — | **not present** | VERIFIED |
-| GNSS | — | **not present** | VERIFIED |
+| Peripheral | Part | Bus / pins | I2C addr | Power rail | Status |
+|---|---|---|---|---|---|
+| Display | **CO5300**, 2.06" 410×502 AMOLED, RGB565 | QSPI: CS 12, PCLK 11, D0 4, D1 5, D2 6, D3 7, RST 8 | — | D13 | VERIFIED |
+| Touch | FT3168 (driven by the FT5x06-family driver) | INT 38, RST 9, on main I2C | `0x38` — **driver source only**, no datasheet states it; the controller is inside the display module so no strap is inspectable | D13 | address LIKELY |
+| PMU | AXP2101 | main I2C | `0x34` — datasheet-fixed, no address-select pin. Table 6-1 gives write byte `0x68`, so `0x68` is **not** the 7-bit address | — | VERIFIED |
+| IMU | QMI8658 / QMI8658C, 6-axis. **Board-frame axes are silkscreened beside it**: X toward the battery edge, Y toward the USB-C edge, Z as ⊙ out of the back face (H15, half answered) | main I2C; SDO/SA0 to GND, CS to VCC3V3 | `0x6B` printed on the schematic — but QMI8658C Rev 0.6, the PDF Waveshare's own wiki links, maps SA0-low to `0x6A`. Revs 0.8/0.9/A say `0x6B` | D13 | address CONFLICTING |
+| RTC | PCF85063ATL | main I2C | `0x51` — datasheet-fixed, NXP PCF85063A Rev. 7 §9.5.1 reserves `1010001` | D13 | VERIFIED |
+| Audio codec | ES8311 | I2S for data; **also an I2C control slave on the main bus** | `0x18` — R50 (10 kΩ) ties `Codec_CE` to AGND, and the vendor example states CE-low = `0x18` | D13 | VERIFIED |
+| Mic ADC | ES7210, **dual** digital microphones — **both fitted**, silkscreened `MIC1` and `MIC2` at opposite ends of the left edge | I2S for data; **also an I2C control slave on the main bus** | `0x40` — A1/A0 to AGND through R42/R43 (0 Ω), alternates R35/R36 marked NC, and the schematic prints `0x40` beside them | D13 | VERIFIED |
+| Amplifier enable | — | GPIO 46 | — | — | VERIFIED |
+| Speaker | AAC `AAC210602A1`, metal-can micro-speaker in the back cover, **wired to solder pads** rather than a connector; impedance and rated power not published — `UNKNOWN` | `+`/`−` pads at the board's bottom-right | — | via ES8311 | VERIFIED — S9, [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.8 |
+| **Vibration motor** | **no driver IC** — GPIO 18 → R12 (4.7 kΩ) → Q1 (MMBT3904, NPN) → motor on connector J1. **`J1` is two bare solder pads and no motor is fitted** on the unit received 2026-08-22; the coin-motor footprint beside them is empty | net `MOTOR` | — | **BLDO2** | driver VERIFIED; **actuator absent**, OBSERVED on one unit — [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.7 |
+| Buttons | at least two tactile keys on the board (`Key1` adjacent to `BOOT`, `Key3`) plus `PWRON` on the PMU. **The vendor BSP declares none** | specific GPIO assignment not resolved from the extraction — D5 | — | — | PARTIAL |
+| SD card | — | SDMMC 1-bit: CLK 2, CMD 1, D0 3 | — | D13 | VERIFIED |
+| Main I2C bus | — | SDA 15, SCL 14 — **and both are brought out on the expansion pad row below**, labelled there as bare `IO15`/`IO14` | **six devices**: `0x18`, `0x34`, `0x38`, `0x40`, `0x51`, `0x6B`. Nothing collides and `0x6A` is free, which is what makes one scan decisive | — | VERIFIED |
+| I2S bus | — | MCLK 16, SCLK 41, LCLK/WS 45, DOUT 40, DSIN 42 | — | — | VERIFIED |
+| Display FPC | the 34-pin AMOLED flex, connector `J3` — **not an expansion header**. There is no expansion *connector*; there is a pad row, below | `QSPI_SIO0`–`SIO3`, `QSPI_SCL`, `LCD_CS`/`RESET`/`TE`, the MIPI pairs, `VCI`, `VDDIO`, `IM0`/`IM1`, `TP_SCL`/`TP_SDA`/`TP_INT`/`TP_RESET` | — | — | VERIFIED |
+| **Expansion pad row** | ten plated pads along the board's bottom edge, individually silkscreened | `VBUS · GND · D+/IO20 · D-/IO19 · IO15 · IO14 · RXD · TXD · GND · 3V3` — **`IO15`/`IO14` are the main I2C bus, not spare GPIO**; the only uncommitted channel here is `RXD`/`TXD` | see the bus rows | `3V3` sourced, rail not identified | VERIFIED — S9, [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.5 |
+| USB | `USB_N` / `USB_P` through 22 Ω series resistors (R19, R20) to the SoC native USB pins | — | — | — | VERIFIED |
+| Sub-GHz radio | — | **not present** | — | — | VERIFIED |
+| GNSS | — | **not present** | — | — | VERIFIED |
+
+The `Power rail` column reads `D13` where the load is known to be on a PMU rail
+but which rail is unresolved — all three of ALDO1, ALDO2 and ALDO3 are 3.3 V and
+the schematic extraction did not separate them. Addresses are from
+[WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.2, which cites each one; three
+are datasheet-fixed, two are schematic-strapped, one is driver-source-only and
+one is in conflict between datasheet revisions. A bus scan settles the last two
+in a second — §5 step 5.
 
 ### AXP2101 rail map
 
@@ -439,5 +449,8 @@ a typed descriptor rather than a flag.
 | S6 | `waveshareteam/ESP32-S3-Touch-AMOLED-2.06`, `Schematic/…-V1.0.pdf` — **read**, 3 sheets, by text extraction; pin-to-net adjacency partially recoverable, see D3 and D13 |
 | S7 | ESP Component Registry, `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0 — Apache-2.0 |
 | S8 | arduino-esp32 variant `lilygo_twatch_s3/pins_arduino.h` (referenced by S1) |
+| S9 | **a physical `ESP32-S3-Touch-AMOLED-2.06`**, received and opened by the owner 2026-08-22 — four photographs of the assembled watch, the back cover, the cell and the mainboard, examined at full resolution. Silkscreen and populated-or-not only; see [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §0 for what a photograph is and is not evidence of |
 
-All checked 2026-08-21.
+| S10 | **the silicon of that same unit, answering for itself** — `espefuse v5.3.1 summary` and `esptool v5.3.1 flash-id` over the board's USB-Serial/JTAG port, 2026-08-22. Device-identifying values (MAC, `OPTIONAL_UNIQUE_ID`) are deliberately not recorded; see [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §0 |
+
+S1–S8 checked 2026-08-21; S9 and S10 on 2026-08-22.

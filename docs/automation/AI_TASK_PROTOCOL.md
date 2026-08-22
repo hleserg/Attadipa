@@ -266,6 +266,19 @@ on drifts back to silence one edit at a time.
 4. **One branch, one pull request.** Draft while it moves, ready when it does
    not, and **merged by the orchestrator once CI is green** (owner decision,
    2026-08-21). Nothing waits on a person for the merge itself.
+
+   **Two different actors merge, under two different rules, and conflating them
+   is how a finished `core/` pull request sits forever.** The *orchestrator* is
+   a live session with the owner reachable: it merges anything once CI and the
+   independent review are green, across every path in the repository. The
+   *backstop routine* runs unattended with nobody watching, and it may merge
+   only changes under `docs/` and not `docs/automation/`, at most three per run,
+   under the six conditions in
+   [attadipa-backstop-routine.md](attadipa-backstop-routine.md). So a green
+   `core/` pull request is **not** picked up by the backstop and is not waiting
+   for the owner either — it is waiting for an orchestrator session, and if none
+   is running it waits. That is a real gap and it is named here rather than
+   discovered.
 5. **Never a hardware claim.** Anything needing a board, an instrument or a
    measurement is `NOT EXECUTED — HARDWARE REQUIRED`.
 6. **Leave it continuable.** `STATUS.md` and `TASKS.md` updated in the same

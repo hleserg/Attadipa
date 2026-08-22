@@ -53,6 +53,12 @@ support code, and published schematics. The full result — every part, pin, I2C
 address, and power rail — lives in [HARDWARE_MATRIX.md](HARDWARE_MATRIX.md).
 Recorded here are only the findings that change architecture.
 
+That promise was half true until 2026-08-22. The Waveshare peripheral table had
+been written without the `I2C addr` and `Power rail` columns the T-Watch table
+carries, so for that board neither existed while this sentence said they did —
+which sends a reader looking for data rather than for its absence. The addresses
+are there now, each cited. The rails are still D13.
+
 **Neither board has been physically inspected.** Nothing requiring measurement
 is verified.
 
@@ -194,6 +200,147 @@ is verified.
   Attadipa, and must never be reported as Attadipa's measured consumption.
   Note that waking on touch costs roughly twice waking on button — a real
   design trade-off, once confirmed.
+
+### The BMA423 counts steps, and its datasheet does not say how
+
+- **Claim:** the BMA423 has a **32-bit hardware step counter** in registers
+  `0x1E`–`0x21` (`STEP_COUNTER_0`…`_3`), and the datasheet documents those four
+  registers with one line each: `DESCRIPTION: Application note – Wearable
+  feature set`. The behaviour — power mode, required ODR, whether the count
+  survives a soft reset, whether it accumulates while the host sleeps — is in a
+  **separate document**, Bosch's *Wearable Feature Set* application note
+  `BST-MAS-AN032`, which returned HTTP 403 on two attempts.
+- **Source:** BMA423 Data Sheet, revision 2.0, `BST-BMA423-DS004-00`, August
+  2019, p. 53 and p. 1 (*"Plug 'n' Play Step-Counter solution with watermark
+  functionality"*). Confirmed against Bosch's own reference driver v1.1.4:
+  `bma423_step_counter_output()` reads four bytes from
+  `BMA4_STEP_CNT_OUT_0_ADDR = 0x1E` into a `uint32_t`.
+- **Checked:** 2026-08-22, for the T-Watch S3 Plus.
+- **Impact:** the pedometer is mandatory ([OD-6](OWNER_DECISIONS.md)).
+  **Superseded 2026-08-22 by the entry below** — the behaviour is documented,
+  in a revision of this same datasheet that Bosch withdrew. Full reading in
+  [PEDOMETER_PARTS](PEDOMETER_PARTS.md).
+
+### Bosch deleted the step-counter chapter from the BMA423 datasheet between revisions
+
+- **Claim:** the behaviour revision 2.0 defers to application note
+  `BST-MAS-AN032` was **printed in the datasheet itself** until three months
+  earlier. Revision 1.0 (`BST-BMA423-DS000-00`, August 2017) and revision 1.1
+  (`BST-BMA423-DS000-01`, May 2019) both carry a *"Step Detector / Step
+  Counter"* chapter, a *"Minimum Bandwidth Settings"* section, the phone/wrist
+  preset tables and the per-field configuration list, pp. 32–37 — and the text
+  is byte-identical between the two. Revision 2.0 (`BST-BMA423-DS004-00`,
+  August 2019) replaces all of it with a pointer, and changes the document
+  number series from `DS000` to `DS004`.
+- **Source:** revision 1.1 retrieved 2026-08-22 from the Watchy project's
+  mirror, `watchy.sqfmi.com/assets/files/BST-BMA423-DS000-1509600-950150f51058597a6234dd3eaafbb1f0.pdf`,
+  SHA-256 `98b85747bd983435b2921266401cbeb095a57e2274b1f5c49f7f04145f22de04`,
+  2 363 646 bytes. Revision 1.0 from `opensourceinstruments.com`, used only to
+  confirm the chapter is unchanged. Revision 2.0 from DigiKey. Bosch's own site
+  returned **HTTP 403** for both the note and the datasheet.
+- **Checked:** 2026-08-22.
+- **Impact:** four questions this file recorded as `UNKNOWN` are answered, and
+  one claim it recorded is **wrong** — see the two entries below. The general
+  lesson is the one [ADR-0003](../adr/0003-radio-not-lora.md) already teaches in
+  another subsystem: *"the datasheet"* is not a document, it is a document **at
+  a revision**, and the newest is not always the most complete. Where a current
+  datasheet defers to something unobtainable, look backwards before declaring
+  the fact unknowable.
+
+### The BMA423 step counter runs in low-power mode, and 50 Hz is the floor
+
+- **Claim:** the feature engine takes acceleration samples *"acquired at 50Hz"*.
+  In performance mode (`ACC_CONF.acc_perf_mode = 0b1`) the features work at any
+  ODR; in low-power mode (`0b0`) *"the ODR must be set to minimum 50 Hz for the
+  most features except Double Tap/Tap"*, and 200 Hz for tap. Violating it sets
+  `INTERNAL_STATUS.odr_50hz_error` — it is detectable, not silent. Counting
+  itself needs no host transaction: the sensor duty-cycles itself, and *"in all
+  global power configurations both register contents and FIFO contents are
+  retained."*
+- **Source:** BMA423 Data Sheet revision 1.1, pp. 20–21 and 32; register `0x2A`.
+- **Checked:** 2026-08-22.
+- **Impact:** the power line for step counting is the **50 Hz low-power figure,
+  13–14 µA `ESTIMATED`** — not 42 µA and not 150 µA. Wanting double-tap as well
+  costs 3×. Whether the counter survives *the board's* sleep is now a rail
+  question about the AXP2101, not a sensor question.
+
+### CORRECTION — the BMA423 watermark field carries an implicit ×20
+
+- **Claim:** `BMA423_STEP_CNTR_WM_MSK = 0x03FF` is 10 bits, but the field
+  *"holds implicitly a 20x factor, so the range is 0 to 20460, with resolution
+  of 20 steps"*. A written 10 interrupts every 200 steps, and *"as the steps are
+  buffered internally, the output may be triggered between 200-210 steps."*
+  Bosch's driver does **not** apply the factor —
+  `bma423_step_counter_set_watermark()` writes the argument raw.
+- **Source:** BMA423 Data Sheet revision 1.1, p. 36; `bma423.c` v1.1.4 l. 1049.
+- **Checked:** 2026-08-22.
+- **Impact:** **this corrects an earlier reading in this repository.** LilyGo's
+  `setStepCounterWatermark(1)` was recorded as an interrupt *per step*; it is an
+  interrupt every **20** steps. Roughly every 15 s at walking cadence, not
+  ~1 Hz — an order of magnitude, and it lands in the T-061 power arithmetic.
+
+### The BMA423's step counter lives in a 6 144-byte blob the host uploads at every boot
+
+- **Claim:** the feature engine is not resident. `BMA4_CONFIG_STREAM_SIZE = 6144`
+  bytes are streamed to `BMA4_FEATURE_CONFIG_ADDR` (`0x5E`), after which the host
+  must **wait 150 ms** and then read `BMA4_INTERNAL_STAT` (`0x2A`) expecting
+  `BMA4_ASIC_INITIALIZED` (`0x01`). The step-counter watermark is **10 bits**
+  (`0x03FF`, so 0–1023 **as written; the sensor multiplies by 20** — see the
+  correction above), and **value 0 does not mean "every step"** — it selects
+  the separate *step detector* interrupt.
+- **Source:** Bosch BMA423 reference driver v1.1.4 —
+  `bma4_write_config_file()` in `bma4.c`, and the masks in `bma423.h` /
+  `bma4_defs.h`.
+- **Checked:** 2026-08-22.
+- **Impact:** 150 ms of the boot budget is spent before a step can be counted,
+  every time. A soft reset (`0xB6` → `0x7E`) **does** drop it — revision 1.1
+  §4.2: *"Initialization has to be performed as well after every POR or soft
+  reset"*, the reset being *"largely equivalent to a power cycle"* — so every
+  reset is a hole in the day's total that OD-6's *no interpolation* rule
+  requires be reported rather than filled. The block is also read–modify–write
+  as a whole, so two callers cannot configure two features independently.
+
+### The QMI8658A's datasheet has deleted its pedometer
+
+- **Claim:** the pedometer is a **variant-and-revision** question, not a part
+  question.
+  **QMI8658C** (`13-52-27`, Rev A, 20 June 2022) documents it fully: feature
+  list p. 1, chapter 11, a **24-bit** count in `STEP_CNT_LOW/MIDL/HIGH`
+  (`0x5A`–`0x5C`), `CTRL8.Pedo_EN`, and CTRL9 commands `0x0D` (configure) and
+  `0x0F` (reset count).
+  **QMI8658A Rev A** (`13-52-25`, 20 June 2022) documents the identical feature.
+  **QMI8658A Rev D** (`QST-PD-B002-22`, current) **does not**: its feature list
+  reads *"Integrated Tap, Any-Motion, No-Motion, Significant-Motion detection"*,
+  there is no chapter on the pedometer, and a search of the whole document finds
+  **no `STEP_CNT` register and no `Pedo_EN` bit**. The feature is not marked
+  deprecated or reserved — it is gone from the document, registers included.
+- **Source:** the three QST datasheets named above, read 2026-08-22.
+- **Impact:** [HARDWARE_MATRIX](HARDWARE_MATRIX.md) records the Waveshare board's
+  IMU as *"QMI8658 / QMI8658C"* — the variant is **`UNKNOWN`**, the vendor BSP
+  does not touch the IMU so there is no code to read the answer from, and the two
+  variants differ on precisely the feature OD-6 makes mandatory. Reading a step
+  count out of a QMI8658A and believing it would be relying on a feature its
+  current datasheet does not admit to having. This is the ADR-0003 pattern —
+  the part number does not tell you what you have — arriving in a second
+  subsystem.
+
+### The QMI8658 costs at least three times the BMA423
+
+- **Claim:** accelerometer-only, gyroscope disabled, typical at 1.8 V and 25 °C:
+  the QMI8658C draws **30 / 35 / 42 / 55 µA** at low-power ODRs of 3 / 11 / 21 /
+  128 Hz, and 132–182 µA in high-resolution mode. Its idle states are 15 µA
+  (power-on default), 8 µA (low power) and 6 µA (power-down, configuration and
+  output registers preserved). Low-power mode is available **only with the
+  gyroscope disabled**. The BMA423, for comparison, is **13 µA at 50 Hz** in
+  low-power mode, 150 µA in performance mode and 3.5 µA suspended — though its
+  low-power table is marked by Bosch itself as *"based on limited lab
+  measurements. Only for reference."*
+- **Source:** QMI8658C datasheet §3.8 tables 15 and 22, and table 31; BMA423
+  datasheet electrical characteristics and the low-power current table.
+- **Checked:** 2026-08-22.
+- **Impact:** both sets are **vendor typicals, not measurements on our boards**.
+  They are the budget to design against and the target to reproduce, never a
+  figure to report as Attadipa's. A 6-axis IMU is not a cheaper accelerometer.
 
 ---
 
@@ -351,14 +498,63 @@ BSP already demonstrated to be an incomplete description of its own board.
   keeping a typed descriptor below the service boundary
   ([ADR-0007](../adr/0007-two-capability-layers.md)).
 
+### The `R8` in ESP32-S3R8 means octal PSRAM, and the datasheet says so
+
+- **Claim:** the PSRAM in an `ESP32-S3R8` is octal, not quad.
+- **Source:** ESP32-S3 Series Datasheet v2.2, §1.2 Table 1-1 "ESP32-S3 Series
+  Comparison", p. 13: `ESP32-S3R8 | — | 8 MB (Octal SPI) | -40 ~ 65 °C | 3.3 V`.
+  The table contains **no 8 MB quad in-package variant at all** — the only quad
+  in-package parts are the 2 MB `RH2`, `R2` (EOL) and `FH4R2`. Footnote 3 names
+  the octal set outright: "For chips with Octal SPI PSRAM (ESP32-S3R8,
+  ESP32-S3R8V, and ESP32-S3R16V)…". `R8` and `R8V` differ by `VDD_SPI` voltage,
+  3.3 V against 1.8 V, not by bus width.
+- **Corroboration:** five of the six vendor examples for the Waveshare board ship
+  `CONFIG_SPIRAM_MODE_OCT=y` with `CONFIG_SPIRAM_IGNORE_NOTFOUND` unset — a build
+  that aborts at boot if octal PSRAM is not found. And GPIO33-37, which Datasheet
+  Table 2-14 populates as DQ4-DQ7 and DQS **only** in the Octal SPI column, sit
+  unrouted on the schematic with no-connect markers. That is a falsification test
+  the board passed: any of those five routed to a peripheral would have refuted
+  octal.
+- **Status:** VERIFIED for the Waveshare (D12a). **Not transferred to the
+  T-Watch** (D12b): the same marking implies the same answer, but a LilyGO
+  document describing that board's PSRAM as QSPI has not been re-read against
+  Table 1-1 and stands as a live conflict.
+- **Why it is written down:** OPEN_QUESTIONS recorded this as recollection —
+  Espressif's scheme is "*understood* to use the `R8` suffix for octal PSRAM —
+  that last part is recollection and must itself be checked against the
+  datasheet". It has been.
+
+### The Waveshare main I2C bus carries six devices, not four
+
+- **Claim:** the ES8311 audio codec and the ES7210 microphone ADC are I2C control
+  slaves on the same bus as the touch, PMU, IMU and RTC.
+- **Source:** the vendor BSP creates one `i2c_master_bus`
+  (`esp32_s3_touch_amoled_2_06.c:93`) and hands that same handle to the ES8311
+  (`:262`), the ES7210 (`:310`) and the touch IO (`:494`).
+- **Why it matters:** both parts appear in HARDWARE_MATRIX as "I2S", which is
+  their *data* path. Their control path is two more addresses on SDA 15 / SCL 14,
+  and a board profile that omits them is wrong about the bus.
+- **Status:** VERIFIED from vendor source. Each address is in HARDWARE_MATRIX
+  with its own citation; `0x18` and `0x40` are both schematic-strapped.
+
 ### Waveshare memory: 32 MB flash, 8 MB PSRAM
 
 - **Claim:** external flash is `GD25Q256EYIGR` (U3) — 256 Mbit quad SPI, i.e.
   **32 MB**. The SoC is a bare `ESP32-S3R8`, not a module.
 - **Source:** S6.
 - **Impact:** resolves D1. Twice the T-Watch's flash, on the board with 3.57×
-  the pixels. Also means **both** boards carry the `R8` marking, so the quad-vs-
-  octal PSRAM question (D12) is one question with one answer for both targets.
+  the pixels.
+- **What this does NOT settle, and an earlier version of this entry said it
+  did:** both boards carry the `R8` marking, and it is tempting to read that as
+  one question with one answer for both. It is not. `R8` is verified as octal on
+  the Waveshare — see *The R8 in ESP32-S3R8 means octal PSRAM* above — and that
+  is **D12a**. **D12b**, the T-Watch, stays `CONFLICTING`: a LilyGO document
+  describes that board's PSRAM as QSPI, and the marking implying otherwise is an
+  inference, not a reading. This paragraph used to assert the transfer, twenty-
+  five lines below the section that splits it, so the answer a reader got
+  depended on which one they landed on first — which is the exact propagation
+  failure this file exists to prevent, committed inside the change that fixed
+  three others.
 
 ### The Waveshare board has buttons; its BSP does not
 
@@ -399,3 +595,176 @@ visually rather than greped:
 - which loads sit on which of the three 3.3 V rails (D13).
 
 Recorded as PARTIAL rather than left blank, so the gap is visible.
+
+---
+
+## Read off a physical Waveshare unit (S9)
+
+One `ESP32-S3-Touch-AMOLED-2.06` arrived on 2026-08-22 and was opened. Everything
+below is silkscreen, a printed label, or an empty footprint — the three things a
+photograph is actually good for. Nothing here rests on a marking that needed
+magnification the camera did not have, and the items that do need one are in
+[WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §3 as bench readings
+still to take.
+
+### The Waveshare cell is 400 mAh — less than half the T-Watch's
+
+- **Claim:** the battery is a `402728` pouch cell, **3.7 V, 400 mAh**,
+  manufactured 2026-07-11. `402728` is the geometry: 4.0 mm × 27 mm × 28 mm.
+- **Source:** S9 — printed on the cell's own label.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** `UNKNOWN` — the schematic shows the cell on `BAT1` through the AXP2101
+  charge path and states no capacity, and the vendor README does not either.
+- **Impact, and it is the largest single thing the unit told us.** The T-Watch
+  S3 Plus carries 940 mAh (S1). This board carries 400 and drives an **emissive**
+  panel, where what is drawn decides what is drawn *from*. The day theme's
+  gamma-decoded emissive load is 13.9× the night theme's on the same pixels
+  (`ESTIMATED`, [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §1). The expensive
+  theme and the small cell are on the same board. That does not by itself yield
+  a runtime — that needs a measured panel current at a known APL, which is
+  `UNKNOWN` — but it makes "which theme is default here" a power decision rather
+  than a taste one. T-095.
+
+### The ten-pad expansion row, and two of its pads are the I2C bus
+
+- **Claim:** ten plated pads along the board's bottom edge, silkscreened
+  `VBUS · GND · D+/IO20 · D-/IO19 · IO15 · IO14 · RXD · TXD · GND · 3V3`.
+- **Source:** S9 — each pad is individually labelled in silkscreen.
+- **Board revision:** as above.
+- **Impact:** `IO15` and `IO14` are printed as bare GPIO numbers and are **the
+  main I2C bus** (S6: `SDA 15, SCL 14`), carrying the AXP2101, the PCF85063ATL,
+  the FT3168, the QMI8658, the ES8311 and the ES7210. Driving them as
+  general-purpose pins takes down power management, the clock, touch and motion
+  at once. The only genuinely free channel on this row for an attached Attadipa
+  node is `RXD`/`TXD`. T-096.
+- **Not the same thing as `J3`** — the 29-pin header D3 is still open about. This
+  row is separate and is now fully known.
+
+### The IMU's board-frame axes are printed next to it
+
+- **Claim:** a silkscreened axis triad beside the IMU: **X** toward the battery
+  edge, **Y** toward the USB-C edge, **Z** drawn as ⊙ — out of the face the part
+  is mounted on, which is the face turned away from the display.
+- **Source:** S9.
+- **Board revision:** as above.
+- **Impact:** half of OPEN_QUESTIONS **H15**. The board frame is now known; how
+  the board is rotated inside the case is not, and a wrist-raise gesture needs
+  both. Cheap to finish: tilt the assembled watch through known angles and read
+  raw axes.
+
+### The vibration motor is not fitted
+
+- **Claim:** the `MOTOR` pads (`J1`) are bare — no solder, no wire, no part — and
+  the coin-motor footprint beside them is empty, on the unit received. The drive
+  circuit S6 describes (GPIO 18 → R12 → Q1 → BLDO2) is present and correct.
+- **Source:** S9.
+- **Board revision:** as above. **`OBSERVED` on one unit, not `VERIFIED` for the
+  product** — whether Waveshare ships a motor loose, whether another production
+  run populates it, and what the listing promises are three unanswered questions.
+- **Impact:** `Capability::Haptics` resolves to `Unsupported` on this unit, and
+  `Unsupported` is the terminal value in the `Availability` enum — the one that
+  must be stable at runtime and must never be offered to the user as fixable.
+  Nothing in firmware can tell an NPN driving an absent motor from one driving a
+  present motor, so this cannot be detected and must be configured. T-097.
+
+### The flash is a separate package, and it is GigaDevice
+
+- **Claim:** a GigaDevice-branded SOP-8 sits beside the SoC. The brand is legible;
+  the part number is not.
+- **Source:** S9, corroborating S6's `GD25Q256EYIGR` at `U3`.
+- **Impact:** modest but structural. Whatever is in the SoC package is **not
+  flash**, which is what an `R8` suffix means. It corroborates the octal-PSRAM
+  conclusion without re-deriving it. Capacity remains the schematic's 32 MB,
+  unconfirmed on silicon — `esptool.py flash_id` settles it.
+
+### Both microphones are populated
+
+- **Claim:** two MEMS microphones, silkscreened `MIC1` and `MIC2`, at opposite
+  ends of the board's left edge, both fitted.
+- **Source:** S9, confirming S6's "dual digital microphones" on the ES7210.
+
+### The speaker is an AAC part on wires, not a connector
+
+- **Claim:** `AAC210602A1`, lot `15771`, a metal-can micro-speaker in the back
+  cover, its red/black pair soldered to `+`/`−` pads at the board's bottom-right.
+  Impedance and rated power are not published for this part number — `UNKNOWN`.
+- **Source:** S9.
+- **Impact:** small and practical. Both the speaker and any future motor attach
+  by solder, so opening this watch twice means desoldering twice.
+
+## Read off the silicon of that unit (S10)
+
+`espefuse v5.3.1 summary` and `esptool v5.3.1 flash-id`, run over the board's own
+USB-Serial/JTAG port on 2026-08-22. This is the first evidence in this repository
+that came from neither a document nor a camera. The full reading and its
+redactions are in [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md); the three
+facts that change what may be written are here.
+
+### The die is fused as 8 MB AP Memory PSRAM at 3.3 V — so the part is `R8`, not `R8V`
+
+- **Claim:** `PSRAM_CAP = 8M`, `PSRAM_CAP_3 = False`, `PSRAM_VENDOR = AP_3v3`,
+  `PSRAM_TEMP = 85C`. `esptool` renders the same fuses as
+  `Embedded PSRAM 8MB (AP_3v3)`. `PIN_POWER_SELECTION = VDD_SPI` puts GPIO33–37
+  on the memory rail.
+- **Source:** S10.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** D12a was `RESOLVED` by inference from the package marking against
+  ESP32-S3 Series Datasheet v2.2 Table 1-1.
+- **What it does and does not prove.** It proves the capacity, the vendor and the
+  3.3 V rail on *this die*, which eliminates `ESP32-S3R8V` (1.8 V) and every 2 MB
+  quad variant. It does **not** state bus width. The step from "8 MB in package"
+  to "octal" is still Table 1-1's, and it holds because that table contains no
+  8 MB quad in-package part. Both legs of D12a are now supported, one by document
+  and one by silicon.
+- **Impact:** GPIO33–37 are confirmed unavailable to any application — not
+  argued from an unrouted schematic net, but fused. The GPIO budget loses five
+  pins for good.
+
+### The flash is outside the package, and the fuses say so
+
+- **Claim:** JEDEC ID `0xC8 0x4019` — GigaDevice, `0x40` = GD25Q SPI family,
+  `0x19` = 2^25 bytes = 32 MB. `FLASH_TYPE = 4 data lines` (quad).
+  `VDD_SPI_FORCE` and `VDD_SPI_XPD` are set and `VDD_SPI_TIEH` reads
+  `VDD_SPI connects to VDD3P3_RTC_IO`, i.e. 3.3 V. `FLASH_CAP`, `FLASH_TEMP` and
+  `FLASH_VENDOR` in BLOCK1 are all unprogrammed.
+- **Source:** S10.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** `VERIFIED` from the schematic alone (`GD25Q256EYIGR` at U3).
+- **Impact:** the schematic and the silicon agree, and the three unprogrammed
+  BLOCK1 fields independently confirm there is no in-package flash competing for
+  the bus. The combination the board actually is — **octal PSRAM in package,
+  quad flash outside it, both at 3.3 V** — is now settled from two directions.
+
+### The chip is revision v0.2, and a build must not ask for more
+
+- **Claim:** `WAFER_VERSION_MAJOR = 0`, `WAFER_VERSION_MINOR = 2`; `esptool`
+  reports `ESP32-S3 (QFN56) (revision v0.2)`. Crystal 40 MHz. ADC calibration
+  (`BLK_VERSION_MAJOR = ADC calib V1`, `ADC1_INIT_CODE_*`, `ADC1_CAL_VOL_*` and
+  the ADC2 counterparts) and `TEMP_CALIB` are burned.
+- **Source:** S10.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** `UNKNOWN` — no document states which revision a shipped board carries,
+  and it is not a property of the board design.
+- **Impact:** ESP-IDF's `CONFIG_ESP32S3_REV_MIN_*` gates boot. A build whose
+  minimum revision exceeds 0 will be **refused by the bootloader on this unit**.
+  Nothing sets it higher today; this is recorded so nobody raises it blind. The
+  burned calibration fuses mean ESP-IDF's ADC calibration works rather than
+  falling back to a nominal curve. Which errata apply to v0.2 is `UNKNOWN` — the
+  ESP32-S3 Errata sheet has not been read against this revision.
+
+### Nothing has been burned — every recovery path is open
+
+- **Claim:** `WR_DIS = 0`, `RD_DIS = 0`, `SPI_BOOT_CRYPT_CNT = Disable`,
+  `SECURE_BOOT_EN = False`, all three `SECURE_BOOT_KEY_REVOKE*` false, all six
+  `KEY_PURPOSE_*` = `USER` with `BLOCK_KEY0..5` zero, `DIS_DOWNLOAD_MODE = False`,
+  `ENABLE_SECURITY_DOWNLOAD = False`, `DIS_PAD_JTAG = False`,
+  `SOFT_DIS_JTAG = 0`, `DIS_USB_SERIAL_JTAG = False`, `CUSTOM_MAC` zero,
+  `SECURE_VERSION = 0`.
+- **Source:** S10. `espefuse summary` reads; it burns nothing, and
+  `espefuse burn_efuse` was not run.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Impact:** the unit is in the state the "never irreversible without being
+  asked" rule exists to preserve. Download mode, USB-Serial/JTAG and pad JTAG are
+  all available, so there is no way yet to brick this board that a reflash cannot
+  undo. Recorded as a baseline: a future reading that differs from this one means
+  something was burned, and this file says when it was not.

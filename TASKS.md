@@ -532,41 +532,108 @@ stale silently. The protocol is
   the field is `NOT EXECUTED — HARDWARE REQUIRED`.
 - **Hardware required:** for accuracy, yes. For the logic, no.
 
-### T-060 · What each IMU actually does about steps
-- **Priority:** P1 — [OD-6](docs/research/OWNER_DECISIONS.md#od-6--the-watch-counts-steps-and-that-is-not-optional)
-  makes the pedometer mandatory, and everything about how it is built depends on
-  this answer
-- **Dependencies:** none. It is reading, not code.
-- **Goal:** establish, from primary sources only, what the BMA423 and the
-  QMI8658 each do about step counting, in the order the GNSS tasks use:
-  datasheet → application note → vendor driver source → vendor example.
-- **What to answer, at minimum:**
-  - **BMA423:** does the part count steps *itself*? Bosch documents step
-    counting and step detection in the BMA4xx wearable family — is it in this
-    part, on this revision, and is it in the feature blob that has to be
-    uploaded at boot? What is the counter's width and what happens when it
-    wraps? Does it keep counting while the host is in deep sleep, and at what
-    current? What survives a soft reset, and what does not? Which interrupt
-    lines does it need — **INT2 is bonded out but not routed** on the T-Watch
-    (R12/R15 not fitted, [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)),
-    so anything requiring two interrupts is already blocked.
-  - **QMI8658:** is there any integrated step counter at all? If not: FIFO depth
-    in samples, watermark interrupt behaviour, the lowest output data rate at
-    which a step algorithm still works, and therefore how often the SoC must
-    wake to drain it.
-- **Acceptance:** a row per part in
-  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md) marked `SUPPORTED`,
-  `UNSUPPORTED` or `UNKNOWN`, each with the document and section it came from.
-  An unsourced `SUPPORTED` is not an answer.
-- **Research status:** not started
-- **Implementation status:** not started — no code comes out of this task
-- **Tests:** none. It produces a research record.
-- **Hardware required:** no for the documents. Confirming a current figure or a
-  wake rate is a HIL plan and is not this task.
+### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22
+- [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md), and four entries in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Read from the datasheets,
+  Bosch's own reference driver and LilyGo's board support, in that order.
+- **BMA423: yes, it counts steps** — a 32-bit counter at `0x1E`–`0x21`. **And
+  its datasheet does not say how.** All four registers carry one line:
+  *"Application note – Wearable feature set"*. Every behavioural question — power
+  mode, required ODR, reset survival, and whether it counts while the SoC sleeps
+  — is in `BST-MAS-AN032`, which returned HTTP 403. **T-060a.**
+- **The feature is a 6 144-byte blob the host uploads at every boot**, with a
+  mandatory **150 ms** wait and a status register that must read
+  `ASIC_INITIALIZED`. Whether a soft reset drops it is `UNKNOWN`, and if it does,
+  every reset is a hole in the day's total.
+- **The watermark is 10 bits and 0 does not mean "every step"** — it selects the
+  separate step-detector interrupt. LilyGo's own board support sets it to 1.
+  *(**Corrected by T-060a:** the field carries an implicit ×20, so that is an
+  interrupt every 20 steps, not every step.)*
+- **One interrupt line, already shared six ways.** INT2 is bonded out but not
+  routed on the T-Watch, and LilyGo maps step counter, any-motion, no-motion,
+  activity, tilt and wake-up all to INT1. A design needing a private interrupt
+  for steps does not fit this board.
+- **QMI8658: it depends which part, and we do not know which.** The **C** variant
+  documents a full pedometer — 24-bit count at `0x5A`–`0x5C`, `CTRL8.Pedo_EN`,
+  two CTRL9 commands, eight tunable parameters. **QMI8658A Rev A documented the
+  identical feature; Rev D has deleted it** — feature list, chapter and registers
+  alike, with no deprecation note. `HARDWARE_MATRIX` records the board's IMU as
+  *"QMI8658 / QMI8658C"* and the vendor BSP does not touch the IMU, so there is
+  no code to read the answer out of. **This is the ADR-0003 pattern in a second
+  subsystem.**
+- **Two findings that change what a step count *means*:** the QMI8658C
+  retroactively counts steps it had discarded once a walk is confirmed
+  (`ped_time_cnt_entry`), and updates its registers only every N steps
+  (`ped_sig_count`) — **a read is stale by design**. A step count is an estimate
+  produced by somebody else's filter, and ADR-0011's language about a position
+  applies to it unchanged.
+- **Power:** QMI8658C 30/35/42/55 µA at 3/11/21/128 Hz low-power; BMA423 13 µA
+  at 50 Hz. The Waveshare board pays **at least** three times as much — the two
+  figures are at different ODRs and matching them widens the gap, PEDOMETER_PARTS §2.4 —
+  before its variant question is settled. Vendor typicals, **not** measurements.
+- **No hardware involved.** `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### T-060a · Read the Bosch application note the datasheet points at — **DONE** 2026-08-22
+- **Answered without the application note.** Bosch's site returned **HTTP 403**
+  a third time, and Mouser, LCSC, Octopart and micro-semiconductor mirror only
+  revision 2.0 or a product flyer. The material turned out not to need it:
+  **the chapter revision 2.0 deletes is still printed in revision 1.1.**
+- **BMA423 Data Sheet revision 1.1, `BST-BMA423-DS000-01`, May 2019** — pp.
+  31–37 — carries the full *"Step Detector / Step Counter"* chapter, the
+  *"Minimum Bandwidth Settings"* section, the phone/wrist preset tables and the
+  per-field configuration list. Revision 1.0 (Aug 2017) is byte-identical there.
+  Revision 2.0 (Aug 2019) replaced it all with a pointer and moved from document
+  series `DS000` to `DS004`. Retrieved from the Watchy project's mirror; SHA-256
+  recorded in [PEDOMETER_PARTS §1.2](docs/research/PEDOMETER_PARTS.md).
+- **Four of the five questions are answered `SUPPORTED`:**
+  - **counts while the host sleeps** — the sensor duty-cycles itself and feeds
+    the feature engine at 50 Hz; register contents are retained in every power
+    configuration. What is left is a *board* question about the rail, not a
+    sensor one;
+  - **required configuration** — features consume samples at 50 Hz. Performance
+    mode: any ODR. Low-power mode: **minimum 50 Hz**, 200 Hz only for tap, and a
+    violation sets `INTERNAL_STATUS.odr_50hz_error` rather than failing quietly;
+  - **feature current** — the budget line is the 50 Hz low-power figure,
+    **13–14 µA `ESTIMATED`**. Not 42 µA, not 150 µA;
+  - **soft reset** — the blob does **not** survive. *"Initialization has to be
+    performed as well after every POR or soft reset."*
+- **One stays `UNKNOWN`:** behaviour at the 32-bit boundary. Not in revision 1.1
+  either. **T-060b**, and it changes nothing — the firmware treats any decrease
+  as reset-or-wrap regardless.
+- **And one earlier claim was wrong.** The 10-bit watermark field *"holds
+  implicitly a 20x factor"*, and Bosch's driver writes the argument raw — so
+  LilyGo's `setStepCounterWatermark(1)` is an interrupt every **20** steps, not
+  every step. Corrected in both documents, marked as a correction.
+- **Two things nobody asked for:** the step algorithm's **wrist preset is
+  already the default**, so T-061 writes none of the 25 parameters; and axis
+  remapping applies **only** to the feature engine, never to `DATA_0`–`DATA_13`
+  or the FIFO, so a driver that remaps once has got one of the two wrong.
+- **This was a research task.** No code came out of it.
+
+### T-060b · The Bosch application note itself, for what revision 1.1 lacks
+- **Priority:** P3, `nice-to-have`. **Nothing blocks on it** — T-060a closed the
+  questions T-061 needed.
+- **Dependencies:** T-060a (**done**)
+- **Goal:** obtain `BST-MAS-AN032` (*Wearable Feature Set*) and answer what
+  datasheet revision 1.1 does not: BMA423 step-counter behaviour at the 32-bit
+  boundary, and whatever tuning guidance sits behind the datasheet's *"with the
+  support of the corresponding field application engineer"*.
+- **What has already been tried and failed:** `bosch-sensortec.com` (HTTP 403,
+  three attempts), Mouser (403), LCSC (HTML only), Octopart, DigiKey,
+  micro-semiconductor (product flyer), watchy.sqfmi.com (revision 1.1 datasheet,
+  not the note). Untried: Bosch's community forum attachments, the
+  `BMA456`/`BMA400` sibling notes, an account-gated distributor download.
+- **Acceptance:** the boundary question marked in
+  [PEDOMETER_PARTS §1.8](docs/research/PEDOMETER_PARTS.md) with the document
+  revision, or a note saying the note does not answer it either.
+- **This is a research task.** No code comes out of it.
+- **Hardware required:** no.
 
 ### T-061 · Steps, as a capability with a power story
 - **Priority:** P1, after T-060
-- **Dependencies:** T-060, [ADR-0007](docs/adr/0007-two-capability-layers.md),
+- **Dependencies:** T-060 (**done**), T-060a (**done** — the power story is
+  `13–14 µA at 50 Hz, low-power mode`),
+  [ADR-0007](docs/adr/0007-two-capability-layers.md),
   T-046 (crash-safe persistence), T-045 (`PowerState`)
 - **Goal:** implement `Capability::MotionSensing` for step counting, on both
   boards, without either board's answer leaking upwards.
@@ -587,7 +654,22 @@ stale silently. The protocol is
   through the same path the device uses — the replay rig's shape, a second
   reader; both board profiles produce a defensible availability; the daily total
   survives a simulated crash at an arbitrary point.
-- **Research status:** blocked on T-060
+- **Research status:** T-060 and T-060a are **done**; the research that remains
+  is two hardware questions, not one task.
+  - **Which IMU the Waveshare carries.** `QMI8658C` has a pedometer;
+    `QMI8658A` Rev D had it deleted. The board is recorded as
+    "QMI8658 / QMI8658C" and the schematic prints no revision, so a mandatory
+    pedometer (OD-6) may have no hardware on one of the two boards. Same shape
+    as [ADR-0003](docs/adr/0003-radio-not-lora.md)'s radio question, in a
+    second subsystem — [PEDOMETER_PARTS.md](docs/research/PEDOMETER_PARTS.md)
+    §2.1. Settled by reading `WHO_AM_I` and the revision register on a board.
+  - **Whether the PMU keeps the IMU rail up across an SoC sleep.** This is
+    **[H8](docs/research/OPEN_QUESTIONS.md)**, already filed and already
+    holding the schematic-level detail: the vendor document says ALDO1 is
+    unused, the schematic shows it driving `+3V3`, and `+3V3` is what feeds the
+    BMA423. It was raised again in this task's research without the
+    cross-reference, which would have sent two people at the same question from
+    two directions. Whoever resolves H8 unblocks this.
 - **Implementation status:** not started
 - **Tests:** host, plus a HIL plan for the wake rate and the current, which is
   the only way the power claim becomes a measurement.
@@ -1154,24 +1236,44 @@ stale silently. The protocol is
   filed, which is the deliverable the owner actually asked for.
 - **This is a research task.** It produces documentation. A pull request full of
   new subsystems has been guessed at, not done.
-### T-072 · What a vanilla MeshCore node actually exposes
-- **Priority:** P1 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours).
-  It gates T-073 and T-074 and it is cheap: the source is already cloned and MIT.
-- **Dependencies:** none
-- **Goal:** fill in §1 of
-  [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  from `d92964352441e53b93e8667b802e04f6e072b39e` — which transports the
-  `companion_radio` role exposes (BLE, serial, and whether LAN/TCP exists at the
-  pinned revision), which commands a stock build answers, whether telemetry
-  carries a position, and whether the node's own fix is distinguishable from one
-  relayed in a message.
-- **Acceptance:** every row has an answer with a file and line, or stays
-  `UNKNOWN` with the reason. A reuse-ledger record either way, per
-  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
-- **This is a research task.** It produces documentation. A pull request full of
-  new subsystems has been guessed at, not done.
-- **Hardware required:** no. Confirming it against a real vanilla node later is a
-  separate task and would be the first honest `OBSERVED` in this area.
+### T-072 · What a vanilla MeshCore node actually exposes — **DONE** 2026-08-22
+- §1 of [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  is answered, and the detail it summarises is
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  transports, framing, the whole command set, the three position scalings, and a
+  provenance section saying which claims were verified twice and which once.
+- **LAN exists**, which is what OD-7 turned on: Wi-Fi/TCP and Ethernet/TCP, both
+  port 5000 by default, one client at a time. That makes a host-side client the
+  cheapest possible bring-up.
+- **176 bytes is the frame budget** and it cannot be raised by a build flag.
+- **The finding that outranks the rest:** a position from a vanilla node carries
+  **no fix flag, no satellite count, no timestamp and no HDOP**, and `node_lat`
+  is one slot shared by the GNSS loop, saved prefs and the client app. A receiver
+  cannot tell a live fix from a stale one from a hand-typed coordinate. That is a
+  direct input to [ADR-0011](docs/adr/0011-gnss-integrity.md), OD-8 and OD-10.
+- Reuse-ledger records added for both the client (`REIMPLEMENT`) and the
+  Meshtastic gate (`REJECT`).
+- **Read from source, never observed.** `NOT EXECUTED — HARDWARE REQUIRED` —
+  see T-072a.
+
+### T-072a · The same protocol, against a node that exists
+- **Priority:** P2 — it converts a document full of `read from source` into the
+  first `OBSERVED` in this area, and it is now possible where it was not before.
+- **Dependencies:** T-072
+- **Goal:** speak the companion protocol to a **real** vanilla node and record
+  where the reading was wrong. A MeshCore node hangs off Home Assistant on the
+  LAN host `doctor`, and a USB node is coming to the development machine. A host
+  program — not firmware — is enough: open the TCP socket or the serial port,
+  send `CMD_DEVICE_QUERY`, read `RESP_CODE_DEVICE_INFO`, and compare byte for
+  byte against §3 of the protocol document.
+- **Acceptance:** every claim in the protocol document that the exchange touches
+  is marked `OBSERVED` or corrected, with the captured bytes committed as a
+  fixture. Claims the exchange does not touch stay as they are — a partial
+  confirmation must not be written up as a whole one.
+- **Answer first, because it is free:** which transport that node actually has.
+  §1's trap is that the build name does not tell you.
+- **Hardware required:** yes, but not *our* hardware — this needs a MeshCore
+  node, not a T-Watch. That is why it can happen now.
 
 ### T-074 · More than one mesh provider at once
 - **Priority:** P2 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
@@ -1416,6 +1518,115 @@ stale silently. The protocol is
 - **Hardware required:** no for the logic; yes for anything said about what
   continuous recording costs.
 
+### T-095 · What the day theme costs on a 400 mAh emissive board
+- **Priority:** P1 — it is a default, and a default nobody costed.
+- **Dependencies:** none to start; a meter to finish.
+- **Why now:** the received Waveshare carries **400 mAh**
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.2),
+  against the T-Watch's 940, and it is the board with the emissive panel. The
+  day theme's gamma-decoded emissive load is 13.9× the night theme's on the same
+  pixels — `ESTIMATED` from pixel values, never measured.
+- **Goal:** turn that ratio into a number with a unit. Panel current at a known
+  average picture level, day theme and night theme, same screen, meter in series
+  with the cell. Then the same for the Clock, which is the screen that is up
+  longest.
+- **Acceptance:** a measured mA figure per theme with the method written down,
+  and a runtime estimate that says plainly which of its inputs are measured and
+  which are not. If the answer is that the day theme is unaffordable as a
+  default here, say so and let the owner decide — **this task does not get to
+  change the palette**, and a recommendation dressed as a finding is worse than
+  no finding.
+- **What must not be assumed:** that a per-pixel estimate scales to a panel. It
+  ignores the driver, the regulator's efficiency curve and whatever the CO5300
+  does with its own idle modes.
+- **Hardware required:** yes, and it is on the desk. `NOT EXECUTED — HARDWARE
+  REQUIRED` until it is run.
+
+### T-096 · Decide the node link on the pads that actually exist
+- **Priority:** P2 — [ADR-0008](docs/adr/0008-mesh-service-providers.md), and it
+  becomes urgent the moment anybody solders.
+- **Dependencies:** T-072a for what the node speaks.
+- **Why now:** the Waveshare's expansion row is transcribed
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.5)
+  and it offers exactly one uncommitted channel: `RXD`/`TXD`. `IO15` and `IO14`
+  are printed as bare GPIO numbers and are the main I2C bus with six devices on
+  it.
+- **Goal:** decide, and write down, how an Attadipa node attaches to this board —
+  UART on the pad row, or I2C as a seventh device, or USB. Then say what happens
+  electrically when the node browns out or holds a line low, per option.
+- **Acceptance:** an ADR amendment or a new ADR naming the transport, with the
+  failure mode of each rejected option stated rather than implied. A decision
+  that does not say what the *watch* does when the node misbehaves is not
+  finished.
+- **What must not be assumed:** that the pad row is 5 V tolerant, or that `3V3`
+  can source a node's transmit current. Neither is established.
+- **Hardware required:** no to decide; yes to prove.
+
+### T-097 · Haptics on a board with no motor fitted
+- **Priority:** P1 — the specification asks for haptic feedback and OD-6's
+  neighbours assume it.
+- **Dependencies:** none.
+- **Why now:** on the received unit the `MOTOR` pads are bare and the coin-motor
+  footprint is empty
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.7).
+  The GPIO-18 drive circuit is present and correct, so the board can drive a
+  motor it does not have — and nothing in firmware can tell the difference.
+- **Goal:** three separate answers, in this order. (1) Does Waveshare ship a
+  motor loose in the box, and does the product listing promise one? (2) If not,
+  what does `Capability::Haptics` resolve to on this board — `Unsupported`, which
+  is terminal and must be stable at runtime, or something configured? (3) What do
+  the screens that use haptics do when the answer is `Unsupported`, given that a
+  silent no-op is the one thing a haptic cue must not be.
+- **Acceptance:** the capability's value on this board decided and justified in
+  the registry, with the reason in a comment that names this task; every caller
+  audited for what it does without haptics; and if the value is configurable,
+  the mechanism must not be an `#ifdef BOARD_*` anywhere above the BSP.
+- **What must not be assumed:** that a motor can simply be soldered on later and
+  the problem goes away. It can, and firmware still cannot detect it — which
+  makes this a configuration question, not a probing question.
+- **Hardware required:** no for the decision; yes to confirm by feel.
+
+### T-098 · Read the ESP32-S3 errata against revision v0.2
+- **Priority:** P1 — it gates nothing today and invalidates anything tomorrow.
+- **Dependencies:** none. The revision is known.
+- **Why now:** the received unit is `ESP32-S3` **revision v0.2**
+  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §1.1). The
+  errata sheet has never been read against any revision here, so every workaround
+  ESP-IDF applies silently is currently an assumption rather than a fact — D18.
+- **Goal:** read the ESP32-S3 Errata sheet, list every erratum that applies to
+  v0.2, and for each say whether ESP-IDF works around it automatically, whether
+  the workaround costs anything measurable, and whether it touches octal PSRAM,
+  the quad flash interface, USB-Serial/JTAG, the RTC domain or light sleep —
+  the five things this design leans on hardest.
+- **Acceptance:** the list in `docs/research/`, each entry with its erratum
+  number and the sheet's revision; anything with a firmware consequence raised as
+  its own task rather than left in prose.
+- **What must not be assumed:** that "ESP-IDF handles it" means "it is free".
+  Several ESP32 errata workarounds cost clock speed or current.
+- **Hardware required:** no.
+
+### T-099 · Finish and verify the factory flash backup
+- **Priority:** P0 — it is the only thing standing between this unit and an
+  unrecoverable factory image, and the first flash of our own firmware destroys it.
+- **Dependencies:** none.
+- **Why now:** the backup is in progress and the naive procedure produces a
+  silently corrupt file
+  ([WAVESHARE_EFUSE_READ](docs/research/WAVESHARE_EFUSE_READ.md) §2). `esptool`
+  writes its output incrementally, so an aborted read leaves a **short** file
+  that concatenates without complaint into a shifted image.
+- **Goal:** a single `stock_dump.bin` of exactly `33 554 432` bytes, assembled
+  only from chunks whose individual lengths are exactly nominal, verified against
+  the device by on-chip MD5 (`esptool verify-flash 0x0 stock_dump.bin`) and
+  stored somewhere that is not the machine doing the flashing.
+- **Acceptance:** the length check and the verify output both recorded, with the
+  chunk map, in `docs/research/`. **Do not record a `PASS` for a verify that was
+  not run.**
+- **What must not be assumed:** that the stub failing is a transient. It is
+  content-deterministic — the same absolute flash addresses across runs that
+  started at different offsets — so a retry loop that does not change method is a
+  random walk with a budget attached.
+- **Hardware required:** yes — the owner's unit, already connected.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1534,10 +1745,17 @@ Recommended next action:
   expensive one. A real clean-room is months and is done honestly or not at all.
 - **What still answers the need:** MeshCore, MIT. OD-7 asked for a companion for
   people who will not build our node, and MeshCore is the remaining candidate
-  whose licence permits one. **T-072 is still open** — §1 of
+  whose licence permits one. **T-072 has since answered how much work that client
+  is** (2026-08-22): §1 of
   [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
-  is `UNKNOWN` on every row — so how much work that client is remains unknown.
-  The rejection here does not depend on that number.
+  is answered on every row, with the detail in
+  [MESHCORE_COMPANION_PROTOCOL](docs/research/MESHCORE_COMPANION_PROTOCOL.md) —
+  58 commands, a 176-byte frame budget that no build flag can raise, and a
+  Wi-Fi/Ethernet TCP transport that makes a host-side client the cheapest
+  bring-up there is. It is a real but bounded amount of work. **The rejection
+  here never depended on that number and does not change now that it exists** —
+  it rests on the licence gate and the cost of a clean-room, neither of which
+  T-072 touched.
 - **If this is ever revisited:** the licence question is answered and recorded.
   Only the product decision would need to change.
 
@@ -1966,3 +2184,84 @@ Recommended next action:
   published schematics — then the schematics were **read** rather than cited,
   which corrected two rows and produced two documented conflicts with the vendor
   documents.
+
+### T-090 · The corrections the Waveshare verification pass turned up
+
+- **Priority:** P2 — none of these blocks anything today, and every one of them
+  is a wrong fact sitting in a document another agent will read as true.
+- **Dependencies:** none. Each is a small correcting commit.
+- **Goal:** close out the defects listed in
+  [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §7 that are ours
+  rather than the external advice's. **Five of the seven** are already done on
+  the branch that filed this task — the peripheral table's missing columns, the
+  reuse ledger's wrong upstream, D3's mis-stated connector, the false promise in
+  VERIFIED_FACTS §1, and the D12 split propagated to all three of the places it
+  had been left out of. **Two remain:**
+  - [`docs/upstream/research-integration.md:180-181`](docs/upstream/research-integration.md)
+    says "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
+    ~10 µA light-sleep floor on the workaround "must not be deselected on a
+    module rather than a bare chip". [HARDWARE_MATRIX.md:301](docs/research/HARDWARE_MATRIX.md)
+    records the Waveshare SoC as a **bare chip, not a module**, VERIFIED from the
+    schematic. One of the two is wrong, the figure is carried forward into
+    [HIL_PLANS.md:64-67](docs/testing/HIL_PLANS.md) as VENDOR-STATED, and the
+    sleep-current plan depends on which.
+  - The part-ownership table at
+    [ARCHITECTURE.md:396-414](docs/architecture/ARCHITECTURE.md) has no flash or
+    PSRAM row for the Waveshare where the T-Watch table has both. An omission,
+    not a claim — but CLAUDE.md says every part on the board gets a seat.
+- **Not in scope:** D13's rail assignments. That needs the board.
+
+### T-091 · Two more addresses on the Waveshare I2C bus, and a board profile that knows it
+
+- **Priority:** P2 — it is wrong today and it is cheap.
+- **Dependencies:** T-090 is unrelated; this one waits on nothing.
+- **Goal:** the ES8311 codec and the ES7210 microphone ADC are I2C control slaves
+  on the main bus, which the vendor BSP demonstrates by handing all three parts
+  one `i2c_master_bus` handle. The board profile and any future bus-collision
+  check must carry six addresses, not four. Recorded in
+  [VERIFIED_FACTS.md](docs/research/VERIFIED_FACTS.md) and
+  [HARDWARE_MATRIX.md](docs/research/HARDWARE_MATRIX.md); nothing in `platform/`
+  models an I2C bus yet, so this is a note against whoever writes that first.
+- **Carry the trap with it:** SensorLib's `QMI8658_L_SLAVE_ADDRESS` is `0x6B`
+  where `L` means the SA0 *pin level*, and Waveshare's `QMI8658_ADDRESS_HIGH` is
+  also `0x6B` where `HIGH` means the *numeric value*. The two vendor demos look
+  like they disagree and do not. Any Attadipa wrapper that re-exports either name
+  hands the next reader the same trap.
+
+### T-092 · Do not depend on Waveshare's `esp_lcd_sh8601` fork
+
+- **Priority:** P2 — it decides part of T6 with evidence rather than preference.
+- **Dependencies:** feeds open question T6.
+- **Goal:** `waveshare/esp_lcd_sh8601` is a two-line fork of
+  `espressif/esp_lcd_sh8601` — its own files carry Espressif's SPDX headers. One
+  line is inert. The other, at `:280`, calls `tx_color(...)` bare where upstream
+  wraps it in `ESP_RETURN_ON_ERROR`, inside `panel_sh8601_draw_bitmap`, which
+  then returns `ESP_OK` unconditionally: **a failed frame transfer is reported as
+  success.** Present in 1.0.2, which the published demo pins, and in 2.0.0.
+  Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named
+  `esp_lcd_co5300` — QSPI, accepting a custom init table — under the same
+  Apache-2.0. Take the pin map and the init table; depend on upstream.
+- **Evidence:** [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §3.3.
+
+### T-093 · The LVGL draw-buffer ADR has no vendor existence proof to lean on
+
+- **Priority:** P1 — it was about to be written on a false premise.
+- **Dependencies:** the arithmetic is done; the numbers that matter need hardware
+  (§6 rows 9 and 10).
+- **Goal:** it is widely assumed that the vendor BSP proves PSRAM-backed LVGL
+  works at 410 × 502. It does not. `bsp_display_start()` sets
+  `.buff_spiram = true` and it is **dead code** —
+  `bsp_display_start_with_config()` reads only `cfg->lvgl_port_cfg`, and the live
+  allocation in `bsp_display_lcd_init()` is `410 × 100 px` ≈ 80 KiB with
+  `.buff_dma = false` and `.buff_spiram` guarded by `CONFIG_BSP_DISPLAY_LVGL_PSRAM`,
+  a symbol that appears **zero times** in the BSP's Kconfig. So the vendor ships
+  one partial buffer in internal SRAM. If anything that points away from PSRAM.
+- **The hardware constraint to carry in:** on the ESP32-S3
+  `SOC_PSRAM_DMA_CAPABLE` is 0, so a draw buffer in PSRAM can never also be
+  DMA-capable.
+- **The arithmetic, which reproduces independently:** 410 × 502 = 205,820 px; one
+  RGB565 frame is 411,640 B = **402.0 KiB**, 78.5 % of the 512 KB internal SRAM
+  before ESP-IDF, the QSPI driver and BLE exist. Double-buffered internally is
+  arithmetically impossible; double-buffered in 8 MB of PSRAM is 9.8 % of it.
+  Capacity is not the constraint — internal SRAM, PSRAM bandwidth and cache
+  coherency are, and only the board can measure the last two.
