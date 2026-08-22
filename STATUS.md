@@ -196,7 +196,8 @@ because a fact that lives only in a chat log does not exist.
   default. What remains blocked is the **Waveshare** side — the board's IMU
   variant is unknown, the QMI8658**C** documents a pedometer and the QMI8658A's
   **current** datasheet revision has deleted one — and one board question that
-  is nobody's datasheet: whether the AXP2101 keeps the IMU's rail up across an
+  is nobody's datasheet, and which is **already filed as [H8](docs/research/OPEN_QUESTIONS.md)**
+  rather than new: whether the AXP2101 keeps the IMU's rail up across an
   SoC sleep. If it does not, the 6 kB blob is gone and the 150 ms is owed again
   on every wake.
 - **T-010 board bring-up** — no physical board; exact variant unknown.

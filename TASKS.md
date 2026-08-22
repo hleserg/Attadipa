@@ -513,7 +513,8 @@ stale silently. The protocol is
   produced by somebody else's filter, and ADR-0011's language about a position
   applies to it unchanged.
 - **Power:** QMI8658C 30/35/42/55 µA at 3/11/21/128 Hz low-power; BMA423 13 µA
-  at 50 Hz. The Waveshare board pays about three times as much for the same duty,
+  at 50 Hz. The Waveshare board pays **at least** three times as much — the two
+  figures are at different ODRs and matching them widens the gap, PEDOMETER_PARTS §2.4 —
   before its variant question is settled. Vendor typicals, **not** measurements.
 - **No hardware involved.** `NOT EXECUTED — HARDWARE REQUIRED`.
 
@@ -598,7 +599,22 @@ stale silently. The protocol is
   through the same path the device uses — the replay rig's shape, a second
   reader; both board profiles produce a defensible availability; the daily total
   survives a simulated crash at an arbitrary point.
-- **Research status:** blocked on T-060
+- **Research status:** T-060 and T-060a are **done**; the research that remains
+  is two hardware questions, not one task.
+  - **Which IMU the Waveshare carries.** `QMI8658C` has a pedometer;
+    `QMI8658A` Rev D had it deleted. The board is recorded as
+    "QMI8658 / QMI8658C" and the schematic prints no revision, so a mandatory
+    pedometer (OD-6) may have no hardware on one of the two boards. Same shape
+    as [ADR-0003](docs/adr/0003-radio-not-lora.md)'s radio question, in a
+    second subsystem — [PEDOMETER_PARTS.md](docs/research/PEDOMETER_PARTS.md)
+    §2.1. Settled by reading `WHO_AM_I` and the revision register on a board.
+  - **Whether the PMU keeps the IMU rail up across an SoC sleep.** This is
+    **[H8](docs/research/OPEN_QUESTIONS.md)**, already filed and already
+    holding the schematic-level detail: the vendor document says ALDO1 is
+    unused, the schematic shows it driving `+3V3`, and `+3V3` is what feeds the
+    BMA423. It was raised again in this task's research without the
+    cross-reference, which would have sent two people at the same question from
+    two directions. Whoever resolves H8 unblocks this.
 - **Implementation status:** not started
 - **Tests:** host, plus a HIL plan for the wake rate and the current, which is
   the only way the power claim becomes a measurement.

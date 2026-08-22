@@ -455,12 +455,37 @@ And the idle states, from the operating-modes table: power-on default **15 µA**
 low power (250 kHz clock) **8 µA**, power-down **6 µA** — power-down preserving
 all configuration and output registers.
 
-**The comparison that matters:** the BMA423 draws 13 µA at 50 Hz in low-power
-mode; the QMI8658 draws 42 µA at 21 Hz. The Waveshare board pays roughly three
-times as much for the same duty, before anything is known about whether its part
-has the feature at all. A 6-axis IMU is not a cheaper accelerometer.
+**The comparison, and the mismatch in it.** The BMA423 draws 13 µA at 50 Hz in
+low-power mode; the QMI8658 draws 42 µA at 21 Hz. Those are **not the same duty**,
+and the table above is the reason the honest figure cannot simply be quoted: 50 Hz
+is a documented mandatory floor for the BMA423's step counter (§1.6), while
+nothing in the QMI8658 datasheet establishes a floor for its pedometer — and
+QST's own worked example in §2.2 runs that pedometer at **50 Hz**, not 21 Hz.
+
+So the like-for-like figure is not published. Interpolating between the 21 Hz
+(42 µA) and 128 Hz (55 µA) rows puts a 50 Hz QMI8658 somewhere around 45–47 µA —
+`ESTIMATED` by linear interpolation between two datasheet rows, which is not a
+method the datasheet endorses, and stated here only to show which way the error
+runs. It runs **against** the QMI8658: matching the ODRs makes the gap wider, not
+narrower.
+
+The claim that survives is therefore the weaker one and the safe one: **the
+Waveshare board pays at least three times the current of the T-Watch for step
+counting**, before anything is known about whether its part has the feature at
+all. A 6-axis IMU is not a cheaper accelerometer.
+
+An earlier version of this paragraph presented 13 µA against 42 µA as "the same
+duty". It was not, and the independent review on #43 caught it. Nothing about the
+conclusion changes; what changes is that the number is no longer offered as a
+measured comparison when one of its two halves is at the wrong ODR.
 
 ### 2.5 If the part turns out to have no pedometer
+
+*Both of the hardware questions this section rests on are now tracked rather
+than living in this prose: the QMI8658 variant is **H14** and the IMU axis
+orientation is **H15** in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). A fact that
+lives only in a narrative paragraph is one T-061 can lose, which is the same
+argument as "a fact that lives only in a chat log does not exist".*
 
 Then OD-6 is met in firmware from raw accelerometer samples, and the numbers
 above become the budget for it. The datasheet gives what that costs:
