@@ -376,6 +376,19 @@ recommendation. "What should I do?" is not a question, it is an absence of one.
   failure from before your fix. Only a labelling by a person counts: the
   hand-over's own `agent:ready` is added by `github-actions[bot]`, and if that
   reset the count the bound would not exist.
+- **Restarting an escalated task takes two labels, not one.** An issue the
+  bound escalated carries `agent:blocked` + `needs-owner`, and **adding
+  `agent:ready` beside them does nothing**: `.github/scripts/queue-scan.jq`
+  drops anything carrying `agent:blocked` before it reads the ready/failed
+  pairing at all, and `.github/scripts/intake-decision.sh` rejects the
+  `labeled` event as already claimed. The issue would sit with three labels
+  and no way through — the exact shape #82 was opened about, which is why this
+  paragraph exists rather than being left as something to find out. So either
+  **remove `agent:blocked` and add `agent:ready`**, or **comment `@claude`**,
+  which needs no label surgery because a comment event skips the claimed-state
+  check by design. `.github/tests/watchdog-filter-test.sh` asserts both halves
+  of this — that the three-label state is refused, and that the escalation
+  comment says so.
 - **CI failures**: repaired automatically at most twice per problem chain, from
   the actual failing log. After that the pull request gets `ci:failed` and
   `agent:blocked` and a human is asked. `/ci-repair reset` clears the counter.

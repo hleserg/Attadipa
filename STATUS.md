@@ -886,7 +886,7 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   through the one door that no longer asks. The repository's own output starting
   its own writer: the exact loop the allowlist was built to prevent. The
   non-listable rule is now enforced in both places, the scan filter moved to
-  `.github/scripts/queue-scan.jq` so it can be executed, and 17 tests cover it in
+  `.github/scripts/queue-scan.jq` so it can be executed, and 37 tests cover it in
   CI. There was no test before, which is why review caught it and CI did not.
 - **The silent refusal was reproduced, not theorised.** A task with a valid
   marker filed through the GitHub API ([#10](https://github.com/hleserg/Attadipa/issues/10))

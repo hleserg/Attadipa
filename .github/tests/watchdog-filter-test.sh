@@ -209,6 +209,81 @@ else
      "queue-scan.jq never reads needs-owner, and an issue carrying the task marker is re-selected regardless of agent:ready -- without agent:blocked it is re-picked and re-bounced every hour"
 fi
 
+# THE ESCALATED STATE, AND THE WAY BACK OUT OF IT.
+#
+# Found in review on this pull request, and it is #82's own defect wearing a
+# new coat: the escalation adds agent:blocked and the comment told the reader
+# to "add agent:ready yourself" to restart. Nothing anywhere removes
+# agent:blocked, and BOTH dispatch paths refuse it -- this filter drops it
+# before it ever reads the ready/failed pairing, and intake-decision.sh
+# rejects the `labeled` event as already claimed. A person doing exactly what
+# they were told ends up with three labels and no way through.
+#
+# Each file is correct alone. Only the combination is wrong, and only a test
+# that reads across them can say so -- the same reason bot-actor-test.sh
+# exists next door.
+check "" "agent:ready beside agent:blocked is still refused -- the state a person is talked into" "" -- \
+  "$(issue 501 sergey OWNER 'agent:ready,agent:blocked,needs-owner,priority:P0' 'x')"
+
+check "" "and agent:blocked outranks the task marker too, so the body cannot smuggle it back in" "" -- \
+  "$(issue 502 sergey OWNER 'agent:blocked,needs-owner' "$MARKER")"
+
+# The other half of that pair, asserted where it lives. If this select ever
+# moves or is reordered after the pairing logic, the assertion above stops
+# meaning what it says.
+if grep -qE 'index\("agent:blocked"\)\) == null' "$filter"; then
+  ok "and the refusal is this filter's own select, not an accident of ordering"
+else
+  no "and the refusal is this filter's own select, not an accident of ordering" \
+     "queue-scan.jq no longer excludes agent:blocked; re-derive what the escalation actually does before trusting the two checks above"
+fi
+
+if grep -qE 'agent:blocked' "$here/../scripts/intake-decision.sh"; then
+  ok "and the intake gate refuses it on the labeled event as well"
+else
+  no "and the intake gate refuses it on the labeled event as well" \
+     "intake-decision.sh no longer holds agent:blocked, so a person adding agent:ready WOULD start a run -- which makes the escalation comment wrong in the other direction"
+fi
+
+# A comment that tells a person to do one thing when it takes two is exactly
+# what #82 was opened about. The words are the deliverable here, so the words
+# are what is asserted.
+# Backslashes and backticks stripped first: the comment body lives inside a
+# double-quoted shell string inside YAML, so `agent:blocked` reaches this file
+# as \`agent:blocked\` and a pattern written against the rendered text would
+# match nothing while looking correct.
+# shellcheck disable=SC2016  # the \$CANDIDATE is sed's literal, not a shell expansion
+ESCALATION="$(sed -n '/gh issue comment "\$CANDIDATE"/,/|| true/p' "$WATCHDOG" | tr -d '\\`')"
+if printf '%s' "$ESCALATION" | grep -q 'remove agent:blocked'; then
+  ok "and the escalation comment says to remove agent:blocked, not just to add agent:ready"
+else
+  no "and the escalation comment says to remove agent:blocked, not just to add agent:ready" \
+     "the comment tells a person to restart a task in a way that cannot work; that is the promise-the-labels-forbid shape #82 exists to remove"
+fi
+
+if printf '%s' "$ESCALATION" | grep -q 'comment @claude'; then
+  ok "and offers the @claude route, which needs no label surgery at all"
+else
+  no "and offers the @claude route, which needs no label surgery at all" \
+     "the only restart offered now depends on getting two labels right; the comment path works as it stands and should be the one led with"
+fi
+
+# And the paragraphs have to survive the shell. A `\n` inside a double-quoted
+# shell string is a literal backslash-n, not a newline: the first draft of the
+# comment above had three of them and would have posted the right words joined
+# into one wall with `\n` printed between them. Caught here before it shipped,
+# and the class of mistake is cheap to keep caught. RAW, not the stripped
+# ESCALATION above -- `tr -d '\\'` turns `\n` into a harmless `n`.
+# The printf FORMAT line is where a `\n` is supposed to be, so it is dropped
+# before the search; anything left is prose.
+ESCALATION_RAW="$(sed -n '/gh issue comment/,/|| true/p' "$WATCHDOG" | grep -v "printf '%s")"
+if printf '%s' "$ESCALATION_RAW" | grep -q '\\n'; then
+  no "no comment body carries a literal backslash-n" \
+     "a \\n in a double-quoted shell string is two characters, not a line break; use printf '%s\\n\\n%s' with the paragraphs as arguments (a heredoc will not do -- its body must start at column 0, which ends the YAML block scalar)"
+else
+  ok "no comment body carries a literal backslash-n"
+fi
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

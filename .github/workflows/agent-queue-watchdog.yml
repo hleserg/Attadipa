@@ -185,8 +185,18 @@ jobs:
             if gh issue edit "$CANDIDATE" --repo "$REPO" \
                  --add-label agent:blocked --add-label needs-owner \
                  --remove-label agent:ready --remove-label agent:failed; then
-              gh issue comment "$CANDIDATE" --repo "$REPO" --body \
-                "This has failed \`$COUNT\` times since a person last put it in the queue, so the automatic retry stops here rather than buying the same answer every hour -- the bound #82 asked for. Read the reason on the failure comment above, fix or close what is causing it, then **add \`agent:ready\` yourself**: a human labelling is what resets the retry budget. A \`@claude\` comment also starts a run, but it does not reset the count, so the next failure escalates straight back here." || true
+              # printf, not a plain "..." --body. The body has paragraphs in
+              # it, and a \n inside a double-quoted shell string is a literal
+              # backslash-n: the reader would have got the right words joined
+              # into one wall with \n printed between them. A heredoc would
+              # also work in shell and not here -- its body has to start at
+              # column 0, which ends the YAML block scalar this script lives
+              # in. printf keeps the newlines real and the indentation legal.
+              gh issue comment "$CANDIDATE" --repo "$REPO" --body "$(printf '%s\n\n%s\n\n%s\n\n%s' \
+                "This has failed \`$COUNT\` times since a person last put it in the queue, so the automatic retry stops here rather than buying the same answer every hour -- the bound #82 asked for. Read the reason on the failure comment above, and fix or close what is causing it." \
+                "**To start it again, comment \`@claude\`.** That works as it stands and needs no label surgery: a comment event skips the claimed-state check by design." \
+                "**If you would rather use labels, it takes two of them: remove \`agent:blocked\` AND add \`agent:ready\`.** Adding \`agent:ready\` on its own does nothing. \`.github/scripts/queue-scan.jq\` drops anything carrying \`agent:blocked\` before it ever reads the ready/failed pairing, and \`.github/scripts/intake-decision.sh\` rejects the labelling as already claimed -- so the issue would sit with three labels and no way through, which is the exact shape #82 was opened about." \
+                "The label route is also the one that resets the retry budget. A \`@claude\` comment starts a run without resetting the count, so if it fails again it escalates straight back here.")" || true
             else
               echo "::warning::Could not relabel #$CANDIDATE; leaving it as it was rather than commenting on a change that did not happen."
             fi
