@@ -37,7 +37,8 @@ This document does the first. The second is a separate task.
 |---|---|
 | M1 | **AKM `AK09911` Short Datasheet**, `ShortDatasheet-E-00`, 2014/1, md5 `1d7e1960c86b2a1fb38ecc862196c4a7`. It is the right document for the ordered part — `AK09911C` is the only variant named, in the package line and again in the recommended-connection schematic. It is a *short* datasheet: it runs to §9 but contains **no register address map** (see §2.4) |
 | M2 | **QST `QMC5883L` Datasheet Rev. B**, document `13-52-04`, `QST-PD-B002-22`, fetched from `qstcorp.com`, md5 `d13221b15c034c3f9b24befa48c8f4ab`. Rev B, not the Rev 1.0 that most of the internet mirrors |
-| M3 | **QST `QMI8658C` Rev 0.6**, md5 `3d2bd7b24172e5d3448f2c9ecf2ef752` — the IMU already on the board, consulted for §5 |
+| M3 | **QST `QMI8658C` Rev 0.6**, md5 `3d2bd7b24172e5d3448f2c9ecf2ef752` — the IMU already on the board, consulted for §5. Marked `ADVANCE INFORMATION — CONFIDENTIAL AND PROPRIETARY` on every page; it is a pre-release document |
+| M5 | **QST `QMI8658A` Datasheet Rev A**, doc `13-52-25`, md5 `5a0fef65a358430d6499944a75d22e19`. Admissible here as evidence about **M3's own document lineage** and nothing else: its revision-history rows 0.4, 0.5 and 0.6 are *verbatim identical* to M3's, so it is the same document renamed at 0.7. Used only for what the vendor did to the documentation — **never** for an electrical characteristic, per §5.3 |
 | M4 | Owner's photographs of both AliExpress listings, 2026-08-22 — silkscreen, pin labels and the die marking only. A photograph of a module is evidence about *labels*, not about *nets* |
 
 ## 2. AK09911C — the purple CJMCU-9911
@@ -288,11 +289,16 @@ here.
 
 ### 4.1 Power, which is the one that matters
 
-| At the same output rate | AK09911C | QMC5883L | Ratio |
+| At the same output rate | AK09911C | QMC5883L, default `OSR` / low-power `OSR` | Ratio |
 |---|---|---|---|
 | Idle / standby | 3 µA | 3 µA | — |
-| Continuous 10 Hz | *not specified separately* | **75 µA** | — |
-| Continuous 100 Hz | **2.4 mA** average | **250 µA** (low `OSR`) | **≈ 10× worse** |
+| Continuous 10 Hz | **≈ 220 µA** `ESTIMATED`, see below | 100 / 75 µA | ≈ 2–3× |
+| Continuous 100 Hz | **2.4 mA** average | 450 / 250 µA | ≈ 5× at the default, ≈ 10× at `OSR=11` |
+
+*(This table was itself wrong in the first draft, and the prose below it was
+corrected without it. Both cells now agree with the paragraphs that follow.
+A reader who reads a table and stops should not come away with the errors the
+prose exists to kill.)*
 
 **The QMC5883L is cheaper to run, and by how much depends on settings that must
 be named.** An earlier draft of this section made two errors in the owner's
@@ -410,11 +416,29 @@ numbers, wrong parts.
 
 Two honest qualifications on that sentence:
 
-- **"Currently" is the datasheet's word, and it matters.** M3's own revision
-  history shows the list was edited at Rev 0.5 ("Magnetometer Sensors
-  supported"), so it is a snapshot of a firmware-and-revision state, not a
-  property of the silicon. `mDEV` is four bits and could encode sixteen values;
-  M3 enumerates three. Whether a later revision adds more is `UNKNOWN`.
+- **`mDEV` is four bits and M3 publishes no encoding for any of them.** The
+  string `mDEV` occurs **once** in the whole document — the `CTRL4[6:3]` field
+  definition with reset value `4'b0` — and the three part names occur once, in
+  §11.1. Nothing maps a part to a code. **So Mag Mode cannot be driven from M3
+  whichever magnetometer is fitted**, including the three it names. Table 18, the
+  9DOF current figures, is `tbd` in every cell, which is what a feature looks
+  like when it is announced and not finished.
+- **"Currently" is the datasheet's word, and the answer to what happened next is
+  not `UNKNOWN` — it is the opposite of what one would hope.** M5 is the same
+  document renamed, and its revision history continues past where M3 stops:
+
+  > Rev **0.8**, 10 Sep 2021 — *"…**deleted descriptions of magnetometer**, …
+  > deleted the specifications, registers, and application diagrams that relative
+  > to **I2CM interface**…"*
+  >
+  > Rev **0.95**, 6 May 2022 — *"…**remove CTRL4 & CTRL6**…"*
+
+  The list did not grow. **The vendor withdrew the feature from the
+  documentation**, register and all. Stated carefully, because §5.3 forbids
+  carrying part characteristics across part numbers: this is evidence about
+  **what QST documented**, not a claim that the C silicon lacks the block. The
+  block may well be there. There is no published way to reach it and there is
+  not going to be one.
 - **M3 is marked `ADVANCE INFORMATION — CONFIDENTIAL AND PROPRIETARY`** and is
   Rev 0.6. It is the version Waveshare's own wiki links, which is why this
   repository uses it, but it is a pre-release document and the `CONFLICTING`
@@ -459,25 +483,33 @@ carry a pin characteristic across part numbers on this project.)*
 
 ### 5.4 What this changes for the owner
 
-The practical recommendation is unchanged: **put the magnetometer on the host
-I2C bus, and let the host read it and do the fusion.** Neither ordered part can
-use Mag Mode, so for the two modules in the post nothing is lost.
+**Put the magnetometer on the host I2C bus, and let the host read it and do the
+fusion.** That has been the recommendation throughout and it is now the only one
+this document supports.
 
-What changed is the advice about *future* parts, and this is the part worth
-acting on:
+This section has been wrong twice in opposite directions and the history is kept
+because the second error was the more dangerous one:
 
-- The earlier draft said the option "was never open" and that the owner
-  therefore could not have ordered better. **That is no longer supported.** If
-  `SDx`/`SCx` are free on this board, then an **AK09918CZ** or a **QMC6308** —
-  both on M3's supported list, both cheap, both in the same class as what was
-  ordered — would unlock hardware sample alignment that neither the AK09911C nor
-  the QMC5883L can offer.
-- That is not a reason to regret the order. Both ordered parts work on the host
-  bus, host-side fusion is what most of the world does, and the alignment
-  benefit is real but not decisive. It **is** a reason to read the schematic
-  before the next order, and to consider adding one supported part to a basket
-  that is already shipping — which costs a rounding error and answers a question
-  measurement otherwise cannot.
+1. **First draft:** "the door was never open, you could not have ordered better"
+   — resting partly on a pin argument that does not hold (§5.3).
+2. **Second draft:** having withdrawn that, it concluded the door *might* be
+   open, and advised **considering an AK09918CZ or a QMC6308 in the next order**
+   if the schematic showed `SDx`/`SCx` free. That advice was given to the owner
+   in [#83](https://github.com/hleserg/Attadipa/issues/83) and it is **withdrawn
+   here**. It would have had them spend money on a capability that no datasheet
+   describes how to use.
+3. **What holds:** no `mDEV` encoding is published for *any* part, and the vendor
+   deleted the magnetometer and I2CM documentation outright at Rev 0.8 (§5.1).
+   Buying a listed part would not open Mag Mode, because there is no documented
+   way to select it. **Do not order a magnetometer on account of the IMU.**
+
+The `SDx`/`SCx` schematic question stays `UNKNOWN` and is now merely
+interesting rather than decisive: even with those pins free and a listed part
+fitted, there is nothing to write to `CTRL4`.
+
+The conclusion the owner should take away is the plain one: **the two parts in
+the post are the right two parts to have**, they go on the host bus, and nothing
+about the IMU argues for a third.
 
 ## 6. Placement, which is the part that gets skipped
 
@@ -540,7 +572,8 @@ None of this is measurable from a datasheet. What *can* be said now:
   above the registry may learn which. Both-at-once is not a silly case: the node
   is not on the wrist and node orientation is not watch orientation.
 - The power budget gains a consumer whose cost depends on a part not yet chosen,
-  ranging over an order of magnitude (§4.1).
+  ranging from ≈ 75 µA to 2.4 mA depending on the part, the output rate and the
+  `OSR` setting (§4.1).
 - `HARDWARE_MATRIX`'s "no magnetometer" rows stay true **for the board as
   shipped** and need a retrofit column, not a correction. A stock board still has
   no magnetometer, and the firmware must run on one.
@@ -573,9 +606,11 @@ the QST part and §2.5 gives the AKM part's dimensions: 1.2 × 1.2 mm, eight bal
 wafer-level CSP. If neither module fits under the cover as a module, that is a
 finding to report, not a soldering challenge to accept.
 
-**Consider adding one supported part to the next order** — an AK09918CZ or a
-QMC6308 — if and only if the schematic shows `SDx`/`SCx` free on the IMU (§5.4).
-That is a cheap option on a capability neither ordered part has.
+**Do not order a third part on account of the IMU.** An earlier revision of this
+section suggested an AK09918CZ or a QMC6308 to unlock the IMU's Mag Mode. That
+suggestion is **withdrawn** — §5.1 and §5.4. No datasheet publishes how to select
+any magnetometer, and the vendor removed the feature's documentation entirely.
+The two parts already ordered are the right two to have.
 
 **What would overturn all of this: a measurement.** The field at the candidate
 mounting position with the motor driven. It needs both parts and a board, it
