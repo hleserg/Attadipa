@@ -371,8 +371,52 @@ came off the unit the same day —
   speaker or a haptic actuator (**T-105**, and T-097 sits on top of it), and the
   battery connector's pitch, which a photograph cannot establish.
 
-**A bigger battery is under consideration, and the fitted one is probably not
-400 mAh.** The cell turns out to be on a removable 2-pin plug rather than
+**A magnetometer is coming, and it makes several things here wrong at once.** The
+owner has ordered one and intends to solder it onto the received Waveshare. Until
+now *"neither board has a magnetometer"* has been a premise in this repository —
+it is in [ADR-0009](docs/adr/0009-heading.md), in T-011's blocker, in the hardware
+matrix and in the interference matrix — and a retrofit invalidates all of them
+together rather than one at a time. Research is under way, tracked as **#83**. Three things about it matter before the part arrives, because two cannot
+be fixed afterwards:
+
+- **The bus is ready; the free address is not.** `IO15`/`IO14` are the main I2C
+  bus and both are on the expansion pad row beside `3V3` and `GND`. Six devices
+  are fitted — `0x18`, `0x34`, `0x38`, `0x40`, `0x51`, `0x6B` — but whether
+  `0x6A` is free depends on which QMI8658 address mapping this unit's IMU
+  follows, and [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) marks that
+  `CONFLICTING`, not settled. `0x6A` is `UNKNOWN`, not free, until the bus scan
+  [WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §3
+  already lists as outstanding is actually run — that scan is a precondition of
+  the wiring plan, not a footnote to it, and belongs beside T-106's M1/M2/M3
+  rather than as a task of its own.
+- **Placement is the hard part, not the part number.** There is a speaker with a
+  permanent magnet in the back cover, bare motor pads, and a battery lead that
+  will carry 150–200 mA of charge current. Earth's field is 25–65 µT and all
+  three of those can dwarf it. A magnetometer soldered in the wrong place reads
+  the watch rather than the world.
+- **It is a third kind of capability source, and the model has two.** Not a
+  property of the board type, because other units lack it; not supplied by a
+  detachable node, because it does not walk away. That is an ADR question and it
+  is being asked as one rather than settled in a research note.
+
+**Note for whoever writes `docs/research/MAGNETOMETER_RETROFIT.md`:** this
+paragraph shipped with two facts stated more confidently here than the
+documents they came from actually support — `0x6A` as free when
+[HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) marks it `CONFLICTING`,
+and T-106 left `## READY`/P1 while this section and
+[BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) call the battery
+`PAUSED`. Same mistake both times: a fact is `UNKNOWN` or `PAUSED` in the
+document that owns it and confident in the one that repeats it. Check for
+that specifically before that document ships, not just in the four places an
+independent review happened to catch it here.
+
+**A bigger battery is under consideration and is now PAUSED behind it** — calipers
+are on order, and whatever the sensor occupies comes out of the same cavity, so
+the cell is chosen after it and not before. The owner did establish by hand that
+**there is room under the cover and the fitted cell butts against nothing in any
+axis**: `OBSERVED`, not `MEASURED`. It moves the odds without sizing anything —
+"not touching" and "has 1.1 mm of clearance" are different statements. **And the
+fitted one is probably not 400 mAh.** The cell turns out to be on a removable 2-pin plug rather than
 soldered, which makes it a real option — and researching what to order produced
 a headline nobody expected. `402728` is 3.024 cm³, so the sticker's 400 mAh at
 3.7 V implies **132.3 mAh/cm³**, against an observed **87–102** band across 51
