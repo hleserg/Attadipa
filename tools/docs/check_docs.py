@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Four checks on the documentation, each of a failure that already happened here.
+"""Five checks on the documentation, each of a failure that already happened here.
 
 1. Relative links resolve. This repository's documents cite each other
    constantly, and a link that 404s reads exactly like one that works until
@@ -28,6 +28,14 @@
    first time it ran -- drift that predates the splice by weeks and that no
    syntactic check would ever see.
 
+5. Nothing unexpected is tracked at the repository root. `git add -A` run from
+   the root has twice swept in a file that was only ever meant to be read: an
+   archive waiting to be unpacked, and later a vendor documentation page saved
+   while researching a part. Both are somebody else's copyrighted material and
+   the second one reached `main` before anyone noticed. .gitignore now covers
+   the two shapes that have occurred; the allow-list here covers the shape that
+   has not occurred yet, because the failure is the sweep and not the extension.
+
 Run: python3 tools/docs/check_docs.py [root]
 Exits non-zero on the first category that has findings, after printing all of
 them. Invoke through `python3`, never as `./check_docs.py` -- the working copies
@@ -39,6 +47,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 
 # ](target) and ](target#anchor). Excludes targets containing whitespace, which
@@ -282,6 +291,56 @@ def check_task_bodies(root: str) -> list[str]:
     return problems
 
 
+# Everything git tracks at the repository root, and nothing else belongs there.
+# Kept as a literal list rather than a pattern because the point is that adding
+# a root-level file should be a deliberate act that edits this line.
+ROOT_ALLOWED = {
+    ".gitignore",
+    "ATTADIPA_RENAME_PLAN.md",
+    "CLAUDE.md",
+    "CMakeLists.txt",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "README.ru.md",
+    "STATUS.md",
+    "TASKS.md",
+}
+
+
+def check_root_files(root: str) -> list[str]:
+    """Tracked files at the repository root that are not on the allow-list.
+
+    This exists because `git add -A` run from the root has twice swept in
+    something that was only ever meant to be read: an archive waiting to be
+    unpacked, and later a vendor documentation page saved while researching a
+    part. Both are somebody else's copyrighted material and the second one
+    reached `main`. .gitignore now covers the two shapes seen so far; this
+    check covers the shape not yet seen.
+    """
+    listing = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listing.returncode != 0:
+        # Not a git checkout — a source tarball, say. Nothing to check.
+        return []
+    problems = []
+    for tracked in listing.stdout.split("\0"):
+        if not tracked or "/" in tracked:
+            continue
+        if tracked not in ROOT_ALLOWED:
+            problems.append(
+                f"{tracked}: tracked at the repository root and not on the "
+                f"allow-list in tools/docs/check_docs.py. If it belongs here, "
+                f"add it there in the same commit; if it is a stray, git rm it."
+            )
+    return sorted(problems)
+
+
 def main() -> int:
     root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
     failed = False
@@ -290,6 +349,7 @@ def main() -> int:
         ("Unclosed inline code spans", check_code_spans(root)),
         ("Duplicate task IDs", check_task_ids(root)),
         ("Tasks with no body, or finished work outside DONE", check_task_bodies(root)),
+        ("Unexpected files tracked at the repository root", check_root_files(root)),
     ):
         if problems:
             failed = True
