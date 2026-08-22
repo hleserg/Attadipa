@@ -760,8 +760,14 @@ facts that change what may be written are here.
   minimum revision exceeds 0 will be **refused by the bootloader on this unit**.
   Nothing sets it higher today; this is recorded so nobody raises it blind. The
   burned calibration fuses mean ESP-IDF's ADC calibration works rather than
-  falling back to a nominal curve. Which errata apply to v0.2 is `UNKNOWN` — the
-  ESP32-S3 Errata sheet has not been read against this revision.
+  falling back to a nominal curve. **Which errata apply to v0.2 is no longer
+  `UNKNOWN`**: the ESP32-S3 Errata sheet was read on 2026-08-22 —
+  **v1.3, released 2025-03-31, md5 `64ffc580e78b5ab3c6c5d990e0500e38`** — and
+  **all eight apply to v0.2**, seven of them with `No fix scheduled`. There is no
+  revision beyond v0.2 in existence, so being on v0.2 is not being behind
+  anything ([ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md)). The cost of the
+  CACHE-126 workaround is the part that stays `UNKNOWN`, and it is `NOT
+  MEASURED`.
 
 ### Nothing has been burned — every recovery path is open
 

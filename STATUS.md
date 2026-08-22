@@ -318,7 +318,13 @@ which is the first evidence here that came from neither a document nor a camera:
 - **The flash is confirmed external and quad**: JEDEC `0xC8 0x4019`, and
   `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` unprogrammed in BLOCK1.
 - **The chip is revision v0.2.** A build must keep `CONFIG_ESP32S3_REV_MIN` at 0
-  or the bootloader refuses it. Which errata apply to v0.2 is **D18**, unread.
+  or the bootloader refuses it. **D18 is resolved and the answer is "all of
+  them"** — all eight errata in sheet v1.3 list `v0.0 v0.1 v0.2` as affected,
+  seven say `No fix scheduled`, and there is no later revision to want
+  ([ESP32S3_ERRATA_V02](docs/research/ESP32S3_ERRATA_V02.md)). CACHE-126 is the
+  one with teeth: it is on the octal-PSRAM path, its ESP-IDF workaround masks
+  every interrupt at `XCHAL_NMILEVEL` and freezes the data cache, and it is not
+  switchable. What that costs is `UNKNOWN` and `NOT MEASURED`.
 - **Nothing has been burned.** Every fuse is at its factory default, so every
   recovery path is open. That baseline is recorded so a later reading that
   differs means something happened.
