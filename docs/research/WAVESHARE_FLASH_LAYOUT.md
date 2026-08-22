@@ -206,13 +206,39 @@ all sixteen chunks match and both images hash to
 `028841362db08c64fbdf3928a273a3921407abe228506ce0be27ce419ce98d2f`.
 
 That does **not** match the `2AB0FADC…` recorded for the owner's first pass, and
-the discrepancy is **unresolved**. Do not assume either dump is corrupt: the
-device writes its own flash, and between the two reads it was unplugged,
-carried, and booted an unknown number of times. Whether that is enough to explain
-it is being tested; until it is, neither image is the "true" one and **the
-whole-image hash is not usable as an identity for this device**. Compare the
-immutable partitions, per chunk, and expect `nvs`, `otadata` and `phy_init` to
-be free to differ.
+the discrepancy is **unresolved**.
+
+The obvious explanation was tested and **did not hold**. The hypothesis was that
+the device writes its own flash — `nvs`, `phy_init` — and that between the two
+dumps it had been unplugged, carried and booted an unknown number of times. So:
+read `0x9000`–`0x12000` (`nvs`, `otadata`, `phy_init`), let the device hard-reset
+and run for 90 seconds, read again, and again. **Three reads across two boot
+cycles are byte-identical**, all hashing to
+`803798ee52013c09e9dd55a72226d0195ec6a3582f85af3b43315f9247b3e26e`.
+
+> **One caveat on that experiment, stated because it is the weak point.** The
+> reads used `--after hard-reset`, so the device *should* have booted and run the
+> factory app between them. Nothing here confirms that it did — no screen was
+> observed, no serial output captured. If the device never left the bootloader,
+> the test proves only that flash is stable in download mode, which was never in
+> doubt. **`UNKNOWN` until somebody watches the screen.**
+
+So the mismatch is not explained. What is left is either a genuine difference in
+flash content at the two times that these three partitions do not capture, or a
+defect in the first dump — and the first dump was assembled by concatenating
+chunks some of which had aborted, which is the trap
+[WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §2.4 already warns about.
+**Neither image is declared the true one here.**
+
+Two things follow regardless of how it resolves:
+
+- **A whole-image hash is not usable as an identity for this device.** It mixes
+  immutable partitions with ones the device is entitled to rewrite. Compare per
+  partition, or at least per chunk, and let `nvs`, `otadata` and `phy_init` be
+  free to differ.
+- **Per-chunk hashes are how to localise a disagreement**, and this pass's
+  sixteen are recorded in the working notes so the owner's file can be split the
+  same way and the differing chunk named rather than guessed at.
 
 ## 3. `model` — a wake-word model, and what it does not prove
 
