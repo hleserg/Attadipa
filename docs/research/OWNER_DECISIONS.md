@@ -1062,9 +1062,121 @@ the two that actually conflicted.
 
 ---
 
+## OD-16 — A1, A2 and A3: no watch yet, SX1262 confirmed by listing, and three MeshCore nodes instead of one
+
+**Decided:** 2026-08-22, on [issue #54](https://github.com/hleserg/Attadipa/issues/54).
+
+**As stated:**
+
+> *"@claude A1 пока нет ни тех ни других часов. A2 sx1262 mia-m10q A3 есть
+> компаньон ноды meshcore heltec t114 и heltec v4"*
+
+**In English:** A1 — no watch of either kind yet. A2 — SX1262, MIA-M10Q. A3 —
+there is a companion node, MeshCore Heltec T114 and Heltec V4.
+
+The owner then posted a longer analysis of their own answer on the same issue;
+this record follows that analysis rather than the three words alone, because
+it is the more precise of the two and the owner asked for it to be recorded
+"with the precision above."
+
+**A1 — which boards, which revision.**
+
+- **Waveshare ESP32-S3-Touch-AMOLED-2.06:** received — already recorded in
+  `docs/research/WAVESHARE_BOARD_RECEIVED.md`. The schematic-revision question
+  (silkscreen against `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`) is
+  **still open**; this answer does not close it. It belongs on the same
+  checklist as the T-106 measurements, since it is read with the case open.
+- **T-Watch S3 Plus:** **ordered, in transit — `ORDERED`, not `PRESENT`.**
+  Nothing that needs the watch in hand moves yet.
+
+**A2 — which radio, which GNSS.** **SX1262, 868 MHz; MIA-M10Q.** From the
+order: *"LILYGO® T-WATCH-S3 Plus умные часы, SX1262 (868MHz)"*. Checked
+against [ADR-0003](../adr/0003-radio-not-lora.md)'s table: SX1262 is one of
+the three genuinely-LoRa parts (CC1101 and Si4432 are FSK, not LoRa, and
+CC1101 is additionally compiled out of this project's MeshCore build via
+`-D RADIOLIB_EXCLUDE_CC1101=1`), and of the three LoRa parts it is the one
+MeshCore supports at the pinned revision `d929643` — `CustomSX1262Wrapper`,
+"the most common variant upstream." SX1280 has no wrapper at all; LR1121 is
+`NeedsWork`. 868 MHz sits inside the driver's permitted 150–960 MHz range.
+
+So `RadioChip::Unknown` becomes `RadioChip::Sx1262` and `MeshCoreSupport`
+becomes `Supported` **once the watch arrives and the marking on the part is
+read** — not before. An order listing is a claim by a seller, not a marking
+read off the part, and this project's own rule (and ADR-0003's own point,
+"an SX1262 board and an SX1280 board differ in the parts you cannot read over
+SPI") is that only the latter counts as verified. Still true regardless of
+that distinction: **there is no T-Watch variant in MeshCore** — 87 variants
+upstream, none of them this watch. A supported radio chip removes the hardest
+blocker; it does not make the T-Watch a build target.
+
+**A3 — is there a second radio device.** **Three MeshCore nodes, not one**,
+and the earlier "is there a USB node" framing is obsolete:
+
+| Node | Firmware | Role | Links |
+|---|---|---|---|
+| Heltec V4 (companion) | [`dt267/MeshCore-Low-Power-Firmware`](https://github.com/dt267/MeshCore-Low-Power-Firmware), latest | on Home Assistant now, **will be freed** for experiments | — |
+| Heltec T114 #1, no screen, no GPS | official MeshCore, latest — **to be flashed** | takes over the Home Assistant duty | BLE, USB |
+| Heltec T114 #2, screen + GPS | official MeshCore, latest — **to be flashed** | free for experiments | BLE, USB |
+
+`doctor` as a hostname names no node in this answer — the Home Assistant role
+is a node's job, and node #1 inherits it. Both T114s reach a host over BLE and
+over USB, which matters more than it looks: a second side drivable from a
+laptop is a test fixture, not just another radio in the room.
+
+**Two things this answer surfaces that the issue did not ask, raised as their
+own issues per the owner's instruction rather than resolved here:**
+
+1. **Three firmware revisions, not one** — filed as
+   [#90](https://github.com/hleserg/Attadipa/issues/90). The companion runs a
+   third-party low-power fork; the T114s will run official latest; this
+   repository pins MeshCore at `d929643` (2026-08-14), the commit every
+   ADR-0003 claim was verified against. "Official latest" is not that commit.
+   Before any mesh result is believed, the pairing under test has to be named —
+   fork-to-official, official-to-official, or either against the pinned
+   revision — because a failure between two of them is a compatibility finding
+   (`Availability::Incompatible`) and a failure within one is a mesh finding,
+   and conflating them produces a false bug report either way.
+2. **Band has to match, and nobody has checked the T114s** — filed as
+   [#89](https://github.com/hleserg/Attadipa/issues/89). The watch is
+   868 MHz. If either T114 is a 915 or 433 MHz variant there is no mesh to
+   test at all — not a weak link, no link. Band is set by "which
+   band-specific matching network and antenna are fitted" (ADR-0003), which is
+   not readable over SPI; the order record or a label on the module settles
+   it. Whether the T114s carry an SX1262 at all is likewise unconfirmed here.
+
+**A hardware constraint recorded here so it is not rediscovered as a bug** —
+filed as [#91](https://github.com/hleserg/Attadipa/issues/91): neither T114
+gets a GPS fix indoors, at all, either unit — owner-observed, 2026-08-22. This
+is not a GNSS defect. Any position-dependent test run from indoors must either
+inject a fix, mock the source, or be marked `NOT EXECUTED — HARDWARE REQUIRED`
+with reason "requires outdoor conditions", not "requires hardware" — the board
+is present; the sky is the missing part. Filing it as a power-rail bug (a real
+failure mode on the T-Watch, per A1) would waste a day chasing the wrong
+cause.
+
+**What it obliges:**
+
+- [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) A1 stays open for the schematic
+  revision but is updated to remove "no boards at all" as a live possibility;
+  A2 and A3 move to RESOLVED, pointing here.
+- Three follow-up issues, filed separately rather than folded into this
+  record: the T114 band check
+  ([#89](https://github.com/hleserg/Attadipa/issues/89)), the
+  three-firmware-revision compatibility matrix
+  ([#90](https://github.com/hleserg/Attadipa/issues/90)), and the indoor-GNSS
+  constraint documentation
+  ([#91](https://github.com/hleserg/Attadipa/issues/91)).
+
+**What it does not do:** it does not make the T-Watch S3 Plus a build
+target — it is not in hand yet — and it does not resolve the Waveshare
+schematic-revision question, which needs the case open regardless of this
+answer.
+
+---
+
 ## Still with the owner
 
-Nothing here answers A1–A3, A5 or the compass question. Those remain in
+Nothing here answers A5 or the compass question. Those remain in
 [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
