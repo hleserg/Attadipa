@@ -242,6 +242,28 @@ own execution log instead of listing two possible causes: it named neither the
 turn limit nor a tool denial, so the first person to hit one went looking for a
 spent quota that was not spent.
 
+**And the lesson was not applied to the writer, which cost six runs the same
+afternoon.** The agent's ceiling stayed at 60 while the reviewer's went to 100,
+and on 2026-08-22 issues #71 (three times), #67, #75 and #78 all ended
+identically: accepted, an accurate plan comment about three minutes in, then
+dead with nothing on the branch. Read from run `32587675386`'s execution log —
+`"subtype": "error_max_turns"`, `"num_turns": 61`, `"total_cost_usd": 3.00`,
+after 8 min 49 s of real work. **An accurate report over an empty branch is the
+one outcome nobody can act on**, and every one of them was paid for in full.
+
+The agent is the job that does strictly more than the reviewer: it reads the
+same material and then implements, tests, pushes and reports. Its ceiling is now
+**200**, and that is not a round guess — the reading order the prompt mandates
+(CLAUDE.md, the specification, STATUS, TASKS, the ADRs, the reuse ledger, then
+the open issues and pull requests) spends twenty to thirty turns before a line
+is written, and the run above was still mid-implementation at sixty-one. Spend
+stays bounded by `timeout-minutes: 60`, which is denominated in the thing
+actually being billed.
+
+`claude-ci-repair.yml` is still at 40 and has **not** been examined against this;
+nothing has been observed hitting it, and raising a limit on a hunch is how the
+review got 40 in the first place.
+
 To stop all spending immediately:
 
 ```bash
