@@ -191,6 +191,13 @@ Verified against `anthropics/claude-code-action` at the `v1` tag (v1.0.198,
   pull request — that was the missing tool list above, and the two fixes are
   independent. `show_full_output` stays off; it is the one that leaks.
 
+  It stays off, and the price is paid elsewhere rather than waived: with it off,
+  a failure's cause is on the runner and nowhere else, so both agent workflows
+  now read the unpublished execution log through
+  [`failure-reason.sh`](../../.github/scripts/failure-reason.sh) and put one
+  whitelisted line on the issue. Turning `show_full_output` on to answer the
+  same question would publish every tool result to answer one of them.
+
 ### One live hazard
 
 `base-action/src/parse-sdk-options.ts`:
@@ -219,7 +226,7 @@ as much as the first.
 | **Empty queue costs nothing** — the watchdog's scan is shell and one API call; Claude is invoked only when there is a task | `agent-queue-watchdog.yml` |
 | **One writer** — a concurrency group on the agent job, so writers queue instead of colliding. On the job and not on the workflow: a workflow-level group also holds the intake gate, and GitHub cancels a *pending* run when a newer one joins the group, so a burst of events loses everything but the last before anything reads it. Three tasks were queued and none started this way on 2026-08-22 | `claude-agent.yml` |
 | **Deduplication** — an issue already claimed is not picked up again | intake gate |
-| **It always answers** — an 👀 reaction within seconds, a receipt saying what was understood, and an outcome comment on every exit path. Silence and a dead pipeline used to be the same experience | `acknowledge` job, `Hand over` step, `agent-say.sh` |
+| **It always answers, and says why** — an 👀 reaction within seconds, a receipt saying what was understood, and an outcome comment on every exit path. A failure carries the reason, extracted on the runner from a log that is not published | `acknowledge` job, `Hand over` step, `agent-say.sh`, `failure-reason.sh` |
 | **Turn limits** — 60 for implementation, 100 for review, 40 for repair | `claude_args: --max-turns` |
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
@@ -263,6 +270,85 @@ actually being billed.
 `claude-ci-repair.yml` is still at 40 and has **not** been examined against this;
 nothing has been observed hitting it, and raising a limit on a hunch is how the
 review got 40 in the first place.
+
+### Raising the ceiling exposed the failure underneath it
+
+The very next run of #67 on the raised ceiling died again, in ninety seconds
+instead of nine minutes, and said something new by saying nothing:
+
+```json
+{ "type": "result", "subtype": "success", "is_error": true,
+  "duration_ms": 84607, "num_turns": 20, "total_cost_usd": 0.689,
+  "permission_denials_count": 0 }
+```
+
+Run `32589375744`. `subtype: success` with `is_error: true` is a real session
+that ended badly under a name reserved for one that did not — and unlike
+`error_max_turns` it names no cause. `permission_denials_count: 0` rules out the
+tool-list failure this document describes above. Twenty turns and sixty-nine
+cents rule out never starting. The published run log contains the SDK options,
+an init line, and that object; there is nothing else in it, because
+`show_full_output` is off and that is correct.
+
+So the outcome comment on the issue said *"the cause is in there, and it is worth
+reading before retrying"* about a log that had been emptied of the cause on
+purpose. The advice was right and the address was wrong, and an afternoon went
+into guessing at what the address would have said.
+
+**[`failure-reason.sh`](../../.github/scripts/failure-reason.sh) is the fix.** The
+action writes its *full* execution log to `$RUNNER_TEMP` and that file is never
+published; the extractor reads it there and prints one line, chosen by a
+whitelist of error grammars — an API status line, a context refusal, a credit
+balance, an expired OAuth token, a service `overloaded_error`. Anything it does
+not recognise is reported as `unclassified` together with facts that are
+structural rather than textual: the SDK's own subtype, the turn count, and
+whether a final message existed at all.
+
+**The whitelist is the security model, not a convenience.** The same log holds
+every tool result — file contents, `gh` output, environment echoes — which is
+exactly why it is not published, and an extractor that printed "whatever was
+last" would have published it one line at a time.
+[`failure-reason-test.sh`](../../.github/tests/failure-reason-test.sh) therefore
+puts an API key, a token-shaped string and a private key into a log beside a real
+error and asserts that only the error comes out, including on the fallback path
+where nothing matched. An `unclassified` failure is a gap in that list, and the
+honest response is to widen the list rather than to widen the grammar until
+something matches — the failure comment says so, in those words, on the issue.
+
+### A green check is not a review, and until now they looked the same
+
+The reviewer's own reporting keyed off `steps.review.outcome == 'failure'`,
+which catches a review that ran and died. It did not catch the action deciding
+not to run at all, because the action reports that as **success**:
+
+```
+##[warning]Skipping action due to workflow validation: Workflow validation
+failed. The workflow file must exist and have identical content to the version
+on the repository's default branch.
+Exiting due to workflow validation skip
+```
+
+Observed on [#81](https://github.com/hleserg/Attadipa/pull/81) at `7a4d0f1`,
+run `32591032435`, 1.6 seconds. The rule is a good one — without it a pull
+request could edit this reviewer into rubber-stamping the same pull request, and
+#81 edits `claude-pr-review.yml` — but what a reader saw on the page was a green
+check, no comment and no label. That is indistinguishable from a review that ran
+and found nothing, and it is the reading somebody will take.
+
+The note listing the causes already described this one, in full, as cause 3. It
+had simply never fired for it.
+
+The detector is **structural, not textual**: the action writes its execution log
+only once the model has been invoked, so a step that reports success and left no
+log never reached the model. That covers the validation skip, a refused
+credential, and anything future that exits early, without the workflow having to
+recognise each by name.
+
+What #67 was doing when it died is still **UNKNOWN**, and this document will not
+guess at it: the next occurrence names itself. One measurement is worth
+recording as motive rather than conclusion, though — the reading order the prompt
+mandates is over 500 KB of Markdown before the agent opens a file of its own,
+with `TASKS.md` alone at 149 KB.
 
 To stop all spending immediately:
 

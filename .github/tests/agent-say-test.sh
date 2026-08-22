@@ -137,7 +137,36 @@ says "says what happens without the owner, and what starts it now" -- "$FAILED" 
 says "says the retry is bounded rather than promising an unconditional pick-up" -- "$FAILED" -- \
      "fails a second time" "needs-owner"
 says "warns against retrying a deterministic failure" -- "$FAILED" -- \
-     "same failure with a bill"
+     "same failure" "with a bill attached"
+# The old text sent the reader to the run log for the cause. That log is
+# emptied by `show_full_output: false` on purpose, so the advice was sound and
+# the address was wrong; sending somebody to a redacted log to find out why a
+# run died is how #67 cost an afternoon.
+says "does not send anybody to the run log for a cause it does not contain" -- \
+     "$FAILED" -- "redacted by" "design"
+says "and a reason that never arrived is called a defect rather than glossed" -- \
+     "$FAILED" -- "Why: not established"
+
+# The fifth argument is the whole point of .github/scripts/failure-reason.sh
+# reaching the issue at all.
+FAILED_WHY=$(attadipa_outcome failed "$RUN" cancelled "" "API Error: 400 prompt is too long: 214233 tokens > 200000 maximum")
+says "carries the reason the extractor found, in the reader's first paragraph" -- \
+     "$FAILED_WHY" -- "**Why:**" "prompt is too long: 214233 tokens"
+says "and still says what happens next, because a cause is not a plan" -- \
+     "$FAILED_WHY" -- "watchdog picks it up" '`@claude`'
+# An unclassified reason must not read as a dead end: it is a gap in a
+# whitelist, and saying which file to widen is what makes it actionable.
+FAILED_UNCLASS=$(attadipa_outcome failed "$RUN" cancelled "" "unclassified — SDK subtype \`success\`, ended at turn 20")
+says "an unclassified reason names the file that has to be widened" -- \
+     "$FAILED_UNCLASS" -- "unclassified" "failure-reason.sh"
+
+# No reason at all is the pre-existing shape and must still render.
+says "and a caller that passes no reason gets no empty Why heading" -- \
+     "$FAILED" -- "did not finish"
+case "$FAILED" in
+  *"**Why:**"*) echo "  FAIL  an absent reason must not print a Why heading"; fail=$((fail + 1)) ;;
+  *) echo "  ok    an absent reason prints no Why heading"; pass=$((pass + 1)) ;;
+esac
 
 UNKNOWN=$(attadipa_outcome something-else "$RUN")
 says "an unrecognised state is reported as a reporting defect, not swallowed" -- \

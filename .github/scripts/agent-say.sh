@@ -111,8 +111,11 @@ attadipa_receipt() {
 # went out verbatim as "### Done — pull request #{"data":{"repository": ...".
 # The caller is fixed; a renderer that prints whatever it is given as a pull
 # request number would let the next such bug out too.
+# The fifth argument, REASON, is one line from
+# .github/scripts/failure-reason.sh, and it is the difference between a failure
+# comment that helps and one that does not. Only the failure paths use it.
 attadipa_outcome() {
-  local kind="$1" run_url="$2" detail="${3:-}" extra="${4:-}"
+  local kind="$1" run_url="$2" detail="${3:-}" extra="${4:-}" reason="${5:-}"
 
   case "$kind" in
     done_pr|done_pr_cut|done_here|done_here_cut|done_here_nopush)
@@ -267,15 +270,41 @@ attadipa_outcome() {
       echo "left half-applied on this issue: the claim is released and the task is"
       echo "back in the queue."
       echo
+      # WHY THIS IS NOT "[Run log] — the cause is in there". That is what this
+      # branch used to say, and it was wrong about its own pipeline:
+      # `show_full_output: false` empties that log of exactly the cause, on
+      # purpose, because tool results carry file contents and token-shaped
+      # strings. What a reader actually found was a result object with
+      # `is_error: true` and nothing else -- run 32589375744 on #67 is the
+      # example, and the afternoon spent guessing at it is why the reason is
+      # now extracted on the runner and carried here instead.
+      if [ -n "$reason" ]; then
+        echo "**Why:** $reason"
+        echo
+        case "$reason" in
+          unclassified*)
+            echo "\`unclassified\` means the run failed in a shape"
+            echo "\`.github/scripts/failure-reason.sh\` does not recognise yet, and the"
+            echo "[run log]($run_url) will not tell you either — it is redacted by design."
+            echo "**Widening that whitelist is the fix, and it is a task**, not something"
+            echo "to work around by starting the run again." ;;
+          *)
+            echo "That line is extracted on the runner from the action's full execution"
+            echo "log, which is not published: the [run log]($run_url) is redacted by"
+            echo "design, because tool results carry file contents." ;;
+        esac
+      else
+        echo "**Why: not established.** Nothing reported a reason, which is itself a"
+        echo "defect — \`.github/scripts/failure-reason.sh\` is meant to leave one here"
+        echo "whatever happened. The [run log]($run_url) is redacted by design and will"
+        echo "not fill the gap."
+      fi
+      echo
       echo "**What happens without you:** the watchdog gives it one retry within"
       echo "the hour. If it fails a second time without anything changing in"
       echo "between, that is treated as the same failure with a bill attached,"
       echo "and the watchdog labels it \`needs-owner\` instead of trying again."
-      echo "**To start it now:** comment \`@claude\`."
-      echo
-      echo "[Run log]($run_url) — the cause is in there, and it is worth reading"
-      echo "before retrying, because a retry of a deterministic failure is the"
-      echo "same failure with a bill attached."
+      echo "**To start it now:** comment \`@claude\` — but read the line above first."
       ;;
     *)
       echo "### The run ended in an unrecognised state (\`$kind\`)"

@@ -779,3 +779,60 @@ facts that change what may be written are here.
   all available, so there is no way yet to brick this board that a reflash cannot
   undo. Recorded as a baseline: a future reading that differs from this one means
   something was burned, and this file says when it was not.
+
+### The panel's native asset format, decoded from the vendor's own files
+
+- **Claim:** the three `/image/*.bin` files in the Waveshare `storage` partition
+  are each **exactly 411 652 bytes**, being a **12-byte header** followed by
+  **410 × 502 RGB565, little-endian**, row-major, uncompressed, with no palette
+  and no alpha. The header is `u32` magic `0x00001219` (constant across all
+  three, meaning `UNKNOWN`), `u16` width `410`, `u16` height `502`, `u32` stride
+  `820` = width × 2. `12 + width × height × 2` equals the file length exactly.
+- **Source:** S11 — the `storage` partition of the received unit, extracted with
+  `tools/flash/spiffs_extract.py`.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
+- **Was:** `LIKELY` RGB565 — an inference from "raw binary on a QSPI AMOLED".
+- **How the byte order was settled, because it is the part an argument cannot
+  settle.** Decoded little-endian the files are coherent artwork. Decoded
+  big-endian they are noise. That is the whole test.
+- **Impact:** T-034's target format is no longer a preference. The panel's native
+  pixel format and byte order are facts about the hardware; the vendor's *header*
+  is not, and is worth noticing rather than copying — it carries width, height
+  and stride but no format field, which is the field needed the moment a second
+  format exists. Also: three full frames cost 1.18 MB, which is what an
+  uncompressed full-screen asset costs on this panel.
+
+### The Waveshare `storage` partition holds six files, not three, and three are music
+
+- **Claim:** alongside the three images there is a `/music/` directory holding
+  `BGM_1.mp3` (207 713 B, MPEG-1 Layer III, 112 kbps, 44.1 kHz, **mono**),
+  `BGM_2.mp3` (199 664 B, 112 kbps, stereo) and `BGM_3.mp3` (380 917 B, 128 kbps,
+  stereo, with a 139 756-byte ID3v2.4 tag that is mostly embedded artwork).
+- **Source:** S11, same extraction.
+- **Was:** a parallel reading of the same partition recorded *"only three real
+  files, all raw binaries in an `/image/` dir"*. That was `strings`-derived and
+  incomplete.
+- **Impact, and it is not about audio formats.** The board ships 788 kB of music
+  and a `MusicPlayer` app to play it. Taken with the grille slot in the case wall
+  and the separate motor pads at `P1`/`P2`, this makes the reading that
+  `AAC210602A1` is a *haptic actuator* very hard to sustain — see T-105, which
+  now has a strong prior. It is **not** `VERIFIED` by this alone: stereo source
+  material decoded to one transducer is still mono output, and only tracing the
+  pads settles it.
+
+### The factory image carries somebody else's licensed music
+
+- **Claim:** `BGM_1.mp3`'s ID3 frames read verbatim
+  `All Rights Reserved to www.Art-list.io` and `Levitate by Ryefield`.
+- **Source:** S11, same extraction.
+- **Impact:** the factory flash image contains **commercially licensed
+  third-party audio under an all-rights-reserved grant**, on top of Waveshare's
+  own proprietary binary. Keeping the dump off the repository was until now a
+  convention rather than a written rule — no prior change has committed a vendor
+  binary and none had needed to say why — and review on
+  [#80](https://github.com/hleserg/Attadipa/pull/80) was right that "the
+  existing rule" cited a document that did not exist. **It is a rule as of this
+  record**, and this is the second and sharper reason for it,
+  because republishing the dump would redistribute somebody else's licensed
+  audio. The extracted files and the rendered PNGs are **not committed** either.
+  What is committed is the extractor and the measurements.
