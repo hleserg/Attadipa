@@ -315,6 +315,35 @@ where nothing matched. An `unclassified` failure is a gap in that list, and the
 honest response is to widen the list rather than to widen the grammar until
 something matches — the failure comment says so, in those words, on the issue.
 
+### A green check is not a review, and until now they looked the same
+
+The reviewer's own reporting keyed off `steps.review.outcome == 'failure'`,
+which catches a review that ran and died. It did not catch the action deciding
+not to run at all, because the action reports that as **success**:
+
+```
+##[warning]Skipping action due to workflow validation: Workflow validation
+failed. The workflow file must exist and have identical content to the version
+on the repository's default branch.
+Exiting due to workflow validation skip
+```
+
+Observed on [#81](https://github.com/hleserg/Attadipa/pull/81) at `7a4d0f1`,
+run `32591032435`, 1.6 seconds. The rule is a good one — without it a pull
+request could edit this reviewer into rubber-stamping the same pull request, and
+#81 edits `claude-pr-review.yml` — but what a reader saw on the page was a green
+check, no comment and no label. That is indistinguishable from a review that ran
+and found nothing, and it is the reading somebody will take.
+
+The note listing the causes already described this one, in full, as cause 3. It
+had simply never fired for it.
+
+The detector is **structural, not textual**: the action writes its execution log
+only once the model has been invoked, so a step that reports success and left no
+log never reached the model. That covers the validation skip, a refused
+credential, and anything future that exits early, without the workflow having to
+recognise each by name.
+
 What #67 was doing when it died is still **UNKNOWN**, and this document will not
 guess at it: the next occurrence names itself. One measurement is worth
 recording as motive rather than conclusion, though — the reading order the prompt

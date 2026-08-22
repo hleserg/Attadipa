@@ -251,9 +251,53 @@ jobs:
       # a 40-turn ceiling. Somebody spent twenty minutes reading credential
       # documentation for a limit written three lines above it. A diagnostic that
       # offers a menu is not a diagnostic.
+      - name: Did the review actually happen
+        # A GREEN JOB IS NOT A REVIEW, and until this step existed the two were
+        # the same event on the pull request page.
+        #
+        # `continue-on-error: true` on the step above means a failed review
+        # still leaves the job green; the reporting below keys off
+        # `steps.review.outcome == 'failure'` to catch that. What it did not
+        # catch is the action deciding not to run at all, which it reports as
+        # SUCCESS:
+        #
+        #   ##[warning]Skipping action due to workflow validation: Workflow
+        #   validation failed. The workflow file must exist and have identical
+        #   content to the version on the repository's default branch.
+        #   Exiting due to workflow validation skip
+        #
+        # That is the action refusing to run a version of itself that a pull
+        # request has edited, and it is a good rule: without it a pull request
+        # could edit this reviewer into rubber-stamping the same pull request.
+        # But the outcome on the page is a green check, no comment and no
+        # label — indistinguishable from a review that ran and found nothing,
+        # which is the reading somebody will take. Observed on #81 at
+        # 7a4d0f1, run 32591032435, 1.6 s.
+        #
+        # The signal is structural rather than textual: the action writes its
+        # execution log only once the model has been invoked, so a step that
+        # succeeded and left no log never reached the model. That covers the
+        # validation skip, a refused credential and anything future that exits
+        # early, without this step having to recognise each one by name.
+        id: happened
+        if: always() && steps.auth.outputs.ok == 'true'
+        env:
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
+          OUTCOME: ${{ steps.review.outcome }}
+        run: |
+          set -uo pipefail
+          ran=yes
+          if [ -z "${EXEC_FILE:-}" ] || [ ! -f "${EXEC_FILE}" ]; then
+            ran=no
+          fi
+          echo "ran=${ran}" >> "$GITHUB_OUTPUT"
+          if [ "$ran" = "no" ] && [ "${OUTCOME}" = "success" ]; then
+            echo "::warning::The review step reported success and never reached the model — see the note on the pull request."
+          fi
+
       - name: Work out why the review did not happen
         id: why
-        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        if: always() && steps.auth.outputs.ok == 'true' && (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no')
         env:
           EXEC_FILE: ${{ steps.review.outputs.execution_file }}
         run: |
@@ -293,7 +337,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Say that the review did not happen
-        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        if: always() && steps.auth.outputs.ok == 'true' && (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no')
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -344,7 +388,10 @@ jobs:
             echo "   **The log does not name the tool**, because \`show_full_output\` is off"
             echo "   and tool results are where that name would appear. Turning it on is"
             echo "   not the answer: tool results can carry tokens into a world-readable"
-            echo "   log. Reason from what the review was trying to do instead."
+            echo "   log. The \`Reason:\` line above, when there is one, is the most that"
+            echo "   can be said safely — \`.github/scripts/failure-reason.sh\` matches the"
+            echo "   log against a whitelist of error grammars and prints nothing else."
+            echo "   Where it says nothing, reason from what the review was trying to do."
             echo
             echo "Run: $RUN_URL"
             echo
