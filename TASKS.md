@@ -1126,8 +1126,12 @@ stale silently. The protocol is
   and linking them would make an MIT firmware a derivative work. That made the
   cheap path impossible; the *decision* is that the feature is not worth the
   expensive one. A real clean-room is months and is done honestly or not at all.
-- **What still answers the need:** MeshCore, MIT, T-072 finished. OD-7 asked for
-  a companion for people who will not build our node; MeshCore is that.
+- **What still answers the need:** MeshCore, MIT. OD-7 asked for a companion for
+  people who will not build our node, and MeshCore is the remaining candidate
+  whose licence permits one. **T-072 is still open** — §1 of
+  [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
+  is `UNKNOWN` on every row — so how much work that client is remains unknown.
+  The rejection here does not depend on that number.
 - **If this is ever revisited:** the licence question is answered and recorded.
   Only the product decision would need to change.
 

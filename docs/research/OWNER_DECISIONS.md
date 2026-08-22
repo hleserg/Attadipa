@@ -785,10 +785,26 @@ differ by months.
 **The decision is option 4, and the distinction matters for the record.** The
 licence is what made the cheap path impossible. The *decision* is that the
 feature is not worth the expensive one — a genuine clean-room is months, done
-honestly or not at all, and a half-clean-room is worse than neither. MeshCore is
-MIT and already answers OD-7's stated need, *"не каждый захочет заморачиваться
-со сбором нашего варианта ноды"*: T-072 is finished, the protocol is read, LAN
-is there, a client can be written.
+honestly or not at all, and a half-clean-room is worse than neither.
+
+**What MeshCore is, stated at the strength the evidence actually supports.** It
+is MIT, and its source has a `companion_radio` role and a transport abstraction
+— both read, both in the reuse ledger. That is enough to say a companion client
+is *buildable without a licensing problem*, which is the half OD-7's need turns
+on. It is **not** enough to say the protocol is understood: **T-072 is open**,
+and every row of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) §1 is still
+`UNKNOWN` — which transports a stock build exposes, whether a LAN/TCP companion
+transport exists at the pinned revision, which commands it answers, whether
+telemetry carries a position. An earlier draft of this record said T-072 was
+finished and LAN was there. It was not, and the independent review on
+[#48](https://github.com/hleserg/Attadipa/pull/48) caught it.
+
+The decision does not rest on the overstatement. Rejecting Meshtastic follows
+from the licence and the cost of a real clean-room; MeshCore being the remaining
+candidate follows from its licence. What is *not* yet established is how much
+work a MeshCore companion client is — and that is T-072's job to answer, not
+this record's to assume.
 
 So the ledger records `REJECT` for the licence, and this records `REJECT` for
 the product. If Meshtastic's licensing ever changes, the licence half is

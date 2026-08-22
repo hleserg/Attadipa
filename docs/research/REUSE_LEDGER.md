@@ -149,7 +149,7 @@ anything equivalent is written by hand.
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
 | `infinition/waveshare-watch-rs` | a Rust `no_std` watch firmware for the same board — unusable directly, potentially instructive | to check |
-| Meshtastic | mature ESP32 LoRa firmware with T-Watch support; solves overlapping problems | to check |
+| Meshtastic | mature ESP32 LoRa firmware with T-Watch support; solves overlapping problems | **evaluated — `REJECT`**, see [A Meshtastic companion client](#a-meshtastic-companion-client) |
 | ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement | to check |
 
 Rust and Arduino candidates are still worth reading. `EXTRACT ALGORITHM` and
@@ -915,7 +915,11 @@ not a judgement.
 ([OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
 2026-08-22): a genuine clean-room from published documentation, by somebody who
 has not read the `.proto` files, is months of work and is done honestly or not
-at all — and MeshCore is MIT and already answers what OD-7 actually asked for.
+at all — and MeshCore is MIT, which is the half of OD-7's need that a licence
+can answer. How much work a MeshCore companion client actually is stays open:
+T-072 is unfinished and §1 of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) is `UNKNOWN`
+on every row. The rejection above does not depend on that number.
 
 Recording both matters. If Meshtastic's protocol licensing ever changes, the
 licence half of this is answered and only the product decision needs revisiting.
@@ -923,8 +927,9 @@ licence half of this is answered and only the product decision needs revisiting.
 **Source revision:** `meshtastic/protobufs` submodule `aca181b`, under
 `meshtastic/firmware` `68bfe015e`, read 2026-08-21.
 
-**Attadipa integration:** none. MeshCore remains the one companion protocol with
-a client, under ADR-0008's provider list.
+**Attadipa integration:** none. MeshCore remains the one companion protocol a
+client may lawfully be written for, under ADR-0008's provider list. No such
+client exists yet.
 
 **Tests required:** none — nothing is taken.
 
