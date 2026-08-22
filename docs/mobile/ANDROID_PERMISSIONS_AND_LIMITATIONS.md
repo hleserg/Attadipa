@@ -91,7 +91,7 @@ impractical, the watch is a watch without notification relay. If assistance data
 is unavailable, GNSS acquires unaided and takes longer.
 
 "Unaided" assumes a receiver to be unaided *with*. On a device whose only GNSS is
-in an attached Firefly node, the fallback is the node's own acquisition rather
+in an attached Attadipa node, the fallback is the node's own acquisition rather
 than the watch's. The rule holds at device level, which is the level it is about
 — but it is not the same sentence as "the watch falls back to its own receiver",
 and the difference matters when the node is also away.

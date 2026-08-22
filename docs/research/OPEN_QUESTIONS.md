@@ -19,16 +19,24 @@ will close it.
 
 ## Blocking everything measurable
 
+**Every `A`-question below is an open GitHub issue labelled `needs-owner`.** That
+is where the owner reads it and where they answer; this table is the register, not
+the queue, and the two reference each other. Until 2026-08-22 none of A1–A8 had an
+issue — they sat here, which is a place the owner does not read, and a question
+nobody is asked is not a question.
+
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| A1 | Does the developer have either board physically, and which revision? | **UNKNOWN** | ask the project owner |
-| A2 | If a T-Watch is present: which of the five radio chips, and which of the two GNSS modules? | **UNKNOWN** | inspect the unit / order details |
-| A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner |
-| A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN — now concrete** | ask the project owner. The owner's existing MeshCore node runs 868.731 MHz at 22 dBm ([OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-2). 22 dBm is 158 mW; whether that is lawful on that frequency in the region of operation is unestablished |
-| A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **UNKNOWN** | ask the project owner — see [../hardware/MAGNETOMETER_BACKLOG.md](../hardware/MAGNETOMETER_BACKLOG.md) |
-| A6 | **Does the Firefly node carry a magnetometer?** | **UNKNOWN** | ask the project owner. Note that "yes" does *not* give the watch a compass: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform. The ADR exists so that this answer does not arrive before the model does |
-| A7 | **Which orange, and which olive?** The published brand art (`pics/`) and the canonical palette in final §42 disagree: the wordmark and wings sample at `#E16439`…`#EC552A` against Firefly Orange `#FF8A40`, and the head and tagline at `#595E3A`…`#666A46` against Ink Olive `#2F3A2E` | **UNKNOWN — conflict recorded** | the project owner. This is identity, not engineering. [`../../pics/README.md`](../../pics/README.md) holds the sampled values; [`../ui/DESIGN_SYSTEM.md`](../ui/DESIGN_SYSTEM.md) keeps the §42 values until this is answered. Whichever wins, the loser's values must leave the repository rather than sit beside them |
-| A8 | **May the icon and favicon be re-exported with transparent corners?** Both are RGB with no alpha, so the area outside the rounded square is opaque black — visible on any non-black page or launcher background | **UNKNOWN** | the project owner. A mechanical conversion, but it alters supplied art, so it has not been done |
+| A1 | Does the developer have either board physically, and which revision? | **UNKNOWN** | ask the project owner — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
+| A2 | If a T-Watch is present: which of the five radio chips, and which of the two GNSS modules? | **UNKNOWN** | inspect the unit / order details — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
+| A3 | Is there a second radio-capable device, so mesh can be tested at all? | **UNKNOWN** | ask the project owner — **asked as [#54](https://github.com/hleserg/Attadipa/issues/54)** |
+| A4 | Which regulatory region governs LoRa operation here? | **UNKNOWN — now concrete** | ask the project owner. The owner's existing MeshCore node runs 868.731 MHz at 22 dBm ([OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-2). 22 dBm is 158 mW; whether that is lawful on that frequency in the region of operation is unestablished — **asked as [#55](https://github.com/hleserg/Attadipa/issues/55)** |
+| A5 | **Is an external magnetometer intended at all?** Neither board has one, so every compass feature in the plan currently has no hardware to run on | **UNKNOWN** | ask the project owner — see [../hardware/MAGNETOMETER_BACKLOG.md](../hardware/MAGNETOMETER_BACKLOG.md) — **asked as [#56](https://github.com/hleserg/Attadipa/issues/56)** |
+| A6 | **Does the Attadipa node carry a magnetometer?** | **UNKNOWN** | ask the project owner. Note that "yes" does *not* give the watch a compass: a node's magnetometer measures the node's orientation, and [ADR-0009](../adr/0009-heading.md) refuses to present `NodeBody` heading as `WatchBody` heading without a known, calibrated, still-valid transform. The ADR exists so that this answer does not arrive before the model does — **asked as [#56](https://github.com/hleserg/Attadipa/issues/56)** |
+| A7 | **Which orange, and which olive?** The published brand art (`pics/`) and the canonical palette in final §42 disagree: the wordmark and wings sample at `#E16439`…`#EC552A` against Attadipa Orange `#FF8A40`, and the head and tagline at `#595E3A`…`#666A46` against Ink Olive `#2F3A2E` | **UNKNOWN — conflict recorded** | the project owner. This is identity, not engineering. [`../../pics/README.md`](../../pics/README.md) holds the sampled values; [`../ui/DESIGN_SYSTEM.md`](../ui/DESIGN_SYSTEM.md) keeps the §42 values until this is answered. Whichever wins, the loser's values must leave the repository rather than sit beside them — **asked as [#57](https://github.com/hleserg/Attadipa/issues/57)** |
+| A8 | **May the icon and favicon be re-exported with transparent corners?** Both are RGB with no alpha, so the area outside the rounded square is opaque black — visible on any non-black page or launcher background | **UNKNOWN** | the project owner. A mechanical conversion, but it alters supplied art, so it has not been done — **asked as [#57](https://github.com/hleserg/Attadipa/issues/57)** |
+| A9 | **Does the day theme keep its near-white page on the AMOLED board?** The Waveshare panel is emissive: every lit pixel draws its own current and ages in proportion. Rendered on the 410×502 face, the day theme's mean per-subpixel drive is 4.2× the night theme's on the raw 8-bit mean and 13.9× gamma-decoded (ESTIMATED — no panel, no efficiency curve; method in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1). The T-Watch's IPS panel does not care, so this is the first design question whose answer differs by board | **UNKNOWN** | the project owner. Four options and their costs are tabulated in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §1. Not an engineering call: it decides whether the two boards look like one product — **asked as [#52](https://github.com/hleserg/Attadipa/issues/52)** |
+| A10 | **What does Attadipa do about static content on the AMOLED?** Adjacent to A9 and not the same question: a uniformly bright page ages the panel evenly, while a dark page with bright static elements leaves their shape behind, and a mitigation for one does nothing for the other. The CO5300 has no pixel-shift and no scroll command, its Auto Current Limit (`55h`) defaults to disabled and no driver in the ecosystem writes it, and the vendor BSP boots the panel at 100 % brightness with the hardware dimming ramp turned off | **UNKNOWN** | the project owner. Six options with their costs are tabulated in [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.5. Should not be answered before §5 steps 7 and 8 have been run — today both sides of it are unmeasured — **asked as [#53](https://github.com/hleserg/Attadipa/issues/53)** |
 
 A1 and A2 gate all bring-up, the entire interference matrix, and every power
 number. A2 in particular decides whether the radio is sub-GHz or 2.4 GHz —
@@ -39,8 +47,8 @@ lawful is set by the region the device operates in, and the answer changes what
 the radio may legally do. It has to be settled before anything transmits.
 
 A4 stopped being theoretical on 2026-08-21. The owner's own node is already on
-air at 868.731 MHz and 22 dBm. Firefly is not responsible for that node — but
-the numbers it ships as *defaults* are Firefly's responsibility, and a default
+air at 868.731 MHz and 22 dBm. Attadipa is not responsible for that node — but
+the numbers it ships as *defaults* are Attadipa's responsibility, and a default
 cannot be chosen before A4 is answered. Note also that A4 no longer decides what
 the core is built to do: per OD-2 these are settings, so the core is built to
 carry a bounded, user-settable value either way. A4 decides the bounds and the
@@ -55,7 +63,7 @@ proceed; hardware work does not.
 
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| H1 | Real power draw of Firefly firmware per state, per board | UNKNOWN | measurement; vendor figures are a target, not evidence |
+| H1 | Real power draw of Attadipa firmware per state, per board | UNKNOWN | measurement; vendor figures are a target, not evidence |
 | H2 | Can the AXP2101 measure current/energy on these boards, or only voltage? | UNKNOWN | AXP2101 datasheet + schematic sense-resistor check |
 | H3 | Real TTFF and fix quality for the fitted GNSS module | UNKNOWN | outdoor measurement |
 | H4 | Does any of the suspected interference actually occur? | UNKNOWN | the measurement procedure in [../hardware/INTERFERENCE_MATRIX.md](../hardware/INTERFERENCE_MATRIX.md) |
@@ -65,6 +73,8 @@ proceed; hardware work does not.
 | H8 | **Is ALDO1 the `+3V3` rail?** The vendor doc says ALDO1 is unused; the schematic shows it driving `+3V3` | **CONFLICTING** | read the AXP2101 rail-enable and voltage registers on a powered board, then cut one rail at a time and watch which parts drop off the I2C scan |
 | H9 | Real backlight current vs brightness, against the schematic's 45 mA at full | UNKNOWN | measurement; the 45 mA figure is a datasheet-level I_F, not a measured draw |
 | H10 | **The speed gate below which GNSS course-over-ground is not trustworthy** | UNKNOWN | measurement on the fitted module. It depends on the update rate and on whether the module reports Doppler-derived velocity or differenced positions, so it is per-module and cannot be chosen. [ADR-0009](../adr/0009-heading.md) §4; final §26 forbids inventing settling intervals |
+| H14 | **Which QMI8658 is on the Waveshare, and which of its datasheets describes the silicon?** Two halves. (a) *A or C* — [TAGS_TRACKS_RECKONING §2.2](TAGS_TRACKS_RECKONING.md) reports the schematic naming `QMI8658C` twice, so this is evidenced as **C** and only needs confirming, not answering. (b) *Which C document* — and this half is open and consequential: [PEDOMETER_PARTS §2.2](PEDOMETER_PARTS.md) reads `13-52-27` Rev A (2022-06-20), where chapter 11 documents a complete hardware pedometer, while TAGS §2.2 reports the only obtainable C datasheet as Rev 0.6 (2021-01) marked ADVANCE INFORMATION, whose `CTRL8` is *"Reserved: Not Used"* and which documents **no pedometer**. Those describe different parts. This is [ADR-0003](../adr/0003-radio-not-lora.md)'s shape in a second subsystem — the part name does not tell you whether the feature exists — and OD-6 makes the pedometer mandatory | **CONFLICTING** (was UNKNOWN) | one bench session answers both halves and outranks both documents: read `WHO_AM_I` (`0x00`), then set `CTRL8.Pedo_EN` and read `0x5A`–`0x5C` while walking the board across a desk. §5 step 6 of [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md). Blocks T-061's Waveshare half; if the registers do not respond, the step counter is firmware there and the power budget changes |
+| H15 | **What is the IMU's axis orientation relative to the wearer, on each board?** A step counter tolerates a wrong sign; a wrist-raise gesture and any future orientation feature do not. [PEDOMETER_PARTS.md](PEDOMETER_PARTS.md) §1.9 notes that on the BMA423 axis remapping applies to the *features* only, so getting it wrong is silent rather than obviously broken. **Half answered on the Waveshare, 2026-08-22:** the board-frame triad is silkscreened beside the IMU — X toward the battery edge, Y toward the USB-C edge, Z as ⊙ out of the back face ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.6). What is still missing is how the board is rotated inside the case, and one is useless without the other. Nothing is known for the T-Watch | **PARTIAL** (was UNKNOWN) | tilt the **assembled** watch through known angles and read raw axes — the board frame is printed, the case rotation is not. Cheap now that a Waveshare is on the desk; still impossible for the T-Watch |
 
 ## Radio
 
@@ -72,15 +82,16 @@ proceed; hardware work does not.
 |---|---|---|---|
 | R1 | **Confirm every modulation, band and conducted-power figure in the radio matrix against the manufacturer datasheet.** The current values come from RadioLib 7.7.1's driver range checks and MeshCore's build config, not from TI, Silicon Labs or Semtech | **PARTIAL** | `ti.com` returns HTTP 403 and the Silicon Labs document host timed out under automated retrieval. Needs a manual fetch, or the PDFs obtained another way. Nothing may transmit on the strength of a number in that table until this is closed — [ADR-0003](../adr/0003-radio-not-lora.md) |
 | R2 | Does the LR1121 work through MeshCore's `CustomLR1110Wrapper` plus `LR11x0Reset.h`? RadioLib's `LR1121` derives from `LR1120`, which derives from `LR11x0`, so it is plausible | **UNKNOWN** | a spike, not a reading. Decides whether `MeshCoreSupport::NeedsWork` for that chip is a week or a month |
-| R3 | Which radios MeshCore supports **at the revision Firefly actually pins**, re-checked rather than assumed | tracked | the matrix is a `grep` over `RADIO_CLASS` across `variants/`; it is a task (T-013), not a hope, because upstream adds radios |
+| R3 | Which radios MeshCore supports **at the revision Attadipa actually pins**, re-checked rather than assumed | tracked | the matrix is a `grep` over `RADIO_CLASS` across `variants/`; it is a task (T-013), not a hope, because upstream adds radios |
 
 ## Hardware — documentary gaps
 
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| ~~D1~~ | ~~Waveshare flash and PSRAM size~~ | **RESOLVED** | schematic: `GD25Q256EYIGR` = 32 MB quad flash; SoC is `ESP32-S3R8` = 8 MB PSRAM. Type of PSRAM rolls into D12 |
-| D2 | Waveshare battery capacity and charge path details | UNKNOWN | schematic + product page |
-| D3 | Waveshare expansion connector pinout | PARTIAL | schematic shows header `J3` with ≥ 29 pins; the pinout needs the sheet read visually, not by text extraction |
+| ~~D1~~ | ~~Waveshare flash and PSRAM size~~ | **RESOLVED** | schematic: `GD25Q256EYIGR` = 32 MB quad flash; SoC is `ESP32-S3R8` = 8 MB PSRAM. Type of PSRAM rolls into D12. **Confirmed on silicon 2026-08-22**: JEDEC `0xC8 0x4019` and eFuse `PSRAM_CAP = 8M` — [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2–1.3 |
+| D2 | Waveshare battery capacity and charge path details | **PARTIAL** | **Capacity answered**: 400 mAh / 3.7 V, cell `402728`, read off a received unit 2026-08-22 — [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2. The cell is on a **removable 2-pin plug**, not soldered. **Charge path still open**: the AXP2101's `TS`/NTC termination on this board, the `BAT1` connector part and pitch, and what charge current the vendor firmware sets — none of it traced. Answer from the schematic's AXP2101 sheet and the AXP2101 datasheet |
+| D18 | **Which ESP32-S3 errata apply to revision v0.2?** The received unit is `v0.2`; nobody has read the ESP32-S3 Errata sheet against it, so whether any erratum touches octal PSRAM, USB-Serial/JTAG or the flash interface is unknown | UNKNOWN | the ESP32-S3 Errata sheet, read against `WAFER_VERSION_MAJOR = 0` / `MINOR = 2` — [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §3.1 |
+| ~~D3~~ | ~~Waveshare expansion connector pinout~~ **The question was mis-stated: there is no expansion connector.** Read visually, `J3` is the 34-pin AMOLED display FPC — its block is titled AMOLED and carries `QSPI_SIO0`–`SIO3`, `QSPI_SCL`, `LCD_CS`/`RESET`/`TE`, the MIPI pairs, `VCI`, `VDDIO`, `IM0`/`IM1` and `TP_SCL`/`TP_SDA`/`TP_INT`/`TP_RESET` | **CLOSED — mis-stated** | [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.4. This retires the hot-unplug and bus-capacitance worry D3 inherited from the T-Watch, where main-I2C `SDA` genuinely does reach a detachable GNSS connector — but it confirms the touch half of the main I2C bus leaves the mainboard over a flex cable |
 | ~~D4~~ | ~~Does the Waveshare board have any haptic output?~~ | **RESOLVED — and the earlier answer was wrong** | **Yes.** A vibration motor on connector J1, driven from GPIO 18 through R12 (4.7 kΩ) and Q1 (MMBT3904), supplied from BLDO2. No driver IC — which is why searching for a haptic part found nothing |
 | D5 | Waveshare button/wake inputs — BSP declares none; is that the board or the BSP? | **PARTIAL — it is the BSP** | schematic shows at least two tactile keys (`Key1` by `BOOT`, `Key3`) plus `PWRON`. Which GPIO each key uses is still unresolved |
 | D6 | T-Watch: which PMU rail powers GNSS on the *specific* unit (BLDO1 vs DC3) | UNKNOWN | inspect the unit for rear BOOT/RST buttons |
@@ -88,7 +99,9 @@ proceed; hardware work does not.
 | D8 | Is the T-Watch main I2C bus shared with anything timing-sensitive? | PARTIAL | schematic read: five devices confirmed on SDA 10 / SCL 11, plus a possible sixth — see D9. Timing sensitivity still needs driver review |
 | D9 | **Does the GNSS daughterboard connect the `MIA-M10Q` `SDA`/`SCL` to the FPC?** If it does, the GNSS is a sixth device on the main I2C bus at 0x42 | UNKNOWN | trace the daughterboard FPC net list, or scan the bus on a board with the module fitted |
 | D10 | **What is radio `DIO3` (GPIO 6) for on this board — TCXO supply or a second interrupt?** | UNKNOWN | HPD16B3 module datasheet + the vendor radio driver's `setDio3AsTcxoCtrl` usage |
-| D12 | **Is the PSRAM quad or octal — on *both* boards?** Both carry an `ESP32-S3R8` marking, so this is one question with one answer. The T-Watch vendor doc says QSPI; Espressif's published part-numbering scheme is understood to use the `R8` suffix for octal PSRAM — **that last part is recollection and must itself be checked against the datasheet**. Different `sdkconfig`, ~2× bandwidth difference | **CONFLICTING** | `esptool.py flash_id` / `esp_psram` probe on hardware, or the SoC datasheet against the exact part marking. Blocks the LVGL buffer ADR — see [../architecture/RESOURCE_BUDGET.md](../architecture/RESOURCE_BUDGET.md) |
+| ~~D12~~ | ~~**Is the PSRAM quad or octal — on *both* boards?**~~ **Split.** It was one question only because both boards carry an `ESP32-S3R8` marking, and that shared premise does not survive contact with the sources: the marking settles the *part*, and the part is octal. See D12a and D12b | **SPLIT** | [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.1 |
+| ~~D12a~~ | ~~**Waveshare: quad or octal?**~~ **Octal.** ESP32-S3 Series Datasheet v2.2 §1.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)`, and no 8 MB quad in-package variant exists in that table — the only quad in-package parts are the 2 MB `RH2`, `R2` and `FH4R2`. Footnote 3 names `R8`, `R8V` and `R16V` as the octal set; `R8` and `R8V` differ by `VDD_SPI` voltage, not bus width. Corroborated by five of the six vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y` with `CONFIG_SPIRAM_IGNORE_NOTFOUND` unset — a build that aborts at boot if octal is not found — and by GPIO33–37 sitting unrouted on the schematic, which is where octal PSRAM's DQ4–DQ7 and DQS go | **RESOLVED** | traced, not recollected: [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.1. Step 4 of §5 confirms it empirically by reading the boot log's `octal_psram` tag. **Empirically closed 2026-08-22 without needing that step**: the die's fuses read `PSRAM_CAP = 8M`, `PSRAM_VENDOR = AP_3v3` (so `R8`, not the 1.8 V `R8V`) and `PIN_POWER_SELECTION = VDD_SPI`. The eFuse gives capacity and rail, not bus width — the step to octal stays Table 1-1's — but both legs now have evidence. [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2 |
+| D12b | **T-Watch: quad or octal?** The same part marking implies octal by the same table, but the LilyGO vendor document describing it as QSPI has not been re-examined and stands as a live conflicting source. Nobody has read that document against Table 1-1 | **CONFLICTING** | that board's own `esptool.py flash_id`, or the LilyGO document read against the datasheet. Do not assume D12a transfers |
 | D13 | Waveshare: which loads sit on ALDO1, ALDO2 and ALDO3 — all three are 3.3 V — and **what runs on the 1.8 V ALDO4 rail**? | UNKNOWN | read the schematic sheets visually |
 | D14 | Waveshare SD card: the BSP uses SDMMC 1-bit on GPIO 1/2/3, but the schematic labels those nets `MOSI`/`SCK`/`MISO` and shows a chip-select near GPIO 17. Which mode is the board actually wired for? | UNKNOWN | schematic sheet + BSP source |
 | D15 | **What is the T-Watch panel's physical diagonal — 1.3" or 1.54"?** 240 × 240 is certain; the size is not. LilyGoLib's spec tables say 1.3 Inch for the S3 *and* the S3 Plus; the schematic's LCD sheet says `QT154C2408` / `LCD_1.54-TOUCH`, and that vendor's sibling part `QT154H2201` is specified as 1.54", 240×240, ST7789V — so the `154` field decodes. It decides dpi (261 vs 220) and therefore every physical-size conversion in the design system | **CONFLICTING** | a ruler on a physical unit (rides on A1), or the `QT154C2408` specification itself, which is not published anywhere reachable. Working value is 1.3", chosen as the conservative direction — [HARDWARE_MATRIX](HARDWARE_MATRIX.md#display-diagonal--conflicting) |
@@ -112,8 +125,8 @@ below cites the file it came from. Licence: **MIT**, `license.txt`.
 | M5 | Memory footprint on ESP32-S3 | PARTIAL | Fixed pools and `MAX_PACKET_HASHES (128+32)` in `SimpleMeshTables.h` make it computable, but no figure is claimed here without a build. `NOT MEASURED` |
 | ~~M6~~ | How it abstracts the radio, and whether it covers all five T-Watch chips | **RESOLVED — and the answer was worse than expected** | Through thin wrappers over RadioLib in `src/helpers/radiolib/`. Across 87 upstream variants the `RADIO_CLASS` set is `CustomLR1110 · CustomLR2021 · CustomSTM32WLx · CustomSX1262 · CustomSX1268 · CustomSX1276` — of the five T-Watch candidates, **only the SX1262**. CC1101 is compiled out entirely (`platformio.ini:35`, `-D RADIOLIB_EXCLUDE_CC1101=1`). **Correction to an earlier version of this row**, which said RadioLib supports every chip MeshCore does not and concluded the gap is a small wrapper layer: RadioLib *drives* CC1101 and Si4432, but as **FSK/OOK** parts. Neither has a LoRa modulator, so no wrapper makes them mesh-capable. The gap is a wrapper for SX1280 and LR1121 only. [ADR-0003](../adr/0003-radio-not-lora.md) |
 | ~~M7~~ | Companion protocol shape | **RESOLVED — and it largely already exists** | A framed byte protocol, identical across every transport. `>`/`<` sentinel, 16-bit little-endian length, payload; `MAX_FRAME_SIZE 176` (`BaseSerialInterface.h:5`). Payload is `[opcode][data]`, little-endian. The opcode table is `examples/companion_radio/MyMesh.cpp:6-134`. **Version negotiation already exists**: `CMD_DEVICE_QUERY` (22) carries the client's protocol version, the firmware stores it as `app_target_ver` and adapts its replies (`MyMesh.cpp:1023-1024`, and see the `app_target_ver >= 3` branches at 435 and 548) |
-| M8 | Can Firefly's needs be upstreamed rather than forked? | **likely yes** | The radio-wrapper gap (M6) is the natural candidate. Requires talking to upstream, which has not happened |
-| ~~M9~~ | **Does MeshCore assume it owns the radio exclusively?** | **RESOLVED — effectively yes** | `src/helpers/radiolib/RadioLibWrappers.cpp:14` is `static volatile uint8_t state = STATE_IDLE;` — a **file-static** flag set from the ISR. One radio per firmware image, structurally. It also runs its own duty-cycle governor, `Dispatcher::updateTxBudget()` (`Dispatcher.cpp:38-53`), which a Firefly coexistence coordinator would have to reconcile with rather than override. The sanctioned extension points are the virtual hooks `getCADFailMaxDuration`, `getCADFailRetryDelay`, `getAirtimeBudgetFactor` in `Dispatcher.h`, and `isReceiving()` in `RadioLibWrappers.h:44-48` |
+| M8 | Can Attadipa's needs be upstreamed rather than forked? | **likely yes** | The radio-wrapper gap (M6) is the natural candidate. Requires talking to upstream, which has not happened |
+| ~~M9~~ | **Does MeshCore assume it owns the radio exclusively?** | **RESOLVED — effectively yes** | `src/helpers/radiolib/RadioLibWrappers.cpp:14` is `static volatile uint8_t state = STATE_IDLE;` — a **file-static** flag set from the ISR. One radio per firmware image, structurally. It also runs its own duty-cycle governor, `Dispatcher::updateTxBudget()` (`Dispatcher.cpp:38-53`), which an Attadipa coexistence coordinator would have to reconcile with rather than override. The sanctioned extension points are the virtual hooks `getCADFailMaxDuration`, `getCADFailRetryDelay`, `getAirtimeBudgetFactor` in `Dispatcher.h`, and `isReceiving()` in `RadioLibWrappers.h:44-48` |
 
 **M9 matters less on one path and exactly as much as feared on the other.**
 The concern was that a mesh stack owning the radio exclusively could not coexist
@@ -131,23 +144,23 @@ decision dissolving an engineering problem rather than solving it.
 > [ADR-0008](../adr/0008-mesh-service-providers.md).
 
 Also relevant on the local path: MeshCore runs its own duty-cycle governor,
-`Dispatcher::updateTxBudget()`, which Firefly's airtime accounting must
+`Dispatcher::updateTxBudget()`, which Attadipa's airtime accounting must
 reconcile with rather than override.
 
 ### What reading MeshCore surfaced that nobody asked
 
 | # | Finding | Evidence | Status |
 |---|---|---|---|
-| M10 | **The payload cipher is AES-128-ECB.** Identical plaintext blocks under one key produce identical ciphertext blocks, so equality of messages leaks even when content does not | `src/Utils.cpp:61,92` (CC310 path) and `:108-122` (software path) | **read from source** — implications for Firefly not yet assessed |
+| M10 | **The payload cipher is AES-128-ECB.** Identical plaintext blocks under one key produce identical ciphertext blocks, so equality of messages leaks even when content does not | `src/Utils.cpp:61,92` (CC310 path) and `:108-122` (software path) | **read from source** — implications for Attadipa not yet assessed |
 | M11 | **The message authentication tag is 2 bytes.** One in 65 536 per forgery attempt, so the security of the tag rests on limiting attempts rather than on the tag | `MeshCore.h:17`, `Utils.cpp:127-145` | **read from source.** The owner's own node exposes a "Request Rate Limiter" — the two facts may well be related, and that is worth confirming rather than assuming |
 | M12 | **`ed25519_verify` from the vendored `orlp/ed25519` is disabled upstream** with the comment *"memory corruption bug was found in this function!!"*. The active path uses `Ed25519::verify` from `rweather/Crypto` instead | `src/Identity.cpp:34-36` (`#elif 0` branch) | **read from source** |
-| M13 | **There is almost no test coverage of the parts Firefly depends on.** Seven test binaries, none touching crypto or wire format; `test/mocks/AES.h` is a no-op stub and `test/mocks/SHA256.h` is self-described as *"deterministic but not cryptographic"* | `test/` | **read from source.** Consequence: there are no reference vectors to port. The only usable one in the repository is the known-good keypair embedded in `Identity.cpp:68-110` |
+| M13 | **There is almost no test coverage of the parts Attadipa depends on.** Seven test binaries, none touching crypto or wire format; `test/mocks/AES.h` is a no-op stub and `test/mocks/SHA256.h` is self-described as *"deterministic but not cryptographic"* | `test/` | **read from source.** Consequence: there are no reference vectors to port. The only usable one in the repository is the known-good keypair embedded in `Identity.cpp:68-110` |
 | M14 | **`rweather/Crypto` licence is unverified.** MeshCore resolves it through PlatformIO as `rweather/Crypto @ ^0.4.0`; it is not in this project's clones and its licence file has not been read | `platformio.ini:24` | **UNKNOWN — must be checked before anything depends on it** |
 
 M10 and M11 are recorded as facts, not as accusations. MeshCore is solving a
 different problem under tighter constraints, and a two-byte tag on a
 duty-cycle-limited sub-GHz link is a defensible trade against airtime. But
-Firefly's specification treats security as something that must be strengthenable
+Attadipa's specification treats security as something that must be strengthenable
 without breaking the architecture (§74 item 24), and a protocol whose
 authentication rests on rate limiting is a protocol whose rate limiter is a
 security control rather than a convenience. That belongs in an ADR of its own,
@@ -173,13 +186,13 @@ with someone competent reviewing it — not in a paragraph here.
 | T4 | Simulator display backend | UNKNOWN | follows T2; SDL2 not currently installed |
 | T5 | Host test framework | UNKNOWN | small decision, no ADR needed |
 | T6 | Use the Waveshare BSP as a dependency, or take only its pin facts? | UNKNOWN | it is Apache-2.0 and incomplete — a reuse-ledger decision |
-| T7 | Does the LilyGO PlatformIO pin to IDF 4.4.7 constrain Firefly? | ASSUMPTION: no | Firefly is ESP-IDF-native and does not use the Arduino layer |
+| T7 | Does the LilyGO PlatformIO pin to IDF 4.4.7 constrain Attadipa? | ASSUMPTION: no | Attadipa is ESP-IDF-native and does not use the Arduino layer |
 
 ## Product
 
 | # | Question | Status | Resolved by |
 |---|---|---|---|
-| ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With a Firefly node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
+| ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
 | Q2 | Is a magnetometer expected to be added externally, or is heading GNSS-only for good? | UNKNOWN | product decision by the owner |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
 
@@ -197,6 +210,81 @@ board has a magnetometer. Either the node carries one — which would answer bot
 Q2 and A5 — or "compass" means GNSS course-over-ground, which only works while
 moving and shows nothing at all when the user stands still. Those are different
 products and the difference is visible to the user in the first ten seconds.
+
+---
+
+## Automation
+
+### How does a producing agent authenticate when it files a task?
+
+**Status: the failure is REPRODUCED; the route ChatGPT will use is still UNKNOWN.**
+This is the one thing standing between the queue working and the owner still
+being in the loop.
+
+The intake gate trusts the **actor**, not the marker — `producer: chatgpt` is a
+data field anybody can type, and write access is not. It rejects, by design, any
+login ending in `[bot]`, plus `claude` and `github-actions`, because a Claude
+comment mentioning `@claude` would otherwise start a Claude run that comments.
+
+That guard is right and must stay. But it means the producer's **route** decides
+whether the loop closes:
+
+| ChatGPT files through | Actor the gate sees | Outcome |
+|---|---|---|
+| a user account with `write`/`maintain`/`admin` | that user's login | accepted |
+| a GitHub App | `something[bot]` | rejected — correctly, by the bot guard |
+| an account with only `read` or `triage` | that login | rejected on permission |
+
+Until an issue has actually been filed the way ChatGPT will file it, which row
+applies is a guess. But **the middle row is no longer hypothetical.**
+
+### The reproduction, 2026-08-21
+
+[Issue #10](https://github.com/hleserg/Attadipa/issues/10) was filed with a
+valid marker through the GitHub API by an agent session. Gate log, run
+`32475652479`:
+
+```
+EVENT_NAME: issues
+ACTOR: claude[bot]
+ACTION: opened
+##[notice]#10 actor claude[bot] is a bot
+```
+
+The credential was a **GitHub App installation token**, so GitHub attributed the
+issue to `claude[bot]` regardless of which account it was issued for. Issue #5,
+opened by `hleserg` as a `User` with association `OWNER`, was accepted the same
+day. The difference is the route, not the marker and not the content.
+
+What makes it worse than a refusal: `author_association` on #10 is `NONE`, so
+`agent-queue-watchdog.yml` skips it too — it filters on `OWNER`, `MEMBER` or
+`COLLABORATOR`. **The task was invisible to every part of the pipeline at once,
+and the workflow run went green.**
+
+### The decision this needs
+
+| | Option A | Option B |
+|---|---|---|
+| **Route** | ChatGPT files through a user account with `write` or better | ChatGPT files through a GitHub App |
+| **Change needed** | none; works as built | the gate grows an owner-controlled allowlist of trusted producer apps, empty by default |
+| **Cost** | a second GitHub account, or the owner's own | configuration surface on the one boundary the security model rests on |
+
+**Recommended: A.** The gate's entire argument is that write access cannot be
+typed, and an allowlist replaces that with a name that can. If B is chosen, the
+allowlist must apply to `issues` events only — never comments, which is where
+the loop lives — and `claude` and `github-actions` must never be listable,
+because those are this repository's own output.
+
+**Not decided by an agent.** Widening this boundary is the owner's call.
+
+**What has been done about it:** a refusal of a marked task is no longer silent.
+The gate comments once on the issue naming the guard that rejected it and the
+actor it saw, and applies `needs-owner`. So the failure is now loud on the first
+occurrence instead of being an issue nobody picks up.
+
+**What would settle it:** one issue, filed by ChatGPT through whatever route it
+will really use, and the resulting run. Either an agent starts, or the refusal
+comment names the actor — and either way the answer is on the issue.
 
 ---
 

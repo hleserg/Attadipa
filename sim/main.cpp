@@ -3,26 +3,26 @@
 
 #include "lvgl.h"
 
-#include "firefly/core/capability_registry.h"
-#include "firefly/l10n/tr.h"
-#include "firefly/platform/hardware_inventory.h"
-#include "firefly/version.h"
+#include "attadipa/core/capability_registry.h"
+#include "attadipa/l10n/tr.h"
+#include "attadipa/platform/hardware_inventory.h"
+#include "attadipa/version.h"
 
 #include "boot_screen.h"
 #include "options.h"
 #include "png_writer.h"
 
-// The Firefly OS desktop simulator.
+// The Attadipa desktop simulator.
 //
 // It is a first-class target (final §57), not a convenience: UI work does not
 // wait on a board, and neither does design review at both geometries. This
 // file is the composition root, which is why it is the one place allowed to
-// see both firefly::platform and firefly::core — the same seat main() has on
+// see both attadipa::platform and attadipa::core — the same seat main() has on
 // the device. Nothing under apps/ has it.
 
 namespace {
 
-using namespace firefly;
+using namespace attadipa;
 
 // A simulated bring-up. On a board this is drivers coming up over I2C, SPI and
 // a set of PMU rails; here it is a loop, and the loop is honest about what it
@@ -65,7 +65,7 @@ bool save_screenshot(const char* path)
         }
     }
 
-    const bool ok = firefly::sim::write_png_rgb(path, rgb.data(), width, height);
+    const bool ok = attadipa::sim::write_png_rgb(path, rgb.data(), width, height);
     lv_draw_buf_destroy(snapshot);
 
     if (ok) {
@@ -97,7 +97,7 @@ void report_missing_string(l10n::Locale requested, const char* identifier)
                  l10n::to_string(requested));
 }
 
-// L toggles the language. It is a keypress rather than a menu because the
+// L toggles the language, T the theme. Keypresses rather than a menu because the
 // Settings screen does not exist yet (T-038) and the acceptance criterion —
 // "switches at runtime without a reboot" — is about the mechanism, not about
 // where the switch lives.
@@ -111,17 +111,20 @@ void on_screen_key(lv_event_t* event)
         std::printf("locale: %s\n", l10n::to_string(next));
         l10n::set_locale(next);
     }
+    if (key == 't' || key == 'T') {
+        attadipa::sim::toggle_theme();
+    }
 }
 
 }  // namespace
 
 int main(int argc, char** argv)
 {
-    firefly::sim::Options options;
-    switch (firefly::sim::parse_options(argc, argv, options)) {
-        case firefly::sim::ParseResult::Exit:  return 0;
-        case firefly::sim::ParseResult::Error: return 2;
-        case firefly::sim::ParseResult::Ok:    break;
+    attadipa::sim::Options options;
+    switch (attadipa::sim::parse_options(argc, argv, options)) {
+        case attadipa::sim::ParseResult::Exit:  return 0;
+        case attadipa::sim::ParseResult::Error: return 2;
+        case attadipa::sim::ParseResult::Ok:    break;
     }
 
     platform::ProfileInventory inventory(options.board);
@@ -132,7 +135,7 @@ int main(int argc, char** argv)
     core::CapabilityRegistry caps(inventory);
     caps.set_node_link(node_link_for(options.node_attached));
 
-    std::printf("Firefly OS %s simulator — %s, %u x %u, %u dpi%s\n", FIREFLY_VERSION_STRING,
+    std::printf("Attadipa %s simulator — %s, %u x %u, %u dpi%s\n", ATTADIPA_VERSION_STRING,
                 options.board.name, options.board.display.width_px,
                 options.board.display.height_px, options.board.display.dpi(),
                 options.node_attached ? ", node attached" : "");
@@ -167,28 +170,45 @@ int main(int argc, char** argv)
     lv_obj_add_event_cb(lv_screen_active(), on_screen_key, LV_EVENT_KEY, nullptr);
 
     l10n::set_missing_string_handler(report_missing_string);
-    l10n::set_locale_changed_handler(firefly::sim::rebuild_boot_screen);
+    l10n::set_locale_changed_handler(attadipa::sim::rebuild_boot_screen);
     l10n::set_locale(options.locale);
 
-    firefly::sim::build_boot_screen(inventory, caps);
+    attadipa::sim::set_theme(options.theme);
+    attadipa::sim::build_boot_screen(inventory, caps);
 
-    // The honest part. LVGL ships Montserrat and unscii, and both are Latin —
-    // Montserrat's own header says `-r 0x20-0x7F,0xB0,0x2022`. So the Russian
-    // catalogue is not merely hard to read in this build, it is undrawable, and
-    // the simulator says which codepoints rather than rendering boxes and
-    // leaving a reviewer to guess. It stops being true when the font pipeline's
-    // output is linked in, which needs the font choice (D16) and T-034.
+    // A box on a screen is a defect, and this is where it is refused.
     //
-    // This is exactly the failure ADR-0010 §1 predicted: a Latin-only font is
-    // not a font missing some characters, it is a different artefact.
+    // It used to be a warning, because it was unfixable: LVGL ships Montserrat
+    // and unscii and both are Latin — Montserrat's own header says
+    // `-r 0x20-0x7F,0xB0,0x2022` — so the Russian catalogue was not merely hard
+    // to read in this build, it was undrawable, and the honest thing was to name
+    // the codepoints rather than render boxes and leave a reviewer to guess.
+    //
+    // T-083 removed the reason. The simulator now links generated subsets that
+    // cover all 181 codepoints in `tools/font/charset.py`, so an undrawable
+    // codepoint is no longer a known limitation, it is a regression — and the
+    // process exits non-zero, which makes it a test failure rather than a line
+    // of output somebody scrolls past.
+    //
+    // **Both catalogues, not the current one.** A check that passes in English
+    // and fails in Russian is a check that reports the locale the reviewer
+    // happened to start in. ADR-0010 §1: a Latin-only font is not a font missing
+    // some characters, it is a different artefact.
     {
         const lv_font_t* font = lv_obj_get_style_text_font(lv_screen_active(), LV_PART_MAIN);
-        const int undrawable = firefly::sim::report_undrawable_glyphs(font, l10n::locale());
+        const l10n::Locale started_in = l10n::locale();
+        int undrawable = 0;
+        for (l10n::Locale locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+            undrawable += attadipa::sim::report_undrawable_glyphs(font, locale);
+        }
+        l10n::set_locale(started_in);
         if (undrawable > 0) {
             std::fprintf(stderr,
-                         "l10n: %d codepoint(s) of the %s catalogue cannot be drawn by the "
-                         "font in this build. See docs/adr/0010-localization.md §1.\n",
-                         undrawable, l10n::to_string(l10n::locale()));
+                         "l10n: %d codepoint(s) cannot be drawn by the font in this build, "
+                         "so this screen would show boxes. See assets/fonts/README.md and "
+                         "docs/adr/0010-localization.md §1.\n",
+                         undrawable);
+            return 1;
         }
     }
 

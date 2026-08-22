@@ -1,0 +1,77 @@
+scenario a person walking is not a detection
+describe The negative control, and the most important trace in the directory.
+describe A detector that fires on ordinary movement is worse than no detector:
+describe it trains the wearer to ignore the warning that matters. Ten minutes of
+describe walking at about 1.4 m/s, with the accelerometer agreeing.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 4000
+  sats 10 13
+  hdop 100
+  speed 1400
+  jam none
+  spoof none
+  motion moving
+  expect trust trusted
+
+at 60000
+  fix 3d
+  pos 5007540 10000000
+  alt 42100
+  acc 4000
+  sats 10 13
+  hdop 100
+  speed 1400
+  jam none
+  spoof none
+  motion moving
+  expect trust trusted
+  expect no-reason position-jump
+  expect no-reason motion-disagreement
+
+at 120000
+  fix 3d
+  pos 5015080 10000000
+  alt 42200
+  acc 4200
+  sats 10 13
+  hdop 105
+  speed 1400
+  jam none
+  spoof none
+  motion moving
+  expect trust trusted
+  expect no-reason position-jump
+
+at 300000
+  fix 3d
+  pos 5037700 10000000
+  alt 42600
+  acc 4100
+  sats 11 14
+  hdop 95
+  speed 1400
+  jam none
+  spoof none
+  motion moving
+  expect trust trusted
+  expect no-reason position-jump
+  expect no-reason implausible-altitude-rate
+  expect validity valid
+
+at 600000
+  fix 3d
+  pos 5075400 10000000
+  alt 43000
+  acc 4000
+  sats 11 14
+  hdop 92
+  speed 1400
+  jam none
+  spoof none
+  motion moving
+  expect trust trusted
+  expect no-reason position-jump

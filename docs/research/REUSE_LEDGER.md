@@ -1,6 +1,6 @@
 # Reuse Ledger
 
-Firefly prefers proven work over new code. This file records, for every
+Attadipa prefers proven work over new code. This file records, for every
 non-trivial problem, what already existed, what was examined, and why the
 project did or did not use it.
 
@@ -14,9 +14,9 @@ considered decision and an unexamined reflex.
 |---|---|
 | `USE AS-IS` | taken unchanged |
 | `USE AS DEPENDENCY` | pinned and consumed as an external component |
-| `WRAP` | used behind a Firefly interface |
+| `WRAP` | used behind an Attadipa interface |
 | `PORT` | moved to this platform, logic preserved |
-| `ADAPT` | modified for Firefly's constraints |
+| `ADAPT` | modified for Attadipa's constraints |
 | `EXTRACT ALGORITHM` | only the algorithm taken, code rewritten |
 | `INSPIRE ARCHITECTURE` | only the design idea taken, nothing copied |
 | `UPSTREAM PATCH` | change contributed back rather than forked |
@@ -37,7 +37,7 @@ Weaknesses:
 Decision:
 Reason:
 Source revision:
-Firefly integration:
+Attadipa integration:
 Tests required:
 ```
 
@@ -59,13 +59,14 @@ want to inherit the experience, not only the code.
 
 | Project | Repository | Commit at examination | Last commit | Why it is here |
 |---|---|---|---|---|
-| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Firefly builds on; T-006 |
+| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006 |
 | `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API |
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
 | `lvgl` | github.com/lvgl/lvgl | `7cc13aafaa2e7acab6cf3c1977ab6ca70b6c2ed7` | 2026-08-20 | the UI toolkit; version choice is open question T2 |
 | `T-Watch-S3` | github.com/Xinyuan-LilyGO/TTGO_TWatch_Library | `e5a0f825a21198f97d2bafee03ea853766483d20` | 2025-02-28 | LilyGO vendor library for one of the two target boards |
-| `waveshare-bsp` | github.com/espressif/esp-bsp | `2f519317d5375f7bbb0190b29a4988c2ea2453e2` | 2026-08-13 | Espressif BSP collection, including the Waveshare board; compile-time BSP_CAPS_* |
+| `esp-bsp` | github.com/espressif/esp-bsp | `2f519317d5375f7bbb0190b29a4988c2ea2453e2` | 2026-08-13 | Espressif's BSP collection and the source of the `esp_lcd_touch_ft5x06` dependency. **It does not contain the Waveshare board** — `esp-bsp/bsp` holds 26 board entries and none is a Waveshare AMOLED. Recorded here as `waveshare-bsp` until 2026-08-22, which sent readers to the wrong repository |
+| `waveshare-components` | github.com/waveshareteam/Waveshare-ESP32-components | — | 2026-08-22 | where the Waveshare BSP actually lives. Drives display, touch, audio and SD only: `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`, and it never touches the QMI8658, AXP2101 or PCF85063 on the board. Its `esp_lcd_sh8601` is a two-line fork of Espressif's, and one of those lines drops the error check on `tx_color()` so a failed frame reports success — see [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.3. Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300`, same Apache-2.0 |
 | `Gadgetbridge` | codeberg.org/Freeyourgadget/Gadgetbridge | `40326980ca871989961ba2442e7cabd4d204b1b6` | 2026-08-21 | host side of many watch protocols; companion protocol prior art |
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
 | `lv_i18n` | github.com/lvgl/lv_i18n | `08944ec6dc2faed83121c53e9cf9ba05013a6686` | 2026-03-30 | LVGL's own localization generator — the closest existing answer to T-033 |
@@ -73,12 +74,12 @@ want to inherit the experience, not only the code.
 
 ### Licences, checked before anything was depended on
 
-Firefly is MIT. `CLAUDE.md` says anything incompatible with MIT does not enter
+Attadipa is MIT. `CLAUDE.md` says anything incompatible with MIT does not enter
 this repository, and the licence is checked *before* the code is depended on,
 never after. Every licence below was read from the file in the clone, not from a
 badge or a recollection.
 
-| Project | Licence | Where it was read | What Firefly may do with it |
+| Project | Licence | Where it was read | What Attadipa may do with it |
 |---|---|---|---|
 | MeshCore | **MIT** | `license.txt`, and the README's licence section | anything |
 | RadioLib | **MIT** | `license.txt`; `library.json` agrees | anything |
@@ -93,10 +94,10 @@ badge or a recollection.
 | **Gadgetbridge** | **AGPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
 
 The bottom three matter more than the top six, because they are the projects
-that have already solved Firefly's hardest problems. Meshtastic ships worldwide
+that have already solved Attadipa's hardest problems. Meshtastic ships worldwide
 and has therefore had to solve regulatory bounds on radio settings. InfiniTime
 is a mature LVGL watch firmware with a real application lifecycle running on far
-less RAM than either Firefly board has. They are the obvious places to look —
+less RAM than either Attadipa board has. They are the obvious places to look —
 and **GPL-3.0 with no linking exception forecloses every ledger verb with copy
 semantics**: not `USE AS DEPENDENCY`, not `PORT`, not `ADAPT`, and not
 `EXTRACT ALGORITHM`, which is copying with extra steps. It applies to their
@@ -123,7 +124,7 @@ to look up is a licence that gets assumed.
 - Prefer an upstream patch to a fork. If a fork is unavoidable, keep the delta
   small and record what it is and why.
 - Reusing code does not mean trusting it. Every reused component needs tests
-  that prove it does what Firefly needs, on Firefly's target.
+  that prove it does what Attadipa needs, on Attadipa's target.
 - Vendor examples are a source of *knowledge*. Do not import a vendor demo's
   architecture into the project along with the one fact you needed.
 
@@ -147,9 +148,9 @@ anything equivalent is written by hand.
 | `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | to check |
 | XPowersLib | AXP2101 driver used by **both** vendors — covers the one shared part | to check |
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
+| `78/xiaozhi-esp32` | **the firmware the received board actually shipped with** — its `model` partition holds WakeNet9 `wn9_nihaoxiaozhi_tts`, so the launcher's AIChats app is this project. It therefore contains this exact board's **audio path** written out: I2S wiring, ES8311 bring-up, and what the two microphones are for. See [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §3 | to check — **and the check comes first** |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
 | `infinition/waveshare-watch-rs` | a Rust `no_std` watch firmware for the same board — unusable directly, potentially instructive | to check |
-| Meshtastic | mature ESP32 LoRa firmware with T-Watch support; solves overlapping problems | to check |
 | ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement | to check |
 
 Rust and Arduino candidates are still worth reading. `EXTRACT ALGORITHM` and
@@ -174,7 +175,7 @@ which obvious-looking solutions already broke for other people.
 
 ### Mesh stack, and the watch-to-node link
 
-**Problem:** a LoRa mesh stack for the Firefly node, and the protocol the watch
+**Problem:** a LoRa mesh stack for the Attadipa node, and the protocol the watch
 speaks to it.
 
 **Projects investigated:** MeshCore (MIT, `d92964352441e53b93e8667b802e04f6e072b39e`,
@@ -212,7 +213,7 @@ addendum forbids. On the node path it is also unnecessary: the radio is in a
 separate device, so the watch never originates or routes a mesh packet. `REIMPLEMENT` fails the addendum's test —
 MeshCore's routing, duplicate suppression, airtime budgeting and path-hash
 scheme are years of field tuning across 87 board variants, and nothing in
-Firefly's requirements is unmet by them. What Firefly *does* write is a
+Attadipa's requirements is unmet by them. What Attadipa *does* write is a
 companion-protocol client, which is a client of a published protocol rather than
 a reimplementation of a stack; MeshCore's own JavaScript and Python clients are
 the same thing.
@@ -231,14 +232,14 @@ seven test binaries, none touching crypto or wire format, with a no-op AES mock.
 - **A packed descriptor read as a plain integer.** The companion protocol's
   `path_len` byte packs a hash count in its low six bits and a hash size in its
   high two, and shipped firmware treated it as a plain length in
-  `CMD_SEND_RAW_DATA`. *Issue #3220, filed and closed 2026-08-19.* → Firefly's
+  `CMD_SEND_RAW_DATA`. *Issue #3220, filed and closed 2026-08-19.* → Attadipa's
   client validates every `path_len` with the semantics of
   `Packet::isValidPathLen()` (`src/Packet.cpp:13-18`) before consuming a byte of
   path.
 - **A shared array across two tasks with no synchronisation.** The ESP32 BLE
   receive path had `onWrite` appending from the BLE host task while `loop()` read
   from the Arduino task. *Fixed by `3885c67c8eaf46ce66e28252338df783ca178a95`,
-  2026-07-20.* → MeshCore's core has zero locking by design. Firefly must never
+  2026-07-20.* → MeshCore's core has zero locking by design. Attadipa must never
   touch a MeshCore object from more than one task, and all companion-frame
   reassembly on the watch belongs to one task.
 - **A blocking write took down the whole cooperative loop.** The ESP32 build
@@ -246,14 +247,14 @@ seven test binaries, none touching crypto or wire format, with a no-op AES mock.
   `39ff5b87`.* → The node link must be non-blocking on both sides; check
   writability first, never block a UI or application task on it.
 - **Security is an open upstream issue, not a solved problem.** *Issue #259,
-  "Security issues in encryption!", open since 2025-05.* → Firefly must never
+  "Security issues in encryption!", open since 2025-05.* → Attadipa must never
   present the MeshCore transport to a user as private or verified. No lock icon,
   no "encrypted" label on a mesh message. Honest status text is a requirement,
   not a nicety.
 
 **Source revision:** MeshCore `d92964352441e53b93e8667b802e04f6e072b39e`.
 
-**Firefly integration:** [ADR-0005](../adr/0005-node-protocol.md).
+**Attadipa integration:** [ADR-0005](../adr/0005-node-protocol.md).
 
 **Tests to port** — all MIT, all portable as code:
 `test/test_config_serializer/` · `test/test_companion_node_prefs/` ·
@@ -274,7 +275,7 @@ Meshtastic's `PhoneAPI` (GPL-3.0 — read only) · MeshCore's companion protocol
 (MIT) · Apple ANCS (specification) · InfiniTime's GATT services (GPL-3.0 — read
 only).
 
-**Decision:** `INSPIRE ARCHITECTURE` — write Firefly's own versioned binary TLV,
+**Decision:** `INSPIRE ARCHITECTURE` — write Attadipa's own versioned binary TLV,
 take no schema-codec dependency.
 
 **Reason:** measured, on `xtensa-esp32s3-elf-gcc` 14.2.0 at `-Os`.
@@ -287,14 +288,14 @@ same story less sharply — nanopb runtime 7 029 B, Meshtastic's descriptor tabl
 32 MB part and the 512 KB of internal SRAM is not.
 
 The licence closed the alternatives before the measurement did: the two
-implementations closest to Firefly's problem are GPL-3.0 and AGPL-3.0.
+implementations closest to Attadipa's problem are GPL-3.0 and AGPL-3.0.
 
 **Lessons from upstream issues:**
 
 - **A schema width is wire ABI.** nanopb halts on string overflow rather than
   truncating, so shrinking `long_name` by fifteen bytes made peers built against
   the old schema undecodable. *Reverted within the hour;* break at
-  `41727ea73453233fc643395ed9467998f0891e44`, 2026-06-11. → Firefly's field
+  `41727ea73453233fc643395ed9467998f0891e44`, 2026-06-11. → Attadipa's field
   widths are an **acceptance** property, never a **decode** property. Accept
   generously, clamp on store and on transmit.
 - **Per-session state outlived the physical link.** A BLE drop mid-config-sync
@@ -305,13 +306,13 @@ implementations closest to Firefly's problem are GPL-3.0 and AGPL-3.0.
 - **A negotiated version that is never reset.** MeshCore writes `app_target_ver`
   in exactly two places and never clears it, so a reconnecting client inherits
   the previous session's assumption. → Negotiated state is *link* state, not
-  *device* state. Firefly resets it unconditionally and returns a session epoch.
+  *device* state. Attadipa resets it unconditionally and returns a session epoch.
 - **A length-prefixed frame with no checksum, on a link shared with log
   output.** Debug text interleaved into a declared payload and the receiver
   believed it. *Issue #10975, 2026-07-10.* → A CRC in the header, and a partial
   transport write must retain and complete the remainder rather than dropping it.
 
-**Firefly integration:** [ADR-0005](../adr/0005-node-protocol.md).
+**Attadipa integration:** [ADR-0005](../adr/0005-node-protocol.md).
 
 ---
 
@@ -332,7 +333,7 @@ comparables, and independently **no candidate actually solves it**. esp-bsp's
 `BSP_CAPS_*` are compile-time macros and cannot express a provider that arrives
 later at all. Meshtastic's variants are a build-time selection across ~200
 boards. Both answer "which board was this compiled for", which is the question
-Firefly's architecture forbids asking.
+Attadipa's architecture forbids asking.
 
 **Lessons from upstream issues:**
 
@@ -354,7 +355,7 @@ Firefly's architecture forbids asking.
   from a peer's GATT write length. *Issue #825, `df61907073fab7d4c2f9595c7771e894a3841b65`.*
   → A detached provider is a trust boundary. Bound every length at the link edge.
 
-**Firefly integration:** [ADR-0004](../adr/0004-capability-sources.md).
+**Attadipa integration:** [ADR-0004](../adr/0004-capability-sources.md).
 
 ---
 
@@ -369,7 +370,7 @@ Android/Wear OS lifecycle contracts (specification).
 
 **Decision:** `INSPIRE ARCHITECTURE`.
 
-**Reason:** InfiniTime is the only project solving Firefly's exact shape — an
+**Reason:** InfiniTime is the only project solving Attadipa's exact shape — an
 LVGL watch firmware with a real app model on far less RAM — and it is GPL-3.0.
 Recorded explicitly so nobody relitigates it later when `DisplayApp`'s message
 loop looks copyable. It is not.
@@ -378,7 +379,7 @@ loop looks copyable. It is not.
 
 - **A resource an open app depended on was powered down underneath it, and the
   app silently rendered a missing element.** *Issue #2451, closed 2026-07-19.*
-  Upstream's fix was to stop letting the resource vanish — **Firefly cannot take
+  Upstream's fix was to stop letting the resource vanish — **Attadipa cannot take
   that escape hatch**, because a node walking out of range is not something we
   can decide to keep powered. The app must be told.
 - **Availability as a `bool` at one call site, silently disabled by a refactor,
@@ -396,7 +397,7 @@ loop looks copyable. It is not.
   timer's lifetime.
 
 **Tests to port:** none exist. `InfiniTime/tests/` contains two files. That is
-itself the finding, and it means Firefly writes these from scratch — all
+itself the finding, and it means Attadipa writes these from scratch — all
 host-native, no hardware, no LVGL.
 
 ---
@@ -425,7 +426,7 @@ precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
   reboot.** Meshtastic's `limitPower()` wrote the clamped value back into the
   persisted config — documented in a comment as a thing not to do, and shipped
   anyway, twice. *Fixed by `f95c77b8bd8babd071e7cc2b36f0e3952bf4ed92`, PR #7255,
-  2025-07-07.* → Firefly separates stored intent from effective value and makes
+  2025-07-07.* → Attadipa separates stored intent from effective value and makes
   the write-back **structurally impossible**, not merely documented.
 - **A wrong number in a region table makes the device transmit illegally.**
   Meshtastic's `EU_433` band edge is wrong and *issue #3371 has been open since
@@ -434,7 +435,7 @@ precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
 - **A transmit gate that is visibly present in the source can be silently dead.**
   Meshtastic gated transmission on `region == UNSET`; the check was there to
   read, and the device transmitted anyway. *Issue #2205, 2023-01-25.* → This is
-  Firefly's single most safety-critical line, it is exactly the state the project
+  Attadipa's single most safety-critical line, it is exactly the state the project
   ships in while A4 is open, and it needs a test that actually observes silence
   rather than reads the source.
 - **A firmware update reset a setting and the device exceeded legal power.** On a
@@ -448,7 +449,7 @@ precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
 InfiniTime's are GPL-3.0 — their *case lists* may inform, their code may not be
 copied.
 
-**Firefly integration:** [ADR-0006](../adr/0006-settings-and-bounded-values.md).
+**Attadipa integration:** [ADR-0006](../adr/0006-settings-and-bounded-values.md).
 
 ---
 
@@ -463,7 +464,7 @@ Meshtastic's fork (LGPL-2.1 — a relink obligation this project should not take
 (GPL-3.0 — read only).
 
 **Decision:** `WRAP` — take `minmea.c` / `minmea.h` unmodified at
-`2dd2cd11a359de5583e68053182d5bbf29725934`, behind a Firefly wrapper that owns
+`2dd2cd11a359de5583e68053182d5bbf29725934`, behind an Attadipa wrapper that owns
 line assembly, length enforcement, strict checksum verification and value
 validation.
 
@@ -495,7 +496,7 @@ arrive as a version bump rather than a merge.
 - **A checksum computed from a fixed offset rather than from the located `$`.**
   Meshtastic's output began with CRLF and folded the newline into the checksum.
   *PR #11293, `63671329199e1b6721f837043965a9d891afb092`, 2026-07-31.* → minmea
-  has no line assembler, so the assembler is code **Firefly** writes — this is
+  has no line assembler, so the assembler is code **Attadipa** writes — this is
   our risk surface, not the library's.
 - **Geodesic code crashed on hostile coordinates arriving over the air.** *PR
   #10862, `b4dd76a4db78292c9d181d9cc181104b662add13`, 2026-07-02.* → Coordinates
@@ -569,10 +570,10 @@ vendors it.
   nested ternary of `strcmp` over **every key in the project** — O(n) string
   compares per lookup, expanded inline at every call site.
 - It generates **C with a fixed API** (`_()`, `_p()`, `lv_i18n_set_locale`)
-  around a global current-locale. Firefly's `tr()` has to return something the
+  around a global current-locale. Attadipa's `tr()` has to return something the
   UI layer can hold, and that signature is T-033's to choose.
 - The toolchain is **Node plus a CLI that scrapes source files** for keys.
-  Firefly's source of truth is the catalogue, not the source scrape — the
+  Attadipa's source of truth is the catalogue, not the source scrape — the
   direction is reversed, and reversing it is not a small edit.
 - **No font check.** The one check that is invisible without machine
   enforcement — a Russian string the embedded font cannot draw — is not
@@ -596,10 +597,10 @@ font check regardless.
 files read: `src/lv_i18n.template.h`, `src/lv_i18n.template.c`,
 `lib/plurals.js`, `package.json`, `LICENSE`.
 
-**Firefly integration:** a TOML catalogue as the single source of truth, a
+**Attadipa integration:** a TOML catalogue as the single source of truth, a
 Python generator beside `tools/font/` emitting a `StringId` enum and parallel
 per-locale tables, and three checks wired as `ctest` entries so that a local run
-and CI enforce the same thing. The plural category function is Firefly's own
+and CI enforce the same thing. The plural category function is Attadipa's own
 code, in C++, tested against the vector ADR-0010 names.
 
 **Tests required:** the plural vector 0, 1, 2, 5, 11, 21, 101, 111, 1001
@@ -608,3 +609,636 @@ asserting *categories* rather than rendered strings — `0→many, 1→one, 2→
 and everything else `→other`; generator failure on a missing locale entry, on a
 duplicate identifier, and on `ru.other`; and the font check failing on a
 catalogue entry carrying a codepoint outside `charset.py`.
+
+---
+
+### Attitude and heading filters — examined before writing nothing
+
+**Problem:** the research report recommends Madgwick fusion for heading. §10 of
+the owner's brief requires studying `xioTechnologies/Fusion` before writing our
+own rather than reaching for the first paper.
+
+**Projects investigated:** `xioTechnologies/Fusion` (**MIT**, the reference C
+implementation of the algorithm, with the magnetic-rejection and acceleration-
+rejection logic the original paper leaves out) · Madgwick's own release
+(GPL/other, ambiguous) · Mahony's complementary filter (widely reimplemented) ·
+Bosch's BSX fusion for the BMA/BMI family (proprietary, licensed per part) ·
+`RTIMULib2` (MIT, unmaintained since 2016).
+
+**Decision:** `REJECT` — and not "later", **not on this hardware**.
+
+**Reason:** the decision is settled by the parts list, not by the algorithms.
+Madgwick and Mahony fuse a gyroscope with an accelerometer and a *magnetometer*.
+The accelerometer gives roll and pitch because gravity is a fixed reference; the
+magnetometer gives yaw because the field is another one. Remove it and yaw has
+no observable reference at all — the filter still runs, still converges, and
+converges to an arbitrary heading that then drifts.
+
+The parts:
+
+| Board | IMU | Magnetometer |
+|---|---|---|
+| T-Watch S3 | BMA423 — **accelerometer only**, no gyroscope | **none** |
+| Waveshare 2.06 | QMI8658 — accelerometer + gyroscope | **none** |
+
+So on one board there is not even a gyroscope to fuse, and on neither is there a
+magnetometer. Running Fusion on the Waveshare would produce a confidently drawn
+arrow carrying no information about which way the wearer is facing, which is
+worse than no arrow: a compass that is wrong is used, and a compass that is
+absent is not.
+
+What Fusion *is* worth reading for, and what was taken as
+`INSPIRE ARCHITECTURE` rather than as code: its separation of the filter from
+the rejection logic, and its explicit `FusionAhrsFlags` reporting when the
+filter does not trust its own output. That shape — a filter that says when it is
+unsure rather than always producing a number — is the same shape ADR-0011 uses
+for GNSS trust, and it is why `HeadingSource` in
+[ADR-0009](../adr/0009-heading.md) has a value for `Unknown` that is not a
+synonym for north.
+
+**Revisit when:** an external magnetometer is decided
+([OPEN_QUESTIONS](OPEN_QUESTIONS.md) A5), or a node with one is specified and
+[ADR-0009](../adr/0009-heading.md)'s `NodeBody`→`WatchBody` transform is
+resolved. Until then this is not a backlog item, it is a part that does not
+exist.
+
+**Tests that would be required if it were ever taken:** Fusion's own repository
+carries no test suite. The vectors would have to come from a recorded IMU
+capture with a known ground truth, which is a hardware plan
+([HIL_PLANS](../testing/HIL_PLANS.md)) and not a host test.
+
+---
+
+### Transport framing over USB, BLE and the node link
+
+**Problem:** frame a byte stream that arrives in arbitrary fragments, over a
+transport that can disconnect mid-frame, with bounded memory and no allocation.
+
+**Projects investigated:** MeshCore's `ArduinoSerialInterface` framing (MIT,
+readable, and the source of the defects below) · SLIP, RFC 1055 · COBS, and
+`bakercp/PacketSerial` (MIT) · HDLC-style byte stuffing as used by Nanopb
+examples · ESP-IDF's `esp_serial_slave_link` (Apache-2.0) · TinyFrame (MIT).
+
+**Decision:** `REIMPLEMENT`, with the framing shape taken from COBS-adjacent
+prior art and the *failure* requirements taken from MeshCore's bugs.
+
+**Reason.** The requirement that decided it is in
+[the MeshCore review](../upstream/meshcore-1.17-review.md), verified at source:
+upstream truncates an over-long frame to `MAX_FRAME_SIZE` and **delivers it as
+though it were complete**. That is the one failure a protocol cannot recover
+from, because the receiver believes the corrupted message. Its framing also
+carries no checksum, no escape and no resynchronisation, and `isConnected()`
+returns `true` unconditionally with the comment *"no way of knowing, so assume
+yes"*.
+
+None of that is fixable by wrapping it, because the defects are in what the
+format *is*. Attadipa's frame is therefore a sync pattern, a length with a check
+byte so a corrupted length is caught before the decoder waits for bytes that
+will never arrive, and a CRC-16/CCITT over length and payload. An over-long
+frame is refused, and `tests/test_link.cpp` asserts that specifically.
+
+COBS was the strongest alternative and was not taken because its cost is a
+variable-length encoding — a payload's on-wire size depends on its content,
+which makes a fixed-size queue slot either wasteful or occasionally too small.
+A length-prefixed frame with a checksum has the same recovery properties for
+this traffic and a constant overhead of seven bytes.
+
+**What was *not* invented:** CRC-16/CCITT-FALSE is a standard, and
+`tests/test_link.cpp` pins it against published vectors (`123456789` → `0x29B1`)
+computed independently rather than read out of our own implementation. A
+checksum that quietly disagrees with the peer's is a link that never carries
+anything.
+
+**Numbers, and where they come from.** `kMaxPayload = 192` is not copied from
+anywhere: it is the largest MeshCore packet plus the node-link header, rounded
+up to a multiple of 32 so a queue slot aligns. `kDefaultQueueDepth = 4` is one
+frame in flight, one being built, and two of slack. Both are stated in
+`link/include/attadipa/link/frame_codec.h` beside the constants, because §6 of
+the brief forbids magic numbers copied from another project.
+
+**Tests required, and present:** the owner's §6 list one function per item —
+fragmented input, several frames in one read, partial writes, a full queue, a
+disconnect mid-frame, a reconnect, a large payload, a malformed frame — plus the
+upstream defects held against our own code.
+
+---
+
+### Turning source art into LVGL assets
+
+**Problem:** convert committed source art into flash-resident LVGL image
+descriptors, reproducibly, with a stale generated tree visible as a failing test
+rather than as a wrong picture on a panel.
+
+**Projects investigated:** LVGL's own `scripts/LVGLImage.py` (MIT, in the pinned
+v9.5.0 tree) · LVGL's online image converter, which is the same conversion
+behind a web form · writing the `lv_image_dsc_t` emitter by hand from
+`src/draw/lv_image_decoder.h` · `imagemagick` plus a hand-written array writer.
+
+**Useful implementation:** `LVGLImage.py` itself. It is the tool LVGL uses to
+produce its own assets, it supports every colour format the header defines
+including `A8` and `RGB565A8`, its output is byte-identical across runs, and it
+takes its input as files and its parameters as flags — which is what makes it
+scriptable rather than a web page somebody has to remember to visit.
+
+**Licence:** **MIT**, read from `LICENCE.txt` in the same clone and copied to
+`tools/assets/vendor/LVGL-LICENCE.txt` beside the file.
+
+**Strengths:** authoritative — it emits the struct the version of LVGL we pinned
+actually reads, so a format mismatch is impossible by construction. Deterministic
+with `--compress NONE`: two runs produce identical bytes, verified rather than
+assumed.
+
+**Weaknesses:** it hardcodes an include block that falls through to
+`lvgl/lvgl.h` with no flag to change it (worked around with
+`LV_LVGL_H_INCLUDE_SIMPLE`); it imports `lz4` at module scope even when
+compression is off; and it has no notion of a manifest, a digest or a refusal —
+point it at a 1440-pixel concept sheet and it will happily convert it. Those
+last three are why there is a pipeline around it rather than a call to it.
+
+**Decision:** `USE AS-IS`, **vendored unmodified** at
+`tools/assets/vendor/LVGLImage.py`, wrapped by
+`tools/assets/generate_images.py`.
+
+**Reason.** Rewriting an encoder for a struct somebody else defines is how a
+format drifts. Vendoring rather than referencing the clone is the part that
+needed a decision: regeneration has to work for the next agent and in CI, and
+neither has `/root/upstream`. LVGL is not a submodule here, and a download
+inside a generation step is a network dependency in a build. One MIT file,
+pinned by hash, unmodified, is cheaper than a submodule and more honest than a
+path that only exists on one machine. **The hash is part of the pipeline's
+inputs digest**, so a converter bump that changes any output byte fails
+`ui_images_are_current` until the tree is regenerated — an encoder that changes
+its output *is* the asset changing.
+
+**Source revision:** LVGL v9.5.0, commit `85aa60d18`. File SHA-256
+`c4b59a99104a7592d38b84747296c5e94e86263ca973137b897d295e39b1bff3`, recorded in
+`tools/assets/vendor/README.md` and re-checkable with `sha256sum`.
+
+**Attadipa integration:** `attadipa_images`, a target that links LVGL and
+`attadipa_ui` — the same separation `attadipa_fonts` has, and for the same
+reason: an `lv_image_dsc_t` knows about LVGL and `attadipa_ui` must not.
+
+**Tests required, and present:** determinism (two runs, byte-compared);
+`--check` catching a stale tree with no converter installed; the refusals
+actually refusing — a source over the dimension cap, a source under `docs/` or
+`pics/`, a size with no drawing, a filename that disagrees with its pixels; and,
+in C++, that every linked descriptor is `A8` with `stride == width` and carries
+a drawing rather than a blank rectangle.
+---
+
+### Speaking the vanilla MeshCore companion protocol
+
+**Problem:** a watch must talk to a MeshCore node that is running **stock**
+firmware — one the owner did not build and cannot be asked to reflash
+([OD-7](OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)).
+Send and receive mesh messages, request telemetry, and take positions from it.
+
+**Projects investigated:** MeshCore `companion_radio` at
+`d92964352441e53b93e8667b802e04f6e072b39e` (MIT) — the protocol itself · its
+first-party JavaScript and Python client libraries, **identified and not read**
+· Gadgetbridge as prior art for a host-side companion protocol (AGPL-3.0, read
+only).
+
+**Useful implementation:** the protocol, not the code. The dispatch is a flat
+`if/else if` chain over `#define`s in one 2 000-line `.cpp`, inseparable from
+the firmware's own state; there is no client library in the firmware repository
+to depend on. The transport interfaces are Arduino-typed throughout.
+
+**Licence:** MIT. Anything is permitted; nothing is *useful* to take.
+
+**Strengths:** small, flat, legible in an afternoon; 58 commands with no
+schema compiler and no code generation; framing that fits on a page.
+
+**Weaknesses**, all of them ours to absorb rather than fix: `MAX_FRAME_SIZE 176`
+is a bare `#define` with no `#ifndef` guard, so a peer cannot raise it; no
+checksum on any transport; the byte-stream receiver **truncates** an over-long
+frame and delivers it as complete (the same defect already recorded under
+*Transport framing*); a defined command with a malformed argument returns
+`ERR_CODE_UNSUPPORTED_CMD`, indistinguishable from an unknown opcode; the BLE
+path requests a 176-byte MTU and never checks the negotiated one; and a stock
+build answers `CMD_EXPORT_PRIVATE_KEY`.
+
+**Decision:** `REIMPLEMENT` — an Attadipa-side **client**, written fresh against
+the documented protocol, behind [ADR-0008](../adr/0008-mesh-service-providers.md)'s
+provider interface. Explicitly **not** `PORT`, **not** `USE AS DEPENDENCY`, and
+**not** a second code path in `core/`.
+
+**Reason.** There is nothing to port: the firmware's client-facing side *is* the
+firmware. Depending on the first-party JS or Python clients is not available to
+an ESP-IDF image. The protocol is small enough that reimplementation costs less
+than adapting anything, and reimplementing is what lets our own framing rules —
+refuse an over-long frame, never deliver a truncated one — apply to a link whose
+peer has neither.
+
+**Source revision:** `d92964352441e53b93e8667b802e04f6e072b39e`
+(`companion-v1.17.1`). Read on 2026-08-22. **The full reading is
+[MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md)**, which states
+which of its claims were independently verified against the clone and which
+rest on a single reading.
+
+**Attadipa integration:** a provider behind ADR-0008, over any of the transports
+the node exposes. LAN/TCP first — it needs no BLE stack and no pairing, and it
+is testable from a host long before an ESP32 is involved.
+
+**Tests required:** the framing pair against a recorded stock-node exchange;
+`CMD_DEVICE_QUERY` re-sent on every connection (the `app_target_ver` hazard);
+an over-long frame refused rather than truncated; a malformed argument **not**
+reported to the user as an unsupported node; a telemetry response whose
+`LPP_GPS` record is absent because permission was denied, which is a normal
+outcome and not an error; and a position from a companion carrying no better
+provenance than "arrived at time T from key K".
+
+---
+
+### Meshtastic's protocol definitions — the licence gate
+
+**Problem:** OD-7 asks for Meshtastic as a companion alternative to, or
+alongside, MeshCore. A client needs the wire format.
+
+**Projects investigated:** `meshtastic/protobufs` at submodule commit `aca181b`,
+under firmware `68bfe015e`.
+
+**Useful implementation:** the `.proto` definitions, which are the whole
+protocol.
+
+**Licence:** **GPL-3.0.** The definitions live in their own repository with their
+own `LICENSE` file — and that file is the same licence as the firmware.
+`packages/ts/package.json:10` declares `"license": "GPLV3"`;
+`packages/rust/Cargo.toml:7` points `license-file` at the same `LICENSE`. No
+exception paragraph, no SPDX identifier in any `.proto`, no dual licensing.
+
+**Decision:** `REJECT` — and since 2026-08-22 the rejection is the owner's, not
+a holding position. [OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence).
+
+**Reason.** Generating code from those definitions and linking it into an MIT
+firmware image is the thing this ledger's rule about GPL-3.0 exists to prevent.
+The separate repository was the hypothesis worth testing and it did not survive
+contact with the file. The alternatives — a clean-room from published
+documentation, separate distribution, or asking upstream for an exception — are
+put to the owner as four options, and the owner chose the last of them:
+Meshtastic is not supported. The licence closed the cheap path; the *decision*
+is that the expensive one is not worth taking.
+
+**Source revision:** `protobufs` `aca181b`; firmware
+`68bfe015e6ab9ec2ab8f1657066898b7880eaf63`. Read on 2026-08-22.
+
+**Attadipa integration:** none. MeshCore alone answers what OD-7 asked for.
+
+**Tests required:** none — there is nothing to test and, per OD-12, there will
+not be. If this is ever revisited, only the product decision needs to change:
+the licence question is answered and stays answered.
+---
+
+### GNSS integrity and trust
+
+**Problem:** decide whether a position is worth navigating by, and keep the
+reasons.
+
+**Projects investigated:** u-blox's own `UBX-SEC-SIG` and `UBX-NAV-STATUS`
+jamming and spoofing indicators (a receiver feature, not code we can take) ·
+RTKLIB (**BSD-2-Clause**, and a full RTK/PPP engine — orders of magnitude beyond
+this problem) · GNSS-SDR (GPL-3.0, read-only, and a software-defined receiver) ·
+Meshtastic's position handling (GPL-3.0, read-only) · Android's
+`GnssMeasurement` API model (not code, but a data model worth studying).
+
+**Decision:** `REIMPLEMENT` for the trust engine; `INSPIRE ARCHITECTURE` from
+Android's separation of raw measurement from derived location.
+
+**Reason:** there is no existing embedded library for this, and the reason is
+that the problem is mostly *policy*. The detectors are arithmetic; what makes
+the subsystem worth having is that the policy — weights, hysteresis, what counts
+as evidence — is explicit and separable, and that the receiver's own verdict is
+the strongest single input without being the only one. Taking a general library
+would mean taking somebody else's policy for a wrist in a forest.
+
+RTKLIB was examined and rejected on scale rather than on licence: it is a
+correct and permissively-licensed geodesy engine, and §15 of the owner's GNSS
+amendment explicitly rules out building the navigation stack now — no Kalman, no
+RTS, no PDR, no RTK, no DGNSS. Reaching for RTKLIB would be building it by
+accident.
+
+**What was taken from the receiver rather than reimplemented:** everything the
+receiver can see and we cannot — per-signal carrier-to-noise, the correlator,
+the RF front end. `ReceiverIndication` and `ProtectionLevel` exist so that the
+receiver's own verdict enters the model as the heaviest single input, and OD-5
+is why `Unknown` and `Unsupported` are distinct from `None`.
+
+**Tests required, and present:** `tests/test_trust.cpp`, mutation-checked
+against four real regressions, plus the twelve replay traces.
+
+---
+
+### The replayable navigation rig
+
+**Problem:** verify detectors for events that cannot be staged.
+
+**Projects investigated:** `gpsd`'s regression framework (BSD-2-Clause; replays
+recorded sentences against expected output) · RTKLIB's RINEX-driven tests
+(BSD-2-Clause) · u-blox u-center's log playback (proprietary, and a desktop GUI)
+· Google's `gnss_analysis` tooling (Apache-2.0, Python, for raw measurements).
+
+**Decision:** `INSPIRE ARCHITECTURE` from gpsd's regression framework;
+`REIMPLEMENT` the rig itself.
+
+**Reason:** gpsd's design is the right one and its shape is what was taken — a
+directory of recorded inputs, each with its expected output, replayed by a
+runner that fails loudly on a mismatch and treats an unreadable fixture as a
+failure rather than a skip. What could not be taken is the level: gpsd replays
+*sentences* to test a *parser*, and Attadipa has no parser yet (minmea is a `WRAP`
+decision above and is not vendored). The rig therefore replays normalized
+observations to test the trust and validity model, and the fixture format is
+shaped so that an NMEA, GPX or vendor-binary front end later adds a reader
+rather than a second rig.
+
+**The one thing worth copying deliberately:** gpsd's rule that a regression
+fixture nobody can read is a build failure. `tests/CMakeLists.txt` refuses to
+configure if the scenario glob matches fewer than ten files, because a glob that
+silently matched nothing would produce a test that passes by running no
+scenarios at all.
+
+### BLE tracker detection — the reverse of tag emulation
+
+**Problem:** T-070 — scan for an unknown BLE identifier that has stayed near
+the wearer for an implausibly long time, and say so, without implying the
+detector catches everything.
+
+**Projects investigated:** `seemoo-lab/AirGuard` (Apache-2.0) — the only
+actively-maintained, open-source implementation of exactly this feature.
+`seemoo-lab/AirGuard-iOS` was identified but not read; its detection
+capability is materially constrained by iOS's restriction on third-party BLE
+MAC-address access, which this record cannot quantify.
+
+**Useful implementation:** the detection policy in
+`app/src/main/java/de/seemoo/at_tracking_detection/`: ten ecosystem-specific
+BLE scan filters (`device/types/*.kt`), the risk-evaluation thresholds
+(`util/risk/RiskLevelEvaluator.kt` — sighting count, distinct-location count,
+time-span floor, altitude gates), a scoped identity-rotation stitching
+mechanism for Samsung tags only (`device/DeviceManager.kt`,
+`device/BaseDevice.kt`), and its own in-product admission of what it cannot
+catch (`ui/dashboard/articles/en/limitations_of_the_app.md`).
+
+**License:** **Apache-2.0**, read from `LICENSE` at the repository root, not
+a badge. Compatible with Attadipa's MIT: permissive, no copyleft, requires
+retaining the Apache notice for anything actually taken. Copyright per
+`CITATION.cff`: Niklas Bittner, Alexander Matern, Dennis Arndt, Matthias
+Hollick (SEEMOO, TU Darmstadt).
+
+**Strengths:** the only reference implementation of this exact feature that
+is both readable and actively pushed (last push 2026-08-20); its
+false-positive avoidance — a 150 m distinct-location requirement, owner-
+proximity filtering where the ecosystem exposes it, altitude gates for the
+aeroplane case — is read from source rather than assumed; it states its own
+honest limit in its own shipped strings, which is the same discipline this
+project's `CLAUDE.md` asks for, arrived at independently.
+
+**Weaknesses:** Android/Kotlin — nothing is firmware-reusable as code, only
+as policy; its rotation-evasion countermeasure covers Samsung's aging-counter
+scheme only, and two 2025/2026 papers (one peer-reviewed, one preprint —
+[`docs/research/TRACKER_DETECTION.md`](TRACKER_DETECTION.md) §3) report that
+an identifier rotated faster than its correlation window, on any other
+ecosystem, still evades it; its scan cadence (15-minute period, 20–30 s
+bursts) is tuned for an Android phone's battery, not a device meant to scan
+all day on a 940 mAh cell.
+
+**Decision:** `EXTRACT ALGORITHM` — the detection policy (thresholds, the
+distinct-location false-positive guard, the honest-limit wording discipline),
+not the code, which does not run on this target at all.
+
+**Reason:** there is no embedded/firmware equivalent to port, and porting
+Kotlin/Android APIs to ESP32-S3 firmware is not meaningful. What is worth
+taking is the policy AirGuard arrived at through a WiSec best-paper-award
+process and four years of field use: which thresholds actually distinguish a
+following tracker from a stationary beacon, and — as important — the
+project's own discipline about what it admits it cannot do. `REJECT` was
+considered and set aside because the thresholds themselves (150 m, 3
+sightings, 14-day window) are a genuinely useful starting point rather than
+something Attadipa should re-derive from nothing.
+
+**Lesson from its own commit history, the addendum's rule applied here too:**
+a 2025-03-17 release note claims improved evasion resistance, and reading the
+source behind the claim (§2.7 of `TRACKER_DETECTION.md`) shows the fix is
+scoped to Samsung's aging counter alone — the release note, read in
+isolation, would have overstated what changed. → Attadipa's own detector, if
+built, must not claim a fix's scope more broadly than the code that
+implements it.
+
+**Source revision:** `seemoo-lab/AirGuard`
+`7f71a37d0776acc5f0e8d3046d3daaf8b71ad58d` ("AirGuard 3.1.1", 2026-07-20).
+
+**Attadipa integration:** none yet — T-070 is not implemented. When it is,
+the thresholds above are a starting point to validate against this project's
+own duty-cycle and power constraints
+([`TRACKER_DETECTION.md`](TRACKER_DETECTION.md) §4), not values to copy
+unchanged onto different hardware and a different battery.
+
+**Tests required:** none yet — no code exists. When T-070 is implemented:
+host tests over synthetic scan traces, per `TRACKER_DETECTION.md`'s own
+research and `TASKS.md` T-070's acceptance criteria — a co-travelling
+identifier flagged, a shop full of stationary beacons not.
+
+---
+
+### The agent queue's driver: `anthropics/claude-code-action`
+
+**Problem:** `claude-agent.yml`, `claude-pr-review.yml` and `claude-ci-repair.yml`
+— the whole agent queue `docs/automation/AI_TASK_PROTOCOL.md` describes — all
+invoke the same third-party GitHub Action to run Claude against an issue or
+pull request: it authenticates, invokes the Claude Code SDK headlessly, applies
+`--allowedTools`/`--permission-mode`, and (via `display_report`) posts the
+summary a human reads. Writing this by hand means reimplementing GitHub App
+authentication and the headless SDK invocation, and getting the same things
+wrong the workflow's own comments already record having gotten wrong once —
+agent mode setting no default `--allowedTools`, and `display_report` defaulting
+off, which together produced a 28-turn run in smoke test A that left no branch,
+no pull request and no comment.
+
+**Projects investigated:** `anthropics/claude-code-action` only. It is
+Anthropic's own action for running Claude Code inside a GitHub Actions job; no
+alternative was examined because none offers the same first-party GitHub-native
+integration (issue/PR events, labels, branches) for this specific product. That
+absence of a search is recorded here rather than implied.
+
+**Useful implementation:** the whole action — GitHub event parsing, agent-mode
+invocation of the Claude Code SDK, the `--allowedTools`/`--permission-mode`
+plumbing, and the `display_report`/`show_full_output` output controls that
+`claude-agent.yml`'s inline comments already describe verifying by reading the
+action's own source.
+
+**License:** **MIT**, read from `LICENSE` in the action's own repository
+(`github.com/anthropics/claude-code-action`, raw content confirmed via the
+GitHub API on 2026-08-21: "Copyright (c) 2025 Anthropic, PBC") — not from a
+badge, a marketplace listing or a recollection.
+
+**Strengths:** first-party, so it matches the product it drives; already
+load-bearing across all three workflows and observed working — `claude-agent.yml`
+records specific behavior (no default `--allowedTools` in agent mode, no
+label-setting feature at all) verified by reading `src/` at a pinned commit,
+not assumed from documentation.
+
+**Weaknesses:** consumed as a black box with nothing vendored, so a breaking
+upstream change reaches all three workflows at once with no local copy to fall
+back on; the pin is a floating major-version tag, not a commit (see *Source
+revision*), so "the same version" is not guaranteed between two runs unless
+something else fixes the commit.
+
+**Decision:** `USE AS DEPENDENCY`.
+
+**Reason:** it is the vendor's own action for running their own product inside
+GitHub Actions. `WRAP`, `PORT` or `ADAPT` would mean reimplementing and then
+hand-tracking Anthropic's own SDK invocation, for no benefit the action does
+not already provide. Alternatives were not examined beyond confirming none
+exist for this specific integration — an honest `REJECT`-free `Reason`, per the
+scope this record was opened to fill, rather than a claim that a comparison
+happened.
+
+**Source revision:** pinned in all three workflows as `@v1` — a **floating
+major-version tag, not a commit**. Resolved against the GitHub API on
+2026-08-21: `refs/tags/v1` is an annotated tag that peels to commit
+`3f854a8fb5146b39d5cbf8b57f70d80810e1366f`, currently identical to the
+`v1.0.198` release tag. This matches what `claude-agent.yml`'s own inline
+comments already record having verified source behavior against — but that
+comment answers "what was checked", and this record answers "why the
+dependency is trusted at all"; neither substitutes for the other. Floating
+means "verified against `@v1`" is a snapshot: the tag can move to a later patch
+between one workflow run and the next with no change in this repository,
+silently outdating both that comment and this record until someone re-checks.
+Whether to re-pin to a fixed commit SHA for reproducibility, trading it against
+picking up upstream fixes automatically, is not decided anywhere in
+`docs/automation/CLAUDE_AUTOMATION.md` — that trade is the owner's to make, not
+this record's, and is not a blocker on the record existing.
+
+**Firefly integration:** invoked as a `uses:` step in three workflow files,
+configured entirely through action inputs (`github_token`, `branch_prefix`,
+`allowed_bots`, `allowed_non_write_users`, `show_full_output`,
+`display_report`, `additional_permissions`, `--allowedTools`); no source is
+vendored or modified.
+
+**Tests required:** none host-testable — the action only runs inside GitHub
+Actions, and its behavior can only be observed by running an actual job, which
+is how `claude-agent.yml`'s existing comments arrived at their own findings
+(e.g. the `display_report` fix after smoke test A). Any future version bump
+past the resolved commit above should be re-verified the same way — read the
+source at the new commit — rather than assumed compatible from a changelog.
+
+### A Meshtastic companion client
+
+**Problem:** [OD-7](OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours)
+asked for Meshtastic as a companion alongside or instead of MeshCore, so that
+somebody who will not build an Attadipa node still has a mesh. That means
+speaking Meshtastic's protocol from the watch.
+
+**Projects investigated:** `meshtastic/protobufs` — the protocol definitions,
+which is the whole question, since a client is generated from them — and
+`meshtastic/firmware` as the reference for how they are used.
+
+**Useful implementation:** the `.proto` definitions themselves. There is no
+partial way to use them: a client that speaks the protocol is generated from
+those files or is a clean-room reimplementation of them.
+
+**License:** **GPL-3.0**, read from `protobufs/LICENSE` in the protocol
+repository itself (submodule `aca181b` under firmware `68bfe015e`) — the full
+text, with **no linking exception**. Corroborated by `packages/ts/package.json`
+(`"license": "GPLV3"`) and `packages/rust/Cargo.toml` (`license-file =
+"LICENSE"`). No `.proto` file carries an SPDX identifier of its own.
+
+The hypothesis worth checking was that protocol definitions might be licensed
+separately from the firmware, as some projects do. They are in a separate
+repository — and under the same licence.
+
+**Strengths:** a large installed base, and the only other ESP32 LoRa mesh with
+comparable reach. Answering OD-7 with it would have cost nothing in hardware.
+
+**Weaknesses:** generating from those `.proto` files and linking the result into
+Attadipa would make an MIT firmware a derivative work under GPL-3.0. The rule in
+this file — read it, learn from it, copy nothing — applies to protocol
+definitions exactly as to C++.
+
+**Decision:** `REJECT`.
+
+**Reason:** two, and they are not the same one.
+
+*The licence* closed the cheap path. That is a fact about the sources and it is
+not a judgement.
+
+*The owner* then closed the expensive one
+([OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
+2026-08-22): a genuine clean-room from published documentation, by somebody who
+has not read the `.proto` files, is months of work and is done honestly or not
+at all — and MeshCore is MIT, which is the half of OD-7's need that a licence
+can answer. How much work a MeshCore companion client actually is was open when
+that decision was taken and is not any more: T-072 answered §1 of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) on every row
+later the same day, and the detail is in
+[MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md) — 58 commands, a
+176-byte frame budget no build flag can raise, and a TCP transport that makes a
+host-side client the cheapest bring-up available. **The rejection above never
+depended on that number and does not change now that it exists.**
+
+Recording both matters. If Meshtastic's protocol licensing ever changes, the
+licence half of this is answered and only the product decision needs revisiting.
+
+**Source revision:** `meshtastic/protobufs` submodule `aca181b`, under
+`meshtastic/firmware` `68bfe015e`, read 2026-08-21.
+
+**Attadipa integration:** none. MeshCore remains the one companion protocol a
+client may lawfully be written for, under ADR-0008's provider list. No such
+client exists yet.
+
+**Tests required:** none — nothing is taken.
+
+
+---
+
+### Crowd-sourced tag emulation — the ecosystems, and why none of them was reached
+
+**Problem:** A7 asked whether the watch should be findable through a
+crowd-sourced finding network the way a smart tag is, so that a lost watch is
+located by strangers' phones rather than only by its owner's.
+
+**Projects investigated:**
+
+| | Licence | Reachable from an MIT ESP32 firmware? |
+|---|---|---|
+| `seemoo-lab/openhaystack` | **AGPL-3.0** | no — copying into an MIT repository is not available, and AGPL is the strongest copyleft here |
+| `dchristl/macless-haystack` | **AGPL-3.0** | no, same |
+| Google's Find My Device reference | proprietary, and licensed *"only … with a Nordic Semiconductor ASA integrated circuit"* | no — the silicon clause alone ends it, before the approval form, the email allowlist and the third-party certification |
+| Samsung SmartThings Find SDK | proprietary | no — ships for no Espressif part, and an unregistered advertisement is inert by construction |
+
+**Useful implementation:** the *specifications* rather than the code. DULT's
+rotation requirements — identifier and BLE address rotating together, 15 minutes
+near-owner and 24 hours separated — are a published contract and are readable
+without touching an AGPL implementation. Those stay relevant to T-069 and T-070
+whatever happens to this feature.
+
+**Decision:** `REJECT`.
+
+**Reason:** two, in this order, and the second is the decisive one.
+
+*The licences and the platform gates* made it expensive. Both open
+implementations are AGPL-3.0; both proprietary SDKs are closed to this hardware.
+Apple's network is the one that is technically reachable, and reaching it costs
+an Apple ID bootstrapped on physical Apple hardware, a self-hosted endpoint and
+SMS-only 2FA — and the watch would still never appear in Apple's own Find My
+app, because that is the MFi pairing flow and MFi excludes individuals. Median
+latency is 26 minutes: recovery, not live tracking.
+
+*The owner* then rejected the feature itself
+([OD-13](OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
+2026-08-22, on [#33](https://github.com/hleserg/Attadipa/issues/33)): *"Не
+делаем. Ни Apple, ни какую-либо ещё."* That is a product decision and it does
+not rest on any of the above.
+
+Recording both matters, and the order matters more here than usual. If a
+crowd-sourced network ever became reachable under a permissive licence, the
+first half of this record would be obsolete and the second half would still
+stand. This is not a blocked feature waiting for the ecosystems to change.
+
+**Source revision:** licences read 2026-08-21;
+`docs/research/TAGS_TRACKS_RECKONING.md` §1 carries the detail and the citations.
+
+**Attadipa integration:** none, and T-064 is closed. The need A7 was aimed at is
+answered by **T-063** instead — the companion phone remembers where it last saw
+the watch over BLE. No account, no membership, no other company's identifier, no
+server, and it works with the companion ADR-0002 already specifies.
+
+**Tests required:** none — nothing is taken.

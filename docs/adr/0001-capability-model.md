@@ -28,7 +28,7 @@ Date: 2026-08-21
 > may render identically. All three are carried into ADR-0007 by name.
 >
 > The amendment notice from the first round follows, kept because it records
-> what the Firefly node broke and when.
+> what the Attadipa node broke and when.
 
 > **Amendment notice (first round, 2026-08-21).** Two claims in this ADR were stated more broadly than the
 > evidence supported, and a product decision the same day
@@ -36,7 +36,7 @@ Date: 2026-08-21
 > false:
 >
 > - *"The descriptors are produced by the BSP. Nothing above the platform layer
->   constructs them."* A capability may now be provided by a separate Firefly
+>   constructs them."* A capability may now be provided by a separate Attadipa
 >   node, which the BSP cannot know about at build time.
 > - `Availability::Absent` — *"not on this board; the feature does not exist
 >   here."* Absence is no longer permanent. A board with no GNSS acquires GNSS
@@ -78,7 +78,7 @@ boolean cannot carry what the code actually needs to know:
 - The T-Watch S3 Plus ships with **one of five** LoRa chips — SX1262, SX1280,
   CC1101, LR1121, SI4432 — selected at purchase. Sub-GHz and 2.4 GHz are not
   interchangeable: they differ in regulatory region, in range, and in whether
-  they can talk to another Firefly at all. `has(Lora) == true` is the same
+  they can talk to another Attadipa at all. `has(Lora) == true` is the same
   answer for a device that can reach a village and one that can reach a room.
 - Its GNSS is **one of two** modules with different power-up sequences and
   different assistance mechanisms.
@@ -144,7 +144,7 @@ compass" and "the compass is broken" are different sentences to a user.
 
 > **Amended.** That principle — one state per sentence a user would be told —
 > is right, and applying it to node-provided capabilities forces the enum wider.
-> "This watch has no compass", "Maps needs a Firefly node" and "your node is out
+> "This watch has no compass", "Maps needs an Attadipa node" and "your node is out
 > of range" are three sentences, and `Absent` was carrying all three.
 > [ADR-0004](0004-capability-sources.md) splits it.
 
@@ -157,7 +157,7 @@ The descriptors are produced by the BSP. Nothing above the platform layer
 constructs them, and nothing above it may branch on board identity.
 
 > **Amended.** The second clause holds; the first does not. A descriptor may
-> also be produced by an attached provider — a Firefly node — and registered at
+> also be produced by an attached provider — an Attadipa node — and registered at
 > runtime. What does not change is that *applications* never construct or branch
 > on descriptors, and never learn where one came from. See
 > [ADR-0004](0004-capability-sources.md).
@@ -221,7 +221,7 @@ disagrees with the hardware is worse than no descriptor.
 sensors over the expansion connector — deferred until such a sensor exists.~~
 
 **Closed, sooner than expected.** That question arrived within the day, and not
-over the expansion connector: a Firefly node provides LoRa and GNSS over a link.
+over the expansion connector: an Attadipa node provides LoRa and GNSS over a link.
 Deferring it "until such a sensor exists" was the wrong instinct — the cost of
 runtime-extensible capabilities is almost entirely in the *contracts* around
 them (who may register, what happens to a running app when one vanishes), and

@@ -33,8 +33,8 @@ if(_result EQUAL 0)
     message(FATAL_ERROR
         "Target '${TARGET}' BUILT, and it must not.\n"
         "The layer boundary is gone: an application-layer target can now reach a "
-        "hardware header. Check the linkage of firefly_core against "
-        "firefly_platform — it has to stay PRIVATE (ADR-0007 section 5).\n"
+        "hardware header. Check the linkage of attadipa_core against "
+        "attadipa_platform — it has to stay PRIVATE (ADR-0007 section 5).\n"
         "--- build output ---\n${_all}")
 endif()
 

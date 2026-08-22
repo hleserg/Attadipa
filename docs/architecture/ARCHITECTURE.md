@@ -4,7 +4,7 @@ This document has one job: make sure **everything the device can do has an owner
 in the core** — every part soldered to the board, whether or not any application
 uses it yet, and every capability that reaches the device some other way.
 
-It began as the first of those. The second arrived with the Firefly node, and
+It began as the first of those. The second arrived with the Attadipa node, and
 the widening matters: a capability that arrives over a link still costs power,
 still needs an owner, and still has to be somewhere when it goes away.
 
@@ -89,7 +89,7 @@ Hardware
 
 The BSP is not the only thing that declares a capability. A **provider
 registry** sits beside it at the platform layer and accepts descriptors from
-things that are not the board — today, a Firefly node; tomorrow, whatever else
+things that are not the board — today, an Attadipa node; tomorrow, whatever else
 attaches. Registration is at runtime and is reversible, which the BSP's is not.
 
 ```
@@ -124,7 +124,7 @@ IrTransmit · SdCard · Wifi · Ble
 ```
 
 Every entry is a part. `Pmu`. `Rtc`. Nothing named `Position`. An application
-asking `Gnss` was asking about a chip — and on a Waveshare board with a Firefly
+asking `Gnss` was asking about a chip — and on a Waveshare board with an Attadipa
 node attached, that chip is absent while a position is on screen. So there are
 two layers, and only one of them is visible to an application.
 [ADR-0007](../adr/0007-two-capability-layers.md) carries the decision and its
@@ -246,7 +246,7 @@ enum class Origin : uint8_t { Local, Node };
 ```
 
 No two of these may render the same way. "This watch has no compass", "Maps
-needs a Firefly node", "your node is out of range" and "the compass is broken"
+needs an Attadipa node", "your node is out of range" and "the compass is broken"
 are four different sentences, and each has a different thing the user can do
 about it. That is the rule that sets the state count: **one state per remedy;
 different wording for the same remedy is a reason code, not a state.**
@@ -267,7 +267,7 @@ no component mutates availability on its own.
 |---|---|
 | `Time` | GNSS · companion · RTC · user |
 | `Position` | local `GnssReceiver` · node |
-| `Heading` | `MagnetometerSensor` (neither board has one) · accel+gyro fusion · GNSS course-over-ground |
+| `Heading` | `MagnetometerSensor` (neither board has one) · GNSS course-over-ground · node |
 | `MeshMessaging` | local `Radio`, *only if* the fitted chip and the pinned MeshCore support it · node |
 | `NotificationRelay` | companion only |
 
@@ -287,28 +287,28 @@ hardware* by reading the link line instead of the diff.
 As of the first commit of code, this is the target graph rather than a plan:
 
 ```
-firefly_platform   chips, pins, rails, buses, typed descriptors
+attadipa_platform   chips, pins, rails, buses, typed descriptors
         ▲ PRIVATE
-firefly_core       services, and the capability registry that owns the mapping
+attadipa_core       services, and the capability registry that owns the mapping
         ▲ PUBLIC
-firefly_apps       applications
+attadipa_apps       applications
 ```
 
-The enforcement is one keyword. `core/CMakeLists.txt` links `firefly_platform`
+The enforcement is one keyword. `core/CMakeLists.txt` links `attadipa_platform`
 **PRIVATE**, so `core/` compiles against the inventory and nothing that links
-`core/` inherits the ability to. `firefly_core` is the only place in `core/`
+`core/` inherits the ability to. `attadipa_core` is the only place in `core/`
 that includes a platform header, and it does so in a `.cpp`; the registry's own
 header forward-declares `HardwareInventory` so that an application can hold a
 `CapabilityRegistry&` without gaining a way to ask it about chips.
 
-Two tests compile the same fixture twice — linked against `firefly_platform` it
-must build, linked against `firefly_apps` it must not. Two rather than one,
+Two tests compile the same fixture twice — linked against `attadipa_platform` it
+must build, linked against `attadipa_apps` it must not. Two rather than one,
 because a single failing compile cannot tell an enforced boundary from a
 mistyped `#include` path. The failure is exactly the one intended:
 
 ```
 tests/boundary/app_reaches_for_hardware.cpp:9:10: fatal error:
-    firefly/platform/hardware_feature.h: No such file or directory
+    attadipa/platform/hardware_feature.h: No such file or directory
 ```
 
 The simulator's `main()` links both, and so will the device's. A composition
@@ -409,8 +409,8 @@ The tables below therefore say who is responsible, not who calls `init()`.
 | 1.8 V rail (ALDO4) | `PowerService` | something on this board is 1.8 V; identify it before assuming any level |
 | SD card | `StorageService` | SDMMC 1-bit |
 | Wi-Fi / BLE | `ConnectivityService` | the only radio *on this board* — and, once a node is attached, the path by which a second one's traffic arrives |
-| LoRa | `MeshService` via the provider registry | **not on this board.** With a Firefly node attached the device has it; the service exists either way and reports which |
-| GNSS | `LocationService` via the provider registry | **not on this board.** A Firefly node supplies it; the service exists either way and reports which |
+| LoRa | `MeshService` via the provider registry | **not on this board.** With an Attadipa node attached the device has it; the service exists either way and reports which |
+| GNSS | `LocationService` via the provider registry | **not on this board.** An Attadipa node supplies it; the service exists either way and reports which |
 | Vibration motor | `HapticService` | **GPIO 18 + NPN, no driver IC.** Rail BLDO2. Same capability as the T-Watch, a fundamentally different degree — see below |
 
 ### Two haptics, one capability, two degrees
@@ -477,7 +477,7 @@ and navigation — have no hardware. This is not a degraded mode to paper over.
 
 On the Waveshare board those two features have no *local* hardware — and since
 2026-08-21 that is a different statement from having no hardware at all, because
-a Firefly node provides both. Absence is still first-class; it is no longer
+an Attadipa node provides both. Absence is still first-class; it is no longer
 permanent.
 
 The rules:

@@ -24,18 +24,37 @@ on:
         required: true
         type: string
 
-# THE ONE WRITER RULE.
+# THE ONE WRITER RULE LIVES ON THE `agent` JOB, NOT HERE, AND THAT IS THE FIX
+# FOR A DEFECT RATHER THAN A PREFERENCE.
 #
-# Every path that can change code shares this group, so two agents can never be
-# editing the same checkout. Research and review are deliberately in other
-# workflows with their own groups, because reading in parallel is free and
-# writing in parallel is a merge conflict with a robot on both ends.
+# It was a workflow-level group until 2026-08-22, which put the intake gate
+# inside it too. `cancel-in-progress: false` protects a RUNNING member of a
+# group; it does not protect a PENDING one. GitHub keeps at most one run queued
+# per group and cancels the previously pending run when a newer one arrives —
+# so a burst of events loses all but the last, before anything has looked at
+# them.
 #
-# cancel-in-progress is false on purpose: cancelling a writer mid-run leaves a
-# half-pushed branch and an issue labelled agent:working forever.
-concurrency:
-  group: firefly-agent-writer
-  cancel-in-progress: false
+# Observed: at 07:18 on 2026-08-22 the owner labelled #26, #27 and #28
+# `agent:ready`, nine `issues` events fired, six runs were cancelled while
+# pending, and the three that survived were the ones carrying an unrelated
+# label. Three tasks were queued and no agent started. Nothing was red and
+# nothing said so; the hourly watchdog would have recovered them one per hour.
+#
+# The gate is a few seconds of shell and has nothing to serialise, so it now
+# runs for every event. The group is on the job that writes code, which is what
+# the rule was ever about, and the claim moved inside that job so a queued
+# agent that gets cancelled leaves no `agent:working` label behind — an
+# unclaimed task is picked up again, a falsely claimed one is not.
+#
+# THIS NARROWS THE RACE; IT DOES NOT REMOVE IT, and saying so is the difference
+# between a bound and a belief. GitHub's rule still applies to the `agent` job's
+# own group, so two tasks accepted close together can still cost the earlier one
+# its queued run. What changed is the consequence: it is then an unclaimed
+# `agent:ready` issue, which `agent-queue-watchdog.yml` rediscovers on its next
+# hourly tick. The residual failure is a delay of up to about an hour, not a
+# lost task — and that recovery is only true for tasks the watchdog's own filter
+# in .github/scripts/queue-scan.jq can see, which is why that filter and the
+# gate must keep agreeing about what a task looks like.
 
 # Nothing at the top level. Each job asks for exactly what it needs.
 permissions: {}
@@ -56,6 +75,12 @@ jobs:
       producer: ${{ steps.decide.outputs.producer }}
       research_only: ${{ steps.decide.outputs.research_only }}
       reason: ${{ steps.decide.outputs.reason }}
+      reviewed_head: ${{ steps.decide.outputs.reviewed_head }}
+      head_moved: ${{ steps.decide.outputs.head_moved }}
+      staleness: ${{ steps.decide.outputs.staleness }}
+      refused_marker: ${{ steps.decide.outputs.refused_marker }}
+      refusal_kind: ${{ steps.decide.outputs.refusal_kind }}
+      refusal: ${{ steps.decide.outputs.refusal }}
     steps:
       - name: Kill switch
         id: switch
@@ -86,7 +111,7 @@ jobs:
       # from main or from nowhere.
       - name: Fetch the gate logic from the default branch
         if: steps.switch.outputs.enabled == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -109,6 +134,13 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body || github.event.review.body || '' }}
           LABEL_NAME: ${{ github.event.label.name || '' }}
           ACTION: ${{ github.event.action }}
+          # Comma-separated GitHub App logins the owner has named as producing
+          # agents, e.g. `chatgpt-codex-connector[bot]`. Empty by default, and
+          # empty is exactly the old behaviour. Read as a variable rather than
+          # hard-coded because which producer files the tasks is an operational
+          # decision, not a property of this code — and because changing it must
+          # not require a pull request that edits the security boundary.
+          TRUSTED_PRODUCERS: ${{ vars.ATTADIPA_TRUSTED_PRODUCERS }}
         run: |
           set -euo pipefail
 
@@ -133,11 +165,82 @@ jobs:
           LABELS=$(jq -r '[.labels[].name] | join(",")' /tmp/issue.json)
           STATE=$(jq -r '.state' /tmp/issue.json)
 
+          # BODY and COMMENT_BODY are different texts and both are needed. BODY is
+          # the issue, and it carries the marker; COMMENT_BODY is what was just
+          # said, and on a comment event it is the only place `@claude` can be.
+          #
+          # This call used to stop at $PERMISSION plus the producer list, and the
+          # gate's own `@claude` check therefore ran against the ISSUE body on
+          # comment events. Every mention this repository ever received was
+          # refused with "nothing asks for an agent" — the owner's included, on
+          # #41 at 00:54 on 2026-08-22, which is the run that found this. The
+          # gate was right about the text it was given. It was given the wrong
+          # text.
           VERDICT=$(bash .github/scripts/intake-decision.sh \
             "$ACTOR" "$EVENT_NAME" "$ACTION" "$LABEL_NAME" \
-            "$BODY" "$LABELS" "$STATE" "$PERMISSION")
+            "$BODY" "$LABELS" "$STATE" "$PERMISSION" "${TRUSTED_PRODUCERS:-}" \
+            "$COMMENT_BODY")
           if [ "$VERDICT" != "accept" ]; then
-            say "#$ISSUE_NUMBER ${VERDICT#reject: }"; exit 0
+            say "#$ISSUE_NUMBER ${VERDICT#reject: }"
+
+            # A refusal that only reaches the run log is the failure mode this
+            # whole queue exists to remove. Most refusals are ordinary — an issue
+            # with no marker, a task somebody already claimed — and commenting on
+            # those would be noise. But an issue that DOES carry a task marker and
+            # is still refused is a producer that believes it has filed work and a
+            # repository that has silently dropped it. That one gets said out loud,
+            # on the issue, where the person who filed it is looking.
+            #
+            # Only on `issues` events: a refused comment would otherwise draw a
+            # comment per comment. This costs nothing from Anthropic either way —
+            # it is a gh call in the gate, not an agent run.
+            #
+            # There is a second shape, and it is the one a person actually
+            # notices: somebody with write access typed `@claude` and nothing
+            # happened. Before 2026-08-22 that was the commonest event on this
+            # repository and it was answered with silence, which reads exactly
+            # like an agent that is thinking. It is not more expensive to say so
+            # — this job holds no Anthropic credential and posts with `gh`.
+            ANSWER=none
+            case "$BODY" in
+              *attadipa-agent-task*)
+                if [ "$EVENT_NAME" = "issues" ]; then ANSWER=marker; fi ;;
+            esac
+            if [ "$ANSWER" = none ]; then
+              case "$EVENT_NAME" in
+                issue_comment|pull_request_review_comment|pull_request_review)
+                  # Bots never get an answer: two automations apologising to
+                  # each other is the loop this gate exists to prevent, and the
+                  # only thing keeping it cheap is that neither of them replies.
+                  # Write access only, for the same reason the gate needs it —
+                  # on a public repository anybody can type `@claude`, and a
+                  # reply each time is a megaphone attached to a stranger.
+                  case "$ACTOR" in
+                    *"[bot]") ;;
+                    *)
+                      case "$PERMISSION" in
+                        admin|maintain|write)
+                          # The same question rule 3 asks, asked the same way —
+                          # a mention inside a code span is somebody writing
+                          # about the agent, and answering it would be a bot
+                          # replying to documentation.
+                          if bash .github/scripts/intake-decision.sh \
+                               --mentions "$COMMENT_BODY"; then
+                            ANSWER=mention
+                          fi ;;
+                      esac ;;
+                  esac ;;
+              esac
+            fi
+            if [ "$ANSWER" != none ]; then
+              {
+                echo "refused_marker=true"
+                echo "refusal_kind=$ANSWER"
+                echo "issue=$ISSUE_NUMBER"
+                echo "refusal=${VERDICT#reject: }"
+              } >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
           fi
 
           # The marker fields decide what KIND of work this is. They never
@@ -155,6 +258,44 @@ jobs:
             next-task-research|upstream-intelligence|readiness-audit) RESEARCH_ONLY=true ;;
           esac
 
+          # reviewed_head: has the tree moved since the producer looked at it?
+          #
+          # AI_TASK_PROTOCOL.md has always specified this field, and until now
+          # nothing read it. That is the quietest way for this queue to do damage:
+          # a finding produced against a commit that has since been fixed gets
+          # implemented anyway, because the agent had no reason to doubt it. The
+          # comparison is one API call and no checkout — the gate job only
+          # sparse-checks out .github/scripts, so there is no history here to
+          # `git log` against.
+          REVIEWED_HEAD=$(field reviewed_head)
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          DEFAULT_BRANCH=${DEFAULT_BRANCH:-main}
+          HEAD_MOVED=unknown
+          STALENESS="reviewed_head was not given, so nothing can be said about what has changed since."
+          if [ -n "$REVIEWED_HEAD" ]; then
+            CMP=$(gh api "repos/$REPO/compare/$REVIEWED_HEAD...$DEFAULT_BRANCH" 2>/dev/null || echo '')
+            if [ -n "$CMP" ]; then
+              HEAD_MOVED=$(printf '%s' "$CMP" | jq -r '.ahead_by // "unknown"')
+              # How many files, and where — not a truncated list. The filter
+              # lives in .github/scripts/compare-summary.jq rather than here,
+              # for the reason its header gives and the reason
+              # intake-decision.sh and queue-scan.jq already live in files:
+              # logic inside a `run:` block cannot be executed by a test, so
+              # the fixtures it was checked against exist only in somebody's
+              # terminal. .github/tests/compare-summary-test.sh runs it over
+              # every shape, and CI runs that.
+              CHANGED=$(printf '%s' "$CMP" | jq -r -f .github/scripts/compare-summary.jq)
+              if [ "$HEAD_MOVED" = "0" ]; then
+                STALENESS="reviewed_head $REVIEWED_HEAD is still the tip of $DEFAULT_BRANCH. The finding was made against current code."
+              else
+                STALENESS="$DEFAULT_BRANCH is $HEAD_MOVED commit(s) ahead of the reviewed commit $REVIEWED_HEAD. $CHANGED"
+              fi
+            else
+              STALENESS="reviewed_head $REVIEWED_HEAD could not be compared against $DEFAULT_BRANCH — it is not a commit in this repository."
+            fi
+          fi
+          echo "::notice::reviewed_head=$REVIEWED_HEAD ahead_by=$HEAD_MOVED"
+
           {
             echo "run=true"
             echo "issue=$ISSUE_NUMBER"
@@ -163,17 +304,224 @@ jobs:
             echo "producer=$PRODUCER"
             echo "research_only=$RESEARCH_ONLY"
             echo "reason=accepted"
+            echo "reviewed_head=${REVIEWED_HEAD:-unspecified}"
+            echo "head_moved=$HEAD_MOVED"
+            echo "staleness=$STALENESS"
           } >> "$GITHUB_OUTPUT"
           echo "::notice::accepted #$ISSUE_NUMBER type=$TASK_TYPE priority=$PRIORITY producer=$PRODUCER"
 
-  claim:
-    name: Claim the task
+  acknowledge:
+    # THE RECEIPT. Somebody asked for an agent; they hear back in seconds.
+    #
+    # Its own job, and that is the point rather than tidiness. It does not sit
+    # in the writer concurrency group, so it answers even while another task is
+    # being written; it does not wait for the checkout or the credential check,
+    # so it answers before the agent has read a line; and it is not the agent,
+    # so it can still speak in the one case the agent cannot — the run that
+    # never starts.
+    #
+    # It also cannot loop. The comment and the reaction are written with the
+    # built-in GITHUB_TOKEN, and GitHub deliberately does not start workflow
+    # runs from events that token creates.
+    name: Say it was accepted
     needs: gate
     if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      pull-requests: write
+      contents: read
     steps:
+      - name: Fetch the wording from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: React to the comment that asked
+        # The fastest possible signal, and the only one that appears on the
+        # comment itself rather than below it. A person who wrote `@claude` and
+        # sees eyes on it within seconds knows the pipeline is alive, before any
+        # comment renders and without opening a run.
+        #
+        # Only comment events have something to react to; a label has no author
+        # and no reaction target, which is why this step is conditional rather
+        # than defensive.
+        if: github.event.comment.id != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          # pull_request_review_comment lives under a different collection than
+          # issue_comment, and posting to the wrong one is a 404 rather than a
+          # wrong reaction.
+          KIND: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          case "$KIND" in
+            pull_request_review_comment) path="pulls/comments" ;;
+            *)                           path="issues/comments" ;;
+          esac
+          gh api --method POST "repos/$REPO/$path/$COMMENT_ID/reactions" \
+            -f content=eyes --silent
+          echo "::notice::reacted to comment $COMMENT_ID"
+
+      - name: Say what was understood
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          TASK_TYPE: ${{ needs.gate.outputs.task_type }}
+          PRIORITY: ${{ needs.gate.outputs.priority }}
+          RESEARCH_ONLY: ${{ needs.gate.outputs.research_only }}
+          TRIGGER: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          # Suppressed only when there was nothing to say — that is, when the
+          # producer gave no reviewed_head at all, which is the common case and
+          # is noise on an issue.
+          #
+          # Keyed on reviewed_head rather than on head_moved, and the difference
+          # is a real one the review on #58 caught: head_moved stays `unknown`
+          # BOTH when the field was absent and when it was present but could not
+          # be compared, and the second is exactly the case worth saying out
+          # loud. A producer that filed a truncated or foreign SHA should hear
+          # so on the issue, not only in a run log nobody opens.
+          STALENESS: ${{ needs.gate.outputs.reviewed_head != 'unspecified' && needs.gate.outputs.staleness || '' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/agent-say.sh receipt \
+            "$RUN_URL" "$TASK_TYPE" "$PRIORITY" "$RESEARCH_ONLY" \
+            "$TRIGGER" "$ACTOR" "$STALENESS" > /tmp/receipt.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/receipt.md
+
+  refused:
+    name: Say why it was refused
+    needs: gate
+    if: needs.gate.outputs.refused_marker == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Comment once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # From the gate, not from the event: a pull_request_review_comment has
+          # no github.event.issue at all, and this job now answers those too.
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          KIND: ${{ needs.gate.outputs.refusal_kind }}
+          REFUSAL: ${{ needs.gate.outputs.refusal }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          # Once per issue per shape. The HTML marker is what makes that
+          # checkable, and the comment is posted with the built-in GITHUB_TOKEN,
+          # whose events GitHub deliberately does not use to start workflow runs
+          # — so this cannot start another gate run and cannot loop.
+          case "$KIND" in
+            mention) TAG=attadipa-mention-refused ;;
+            *)       TAG=attadipa-intake-refused ;;
+          esac
+          EXISTING=$(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate \
+                       --jq "[.[] | select(.body | test(\"$TAG\"))] | length")
+          if [ "$EXISTING" != "0" ]; then
+            echo "::notice::already explained on #$ISSUE"; exit 0
+          fi
+
+          # Somebody with write access asked for an agent by name and did not get
+          # one. That deserves the actual reason rather than the marker lecture,
+          # which is about a producer's task and not about their sentence.
+          if [ "$KIND" = mention ]; then
+            {
+              echo "<!-- $TAG -->"
+              echo "**You mentioned \`@claude\` here and no agent was started.** The reason:"
+              echo
+              echo "> $REFUSAL"
+              echo
+              echo "Nothing is queued. The two causes that produce this in practice:"
+              echo
+              echo "* **the issue is closed** — the gate refuses closed issues, because a task"
+              echo "  nobody can see the state of is worse than no task. Reopen it and mention"
+              echo "  \`@claude\` again;"
+              echo "* **the mention was edited in afterwards** — GitHub raises no event this"
+              echo "  workflow listens to when a comment is edited, so only a new comment"
+              echo "  counts."
+              echo
+              echo "Either way this is a state problem, not a refusal of the request. Adding the"
+              echo "\`agent:ready\` label also queues it, and the hourly watchdog will pick it up"
+              echo "even if no event fires at all."
+            } > /tmp/refused.md
+            gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/refused.md
+            exit 0
+          fi
+
+          {
+            echo "<!-- $TAG -->"
+            echo "**This issue carries a \`attadipa-agent-task\` marker, and the intake gate refused it.**"
+            echo
+            echo "> $REFUSAL"
+            echo
+            echo "Nothing is queued and no agent will pick this up. The marker is data, not a"
+            echo "permission — see [AI_TASK_PROTOCOL](../blob/HEAD/docs/automation/AI_TASK_PROTOCOL.md#the-marker-is-data-not-a-permission)."
+            echo
+            echo "The usual causes, in order of likelihood:"
+            echo
+            echo "1. **The producer posted as a GitHub App.** The gate rejects any actor whose"
+            echo "   login ends in \`[bot]\`, because a Claude comment that mentions \`@claude\`"
+            echo "   would otherwise start a Claude run that comments. A producing agent must"
+            echo "   file through an ordinary user account."
+            echo "2. **The actor lacks write access.** \`write\`, \`maintain\` or \`admin\` is"
+            echo "   required. The actor on this event was \`$ACTOR\`."
+            echo "3. **The task is already claimed.** A state label suppresses a second pickup."
+            echo
+            echo "To queue it deliberately, someone with write access can comment \`@claude\`,"
+            echo "or run the \`Claude agent\` workflow with this issue number."
+          } > /tmp/refused.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/refused.md
+          gh issue edit "$ISSUE" --repo "$REPO" --add-label needs-owner || true
+
+
+  agent:
+    name: Claude
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # One writer. Two agents editing one checkout is a merge conflict with a
+    # robot on both ends, so a second accepted task waits here rather than
+    # racing. cancel-in-progress is false because cancelling a writer mid-run
+    # leaves a half-pushed branch behind; see the note at the top of this file
+    # for why the group is on this job and not on the workflow.
+    concurrency:
+      group: attadipa-agent-writer
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      # id-token: write is not optional, and the reason is easy to miss.
+      #
+      # github_token below is ATTADIPA_AGENT_TOKEN, which is deliberately allowed
+      # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
+      # action authenticates as the Claude GitHub App by exchanging this
+      # workflow's GitHub OIDC token for an installation token, and without this
+      # permission that exchange fails with "Unable to get
+      # ACTIONS_ID_TOKEN_REQUEST_URL". The failure looks like an authentication
+      # problem with the Anthropic credential and is not one.
+      id-token: write
+    steps:
+      # The claim is the first thing this job does, and it is inside this job
+      # rather than in one of its own so that it happens if and only if the
+      # writer actually starts. A separate job could label an issue
+      # `agent:working` and then have its agent cancelled while queued, leaving
+      # a claim with nobody behind it — which the watchdog only notices two
+      # hours later.
       - name: Normalise labels
         env:
           GH_TOKEN: ${{ github.token }}
@@ -208,23 +556,23 @@ jobs:
             args+=(--add-label "$label")
           done
 
-          # Adding is idempotent; removing agent:ready is what moves the task out
-          # of the watchdog's queue so it cannot be picked up twice.
+          # Adding is idempotent; removing the other state labels is what makes
+          # the claim true rather than merely additional.
+          #
+          # agent:ready must go or the watchdog picks the task up twice. The
+          # other two matter for the second run on an issue that has already
+          # been through the loop — the @claude override, or a retry after a
+          # failure. Without this the issue ends up carrying agent:working AND
+          # agent:review at once, and the `Hand over` step below sees
+          # agent:review in the label list, concludes the agent labelled the
+          # issue itself, and exits without clearing agent:working. The task is
+          # then stuck working forever, the watchdog "unsticks" it two hours
+          # later, and a finished task is re-queued on a loop.
           gh issue edit "$ISSUE" --repo "$REPO" "${args[@]}" || true
-          gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:ready || true
+          for stale in agent:ready agent:review agent:failed; do
+            gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$stale" || true
+          done
 
-  agent:
-    name: Claude
-    needs: [gate, claim]
-    if: needs.gate.outputs.run == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      actions: read
-    steps:
       - name: Check that an Anthropic credential exists
         id: auth
         env:
@@ -268,7 +616,7 @@ jobs:
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/blocked.md
           gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.auth.outputs.ok == 'true'
         with:
           fetch-depth: 0
@@ -287,24 +635,58 @@ jobs:
           # never run CI, and the whole point of this loop is that CI runs
           # without anybody asking. Left empty, the action uses the Claude GitHub
           # App instead, whose installation token does trigger workflows; set
-          # FIREFLY_AGENT_TOKEN to a fine-grained PAT to use that instead.
+          # ATTADIPA_AGENT_TOKEN to a fine-grained PAT to use that instead.
           # docs/automation/CLAUDE_AUTOMATION.md explains both.
-          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
           branch_prefix: "claude/issue-"
           # Empty means no bot may trigger this action. On a public repository
           # '*' would let any GitHub App drive a write-capable agent.
           allowed_bots: ""
           allowed_non_write_users: ""
-          # Claude's own messages include tool results, which can contain tokens.
-          # These logs are world-readable on a public repository.
+          # Two different things, and only one of them is a leak.
+          #
+          # show_full_output prints every message including tool results, which
+          # can contain tokens, into a world-readable log on a public
+          # repository. It stays off.
+          #
+          # display_report posts Claude's own summary of what it did. Turning
+          # that off as well was a mistake found by smoke test A: the agent ran
+          # twenty-eight turns successfully and left no branch, no pull request
+          # and no comment, so the only evidence any work happened at all was a
+          # green tick. An agent whose conclusions nobody can read is not an
+          # agent, it is a bill.
           show_full_output: "false"
-          display_report: "false"
+          display_report: "true"
           additional_permissions: |
             actions: read
+          # --allowedTools is not optional, and its absence is silent.
+          #
+          # Agent mode — which is what `prompt:` selects — sets no default
+          # --allowedTools and no --permission-mode. Tag mode sets both
+          # (src/modes/tag/index.ts); agent mode passes through only what is
+          # written here. The headless SDK has no prompt handler, so every tool
+          # that would fall through to "ask" is DENIED, without an error and
+          # without a line in the log.
+          #
+          # Observed on 2026-08-21, before this line existed: the reviewer ran
+          # for 41 s, exited 0, and posted no comment and set no label; the
+          # implementation agent on issue #5 finished green and produced no
+          # branch and no pull request. Both had read the diff perfectly well
+          # and had no way to say so.
+          #
+          # Verified against anthropics/claude-code-action at the v1 tag
+          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
+          # MCP servers on these names too, and `grep -rn "addLabels" src/`
+          # returns nothing — the action has no label feature at all, so the
+          # label in the prompt below depends entirely on `gh` being allowed.
+          #
+          # This one writes, so it gets Edit, Write and Bash. The boundary that
+          # matters for it is the job's `permissions:` block and the branch it
+          # is checked out on, not the tool list.
           claude_args: |
-            --max-turns 60
+            --max-turns 60 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task"
           prompt: |
-            You are the implementation agent for FireflyOS, working from GitHub
+            You are the implementation agent for Attadipa, working from GitHub
             issue #${{ needs.gate.outputs.issue }} in ${{ github.repository }}.
 
             Read these before doing anything, in this order:
@@ -320,10 +702,26 @@ jobs:
             task_type is `${{ needs.gate.outputs.task_type }}` and
             research_only is `${{ needs.gate.outputs.research_only }}`.
 
+            HAS THE FINDING GONE STALE? The producer looked at
+            `${{ needs.gate.outputs.reviewed_head }}`, and:
+
+              ${{ needs.gate.outputs.staleness }}
+
+            If the default branch has moved, verify the finding against the code
+            as it is now BEFORE implementing anything. A finding that has already
+            been fixed, or that was never right, is closed with the evidence that
+            says so — a diff, a file and a line — and not implemented. Neither
+            the issue nor its producer is automatically correct; that is why this
+            field exists. Say in a comment which of the two you found.
+
             If research_only is true: do NOT write speculative implementation
             code. Verify sources, update docs/research/, the reuse ledger, and
             an ADR only if a decision was genuinely made. Open a documentation
-            pull request.
+            pull request, and its body must contain
+            `Fixes #${{ needs.gate.outputs.issue }}` exactly as an
+            implementation one does — a research pull request that does not
+            reference its issue neither closes it on merge nor is recognised as
+            this run's output.
 
             Otherwise: implement the task on a branch, run every check that can
             run here (`cmake -S . -B build && cmake --build build && ctest
@@ -347,27 +745,165 @@ jobs:
             describe. Leave the repository so the next agent can continue
             without this conversation.
 
+            ## SAY WHAT YOU ARE DOING, ON THE ISSUE, WHILE YOU DO IT
+
+            Somebody is watching this issue on a phone. To them, an agent
+            thinking hard for forty minutes and an agent that died in the first
+            second look exactly the same. That is not their problem to solve by
+            opening Actions — it is yours to solve by writing.
+
+            A receipt saying the task was accepted has already been posted for
+            you, and an outcome comment will be posted after you exit whatever
+            happens. Neither of those knows anything about the work. **You do,
+            and the middle is yours.**
+
+            **Post a plan comment once, early** — after you have read the issue
+            and the documents and before the long part starts. Three or four
+            lines, no preamble: what you are actually going to change, which
+            files, and anything you already know will be awkward. If the issue
+            turns out to describe something different from what the code does,
+            that belongs here rather than at the end.
+
+            **Post again when the answer changes**, and only then:
+
+              * the finding does not reproduce, or is already fixed — say so
+                with the file and the line as soon as you know, not after
+                another twenty minutes of looking;
+              * the shape of the fix changed from your plan — one line on what
+                and why;
+              * you are about to wait on something slow, or you are going to
+                run out of room. Saying "this is bigger than one pull request,
+                here is what I am cutting" beats an unexplained partial diff.
+
+            **At most three comments before the end.** A comment that repeats
+            the last one is worse than silence, because it teaches people to
+            stop reading. Never narrate tool calls, never post a progress bar,
+            never say "working on it" — if there is nothing new, write nothing.
+
+            **Finish by leaving the outcome on the issue itself**, with `gh
+            issue comment`, in every case including the ones where you changed
+            nothing:
+
+              * work done — link the pull request, say in two sentences what it
+                changes, and say what you are now waiting on;
+              * nothing to change — say what you checked and what you found, so
+                the next person does not check it again;
+              * blocked — the BLOCKED format above. Be specific about what would
+                unblock it: a decision, a measurement, or a board.
+
+            Nobody can see your reasoning. An issue that ends with a green tick
+            and no sentence has cost money and told nobody anything, and the
+            next agent along will start the same task from the beginning.
+
       - name: Hand over
+        # ALWAYS SAYS SOMETHING. Every exit path from this job ends in a comment
+        # on the issue naming what happened and what is being waited on next.
+        #
+        # It used to comment only when the run died, on the reasoning that a
+        # successful agent speaks for itself. It does not: the agent's own
+        # summary goes to the run's step summary, and a person watching the
+        # issue saw a label change and nothing else. Success and silent death
+        # were indistinguishable without opening Actions, which is the failure
+        # this whole reporting protocol exists to remove — see the header of
+        # .github/scripts/agent-say.sh.
         if: always() && steps.auth.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          # The agent labels the issue itself when it blocks or finishes. This
-          # only catches the case where the run died without saying anything,
-          # because an issue stuck on agent:working is invisible to the watchdog
-          # and would sit there forever.
+
           LABELS=$(gh api "repos/$REPO/issues/$ISSUE" --jq '[.labels[].name] | join(",")')
-          case ",$LABELS," in
-            *,agent:blocked,*|*,agent:review,*|*,agent:done,*) exit 0 ;;
-          esac
-          if [ "$CONCLUSION" = "success" ]; then
-            gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true
+
+          # Did the agent open a pull request for this issue? That is the
+          # difference between "done" and "ran and produced nothing", and
+          # getting it wrong is expensive in a specific way: a successful run
+          # reported as a silent failure invites somebody to comment `@claude`,
+          # which the gate deliberately does NOT deduplicate for comment events
+          # — so a second billed agent starts against work already finished and
+          # opens a second, competing pull request. The message meant to prevent
+          # duplicate work would have caused it.
+          #
+          # TWO QUESTIONS, ASKED IN ORDER, because they are not the same one.
+          #
+          #   1. Which open pull request CLOSES this issue? GitHub resolves the
+          #      closing keyword itself, so this is a fact rather than a grep
+          #      for "Fixes".
+          #   2. Failing that, which open pull request MENTIONS it at all? A
+          #      cross-reference is raised by any pull request whose body names
+          #      #N, keyword or not.
+          #
+          # The second exists because the prompt requires `Fixes #N` only in the
+          # implementation branch. Three of the five task types are research-only
+          # and their branch says just "open a documentation pull request", so a
+          # perfectly compliant agent produces a pull request the first query
+          # cannot see. Found by review on #58 rather than in production, which
+          # is the cheaper of the two places.
+          # shellcheck disable=SC2016  # $owner/$repo/$number are GraphQL
+          # variables bound by -F below, not shell expansions.
+          PR=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $number:Int!) {
+              repository(owner:$owner, name:$repo) {
+                issue(number:$number) {
+                  closedByPullRequestsReferences(first:5, includeClosedPrs:false) {
+                    nodes { number state }
+                  }
+                  timelineItems(last:30, itemTypes:[CROSS_REFERENCED_EVENT]) {
+                    nodes {
+                      ... on CrossReferencedEvent {
+                        source { ... on PullRequest { number state } }
+                      }
+                    }
+                  }
+                }
+              }
+            }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
+            --jq '.data.repository.issue as $i
+                  | ([$i.closedByPullRequestsReferences.nodes[]?
+                      | select(.state == "OPEN") | .number]
+                     + [$i.timelineItems.nodes[]?.source?
+                        | select(.state? == "OPEN") | .number])
+                  | first // ""' 2>/dev/null || echo "")
+
+          # A pull request number is the whole story, so it wins over every
+          # other signal — including a run whose conclusion never arrived. An
+          # agent that opened a pull request and then timed out has still done
+          # the work, and reporting that as a failure would send somebody
+          # looking for a branch that is already there.
+          if [ -n "$PR" ]; then
+            KIND=done_pr; DETAIL="$PR"
+          elif [ "$CONCLUSION" = "success" ]; then
+            KIND=done_nopr; DETAIL=""
           else
-            gh issue comment "$ISSUE" --repo "$REPO" --body \
-              "The agent run ended without a conclusion (\`$CONCLUSION\`). Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Comment \`@claude\` to retry."
-            gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:failed --remove-label agent:working || true
+            KIND=failed; DETAIL="${CONCLUSION:-no conclusion}"
           fi
+
+          # The agent labels the issue itself when it blocks — and a BLOCKED
+          # comment written by the agent says far more than this step could, so
+          # do not talk over it. Release the claim and stop: leaving
+          # agent:working beside agent:blocked makes the issue invisible to the
+          # watchdog while looking finished to a person, which is the worst of
+          # both. Smoke test A ended in exactly that state.
+          case ",$LABELS," in
+            *,agent:blocked,*)
+              gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working || true
+              echo "::notice::#$ISSUE is blocked and the agent has said why; not commenting over it."
+              exit 0 ;;
+          esac
+
+          bash .github/scripts/agent-say.sh outcome "$KIND" "$RUN_URL" "$DETAIL" > /tmp/outcome.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
+
+          case "$KIND" in
+            done_pr|done_nopr)
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
+            *)
+              # agent:failed AND back to agent:ready: the label pair says both
+              # "this went wrong" and "somebody should pick it up", and the
+              # watchdog only reads the second. A failed task that nothing
+              # re-queues is a task nobody ever looks at again.
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:failed --add-label agent:ready --remove-label agent:working || true ;;
+          esac

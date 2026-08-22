@@ -24,6 +24,10 @@ Required for every entry:
 | **MeshCore** | `d92964352441e53b93e8667b802e04f6e072b39e`, 2026-08-14, tag `companion-v1.17.1` | MIT | upstream is active. Re-run the radio census (`grep RADIO_CLASS variants/`) on every bump — [ADR-0003](../adr/0003-radio-not-lora.md) is *about* this revision |
 | **RadioLib** | `510e00cfb05bbc3c2b7b524262785454944adb6e`, tag **7.7.1**, 2026-08-13 | MIT | follows MeshCore's pin |
 | **`lv_font_conv`** | **1.5.3** — npm, integrity `sha512-0xJQThBOw2ipt…TuBIbQ==` | MIT (read from the tarball, not the manifest) | it generates a build artefact that ships in flash, so a bump means re-measuring the subset. [FONT_MEASUREMENTS](FONT_MEASUREMENTS.md) |
+| **`LVGLImage.py`** | **v9.5.0**, commit `85aa60d18`, SHA-256 `c4b59a99…1bff3` — **vendored** at `tools/assets/vendor/LVGLImage.py`, unmodified | MIT, copied beside it from the same tree | it emits a build artefact that ships in flash, so a bump re-encodes every asset. Its hash is inside the pipeline's inputs digest, so a bump that changes bytes fails `ui_images_are_current` until the tree is regenerated |
+| **`pypng`** | whatever the environment has — `LVGLImage.py` imports it | MIT | a **tool-time** dependency of the vendored converter, not of the firmware. Nothing links it and nothing ships it. Its output is committed, so a machine with no `pypng` can still build and test everything except a regeneration |
+| **`lz4` (Python)** | the same | MIT | imported at module scope by `LVGLImage.py` and then never used, because Attadipa passes `--compress NONE`. Required to import the module at all, which is why it is listed |
+| **Pillow** | whatever the environment has — `python3-pil` on the CI runners | HPND (MIT-compatible) | tool-time only, for `tools/assets/` — authoring the source masks, the dimension cap, and the contact sheet. Deliberately **not** needed by `generate_images.py --check`, so the primary staleness gate never depends on a package being installed; the two checks that do need it are replaced by a failing test when it is absent |
 | **Inter** | `Inter[opsz,wght].ttf`, `google/fonts`, SHA-256 `29160a80…c559031` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; used **unmodified**, because instancing it costs its kerning |
 | **Nunito Sans** | `NunitoSans[YTLC,opsz,wdth,wght].ttf`, `google/fonts`, SHA-256 `f934d714…ae2491d` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; must be instanced to `wght=400`, because its default is 200 |
 
@@ -56,13 +60,13 @@ is a maintenance liability on the one build that must never break.
 §77 adds the subtler reason: *"Do not architect against 'latest docs' after
 pinning another version."*
 
-**How it is obtained.** `cmake/FireflyLvgl.cmake`, by `FetchContent` — cloning
+**How it is obtained.** `cmake/AttadipaLvgl.cmake`, by `FetchContent` — cloning
 the *tag* and then verifying the *commit*. The tag is only the transport: it is
 what CMake's generated `git checkout` can resolve in a shallow clone. The pin is
 the SHA, checked with `git rev-parse HEAD` after the clone, because a tag can be
 moved and a commit cannot — and a re-tagged v9.5.0 would still say `9.5.0` in
 `lv_version.h`, so the version check alone cannot catch it.
-`FIREFLY_LVGL_SOURCE_DIR` points the build at a tree already on disk for offline
+`ATTADIPA_LVGL_SOURCE_DIR` points the build at a tree already on disk for offline
 work; it skips the fetch and neither check. Both failures are configure errors
 rather than behaviour discovered later.
 
@@ -92,7 +96,7 @@ and render performance.
 - **Evidence:** Waveshare states support for **v5.5.5 and v6.0.2**; its BSP
   v2.0.0 requires `idf >= 5.3`. LilyGO's library targets the Arduino layer
   (arduino-esp32 ≥ 3.3.0-alpha1) and its PlatformIO path is pinned to the older
-  2.0.17 / IDF 4.4.7 — which probably does not bind Firefly, since Firefly is
+  2.0.17 / IDF 4.4.7 — which probably does not bind Attadipa, since Attadipa is
   ESP-IDF-native and does not use the Arduino layer. That assumption is flagged
   in OPEN_QUESTIONS T7.
 - **Constraint:** must be a supported release that LVGL 9.5.0 and both board
@@ -128,7 +132,9 @@ The three facts that change what "pick a font" means:
 
 - **Nunito Sans has no arrows.** U+2190–U+2193 are absent, and `lv_font_conv`
   refuses the range rather than substituting. Either the arrows become icons
-  from the image pipeline (T-034), or Nunito Sans is not the whole answer.
+  from the image pipeline (T-034 — **done**, and it emits A8 masks, so an arrow
+  drawn as an icon would be recoloured through a `ColorRole` exactly like a
+  glyph), or Nunito Sans is not the whole answer.
 - **Both ship as variable fonts only**, and the converter takes the *default*
   instance. Inter's default is Regular 400. Nunito Sans's is **200,
   ExtraLight** — converting the downloaded file gives a font nobody chose.
@@ -146,7 +152,7 @@ simulator driving timed frames, or a board.
 ### Radio driver
 
 - RadioLib is pinned above as MeshCore's dependency and as this project's
-  evidence base. Whether Firefly's *own* radio layer uses it directly on a local
+  evidence base. Whether Attadipa's *own* radio layer uses it directly on a local
   mesh path is part of the T-013 spike rather than a separate decision — two
   competing radio abstractions in one image is a design smell, and the
   integration mechanism decides which survives
@@ -169,7 +175,7 @@ simulator driving timed frames, or a board.
   T-Watch family broadly, and carries the schematics and the authoritative pin
   documentation.
 - **Open question T6:** depend on these, or take only the pin facts and write
-  Firefly's own BSP? Apache-2.0 is compatible with an MIT project but carries
+  Attadipa's own BSP? Apache-2.0 is compatible with an MIT project but carries
   notice and patent terms that must be preserved if code is vendored. This is a
   reuse-ledger decision, not a default.
 
@@ -187,7 +193,7 @@ simulator driving timed frames, or a board.
   arguing [ADR-0005](../adr/0005-node-protocol.md): runtime 7 029 B, descriptor
   tables 13 148 B for 24 message types.
 - It returns to consideration under final §18, which requires the node
-  protocol's encoding to be benchmarked against *a Firefly-specific streaming
+  protocol's encoding to be benchmarked against *an Attadipa-specific streaming
   schema* rather than against Meshtastic's whole `FromRadio` union before the
   TLV choice can be accepted (T-016).
 

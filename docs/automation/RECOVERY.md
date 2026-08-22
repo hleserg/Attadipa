@@ -3,6 +3,12 @@
 Everything here is meant to be done by one person, quickly, without reading the
 rest of this directory first.
 
+> **Blocked on a credential?** Everything that needs the owner's own `gh`
+> login — the issue-creation policy, the repository variable, the seed
+> discussions — is written up as an executable checklist in
+> [HANDOFF_LOCAL_CODER](HANDOFF_LOCAL_CODER.md). A cloud session cannot do those;
+> a local one can do all of them.
+
 ## Stop all Anthropic spending, now
 
 ```bash
@@ -74,8 +80,13 @@ In order of likelihood:
 4. **The issue already has a state label.** `agent:working`, `agent:review`,
    `agent:blocked` and `agent:done` all suppress a second pickup. Comment
    `@claude` to override deliberately.
-5. **The marker is missing.** An issue needs `firefly-agent-task` *and*
+5. **The marker is missing.** An issue needs `attadipa-agent-task` *and*
    `@claude` in the body, or the `agent:ready` label.
+
+**Look at the issue first.** If it carries a task marker and was refused anyway,
+the gate has already commented on it saying which guard rejected it and which
+actor it saw, and applied `needs-owner`. That comment exists so this list does
+not have to be worked through by hand.
 
 ### The workflow fires but nothing happens
 
@@ -87,7 +98,7 @@ guard rejected it and why. That is what those notices are for.
 The classic symptom of the wrong GitHub credential. GitHub does not start
 workflow runs for events created with the built-in `GITHUB_TOKEN`, so a pull
 request opened with it looks fine and has no checks. Fix by installing
-<https://github.com/apps/claude> or by setting `FIREFLY_AGENT_TOKEN` — see
+<https://github.com/apps/claude> or by setting `ATTADIPA_AGENT_TOKEN` — see
 [CLAUDE_AUTOMATION](CLAUDE_AUTOMATION.md#2-the-github-credential--and-why-it-is-not-github_token).
 
 ### An agent branch needs removing
@@ -107,7 +118,16 @@ the repository knows or cares which of those happened.
 
 ## Restoring the labels
 
-If the label set is ever damaged, it is described in
-[AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#labels) and can be recreated with
-`gh label create`. Losing a label loses no work — the issues keep their
-history, and re-applying a label is enough to put a task back in the queue.
+```bash
+.github/scripts/setup-labels.sh              # this repository
+.github/scripts/setup-labels.sh --dry-run    # show what it would do
+```
+
+Idempotent — it creates what is missing and corrects the colour and description
+of what is not. Losing a label loses no work: the issues keep their history, and
+re-applying a label is enough to put a task back in the queue. The set itself is
+described in [AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#labels).
+
+A label that does not exist is a state a task cannot reach — `gh issue edit
+--add-label` fails and the workflows swallow it with `|| true` — so this is worth
+running after any manual tidying of the label list.

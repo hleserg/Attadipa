@@ -1,6 +1,6 @@
-#include "firefly/l10n/locale.h"
+#include "attadipa/l10n/locale.h"
 
-namespace firefly::l10n {
+namespace attadipa::l10n {
 
 const char* to_string(Locale locale)
 {
@@ -70,4 +70,4 @@ PluralCategory plural_category(Locale locale, std::uint32_t count)
     return PluralCategory::Other;
 }
 
-}  // namespace firefly::l10n
+}  // namespace attadipa::l10n

@@ -34,5 +34,12 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 
+# Archives dropped into the working directory to be unpacked.
+# The unpacked result belongs in the tree; the archive does not, and one
+# already reached a branch through a `git add -A` that meant well.
+*.zip
+*.tar.gz
+*.tgz
+
 # Private notes — not for publication
 EASTER_EGGS.md

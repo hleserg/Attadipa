@@ -16,7 +16,7 @@ on:
 concurrency:
   # Per pull request, and cancellable: a review of an old head is worse than no
   # review, because somebody will read it as current.
-  group: firefly-pr-review-${{ github.event.pull_request.number }}
+  group: attadipa-pr-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions: {}
@@ -30,14 +30,42 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      # id-token: write is not optional, and the reason is easy to miss.
+      #
+      # github_token below is ATTADIPA_AGENT_TOKEN, which is deliberately allowed
+      # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
+      # action authenticates as the Claude GitHub App by exchanging this
+      # workflow's GitHub OIDC token for an installation token, and without this
+      # permission that exchange fails with "Unable to get
+      # ACTIONS_ID_TOKEN_REQUEST_URL". The failure looks like an authentication
+      # problem with the Anthropic credential and is not one.
+      id-token: write
     # A fork's pull request runs without secrets on a public repository, so
     # there is no credential to review with. That is GitHub's protection, not an
     # oversight, and pull_request_target — which would grant them — is exactly
     # the pattern that leaks tokens to untrusted code.
+    #
+    # claude[bot] is exempted from the bot guard, and the guard would otherwise
+    # defeat this workflow's entire purpose.
+    #
+    # When ATTADIPA_AGENT_TOKEN is unset — the documented default — the
+    # implementation agent opens its pull request through the Claude GitHub App,
+    # so `github.actor` on that pull_request event is `claude[bot]`. A blanket
+    # `!endsWith(actor, '[bot]')` therefore skipped the review on exactly the
+    # pull requests this workflow exists to review: the agent's own. Every other
+    # bot stays excluded, which is what the guard was actually for — Dependabot
+    # opens four pull requests at a time and none of them wants an architecture
+    # review.
+    #
+    # This does not create a loop. The review's output is a comment and a label;
+    # a comment cannot raise a `pull_request` event, and the intake gate rejects
+    # claude[bot] comments separately (.github/scripts/intake-decision.sh). The
+    # job also holds `contents: read`, so the widest thing it can do is have an
+    # opinion twice.
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.CLAUDE_AUTOMATION_ENABLED != 'false' &&
-      !endsWith(github.actor, '[bot]')
+      (!endsWith(github.actor, '[bot]') || github.actor == 'claude[bot]')
     steps:
       - name: Check that an Anthropic credential exists
         id: auth
@@ -52,28 +80,99 @@ jobs:
             echo "::notice::No Anthropic credential configured; skipping the AI review."
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.auth.outputs.ok == 'true'
         with:
           fetch-depth: 0
 
+      # continue-on-error, and the reason is evidence rather than taste.
+      #
+      # On 2026-08-21 this job went red on pull request #9 after 373 ms, one
+      # turn and $0.00, with `is_error: true` and no output. That is not a
+      # review verdict — it is the Anthropic credential refusing before the
+      # model was ever reached, which on the subscription path means the quota
+      # is spent. The diff was irrelevant to it.
+      #
+      # A red check that means "we ran out of quota" is indistinguishable, in
+      # the checks list, from "the reviewer found something", and this file
+      # already states the principle for the other half of the same problem: a
+      # workflow that is red for a reason outside the code is a workflow people
+      # learn to ignore. So a reviewer that cannot run says so in a comment and
+      # leaves the check green, while a reviewer that CAN run still blocks
+      # through `ai-review:blocking` — which is the label, not the exit code.
       - name: Review
         if: steps.auth.outputs.ok == 'true'
         id: review
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
           # One comment, edited in place. A new wall of text on every push is how
           # a review becomes something people scroll past.
           use_sticky_comment: "true"
           allowed_bots: ""
           allowed_non_write_users: ""
           show_full_output: "false"
-          display_report: "false"
+          # display_report posts Claude's own summary to the run's Step Summary
+          # (src/entrypoints/run.ts writes to GITHUB_STEP_SUMMARY). It is on
+          # because a run whose conclusions nobody can read is a bill — but note
+          # what it is NOT: it has never posted a pull request comment, in any
+          # version. The reason findings did not reach the pull request is the
+          # tool list below, not this flag.
+          display_report: "true"
+          # --allowedTools is not optional, and its absence is silent.
+          #
+          # Agent mode — which is what `prompt:` selects — sets no default
+          # --allowedTools and no --permission-mode. Tag mode sets both
+          # (src/modes/tag/index.ts); agent mode passes through only what is
+          # written here. The headless SDK has no prompt handler, so every tool
+          # that would fall through to "ask" is DENIED, without an error and
+          # without a line in the log.
+          #
+          # Observed on 2026-08-21, before this line existed: the reviewer ran
+          # for 41 s, exited 0, and posted no comment and set no label; the
+          # implementation agent on issue #5 finished green and produced no
+          # branch and no pull request. Both had read the diff perfectly well
+          # and had no way to say so.
+          #
+          # Verified against anthropics/claude-code-action at the v1 tag
+          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
+          # MCP servers on these names too, and `grep -rn "addLabels" src/`
+          # returns nothing — the action has no label feature at all, so the
+          # label in the prompt below depends entirely on `gh` being allowed.
+          #
+          # WIDENED 2026-08-22, and the reason is a run that cost $1.48 and
+          # published nothing. The review of #44 at eb4d063 ran 49 turns and
+          # ended `is_error: true` — real work, then a tool it needed and did
+          # not have. Under this list a reviewer can Read a file but cannot
+          # `wc -l` it, cannot `git rev-parse` a SHA it was asked to compare,
+          # and cannot `gh pr checks` the checks it is reasoning about. Every
+          # verb added here reads and none of them writes; the job still holds
+          # `contents: read`, which is the guarantee that matters, and the only
+          # `gh` verbs that change anything are still the two that publish the
+          # review itself.
+          #
+          # Read-only over the repository, deliberately: no Write, no Edit, and
+          # the only `gh` verbs that mutate are the ones that publish a review. `contents:
+          # read` on the job is still the outer guarantee. This has an opinion
+          # and exactly enough hands to say it out loud.
+          # 100 turns, raised from 40 on 2026-08-22.
+          #
+          # 40 was chosen as a cost control and it was the wrong control. On
+          # pull request #39 the reviewer read the diff, worked for six and a
+          # half minutes, reported `is_error: false` — and was killed at turn 50
+          # for exceeding 40, having posted nothing and set no label. That is the
+          # worst of both: the full bill and no review. A ceiling that stops work
+          # after it has been paid for does not save money.
+          #
+          # The real backstop is `timeout-minutes` on the job, which bounds the
+          # spend in the only unit that maps to it. This number now bounds
+          # something else — a reviewer stuck in a loop — and 100 is above what a
+          # thirty-file diff was observed to need, not a blank cheque.
           claude_args: |
-            --max-turns 40
+            --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git blame:*),Bash(git ls-files:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(wc:*),Bash(sort:*),Bash(uniq:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }}
             in ${{ github.repository }}. You did not write this code. Read the
@@ -85,7 +184,7 @@ jobs:
             The question to answer is not "does this compile" — assume it does,
             and assume every existing test is green. The question is:
 
-              **How can this still break FireflyOS?**
+              **How can this still break Attadipa?**
 
             Work through the ones that apply, and say plainly when one does not:
 
@@ -128,6 +227,127 @@ jobs:
             reproduces. Rank by severity. Say explicitly if you found nothing
             blocking — a review that always finds something is noise.
 
+            **Publish the review — it does not publish itself.** Post your
+            findings as a comment with `gh pr comment`. Nothing you write
+            reaches the pull request otherwise; the action leaves it in the run
+            log, where nobody reads it.
+
+            Begin the comment with the exact line `<!-- attadipa-ai-review -->`,
+            and before posting, check with `gh pr view` whether a comment
+            carrying that marker already exists. If one does, edit it rather
+            than adding another — a fresh wall of text on every push is how a
+            review becomes something people scroll past.
+
             Finish by setting exactly one label on this pull request using the
             gh CLI: `ai-review:blocking` if anything must be fixed before merge,
             otherwise `ai-review:pass`. Remove the other one if present.
+
+      # What actually went wrong, read from the action's own execution log
+      # rather than guessed at.
+      #
+      # The note below used to list two possible causes and leave the reader to
+      # work out which applied. On 2026-08-22 the answer was neither: the review
+      # ran, cost money, returned `is_error: false`, and was killed at turn 50 by
+      # a 40-turn ceiling. Somebody spent twenty minutes reading credential
+      # documentation for a limit written three lines above it. A diagnostic that
+      # offers a menu is not a diagnostic.
+      - name: Work out why the review did not happen
+        id: why
+        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        env:
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          detail='The action wrote no execution log at all, which means it never reached the model — a refused workflow or a rejected credential.'
+          if [ -n "${EXEC_FILE:-}" ] && [ -f "${EXEC_FILE}" ]; then
+            # Only the numeric and boolean fields. The free-text `result` is
+            # model output and would be interpolated into a comment we author.
+            # `-s` plus `flatten(1)` so this reads the log whether the action
+            # writes one JSON array or one object per line. Both shapes have
+            # been seen from this action and neither is documented.
+            summary="$(jq -rs '
+              flatten(1)
+              | [.[] | select(type == "object" and .type == "result")] | last
+              | if . == null then "the log has no result record — the session did not finish"
+                else "is_error=\(.is_error), subtype=\(.subtype), turns=\(.num_turns), cost=$\(.total_cost_usd // 0)"
+                end' "${EXEC_FILE}" 2>/dev/null || echo "the execution log could not be parsed")"
+            detail="The session's own result record says: ${summary}"
+          fi
+          {
+            echo "detail<<ATTADIPA_EOF"
+            echo "${detail}"
+            echo "ATTADIPA_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Say that the review did not happen
+        if: always() && steps.auth.outputs.ok == 'true' && steps.review.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # Through the environment, never through `${{ }}` inside the script:
+          # the value is assembled from a file the model's session wrote.
+          DETAIL: ${{ steps.why.outputs.detail }}
+        run: |
+          set -euo pipefail
+          # Neither label is set. `ai-review:pass` would be a lie and
+          # `ai-review:blocking` would be a finding nobody made.
+          {
+            echo "<!-- attadipa-review-did-not-run:${SHA} -->"
+            echo "**The independent review did not run on \`${SHA:0:8}\`, so there is no verdict.**"
+            echo
+            echo "This says nothing about the diff."
+            echo
+            echo "${DETAIL}"
+            echo
+            echo "The usual causes, in the order they are worth checking:"
+            echo
+            echo "1. **A turn or time ceiling.** \`is_error: false\` with a turn count at or"
+            echo "   near \`--max-turns\` means the review worked and was cut off — the whole"
+            echo "   bill, none of the verdict. Raise the ceiling; do not re-run into it."
+            echo "2. **This pull request is BEHIND a \`main\` that changed"
+            echo "   \`.github/workflows/claude-*.yml\`** — the commonest cause by far, and"
+            echo "   the one that looks like all the others. The action requires the"
+            echo "   workflow file it runs to be byte-identical to the copy on the default"
+            echo "   branch, and a pull request runs from its own merge ref. So change that"
+            echo "   file on \`main\` and every open pull request whose merge ref predates"
+            echo "   the change is silently skipped, whatever it touches. The run log says"
+            echo "   \"Workflow validation failed\". **The fix is to update the branch from"
+            echo "   \`main\`, not to re-run.** Observed on #50 at 08:26 on 2026-08-22 — a"
+            echo "   documentation-only pull request that touches no workflow at all."
+            echo "3. **This pull request edits \`.github/workflows/claude-*.yml\` itself.** The"
+            echo "   action refuses to run a version of itself that a pull request has"
+            echo "   modified — otherwise a pull request could supply the prompt that"
+            echo "   reviews it. That refusal is correct, and it means changes to those"
+            echo "   files are merged on ordinary CI and a human reading them, never on an"
+            echo "   AI review. Same log line as cause 2, and no execution log either way."
+            echo "4. **The Anthropic credential.** A spent quota fails before the model is"
+            echo "   reached, in a second or so, and also writes no execution log."
+            echo "5. **A tool the session needed was not in \`--allowedTools\`.** This shows"
+            echo "   as \`is_error: true\` after real work — a non-trivial turn count and a"
+            echo "   non-zero cost, which is what tells it apart from causes 2 to 4."
+            echo "   **The log does not name the tool**, because \`show_full_output\` is off"
+            echo "   and tool results are where that name would appear. Turning it on is"
+            echo "   not the answer: tool results can carry tokens into a world-readable"
+            echo "   log. Reason from what the review was trying to do instead."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "Neither \`ai-review:pass\` nor \`ai-review:blocking\` has been set."
+          } > /tmp/no-review.md
+
+          # One note per head commit. The marker carries the SHA, because the
+          # previous version matched on the marker alone and therefore posted
+          # once per pull request *ever* — leaving a stale note pointing at a
+          # months-old run while every push after it failed silently. That is
+          # how the 2026-08-22 turn-limit failure was misread as a spent quota.
+          if gh api "repos/$REPO/issues/$PR/comments" --paginate \
+               --jq '.[].body' | grep -q "attadipa-review-did-not-run:${SHA}"; then
+            echo "::notice::already said so for ${SHA:0:8} on #$PR"
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/no-review.md
+          fi
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
+          echo "::warning::The independent review could not run on ${SHA:0:8}; no verdict was recorded."

@@ -38,6 +38,12 @@ push / pull request
 | **simulator** | that LVGL still renders at 240×240 and 410×502 | one runner + SDL2 |
 | **CodeQL** | patterns a compiler does not look for | weekly plus per push |
 
+CodeQL is the one of these whose output needs a person. Every alert it
+raises is either fixed or written down in
+[`CODE_SCANNING.md`](CODE_SCANNING.md) with the reason it does not apply —
+there is no third option where it is dismissed in the web UI and the
+reasoning lives nowhere.
+
 Three notes on choices that could reasonably have gone the other way:
 
 **`-Werror` is a separate job, and it is defensible only because the debt is
@@ -82,7 +88,7 @@ It cannot push: `contents: read`. It has an opinion and no hands.
 The question it is asked is deliberately not "does this compile":
 
 > Assume it compiles and every existing test is green. **How can it still break
-> FireflyOS?**
+> Attadipa?**
 
 and the checklist is the one this project has actually been bitten by —
 architecture boundaries, lifetime and memory, concurrency and ISR context,
@@ -94,6 +100,21 @@ measurement behind it.
 It finishes by setting exactly one of `ai-review:pass` or `ai-review:blocking`,
 and it is asked to say plainly when it found nothing. A reviewer that always
 finds something is noise, and noise is how a review stops being read.
+
+**When it cannot run, neither label is set and it says so on the pull request.**
+That note is the only signal that `main`'s second protection is absent for a
+commit, so it reads the action's own execution log and quotes the result record —
+`is_error`, the subtype, the turn count, the cost. It used to offer two candidate
+causes instead, and on 2026-08-22 the real cause was a third: the review had run,
+returned `is_error: false`, and been cut off at turn 50 by a 40-turn ceiling. The
+note also carries the head SHA in its HTML marker, because matching on the marker
+alone posted it once per pull request *ever* — so a stale note from an old commit
+sat there while every push after it failed in silence.
+
+A pull request that reaches `main` carrying `<!-- attadipa-review-did-not-run -->`
+and no `ai-review:*` label has been merged on ordinary CI and a person's reading.
+That is a legitimate route — it is the only route for a change to
+`.github/workflows/claude-*.yml` — but it is a decision, not a default.
 
 ## Automatic CI repair
 
@@ -116,7 +137,7 @@ The workflows were exercised, not merely read. What was verified, and how:
 
 | # | What | How |
 |---|---|---|
-| A | intake accepts a trusted task and applies labels | a real issue with a `firefly-agent-task` marker |
+| A | intake accepts a trusted task and applies labels | a real issue with a `attadipa-agent-task` marker |
 | B | the reviewer runs on a pull request and changes no file | this pull request |
 | C | repair triggers only on an agent branch | a deliberate, temporary test failure on a `claude/*` branch |
 | D | the watchdog finds a task whose event was missed | an issue labelled `agent:ready` with no trigger event |
@@ -126,3 +147,18 @@ Results are recorded in the pull request that introduced these files. Where a
 test could not complete because no Anthropic credential was configured, that is
 stated rather than glossed: the gate, the labels and the no-op path were
 exercised; the Claude step itself was not.
+
+## One thing the reviewer cannot review
+
+A pull request that changes the Claude workflow files themselves is skipped by
+the review, with this in the log:
+
+> Workflow validation failed. The workflow file must exist and have identical
+> content to the version on the repository's default branch.
+
+That is the action refusing to run a version of itself that a pull request has
+edited — which is the right refusal, since otherwise a pull request could supply
+the prompt that reviews it. The consequence is a rule rather than a bug:
+**changes to `.github/workflows/claude-*.yml` are merged on ordinary CI and a
+human's reading, never on an AI review.** Nothing needs configuring; it is worth
+knowing so the silence is not mistaken for approval.

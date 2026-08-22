@@ -15,7 +15,7 @@ Format: what was decided · when · what it obliges · what it invalidates.
 
 ---
 
-## OD-1 — There is a separate Firefly node, and the watch uses it
+## OD-1 — There is a separate Attadipa node, and the watch uses it
 
 **Decided:** 2026-08-21.
 
@@ -60,7 +60,7 @@ hardware is UNKNOWN and lives in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) as such
 a source.
 
 **Corroboration:** this is not a new direction. The specification already
-requires it — §32 *DOCTOR / FIREFLY NODE* mandates that the architecture account
+requires it — §32 *DOCTOR / ATTADIPA NODE* mandates that the architecture account
 for a separate node, and lists "additional GNSS" among what it provides.
 
 ---
@@ -100,7 +100,7 @@ The complete model, all fourteen entities:
 The position values are deliberately **not** recorded. They are a real location
 and this repository is public.
 
-### What the model gets right, and Firefly must copy
+### What the model gets right, and Attadipa must copy
 
 **`Node status` is a separate entity from every value it carries.** The vendor
 model does not infer "the node is there" from "a number arrived". That is the
@@ -114,11 +114,11 @@ the UI must never render the third as the second. "0 nodes nearby" and "we have
 no idea how many nodes are nearby" are different sentences, and one of them is
 a lie.
 
-### What the model is missing, and Firefly must not copy
+### What the model is missing, and Attadipa must not copy
 
 This is a fine inventory of what a node *has*. It is not sufficient as a core
 data model, and the gaps are instructive because each one is a decision the
-Firefly core has to make deliberately:
+Attadipa core has to make deliberately:
 
 - **No timestamp on anything.** Latitude and longitude with no age are unusable
   for navigation. A coordinate that is four hours old and a coordinate from two
@@ -138,7 +138,7 @@ Firefly core has to make deliberately:
   are bounded by rules that constrain *airtime*, and nothing here measures it.
 
 None of this is a criticism of MeshCore, which is solving a different problem.
-It is the argument for §32's requirement that the Doctor/Firefly application
+It is the argument for §32's requirement that the Doctor/Attadipa application
 protocol not be the MeshCore internals wearing a different name.
 
 **What it obliges:**
@@ -161,7 +161,7 @@ protocol not be the MeshCore internals wearing a different name.
 at 868.731 MHz in the region of operation is exactly question **A4**, and this
 screenshot makes it concrete rather than theoretical — the owner's existing node
 is already transmitting at a power level whose legality this project has not
-established. Firefly is not responsible for that node, but it must not ship a
+established. Attadipa is not responsible for that node, but it must not ship a
 default that assumes it.
 
 ---
@@ -170,7 +170,7 @@ default that assumes it.
 
 **Decided:** 2026-08-21.
 
-**As stated:** the owner supplied `FireflyOS_Master_Prompt_Final_Bundle.zip`
+**As stated:** the owner supplied `Attadipa_Master_Prompt_Final_Bundle.zip`
 containing a 3 125-line specification and three PNGs, with the instruction
 «так, в архиве ревью, сделай все по промту от туда» — *the archive contains a
 review; do everything according to the prompt in it.*
@@ -179,10 +179,10 @@ review; do everything according to the prompt in it.*
 
 | File | Now at | SHA-256 |
 |---|---|---|
-| `FIREFLY_OS_MASTER_PROMPT_FINAL.md` | [`../master-prompt-final.md`](../master-prompt-final.md) | `65675d49604ba217e5ca7288621ab33d8655f0659e61f2ce795eec27b42312ed` |
-| `design_refs/firefly_brand_identity.png` | [`../ui/reference/`](../ui/reference/) | `d9a51f7b69b3566d366e9f9c2d27d375579152e2fdf5c3a46c46ec16112c880e` |
-| `design_refs/firefly_visual_style_board.png` | [`../ui/reference/`](../ui/reference/) | `4e66f2a4b09038bb4e94f2dd097733a987a714c13572df68766900f75b84c2b9` |
-| `design_refs/firefly_mascot_sheet.png` | [`../ui/reference/`](../ui/reference/) | `175f7cfd9343973e65242843ad697bc9646b4ba2a312f78c42de8e6f2024684a` |
+| `ATTADIPA_OS_MASTER_PROMPT_FINAL.md` | [`../master-prompt-final.md`](../master-prompt-final.md) | `65675d49604ba217e5ca7288621ab33d8655f0659e61f2ce795eec27b42312ed` |
+| `design_refs/attadipa_brand_identity.png` | [`../ui/reference/`](../ui/reference/) | `d9a51f7b69b3566d366e9f9c2d27d375579152e2fdf5c3a46c46ec16112c880e` |
+| `design_refs/attadipa_visual_style_board.png` | [`../ui/reference/`](../ui/reference/) | `4e66f2a4b09038bb4e94f2dd097733a987a714c13572df68766900f75b84c2b9` |
+| `design_refs/attadipa_mascot_sheet.png` | [`../ui/reference/`](../ui/reference/) | `175f7cfd9343973e65242843ad697bc9646b4ba2a312f78c42de8e6f2024684a` |
 
 All four are committed byte-identical to what was supplied. The hashes are
 recorded so that a later edit is visible as one.
@@ -214,7 +214,7 @@ features, that all five T-Watch radios were called LoRa, and that
 
 **What it does not change:** every hardware fact in
 [VERIFIED_FACTS](VERIFIED_FACTS.md) still stands — the review corrected the
-*model*, not the measurements. And [OD-1](#od-1--there-is-a-separate-firefly-node-and-the-watch-uses-it)
+*model*, not the measurements. And [OD-1](#od-1--there-is-a-separate-attadipa-node-and-the-watch-uses-it)
 is untouched: final §3 and §9 restate it almost word for word.
 
 ---
@@ -240,12 +240,12 @@ contacts and storage, GPS and time, and hardware RNG and crypto acceleration.
    experimental.** «Не считай, что последний релиз — лучший» — do not assume the
    latest release is the best. Check for open regressions, the FEM RX gain path
    in particular.
-3. **Do not pull unmerged code into production Firefly without analysis.**
+3. **Do not pull unmerged code into production Attadipa without analysis.**
 4. **Build a compatibility layer** so MeshCore can be updated without rewriting
    the OS: `UI/Apps → Services → Mesh Service API → MeshCore Adapter →
    transports → HAL`.
 5. **Produce `docs/upstream/meshcore-1.17-review.md`** with a status per item:
-   `adopt / adapt / monitor / reject`, then file each required Firefly change as
+   `adopt / adapt / monitor / reject`, then file each required Attadipa change as
    a separate small task.
 6. **Do not stop at the review.** Fix the critical architectural errors, add
    regression tests, build, run, fix, and continue. The order is stated as a
@@ -256,7 +256,7 @@ Four specific instructions inside it are narrower than the rest and are recorded
 verbatim in effect, because each forbids something that would otherwise look
 reasonable:
 
-- **Transport is not BLE.** Firefly's must admit BLE, USB, UART, Wi-Fi/TCP and
+- **Transport is not BLE.** Attadipa's must admit BLE, USB, UART, Wi-Fi/TCP and
   possibly ESP-NOW, several at once — «не копируй слепо», do not copy #3049
   blindly.
 - **No own LBT yet.** «Не реализовывай собственный LBT, пока не станет понятно,
@@ -285,8 +285,8 @@ before the code it constrains, which is the only moment any of it is free.
 **As stated:** a GNSS receiver is not merely a source of NMEA sentences. Modern
 receivers carry jamming detection, jamming mitigation, spoofing detection,
 integrity estimates, RF diagnostics, per-signal information, assistance and
-fast-start, and security features, and Firefly must use them. The priority order
-is explicit: **receiver-native mechanisms → Firefly's independent detectors →
+fast-start, and security features, and Attadipa must use them. The priority order
+is explicit: **receiver-native mechanisms → Attadipa's independent detectors →
 a combined trust state.**
 
 **What it obliges:**
@@ -307,7 +307,7 @@ a combined trust state.**
    and final trust are separate. A provider may be `Ready`, with a numerically
    valid fix, and still be unusable for navigation.
 5. **Do not lose data at the driver boundary.** The observation type must carry
-   what the receiver reports — both a normalized Firefly representation *and*
+   what the receiver reports — both a normalized Attadipa representation *and*
    the receiver's native values, not one at the cost of the other.
 6. **A GNSS receiver capability descriptor**, so an application still asks
    `LocationService` and never learns the chip: jam detection, active jam
@@ -350,7 +350,606 @@ a correction.
 
 ---
 
+## OD-6 — The watch counts steps, and that is not optional
+
+**Decided:** 2026-08-21.
+
+**As stated:** *"учти кстати что шагомер должен быть в часах обязательно"* — a
+pedometer is a mandatory feature of the watch, not a nice-to-have and not a
+later milestone.
+
+**What already exists, and what does not.** `Capability::MotionSensing` is
+already in the enum and its comment already says *"steps, wrist gestures,
+activity"*, so the seat exists. Nothing implements it, and the interesting part
+is that the two boards cannot implement it the same way.
+
+| | T-Watch S3 | Waveshare 2.06 |
+|---|---|---|
+| Part | BMA423 | QMI8658 |
+| Axes | accelerometer only, no gyroscope | accelerometer + gyroscope |
+| Step counting | **`UNKNOWN` — must be traced to the datasheet.** The BMA4xx wearable variants are documented by Bosch as carrying a step counter and step detector in the sensor itself; whether the BMA423 specifically does, on this revision, and what its interrupt and FIFO behaviour is, has not been read from a primary source by this project | **`UNKNOWN`.** No integrated step counter is known. Steps would be a firmware algorithm over raw acceleration |
+
+That asymmetry is the whole engineering content of this decision, and it is a
+power question rather than a maths question:
+
+- **a step counter inside the sensor keeps counting while the SoC is asleep**,
+  and the SoC reads an accumulated total when it next wakes. The cost is the
+  sensor's own microamps;
+- **a step counter in firmware needs the samples.** Either the SoC stays awake,
+  or the sensor batches into a FIFO deep enough to cover a sleep interval and
+  the SoC wakes to drain it. Both cost far more than the first, and how much
+  more is a measurement nobody has taken.
+
+A mandatory pedometer that stops counting when the screen goes off is not a
+pedometer, so this decides something about the power model rather than only
+about an application.
+
+**What it obliges:**
+
+1. **Read the datasheets before writing anything.** BMA423 first: does the part
+   count steps itself, what does it do across a sleep, what survives a reset,
+   and how is the counter reset at midnight without losing steps taken during
+   the reset. Then QMI8658: FIFO depth, watermark interrupt, and what a sleep
+   interval costs in wakes. `UNKNOWN` is a valid answer and an unsourced
+   `SUPPORTED` is not.
+2. **Steps are a capability, not a board feature.** An application asks for a
+   step count; it never learns whether a sensor counted them or firmware did.
+   Both answers live below `Capability::MotionSensing`, and a board where the
+   honest answer is "not while asleep" reports a `Degraded` availability rather
+   than a number that is quietly wrong.
+3. **The daily total must survive.** A reboot, a crash, a flat battery and
+   midnight are four different events and only one of them should zero the
+   count. That is persistence with crash safety, which is T-046's problem and
+   now has a first customer.
+4. **No estimated step counts.** A count derived from a period the device was
+   not measuring is not a count. If steps were missed, the day's total says so
+   rather than interpolating — the same rule the GNSS work applies to a position
+   nobody observed.
+
+**Status:** filed as T-060 (what each IMU actually does about steps, from
+primary sources) and T-061 (the capability, its power story and its
+persistence). Neither is started.
+
+---
+
+## OD-7 — The companion is any node, not only ours
+
+**Decided:** 2026-08-22.
+
+**As stated**, across three messages:
+
+> *"а почему бы нам не добавить в часы возможность цепляться к нодам meshcore на
+> ванильной прошиве по ble или lan? Не каждый захочет заморачиваться со сбором
+> нашего варианта ноды сразу. Да и нам может пригодиться. В план!"*
+
+> *"Нужно чтобы часы при этом получали сразу возможность общаться по мешкору,
+> возможность запрашивать и получать телеметрию, возможность снимать координаты
+> из телеметрии, входящих сообщений и с самой ноды если в ней есть gps."*
+
+> *"При наличии lora и меш в самих часах я бы хотел чтобы была возможность
+> пользоваться обеими нодами, на часах пусть так же будет доступен meshtastiс
+> как вариант компаньона вместо (или вместе, как получится) meshcore."*
+
+**What it changes.** [ADR-0008](../adr/0008-mesh-service-providers.md) already
+has the right shape — one `MeshService`, providers behind it, applications that
+never learn which one answered — and it already has two providers: the watch's
+own radio and *the Attadipa node*. This widens the second one. The companion is
+now **any** device that speaks a protocol the watch has a client for, reached
+over **any** transport the watch has:
+
+| | |
+|---|---|
+| Stack | MeshCore · Meshtastic · the Attadipa node |
+| Transport | BLE · Wi-Fi/LAN · the wired node link |
+| Count | more than one at a time, and alongside a local radio |
+
+The reasoning the owner gave is a product argument and it is a good one: a person
+who already owns a MeshCore node should be able to use the watch on the day they
+buy it, without building anything. That also makes the watch testable against
+hardware other people have.
+
+**What it obliges:**
+
+1. **A companion is a capability source, not a device an application knows
+   about.** Same rule as everything else — an application asks `MeshService` to
+   send a message and never learns that a vanilla node in a rucksack carried it.
+   ADR-0008 §3's selection policy extends from "local or node" to a list; that
+   the list can now have three entries does not give applications a second code
+   path.
+2. **Telemetry is a request/response feed, and feeds are not capabilities.**
+   T-029 already established that separation; this is its first real customer.
+   A telemetry value carries the two ages every datum that crosses a link
+   carries ([ADR-0004](../adr/0004-capability-sources.md)).
+3. **Three more ways a position arrives**, each with a different provenance and
+   a different trust: from a telemetry frame, from an incoming message that
+   carried one, and from the companion's own receiver.
+   [ADR-0011](../adr/0011-gnss-integrity.md) already separates `PositionValidity`
+   from `TrustState`; a coordinate taken out of somebody else's message is the
+   case those axes exist for, and it must never be presented as the wearer's
+   own fix.
+4. **Nothing here relaxes the licence rule.** MeshCore is MIT and Meshtastic's
+   firmware is GPL-3.0 — *read it, learn from it, copy nothing*
+   ([REUSE_LEDGER](REUSE_LEDGER.md)). Whether Meshtastic's **protocol
+   definitions** carry the same licence as the firmware is `UNKNOWN` and is the
+   gate on a Meshtastic client. It is verified from the files or the client is
+   not written.
+5. **Nothing here relaxes the honesty rule either.** MeshCore's own security is
+   an open upstream issue; a message that crossed a vanilla node gets no lock
+   icon and no "encrypted" label.
+
+**Status:** research only. Filed as T-072 (what a vanilla MeshCore node actually
+exposes, and over which transports), T-073 (the same for Meshtastic, licence
+first), T-074 (many providers at once, in the ADR-0008 shape). No client is
+written until T-072 has answers from source.
+
+---
+
+## OD-8 — Every source of position, and the watch as the instrument
+
+**Decided:** 2026-08-22.
+
+**As stated**, across two messages:
+
+> *"При наличии gps в часах - так же хорошо бы иметь возможность выбрать какой
+> gps использовать и еще как вариант - использовать оба источника данных
+> комбинируя и обрабатывая их для улучшения точности. Если возможно - та же
+> история с телефоном - нужно иметь возможность снять gps координаты (и прочие
+> полезные и доступные данные) и обработать на уровне часов. Они превращаются в
+> основной навигационный инструмент."*
+
+> *"По поводу agps - надо заложить возможность их получения не только по
+> интернету но и по другим каналам связи, ble, lora и проч. На всякий. Буду
+> стараться как-то их получить и пропихнуть в любом случае."*
+
+**The list of sources this creates**, which is longer than the one the GNSS work
+was written against:
+
+| Source | Already modelled? |
+|---|---|
+| the watch's own receiver | yes — ADR-0011 |
+| the companion node's receiver | yes — ADR-0004, as a node-supplied capability |
+| a phone, over the companion link | **no** |
+| a coordinate inside an incoming mesh message | **no** — OD-7 |
+| a coordinate inside a telemetry frame | **no** — OD-7 |
+| dead reckoning from the IMU | filed, not modelled — T-071 |
+| cell towers | **no** — OD-9 |
+
+**What it obliges:**
+
+1. **Selection and fusion are two different features and the second is not the
+   first done twice.** Choosing which receiver to believe is a policy in the
+   ADR-0008 shape. Combining two receivers to do better than either is an
+   estimator, and an estimator that is wrong is worse than the better of its
+   inputs — it produces a confident number nobody can check. Which of the two
+   ships first is a decision that needs the replay rig
+   (`tests/replay/`) pointed at real multi-source traces, not an opinion.
+2. **Provenance travels with the position, always.** A fix from the wearer's own
+   receiver, a fix relayed from a node on a roof, and a coordinate lifted out of
+   somebody else's message are three different claims about where the wearer is,
+   and exactly one of them is about the wearer. The user-facing consequence is
+   that the screen says which, in words.
+3. **AGPS is a payload, not a transport.** The owner is explicit that it may
+   arrive over the internet, BLE, LoRa or anything else. So the assistance data
+   is defined once — format, validity window, size, what it is good for — and
+   the delivery is a separate question answered per channel. A LoRa channel with
+   a few hundred bytes a minute and an internet one are the same payload with
+   very different pacing, and whether any useful assistance format fits the first
+   is `UNKNOWN` until the receiver documents are read (T-051, T-052).
+4. **"The watch becomes the primary navigation instrument"** is the sentence to
+   design against. It means the watch is the thing that decides, not a display
+   for whatever the phone last said.
+
+**Status:** research only. Filed as T-075 (the source inventory and what each one
+can honestly claim), T-076 (phone-supplied position and data over the companion
+link), T-077 (AGPS as a payload, and what fits each channel). Selection versus
+fusion is deliberately not decided here.
+
+---
+
+## OD-9 — The node may carry a cellular modem
+
+**Decided:** 2026-08-22.
+
+**As stated:**
+
+> *"я вероятно пихну в ноду gsm/4g/lte короче мобильную связь. Это будет
+> во-первых - один из вариантов уточнения позиции (опрашиваем вышки, по
+> идентификатору смотрим ее координаты в базе которая заранее качается из
+> интернета) а во-вторых, один из вариантов выйти на связь, получить agps, и тому
+> подобное."*
+
+**Two features, and they are independent.** A modem in the node would give:
+
+- **a position source that works indoors and needs no sky** — read the serving
+  and neighbour cells, look their identifiers up in a database downloaded ahead
+  of time, and produce a coarse position. Accuracy is hundreds of metres to
+  kilometres depending on cell density, which makes it a *fallback and a sanity
+  check* rather than a navigation fix. It is also the only source on this list
+  that keeps working under a roof;
+- **a route off the mesh** — internet for assistance data, for a message that has
+  to leave the mesh, and for keeping the tower database current.
+
+**What is `UNKNOWN` and gates it**, none of which may be guessed:
+
+1. **The part.** There is no modem in [NODE_PROFILE](../node/NODE_PROFILE.md)
+   because there is no node part number yet. Band support, power draw while
+   registered, and whether it can be powered down without losing registration
+   are all properties of a specific module.
+2. **The database.** A tower database is the whole feature and it is somebody
+   else's data. Licence, size, coverage in the regions this product ships to, and
+   update cadence are four separate answers, and "there is an open one" is not
+   any of them. A database that does not fit the node's flash is not a feature.
+3. **The regulatory picture.** A cellular modem is type-approved equipment and a
+   SIM is a subscription in somebody's name. That is a different conversation
+   from an ISM-band radio and it belongs to the owner, not to this repository.
+4. **Privacy.** A device that registers on a network is a device that can be
+   located by the network, whether or not the wearer asked. Child Mode makes that
+   a question with a legal answer in some jurisdictions, and the tracker threat
+   model already filed (T-069) grows a section rather than a footnote.
+
+**What it does not change:** the mesh is still the product. A modem is one more
+source and one more route, entering through the same provider registry as
+everything else, and the watch must be complete with none of it present.
+
+**Status:** research only. Filed as T-078 (the cellular option: part class, power
+and regulatory shape) and T-079 (tower-database positioning: licence, size,
+coverage, and what accuracy may honestly be claimed). Nothing is designed until
+a part exists.
+
+---
+
+## OD-10 — A standing person does not need a new fix
+
+**Decided:** 2026-08-22.
+
+**As stated:**
+
+> *"надо чтобы у стоящего на месте человека (определять по акселерометру можно)
+> gps координаты брались реже, если есть точные и доверенные координаты - то
+> вообще можно не переспрашивать пока он не двинется с места. При этом конечно
+> не допускать холодного пуска желательно очень, т.е. не выключать модуль совсем
+> или держать agps на готове как-то. В общем на подумать это"*
+
+**The idea is right and the second half is the hard half.** GNSS is the largest
+continuous draw on a watch that has it, and a position that has not changed does
+not need to be measured again. What makes this non-trivial is that the saving and
+the cost live in the same place: switching the receiver off is exactly what turns
+the next fix into a cold start, and a cold start is tens of seconds of full
+current plus a wearer standing still looking at a spinner. The owner names that
+trap in the same sentence, which is why this is recorded as a decision rather
+than as a feature request.
+
+**What already exists to build it on**, so that this is a composition rather than
+a new subsystem:
+
+- **motion, from the IMU.** [OD-6](#od-6--the-watch-counts-steps-and-that-is-not-optional)
+  already requires the accelerometer to keep working while the SoC sleeps, and
+  "is the wearer moving" is a strictly easier question than "how many steps".
+  On the T-Watch that may be an interrupt from the part itself rather than a
+  sampling loop, which is the difference between free and not;
+- **the three start kinds.** `start_kind()` in `core/` already distinguishes hot,
+  warm and cold, and T-055 already found and fixed a bug where *having* a backup
+  domain was read as evidence it had been *powered*. This decision is that
+  function's first real consumer;
+- **trust and validity as separate axes.**
+  [ADR-0011](../adr/0011-gnss-integrity.md) already says a position can be valid
+  and untrusted. "Accurate and trusted coordinates" in the owner's sentence is
+  exactly the conjunction of the two, and it is already expressible.
+
+**What it obliges:**
+
+1. **Standing still is a hypothesis, not a fact.** A watch on a table in a moving
+   train reports no motion. A wrist held steady while walking reports very
+   little. So the gate is a *rate reduction with a ceiling*, never an indefinite
+   suspension: there is always a longest interval after which the receiver is
+   asked again regardless, and the ceiling is a setting rather than a constant.
+2. **A held position is timestamped, not refreshed.** The screen shows the age of
+   the fix, and an old fix reads as an old fix. This is the same rule the GNSS
+   work already applies — a position nobody observed is not interpolated — and
+   holding one deliberately must not quietly become the thing that violates it.
+3. **The receiver is duty-cycled, not switched off.** Which of the receiver's own
+   low-power modes are usable, what each one keeps, and what each one costs are
+   properties of the specific module and are `UNKNOWN` — see T-051 (MIA-M10Q) and
+   T-052 (Quectel LS550G). This decision does not choose between them; it says
+   the choice is made from the receiver documents and measured, not assumed. An
+   estimated milliamp is labelled `ESTIMATED`.
+4. **AGPS is the other half of the answer**, which is why
+   [OD-8](#od-8--every-source-of-position-and-the-watch-as-the-instrument) item 3
+   matters here: assistance held ready turns a cold start back into something
+   closer to a warm one, and it can arrive over any channel. Ephemeris has a
+   validity window measured in hours, so "held ready" means a refresh policy, not
+   a download.
+5. **Dead reckoning covers the gap it opens.** If the receiver is asked less
+   often, the interval between fixes is exactly where T-071's IMU track has to
+   carry the position. The two features are the same feature seen from either
+   end.
+
+**Status:** research and design, filed as T-080. Nothing is implemented until
+T-051 and T-052 say what the receivers can actually do, because the whole feature
+is a claim about a specific module's low-power behaviour.
+
+---
+
+## OD-11 — Themes are installable, and the layout survives them
+
+**Decided:** 2026-08-22.
+
+**As stated:**
+
+> *"мы сделаем красиво, но всем понравиться с одним единственным вариантом не
+> получится. нужно заложить в ядро возможность смены темы. и сделать эти темы
+> скачиваемыми, устанавливаемыми и переключаемыми, как приложения. чтобы можно
+> было поставить свои цвета, свои шрифты, свои иконки ванильных приложений и
+> прочее. и при этом чтобы все не поехало к чертям на экране. в план,
+> обязательно!"*
+
+And, in the same message, about a `□` visible in a simulator screenshot:
+
+> *"а что там за прямоугольник на экране? проебанный в шрифте символ? в проде
+> конечно же такого быть не должно, ты же понимаешь?"*
+
+The second half is not a separate topic. A missing glyph is what a theme system
+produces by default unless it is designed not to, and the box in that screenshot
+is the *stock* font failing on `×` — with one font, chosen by us, in a build we
+control. A user-supplied font is that failure mode with the safeties off.
+
+**What already exists.** [T-009](../../TASKS.md) shipped the substrate on
+2026-08-22 and it was built the right way round by accident of following final
+§54: a screen names `color.accent.primary` and `space.md`, and the value behind
+the name is resolved in exactly one place. Swapping the table under those names
+*is* a theme. What does not exist is any of: a theme that is data rather than
+code, a way to install one, a validity check, or a way to survive a bad one.
+
+**What it obliges:**
+
+1. **A theme is data, not code.** It carries colour values for the twelve roles
+   in both themes, a font, an icon set, and nothing else. It never carries
+   layout, and it never carries a pixel count — a theme that could set a padding
+   could break every screen, and "чтобы всё не поехало" is precisely a
+   requirement that it cannot.
+2. **Installing a theme is installing untrusted content**, and it arrives over
+   the same links a message does. It is parsed defensively, it is bounded in
+   size before it is read, and a malformed one is rejected with a sentence a
+   person can act on. This is a security surface, not a preferences screen.
+3. **A theme is validated before it is applied, and the rules already exist as
+   arithmetic.** `ui/src/color.cpp` computes WCAG contrast today; a candidate
+   theme whose text does not clear 4.5:1 on its own page is not applied, or is
+   applied with the failure stated. The palette work of 2026-08-22 found two such
+   failures in the *owner's own* palette by computing rather than looking — a
+   stranger's palette gets the same arithmetic and no more benefit of the doubt.
+4. **A font is only installed with its coverage.** A theme's font must draw every
+   codepoint both catalogues contain, or it is refused. `check_glyphs.py` and
+   `report_undrawable_glyphs()` already ask that question at build time and at
+   run time respectively; a theme system makes it a runtime gate on installation.
+   **No box characters, ever** — which also means the shipping build must stop
+   using a Latin-only stock font, a defect that is real today and filed.
+5. **There is always a way back.** The built-in theme cannot be uninstalled, and
+   a theme that makes the screen unreadable must be removable without reading the
+   screen. That is a recovery path, and it is designed before the first theme is
+   installable rather than after somebody is locked out.
+6. **Icons are replaceable for vanilla applications**, which means an application
+   asks for a *named* icon and never for a file. Same rule as colour, applied to
+   images, and it constrains the asset pipeline (T-034) before it is written —
+   which is why this is recorded now rather than when themes are built.
+
+**What it does not decide:** the format, the distribution, the signing, and
+whether a theme may ship executable content at all. The last one is the load-
+bearing question and the default answer is **no**.
+
+**Status:** filed as T-081 (themes as installable data, the ADR), T-082 (theme
+validation — contrast and glyph coverage as an installation gate) and T-083 (the
+shipping font: no box characters in any build, which is a defect today rather
+than a feature). T-034's asset pipeline is amended before it starts.
+
+---
+
 ## Still with the owner
 
 Nothing here answers A1–A3, A5 or the compass question. Those remain in
 [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+
+OD-7 to OD-10 add three of their own, and they are the kind that cannot be
+answered from a datasheet: whether Meshtastic's protocol definitions are licensed
+separately from its firmware, which cellular module the node will carry, and
+which tower database may lawfully be shipped in a product. The first is research
+and is filed; the last two are the owner's.
+
+## OD-12 — Meshtastic is not supported, and the reason is not the licence
+
+> **One premise in the rationale below has expired and the record is left
+> unedited anyway.** It says T-072 is open; T-072 was completed later the same
+> day. The decision is unaffected — see the annotation at the end of this
+> section. Owner decisions are not rewritten to keep their reasoning tidy.
+
+**Decided:** 2026-08-22, on [#41](https://github.com/hleserg/Attadipa/issues/41).
+
+**As stated:**
+
+> *"Согласен - принимаю."*
+
+— to the recommendation in that issue: option 4, do not support Meshtastic,
+MeshCore alone answers what [OD-7](#od-7--the-companion-is-any-node-not-only-ours)
+actually asked for.
+
+**What was asked, and what happened to it.** OD-7 said Meshtastic should be a
+companion option *"вместо (или вместе, как получится)"* MeshCore. T-073 checked
+the licence first, as that task required, and found the blocker:
+`meshtastic/protobufs` is a separate repository with its own `LICENSE`, and that
+file is **GPL-3.0** with no linking exception. Generating code from those
+`.proto` files and linking it into the firmware would make Attadipa's firmware a
+derivative work under GPL-3.0, and Attadipa is MIT. The reuse ledger's rule —
+read it, learn from it, copy nothing — applies to protocol definitions exactly
+as it applies to C++.
+
+Four options were put to the owner: a real clean-room from published
+documentation only; shipping the provider as a separately distributed GPL-3.0
+component; asking upstream for an exception; or not supporting Meshtastic. Only
+the first and last are executable by an agent without legal advice, and they
+differ by months.
+
+**The decision is option 4, and the distinction matters for the record.** The
+licence is what made the cheap path impossible. The *decision* is that the
+feature is not worth the expensive one — a genuine clean-room is months, done
+honestly or not at all, and a half-clean-room is worse than neither.
+
+**What MeshCore is, stated at the strength the evidence actually supports.** It
+is MIT, and its source has a `companion_radio` role and a transport abstraction
+— both read, both in the reuse ledger. That is enough to say a companion client
+is *buildable without a licensing problem*, which is the half OD-7's need turns
+on. It is **not** enough to say the protocol is understood: **T-072 is open**,
+and every row of
+[COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) §1 is still
+`UNKNOWN` — which transports a stock build exposes, whether a LAN/TCP companion
+transport exists at the pinned revision, which commands it answers, whether
+telemetry carries a position. An earlier draft of this record said T-072 was
+finished and LAN was there. It was not, and the independent review on
+[#48](https://github.com/hleserg/Attadipa/pull/48) caught it.
+
+The decision does not rest on the overstatement. Rejecting Meshtastic follows
+from the licence and the cost of a real clean-room; MeshCore being the remaining
+candidate follows from its licence. What is *not* yet established is how much
+work a MeshCore companion client is — and that is T-072's job to answer, not
+this record's to assume.
+
+So the ledger records `REJECT` for the licence, and this records `REJECT` for
+the product. If Meshtastic's licensing ever changes, the licence half is
+answered and this decision is the only thing to revisit.
+
+> **Annotation, 2026-08-22 — the premise moved, the decision did not.** The
+> paragraphs above are the owner's record and are left exactly as written,
+> because they are the reasoning that was in front of the owner at the time and
+> that is what this file is for. One factual premise in them has since expired:
+> **T-072 is no longer open.** §1 of
+> [COMPANION_AND_POSITION_SOURCES](COMPANION_AND_POSITION_SOURCES.md) is answered
+> on every row and the detail is in
+> [MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md). The record
+> above already said the decision does not rest on that premise, and it does
+> not: the answer is that a MeshCore companion client is a real but bounded
+> amount of work — 58 commands, a 176-byte frame budget, and a TCP transport
+> that makes a host-side client cheap. Nothing in it makes Meshtastic cheaper or
+> its licence gate narrower. **OD-12 stands unchanged.** This note exists so the
+> next agent does not read a stale `UNKNOWN` as current, and so nobody is tempted
+> to edit an owner decision to keep its rationale tidy.
+
+**What it changes.**
+
+| | |
+|---|---|
+| **T-073** | closed, `REJECT`. Not blocked, not deferred — decided |
+| **T-074** | keeps its scope but loses its second concrete provider. Written against MeshCore plus a hypothetical second, which is enough to keep `availability(MeshMessaging)` and deduplication honest without inventing a provider to satisfy a list |
+| **OD-7** | stands, minus its Meshtastic clause. The companion is still *any* node, and MeshCore is the one we have a client for |
+| ADR-0008 | unchanged in shape. It was already a list, and a list of one is not a design flaw |
+
+**What is explicitly not decided here.** Whether a Meshtastic *bridge* could
+live outside the firmware — on the Attadipa node, or on a phone — is a different
+question with a different licensing answer, and nobody has asked it.
+
+
+---
+
+## OD-13 — No tag emulation; a track is a way back on foot, and saving one whole is a separate feature
+
+**Decided:** 2026-08-22, answering A7 on
+[#33](https://github.com/hleserg/Attadipa/issues/33).
+
+Three questions were put to the owner because none of the three features has a
+line in the specification and all three compete for one antenna, one coexistence
+arbiter and one 940 mAh cell. All three came back, and the second came back as a
+better question than the one asked.
+
+### 1. The watch does not pretend to be a smart tag
+
+**As stated:**
+
+> *"Не делаем. Ни Apple, ни какую-либо ещё."*
+
+Not deferred, not blocked on the ecosystems. **Decided.**
+
+The obstacles found by the research are real and are not the reason: Google
+needs an approved proposal, an email allowlist and third-party certification,
+and its only readable implementation is licensed for Nordic silicon; Samsung's
+SDK ships for no Espressif part; Apple is reachable but costs an Apple ID
+bootstrapped on Apple hardware, a self-hosted endpoint, and MFi for anything a
+person would recognise as Find My. Those made the feature expensive. The owner
+decided it is not wanted, which is a different sentence and outranks the first.
+
+**[T-063](../../TASKS.md) survives, and it is the reason this costs nothing.**
+The companion phone remembering where it last saw the watch over BLE answers
+*"I have lost my watch"* with no account, no other company's identifier and no
+network at all — and it is the only variant that works with the companion this
+project already specifies.
+
+### 2. A track is not a length of time. It is distance from familiar ground, on foot
+
+The question asked was *how many hours*. The owner replaced it:
+
+> *"трек пишется на случай, когда по нему, вероятно, придётся возвращаться
+> пешком"* — вышел из метро, топаешь, заблудился, посмотрел трек, вернулся.
+
+So the recording rule is about **purpose**, not duration:
+
+- the watch learns **familiar ground** — places where a person stays a long time
+  while moving only locally. A camp is tent ↔ fire ↔ the clearing beside them;
+- inside it, **nothing is recorded**;
+- past a threshold beyond its edge, on foot, **recording starts**;
+- on return, the track is **erased**;
+- going out the same way again records only what lies past the new edge.
+
+**A car, a bicycle or any other vehicle is out of scope — that is what a phone
+is for.** This is the purpose, not a literal specification; the details belong
+to whoever implements it.
+
+**What this does to the sizing.** The upper bound is now a walk somebody has to
+retrace, not a day or a multi-day route. Order of magnitude: a couple of hours,
+single-digit kilometres, hundreds to a few thousand points — materially less
+than the multi-day assumption the research sized against, which takes pressure
+off both the encoding and the mesh carrier. **The number still has to be
+computed**, from the sampling rule and the chosen threshold. Computed, not
+guessed.
+
+**What this rule now depends on, and it is not free.** Naming these is the point
+of writing the decision down:
+
+1. **"On foot" requires motion-mode recognition.** Without it the watch records
+   in a car, which is exactly what was excluded. That rests on the pedometer,
+   which exists only as [OD-6](#od-6--the-watch-counts-steps-and-that-is-not-optional).
+2. **"Familiar ground" is learned anchors** — the watch stores where its wearer
+   habitually is.
+3. **Threshold, hysteresis and dwell are three numbers that do not exist yet.**
+   Too small and it records every trip to the shop; too large and it starts
+   recording once it is already too late. They are proposed with arithmetic, not
+   picked.
+4. **T-069 gets sharper, not softer.** The device now holds a map of its
+   wearer's habitual places, and in Child Mode that is a map of a child's. Erase
+   on return helps and does not answer it. The privacy question grew out of this
+   decision rather than being resolved by it.
+
+### 3. Saving a whole track is a second, independent feature
+
+> *"хочу уметь сохранить трек целиком по запросу и посмотреть его потом на
+> карте"* — on request, so no restriction on how the wearer is travelling; a car
+> is fine here. Shaped as an application, allowed to run in the background so
+> other applications keep working while it records.
+
+It is **not a mode of the first one**. Different consumer, different volume,
+different behaviour when storage fills. Filed separately for that reason.
+
+### 4. The background recording of §2 is configurable, and on by default
+
+Whoever does not want it turns it off.
+
+### What it changes
+
+| | |
+|---|---|
+| **T-064** beacon profiles and the slot scheduler | **closed, `REJECT`** — by owner decision, recorded separately from the licensing and technical obstacles, which are real and are not why |
+| **T-063** last-seen over BLE | stands, and is now the whole of "find my watch" |
+| **T-065** `track/` | **unblocked** and re-sized by §2. The recording rule is a state machine over learned anchors, not a timer |
+| **T-071** dead reckoning | **not blocked.** §2 answers question 3 without being asked it: everything is built around getting back, which is the one purpose that survives the physics. A disk around the last anchor, never a confident line |
+| **T-066** one track, three carriers | unchanged in shape, cheaper in the worst case |
+| **T-069** the tracker threat model | scope grows: learned anchors are stored personal history |
+
+**What is explicitly not decided here.** The threshold, the hysteresis, the
+dwell time and the sampling rate — all four are to be computed and shown. If the
+arithmetic does not close on power or on storage, that is a `BLOCKED` with
+numbers in it, not a quiet simplification.

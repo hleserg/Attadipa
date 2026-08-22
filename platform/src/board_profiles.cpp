@@ -1,4 +1,4 @@
-#include "firefly/platform/board_profile.h"
+#include "attadipa/platform/board_profile.h"
 
 #include <cstring>
 
@@ -10,7 +10,7 @@
 // CLAUDE.md's first rule, and the reason the T-Watch's radio chip defaults to
 // Unknown even though the schematic footprint hints at an SX1262.
 
-namespace firefly::platform {
+namespace attadipa::platform {
 namespace {
 
 using HF = HardwareFeature;
@@ -139,4 +139,4 @@ const BoardProfile* find_board_profile(const char* id)
     return nullptr;
 }
 
-}  // namespace firefly::platform
+}  // namespace attadipa::platform

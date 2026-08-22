@@ -4,7 +4,7 @@
 #include <cstring>
 #include <vector>
 
-namespace firefly::sim {
+namespace attadipa::sim {
 namespace {
 
 const std::uint32_t* crc_table()
@@ -134,4 +134,4 @@ bool write_png_rgb(const char* path, const std::uint8_t* pixels, std::uint32_t w
     return written == png.size();
 }
 
-}  // namespace firefly::sim
+}  // namespace attadipa::sim

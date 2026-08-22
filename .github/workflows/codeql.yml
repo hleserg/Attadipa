@@ -2,8 +2,9 @@ name: CodeQL
 
 # Static analysis of the host build path.
 #
-# It analyses what it can actually compile, which here is the host libraries and
-# their tests — the same code the sanitizers run over, looked at a different way.
+# It analyses the host libraries. Tests are built in this job so the compilation
+# path remains covered, but they are excluded from alerts: their intentionally
+# hostile fixtures and developer-only CLIs are not product attack surfaces.
 # The simulator is excluded: building it pulls LVGL, and a CodeQL database full
 # of somebody else's library produces alerts nobody in this repository can act
 # on.
@@ -35,7 +36,7 @@ jobs:
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Initialise
         uses: github/codeql-action/init@v3
@@ -43,6 +44,7 @@ jobs:
           languages: c-cpp
           build-mode: manual
           queries: security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Build
         run: |

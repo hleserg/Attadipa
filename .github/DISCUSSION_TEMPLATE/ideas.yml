@@ -1,0 +1,161 @@
+title: "[App idea] "
+labels: ["community: app idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## What should a smartwatch actually do?
+
+        Most smartwatch software is built by copying features from phones and
+        other watches. Attadipa is open, and would rather ask.
+
+        Tell us what would genuinely be useful on your wrist: something you can
+        understand or act on in seconds, something that still matters when your
+        phone has no signal, or simply something nobody has built properly yet.
+
+        You do not need to know anything about how Attadipa is built. Answer as a
+        person who would wear this. Short answers are welcome — this is a
+        conversation, not a specification.
+
+        ---
+
+        ## Что на самом деле должны уметь умные часы?
+
+        Большинство приложений для умных часов — это перенос функций с телефона
+        или с других часов. Attadipa предпочитает спросить.
+
+        Расскажите, что было бы по-настоящему полезно именно на запястье: то,
+        что понимаешь или делаешь за несколько секунд; то, что не перестаёт
+        работать, когда у телефона нет сети; или просто то, что до сих пор никто
+        не сделал как следует.
+
+        Разбираться в устройстве Attadipa не нужно. Отвечайте как человек,
+        который будет это носить. Короткие ответы — нормально: это разговор, а
+        не техническое задание.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem / Проблема
+      description: |
+        What real problem does this solve? Who has it, and when?
+
+        Какую реальную проблему это решает? У кого она возникает и когда?
+      placeholder: |
+        In a forest with no signal, I cannot tell whether the rest of my group is ahead of me or behind.
+
+        В лесу без связи я не могу понять, группа впереди меня или позади.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-wrist
+    attributes:
+      label: Why on the wrist? / Почему на запястье?
+      description: |
+        Why are a watch better here than taking out a phone? This is the
+        question that separates a watch app from a phone app.
+
+        Почему в этой ситуации часы удобнее, чем достать телефон? Это главный
+        вопрос, который отличает приложение для часов от приложения для телефона.
+      placeholder: |
+        My hands are busy and it is raining. Glancing at my wrist costs nothing; unlocking a phone costs half a minute.
+
+        Руки заняты, идёт дождь. Взглянуть на запястье — ничего не стоит, а достать и разблокировать телефон — полминуты.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Scenario / Сценарий
+      description: |
+        Where is this used? Examples, not a closed list: city · hiking · forest ·
+        festival · travel · children · family · sports · work · safety · home
+        automation · games and quests · emergency.
+
+        Где это используется? Примеры, а не закрытый список: город · поход · лес ·
+        фестиваль · путешествие · дети · семья · спорт · работа · безопасность ·
+        умный дом · игры и квесты · экстренная ситуация.
+    validations:
+      required: true
+
+  - type: textarea
+    id: interaction
+    attributes:
+      label: Five-second interaction / Взаимодействие за несколько секунд
+      description: |
+        What should the user be able to do, or understand, in roughly 5–15
+        seconds? Describe the glance, not the menu.
+
+        Что пользователь должен суметь сделать или понять примерно за 5–15
+        секунд? Опишите взгляд на экран, а не меню.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: offline
+    attributes:
+      label: Offline
+      description: |
+        How much of this should work with no phone and no internet?
+
+        Насколько это должно работать без телефона и без интернета?
+      options:
+        - Must work fully offline / Должно полностью работать офлайн
+        - Mostly offline, degrades gracefully / В основном офлайн, часть функций может отваливаться
+        - Needs a phone or internet / Нужен телефон или интернет
+        - Not sure / Не уверен
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: capabilities
+    attributes:
+      label: Useful capabilities / Возможности
+      description: |
+        A hint list, not a requirements document — tick anything that feels
+        relevant and ignore the rest. Getting this wrong costs nothing.
+
+        Это подсказка, а не техническое задание: отметьте то, что кажется
+        уместным, остальное игнорируйте. Ошибиться здесь ничего не стоит.
+      options:
+        - label: Mesh / меш-связь
+        - label: GNSS / position — координаты
+        - label: Navigation / навигация
+        - label: Heading / направление
+        - label: Notifications / уведомления
+        - label: Haptics / вибрация
+        - label: Audio / звук
+        - label: IMU — motion sensors / датчики движения
+        - label: Wi-Fi / BLE
+        - label: Attadipa Node
+        - label: Home Assistant
+        - label: Storage / хранение данных
+        - label: Something else, described below / Что-то ещё, опишу ниже
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Existing alternatives / Что уже существует?
+      description: |
+        Does something like this already exist on another watch, a phone, or a
+        dedicated device? If so, what is missing from it, or what makes it
+        awkward? "I could not find anything" is a useful answer too.
+
+        Есть ли аналог на других часах, на телефоне или в отдельном устройстве?
+        Если да — чего в нём не хватает или почему им неудобно пользоваться?
+        «Ничего не нашёл» — тоже полезный ответ.
+    validations:
+      required: true
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else / Дополнительно
+      description: |
+        Sketches, links, edge cases, or the reason this has been bothering you.
+        Optional.
+
+        Наброски, ссылки, крайние случаи или просто то, почему эта мысль вас не
+        отпускает. Необязательно.

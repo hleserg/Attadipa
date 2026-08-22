@@ -17,7 +17,7 @@ So a task is a GitHub issue, and everything an agent needs to start is in it.
 A producing agent puts a machine-readable block at the top of the issue body:
 
 ```html
-<!-- firefly-agent-task
+<!-- attadipa-agent-task
 producer: chatgpt
 task_type: continuous-review
 reviewed_head: 53f8cea
@@ -35,7 +35,7 @@ state: ready
 | `producer` | which agent filed it | `chatgpt` · `claude` · `owner` |
 | `task_type` | what kind of work it is | see below |
 | `priority` | queue order | `P0` … `P3`; default `P2` |
-| `reviewed_head` | the commit the producer looked at | a short SHA, so a reviewer can tell what has changed since |
+| `reviewed_head` | the commit the producer looked at | a short SHA. **Checked, not decorative** — see below |
 | `state` | where it is | `ready` · `working` · `review` · `blocked` · `done` |
 
 `task_type` is at least:
@@ -53,6 +53,94 @@ A research-only type means exactly that: verify sources, write to
 genuinely made — and do **not** write speculative implementation code. A
 research task that arrives as a pull request full of new subsystems has not
 been done, it has been guessed at.
+
+### A producing app may be named, and only named
+
+The trust boundary above is the actor's write access. A producing agent may hold
+no GitHub account at all: **ChatGPT reaches this repository through its GitHub
+App and arrives as `chatgpt-codex-connector[bot]` with `author_association:
+NONE`** — observed, not assumed; that is the login that reviewed pull request #11
+on 2026-08-21. The bot rule refuses it, correctly, and leaves the queue with no
+input.
+
+So the owner may name app logins in the repository variable
+**`ATTADIPA_TRUSTED_PRODUCERS`**, comma-separated:
+
+```bash
+gh variable set ATTADIPA_TRUSTED_PRODUCERS --body 'chatgpt-codex-connector[bot]'
+```
+
+Four properties keep that from being a hole, and each has a test:
+
+| Property | Why |
+|---|---|
+| **empty by default** | no repository gains an exemption by taking this file |
+| **`issues` events only** | the loop is an agent's own comment mentioning `@claude`; no entry can exempt a comment |
+| **`claude` and `github-actions` can never be listed** | checked *after* the list in the gate **and again in the watchdog's scan**, so naming them does nothing in either place |
+| **exact login match** | `codex-connector[bot]` does not match `chatgpt-codex-connector[bot]` |
+
+Being on the list *is* the authorisation — an app is not a collaborator and has
+no permission to look up. The owner editing that variable is the human decision,
+and it is deliberately a variable rather than a code change, so choosing a
+producer never requires a pull request against the security boundary.
+
+The list is also read by `agent-queue-watchdog.yml`, which filters on
+`author_association` and would otherwise skip exactly these tasks — issue #10 was
+refused by the gate *and* invisible to the watchdog at the same time, which is
+how a task disappears completely.
+
+**The non-listable rule is repeated there rather than inherited, and that is not
+duplication.** The watchdog hands over by `workflow_dispatch`, which the gate
+trusts by construction and does not re-check the actor for. A `claude[bot]` entry
+that the gate refuses to honour would therefore have been honoured by the
+watchdog and dispatched into the one door that no longer asks — the repository's
+own output starting a billable writer, which is the loop the whole allowlist
+exists to avoid. Caught in review on #19, and now covered by
+`.github/tests/watchdog-filter-test.sh`, which CI runs.
+
+The scan filter lives in `.github/scripts/queue-scan.jq` for the same reason the
+gate lives in a script: a filter inside a YAML block cannot be executed, and a
+security boundary that has never been executed against a hostile input is a
+hypothesis.
+
+### `reviewed_head` is checked
+
+The gate compares `reviewed_head` against the tip of the default branch through
+the compare API and tells the agent, in its prompt, how many commits the tree has
+moved and which files changed since. Three outcomes:
+
+| Compare says | The agent is told |
+|---|---|
+| `ahead_by: 0` | the finding was made against current code |
+| `ahead_by: N` | the branch has moved N commits; these files changed; **verify before implementing** |
+| not a commit here | the field could not be checked at all |
+
+This exists because the expensive failure of a review queue is not a bad finding,
+it is a **stale** one: a problem that was already fixed, implemented again by an
+agent that had no reason to doubt the issue. Neither the issue nor its producer
+is automatically right. A finding that no longer holds is closed with the
+evidence — a diff, a file, a line — and not implemented.
+
+Omitting the field is allowed. The agent is then told that nothing can be said
+about what has changed, which is worse for it than a SHA and better than a
+number it would have trusted.
+
+### A refused task says so
+
+Most refusals are ordinary: an issue with no marker, a task somebody already
+claimed. Those stay in the run log.
+
+An issue that **carries a task marker and is still refused** is different — a
+producer believes it has filed work and the repository has silently dropped it.
+That case gets one comment on the issue naming the guard that rejected it and
+the actor it saw, plus `needs-owner`. The comment is posted with the built-in
+`GITHUB_TOKEN`, whose events GitHub does not use to start workflow runs, so it
+cannot start another gate run.
+
+This is aimed squarely at the likeliest silent failure in the whole loop: a
+producing agent that files through a **GitHub App** rather than a user account.
+Its login ends in `[bot]`, the gate rejects every bot by design, and without this
+comment the task would simply never be picked up and nobody would be told.
 
 ### The marker is data, not a permission
 
@@ -84,16 +172,18 @@ a task whose event was lost.
                  └──────┬───────┘
                         │  claude-agent.yml accepts it
                  ┌──────▼───────┐
-                 │ agent:working│  one writer at a time, repository-wide
-                 └──┬────┬──────┘
-      draft PR      │    │      cannot proceed
+                 │ agent:working│  one writer at a time, and the writer job
+                 └──┬────┬──────┘  sets this label itself — so a claim never
+      draft PR      │    │         outlives the agent that made it. A receipt
+                    │    │         comment lands here within seconds
                  ┌──▼──┐ │ ┌────▼─────────┐
                  │review│ │ │agent:blocked │ + needs-owner / needs-hardware
-                 └──┬──┘ │ └──────────────┘
-      owner merges  │    │
-                 ┌──▼───▼──┐
+                 └──┬──┘ │ └──────────────┘   cannot proceed
+     CI green,      │    │
+     merged         │    │
+                 ┌──▼────▼──┐
                  │agent:done│
-                 └─────────┘
+                 └──────────┘
 ```
 
 The labels are the state. There is no separate database, and no field in a
@@ -119,6 +209,49 @@ inconsistently with the marker it wrote.
 
 ---
 
+## What the pipeline says, and when
+
+**Rule: a request is never left unanswered.** Silence reads as "thinking", and
+thinking is indistinguishable from dead. Before 2026-08-22 a task could be
+accepted, worked for forty minutes and finished with nothing on the issue but a
+label changing colour — which on a phone is invisible, and which made a working
+pipeline and a broken one produce the same experience.
+
+Three fixed points, and the first and third are structural rather than the
+agent's good intentions — an agent that has to be running before it can say it
+is running cannot report the run that never started.
+
+| | who writes it | when | what it must contain |
+|---|---|---|---|
+| **Receipt** | the `acknowledge` job | seconds after the trigger, in parallel with the agent starting | that it was accepted, what was understood (kind, priority, research or implementation), the run link, what happens next, and the staleness verdict if the tree moved |
+| **Progress** | the agent | once early with a plan; again only when the answer changes | what is actually going to change and where; a finding that does not reproduce, said as soon as it is known; a change of shape from the plan; work that will not fit |
+| **Outcome** | the `Hand over` step | always, on every exit path | the pull request and **what is now being waited on**, or a clean run that produced nothing and why that is suspicious, or the conclusion word and what happens next |
+
+A comment on the triggering comment gets an **👀 reaction within seconds**, before
+any of the above renders. It is the only signal that appears on the comment
+itself rather than below it.
+
+**Bounds, because the failure mode on this side is noise.** At most three agent
+comments before the outcome. A comment that repeats the previous one is worse
+than silence: it teaches people to stop reading, and then the one that mattered
+is missed too. No narrating tool calls, no progress bars, no "working on it".
+
+**A blocked task is the one case the outcome step stays quiet.** The agent's own
+`BLOCKED:` comment says more than the step could, so the step releases the claim
+and does not talk over it.
+
+None of this can loop. Every one of these is written with the built-in
+`GITHUB_TOKEN`, and GitHub deliberately does not start workflow runs from events
+that token creates.
+
+The wording lives in [`.github/scripts/agent-say.sh`](../../.github/scripts/agent-say.sh)
+as pure text renderers with no network and no environment, so
+[`.github/tests/agent-say-test.sh`](../../.github/tests/agent-say-test.sh) can
+assert the exact text rather than the workflow's intentions. Text nobody asserts
+on drifts back to silence one edit at a time.
+
+---
+
 ## What an agent does with a task
 
 1. **Read before writing.** The issue and all its comments, `CLAUDE.md`,
@@ -130,8 +263,22 @@ inconsistently with the marker it wrote.
 3. **Reuse before writing.** `CLAUDE.md`'s rule, and it applies to agents more
    than to people, because an agent will happily write four hundred lines that
    already exist under a licence we can use.
-4. **One branch, one draft pull request.** `claude/issue-<number>-<slug>`, and
-   the body carries `Fixes #<number>` so the issue closes when it merges.
+4. **One branch, one pull request.** Draft while it moves, ready when it does
+   not, and **merged by the orchestrator once CI is green** (owner decision,
+   2026-08-21). Nothing waits on a person for the merge itself.
+
+   **Two different actors merge, under two different rules, and conflating them
+   is how a finished `core/` pull request sits forever.** The *orchestrator* is
+   a live session with the owner reachable: it merges anything once CI and the
+   independent review are green, across every path in the repository. The
+   *backstop routine* runs unattended with nobody watching, and it may merge
+   only changes under `docs/` and not `docs/automation/`, at most three per run,
+   under the six conditions in
+   [attadipa-backstop-routine.md](attadipa-backstop-routine.md). So a green
+   `core/` pull request is **not** picked up by the backstop and is not waiting
+   for the owner either — it is waiting for an orchestrator session, and if none
+   is running it waits. That is a real gap and it is named here rather than
+   discovered.
 5. **Never a hardware claim.** Anything needing a board, an instrument or a
    measurement is `NOT EXECUTED — HARDWARE REQUIRED`.
 6. **Leave it continuable.** `STATUS.md` and `TASKS.md` updated in the same
@@ -201,6 +348,9 @@ recommendation. "What should I do?" is not a question, it is an absence of one.
 - **Duplicate work**: the intake workflow refuses an issue that already carries
   `agent:working`, `agent:review`, `agent:blocked` or `agent:done`. A fresh
   `@claude` comment overrides that, because a human asking again is a decision.
+  The mention has to be in the comment you are writing: the gate reads the
+  comment for it, and the issue body only for the marker. Case does not matter
+  — `@Claude` and `@CLAUDE` are the same request.
 - **Stranded tasks**: `agent:working` with no activity for two hours goes back
   to `agent:ready` with a comment saying so.
 - **CI failures**: repaired automatically at most twice per problem chain, from

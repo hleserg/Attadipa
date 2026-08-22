@@ -1,0 +1,52 @@
+scenario a receiver that stops saying does not thereby say fine
+describe OWNER_DECISIONS OD-5. On the LS550G anti-spoofing is UNKNOWN, not
+describe SUPPORTED, and this trace is what that distinction costs in behaviour:
+describe silence and incapability both leave the alarm standing, and only a
+describe positive all-clear takes it down.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof critical
+  expect trust untrusted
+  expect reason receiver-spoofing
+
+# The receiver says nothing about spoofing at all.
+at 2000
+  fix 3d
+  pos 5000005 10000005
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof unknown
+  expect trust untrusted
+  expect reason receiver-spoofing
+
+# A receiver that has no such feature. Not the same as a clean bill of health.
+at 4000
+  fix 3d
+  pos 5000010 10000010
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof unsupported
+  expect trust untrusted
+  expect reason receiver-spoofing
+
+# And now a positive all-clear, which is information rather than silence.
+at 6000
+  fix 3d
+  pos 5000015 10000015
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  expect no-reason receiver-spoofing
+  expect trust untrusted            # cleared, but recovery is still held

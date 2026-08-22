@@ -89,7 +89,7 @@ step of its precision at 868 MHz is 64 Hz. The consequences are not academic:
 
 MeshCore stores frequency as `float`. Meshtastic's region table is float
 throughout. Neither can compare a frequency for equality at the least
-significant bit. Firefly stores **`uint32_t` hertz**, in which 868 731 000 and
+significant bit. Attadipa stores **`uint32_t` hertz**, in which 868 731 000 and
 62 500 are both exact, and formats for display at the edge.
 
 The same rule applies to every bound the law sets: integers, in the unit the
@@ -131,7 +131,7 @@ version, plus the bounds it exposes. Adding a region is adding a data file.
 **`Unknown` is a first-class profile state, and it closes the transmit path.**
 Not "fall back to a sensible default" — a default that is lawful somewhere is
 exactly how unlawful defaults ship. A device whose region has never been set
-refuses to transmit and says why, in human language: *Firefly does not know which
+refuses to transmit and says why, in human language: *Attadipa does not know which
 radio rules apply here. Choose a region before the radio can transmit.* This
 state has to be representable now, because **it is the state this project is
 actually in.**

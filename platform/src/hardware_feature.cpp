@@ -1,6 +1,6 @@
-#include "firefly/platform/hardware_feature.h"
+#include "attadipa/platform/hardware_feature.h"
 
-namespace firefly::platform {
+namespace attadipa::platform {
 
 const char* to_string(HardwareFeature feature)
 {
@@ -45,4 +45,4 @@ const char* to_string(HardwareState state)
     return "?";
 }
 
-}  // namespace firefly::platform
+}  // namespace attadipa::platform

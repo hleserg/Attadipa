@@ -46,6 +46,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0009](0009-heading.md) | Heading is three quantities, and one of them belongs to a different body | **accepted** |
 | [0010](0010-localization.md) | English and Russian from the first screen | **accepted** |
 | [0011](0011-gnss-integrity.md) | GNSS integrity: the receiver's own defences, and a trust state with reasons | **accepted** |
+| [0012](0012-project-name-attadipa.md) | Project name is Attadipa | **accepted** |
 
 ### What the statuses mean here
 
@@ -56,7 +57,7 @@ it or state why it remains intentionally provisional."*
 Everything M1 depends on is now **accepted**. Two documents are deliberately not:
 
 - **0005** is `provisional` because its encoding choice compared a hypothetical
-  Firefly TLV against Meshtastic's entire `FromRadio` union, which is not a
+  Attadipa TLV against Meshtastic's entire `FromRadio` union, which is not a
   comparison. It stays provisional until benchmarked (T-016). Its *goals* —
   versioning, bounded parser, session reset, fragmentation, hostile-frame
   corpus — are endorsed by final §18 and are not in question.

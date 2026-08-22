@@ -1,6 +1,6 @@
 /**
  * @file lv_conf_simulator.h
- * LVGL configuration for the Firefly desktop simulator.
+ * LVGL configuration for the Attadipa desktop simulator.
  *
  * GENERATED ONCE, THEN MAINTAINED BY HAND. Source: lv_conf_template.h from
  * LVGL v9.5.0, commit 85aa60d18b3d5e5588d7b247abf90198f07c8a63,

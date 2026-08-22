@@ -29,7 +29,7 @@ Three facts from this project's own research bound the design:
   nowhere in the main-board schematic. Anything that would have used a
   hardware pulse for timing has to be designed without one.
 - **The Waveshare board has no GNSS at all.** Its `Capability::Position` comes
-  from an attached Firefly node or from nowhere
+  from an attached Attadipa node or from nowhere
   ([ADR-0004](0004-capability-sources.md)), which means every rule here has to
   hold for a provider that is not on this board and can walk away mid-sentence.
 
@@ -51,7 +51,7 @@ A GNSS observation is the widest point in the system, and the driver boundary is
 where information is lost if it is going to be lost. So the observation carries
 **both**:
 
-- a **normalized Firefly representation** — position, altitude, velocity,
+- a **normalized Attadipa representation** — position, altitude, velocity,
   course, accuracy estimates, time, fix type, satellite counts, per-signal
   carrier-to-noise, and the integrity and interference indications, in units and
   enumerations that do not name a vendor; and
@@ -73,11 +73,11 @@ These are separate, and no two of them may be stored in the same field:
 
 | Axis | Question it answers |
 |---|---|
-| availability | could this device ever produce a position, and is a provider bound and reachable — [`Availability`](../../core/include/firefly/core/availability.h), seven values |
+| availability | could this device ever produce a position, and is a provider bound and reachable — [`Availability`](../../core/include/attadipa/core/availability.h), seven values |
 | receiver health | did the receiver come up, is it answering, is it configured |
 | fix presence | is there a fix at all |
 | fix type | 2D, 3D, dead-reckoning-assisted, time-only |
-| freshness | how old is this position — [`Validity`](../../core/include/firefly/core/availability.h) already carries `Stale` |
+| freshness | how old is this position — [`Validity`](../../core/include/attadipa/core/availability.h) already carries `Stale` |
 | accuracy | the receiver's own estimate of its error |
 | integrity | a bound on that error the receiver is willing to stand behind |
 | interference | is the band jammed, and is the receiver mitigating |
@@ -183,7 +183,7 @@ evidence, and a collapsed boolean serves none of them.
 
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 
-Priority order, as OD-5 gives it: **receiver-native mechanisms → Firefly's own
+Priority order, as OD-5 gives it: **receiver-native mechanisms → Attadipa's own
 detectors → the fused state.** The receiver goes first because it can see things
 we cannot — the RF front end, per-signal carrier-to-noise, the correlator. It
 does not go last because it can be fooled, and because on one of our two

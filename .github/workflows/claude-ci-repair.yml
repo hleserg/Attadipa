@@ -18,7 +18,7 @@ on:
     types: [completed]
 
 concurrency:
-  group: firefly-ci-repair-${{ github.event.workflow_run.head_branch }}
+  group: attadipa-ci-repair-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 permissions: {}
@@ -84,9 +84,9 @@ jobs:
           COMMENTS=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body')
           RESET_AT=$(printf '%s\n' "$COMMENTS" | grep -n '/ci-repair reset' | tail -1 | cut -d: -f1 || true)
           if [ -n "${RESET_AT:-}" ]; then
-            COUNT=$(printf '%s\n' "$COMMENTS" | tail -n "+$RESET_AT" | grep -c 'firefly-ci-repair' || true)
+            COUNT=$(printf '%s\n' "$COMMENTS" | tail -n "+$RESET_AT" | grep -c 'attadipa-ci-repair' || true)
           else
-            COUNT=$(printf '%s\n' "$COMMENTS" | grep -c 'firefly-ci-repair' || true)
+            COUNT=$(printf '%s\n' "$COMMENTS" | grep -c 'attadipa-ci-repair' || true)
           fi
           COUNT=${COUNT:-0}
           if [ "$COUNT" -ge 2 ]; then
@@ -155,6 +155,16 @@ jobs:
       pull-requests: write
       issues: write
       actions: read
+      # id-token: write is not optional, and the reason is easy to miss.
+      #
+      # github_token below is ATTADIPA_AGENT_TOKEN, which is deliberately allowed
+      # to be empty — see docs/automation/CLAUDE_AUTOMATION.md. When it is, the
+      # action authenticates as the Claude GitHub App by exchanging this
+      # workflow's GitHub OIDC token for an installation token, and without this
+      # permission that exchange fails with "Unable to get
+      # ACTIONS_ID_TOKEN_REQUEST_URL". The failure looks like an authentication
+      # problem with the Anthropic credential and is not one.
+      id-token: write
     steps:
       - name: Check that an Anthropic credential exists
         id: auth
@@ -184,13 +194,13 @@ jobs:
           # halfway still counts. A counter that only increments on success
           # counts to two forever.
           {
-            echo "<!-- firefly-ci-repair sha=$SHA job=$JOB attempt=$ATTEMPT -->"
+            echo "<!-- attadipa-ci-repair sha=$SHA job=$JOB attempt=$ATTEMPT -->"
             echo "Automatic CI repair, attempt $ATTEMPT of 2, on failing job \`$JOB\`."
           } > /tmp/attempt.md
           gh pr comment "$PR" --repo "$REPO" --body-file /tmp/attempt.md
           gh pr edit "$PR" --repo "$REPO" --add-label ci:repairing || true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.auth.outputs.ok == 'true'
         with:
           # The agent's branch, not the default branch this workflow_run event
@@ -224,15 +234,42 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.FIREFLY_AGENT_TOKEN }}
+          github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
           allowed_bots: ""
           allowed_non_write_users: ""
           show_full_output: "false"
-          display_report: "false"
+          # On, for the same reason as the other two: a repair whose reasoning
+          # nobody can read is a bill. It writes the run's Step Summary, not a
+          # pull request comment — the comment comes from the prompt below.
+          display_report: "true"
           additional_permissions: |
             actions: read
+          # --allowedTools is not optional, and its absence is silent.
+          #
+          # Agent mode — which is what `prompt:` selects — sets no default
+          # --allowedTools and no --permission-mode. Tag mode sets both
+          # (src/modes/tag/index.ts); agent mode passes through only what is
+          # written here. The headless SDK has no prompt handler, so every tool
+          # that would fall through to "ask" is DENIED, without an error and
+          # without a line in the log.
+          #
+          # Observed on 2026-08-21, before this line existed: the reviewer ran
+          # for 41 s, exited 0, and posted no comment and set no label; the
+          # implementation agent on issue #5 finished green and produced no
+          # branch and no pull request. Both had read the diff perfectly well
+          # and had no way to say so.
+          #
+          # Verified against anthropics/claude-code-action at the v1 tag
+          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
+          # MCP servers on these names too, and `grep -rn "addLabels" src/`
+          # returns nothing — the action has no label feature at all, so the
+          # label in the prompt below depends entirely on `gh` being allowed.
+          #
+          # This one writes, so it gets Edit, Write and Bash. The boundary that
+          # matters for it is the job's `permissions:` block and the branch it
+          # is checked out on, not the tool list.
           claude_args: |
-            --max-turns 40
+            --max-turns 40 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,TodoWrite"
           prompt: |
             CI failed on branch `${{ needs.gate.outputs.branch }}`, pull request
             #${{ needs.gate.outputs.pr }}. The failing job is
