@@ -163,7 +163,7 @@ jobs:
             # comment per comment. This costs nothing from Anthropic either way —
             # it is a gh call in the gate, not an agent run.
             case "$BODY" in
-              *attadipa-agent-task*)
+              *attadipa-agent-task*|*firefly-agent-task*)
                 if [ "$EVENT_NAME" = "issues" ]; then
                   {
                     echo "refused_marker=true"
@@ -263,7 +263,7 @@ jobs:
 
           {
             echo "<!-- attadipa-intake-refused -->"
-            echo "**This issue carries a \`attadipa-agent-task\` marker, and the intake gate refused it.**"
+            echo "**This issue carries an agent-task marker, and the intake gate refused it.**"
             echo
             echo "> $REFUSAL"
             echo

@@ -39,7 +39,7 @@
       body: (.body // "")
     }
   | select((.labels | index("agent:ready")) != null
-           or ((.body | test("attadipa-agent-task"))
+           or ((.body | test("attadipa-agent-task|firefly-agent-task"))
                and (.body | test("@claude"))))
   | select((.labels | index("agent:working")) == null)
   | select((.labels | index("agent:review")) == null)
