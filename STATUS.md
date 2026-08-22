@@ -91,6 +91,20 @@ in both cases.
   the three GNSS ones — MIA-M10Q, LS550G, and a simulator that can fail at GNSS
   twelve different ways.
 
+**T-060 — what each IMU does about steps — done**, and it found the ADR-0003
+pattern in a second subsystem. The BMA423 has a 32-bit hardware step counter
+and **its datasheet does not document it** — all four registers say
+*"Application note – Wearable feature set"*, and that note returned HTTP 403
+(T-060a). The feature is a 6 144-byte blob the host uploads at every boot with a
+mandatory 150 ms wait. On the Waveshare side the question is worse: the
+QMI8658**C** documents a full pedometer, the QMI8658A's **Rev A** documented the
+identical one, and **Rev D has deleted it** — feature list, chapter and registers
+— with no deprecation note, while `HARDWARE_MATRIX` records the board's part as
+*"QMI8658 / QMI8658C"*. Two findings change what a step count *means* on either
+part: the engine retroactively counts steps it had discarded once it decides a
+walk is real, and updates its registers only every N steps, so **a read is stale
+by design**. [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md).
+
 ## Lookahead research
 
 One to two steps ahead, per final §68 — not twenty.
@@ -156,6 +170,12 @@ because a fact that lives only in a chat log does not exist.
 
 ## Blocked
 
+- **T-061 the pedometer** — partly. [OD-6](docs/research/OWNER_DECISIONS.md)
+  makes it mandatory and T-060 established what the parts do, but its **power
+  story is `UNKNOWN` on both boards**: the BMA423's behaviour is in a Bosch
+  application note the datasheet defers to and which returned HTTP 403 (T-060a),
+  and the Waveshare board's IMU variant is unknown — the QMI8658**C** documents a
+  pedometer and the QMI8658A's **current** datasheet revision has deleted one.
 - **T-010 board bring-up** — no physical board; exact variant unknown.
 - **T-011 interference measurement** — same, and neither board has a
   magnetometer, so the headline haptics-versus-compass concern is not measurable

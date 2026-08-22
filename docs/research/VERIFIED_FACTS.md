@@ -195,6 +195,85 @@ is verified.
   Note that waking on touch costs roughly twice waking on button — a real
   design trade-off, once confirmed.
 
+### The BMA423 counts steps, and its datasheet does not say how
+
+- **Claim:** the BMA423 has a **32-bit hardware step counter** in registers
+  `0x1E`–`0x21` (`STEP_COUNTER_0`…`_3`), and the datasheet documents those four
+  registers with one line each: `DESCRIPTION: Application note – Wearable
+  feature set`. The behaviour — power mode, required ODR, whether the count
+  survives a soft reset, whether it accumulates while the host sleeps — is in a
+  **separate document**, Bosch's *Wearable Feature Set* application note
+  `BST-MAS-AN032`, which returned HTTP 403 on two attempts.
+- **Source:** BMA423 Data Sheet, revision 2.0, `BST-BMA423-DS004-00`, August
+  2019, p. 53 and p. 1 (*"Plug 'n' Play Step-Counter solution with watermark
+  functionality"*). Confirmed against Bosch's own reference driver v1.1.4:
+  `bma423_step_counter_output()` reads four bytes from
+  `BMA4_STEP_CNT_OUT_0_ADDR = 0x1E` into a `uint32_t`.
+- **Checked:** 2026-08-22, for the T-Watch S3 Plus.
+- **Impact:** the pedometer is mandatory ([OD-6](OWNER_DECISIONS.md)) and its
+  most basic power question — does it count while the SoC sleeps — is
+  **`UNKNOWN`** until that application note is read. Filed as T-060a. Full
+  reading in [PEDOMETER_PARTS](PEDOMETER_PARTS.md).
+
+### The BMA423's step counter lives in a 6 144-byte blob the host uploads at every boot
+
+- **Claim:** the feature engine is not resident. `BMA4_CONFIG_STREAM_SIZE = 6144`
+  bytes are streamed to `BMA4_FEATURE_CONFIG_ADDR` (`0x5E`), after which the host
+  must **wait 150 ms** and then read `BMA4_INTERNAL_STAT` (`0x2A`) expecting
+  `BMA4_ASIC_INITIALIZED` (`0x01`). The step-counter watermark is **10 bits**
+  (`0x03FF`, so 0–1023), and **value 0 does not mean "every step"** — it selects
+  the separate *step detector* interrupt.
+- **Source:** Bosch BMA423 reference driver v1.1.4 —
+  `bma4_write_config_file()` in `bma4.c`, and the masks in `bma423.h` /
+  `bma4_defs.h`.
+- **Checked:** 2026-08-22.
+- **Impact:** 150 ms of the boot budget is spent before a step can be counted,
+  every time. Whether a soft reset (`0xB6` → `0x7E`) drops the blob is
+  **`UNKNOWN`** — and if it does, every reset is a hole in the day's total that
+  OD-6's *no interpolation* rule requires be reported rather than filled.
+
+### The QMI8658A's datasheet has deleted its pedometer
+
+- **Claim:** the pedometer is a **variant-and-revision** question, not a part
+  question.
+  **QMI8658C** (`13-52-27`, Rev A, 20 June 2022) documents it fully: feature
+  list p. 1, chapter 11, a **24-bit** count in `STEP_CNT_LOW/MIDL/HIGH`
+  (`0x5A`–`0x5C`), `CTRL8.Pedo_EN`, and CTRL9 commands `0x0D` (configure) and
+  `0x0F` (reset count).
+  **QMI8658A Rev A** (`13-52-25`, 20 June 2022) documents the identical feature.
+  **QMI8658A Rev D** (`QST-PD-B002-22`, current) **does not**: its feature list
+  reads *"Integrated Tap, Any-Motion, No-Motion, Significant-Motion detection"*,
+  there is no chapter on the pedometer, and a search of the whole document finds
+  **no `STEP_CNT` register and no `Pedo_EN` bit**. The feature is not marked
+  deprecated or reserved — it is gone from the document, registers included.
+- **Source:** the three QST datasheets named above, read 2026-08-22.
+- **Impact:** [HARDWARE_MATRIX](HARDWARE_MATRIX.md) records the Waveshare board's
+  IMU as *"QMI8658 / QMI8658C"* — the variant is **`UNKNOWN`**, the vendor BSP
+  does not touch the IMU so there is no code to read the answer from, and the two
+  variants differ on precisely the feature OD-6 makes mandatory. Reading a step
+  count out of a QMI8658A and believing it would be relying on a feature its
+  current datasheet does not admit to having. This is the ADR-0003 pattern —
+  the part number does not tell you what you have — arriving in a second
+  subsystem.
+
+### The QMI8658 costs about three times the BMA423 for the same duty
+
+- **Claim:** accelerometer-only, gyroscope disabled, typical at 1.8 V and 25 °C:
+  the QMI8658C draws **30 / 35 / 42 / 55 µA** at low-power ODRs of 3 / 11 / 21 /
+  128 Hz, and 132–182 µA in high-resolution mode. Its idle states are 15 µA
+  (power-on default), 8 µA (low power) and 6 µA (power-down, configuration and
+  output registers preserved). Low-power mode is available **only with the
+  gyroscope disabled**. The BMA423, for comparison, is **13 µA at 50 Hz** in
+  low-power mode, 150 µA in performance mode and 3.5 µA suspended — though its
+  low-power table is marked by Bosch itself as *"based on limited lab
+  measurements. Only for reference."*
+- **Source:** QMI8658C datasheet §3.8 tables 15 and 22, and table 31; BMA423
+  datasheet electrical characteristics and the low-power current table.
+- **Checked:** 2026-08-22.
+- **Impact:** both sets are **vendor typicals, not measurements on our boards**.
+  They are the budget to design against and the target to reproduce, never a
+  figure to report as Attadipa's. A 6-axis IMU is not a cheaper accelerometer.
+
 ---
 
 ## Read from the T-Watch schematics (S3, S4)

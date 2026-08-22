@@ -477,41 +477,69 @@ stale silently. The protocol is
   the field is `NOT EXECUTED — HARDWARE REQUIRED`.
 - **Hardware required:** for accuracy, yes. For the logic, no.
 
-### T-060 · What each IMU actually does about steps
-- **Priority:** P1 — [OD-6](docs/research/OWNER_DECISIONS.md#od-6--the-watch-counts-steps-and-that-is-not-optional)
-  makes the pedometer mandatory, and everything about how it is built depends on
-  this answer
-- **Dependencies:** none. It is reading, not code.
-- **Goal:** establish, from primary sources only, what the BMA423 and the
-  QMI8658 each do about step counting, in the order the GNSS tasks use:
-  datasheet → application note → vendor driver source → vendor example.
-- **What to answer, at minimum:**
-  - **BMA423:** does the part count steps *itself*? Bosch documents step
-    counting and step detection in the BMA4xx wearable family — is it in this
-    part, on this revision, and is it in the feature blob that has to be
-    uploaded at boot? What is the counter's width and what happens when it
-    wraps? Does it keep counting while the host is in deep sleep, and at what
-    current? What survives a soft reset, and what does not? Which interrupt
-    lines does it need — **INT2 is bonded out but not routed** on the T-Watch
-    (R12/R15 not fitted, [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)),
-    so anything requiring two interrupts is already blocked.
-  - **QMI8658:** is there any integrated step counter at all? If not: FIFO depth
-    in samples, watermark interrupt behaviour, the lowest output data rate at
-    which a step algorithm still works, and therefore how often the SoC must
-    wake to drain it.
-- **Acceptance:** a row per part in
-  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md) marked `SUPPORTED`,
-  `UNSUPPORTED` or `UNKNOWN`, each with the document and section it came from.
-  An unsourced `SUPPORTED` is not an answer.
-- **Research status:** not started
-- **Implementation status:** not started — no code comes out of this task
-- **Tests:** none. It produces a research record.
-- **Hardware required:** no for the documents. Confirming a current figure or a
-  wake rate is a HIL plan and is not this task.
+### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22
+- [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md), and four entries in
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md). Read from the datasheets,
+  Bosch's own reference driver and LilyGo's board support, in that order.
+- **BMA423: yes, it counts steps** — a 32-bit counter at `0x1E`–`0x21`. **And
+  its datasheet does not say how.** All four registers carry one line:
+  *"Application note – Wearable feature set"*. Every behavioural question — power
+  mode, required ODR, reset survival, and whether it counts while the SoC sleeps
+  — is in `BST-MAS-AN032`, which returned HTTP 403. **T-060a.**
+- **The feature is a 6 144-byte blob the host uploads at every boot**, with a
+  mandatory **150 ms** wait and a status register that must read
+  `ASIC_INITIALIZED`. Whether a soft reset drops it is `UNKNOWN`, and if it does,
+  every reset is a hole in the day's total.
+- **The watermark is 10 bits and 0 does not mean "every step"** — it selects the
+  separate step-detector interrupt. LilyGo's own board support sets it to 1, an
+  interrupt per step, which is a power decision we should not inherit unexamined.
+- **One interrupt line, already shared six ways.** INT2 is bonded out but not
+  routed on the T-Watch, and LilyGo maps step counter, any-motion, no-motion,
+  activity, tilt and wake-up all to INT1. A design needing a private interrupt
+  for steps does not fit this board.
+- **QMI8658: it depends which part, and we do not know which.** The **C** variant
+  documents a full pedometer — 24-bit count at `0x5A`–`0x5C`, `CTRL8.Pedo_EN`,
+  two CTRL9 commands, eight tunable parameters. **QMI8658A Rev A documented the
+  identical feature; Rev D has deleted it** — feature list, chapter and registers
+  alike, with no deprecation note. `HARDWARE_MATRIX` records the board's IMU as
+  *"QMI8658 / QMI8658C"* and the vendor BSP does not touch the IMU, so there is
+  no code to read the answer out of. **This is the ADR-0003 pattern in a second
+  subsystem.**
+- **Two findings that change what a step count *means*:** the QMI8658C
+  retroactively counts steps it had discarded once a walk is confirmed
+  (`ped_time_cnt_entry`), and updates its registers only every N steps
+  (`ped_sig_count`) — **a read is stale by design**. A step count is an estimate
+  produced by somebody else's filter, and ADR-0011's language about a position
+  applies to it unchanged.
+- **Power:** QMI8658C 30/35/42/55 µA at 3/11/21/128 Hz low-power; BMA423 13 µA
+  at 50 Hz. The Waveshare board pays about three times as much for the same duty,
+  before its variant question is settled. Vendor typicals, **not** measurements.
+- **No hardware involved.** `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### T-060a · Read the Bosch application note the datasheet points at
+- **Priority:** P1. It is the gate on T-061's power story, and it is *reading*.
+- **Dependencies:** T-060 (**done**)
+- **Goal:** obtain Bosch's *Wearable Feature Set* application note
+  `BST-MAS-AN032` and answer the five questions the BMA423 datasheet defers to
+  it: does the step counter run on the sensor's own ASIC while the host sleeps;
+  what accelerometer configuration does it require; what does the feature add to
+  the acquisition current; does the uploaded feature blob survive a soft reset;
+  and what happens at the 32-bit boundary.
+- **The obstacle, and it is the whole task:** `bosch-sensortec.com` returned
+  **HTTP 403** to two retrieval attempts on 2026-08-22. A distributor mirror
+  (Mouser, DigiKey, LCSC) is the obvious next place — the BMA423 datasheet
+  itself was obtained from DigiKey after Bosch refused it.
+- **Acceptance:** each of the five marked `SUPPORTED`, `UNSUPPORTED` or
+  `UNKNOWN` in [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md) with the
+  section it came from, and the document's revision recorded. An unsourced
+  `SUPPORTED` is not an answer.
+- **This is a research task.** No code comes out of it.
+- **Hardware required:** no.
 
 ### T-061 · Steps, as a capability with a power story
 - **Priority:** P1, after T-060
-- **Dependencies:** T-060, [ADR-0007](docs/adr/0007-two-capability-layers.md),
+- **Dependencies:** T-060 (**done**), **T-060a** (the power story is `UNKNOWN`
+  without it), [ADR-0007](docs/adr/0007-two-capability-layers.md),
   T-046 (crash-safe persistence), T-045 (`PowerState`)
 - **Goal:** implement `Capability::MotionSensing` for step counting, on both
   boards, without either board's answer leaking upwards.
