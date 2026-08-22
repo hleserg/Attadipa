@@ -1604,6 +1604,51 @@ stale silently. The protocol is
   it was verified; what it means is exactly what is in doubt.
 - **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
 
+### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
+- **Priority:** P2 — nothing can start until the parts land, but what to do
+  when they land is decided now, while there is time to be wrong about it
+  cheaply.
+- **Dependencies:** the datasheet work is done —
+  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md). What remains
+  is physical.
+- **What is already settled, so that nobody re-opens it:**
+  - Both parts run at 3.3 V. The AK09911C is *not* a 1.8 V part; `VDD` is
+    2.4–3.6 V.
+  - **`CAD` goes to ground.** That puts the AKM part at `0x0C` and leaves the
+    QST part at its fixed `0x0D`, so both can be on the bus at once — which is
+    the only way to compare them in the same magnetic environment on the same
+    wrist. `0x34`, `0x38` and `0x6A`/`0x6B` are taken; these two are free.
+  - **The IMU will not read the magnetometer for us, and the reason is stronger
+    than "wrong part".** QMI8658C Mag Mode names AK09915C, AK09918CZ and QMC6308
+    — neither ordered part among them — but the decisive point is that `CTRL4`
+    `mDEV<3:0>` has **no published encoding for any device at all**, including
+    those three, and QST *deleted* the magnetometer description from the
+    datasheet at Rev 0.8. So Mag Mode is undrivable from published documentation
+    whichever part is fitted, and buying a listed part would not change that.
+    The host reads the sensor and the host does the fusion.
+    [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §5.1.
+  - **Withdrawn, so nobody reinstates it:** an earlier draft gave a second
+    "fatal" reason — that Mag Mode needs pins Mode 1 requires be tied off. That
+    was an inference and it was wrong; Mode 2 is entered in firmware via `CTRL7`
+    `mEN`. Whether `SDx`/`SCx` are actually tied off on this board is `UNKNOWN`
+    and now merely interesting. §5.3.
+- **The measurement that decides the part:** the field at the candidate mounting
+  position, motor idle and motor driven. The QMC5883L is the recommendation on
+  current alone — 250 µA against 2.4 mA at 100 Hz — but it saturates at ±800 µT
+  where the AKM part reaches ±4900 µT, and a vibration motor magnet a few
+  millimetres away is exactly the thing that closes a six-fold range advantage.
+  If the QMC sits near overflow wherever it physically fits, the AKM part is not
+  a fallback, it is the answer.
+- **Acceptance:** both module footprints recorded as `MEASURED` with the caliper
+  named; the field at the chosen position recorded with the motor in both
+  states; the rotation between module frame and board frame written down for
+  *this assembly* rather than inferred; overflow surfaced by the driver as a
+  state an application can see, never as a clipped number passed upward.
+- **What must not be assumed:** that a module which fits on the bench fits under
+  a closed cover — the same trap as T-106's M1 — or that the axis arrows on a
+  purple PCB survive being glued in at whatever angle it fits.
+- **Hardware required:** yes. The parts are not here.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1638,10 +1683,18 @@ Possible options:
                 2. Defer entirely.
 Recommended next action:
                 Option 1 — the tooling is host-testable, and it is what turns a
-                theory into a measurement. Note that neither board has a
-                magnetometer, so the haptics-versus-compass case cannot be
-                measured on current hardware in any configuration.
+                theory into a measurement.
 ```
+- **The blocker changed on 2026-08-22 and is now smaller.** This task used to be
+  impossible in principle: neither board has a magnetometer, so the headline
+  haptics-versus-compass case had nothing to measure with. **A5 is answered** —
+  the owner has ordered two magnetometer modules and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83),
+  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)). It is now
+  waiting for a part in the post, not for a device that does not exist.
+- **On the Waveshare unit it stays doubly blocked**, for a second and unrelated
+  reason: that unit has **no vibration motor fitted**, so there is nothing to
+  interfere with the compass even once the compass exists.
 
 ---
 
@@ -1651,9 +1704,13 @@ Recommended next action:
 - **Priority:** P0
 - **Waiting on:** the project owner
 - **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3,
-  A5, A6 — hardware availability and revision · which radio and GNSS variant ·
-  a second mesh device · whether an external magnetometer is intended · whether
-  the node carries one. **A4 (the regulatory region) is no longer on this
+  A6 — hardware availability and revision · which radio and GNSS variant ·
+  a second mesh device · whether the node carries a magnetometer. **A5 is
+  answered** — 2026-08-22, the owner has ordered a CJMCU-9911 (AK09911C) and a
+  GY-271 (QMC5883L) and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
+  that: a node's magnetometer and a wrist's magnetometer answer different
+  questions. **A4 (the regulatory region) is no longer on this
   list** — closed 2026-08-22, not by an answer but by the owner declining to
   give one: legality is his problem, not the firmware's
   ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
@@ -1666,7 +1723,10 @@ Recommended next action:
   decides whether the watch has a local mesh path at all. A5 and A6 decide
   whether five magnetometer epics are dormant or dead, and A6 does **not** give
   the watch a compass even if the answer is yes
-  ([ADR-0009](docs/adr/0009-heading.md) §3).
+  ([ADR-0009](docs/adr/0009-heading.md) §3). A5's answer moves those five epics
+  from *possibly dead* to *dormant with a delivery date*, and hands
+  [ADR-0009](docs/adr/0009-heading.md) a second possible provider for heading —
+  see [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md).
 - **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification
@@ -1677,10 +1737,18 @@ Recommended next action:
   [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md),
   [COEXISTENCE_BACKLOG](docs/hardware/COEXISTENCE_BACKLOG.md).
 - **What the exercise surfaced:** two coexistence epics — haptic/magnetometer and
-  audio/magnetometer interference — **cannot be run on either target board**,
-  because neither has a magnetometer. They are marked NOT POSSIBLE rather than
-  left looking pending. Five magnetometer epics are blocked on hardware that does
-  not exist (A5).
+  audio/magnetometer interference — could not be run on either target board,
+  because neither has a magnetometer, and five magnetometer epics were blocked on
+  hardware that did not exist (A5).
+- **Superseded 2026-08-22, and the status word has to change with it.** A5 is
+  answered: the owner ordered a CJMCU-9911 and a GY-271 and is soldering one in
+  ([#83](https://github.com/hleserg/Attadipa/issues/83)). Those seven epics are
+  **blocked pending a part in the post**, not `NOT POSSIBLE`. The distinction the
+  other files are careful about holds here too: a **stock** board still has no
+  magnetometer and the firmware still has to run on one, so the epics describe a
+  capability that will exist on exactly one physical device — which is a registry
+  problem, not a board problem
+  ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §0).
 - **Startable now without hardware:** C-02 bus ownership, C-03 rail arbitration
   and C-12 diagnostic trace. The trace in particular should be finished *while*
   waiting for hardware — every blocked coexistence test needs it to produce
