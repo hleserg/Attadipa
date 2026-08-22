@@ -452,14 +452,28 @@ available on this board.
 
 | | Question | Why it matters |
 |---|---|---|
-| A1 | Is either board physically available, and which revision? | everything hardware |
-| A2 | If a T-Watch: which radio chip and which GNSS module? | decides whether the watch can join a MeshCore network at all — two of the five candidate radios cannot ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
-| A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
+| A1 | Is either board physically available, and which revision? | everything hardware — **partial**, see below |
 | A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
 None of these blocks M1. All of them block hardware work.
+
+**A1 is partly answered, A2 and A3 are answered** —
+[#54](https://github.com/hleserg/Attadipa/issues/54), on 2026-08-22, recorded
+as
+[OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
+Waveshare is received (Waveshare schematic revision still `UNKNOWN`); T-Watch
+S3 Plus is `ORDERED`, not `PRESENT` — the T-010 blocker above is unchanged
+until it arrives and its radio marking is read off the physical part. A2:
+SX1262 at 868 MHz, MIA-M10Q GNSS, by order listing — the good outcome
+ADR-0003 flagged as possible but not guaranteed. A3: three MeshCore nodes
+(Heltec V4 companion, two Heltec T114s), not one. Two questions this answer
+raised are filed separately rather than folded in: T114 band
+([#89](https://github.com/hleserg/Attadipa/issues/89)) and the
+three-firmware-revision compatibility matrix
+([#90](https://github.com/hleserg/Attadipa/issues/90)); the indoor-GPS-fix
+constraint is filed as [#91](https://github.com/hleserg/Attadipa/issues/91).
 
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as
