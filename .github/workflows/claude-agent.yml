@@ -220,11 +220,14 @@ jobs:
                     *)
                       case "$PERMISSION" in
                         admin|maintain|write)
-                          # bash's own lowercasing rather than `tr`: tr works on
-                          # bytes, and these comments are usually in Russian.
-                          case "${COMMENT_BODY,,}" in
-                            *"@claude"*) ANSWER=mention ;;
-                          esac ;;
+                          # The same question rule 3 asks, asked the same way —
+                          # a mention inside a code span is somebody writing
+                          # about the agent, and answering it would be a bot
+                          # replying to documentation.
+                          if bash .github/scripts/intake-decision.sh \
+                               --mentions "$COMMENT_BODY"; then
+                            ANSWER=mention
+                          fi ;;
                       esac ;;
                   esac ;;
               esac
@@ -298,6 +301,94 @@ jobs:
             echo "staleness=$STALENESS"
           } >> "$GITHUB_OUTPUT"
           echo "::notice::accepted #$ISSUE_NUMBER type=$TASK_TYPE priority=$PRIORITY producer=$PRODUCER"
+
+  acknowledge:
+    # THE RECEIPT. Somebody asked for an agent; they hear back in seconds.
+    #
+    # Its own job, and that is the point rather than tidiness. It does not sit
+    # in the writer concurrency group, so it answers even while another task is
+    # being written; it does not wait for the checkout or the credential check,
+    # so it answers before the agent has read a line; and it is not the agent,
+    # so it can still speak in the one case the agent cannot — the run that
+    # never starts.
+    #
+    # It also cannot loop. The comment and the reaction are written with the
+    # built-in GITHUB_TOKEN, and GitHub deliberately does not start workflow
+    # runs from events that token creates.
+    name: Say it was accepted
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Fetch the wording from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: React to the comment that asked
+        # The fastest possible signal, and the only one that appears on the
+        # comment itself rather than below it. A person who wrote `@claude` and
+        # sees eyes on it within seconds knows the pipeline is alive, before any
+        # comment renders and without opening a run.
+        #
+        # Only comment events have something to react to; a label has no author
+        # and no reaction target, which is why this step is conditional rather
+        # than defensive.
+        if: github.event.comment.id != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          # pull_request_review_comment lives under a different collection than
+          # issue_comment, and posting to the wrong one is a 404 rather than a
+          # wrong reaction.
+          KIND: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          case "$KIND" in
+            pull_request_review_comment) path="pulls/comments" ;;
+            *)                           path="issues/comments" ;;
+          esac
+          gh api --method POST "repos/$REPO/$path/$COMMENT_ID/reactions" \
+            -f content=eyes --silent
+          echo "::notice::reacted to comment $COMMENT_ID"
+
+      - name: Say what was understood
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          TASK_TYPE: ${{ needs.gate.outputs.task_type }}
+          PRIORITY: ${{ needs.gate.outputs.priority }}
+          RESEARCH_ONLY: ${{ needs.gate.outputs.research_only }}
+          TRIGGER: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          # Suppressed only when there was nothing to say — that is, when the
+          # producer gave no reviewed_head at all, which is the common case and
+          # is noise on an issue.
+          #
+          # Keyed on reviewed_head rather than on head_moved, and the difference
+          # is a real one the review on #58 caught: head_moved stays `unknown`
+          # BOTH when the field was absent and when it was present but could not
+          # be compared, and the second is exactly the case worth saying out
+          # loud. A producer that filed a truncated or foreign SHA should hear
+          # so on the issue, not only in a run log nobody opens.
+          STALENESS: ${{ needs.gate.outputs.reviewed_head != 'unspecified' && needs.gate.outputs.staleness || '' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/agent-say.sh receipt \
+            "$RUN_URL" "$TASK_TYPE" "$PRIORITY" "$RESEARCH_ONLY" \
+            "$TRIGGER" "$ACTOR" "$STALENESS" > /tmp/receipt.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/receipt.md
 
   refused:
     name: Say why it was refused
@@ -618,7 +709,11 @@ jobs:
             If research_only is true: do NOT write speculative implementation
             code. Verify sources, update docs/research/, the reuse ledger, and
             an ADR only if a decision was genuinely made. Open a documentation
-            pull request.
+            pull request, and its body must contain
+            `Fixes #${{ needs.gate.outputs.issue }}` exactly as an
+            implementation one does — a research pull request that does not
+            reference its issue neither closes it on merge nor is recognised as
+            this run's output.
 
             Otherwise: implement the task on a branch, run every check that can
             run here (`cmake -S . -B build && cmake --build build && ctest
@@ -642,48 +737,165 @@ jobs:
             describe. Leave the repository so the next agent can continue
             without this conversation.
 
+            ## SAY WHAT YOU ARE DOING, ON THE ISSUE, WHILE YOU DO IT
+
+            Somebody is watching this issue on a phone. To them, an agent
+            thinking hard for forty minutes and an agent that died in the first
+            second look exactly the same. That is not their problem to solve by
+            opening Actions — it is yours to solve by writing.
+
+            A receipt saying the task was accepted has already been posted for
+            you, and an outcome comment will be posted after you exit whatever
+            happens. Neither of those knows anything about the work. **You do,
+            and the middle is yours.**
+
+            **Post a plan comment once, early** — after you have read the issue
+            and the documents and before the long part starts. Three or four
+            lines, no preamble: what you are actually going to change, which
+            files, and anything you already know will be awkward. If the issue
+            turns out to describe something different from what the code does,
+            that belongs here rather than at the end.
+
+            **Post again when the answer changes**, and only then:
+
+              * the finding does not reproduce, or is already fixed — say so
+                with the file and the line as soon as you know, not after
+                another twenty minutes of looking;
+              * the shape of the fix changed from your plan — one line on what
+                and why;
+              * you are about to wait on something slow, or you are going to
+                run out of room. Saying "this is bigger than one pull request,
+                here is what I am cutting" beats an unexplained partial diff.
+
+            **At most three comments before the end.** A comment that repeats
+            the last one is worse than silence, because it teaches people to
+            stop reading. Never narrate tool calls, never post a progress bar,
+            never say "working on it" — if there is nothing new, write nothing.
+
             **Finish by leaving the outcome on the issue itself**, with `gh
             issue comment`, in every case including the ones where you changed
             nothing:
 
-              * work done — link the pull request and say in two sentences what
-                it changes;
-              * nothing to change — say what you checked and what you found,
-                so the next person does not check it again;
-              * blocked — the BLOCKED format above.
+              * work done — link the pull request, say in two sentences what it
+                changes, and say what you are now waiting on;
+              * nothing to change — say what you checked and what you found, so
+                the next person does not check it again;
+              * blocked — the BLOCKED format above. Be specific about what would
+                unblock it: a decision, a measurement, or a board.
 
             Nobody can see your reasoning. An issue that ends with a green tick
             and no sentence has cost money and told nobody anything, and the
             next agent along will start the same task from the beginning.
 
       - name: Hand over
+        # ALWAYS SAYS SOMETHING. Every exit path from this job ends in a comment
+        # on the issue naming what happened and what is being waited on next.
+        #
+        # It used to comment only when the run died, on the reasoning that a
+        # successful agent speaks for itself. It does not: the agent's own
+        # summary goes to the run's step summary, and a person watching the
+        # issue saw a label change and nothing else. Success and silent death
+        # were indistinguishable without opening Actions, which is the failure
+        # this whole reporting protocol exists to remove — see the header of
+        # .github/scripts/agent-say.sh.
         if: always() && steps.auth.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          # The agent labels the issue itself when it blocks or finishes. This
-          # only catches the case where the run died without saying anything,
-          # because an issue stuck on agent:working is invisible to the watchdog
-          # and would sit there forever.
+
           LABELS=$(gh api "repos/$REPO/issues/$ISSUE" --jq '[.labels[].name] | join(",")')
+
+          # Did the agent open a pull request for this issue? That is the
+          # difference between "done" and "ran and produced nothing", and
+          # getting it wrong is expensive in a specific way: a successful run
+          # reported as a silent failure invites somebody to comment `@claude`,
+          # which the gate deliberately does NOT deduplicate for comment events
+          # — so a second billed agent starts against work already finished and
+          # opens a second, competing pull request. The message meant to prevent
+          # duplicate work would have caused it.
+          #
+          # TWO QUESTIONS, ASKED IN ORDER, because they are not the same one.
+          #
+          #   1. Which open pull request CLOSES this issue? GitHub resolves the
+          #      closing keyword itself, so this is a fact rather than a grep
+          #      for "Fixes".
+          #   2. Failing that, which open pull request MENTIONS it at all? A
+          #      cross-reference is raised by any pull request whose body names
+          #      #N, keyword or not.
+          #
+          # The second exists because the prompt requires `Fixes #N` only in the
+          # implementation branch. Three of the five task types are research-only
+          # and their branch says just "open a documentation pull request", so a
+          # perfectly compliant agent produces a pull request the first query
+          # cannot see. Found by review on #58 rather than in production, which
+          # is the cheaper of the two places.
+          # shellcheck disable=SC2016  # $owner/$repo/$number are GraphQL
+          # variables bound by -F below, not shell expansions.
+          PR=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $number:Int!) {
+              repository(owner:$owner, name:$repo) {
+                issue(number:$number) {
+                  closedByPullRequestsReferences(first:5, includeClosedPrs:false) {
+                    nodes { number state }
+                  }
+                  timelineItems(last:30, itemTypes:[CROSS_REFERENCED_EVENT]) {
+                    nodes {
+                      ... on CrossReferencedEvent {
+                        source { ... on PullRequest { number state } }
+                      }
+                    }
+                  }
+                }
+              }
+            }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$ISSUE" \
+            --jq '.data.repository.issue as $i
+                  | ([$i.closedByPullRequestsReferences.nodes[]?
+                      | select(.state == "OPEN") | .number]
+                     + [$i.timelineItems.nodes[]?.source?
+                        | select(.state? == "OPEN") | .number])
+                  | first // ""' 2>/dev/null || echo "")
+
+          # A pull request number is the whole story, so it wins over every
+          # other signal — including a run whose conclusion never arrived. An
+          # agent that opened a pull request and then timed out has still done
+          # the work, and reporting that as a failure would send somebody
+          # looking for a branch that is already there.
+          if [ -n "$PR" ]; then
+            KIND=done_pr; DETAIL="$PR"
+          elif [ "$CONCLUSION" = "success" ]; then
+            KIND=done_nopr; DETAIL=""
+          else
+            KIND=failed; DETAIL="${CONCLUSION:-no conclusion}"
+          fi
+
+          # The agent labels the issue itself when it blocks — and a BLOCKED
+          # comment written by the agent says far more than this step could, so
+          # do not talk over it. Release the claim and stop: leaving
+          # agent:working beside agent:blocked makes the issue invisible to the
+          # watchdog while looking finished to a person, which is the worst of
+          # both. Smoke test A ended in exactly that state.
           case ",$LABELS," in
-            *,agent:blocked,*|*,agent:review,*|*,agent:done,*)
-              # The agent labelled the issue itself, so the outcome is already
-              # recorded. Release the claim anyway: leaving agent:working beside
-              # agent:review makes the issue invisible to the watchdog while
-              # looking finished to a person, which is the worst of both. Smoke
-              # test A ended in exactly that state.
+            *,agent:blocked,*)
               gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working || true
+              echo "::notice::#$ISSUE is blocked and the agent has said why; not commenting over it."
               exit 0 ;;
           esac
-          if [ "$CONCLUSION" = "success" ]; then
-            gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true
-          else
-            gh issue comment "$ISSUE" --repo "$REPO" --body \
-              "The agent run ended without a conclusion (\`$CONCLUSION\`). Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Comment \`@claude\` to retry."
-            gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:failed --remove-label agent:working || true
-          fi
+
+          bash .github/scripts/agent-say.sh outcome "$KIND" "$RUN_URL" "$DETAIL" > /tmp/outcome.md
+          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
+
+          case "$KIND" in
+            done_pr|done_nopr)
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
+            *)
+              # agent:failed AND back to agent:ready: the label pair says both
+              # "this went wrong" and "somebody should pick it up", and the
+              # watchdog only reads the second. A failed task that nothing
+              # re-queues is a task nobody ever looks at again.
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:failed --add-label agent:ready --remove-label agent:working || true ;;
+          esac

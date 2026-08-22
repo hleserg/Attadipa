@@ -251,6 +251,14 @@ jobs:
       - name: Watchdog queue scan
         run: bash .github/tests/watchdog-filter-test.sh
 
+      # What the pipeline says out loud. A silent pipeline and a dead one look
+      # the same from an issue, which cost this project a morning of somebody
+      # asking whether anything was happening. The receipt and the outcome
+      # comment are the fix, and text nobody asserts on drifts back to silence
+      # one edit at a time.
+      - name: What the agent says
+        run: bash .github/tests/agent-say-test.sh
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest

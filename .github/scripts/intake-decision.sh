@@ -12,6 +12,61 @@
 # permission on this repository — is looked up by the caller and passed in,
 # which is also what makes the table test possible.
 
+# attadipa_asks_for_agent TEXT
+#
+# Does this text actually ASK for an agent, as opposed to talking about one?
+#
+# THE TRAP, AND IT HAS NOW BEEN SPRUNG TWICE IN ONE DAY BY THE SAME MISTAKE IN
+# TWO SPELLINGS. On 2026-08-21 a commit message quoting `Fixes #10` as an example
+# closed issue #10, because GitHub does not distinguish a quoted example from a
+# real instruction. On 2026-08-22 a pull request comment explaining why telling
+# somebody to write "@claude" was dangerous started an agent on the pull request
+# it was written on — every occurrence in that comment was inside a code span,
+# and the gate read them all as requests.
+#
+# That is not a rare shape. This repository's own documentation is about the
+# automation, so the people most likely to write `@claude` inside backticks are
+# the ones maintaining it, and the cost is a billable writer started by a
+# sentence explaining that a billable writer should not be started.
+#
+# So a mention is a request only when it is OUTSIDE code. Fenced blocks and
+# inline spans are removed first, and what is left is what somebody actually
+# said. Markdown-aware enough for the shapes that occur here and no more: this
+# is a gate, not a parser, and it fails towards not starting an agent.
+attadipa_asks_for_agent() {
+  local text="$1" line out="" fenced=no
+
+  # 1. Fenced blocks, ``` or ~~~. Everything between the markers goes.
+  while IFS= read -r line; do
+    case "$line" in
+      '```'*|'~~~'*)
+        if [ "$fenced" = yes ]; then fenced=no; else fenced=yes; fi
+        continue ;;
+    esac
+    if [ "$fenced" = no ]; then
+      out="$out$line"$'\n'
+    fi
+  done <<EOF
+$text
+EOF
+
+  # 2. Inline code spans, one matched pair at a time. An unmatched trailing
+  #    backtick ends the loop rather than eating the rest of the comment.
+  local pre rest post
+  while [ "${out#*\`}" != "$out" ]; do
+    rest="${out#*\`}"
+    if [ "${rest#*\`}" = "$rest" ]; then break; fi
+    pre="${out%%\`*}"
+    post="${rest#*\`}"
+    out="$pre$post"
+  done
+
+  case "${out,,}" in
+    *"@claude"*) return 0 ;;
+  esac
+  return 1
+}
+
 # attadipa_intake_decision ACTOR EVENT ACTION LABEL BODY LABELS STATE PERMISSION
 #                         [TRUSTED_PRODUCERS] [COMMENT]
 #
@@ -112,12 +167,13 @@ attadipa_intake_decision() {
   # lowercasing and is multibyte-safe, which matters because these comments are
   # frequently in Russian.
   local wanted=no
-  local lc_comment="${comment,,}" lc_body="${body,,}"
+  local lc_body="${body,,}"
   case "$event" in
     workflow_dispatch) wanted=yes ;;
     issue_comment|pull_request_review_comment|pull_request_review)
-      # COMMENT, not BODY. See the header.
-      case "$lc_comment" in *"@claude"*) wanted=yes ;; esac ;;
+      # COMMENT, not BODY. See the header. And a mention inside code is somebody
+      # writing ABOUT the agent, not to it — see attadipa_asks_for_agent.
+      if attadipa_asks_for_agent "$comment"; then wanted=yes; fi ;;
     issues)
       case "$action" in
         labeled)
@@ -134,7 +190,7 @@ attadipa_intake_decision() {
           # is a task that cannot be recovered when a run is lost.
           case "$lc_body" in
             *"attadipa-agent-task"*)
-              case "$lc_body" in *"@claude"*) wanted=yes ;; esac ;;
+              if attadipa_asks_for_agent "$body"; then wanted=yes; fi ;;
           esac ;;
       esac ;;
   esac
@@ -158,5 +214,12 @@ attadipa_intake_decision() {
 # Callable as a script as well as sourceable, so the workflow can run it
 # without worrying about shell inheritance.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  attadipa_intake_decision "$@"
+  # `--mentions TEXT` is the same question the gate asks in rule 3, exposed so
+  # that claude-agent.yml can decide whether a refusal is worth explaining
+  # without a second, drifting copy of the code-stripping logic.
+  if [ "${1:-}" = "--mentions" ]; then
+    attadipa_asks_for_agent "${2:-}"
+  else
+    attadipa_intake_decision "$@"
+  fi
 fi
