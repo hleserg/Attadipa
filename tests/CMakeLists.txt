@@ -209,6 +209,37 @@ if(ATTADIPA_BUILD_SIMULATOR)
     # stops being true, they will still pass, so the criterion is also written
     # down where a reader will find it: docs/architecture/ARCHITECTURE.md.
 
+    # The visual matrix (final §53), rendered rather than promised.
+    #
+    # Sixteen combinations: two geometries × two locales × two themes × Child
+    # Mode on and off. The Definition of Done asks for "both geometries, day and
+    # night themes checked, Child Mode considered" — this is what makes that a
+    # command a reviewer can run instead of a claim in a pull request.
+    #
+    # Each run also asserts something the eye would miss: the simulator exits
+    # non-zero if any codepoint of either catalogue cannot be drawn, so a
+    # Russian screen with a box on it fails here rather than in a screenshot.
+    foreach(_board t-watch-s3-plus waveshare-amoled-206)
+        foreach(_locale en ru)
+            foreach(_theme day night)
+                foreach(_mode adult child)
+                    set(_child_flag "")
+                    if(_mode STREQUAL child)
+                        set(_child_flag --child)
+                    endif()
+                    set(_name clock_${_board}_${_locale}_${_theme}_${_mode})
+                    add_test(NAME ${_name}
+                             COMMAND attadipa_sim --board ${_board} --locale ${_locale}
+                                     --theme ${_theme} --screen clock ${_child_flag}
+                                     --frames 3
+                                     --screenshot ${_attadipa_shot_dir}/${_name}.png)
+                    set_tests_properties(${_name} PROPERTIES
+                        ENVIRONMENT "SDL_VIDEODRIVER=dummy"
+                        LABELS "simulator;design")
+                endforeach()
+            endforeach()
+        endforeach()
+    endforeach()
     # ---------------------------------------------------------------------
     # The generated image assets (T-034).
     #
@@ -221,6 +252,15 @@ if(ATTADIPA_BUILD_SIMULATOR)
     target_link_libraries(test_ui_icons PRIVATE attadipa_images)
     add_test(NAME ui_icons COMMAND test_ui_icons)
     set_tests_properties(ui_icons PROPERTIES LABELS design)
+
+    # The arithmetic inside the widgets. Here rather than with the host tests for
+    # the same reason as the icons: the header includes LVGL's, because a widget
+    # returns an `lv_obj_t*`. What is tested needs no display — that is the whole
+    # point of the two functions being out in the header.
+    add_executable(test_ui_widgets test_ui_widgets.cpp)
+    target_link_libraries(test_ui_widgets PRIVATE attadipa_widgets)
+    add_test(NAME ui_widgets COMMAND test_ui_widgets)
+    set_tests_properties(ui_widgets PROPERTIES LABELS design)
 endif()
 
 # ---------------------------------------------------------------------------

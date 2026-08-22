@@ -144,6 +144,7 @@ link/                          transport framing, the frame queue, the session s
 l10n/                          the string catalogue and the code generated from it
 ui/                            design tokens: roles, spacing, contrast — no LVGL, no board
 ui/assets/                     source art, the generated LVGL masks, and the one lookup
+ui/widgets/                    drawings a screen is made of — the battery gauge, the status row
 assets/fonts/                  the generated Montserrat subsets, with their provenance
 apps/                          applications; links core and cannot reach platform
 sim/                           the desktop simulator, and its LVGL configuration
@@ -195,6 +196,8 @@ cmake --build build-sim
 --radio <chip>    fit any of the five candidate T-Watch radios
 --node            present a paired, reachable Attadipa node
 --no-bring-up     leave every part untouched, to see the unavailable states
+--battery <n>     invented charge, 0-100, or `unknown`; INVENTED, never a reading
+--charging        draw the gauge as charging
 --screenshot <p>  write the screen to a PNG
 --frames <n>      render n frames and exit; with SDL_VIDEODRIVER=dummy, headless
 ```

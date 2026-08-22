@@ -164,4 +164,49 @@ def warning(size: int) -> Image.Image:
     return _down(img, size)
 
 
-DRAWINGS = {"mesh": mesh, "position": position, "warning": warning}
+def companion(size: int) -> Image.Image:
+    """A handset: the phone this watch is paired with.
+
+    Three drawings were tried at 33 px. A bare rounded-rectangle outline is a
+    phone to nobody — it is equally a door, a battery or a toggle, and it sits
+    one row away from the battery gauge, which is exactly the collision that
+    sent `mesh` back to the drawing board twice. A filled screen with a chin
+    reads as a *filled* thing, which on this row means "charged".
+
+    Two interior marks fix it: a speaker slot near the top and a home dot near
+    the bottom. Nothing else on a watch face has that pair, and the silhouette
+    is portrait where the battery is landscape, so the two cannot be confused
+    even out of focus.
+
+    The capability is called `Phone` to a person and `CompanionLink` in the
+    code, and the icon is drawn for the person: a phone, not a Bluetooth rune.
+    Which transport carries the link is precisely what an application is never
+    told (ADR-0008), so the icon must not draw one.
+    """
+    g = GEOMETRY[size]
+    img, draw = _canvas(size)
+    s = SUPERSAMPLE
+    w = g["stroke"]
+    inset = g["inset"]
+
+    body_h = size - 2 * inset
+    body_w = round(body_h * 0.66)
+    x0 = (size - body_w) / 2.0
+    x1 = x0 + body_w
+    y0, y1 = float(inset), float(size - inset)
+    radius = w * 1.6
+
+    draw.rounded_rectangle([x0 * s, y0 * s, x1 * s, y1 * s], radius=radius * s, fill=255)
+    draw.rounded_rectangle([(x0 + w) * s, (y0 + w) * s, (x1 - w) * s, (y1 - w) * s],
+                           radius=max(radius - w, 1) * s, fill=0)
+
+    cx = size / 2.0
+    slot_w = body_w * 0.34
+    slot_y = y0 + w + g["gap"] + w * 0.5
+    _line(draw, cx - slot_w / 2.0, slot_y, cx + slot_w / 2.0, slot_y, w * 0.75)
+    _disc(draw, cx, y1 - w - g["gap"] - w * 0.5, w * 0.55)
+    return _down(img, size)
+
+
+DRAWINGS = {"mesh": mesh, "position": position, "warning": warning,
+            "companion": companion}

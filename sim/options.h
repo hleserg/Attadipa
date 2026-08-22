@@ -6,6 +6,8 @@
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/color.h"
 
+#include "clock_host.h"
+
 namespace attadipa::sim {
 
 // What the simulator was asked to present.
@@ -33,6 +35,19 @@ struct Options {
     // to rebuild to see the second one will check the first. T toggles it while
     // running; this flag is here so CI can screenshot both without a keyboard.
     ui::Theme theme = ui::Theme::Day;
+
+    // Which screen to open on, and whether Child Mode is on. Runtime choices for
+    // the same reason the geometry and the locale are: the visual matrix has to
+    // be reachable without a rebuild.
+    Screen screen     = Screen::Clock;
+    bool   child_mode = false;
+
+    // The invented fuel gauge. -1 means "no reading", which is a state the face
+    // has to draw and which the hardcoded 62 % made unreachable. Every value
+    // here is INVENTED — see clock_host.h; the flag exists to review the four
+    // gauges, not to report a charge.
+    int  battery  = 62;
+    bool charging = false;
 
     bool node_attached = false;   // a paired, reachable, compatible Attadipa node
     bool bring_up      = true;    // pretend every present part came up

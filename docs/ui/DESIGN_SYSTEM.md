@@ -228,6 +228,7 @@ Seeded from the style board's generous spacing and rounded forms; all values are
 | `icon.size` | `sm 16` · `md 20` · `lg 24` · `xl 32` |
 | `image.size` | `inline 32` · `spot 64` · `hero 120` · `hero.large 200` |
 | `touch.min` | `44` adult · `56` Child Mode |
+| `stroke` | `hairline 1` · `regular 2` · `heavy 3` — **added 2026-08-22**, see below |
 | `elevation` | `flat` · `raised` · `overlay` — realised as a border and a tint, not a blurred shadow, which costs fill rate |
 
 Spacing is expressed in **density-independent units resolved per board**, not in
@@ -257,6 +258,21 @@ either panel. In code it is a *rule* — half the shorter side of the thing bein
 drawn — and `is_pill()` says so in the type system rather than leaving a magic
 number to be multiplied by accident.
 
+**`stroke` is an addition to the specification's list, and it is here because
+the list could not be used without it.** Final §54 names spacing, radius, motion,
+icon and image scales — and then `elevation` in the same table is *"realised as a
+border"*, which is a width. So is a battery gauge's wall, a divider, and the
+slash across a struck-out status icon. Without a token every one of those is a
+pixel count somebody typed, and a 2-pixel border is 0.19 mm on the T-Watch and
+0.16 mm on the Waveshare from one source line — the exact failure `Dp` exists to
+prevent, arriving through the one gap in the scale.
+
+The three weights are not invented either: they are what the icon pipeline had
+already chosen by hand for its own drawings. A 33-pixel icon is stroked at 3 px,
+which is `stroke.regular` at 261 dpi — so a widget outlined at `regular` sits
+beside an icon of the same weight, which is the entire reason for having a scale
+rather than three numbers.
+
 **Durations are not scaled.** A denser panel does not make time pass differently.
 `motion.duration.instant` exists so that "reduce motion" and low-power modes have
 somewhere to go without an `if` in every animation.
@@ -269,6 +285,14 @@ somewhere to go without an `if` in every animation.
 `attadipa_platform`: a screen asks for `space.md`, and only the composition root
 knows which panel answered. That is [ADR-0007](../adr/0007-two-capability-layers.md)
 applied to pixels.
+
+`ui/widgets/` is a **second** target, and the split is deliberate. A battery that
+fills to the charge is a drawing, so it needs LVGL — and `attadipa_ui` must not,
+because a token that could reach a panel is a token that will. So the tokens stay
+arithmetic and the drawings live one layer up, where they are shared between
+screens instead of being rewritten per screen with a different answer about what
+4 % looks like. `ui/widgets/` cannot see `platform` either: it receives a
+`Metrics` and a `Theme`, never a board.
 
 Three tests hold the line. `tests/test_ui_tokens.cpp` asserts the properties —
 one token is one physical size on both panels, no gap rounds away, the night
@@ -362,17 +386,106 @@ The four sizes in bold are the ones that exist; `sm` and `xl` are not generated,
 because nothing draws them yet and a mask costs its pixel count in flash. Asking
 for one returns nothing, which is the honest answer and not an oversight.
 
-### 7.2 The first three icons
+### 7.2 The first four icons
 
 | Icon | What it means | Why it is drawn that way |
 |---|---|---|
 | `mesh` | one node reaching two others | The first attempt was a hub with three peers, and at 33 px the four discs merged into a lump. The second was a triangle of nodes, one row away in silhouette from `warning`. The third has a silhouette that is neither |
 | `position` | a position is known | A pin and deliberately **not** a satellite, an antenna or a phone. An application is never told where a fix came from — the wrist, a companion node, or somebody else's message — so the icon must not draw a source |
+| `companion` | the phone the watch is paired with | Three drawings. A bare rounded-rectangle outline is a phone to nobody — it is equally a door or a toggle, and it sits one row from the battery gauge. Two interior marks fix it: a speaker slot and a home dot. It is a **phone, not a Bluetooth rune**, because which transport carries the link is precisely what an application is never told |
 | `warning` | a degraded state | It exists **because** §3.1 forbids signalling state by colour alone. On the day palette that is not merely an accessibility courtesy, since no accent clears 4.5:1 against Warm Ivory. A degraded state has to have a shape |
 
 The review sheet is [`specimens/sheet-icons.png`](specimens/sheet-icons.png) —
 day and night, at 1:1 and not magnified, because an icon that only reads at 3×
 is an icon that does not read.
+
+### 7.3 Lit, struck, or absent — the status row
+
+The Clock's status row is where §3.1 stops being a principle and becomes three
+lines of code, so the rules are written here rather than in one screen's source.
+
+| The capability is | It looks like | Because |
+|---|---|---|
+| `Ready` | the icon, full ink | |
+| anything else that could work here | the icon, dimmed **and struck through** | A dim icon and a lit one differ only in colour, which §3.1 forbids as the sole channel — and on the day palette the two greys are 1.79:1 apart, so it would not carry the meaning even if it were allowed |
+| `Unsupported` | **nothing at all** | A capability that no configuration of this device could provide is absent, not dead. Nothing is gained by carrying a permanently struck icon for a part that is not fitted and cannot be supplied — an infrared blaster on a board without an emitter, say |
+
+**And on the Clock, that third row never fires — which is the capability model
+being right rather than the rule being useless.** `MeshMessaging` and `Position`
+are both node-providable
+([ADR-0008](../adr/0008-mesh-service-providers.md)), so on a Waveshare with no
+LoRa and no GNSS they resolve to `Unprovisioned` and not to `Unsupported`: the
+board cannot do them, but *this device* can, by having a node attached. The
+remedy is different — buy and pair a node, rather than nothing can be done — and
+`Availability` distinguishes remedies, not parts. So the Waveshare's mesh and
+position icons are struck rather than missing, and they light up the moment a
+node arrives. `CompanionLink` behaves the same way for a different reason: both
+boards have BLE, so it is `Unprovisioned` until a phone is paired.
+
+An earlier draft of this table used the Waveshare as the example of the absent
+case. It was wrong in the most instructive way available: the rule is sound, the
+code implements it, and the one board everybody reaches for to illustrate it is
+the board it does not apply to. Rendering the face is what found that.
+
+**The slash is drawn twice.** A single stroke at 45° disappeared into `mesh`,
+whose own links run at 45°. The mark is now a wide stroke in the page colour
+followed by a thin one in ink, which cuts a clean gap through whatever it
+crosses — the way every "no signal" glyph has always been drawn, for the same
+reason.
+
+**The row says whether, never why.** "Not set up" and "no signal" look identical
+here on purpose. The face has room for a state; the reason lives one tap away.
+The design this replaced put the reason on the face as `Mesh · not set up`, and
+it read like a debug line because a capability name joined to an availability
+name by a middle dot is one.
+
+### 7.4 Four gauges, and one of them is a colour the day palette will not carry
+
+The battery is a shell, a fill and a number, and it has four states rather than
+one. They exist because a percentage on its own drew the question that started
+this redesign — *"is that the battery percentage?"* — and because three of the
+four had never once been rendered while the simulator had `62 %` compiled in.
+`--battery` and `--charging` fixed that; the states are now part of the review
+matrix rather than a branch nobody has looked at.
+
+| State | The fill | The number |
+|---|---|---|
+| a charge | `TextPrimary`, proportional | `n %` |
+| at or below 20 % | `Warning`, proportional | `n %` |
+| charging | `Success`, proportional | `n %`, and the word below it |
+| no reading | a single centred bar, not an empty box | `—` |
+
+Two of those need a note.
+
+**An empty box is a claim.** A gauge with nothing in it says *flat*, and a
+person acts on that — puts the watch on charge, or does not leave the house.
+When there is no reading the box gets one centred bar instead, and the number
+becomes an em dash. The same rule makes `battery_fill_px()` return `1` rather
+than `0` for any charge above zero: 1 % of a 52-pixel gauge floors to nothing,
+and drawing nothing would be the same lie by arithmetic.
+
+**A hairline of page between the wall and the fill.** Without it a 12 % fill is
+five pixels of the same ink the shell is drawn in, flush against a two-pixel
+wall, and the two merge into one thick left edge — which is what the first
+render showed on the day theme, where the fill has no colour of its own to
+separate it. One pixel of gap turns it back into a gauge. Every battery glyph
+ever drawn has this gap; ours has it because a render found the version without
+it, not because it was copied.
+
+**On the day theme, neither colour survives.** `Warning` is Attadipa Orange at
+2.19:1 against Warm Ivory and `Success` is Meadow Green at 2.81:1 — both below
+the 3:1 §3.1 requires of a graphic — so `legible_as_graphic()` refuses them and
+both fills fall back to ink. On the day palette a low battery is carried by the
+*length* of the bar and by the number beside it, and charging by the word
+underneath; only at night (5.08:1 and 3.96:1 against Ink Olive) does either
+state also carry a colour.
+
+This is the contrast API doing its job rather than a gap in it. The alternative
+is an orange nobody can see, on the one screen where being wrong costs a person
+their evening — and it would have shipped, because a fill that fails silently
+looks exactly like a fill that works until somebody renders it and measures.
+If low charge needs a second channel on the day theme, the honest ones are
+shape and motion; not a colour the owner's palette does not contain.
 
 ## 8. Localization is a design constraint, not a translation step
 

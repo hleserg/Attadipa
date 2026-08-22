@@ -5,10 +5,13 @@
 # here is an `lv_image_dsc_t`, so this target knows about LVGL, and
 # `attadipa_ui` deliberately knows about nothing but its own headers.
 #
-# 14.1 kB of .rodata for all nine masks — A8 is one byte per pixel and the sizes
+# 18.8 kB of .rodata for all twelve masks — A8 is one byte per pixel and the sizes
 # are 33, 39 and 47 px square. Reported by the generator rather than estimated;
 # every declaration in `generated/attadipa_images.h` carries its own byte count.
 set(ATTADIPA_IMAGE_SOURCES
+    generated/attadipa_icon_companion_33.c
+    generated/attadipa_icon_companion_39.c
+    generated/attadipa_icon_companion_47.c
     generated/attadipa_icon_mesh_33.c
     generated/attadipa_icon_mesh_39.c
     generated/attadipa_icon_mesh_47.c

@@ -15,6 +15,14 @@
 extern "C" {
 #endif
 
+// A handset with a speaker slot and a home dot. The phone the watch is
+// paired with, in the Clock's status row. Portrait where the battery gauge
+// is landscape, and marked inside, because an unmarked rounded rectangle is
+// not a phone.
+LV_IMAGE_DECLARE(attadipa_icon_companion_33);   // 1089 B of .rodata
+LV_IMAGE_DECLARE(attadipa_icon_companion_39);   // 1521 B of .rodata
+LV_IMAGE_DECLARE(attadipa_icon_companion_47);   // 2209 B of .rodata
+
 // One node linked to two others. Mesh reachability, in the Clock's status
 // row and in Settings. Not a triangle of nodes, deliberately: that
 // silhouette collides with `warning` at 33 px.
@@ -39,6 +47,9 @@ LV_IMAGE_DECLARE(attadipa_icon_warning_47);   // 2209 B of .rodata
 // Every generated asset, for a table that must not be maintained by hand.
 // X(name, pixel_size, symbol)
 #define ATTADIPA_ICON_LIST(X) \
+    X(companion, 33, attadipa_icon_companion_33) \
+    X(companion, 39, attadipa_icon_companion_39) \
+    X(companion, 47, attadipa_icon_companion_47) \
     X(mesh, 33, attadipa_icon_mesh_33) \
     X(mesh, 39, attadipa_icon_mesh_39) \
     X(mesh, 47, attadipa_icon_mesh_47) \

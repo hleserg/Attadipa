@@ -326,3 +326,117 @@ ru = "нужна доработка"
 # The silicon cannot: no LoRa modulator, so no wrapper will help — ADR-0003.
 en = "impossible"
 ru = "невозможно"
+
+# --- The Clock (T-037) -----------------------------------------------------
+#
+# Weekdays are three characters because a 240 px face has room for three.
+# Months are in the genitive: Russian dates read "22 августа", never
+# "22 август", and a date assembled from a nominative month is the exact
+# mistake ADR-0010 §5 forbids — a sentence built from fragments.
+
+
+[weekday_mon]
+en = "Mon"
+ru = "Пн"
+
+[weekday_tue]
+en = "Tue"
+ru = "Вт"
+
+[weekday_wed]
+en = "Wed"
+ru = "Ср"
+
+[weekday_thu]
+en = "Thu"
+ru = "Чт"
+
+[weekday_fri]
+en = "Fri"
+ru = "Пт"
+
+[weekday_sat]
+en = "Sat"
+ru = "Сб"
+
+[weekday_sun]
+en = "Sun"
+ru = "Вс"
+
+[month_jan]
+en = "Jan"
+ru = "января"
+
+[month_feb]
+en = "Feb"
+ru = "февраля"
+
+[month_mar]
+en = "Mar"
+ru = "марта"
+
+[month_apr]
+en = "Apr"
+ru = "апреля"
+
+[month_may]
+en = "May"
+ru = "мая"
+
+[month_jun]
+en = "Jun"
+ru = "июня"
+
+[month_jul]
+en = "Jul"
+ru = "июля"
+
+[month_aug]
+en = "Aug"
+ru = "августа"
+
+[month_sep]
+en = "Sep"
+ru = "сентября"
+
+[month_oct]
+en = "Oct"
+ru = "октября"
+
+[month_nov]
+en = "Nov"
+ru = "ноября"
+
+[month_dec]
+en = "Dec"
+ru = "декабря"
+
+[clock_date]
+en = "%s %u %s"
+ru = "%s, %u %s"
+# weekday, day, month. Russian puts a comma after the weekday and English does not
+
+[clock_battery]
+en = "%u%%"
+ru = "%u%%"
+
+[clock_charging]
+en = "charging"
+ru = "заряжается"
+
+[value_unknown]
+en = "—"
+ru = "—"
+# An em dash, and it is not decoration. A quantity nobody has measured has to be
+# shown as *absent* rather than as zero — ADR-0011's rule, which the Clock meets
+# in the battery gauge and Settings will meet in a dozen more places. One string
+# so that every one of them looks the same.
+
+[clock_no_time]
+en = "--:--"
+ru = "--:--"
+# no trusted clock yet. Not a zero, and not a guess — ADR-0011's rule about a value nobody observed
+
+[clock_child_greeting]
+en = "Hello!"
+ru = "Привет!"

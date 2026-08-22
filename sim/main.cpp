@@ -9,6 +9,7 @@
 #include "attadipa/version.h"
 
 #include "boot_screen.h"
+#include "clock_host.h"
 #include "options.h"
 #include "png_writer.h"
 
@@ -97,7 +98,8 @@ void report_missing_string(l10n::Locale requested, const char* identifier)
                  l10n::to_string(requested));
 }
 
-// L toggles the language, T the theme. Keypresses rather than a menu because the
+// L toggles the language, T the theme, K Child Mode, D the screen. Keypresses
+// rather than a menu because the
 // Settings screen does not exist yet (T-038) and the acceptance criterion —
 // "switches at runtime without a reboot" — is about the mechanism, not about
 // where the switch lives.
@@ -113,6 +115,12 @@ void on_screen_key(lv_event_t* event)
     }
     if (key == 't' || key == 'T') {
         attadipa::sim::toggle_theme();
+    }
+    if (key == 'k' || key == 'K') {
+        attadipa::sim::toggle_child_mode();
+    }
+    if (key == 'd' || key == 'D') {
+        attadipa::sim::toggle_screen();
     }
 }
 
@@ -170,11 +178,18 @@ int main(int argc, char** argv)
     lv_obj_add_event_cb(lv_screen_active(), on_screen_key, LV_EVENT_KEY, nullptr);
 
     l10n::set_missing_string_handler(report_missing_string);
-    l10n::set_locale_changed_handler(attadipa::sim::rebuild_boot_screen);
+    l10n::set_locale_changed_handler(attadipa::sim::rebuild_current_screen);
     l10n::set_locale(options.locale);
 
     attadipa::sim::set_theme(options.theme);
+    attadipa::sim::set_child_mode(options.child_mode);
+    attadipa::sim::set_battery(options.battery, options.charging);
+    attadipa::sim::set_screen(options.screen);
+    // Both screens register the inventory, and the first build has to be the
+    // one that does it for the screen actually selected.
     attadipa::sim::build_boot_screen(inventory, caps);
+    attadipa::sim::build_clock_screen(inventory, caps);
+    attadipa::sim::rebuild_current_screen();
 
     // A box on a screen is a defect, and this is where it is refused.
     //

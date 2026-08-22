@@ -311,6 +311,11 @@ void set_theme(Theme theme)
     g_theme = theme;
 }
 
+Theme current_theme()
+{
+    return g_theme;
+}
+
 void toggle_theme()
 {
     g_theme = g_theme == Theme::Day ? Theme::Night : Theme::Day;

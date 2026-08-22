@@ -743,17 +743,6 @@ than a feature). T-034's asset pipeline is amended before it starts.
 
 ---
 
-## Still with the owner
-
-Nothing here answers A1–A3, A5 or the compass question. Those remain in
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
-
-OD-7 to OD-10 add three of their own, and they are the kind that cannot be
-answered from a datasheet: whether Meshtastic's protocol definitions are licensed
-separately from its firmware, which cellular module the node will carry, and
-which tower database may lawfully be shipped in a product. The first is research
-and is filed; the last two are the owner's.
-
 ## OD-12 — Meshtastic is not supported, and the reason is not the licence
 
 **Decided:** 2026-08-22, on [#41](https://github.com/hleserg/Attadipa/issues/41).
@@ -823,3 +812,99 @@ answered and this decision is the only thing to revisit.
 live outside the firmware — on the Attadipa node, or on a phone — is a different
 question with a different licensing answer, and nobody has asked it.
 
+---
+
+## OD-14 — Distance, but only the distance the wearer moved themselves
+
+*Numbered 14, not 12. It was filed as OD-12 on 2026-08-22 while another branch
+was concurrently filing a different OD-12 — the owner's answer on #41, that
+Meshtastic is not supported — with an OD-13 stacked on top of it. Two decisions
+sharing a number is worse than a gap in the sequence, so this one moved. The
+collision is what "one writer" in CLAUDE.md exists to prevent, and it happened
+because two branches were open at once rather than because either was wrong.*
+
+**Decided:** 2026-08-22.
+
+**As stated:**
+
+> *"было бы прикольно помимо шагов хранить статистику по пройденному расстоянию
+> и показывать типа «сегодня вы прошли 5км». При том в статистику должны падать
+> только активно пройденные расстояния, те что проехал стоя на самокате, сидя в
+> машине автобусе или поезде не считаются"*
+
+and, a moment later:
+
+> *"Можно с разбивкой на бег/ходьба еще кстати. если можно"*
+
+**Both halves are hardware-backed, and that is not luck — it is the reason this
+is recorded the day T-060a closed.** The BMA423 carries a *walking activity
+recognition* feature that classifies the wearer as **walking, running or still**
+and reports it in `ACTIVITY_TYPE.activity_type_out`, enabled by
+`FEATURES_IN.step_counter.settings_26.en_activity` alongside the step counter
+itself. So the run/walk split is a register read rather than an algorithm, on
+the T-Watch. On the Waveshare it is `UNKNOWN` for the same reason everything
+about that IMU is — see
+[PEDOMETER_PARTS §2.1](PEDOMETER_PARTS.md).
+
+**The exclusion is the requirement, not a refinement of it.** A distance figure
+that quietly includes a bus ride is worse than no distance figure, because a
+person uses it to decide whether they have moved today. Three things follow:
+
+1. **Distance is derived from steps, never from displacement.** This is what
+   makes the exclusion mostly free: a wearer sitting in a car, a bus or a train
+   takes no steps, so a step-derived distance already excludes them, while a
+   GNSS-derived one would count every kilometre of the journey. A design that
+   reaches for the receiver because it is more accurate gets the headline
+   requirement exactly backwards.
+2. **What is left is the standing cases**, and they are the real work: a scooter,
+   an escalator, a train carriage that shakes at a walking cadence. The gate is
+   the activity classifier — steps that arrive while the wearer is classified
+   `Still` are not distance — plus, where a position exists, a **consistency
+   check**: a step cadence that implies 4 km/h next to a ground speed of 25 km/h
+   is a scooter and not a sprint. That second half is only available when a
+   position is, so it is an *improvement* to the gate and never a precondition.
+3. **Stride length is a per-person number nobody has.** Distance is
+   steps × stride, and a default stride derived from nothing is a distance
+   derived from nothing. It is a setting with an honest default, it is labelled
+   as an estimate, and OD-6's *no interpolation* rule applies unchanged: a period
+   the device was not measuring did not contain a known distance.
+
+**What it obliges beyond the arithmetic:**
+
+- **Three numbers, not one.** Walking, running, and their sum. The owner asked
+  for the split, and a split that is computed and then discarded into a total is
+  a split nobody can check.
+- **A rejected distance is still a fact.** If the watch decides a kilometre was a
+  bus, that decision is visible somewhere — otherwise a wearer who really did
+  walk it has no way to tell the feature from a bug.
+- **A day's figure survives a reboot, a crash and a flat battery**, and is zeroed
+  by midnight and by nothing else. The same four events as the step total, and
+  the same storage, because two counters with two persistence stories is one
+  counter too many.
+- **`Still` is a claim the classifier makes**, not the truth. It is Bosch's
+  filter, and [ADR-0011](../adr/0011-gnss-integrity.md)'s language about a
+  position produced by somebody else's algorithm applies to it word for word.
+
+**Status:** filed as **T-088** (distance and activity as a capability) and
+**T-089** (the vehicle-rejection gate, which is research before it is code —
+nobody has measured what a scooter looks like to a BMA423). Both depend on T-061,
+which is the step counter they are built on. The Waveshare half additionally
+depends on the IMU variant question that is still open.
+
+---
+
+## Still with the owner
+
+Nothing here answers A1–A3, A5 or the compass question. Those remain in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+
+OD-7 to OD-10 add three of their own, and they are the kind that cannot be
+answered from a datasheet: whether Meshtastic's protocol definitions are licensed
+separately from its firmware, which cellular module the node will carry, and
+which tower database may lawfully be shipped in a product. The first is research
+and is filed; the last two are the owner's.
+
+OD-14 adds one more, and it is a product question rather than a technical one:
+**what a rejected distance looks like to the wearer.** A watch that silently
+declines to count a bus ride and a watch that is broken are the same watch from
+the outside.
