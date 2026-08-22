@@ -206,6 +206,15 @@ and `agent:ready` where one is genuinely needed.
       `main`, with nobody watching for it — and "no `ai-review:pass`, no merge"
       would be false in exactly the sequence this routine always takes.
 
+      **AND IT IS NOT ONLY THE CLAUDE REVIEW.** Two rounds of review on the
+      pull request that wrote this found the same mistake twice, because the
+      first fix re-checked the condition that had been on my mind rather than
+      every condition the undraft could invalidate. So the rule is the general
+      one and the list below is its enumeration: **after `gh pr ready`, treat
+      EVERY condition as unread and check all of them again.** If you find
+      yourself deciding which ones could not have changed, you are making the
+      mistake this paragraph exists to stop.
+
       So after `gh pr ready`:
 
         1. WAIT for the `Independent review` check on the head commit to leave
@@ -213,12 +222,31 @@ and `agent:ready` where one is genuinely needed.
            finished by then, say so and leave the pull request open and
            undrafted — a merge is never the thing you do because waiting got
            boring.
-        2. RE-READ the labels. `ai-review:pass` must still be present and
+        2. CHECK THAT A VERDICT WAS ACTUALLY REACHED. A run that dies fast
+           leaves `queued`/`in_progress` too, so step 1 is satisfied by a
+           failure. If a fresh `attadipa-review-did-not-run` comment names this
+           head commit, there was no second opinion — the label you are about
+           to read is the old one, still sitting there because nothing touched
+           it. Treat that exactly as a blocking result and stop. This is the
+           likeliest of all these cases to recur, because a daily routine and a
+           daily quota exhaust together.
+        3. RE-READ the labels. `ai-review:pass` must still be present and
            `ai-review:blocking` still absent. The second pass is a second
            opinion on the final state, which makes it worth having rather than
            waste; treat a new blocking verdict as the answer, not as noise from
            a run you caused.
-        3. RE-READ `mergeable_state`. Not because a stale value would corrupt
+        4. RE-CHECK THE THREADS AND THE OTHER REVIEWER. `gh pr ready` is one of
+           Codex's own stated triggers — it says so in its comments: *"Reviews
+           are triggered when you Open a pull request for review, Mark a draft
+           as ready, Comment @codex review."* Marking a draft ready is
+           precisely what you just did, so the undraft restarts Codex as well,
+           and Codex does not set a label — its findings arrive as comments.
+           Re-check for unresolved review threads and for an unanswered
+           `chatgpt-codex-connector[bot]` comment, in both shapes, exactly as
+           required before the undraft. Merging past a Codex finding posted in
+           this window is the failure the condition was written for, arriving
+           one event later than the condition looked.
+        5. RE-READ `mergeable_state`. Not because a stale value would corrupt
            anything — the merge API refuses a real conflict — but because that
            refusal is the only thing standing between the two reads, and a rule
            whose safety rests on an error message it never mentions is a rule
@@ -241,7 +269,15 @@ and `agent:ready` where one is genuinely needed.
         `STATUS.md` · `TASKS.md`
 
       Anything else, including any path added to this repository after this was
-      written, is not yours. `STATUS.md` and `TASKS.md` are on the list because
+      written, is not yours.
+
+      `docs/research/` is on the list and carries more of the cost than the
+      rest of it, which is worth knowing rather than hiding: it is where this
+      project records hardware facts, and hardware facts are the category it has
+      already been burned by getting wrong — five candidate radio variants, two
+      GNSS modules, a rail that differs between board revisions. The trade is
+      accepted deliberately and it is the first entry to reconsider if this list
+      is ever revisited per directory. `STATUS.md` and `TASKS.md` are on the list because
       CLAUDE.md REQUIRES them to be updated in the same commit as the change
       they describe — a rule that excluded them would have disqualified every
       compliant pull request, which is a rule that never fires.
