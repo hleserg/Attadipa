@@ -352,7 +352,30 @@ recommendation. "What should I do?" is not a question, it is an absence of one.
   comment for it, and the issue body only for the marker. Case does not matter
   — `@Claude` and `@CLAUDE` are the same request.
 - **Stranded tasks**: `agent:working` with no activity for two hours goes back
-  to `agent:ready` with a comment saying so.
+  to `agent:ready` with a comment saying so. `agent:failed` with no
+  `agent:ready` beside it — a shape only a run that died before finishing its
+  hand-over can leave — goes back to the queue the same way, on a sweep of its
+  own. It is **re-queued, not escalated**: a run that died is not a decision
+  anybody has to make, and `needs-owner` means a decision only the owner can
+  make.
+- **A failed task gets one automatic retry, not an unbounded one.** The
+  hand-over labels a generic failure `agent:failed` **and** `agent:ready`
+  together — back in the queue, marked as not its first run — and the
+  watchdog's scan honours that pair rather than dropping it, which is the
+  defect [#82](https://github.com/hleserg/Attadipa/issues/82) found: the
+  outcome comment promised a pick-up the filter was silently refusing to
+  deliver. A **second** failure since a person last queued it gets
+  `agent:blocked` + `needs-owner` instead of a third automatic run, because
+  the cause did not go away between runs and retrying an unchanged failure
+  hourly is buying the same answer on a bill — six runs on 2026-08-22 were
+  exactly that.
+- **A label and a comment are not the same restart.** Adding `agent:ready`
+  yourself resets the retry budget; commenting `@claude` starts a run but does
+  **not**. So if you have actually fixed what was breaking a task, label it —
+  otherwise its next failure escalates straight back to you, carrying every
+  failure from before your fix. Only a labelling by a person counts: the
+  hand-over's own `agent:ready` is added by `github-actions[bot]`, and if that
+  reset the count the bound would not exist.
 - **CI failures**: repaired automatically at most twice per problem chain, from
   the actual failing log. After that the pull request gets `ci:failed` and
   `agent:blocked` and a human is asked. `/ci-repair reset` clears the counter.

@@ -251,6 +251,21 @@ jobs:
       - name: Watchdog queue scan
         run: bash .github/tests/watchdog-filter-test.sh
 
+      # agent:failed with no agent:ready beside it meant invisible to the
+      # watchdog forever, with nothing on the issue explaining that. #82 found
+      # #27 and #28 in exactly that state; this is the filter that finds them.
+      - name: Stranded failures
+        run: bash .github/tests/stranded-failures-test.sh
+
+      # The count behind the bounded retry: how many times agent:failed has
+      # been labelled since a HUMAN, not the hand-over itself, last put the
+      # issue back in the queue. A first version counted an issue's whole
+      # history instead, which meant a genuinely fixed task could never earn
+      # back a retry -- found in review on #82's own pull request, against
+      # #27, #28 and #69's real timelines.
+      - name: Bounded retry count
+        run: bash .github/tests/failure-count-test.sh
+
       # What the pipeline says out loud. A silent pipeline and a dead one look
       # the same from an issue, which cost this project a morning of somebody
       # asking whether anything was happening. The receipt and the outcome
