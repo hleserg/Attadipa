@@ -149,7 +149,6 @@ anything equivalent is written by hand.
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
 | `infinition/waveshare-watch-rs` | a Rust `no_std` watch firmware for the same board — unusable directly, potentially instructive | to check |
-| Meshtastic | mature ESP32 LoRa firmware with T-Watch support; solves overlapping problems | **evaluated — `REJECT`**, see [A Meshtastic companion client](#a-meshtastic-companion-client) |
 | ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement | to check |
 
 Rust and Arduino candidates are still worth reading. `EXTRACT ALGORITHM` and
