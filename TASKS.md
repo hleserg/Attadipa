@@ -1589,6 +1589,17 @@ Recommended next action:
                 magnetometer, so the haptics-versus-compass case cannot be
                 measured on current hardware in any configuration.
 ```
+- **Update 2026-08-22 — the last sentence is about to stop being true.** The
+  owner has ordered a magnetometer and intends to solder it onto the received
+  Waveshare ([#83](https://github.com/hleserg/Attadipa/issues/83)). The
+  haptics-versus-compass case then becomes measurable on this unit, and given a
+  speaker with a permanent magnet sitting in the same case it stops being
+  theoretical. **The blocker above is left exactly as written** until the part is
+  in and working — a retrofit that has been ordered is not a retrofit that
+  exists — but the tooling under Option 1 now has a customer, which it did not
+  before.
+```
+```
 
 ---
 

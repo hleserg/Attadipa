@@ -5,6 +5,31 @@ blocked on four measurements only the owner can take.** Raised by the owner
 2026-08-22. Decision tracked as [#64](https://github.com/hleserg/Attadipa/issues/64);
 [OPEN_QUESTIONS](OPEN_QUESTIONS.md) D2.
 
+> ## PAUSED — 2026-08-22, owner's decision
+>
+> **Calipers are on order and have not arrived**, so none of §4's measurements
+> can be taken yet. The owner has also ordered a **magnetometer** to solder onto
+> this unit, and wants its size known before the cell is chosen — because
+> whatever the magnetometer occupies comes out of the same cavity. **The two
+> questions are now coupled and the battery is downstream of the magnetometer** —
+> [#83](https://github.com/hleserg/Attadipa/issues/83), and this issue is
+> [#64](https://github.com/hleserg/Attadipa/issues/64).
+>
+> **One thing the owner did establish, by handling the unit** — recorded as
+> `OBSERVED`, not `MEASURED`, because it is a judgement by eye and hand and not a
+> caliper reading:
+>
+> > *"место под крышкой есть, текущие 400 mAh не упираются ни по толщине, ни по
+> > ширине, ни по длине. Просто китайцы сэкономили."*
+>
+> There is room under the cover, and the fitted cell butts against nothing in any
+> of the three axes. **That is a real finding and it changes the odds**: Row A of
+> §5 — drop-in only, no spare depth — is now the *unlikely* outcome rather than
+> the default one, and Rows B through D become worth taking seriously. It does
+> **not** substitute for M1: "not touching" and "has 1.1 mm of clearance" are
+> different statements, and only one of them sizes a cell. Nothing in §5 has been
+> promoted on the strength of it.
+
 ## 0. What this note is
 
 Four source fan-outs fed it — the Waveshare schematic and wiki, the AXP2101
