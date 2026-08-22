@@ -82,6 +82,66 @@ stale silently. The protocol is
   removed from the loop.
 
 
+### T-107 · The agent's mandated reading list is 500 KB before it opens a file
+- **Priority:** P1
+- **Dependencies:** none. `.github/scripts/failure-reason.sh` is merged, so the
+  next occurrence of the failure below reports its own cause rather than being
+  reasoned about from a result object.
+- **Goal:** know whether the agent workflow is failing because the reading order
+  its prompt mandates does not fit in the session, and if it is, make the
+  reading order affordable without making it optional.
+- **Why this is a task and not a hunch.** Run `32589375744` on
+  [#67](https://github.com/hleserg/Attadipa/issues/67) died after 20 turns and
+  84 seconds with `subtype: success`, `is_error: true`,
+  `permission_denials_count: 0`. That rules out the turn ceiling (raised to 200
+  the same hour) and the tool list (zero denials), and names nothing else. The
+  measurement that makes context worth checking first:
+
+  | File | Size |
+  |---|---|
+  | `TASKS.md` | 149 KB |
+  | `docs/research/REUSE_LEDGER.md` | 69 KB |
+  | `STATUS.md` | 63 KB |
+  | `docs/research/OWNER_DECISIONS.md` | 62 KB |
+  | `docs/master-prompt-final.md` | 62 KB |
+  | `.github/workflows/claude-agent.yml` | 54 KB |
+  | the rest of the mandated order | 47 KB |
+
+  Over 500 KB — roughly 140k tokens — before the agent opens a file the task is
+  actually about, and an automation task then opens the workflows on top of it.
+- **Acceptance:** the cause is established from a run's own reported reason
+  rather than inferred, and **written down either way**. If it is context, the
+  reading order is restructured so an agent can obey it — a summary the prompt
+  points at, or per-section reads — without an agent being permitted to skip
+  `CLAUDE.md` or the specification. If it is not context, this task closes with
+  the real cause recorded and the sizes above left as a separate concern.
+- **Do not** raise a limit, trim a document or reorder the prompt before the
+  cause is known. Raising `--max-turns` on a hunch is how the reviewer got 40,
+  and it cost six runs and roughly $18 in one afternoon.
+- **Tests:** whatever change follows must keep `.github/tests/*.sh` green and be
+  observed on a real run of a real issue, not asserted.
+- **Hardware required:** no.
+
+### T-108 · An `unclassified` agent failure is a gap in a whitelist, and it should not stay one
+- **Priority:** P2
+- **Dependencies:** T-107 (they will often be the same investigation)
+- **Goal:** keep [`failure-reason.sh`](.github/scripts/failure-reason.sh)
+  answering. Its whitelist covers the failures this project has actually had —
+  an API status line, a context refusal, a credit balance, an expired OAuth
+  token, a service `overloaded_error`. Anything else is reported as
+  `unclassified`, honestly and uselessly.
+- **Acceptance:** when a failure comment says `unclassified`, the pattern that
+  would have named it is added with a test case, and the run that motivated it
+  is cited in the test the way every other case there is. The whitelist is the
+  security model — the same log holds every tool result — so a pattern is added
+  by shape, anchored and length-bounded, and never by widening one until
+  something matches.
+- **Tests:** `.github/tests/failure-reason-test.sh`, which must keep its
+  leak cases: an API key, a token-shaped string and a private key sitting in the
+  log beside a real error, asserting only the error comes out.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-034a · The mascot, at a size somebody drew

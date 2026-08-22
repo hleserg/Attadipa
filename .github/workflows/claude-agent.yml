@@ -873,6 +873,38 @@ jobs:
             and no sentence has cost money and told nobody anything, and the
             next agent along will start the same task from the beginning.
 
+      - name: Work out why the run died
+        # THE MISSING HALF OF THE REPORT. `show_full_output: false` above is
+        # right and stays: tool results carry file contents and token-shaped
+        # strings, and this repository is public. But it means the run log a
+        # failure comment points at contains the SDK options, an init line, and
+        # a result object -- and on 2026-08-22 run 32589375744 that result
+        # object was `{"subtype":"success","is_error":true,"num_turns":20}` and
+        # nothing else. A person following the link learned that it broke, which
+        # they already knew.
+        #
+        # The action's FULL execution log is written to the runner and never
+        # published. .github/scripts/failure-reason.sh reads it there and emits
+        # one line matching a whitelist of error grammars -- an API status, a
+        # context refusal, a credit balance, an expired token -- and reports
+        # anything else as `unclassified` with only structural facts. What it
+        # cannot classify it does not paraphrase, and .github/tests/
+        # failure-reason-test.sh puts a private key and an API key in the log
+        # next to a real error to prove only the error comes out.
+        id: why
+        if: always() && steps.auth.outputs.ok == 'true' && steps.claude.outcome == 'failure'
+        env:
+          EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          set -uo pipefail
+          REASON=$(bash .github/scripts/failure-reason.sh "${EXEC_FILE:-}")
+          echo "::notice::why the run died: ${REASON}"
+          {
+            echo "reason<<ATTADIPA_EOF"
+            echo "${REASON}"
+            echo "ATTADIPA_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Hand over
         # ALWAYS SAYS SOMETHING. Every exit path from this job ends in a comment
         # on the issue naming what happened and what is being waited on next.
@@ -891,6 +923,11 @@ jobs:
           ISSUE: ${{ needs.gate.outputs.issue }}
           HEAD_BEFORE: ${{ steps.prhead.outputs.sha }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
+          # Through the environment rather than `${{ }}` inside the script: the
+          # value is derived from a file the model's session wrote, and a shell
+          # interpolation of model-adjacent text is an injection whatever the
+          # whitelist upstream of it does.
+          REASON: ${{ steps.why.outputs.reason }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -990,7 +1027,8 @@ jobs:
               exit 0 ;;
           esac
 
-          bash .github/scripts/agent-say.sh outcome "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" > /tmp/outcome.md
+          bash .github/scripts/agent-say.sh outcome \
+            "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" "${REASON:-}" > /tmp/outcome.md
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
 
           case "$KIND" in

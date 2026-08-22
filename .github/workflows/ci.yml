@@ -267,6 +267,18 @@ jobs:
       - name: What the agent decides it did
         run: bash .github/tests/handover-decision-test.sh
 
+      # And whether it says WHY, when the answer is in a log nobody may read.
+      # `show_full_output: false` empties the published run log of exactly the
+      # cause -- deliberately, because tool results carry file contents -- so a
+      # failure comment saying "the cause is in the log" was sending people to a
+      # redacted page. The extractor reads the unpublished execution log on the
+      # runner and emits only text matching an error grammar. The tests that
+      # matter put a private key and an API key in that log beside a real error
+      # and assert that only the error comes out; the whitelist IS the security
+      # model, so nothing else may keep it honest.
+      - name: Why the agent says a run died
+        run: bash .github/tests/failure-reason-test.sh
+
       # The staleness line is the only thing telling an agent that the finding
       # it is about to implement was made against code that has since moved.
       # Its previous version truncated at 800 characters and, on issue #26,
