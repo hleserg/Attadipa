@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "attadipa/core/clock.h"
+#include "attadipa/core/motion.h"
 #include "attadipa/core/power_state.h"
 
 // What the GNSS receiver is doing, and what it costs to ask it for a position.
@@ -23,6 +24,11 @@
 //      assistance path that becomes load-bearing is a bug even on the days it
 //      works, so `assistance` only influences how fast a start is *expected* to
 //      be — never whether one is attempted.
+//
+// And a third, from docs/adr/0013-node-motion.md, which is about *whose*
+// receiver this is: a context describes one receiver on one body, and the only
+// accelerometer that may gate it is one on the same body. The watch's wrist
+// resting is not a reason to sleep a receiver inside somebody else's bag.
 
 namespace attadipa::core {
 
@@ -67,11 +73,33 @@ struct GnssContext {
     // warm start there is promising a fix in thirty seconds that arrives in
     // several minutes.
     bool             backup_retained = false;
-    bool             device_moving      = false;
+
+    // Which chassis this receiver is bolted to, and what an accelerometer on
+    // some chassis has to say. They are two fields because they are two facts:
+    // the second is only evidence about the first when the bodies match.
+    //
+    // `Unknown` on either side means the gate below does nothing, which is the
+    // safe reading and the deliberate one — `device_moving` used to be a plain
+    // `bool` whose default `false` read as "at rest" and powered a receiver
+    // down on a sample nobody had taken (ADR-0013 §2).
+    SensorBody       receiver_body = SensorBody::Unknown;
+    MotionEvidence   motion{};
+
     bool             fresh_fix_requested = false;  // an application is waiting
     PowerState       device_power = PowerState::Active;
     GnssCapabilities capabilities{};
     bool             assistance_available = false;  // optional, never required
+
+    // Evidence that *this receiver's own body* is at rest — the only
+    // conjunction that may make it sleep. Nothing here reads a clock, so
+    // expiring a sample that has gone stale is the producer's job, not this
+    // struct's (see motion.h, and T-080).
+    bool own_body_at_rest() const { return motion.says_at_rest(receiver_body); }
+
+    // ...and the only one that may wake it. Not the negation of the above:
+    // everything neither of them covers is "not known", and not known moves
+    // the receiver in neither direction.
+    bool own_body_in_motion() const { return motion.says_in_motion(receiver_body); }
 };
 
 // Which start a transition from this state, with this context, would be.

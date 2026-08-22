@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "attadipa/core/clock.h"
+#include "attadipa/core/motion.h"
 #include "attadipa/core/position.h"
 
 // Whether the position is worth navigating by, and — kept, not discarded — why.
@@ -232,18 +233,11 @@ private:
     std::size_t recorded_          = 0;
 };
 
-// What the accelerometer has to say. Three states, not two: "the device is not
-// moving" and "nobody asked the accelerometer" are different facts, and only
-// the first is evidence.
-//
-// The T-Watch's BMA423 is an accelerometer — no gyroscope, no magnetometer. It
-// is exactly the right part for this one question and it is not an inertial
-// navigation system; nothing here may quietly become dead reckoning
-// (ADR-0009, ADR-0011 §6).
-struct MotionEvidence {
-    bool known  = false;
-    bool moving = false;
-};
+// `MotionEvidence` — what the accelerometer has to say, and about which object
+// — is attadipa/core/motion.h. It moved there when the node acquired an IMU of
+// its own (OD-16): one motion fact now has two consumers, this file and the
+// GNSS power model, and both of them have to be told whose motion it is
+// (docs/adr/0013-node-motion.md).
 
 // The detectors, and the previous observation they need.
 //
@@ -257,6 +251,13 @@ public:
     // the receiver's idea of absolute time has diverged from it. Comparing two
     // absolute instants is a legitimate use of a wall clock; measuring elapsed
     // time with one is not, and clock.h makes the second impossible.
+    //
+    // `motion` is only evidence about the body it names. The observation says
+    // which body it was measured on through its `source`, and the
+    // motion-disagreement detector is inert unless the two are demonstrably the
+    // same object — an accelerometer on a wrist has nothing to say about a
+    // receiver in somebody else's bag, in either direction
+    // (docs/adr/0013-node-motion.md §3).
     void observe(const GnssObservation& observation, PositionValidity validity,
                  MotionEvidence motion, std::optional<WallTime> device_time,
                  MonotonicTime now);

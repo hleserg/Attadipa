@@ -98,6 +98,26 @@ const char* to_string(ReceiverIndication indication)
     return "?";
 }
 
+SensorBody body_of(PositionSource source)
+{
+    switch (source) {
+        case PositionSource::LocalGnss: return SensorBody::Watch;
+        case PositionSource::NodeGnss:  return SensorBody::Node;
+        case PositionSource::Companion: return SensorBody::Companion;
+
+        // Not a gap. A typed position was not measured on any object, so no
+        // accelerometer anywhere is evidence about it; a simulated one is about
+        // whichever body the fixture is simulating and has to say which through
+        // a source that names one; and a source nobody set cannot be read as a
+        // body nobody named — that reading is the whole defect ADR-0013 exists
+        // to close.
+        case PositionSource::Manual:
+        case PositionSource::Simulated:
+        case PositionSource::Unknown:   return SensorBody::Unknown;
+    }
+    return SensorBody::Unknown;
+}
+
 const char* to_string(PositionValidity validity)
 {
     switch (validity) {

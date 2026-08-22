@@ -493,7 +493,10 @@ parts, and where it physically sits, are open — T-109, and
 datasheet comparison and the one measurement that decides it. The node will
 never carry one, and gets an accelerometer and probably a gyroscope instead,
 for GNSS power optimisation — filed as its own capability question,
-[#93](https://github.com/hleserg/Attadipa/issues/93) (T-111).
+[#93](https://github.com/hleserg/Attadipa/issues/93) (T-111), **and that
+question is now answered**: [ADR-0013](docs/adr/0013-node-motion.md). The node's
+IMU is not a capability and never serves `MotionSensing`; it is an input to the
+node's own GNSS power model, below `LocationService`, visible to Diagnostics.
 
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as
@@ -510,7 +513,7 @@ hysteresis and dwell — are to be computed and shown, not chosen.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces, plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
@@ -587,6 +590,40 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   not VERIFIED.
 
 ## Recently completed
+
+- **The node's IMU got a model, and finding one exposed a live defect.** T-111,
+  [#93](https://github.com/hleserg/Attadipa/issues/93),
+  [ADR-0013](docs/adr/0013-node-motion.md). The issue asked three design
+  questions about hardware that does not exist yet, and two of them turned out
+  to be about code that does. **`TrustEvaluator`'s `MotionDisagreement` detector
+  compared the watch's accelerometer against whatever receiver produced the
+  position — including a node's.** A wearer at a desk whose node is carried down
+  a corridor read two correct instruments and concluded one was lying, at weight
+  45, which is past `degrade_at` on its own; and the mirror case, a walking
+  wrist switching the detector off while a node on a table is spoofed, failed
+  silently. On the Waveshare board a node's position is the only position there
+  is. Alongside it, `GnssContext::device_moving` was a plain `bool` whose default
+  `false` read as *at rest*, so a receiver could be powered down on a sample
+  nobody had taken.
+
+  The answers: the node IMU is **not a capability** and specifically never
+  `Capability::MotionSensing` — that entry means the *wearer's* motion, and a
+  node satisfying it would deliver a bag's movements to a pedometer through an
+  interface built so the application cannot tell. It has no `Availability` of its
+  own; it carries three values, a body and two ages, and **stillness expires
+  while motion does not**, because a stale *moving* costs charge and a stale
+  *still* silently stops a device asking where it is. And motion is body-framed:
+  *node still* implies nothing about *wearer still* in either direction, which is
+  [ADR-0009](docs/adr/0009-heading.md) §3a's rule carried into a second
+  subsystem. `SensorBody` and `MotionEvidence::speaks_for` now make a consumer
+  name its subject to compile. Verified by reverting the detector and watching
+  the new replay scenario and four trust cases fail.
+
+  Two things it deliberately did **not** fix, both filed rather than folded in:
+  `ProviderDisagreement` still treats two devices 300 m apart as evidence when
+  they are simply apart (**T-112**), and whether anything upstream labels motion
+  by body is **`UNKNOWN`** — nothing was read afresh, and the reuse ledger says
+  so rather than implying nobody does it (**T-113**).
 
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the

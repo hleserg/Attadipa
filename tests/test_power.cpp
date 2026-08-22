@@ -1,6 +1,8 @@
+#include <cstddef>
 #include <cstdio>
 
 #include "attadipa/core/gnss_power.h"
+#include "attadipa/core/motion.h"
 #include "attadipa/core/power_state.h"
 
 // Host tests for the device power states and the GNSS receiver's own.
@@ -343,6 +345,133 @@ void test_the_device_state_outranks_the_receiver()
     CHECK(next_state(GnssState::Tracking, plain) == GnssState::Off);
 }
 
+// The gate OD-10 asks for, and the shape ADR-0013 gives it. A watch on a
+// bedside table is the case that pays for the whole feature, so it is checked
+// first — a body-labelled gate that never fires would satisfy every test below
+// this one and save nothing.
+void test_a_body_at_rest_sleeps_its_own_receiver()
+{
+    GnssContext context;
+    context.capabilities  = kFull;
+    context.receiver_body = SensorBody::Watch;
+    context.motion        = MotionEvidence{true, false, SensorBody::Watch};
+
+    CHECK(next_state(GnssState::Tracking, context) == GnssState::PowerSave);
+
+    // And it comes back when that same body moves again.
+    context.motion = MotionEvidence{true, true, SensorBody::Watch};
+    CHECK(next_state(GnssState::PowerSave, context) == GnssState::Acquiring);
+    CHECK(next_state(GnssState::Backup, context) == GnssState::Acquiring);
+}
+
+// ADR-0013 §2. `device_moving` was a plain `bool` whose default `false` read as
+// "at rest", so a receiver could be powered down on a sample nobody had taken —
+// and then, with nothing moving to wake it, stay down.
+//
+// Not known is not still. It moves the receiver in neither direction, which is
+// the one reading that cannot be wrong: the guarantee that a fix eventually
+// happens anyway is OD-10's ceiling, and the ceiling is not in this function.
+void test_unknown_motion_moves_the_receiver_in_neither_direction()
+{
+    GnssContext context;
+    context.capabilities  = kFull;
+    context.receiver_body = SensorBody::Watch;
+    context.motion        = MotionEvidence{};  // nobody sampled anything
+
+    CHECK(next_state(GnssState::Tracking, context) == GnssState::Tracking);
+    CHECK(next_state(GnssState::PowerSave, context) == GnssState::PowerSave);
+    CHECK(next_state(GnssState::Backup, context) == GnssState::Backup);
+
+    // A receiver on a body nobody named is in the same position, even with a
+    // perfectly good sample in hand: the sample is about something, and this
+    // context has not said what this receiver is.
+    GnssContext nameless;
+    nameless.capabilities  = kFull;
+    nameless.receiver_body = SensorBody::Unknown;
+    nameless.motion        = MotionEvidence{true, false, SensorBody::Watch};
+    CHECK(next_state(GnssState::Tracking, nameless) == GnssState::Tracking);
+}
+
+// ADR-0013 §3, and the reason the field carries a body at all. The wearer is at
+// a desk; the node is in a bag going down the corridor. Sleeping the node's
+// receiver because this wrist is resting is a decision about somebody else's
+// hardware taken on evidence that was never about it.
+void test_a_wrist_at_rest_does_not_sleep_a_nodes_receiver()
+{
+    GnssContext node;
+    node.capabilities  = kFull;
+    node.receiver_body = SensorBody::Node;
+    node.motion        = MotionEvidence{true, false, SensorBody::Watch};
+
+    CHECK(next_state(GnssState::Tracking, node) == GnssState::Tracking);
+
+    // The node's own IMU is the only thing that may sleep it...
+    node.motion = MotionEvidence{true, false, SensorBody::Node};
+    CHECK(next_state(GnssState::Tracking, node) == GnssState::PowerSave);
+
+    // ...and the wrist walking is not what wakes it up again either.
+    node.motion = MotionEvidence{true, true, SensorBody::Watch};
+    CHECK(next_state(GnssState::PowerSave, node) == GnssState::PowerSave);
+
+    node.motion = MotionEvidence{true, true, SensorBody::Node};
+    CHECK(next_state(GnssState::PowerSave, node) == GnssState::Acquiring);
+}
+
+// The mirror of the above, kept separate because it is the direction that
+// fails quietly: the watch's own receiver is not gated by the node's chassis.
+void test_a_still_node_does_not_sleep_the_watchs_receiver()
+{
+    GnssContext watch;
+    watch.capabilities  = kFull;
+    watch.receiver_body = SensorBody::Watch;
+    watch.motion        = MotionEvidence{true, false, SensorBody::Node};
+
+    CHECK(next_state(GnssState::Tracking, watch) == GnssState::Tracking);
+}
+
+// An application waiting for a position outranks the gate, whichever body is
+// still. Checked because §2's "unknown moves nothing" must not have quietly
+// become "nothing moves it".
+void test_a_waiting_application_outranks_a_still_body()
+{
+    GnssContext context;
+    context.capabilities        = kFull;
+    context.receiver_body       = SensorBody::Watch;
+    context.motion              = MotionEvidence{true, false, SensorBody::Watch};
+    context.fresh_fix_requested = true;
+
+    CHECK(next_state(GnssState::Tracking, context) == GnssState::Tracking);
+    CHECK(next_state(GnssState::PowerSave, context) == GnssState::Tracking);
+    CHECK(next_state(GnssState::Backup, context) == GnssState::Acquiring);
+}
+
+// A sample that knows something must know whose. Nothing in this file may
+// construct the incoherent combination, and `speaks_for` refuses it anyway.
+void test_evidence_that_knows_something_knows_whose()
+{
+    const MotionEvidence nobody_asked{};
+    const MotionEvidence knows_without_a_subject{true, false, SensorBody::Unknown};
+    const MotionEvidence proper{true, false, SensorBody::Watch};
+
+    CHECK(nobody_asked.is_coherent());
+    CHECK(!knows_without_a_subject.is_coherent());
+    CHECK(proper.is_coherent());
+
+    for (std::uint8_t b = 0; b < kSensorBodyCount; ++b) {
+        const SensorBody about = static_cast<SensorBody>(b);
+        CHECK(!nobody_asked.speaks_for(about));
+        CHECK(!knows_without_a_subject.speaks_for(about));
+    }
+    CHECK(proper.speaks_for(SensorBody::Watch));
+    CHECK(!proper.speaks_for(SensorBody::Node));
+    CHECK(!proper.speaks_for(SensorBody::Unknown));
+
+    // The two directions are not each other's negation — "not at rest" is not
+    // "in motion", because "not known" is neither.
+    CHECK(!nobody_asked.says_at_rest(SensorBody::Watch));
+    CHECK(!nobody_asked.says_in_motion(SensorBody::Watch));
+}
+
 // A receiver that is already off has nothing for a backup domain to keep, so
 // the device going to sleep must leave it off rather than powering a domain to
 // retain nothing. Found by the exhaustive cross-check below; kept here on its
@@ -371,29 +500,86 @@ void test_next_state_never_proposes_an_illegal_move()
                                      PowerState::MeshListenSleep, PowerState::DeepSleep,
                                      PowerState::PowerOff};
 
+    // Every motion sample the type can hold, including the two incoherent ones
+    // — a sample that claims to know something about nobody. They are here
+    // precisely because nothing should construct them: if one ever reaches
+    // next_state it must still not produce an illegal move.
+    MotionEvidence samples[1 + 2 * kSensorBodyCount];
+    std::size_t    sample_count = 0;
+    samples[sample_count++]     = MotionEvidence{};
+    for (std::uint8_t b = 0; b < kSensorBodyCount; ++b) {
+        const SensorBody body   = static_cast<SensorBody>(b);
+        samples[sample_count++] = MotionEvidence{true, false, body};
+        samples[sample_count++] = MotionEvidence{true, true, body};
+    }
+
     for (const GnssCapabilities& caps : sets) {
         for (PowerState power : powers) {
-            for (int moving = 0; moving < 2; ++moving) {
-                for (int wanted = 0; wanted < 2; ++wanted) {
-                    for (int retained = 0; retained < 2; ++retained) {
-                        for (std::uint8_t f = 0; f < kGnssStateCount; ++f) {
-                            GnssContext context;
-                            context.capabilities        = caps;
-                            context.device_power        = power;
-                            context.device_moving       = moving != 0;
-                            context.fresh_fix_requested = wanted != 0;
-                            context.ephemeris_retained  = retained != 0;
-                            context.since_last_fix      = Millis{retained != 0 ? 1000u : 0u};
+            for (std::uint8_t rb = 0; rb < kSensorBodyCount; ++rb) {
+                for (std::size_t m = 0; m < sample_count; ++m) {
+                    for (int wanted = 0; wanted < 2; ++wanted) {
+                        for (int retained = 0; retained < 2; ++retained) {
+                            for (std::uint8_t f = 0; f < kGnssStateCount; ++f) {
+                                GnssContext context;
+                                context.capabilities        = caps;
+                                context.device_power        = power;
+                                context.receiver_body       = static_cast<SensorBody>(rb);
+                                context.motion              = samples[m];
+                                context.fresh_fix_requested = wanted != 0;
+                                context.ephemeris_retained  = retained != 0;
+                                context.since_last_fix      = Millis{retained != 0 ? 1000u : 0u};
 
-                            const GnssState from = static_cast<GnssState>(f);
-                            const GnssState to   = next_state(from, context);
-                            if (!transition_is_legal(from, to, caps)) {
-                                std::fprintf(stderr,
-                                             "FAIL line %d: next_state proposed %s -> %s, which "
-                                             "transition_is_legal refuses\n",
-                                             __LINE__, to_string(from), to_string(to));
-                                ++failures;
+                                const GnssState from = static_cast<GnssState>(f);
+                                const GnssState to   = next_state(from, context);
+                                if (!transition_is_legal(from, to, caps)) {
+                                    std::fprintf(stderr,
+                                                 "FAIL line %d: next_state proposed %s -> %s for a "
+                                                 "%s receiver, which transition_is_legal refuses\n",
+                                                 __LINE__, to_string(from), to_string(to),
+                                                 to_string(context.receiver_body));
+                                    ++failures;
+                                }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The gate is a decision about one body, so nothing that happens on another one
+// may change its answer. Exhaustive over every state, every sample and every
+// pair of bodies: whenever the sample is about a body this receiver is not,
+// next_state must give the same answer it gives with no sample at all.
+void test_evidence_about_another_body_changes_nothing()
+{
+    const GnssCapabilities sets[] = {kPlain, kFull};
+
+    for (const GnssCapabilities& caps : sets) {
+        for (std::uint8_t rb = 0; rb < kSensorBodyCount; ++rb) {
+            for (std::uint8_t sb = 0; sb < kSensorBodyCount; ++sb) {
+                if (rb == sb) {
+                    continue;  // same body: the sample is supposed to matter
+                }
+                for (int moving = 0; moving < 2; ++moving) {
+                    for (std::uint8_t f = 0; f < kGnssStateCount; ++f) {
+                        GnssContext blind;
+                        blind.capabilities  = caps;
+                        blind.receiver_body = static_cast<SensorBody>(rb);
+
+                        GnssContext told = blind;
+                        told.motion      = MotionEvidence{true, moving != 0,
+                                                          static_cast<SensorBody>(sb)};
+
+                        const GnssState from = static_cast<GnssState>(f);
+                        if (next_state(from, blind) != next_state(from, told)) {
+                            std::fprintf(stderr,
+                                         "FAIL line %d: a %s sample changed a %s receiver's move "
+                                         "from %s\n",
+                                         __LINE__, to_string(static_cast<SensorBody>(sb)),
+                                         to_string(static_cast<SensorBody>(rb)), to_string(from));
+                            ++failures;
                         }
                     }
                 }
@@ -413,6 +599,16 @@ void test_every_gnss_name_is_readable()
     CHECK(to_string(StartKind::Hot)[0] != '\0');
 }
 
+// A body that cannot be named cannot be shown in Diagnostics, and Diagnostics
+// is the only place the node's IMU surfaces at all (ADR-0013 §1).
+void test_every_body_name_is_readable()
+{
+    for (std::uint8_t i = 0; i < kSensorBodyCount; ++i) {
+        const char* name = to_string(static_cast<SensorBody>(i));
+        CHECK(name != nullptr && name[0] != '\0');
+    }
+}
+
 }  // namespace
 
 int main()
@@ -428,9 +624,17 @@ int main()
     test_the_start_kind_follows_what_was_retained();
     test_assistance_is_never_required();
     test_the_device_state_outranks_the_receiver();
+    test_a_body_at_rest_sleeps_its_own_receiver();
+    test_unknown_motion_moves_the_receiver_in_neither_direction();
+    test_a_wrist_at_rest_does_not_sleep_a_nodes_receiver();
+    test_a_still_node_does_not_sleep_the_watchs_receiver();
+    test_a_waiting_application_outranks_a_still_body();
+    test_evidence_that_knows_something_knows_whose();
     test_an_off_receiver_does_not_enter_backup();
     test_next_state_never_proposes_an_illegal_move();
+    test_evidence_about_another_body_changes_nothing();
     test_every_gnss_name_is_readable();
+    test_every_body_name_is_readable();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

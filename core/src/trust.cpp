@@ -450,8 +450,19 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
             // walks away from a stationary device is evidence in a way it would
             // not be on a device that cannot tell. It needs no interval at all,
             // which is exactly why gating it on `in_order` cost the most.
-            moved_at_rest =
-                motion.known && !motion.moving && moved > policy.jump_while_still_mm;
+            //
+            // ...on a *stationary device*, and which device is the whole of
+            // ADR-0013 §3. This compares an accelerometer with a receiver, and
+            // that comparison means nothing unless the two are bolted to the
+            // same object. Both directions are real failures and neither
+            // announces itself: a wrist resting at a desk while the node moves
+            // down the corridor accuses two correct instruments of lying, and a
+            // wrist walking while a node sits on a table being spoofed switches
+            // the detector off for the whole event. So the body the position
+            // was measured on is asked for by name, and evidence about any
+            // other body — or about none — is not evidence here.
+            moved_at_rest = motion.says_at_rest(body_of(observation.source)) &&
+                            moved > policy.jump_while_still_mm;
         }
 
         if (usable_for_rate && in_order) {

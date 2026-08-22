@@ -4,6 +4,7 @@
 #include <optional>
 
 #include "attadipa/core/clock.h"
+#include "attadipa/core/motion.h"
 
 // A position, and everything the receiver said about how much it is worth.
 //
@@ -85,6 +86,17 @@ enum class PositionSource : std::uint8_t {
     Manual,         // the user typed it
     Simulated,      // the simulator or a replayed fixture. Never shipped as real
 };
+
+// Which physical object a position was measured on.
+//
+// A position and an accelerometer can only be compared when they are bolted to
+// the same thing (docs/adr/0013-node-motion.md §3), and this is the one place
+// that translation is written down. Three sources map to no body at all and
+// that is the answer rather than a gap: a typed position was not measured on
+// anything, a simulated one is about whatever the fixture says it is about and
+// must say so through some other source, and an unknown source cannot imply a
+// body it did not name.
+SensorBody body_of(PositionSource source);
 
 // What the receiver itself says about interference, and about whether it thinks
 // it is being lied to.

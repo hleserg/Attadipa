@@ -1626,6 +1626,47 @@ stale silently. The protocol is
   purple PCB survive being glued in at whatever angle it fits.
 - **Hardware required:** yes. The parts are not here.
 
+### T-112 · Two devices 300 m apart disagree by 300 m, and both are right
+- **Priority:** P2
+- **State:** filed, not started. Surfaced by
+  [ADR-0013](docs/adr/0013-node-motion.md), which names it and deliberately does
+  not fix it.
+- **What:** [ADR-0011](docs/adr/0011-gnss-integrity.md) §6 lists *provider
+  disagreement* — the on-board receiver against a node's position — as evidence
+  that something is wrong, and `TrustPolicy::provider_disagreement_mm` is
+  250 000 mm. That premise holds while the node is in the wearer's pocket and
+  fails the moment it is not: a node left at a tent as a relay while the wearer
+  walks half a kilometre produces two correct fixes and one `ProviderDisagreement`
+  at weight 30. It is the same family of defect ADR-0013 fixed for motion — two
+  bodies treated as one — and a different remedy, which is why it was not folded
+  in. A body label does not help here; what is needed is a **precondition that
+  the two providers are co-located**, and this project has no way to establish
+  one. Link RSSI is not a distance. The likeliest honest answers are to require
+  the detector to be armed explicitly, or to drop it until there is a
+  co-location signal worth trusting.
+- **Dependencies:** none. Host-testable, and the replay rig already has a
+  two-provider scenario (12) to extend.
+- **Not blocked on hardware.**
+
+### T-113 · Does anything upstream label a motion sample with the body it was measured on?
+- **Priority:** P3 — the answer does not change
+  [ADR-0013](docs/adr/0013-node-motion.md)'s decision, which comes from
+  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one),
+  but it could change how the two consumers are shaped.
+- **State:** filed, not started. **Research only** — no implementation.
+- **What:** [REUSE_LEDGER](docs/research/REUSE_LEDGER.md) carries a record for
+  motion-gated GNSS with an explicit `UNKNOWN` in it: nothing upstream was read
+  afresh when ADR-0013 was written, so "no useful implementation found" in that
+  record must not be read as "none exists". Candidates worth an hour each:
+  Meshtastic's GPS power management and its handling of other nodes' positions,
+  InfiniTime, Zephyr's sensor subsystem, and any tracker firmware that pairs a
+  tag with a phone — the last is the closest analogue to a watch and a node,
+  because it has exactly this two-body problem and ships.
+- **What would close it:** the ledger record's `UNKNOWN` replaced by a finding
+  with a repository, a commit and a file, either way. "Nobody does this" is a
+  result if it is traced; it is not a result if it is assumed.
+- **Not blocked on hardware.**
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1738,31 +1779,44 @@ Recommended next action:
   waiting for hardware — every blocked coexistence test needs it to produce
   anything more than an anecdote.
 
-### T-111 · The node IMU needs a capability model of its own
-- **Priority:** P2
-- **State:** filed, not started.
-- **Issue:** [#93](https://github.com/hleserg/Attadipa/issues/93).
-- **What:** [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)
-  ordered a 6-axis IMU (accelerometer + gyroscope) for the node, for GNSS power
-  optimisation — motion-gating, not heading. Explicitly not resolved inside
-  #56: whether it needs a seat in the application-facing capability enum at all
-  or is purely internal to the node's own `LocationService`
-  ([ADR-0007](docs/adr/0007-two-capability-layers.md) §4's capability-vs-feed
-  test), what its `Availability`/`Origin`/walk-away state is if it is surfaced
-  ([ADR-0004](docs/adr/0004-capability-sources.md)), and how it composes with
-  [OD-10](docs/research/OWNER_DECISIONS.md#od-10--a-standing-person-does-not-need-a-new-fix)'s
-  wearer-stillness gate without the two being conflated — the node standing
-  still is not the wearer standing still, even though (unlike heading) the
-  node's own IMU correcting the node's own GNSS needs no cross-body transform
-  ([ADR-0009](docs/adr/0009-heading.md) §3a).
-- **Dependencies:** none for the design; no node hardware exists yet, so
-  nothing here is `NOT EXECUTED — HARDWARE REQUIRED`, it is un-started design.
-- **Not blocked on hardware.** The shape of the model does not depend on which
-  IMU part the node ends up carrying.
-
 ---
 
 ## DONE
+
+### T-111 · The node IMU needs a capability model of its own — **DONE** 2026-08-22
+- **Issue:** [#93](https://github.com/hleserg/Attadipa/issues/93). Answered by
+  [ADR-0013](docs/adr/0013-node-motion.md), which is the short ADR the issue
+  asked for, plus the code change it turned out to entail.
+- **The three questions, answered.** (1) **Not a capability**, and specifically
+  never `Capability::MotionSensing` — that entry means the *wearer's* motion,
+  and a node satisfying it would hand a bag's movements to a pedometer through
+  an interface built so the application cannot tell. It is a `HardwareFeature`
+  in the node's own inventory and an input to the node's own GNSS power model,
+  below `LocationService`, visible to Diagnostics — the arrangement
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §3 already made for the receiver's
+  own defences. (2) **No `Availability` of its own**; three values, a body, and
+  two ages, with the walk-away rule that *stillness expires and motion does
+  not* — a stale "moving" costs charge, a stale "still" silently stops a device
+  asking where it is. (3) **Motion is body-framed**, the near side of the rule
+  [ADR-0009](docs/adr/0009-heading.md) §3a states, and "node still" implies
+  nothing about "wearer still" in either direction.
+- **It was not documentation only, which the issue did not expect.** Both motion
+  inputs in `core/` were body-blind, and one of them was wrong in `main`:
+  `TrustEvaluator`'s `MotionDisagreement` compared the watch's accelerometer
+  against whatever receiver produced the position, including a node's. A wearer
+  at a desk whose node is carried down a corridor read two correct instruments
+  and reported that something was lying — on the Waveshare board, about the only
+  position source it has. `GnssContext::device_moving` was a plain `bool` whose
+  default `false` read as "at rest".
+- **What changed:** `core/include/attadipa/core/motion.h` (new — `SensorBody`,
+  `MotionEvidence` moved here from `trust.h` now that it has two consumers),
+  `body_of(PositionSource)`, `GnssContext::receiver_body`, and the two gates.
+  Tests in `test_power.cpp`, `test_trust.cpp`, `test_capability_registry.cpp`,
+  `test_replay_rig.cpp` and a new replay scenario.
+- **What it did not decide, and who owns it now:** T-112 (provider disagreement
+  between two bodies), T-113 (whether anything upstream labels motion by body),
+  T-080 (OD-10's ceiling and the wearer-side gate), and which IMU part the node
+  carries, which is still OD-16's open half.
 
 ### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
 - **The cause was not the model, the context or the turn ceiling.** It was

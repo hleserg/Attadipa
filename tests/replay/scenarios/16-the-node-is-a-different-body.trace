@@ -1,0 +1,80 @@
+scenario the node walks off while the wrist stays at the desk
+describe docs/adr/0013-node-motion.md §3, replayed. Every observation here comes
+describe from a node's receiver, and every one of them is correct. So is the
+describe wrist's accelerometer. They are simply about two different objects: the
+describe wearer is at a desk, and the node is in a bag going down a corridor.
+describe
+describe A detector that compares them anyway reports that something is lying,
+describe on the only position source a Waveshare board has. The last two steps
+describe are the control — the same walk judged against the node's OWN stillness
+describe is evidence, so this fixture cannot be satisfied by a detector that was
+describe merely switched off.
+
+at 0
+  source node
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  motion still watch
+  expect trust trusted
+
+# About 190 m in three minutes: a walk, not a jump, and far past the 50 m
+# jump-while-still threshold. The wrist has not moved a centimetre and has
+# nothing to say about it.
+at 180000
+  source node
+  fix 3d
+  pos 5018000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  motion still watch
+  expect trust trusted
+  expect no-reason motion-disagreement
+  expect no-reason position-jump
+  expect no-reason implausible-speed
+
+# A wrist in motion must not switch the detector off for the node either. The
+# node has not moved since the step above, and neither has its position, so
+# there is still nothing to report — this step exists to show the walking wrist
+# changing nothing rather than clearing something.
+at 240000
+  source node
+  fix 3d
+  pos 5018000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  motion moving watch
+  expect trust trusted
+  expect no-reason motion-disagreement
+
+# The control. Same node, same kind of walk, judged against the node's own
+# accelerometer this time — one body, so the comparison means something, and it
+# is a disagreement.
+at 420000
+  source node
+  fix 3d
+  pos 5036000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  hdop 90
+  jam none
+  spoof none
+  motion still node
+  expect trust degraded
+  expect reason motion-disagreement
+  expect no-reason position-jump
+  expect no-reason implausible-speed

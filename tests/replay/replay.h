@@ -47,6 +47,17 @@ struct Expectation {
     std::vector<core::TrustReason> reasons_absent;
 };
 
+// One step of a fixture.
+//
+// `observation.source` and `motion.body` are the two halves of one question and
+// the reader will not let a fixture answer only half of it: `motion still` and
+// `motion moving` require a body word (`watch`, `node`, `companion`), `motion
+// unknown` refuses one, and a step's source defaults to this device's own
+// receiver and is changed with `source local|node|companion|manual|simulated`.
+// A trace that could say "still" without saying "still what" would be able to
+// describe a state MotionEvidence exists to make unrepresentable, and the
+// detector it feeds is only meaningful when the accelerometer and the receiver
+// are bolted to the same object (docs/adr/0013-node-motion.md §3).
 struct Step {
     core::MonotonicTime         at{};
     core::GnssObservation       observation{};

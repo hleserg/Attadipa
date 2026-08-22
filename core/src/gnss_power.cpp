@@ -109,9 +109,21 @@ GnssState next_state(GnssState current, const GnssContext& context)
         return current;
     }
 
-    // Nobody is asking, and the wrist is not moving. This is the ordinary state
-    // of a watch on a bedside table, and it is where the charge is saved.
-    if (!context.device_moving && current == GnssState::Tracking) {
+    // Nobody is asking, and *this receiver's own body* is known to be at rest.
+    // This is the ordinary state of a watch on a bedside table, and it is where
+    // the charge is saved.
+    //
+    // Both halves are load-bearing. "Known" keeps a receiver awake when nobody
+    // has sampled an accelerometer yet, rather than sleeping it on a default.
+    // "Own body" keeps this wrist's stillness from sleeping a node's receiver
+    // in somebody else's bag — the node's IMU gates the node's receiver and
+    // nothing else does (ADR-0013 §3).
+    //
+    // Neither is the ceiling. OD-10 requires a longest interval after which the
+    // receiver is asked again whatever the accelerometer says; this function is
+    // pure and reads no clock, so that lives in the location service that calls
+    // it and is T-080, unimplemented.
+    if (context.own_body_at_rest() && current == GnssState::Tracking) {
         if (can.power_save_mode) {
             return GnssState::PowerSave;
         }
@@ -123,7 +135,12 @@ GnssState next_state(GnssState current, const GnssContext& context)
 
     // Moving again after a rest. Retained ephemeris is what makes this cheap,
     // and start_kind() is where that shows up as a shorter expected wait.
-    if (context.device_moving &&
+    //
+    // Positive evidence again, and for the same reason in the other direction:
+    // a receiver that went to sleep because its own body was still is woken by
+    // its own body moving, not by an absence of information. An application
+    // that actually wants a position has already been served above.
+    if (context.own_body_in_motion() &&
         (current == GnssState::PowerSave || current == GnssState::Backup)) {
         return GnssState::Acquiring;
     }

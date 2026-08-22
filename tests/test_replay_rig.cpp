@@ -154,6 +154,20 @@ void test_malformed_fixtures_are_refused()
         {"scenario x\nat 0\n  hold\n",                "a hold with nothing yet to hold"},
         {"scenario x\nat 0\n  provider other\n  pos 5000000 10000000\n"
          "at 1000\n  hold\n",                          "a hold after nothing but a provider's answer"},
+
+        // A motion sample that knows something must know whose
+        // (docs/adr/0013-node-motion.md §3). These are the ways of writing one
+        // that does not, and the reader refuses each rather than picking a body
+        // — a fixture able to say "still" without saying "still what" could
+        // describe the exact state the type exists to make unrepresentable.
+        {"scenario x\nat 0\n  motion still\n",         "a stillness about nobody"},
+        {"scenario x\nat 0\n  motion moving\n",        "a movement about nobody"},
+        {"scenario x\nat 0\n  motion still unknown\n", "a stillness about an unnamed body"},
+        {"scenario x\nat 0\n  motion still elbow\n",   "a body that does not exist"},
+        {"scenario x\nat 0\n  motion unknown watch\n", "an unknown sample with a body anyway"},
+        {"scenario x\nat 0\n  motion sideways watch\n", "a motion that is neither"},
+        {"scenario x\nat 0\n  source\n",               "a source with nothing after it"},
+        {"scenario x\nat 0\n  source telepathy\n",     "a source that does not exist"},
     };
 
     Scratch scratch;

@@ -243,6 +243,52 @@ void test_unsupported_is_terminal()
     CHECK(caps.supports(core::Capability::RemovableStorage));
 }
 
+// ADR-0013 §1, and it is the invariant rather than an omission. The node
+// carries a 6-axis IMU (OD-16), so "a node senses motion" is true and is
+// exactly why this has to be written down: `MotionSensing` means the *wearer's*
+// steps, gestures and activity, and a node satisfying it would deliver a bag's
+// movements to a pedometer through an interface built so the application cannot
+// tell. That is the `NodeBody`-as-`WatchBody` error of ADR-0009 §3, one
+// subsystem over.
+//
+// The node's IMU has a home — the node's own hardware inventory, and the power
+// model of the node's own receiver — and it is below LocationService, where no
+// application reaches.
+void test_a_node_never_provides_motion_sensing()
+{
+    const platform::BoardProfile profile = waveshare();
+    platform::ProfileInventory   inventory(profile);
+    bring_up(inventory);
+    core::CapabilityRegistry caps(inventory);
+
+    // A node that claims it, insistently. The registry is the place that
+    // refuses, so that a node's firmware — which this project does not control
+    // — cannot talk its way into the wearer's step count.
+    core::NodeLink overreaching = attached_node();
+    overreaching.provides |= core::capability_bit(core::Capability::MotionSensing);
+    caps.set_node_link(overreaching);
+
+    // The Waveshare board has an accelerometer of its own, so MotionSensing is
+    // supported here whatever the node says. What must be true is that the
+    // answer comes from this device.
+    CHECK(caps.provider(core::Capability::MotionSensing).origin == core::Origin::Local);
+
+    // And with the local part gone, a node cannot fill the gap: Unsupported,
+    // terminal, rather than Ready over the link.
+    platform::ProfileInventory no_imu(profile);
+    bring_up(no_imu);
+    // The accelerometer alone, because that is the feature MotionSensing is
+    // computed from — a gyroscope answers a different question and is not what
+    // makes the capability exist.
+    no_imu.set_state(platform::HardwareFeature::Accelerometer, platform::HardwareState::Absent);
+    core::CapabilityRegistry crippled(no_imu);
+    crippled.set_node_link(overreaching);
+
+    CHECK_AVAIL(crippled, core::Capability::MotionSensing, core::Availability::Unsupported);
+    CHECK(!crippled.supports(core::Capability::MotionSensing));
+    CHECK(crippled.provider(core::Capability::MotionSensing).origin == core::Origin::Local);
+}
+
 // supports() answers "could this device, ever" and must not change while
 // running. An application that appears and disappears from the launcher as a
 // node comes and goes is the bug this property prevents.
@@ -409,6 +455,7 @@ int main()
     test_radio_is_not_lora();
     test_waveshare_position_comes_from_a_node();
     test_unsupported_is_terminal();
+    test_a_node_never_provides_motion_sensing();
     test_supports_is_stable();
     test_heading_needs_an_absolute_reference();
     test_waveshare_heading_comes_from_a_node();

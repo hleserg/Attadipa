@@ -13,7 +13,7 @@ at 0
   hdop 90
   jam none
   spoof none
-  motion still
+  motion still watch
   expect trust trusted
 
 at 60000
@@ -25,7 +25,7 @@ at 60000
   hdop 90
   jam none
   spoof none
-  motion still
+  motion still watch
   expect trust trusted             # about 10 m; within the noise of a fix
 
 # About 190 m, over two minutes: 1.6 m/s, which is a walk. No speed problem at
@@ -40,7 +40,7 @@ at 180000
   hdop 90
   jam none
   spoof none
-  motion still
+  motion still watch
   expect trust degraded
   expect reason motion-disagreement
   expect no-reason implausible-speed

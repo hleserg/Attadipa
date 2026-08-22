@@ -189,7 +189,7 @@ void test_the_interval_is_taken_before_it_is_overwritten()
 void test_a_fix_dropout_is_not_a_teleport()
 {
     TrustEvaluator evaluator;
-    const MotionEvidence walking{true, true};
+    const MotionEvidence walking{true, true, SensorBody::Watch};
 
     evaluator.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
 
@@ -323,7 +323,7 @@ void test_altitude_rate_is_measured_not_by_arrival_time()
 void test_retained_coordinate_no_fix_does_not_move_the_baseline()
 {
     TrustEvaluator evaluator;
-    const MotionEvidence walking{true, true};
+    const MotionEvidence walking{true, true, SensorBody::Watch};
     evaluator.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
 
     // A no-fix sample that keeps last known coordinate on the wire.
@@ -457,7 +457,7 @@ void test_a_future_dated_observation_is_rejected_without_freezing_the_baseline()
 // would pass against an implementation that reopened the freeze.
 void test_a_reordered_sample_is_still_checked_against_the_standing_baseline()
 {
-    const MotionEvidence still{true, false};
+    const MotionEvidence still{true, false, SensorBody::Watch};
 
     TrustEvaluator evaluator;
     evaluator.observe(good_fix(10000), PositionValidity::Valid, still, {}, at(10000));
@@ -483,7 +483,7 @@ void test_a_reordered_sample_is_still_checked_against_the_standing_baseline()
 // future-dated test walks with motion unknown and therefore cannot see.
 void test_a_future_dated_sample_is_checked_as_well_as_refused()
 {
-    const MotionEvidence still{true, false};
+    const MotionEvidence still{true, false, SensorBody::Watch};
 
     TrustEvaluator evaluator;
     evaluator.observe(good_fix(0), PositionValidity::Valid, still, {}, at(0));
@@ -553,9 +553,13 @@ void test_a_future_dated_altitude_is_checked_as_well_as_refused()
 // is being asserted: `known == false` is not evidence of stillness. A device
 // that has not asked the accelerometer knows nothing, and must not treat that
 // as an answer.
+//
+// The wrist and the fix are the same body here — `good_fix` is a `LocalGnss`
+// observation — which is what makes the comparison mean anything at all. The
+// four tests after this one are the cases where they are not.
 void test_a_still_wrist_is_evidence_and_an_unasked_one_is_not()
 {
-    const MotionEvidence still{true, false};
+    const MotionEvidence still{true, false, SensorBody::Watch};
     const MotionEvidence unasked{};
 
     {
@@ -575,6 +579,111 @@ void test_a_still_wrist_is_evidence_and_an_unasked_one_is_not()
                           at(600000));
         CHECK_NO_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
         CHECK_STATE(evaluator.state(), TrustState::Trusted);
+    }
+}
+
+// A fix from a node's receiver, which is a different object from the wrist.
+GnssObservation node_fix(std::uint64_t ms, std::int32_t lat = kLat, std::int32_t lon = kLon)
+{
+    GnssObservation o = good_fix(ms, lat, lon);
+    o.source          = PositionSource::NodeGnss;
+    return o;
+}
+
+// ADR-0013 §3, and the defect it was written to close. The wearer is at a desk
+// and the accelerometer says so, correctly. The node is in a bag going down the
+// corridor and its receiver says so, correctly. Two correct instruments on two
+// different objects are not a disagreement, and reporting one degrades a fix
+// that is fine — on the Waveshare board, the only fix there is.
+void test_a_node_walking_away_from_a_still_wrist_is_not_a_disagreement()
+{
+    const MotionEvidence wrist_still{true, false, SensorBody::Watch};
+
+    TrustEvaluator evaluator;
+    evaluator.observe(node_fix(0), PositionValidity::Valid, wrist_still, {}, at(0));
+    // 500 m in ten minutes: no speed problem, and a wrist that never moved.
+    evaluator.observe(node_fix(600000, kLat + 45000), PositionValidity::Valid, wrist_still, {},
+                      at(600000));
+
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+    CHECK_STATE(evaluator.state(), TrustState::Trusted);
+}
+
+// The same walk against the node's own stillness, which is the same body and
+// therefore is evidence. Without this the test above would be satisfied by a
+// detector that had simply been switched off.
+void test_a_still_node_is_evidence_about_the_nodes_own_position()
+{
+    const MotionEvidence node_still{true, false, SensorBody::Node};
+
+    TrustEvaluator evaluator;
+    evaluator.observe(node_fix(0), PositionValidity::Valid, node_still, {}, at(0));
+    evaluator.observe(node_fix(600000, kLat + 45000), PositionValidity::Valid, node_still, {},
+                      at(600000));
+
+    CHECK_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+    CHECK_STATE(evaluator.state(), TrustState::Degraded);
+}
+
+// The direction that fails quietly, and the reason a body label is not merely
+// tidier than none: a wrist in motion must not switch the detector off for a
+// node that is sitting on a table being lied to.
+void test_a_walking_wrist_does_not_suppress_a_still_nodes_disagreement()
+{
+    TrustEvaluator evaluator;
+    // The node is still. The wrist is walking. Only the node's own evidence may
+    // decide, and it says the node did not move.
+    const MotionEvidence node_still{true, false, SensorBody::Node};
+
+    evaluator.observe(node_fix(0), PositionValidity::Valid,
+                      MotionEvidence{true, true, SensorBody::Watch}, {}, at(0));
+    evaluator.observe(node_fix(600000, kLat + 45000), PositionValidity::Valid, node_still, {},
+                      at(600000));
+
+    CHECK_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+}
+
+// A source that names no body gets no motion evidence, however confident the
+// accelerometer is. A typed position was not measured on anything; a simulated
+// one is about whatever the fixture says and has to say it through a source
+// that names a body; an unset source cannot imply one.
+void test_a_source_that_names_no_body_gets_no_motion_evidence()
+{
+    const PositionSource nameless[] = {PositionSource::Unknown, PositionSource::Manual,
+                                       PositionSource::Simulated};
+
+    for (PositionSource source : nameless) {
+        CHECK(body_of(source) == SensorBody::Unknown);
+
+        for (std::uint8_t b = 0; b < kSensorBodyCount; ++b) {
+            TrustEvaluator       evaluator;
+            const MotionEvidence still{true, false, static_cast<SensorBody>(b)};
+
+            GnssObservation first = good_fix(0);
+            first.source          = source;
+            GnssObservation later = good_fix(600000, kLat + 45000);
+            later.source          = source;
+
+            evaluator.observe(first, PositionValidity::Valid, still, {}, at(0));
+            evaluator.observe(later, PositionValidity::Valid, still, {}, at(600000));
+            CHECK_NO_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+        }
+    }
+}
+
+// Every source maps to exactly one body, and the two that name a real chassis
+// name different ones. A mapping that collapsed them would pass every test
+// above by making both bodies the same.
+void test_every_source_maps_to_one_body()
+{
+    CHECK(body_of(PositionSource::LocalGnss) == SensorBody::Watch);
+    CHECK(body_of(PositionSource::NodeGnss) == SensorBody::Node);
+    CHECK(body_of(PositionSource::Companion) == SensorBody::Companion);
+    CHECK(body_of(PositionSource::LocalGnss) != body_of(PositionSource::NodeGnss));
+
+    for (std::uint8_t i = 0; i < kSensorBodyCount; ++i) {
+        const char* name = to_string(static_cast<SensorBody>(i));
+        CHECK(name != nullptr && name[0] != '\0');
     }
 }
 
@@ -1037,6 +1146,11 @@ int main()
     test_a_future_dated_sample_is_checked_as_well_as_refused();
     test_a_future_dated_altitude_is_checked_as_well_as_refused();
     test_a_still_wrist_is_evidence_and_an_unasked_one_is_not();
+    test_a_node_walking_away_from_a_still_wrist_is_not_a_disagreement();
+    test_a_still_node_is_evidence_about_the_nodes_own_position();
+    test_a_walking_wrist_does_not_suppress_a_still_nodes_disagreement();
+    test_a_source_that_names_no_body_gets_no_motion_evidence();
+    test_every_source_maps_to_one_body();
     test_satellites_used_cannot_exceed_satellites_in_view();
     test_receiver_time_is_compared_against_device_time();
     test_a_hostile_receiver_time_is_still_a_disagreement();

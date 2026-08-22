@@ -46,6 +46,26 @@ bool to_i64(const std::string& text, std::int64_t& out)
     return true;
 }
 
+bool sensor_body(const std::string& text, SensorBody& out)
+{
+    if (text == "unknown")   { out = SensorBody::Unknown;   return true; }
+    if (text == "watch")     { out = SensorBody::Watch;     return true; }
+    if (text == "node")      { out = SensorBody::Node;      return true; }
+    if (text == "companion") { out = SensorBody::Companion; return true; }
+    return false;
+}
+
+bool position_source(const std::string& text, PositionSource& out)
+{
+    if (text == "unknown")   { out = PositionSource::Unknown;   return true; }
+    if (text == "local")     { out = PositionSource::LocalGnss; return true; }
+    if (text == "node")      { out = PositionSource::NodeGnss;  return true; }
+    if (text == "companion") { out = PositionSource::Companion; return true; }
+    if (text == "manual")    { out = PositionSource::Manual;    return true; }
+    if (text == "simulated") { out = PositionSource::Simulated; return true; }
+    return false;
+}
+
 bool indication(const std::string& text, ReceiverIndication& out)
 {
     if (text == "unknown")     { out = ReceiverIndication::Unknown;     return true; }
@@ -186,6 +206,13 @@ bool load(const std::string& path, Scenario& out, std::string& error)
             // By default an observation is as fresh as the moment it is judged
             // at. `age` is how a fixture says otherwise.
             step.observation.observed_at = step.at;
+            // And by default it is this device's own receiver — the subject a
+            // fixture is about unless it says otherwise, which `source` and
+            // `provider other` both do. This is the rig declaring its own
+            // subject, not an assumption about the world: a body-blind default
+            // is exactly what ADR-0013 refuses, so there is no way to describe
+            // an observation here that has a position and no body.
+            step.observation.source = PositionSource::LocalGnss;
             out.steps.push_back(step);
             fields_in_step = 0;
             continue;
@@ -335,12 +362,54 @@ bool load(const std::string& path, Scenario& out, std::string& error)
             if (!number(seconds)) { parser.fail("`dtime` needs unix seconds"); error = parser.error; return false; }
             step.device_time = WallTime{seconds};
         } else if (keyword == "motion") {
+            // `still` and `moving` require a body and `unknown` refuses one.
+            // That is the MotionEvidence::is_coherent() invariant enforced at
+            // the fixture reader: a sample that knows something must know
+            // whose, and a sample nobody took is about nobody
+            // (docs/adr/0013-node-motion.md §3). A fixture that could say
+            // "still" without saying "still what" would be able to describe the
+            // exact state the type exists to make unrepresentable.
             std::string what;
-            if (!word(what)) { parser.fail("`motion` needs unknown still or moving"); error = parser.error; return false; }
-            if (what == "unknown")      { step.motion = MotionEvidence{false, false}; }
-            else if (what == "still")   { step.motion = MotionEvidence{true, false}; }
-            else if (what == "moving")  { step.motion = MotionEvidence{true, true}; }
-            else { parser.fail("`motion` needs unknown still or moving"); error = parser.error; return false; }
+            if (!word(what)) {
+                parser.fail("`motion` needs unknown, or still|moving and a body");
+                error = parser.error;
+                return false;
+            }
+            if (what == "unknown") {
+                // The one place this reader checks for a trailing word, and it
+                // is not inconsistency: everywhere else a stray token is noise,
+                // and here it is a claim. `motion unknown watch` reads as "the
+                // watch is... something", and what it would silently produce is
+                // a sample about nobody. The contradiction is refused rather
+                // than resolved in either direction.
+                std::string extra;
+                if (word(extra)) {
+                    parser.fail("`motion unknown` is about nobody and takes no body");
+                    error = parser.error;
+                    return false;
+                }
+                step.motion = MotionEvidence{};
+            } else if (what == "still" || what == "moving") {
+                std::string   whose;
+                SensorBody    body = SensorBody::Unknown;
+                if (!word(whose) || !sensor_body(whose, body) || body == SensorBody::Unknown) {
+                    parser.fail("`motion " + what + "` needs a body: watch, node or companion");
+                    error = parser.error;
+                    return false;
+                }
+                step.motion = MotionEvidence{true, what == "moving", body};
+            } else {
+                parser.fail("`motion` needs unknown, or still|moving and a body");
+                error = parser.error;
+                return false;
+            }
+        } else if (keyword == "source") {
+            std::string what;
+            if (!word(what) || !position_source(what, o.source)) {
+                parser.fail("`source` needs local, node, companion, manual, simulated or unknown");
+                error = parser.error;
+                return false;
+            }
         } else if (keyword == "provider") {
             std::string what;
             if (!word(what) || what != "other") {
