@@ -98,13 +98,107 @@ attadipa_receipt() {
 #
 # KIND is one of:
 #   done_pr    DETAIL is the pull request number, no `#`
+#   done_here  DETAIL is the pull request number this comment is being posted on
+#   done_here_cut     same, but the run did not finish -- EXTRA is the conclusion
+#   done_here_nopush  same, but the head did not move -- it ran and pushed nothing
 #   done_nopr  DETAIL is unused
 #   failed     DETAIL is the conclusion word from the action
+#
+# `done_pr` and `done_here` check that DETAIL is a number before saying it is
+# one. That is not defensive habit: on 2026-08-22 the caller's lookup failed on a
+# pull-request trigger and handed this function a GraphQL error document, which
+# went out verbatim as "### Done — pull request #{"data":{"repository": ...".
+# The caller is fixed; a renderer that prints whatever it is given as a pull
+# request number would let the next such bug out too.
 attadipa_outcome() {
-  local kind="$1" run_url="$2" detail="${3:-}"
+  local kind="$1" run_url="$2" detail="${3:-}" extra="${4:-}"
+
+  case "$kind" in
+    done_pr|done_here|done_here_cut|done_here_nopush)
+      case "$detail" in
+        ""|*[!0-9]*) kind=bad_detail ;;
+      esac ;;
+  esac
 
   echo "<!-- attadipa-outcome -->"
   case "$kind" in
+    done_here)
+      echo "### Done — pushed to this pull request"
+      echo
+      echo "The work is on this branch, in #$detail itself. There is no second"
+      echo "pull request to look for: this run was started from a comment here,"
+      echo "so it pushed to the branch under review rather than opening one."
+      echo
+      echo "**Now waiting on:** CI on the new head, plus a fresh independent"
+      echo "review — the previous verdict was reached against the previous"
+      echo "commit and says nothing about this one."
+      echo
+      echo "**When it needs you:** if the review labels this \`ai-review:blocking\`"
+      echo "and the finding is a product decision rather than a defect, or if it"
+      echo "carries \`needs-owner\`. Otherwise it is merged without asking —"
+      echo "owner decision, 2026-08-21."
+      echo
+      echo "[Run log]($run_url)"
+      ;;
+    done_here_cut)
+      echo "### A commit landed on this pull request, and the run did not finish"
+      echo
+      echo "The head of #$detail moved, so real work is on the branch — this is not"
+      echo "a run that did nothing. But it ended as \`${extra:-no conclusion}\` rather"
+      echo "than reaching a conclusion, so **what is on the branch may be half of"
+      echo "what was asked for**, and nothing here can tell you which half."
+      echo
+      echo "**Read the diff before the review does.** A partial change that compiles"
+      echo "is the expensive kind: CI will go green on it and say nothing about the"
+      echo "part that never got written."
+      echo
+      echo "**Now waiting on:** CI on the new head and a fresh independent review."
+      echo "Both run automatically. Neither of them knows the run was cut off."
+      echo
+      echo "**Nothing will come back for the unfinished part on its own.** The"
+      echo "hourly watchdog scans issues, not pull requests, so no label on this"
+      echo "page queues anything. Finishing it takes a person commenting"
+      echo "\`@claude\` here, having read the diff and said what is still missing."
+      echo
+      echo "[Run log]($run_url) — the reason it stopped is in there, and it decides"
+      echo "whether the rest is worth restarting or the branch is worth dropping."
+      ;;
+    done_here_nopush)
+      echo "### Ran on this pull request, and pushed nothing"
+      echo
+      echo "The run finished cleanly and the head of #$detail is the commit it"
+      echo "started on. Nothing was pushed, so **there is no new CI result and"
+      echo "no new review** — the checks you can see are the ones that were"
+      echo "already there."
+      echo
+      echo "That is a real outcome and not necessarily a wrong one. It reads three"
+      echo "ways, and the comment above this one should say which:"
+      echo
+      echo "* the agent **checked and found nothing to change** — it should have"
+      echo "  said so with a file and a line;"
+      echo "* the change it wanted to make was **out of scope** for what it was"
+      echo "  asked, and it said what it would take;"
+      echo "* it **did not get to the work at all**, in which case nothing above"
+      echo "  explains itself and the run log is the only place the reason is."
+      echo
+      echo "**Before commenting \`@claude\` again:** a comment is not deduplicated,"
+      echo "by design, so a second one starts a second billed agent against the"
+      echo "same branch. If the first said why it changed nothing, that reason"
+      echo "will not change on its own."
+      echo
+      echo "[Run log]($run_url)"
+      ;;
+    bad_detail)
+      echo "### The run finished, and the reporting could not name the result"
+      echo
+      echo "The agent ran and this step could not turn its result into a pull"
+      echo "request number, so it is refusing to print one rather than printing"
+      echo "something that is not a number. **This is a defect in the reporting,"
+      echo "not necessarily in the work** — check for an open pull request on"
+      echo "this branch before starting anything again."
+      echo
+      echo "[Run log]($run_url)"
+      ;;
     done_pr)
       echo "### Done — pull request #$detail"
       echo
