@@ -98,10 +98,12 @@ they are, and the banner is now at the top of the repository
 [`README`](../../../README.md).
 
 They matter here for two reasons. They establish the motto
-**`INDEPENDENT BY DESIGN`** and carry inks that are *not* the
-§42 palette: the wordmark orange samples around `#E16439`, against Attadipa
-Orange `#FF8A40`. That is a wider gap than "disagree by a digit", so the rule
-above does not settle it, and it has been raised as A7 in
-[`../../research/OPEN_QUESTIONS.md`](../../research/OPEN_QUESTIONS.md) rather
-than decided here. Sampled values and the reasoning are in
-[`../../../pics/README.md`](../../../pics/README.md).
+**`INDEPENDENT BY DESIGN`** and they carried inks that were *not* the §42
+palette. The wordmark orange sampled far enough from Attadipa Orange `#FF8A40`
+that the rule above — sources disagreeing by a digit — never settled it, and it
+was raised as A7. **The owner decided it on 2026-08-22:
+§42 wins.** The sampled values that lost are not repeated here or in
+[`../../../pics/README.md`](../../../pics/README.md) — a palette this repository
+does not use has no business sitting beside the one it does — and are recorded
+once, with the reasoning, in
+[OD-15](../../research/OWNER_DECISIONS.md#od-15--a7-and-a8-the-canonical-palette-wins-and-the-icon-may-lose-its-black-corners).

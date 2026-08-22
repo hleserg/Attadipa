@@ -1881,7 +1881,9 @@ Recommended next action:
   surface (4.95) and then fails on a **raised** card at 4.44 — six hundredths
   under 4.5:1, on the most ordinary thing the system draws. Both are pinned in
   `tests/test_ui_tokens.cpp`, both are tabulated in DESIGN_SYSTEM §3.2, and both
-  break a test if the palette moves. See also open question **A7**.
+  break a test if the palette moves. The brand-art-versus-§42 conflict once
+  recorded as open question A7 is resolved — see
+  [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 - **Still hardware-blocked, as it always was:** final §55 forbids preserving a
   concept-board value that fails on the real display. Every number in `ui/` is
   **PROPOSED**; none has been shown on a panel. `color.danger` stays UNKNOWN.
