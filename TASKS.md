@@ -1696,6 +1696,13 @@ Recommended next action:
   [WAVESHARE_ARRIVAL](docs/research/WAVESHARE_ARRIVAL.md) §5 were waiting on.
 - **The dump is not committed and never will be** — Waveshare's binaries plus
   third-party all-rights-reserved audio. It lives on the owner's machine.
+- **One line of the goal is still open, and it is the owner's to close.** T-099
+  asked for the image *"stored somewhere that is not the machine doing the
+  flashing"*. It is not: the owner's copy and this WSL host are the same physical
+  machine, and that machine is the one that will do the flashing. A second
+  location is asked for in
+  [#100](https://github.com/hleserg/Attadipa/issues/100). The verification —
+  which is what actually made the flash reversible — does not depend on it.
 
 ### T-098 · Read the ESP32-S3 errata against revision v0.2 — **DONE** 2026-08-22
 - [ESP32S3_ERRATA_V02](docs/research/ESP32S3_ERRATA_V02.md). Document identified
