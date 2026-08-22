@@ -251,6 +251,38 @@ jobs:
       - name: Watchdog queue scan
         run: bash .github/tests/watchdog-filter-test.sh
 
+  docs:
+    name: Documentation consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Two failures that have both already happened here, and neither of which
+      # anything else catches. A relative link that 404s reads exactly like one
+      # that works until somebody clicks it, and these documents cite each other
+      # constantly — a rename with a stale reference behind it is the normal way
+      # it breaks. A duplicate task ID means two tasks answer to one name, so an
+      # agent handed "T-054" cannot tell which it was handed; four pairs had
+      # accumulated before this job existed.
+      #
+      # Headings inside a `<details>` block are excluded on purpose: TASKS.md
+      # keeps a rejected task's original scope in one, and that is a record
+      # rather than a second live task. A check that failed on it would be
+      # landing broken.
+      #
+      # Invoked through `python3` rather than as `./check_docs.py`. The working
+      # copies this repository is edited from report core.filemode=false, so an
+      # executable bit set locally never reaches a commit and the runner would
+      # get `Permission denied` instead of a result.
+      # The checker's own mutation tests. A checker that passes everything is
+      # worse than no checker, because it reads as evidence. Ten cases, five of
+      # which assert it does *not* fire where firing would be wrong.
+      - name: The checker actually checks
+        run: python3 tools/docs/test_check_docs.py
+
+      - name: Links resolve and task IDs are unique
+        run: python3 tools/docs/check_docs.py .
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest

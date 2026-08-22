@@ -39,7 +39,39 @@ stale silently. The protocol is
 
 ## NOW
 
-### T-054 · The agent queue, verified by running it rather than by reading it
+### T-100 · The agent queue, verified by running it rather than by reading it
+- **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
+  different pieces of work carried that ID: this one, and the transport tests
+  in `## DONE
+
+### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
+- `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
+  Two checks, both of failures that had already happened here.
+- **Relative links resolve.** These documents cite each other constantly and a
+  link that 404s reads exactly like one that works until somebody clicks it. The
+  repository was clean at the time this landed; the point is that it stays that
+  way through the next rename. Fenced code, external schemes and root-relative
+  `/paths` are all handled.
+- **Task IDs are unique.** Four pairs had accumulated. Two were stale open copies
+  of tasks already recorded as `DONE` — T-083 and T-084 — and those copies are
+  deleted, their substance already being in the `DONE` records. Two were genuine
+  collisions between unrelated work: T-054 and T-039 each named a live task *and*
+  a historical record. **The historical record keeps the number** — commit
+  `5810e20` names T-054 in its message and history cannot be re-pointed — so the
+  live tasks became **T-100** and **T-101**, each carrying a line saying why so
+  nobody renumbers them back.
+- **Headings inside a `<details>` block are excluded on purpose.** TASKS.md keeps
+  a rejected task's original scope in one — T-073 — and that is a record, not a
+  second live task. Without the exclusion this job would have failed on `main`
+  from its first run, which is the specific way a hygiene check lands broken.
+- **Mutation-tested**, and CI runs those tests before it runs the checker:
+  ten cases in `tools/docs/test_check_docs.py`, five of which assert the checker
+  does *not* fire where firing would be wrong.
+- Invoked through `python3`, never as `./check_docs.py` — the working copies this
+  repository is edited from report `core.filemode=false`, so an executable bit
+  set locally never reaches a commit.`, which commit `5810e20` names as T-054 in its message. History
+  keeps the number it was recorded under; the live task takes a fresh one.
+  `python3 tools/docs/check_docs.py` fails if this ever happens again.
 - **Priority:** P1
 - **Dependencies:** none — the automation is merged on `main`
 - **Goal:** the loop closes without the owner as transport: a finding becomes an
@@ -1174,7 +1206,11 @@ stale silently. The protocol is
 
 ---
 
-### T-039 · A formatting rule, and CI that enforces it
+### T-101 · A formatting rule, and CI that enforces it
+- **Renumbered from T-039 on 2026-08-22, and do not renumber it back.** That
+  ID already belonged to the M0.5 reconciliation record in `## DONE`, dated
+  2026-08-21. Nothing outside this file referenced either, so the live task is
+  the one that moves. `python3 tools/docs/check_docs.py` fails if it recurs.
 - **Priority:** P2
 - **Dependencies:** none
 - **Goal:** one `.clang-format`, applied to everything under `platform/`,
@@ -1193,49 +1229,6 @@ stale silently. The protocol is
 - **Tests:** the CI job is the test
 - **Hardware required:** no
 
-### T-084 · Deep research: design customisation on wearables
-- **Priority:** P1 — the owner asked for this **instead of** filing the animated
-  watch-face feature, and the sequencing is the point: *"забей на это задание а
-  вместо этого назначь в план исследование по кастомизации дизайна на носимых
-  смарт часах. Че кто и как делает, как реализует, какие-то удачные дизайнерские
-  и программные фишки поищи. Прям нормальный дип ресерч. А по результатам уже
-  назначишь задание себе че делать че не делать."* Tasks come out of the
-  research, not before it.
-- **Dependencies:** T-009 (**done** — it is the substrate that makes any of this
-  possible), and it feeds T-081, T-082 and T-034
-- **Goal:** a written survey, in `docs/research/`, of how wearables actually do
-  customisation — watch faces, themes, icon packs, animations — and what it costs
-  in the places it hurts on this hardware: flash, RAM, battery and the always-on
-  path.
-- **What must be covered**, because these are the questions the product has:
-  - **who does what** — Wear OS watch faces (the XML format and why Google moved
-    to it from executable ones), Apple's complications, Garmin Connect IQ, Fitbit,
-    Pebble's legacy and what its community formats got right, Amazfit/Zepp's
-    downloadable faces, Bangle.js, Flipper Zero's animation packs and its
-    manifest, InfiniTime and Wasp-OS as the LVGL/embedded-scale comparison;
-  - **the format question** — declarative versus executable. Every platform that
-    started with executable faces moved away from it, and the reasons (power,
-    security, review burden, and faces that brick the watch) are the reasons this
-    project would face too;
-  - **animation on a battery** — what an idle animation costs when the panel is
-    an AMOLED versus an IPS, how platforms bound it, and how "raise to wake, play
-    something, then show the time" is done without paying for it all day;
-  - **what stops the layout breaking**, which is the owner's explicit
-    requirement: constraint systems, safe areas, what a face is *not* allowed to
-    control, and what happens on a geometry it was not authored for;
-  - **distribution and trust** — signing, review, sandboxing, size limits, and
-    what a malicious or merely bad pack can do;
-  - **accessibility under customisation** — how, or whether, platforms keep
-    contrast and legibility guarantees when a user installs a stranger's palette.
-    Attadipa already computes contrast, so this is a live question rather than a
-    theoretical one.
-- **Acceptance:** every claim carries a source and a date. Where a platform's
-  behaviour is documented, cite it; where it is folklore, say so. A recommendation
-  section at the end that names the two or three approaches worth copying and the
-  ones worth avoiding, each with the reason. **Then** the follow-on tasks are
-  filed, which is the deliverable the owner actually asked for.
-- **This is a research task.** It produces documentation. A pull request full of
-  new subsystems has been guessed at, not done.
 ### T-072 · What a vanilla MeshCore node actually exposes
 - **Priority:** P1 — [OD-7](docs/research/OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours).
   It gates T-073 and T-074 and it is cheap: the source is already cloned and MIT.
@@ -1387,22 +1380,6 @@ stale silently. The protocol is
   font missing one codepoint, an oversized one, a truncated one.
 - **Hardware required:** no
 
-### T-083 · No box characters in any build
-- **Priority:** P1 — a defect that exists **today**, not a feature. The owner saw
-  it in a screenshot: *"в проде конечно же такого быть не должно"*.
-- **Dependencies:** T-032 (**done** — the font pipeline exists and its output has
-  been compiled for the target and measured)
-- **Goal:** the simulator and every future firmware build draw with a **generated
-  subset** rather than LVGL's stock Montserrat, which is Latin-only. Today
-  `×` (U+00D7) renders as `□` on the diagnostic screen, and all six Cyrillic
-  codepoints in the English catalogue's own language names do too.
-- **The check already exists and already reports it** — `report_undrawable_glyphs()`
-  prints seven codepoints on every run, and `tools/l10n/check_glyphs.py` asks the
-  same question at build time. What is missing is that the answer is a warning
-  rather than a failure, and that nothing consumes the pipeline's output.
-- **Acceptance:** zero undrawable codepoints in either catalogue, in every build
-  that renders; the run-time report becomes a **test failure** rather than a line
-  of output; a screenshot of both boards in both locales shows no box.
 ### T-084 · Deep research: design customisation on wearables — **DONE** 2026-08-22
 - [WEARABLE_CUSTOMISATION](docs/research/WEARABLE_CUSTOMISATION.md). Eighteen
   sources, read and dated. Findings that changed the plan: **every platform that
