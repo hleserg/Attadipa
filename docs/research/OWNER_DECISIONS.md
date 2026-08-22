@@ -1062,10 +1062,107 @@ the two that actually conflicted.
 
 ---
 
+## OD-16 — A5 and A6: an external magnetometer is coming for the watch; the node will never carry one
+
+**Decided:** 2026-08-22, on [#56](https://github.com/hleserg/Attadipa/issues/56),
+sharpened on [#83](https://github.com/hleserg/Attadipa/issues/83).
+
+**As stated (both questions, in one message on #56):**
+
+> *"магнитомер надеюсь добавить внешним модулем в часы. Из коробки его ни в
+> одних часах не будет. В ноду планирую только акселерометр и вероятно
+> гироскоп, для целей оптимизации gnss. Магнитомер там не нужен."*
+
+**In English:** a magnetometer is hoped for as an external module fitted to the
+watch; it will not be in any watch out of the box. The node gets only an
+accelerometer and probably a gyroscope, for GNSS optimisation — a magnetometer
+is not needed there.
+
+**A6 sharpened, on #56, in the owner's own words:** *"в нодах магнитометр
+реально лишний"* — a magnetometer is genuinely surplus to the nodes.
+
+### A5 — yes, and hardware is in prospect, not in hand
+
+Two modules are ordered for the Waveshare unit: a **CJMCU-9911** (AK09911C) and
+a **GY-271** (QMC5883L) — traced in [#83](https://github.com/hleserg/Attadipa/issues/83)
+and researched in full in PR #87 (`docs/research/MAGNETOMETER_RETROFIT.md`,
+not yet merged at the time of this record). **Placement is the open part, not
+the part number** — #83 is explicit that nothing gets soldered until a survey
+of the case's magnetic environment (speaker magnet, motor pads, battery leads)
+says where, tracked as **T-109**. So `Capability::Heading` has a *watch-side*
+external-magnetometer path in prospect, and every compass feature stays behind
+that survey rather than behind the parcel.
+
+This is a **retrofit on one physical unit**, not a hardware fact about the
+`ESP32-S3-Touch-AMOLED-2.06` board type. A stock board still has no
+magnetometer, and the firmware must run correctly on a stock board.
+`HARDWARE_MATRIX.md`'s magnetometer row stays **absent**, annotated rather than
+corrected, exactly as PR #87 records it.
+
+### A6 — no, and deliberately
+
+**No magnetometer on the nodes, ever, by design.** This closes A6 in the
+direction [ADR-0009](../adr/0009-heading.md) was written to survive: the ADR
+refused to present `NodeBody` heading as `WatchBody` heading without a known,
+calibrated, still-valid transform, and noted no such transform exists for a
+device loose in a bag. That refusal now costs nothing, because there is no node
+heading to be tempted by.
+
+### What was ordered for the node instead, and what it does not buy
+
+A 6-axis IMU — accelerometer plus gyroscope — for **GNSS optimisation**, not for
+heading. Six axes give orientation relative to gravity and relative to wherever
+motion started; they give **no absolute heading** (a gyroscope integrates rate
+of turn, with an unknown constant and unbounded drift; an accelerometer finds
+*down*, never *north* — the pairing is only called 9-axis once a magnetometer
+supplies the absolute reference) and **no standalone position** (unaided
+inertial dead reckoning at this price is useful for seconds, not minutes). What
+it genuinely buys is knowing the node is still — so a stationary node does not
+need a GNSS fix recomputed and can let the receiver sleep — knowing the node
+moved, and tilt. This is the same finding as
+[#87](https://github.com/hleserg/Attadipa/pull/87) reached about the watch's own
+QMI8658, from the other end: a power feature wearing a positioning name.
+
+**What it obliges:**
+
+1. `docs/hardware/MAGNETOMETER_BACKLOG.md` no longer carries the node as a
+   possible magnetometer source — a deliberate "no" is removed from the plan
+   rather than left marked unavailable, per the owner's own framing on #56.
+2. [ADR-0009](../adr/0009-heading.md) §3's "if A6 comes back yes" framing is
+   answered rather than open, and the ADR records the general rule the two
+   answers here share: *a sensor may correct another reading taken on the same
+   body, and may not be presented as a reading from a different one.* The
+   node's IMU improving the node's own GNSS position composes correctly and
+   needs no transform, because both sit on the node's body; a node's heading
+   would not, because the node and the wrist point in different directions.
+   Neither is an exception to the other.
+3. The node IMU is a **capability question of its own**, in the
+   [ADR-0004](../adr/0004-capability-sources.md)/[ADR-0007](../adr/0007-two-capability-layers.md)
+   provider-registry sense — it arrives with an attached node, needs an owner,
+   a power story, and a defined state for when the node walks away — and it is
+   **not resolved here**. Filed as its own issue rather than folded into #56 or
+   into [OD-10](#od-10--a-standing-person-does-not-need-a-new-fix), which it
+   will eventually feed.
+
+**What it invalidates:** the framing in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) that A5 and A6 are still awaiting the
+owner, and the conditional "if the node has a magnetometer" language in
+`MAGNETOMETER_BACKLOG.md` and ADR-0009 §3.
+
+**What it does not do:** it does not choose where on the watch the magnetometer
+sits (T-109), and it does not design the node-IMU capability (filed separately,
+not resolved here).
+
+**Status:** documentation only. Filed the node-IMU capability question as
+[#93](https://github.com/hleserg/Attadipa/issues/93) (T-111).
+
+---
+
 ## Still with the owner
 
-Nothing here answers A1–A3, A5 or the compass question. Those remain in
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+Nothing here answers A1–A3 or the display/theme questions (A9, A10, D16).
+Those remain in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). A5 and A6 are answered
+above; A1–A3 have their own record in OD-16's neighbours as they land.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
 answered from a datasheet: whether Meshtastic's protocol definitions are licensed

@@ -104,12 +104,44 @@ and the conversion is refused otherwise:
    transform's, not the better of them.
 
 None of those holds today, and there is no mechanism that would establish them.
-So the answer for the foreseeable future is: **a node's heading is displayed as
-node orientation in diagnostics, and is not used for the user-facing arrow.**
+So the answer is: **a node's heading is displayed as node orientation in
+diagnostics, and is not used for the user-facing arrow.**
 
-If A6 comes back "the node has a magnetometer", this is the paragraph that
-prevents the obvious wrong implementation. That is the whole reason this ADR is
-being written before the answer arrives.
+**A6 is answered, 2026-08-22: no.** The Attadipa node will never carry a
+magnetometer — owner decision, *"в нодах магнитометр реально лишний"*
+([OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-16). So `NodeBody`
+heading has no source and never will; this paragraph is retained anyway,
+because the rule it states is not really about a magnetometer. It is a special
+case of a rule general enough to survive the answer coming back either way —
+see §3a.
+
+### 3a. The rule that made both answers correct at once
+
+The same owner decision that closed A6 also ordered a 6-axis IMU —
+accelerometer plus gyroscope — for the node, for GNSS power optimisation. Read
+carelessly, that looks like a contradiction of §3: sensors on the node, used to
+improve a reading, again. It is not, and the reason is worth stating as its own
+rule rather than left to be re-derived the next time a node sensor is proposed:
+
+> **A sensor may correct another reading taken on the same body, and may not be
+> presented as a reading from a different one.**
+
+Two worked examples, because they land on opposite sides of the same line:
+
+- **The node's magnetometer, had A6 come back "yes", correcting the *watch's*
+  heading.** Refused by §3 above. The node and the wrist are different bodies —
+  the magnetometer measures the node's orientation, not the wearer's, and no
+  transform between the two is ever established for a device loose in a bag.
+- **The node's IMU correcting the *node's own* GNSS position.** Allowed, and
+  needs no transform at all. The IMU and the GNSS receiver sit on the same
+  body, so "the node is still" or "the node moved" composes directly with the
+  node's own position estimate — that was always what the node's position
+  meant. This is [OD-10](../research/OWNER_DECISIONS.md#od-10--a-standing-person-does-not-need-a-new-fix)'s
+  logic, applied to the node instead of the watch, and it is why the node's IMU
+  is filed as its own capability question
+  ([#93](https://github.com/hleserg/Attadipa/issues/93)) rather than treated as
+  a small addition to this ADR: it is a same-body correction, not a heading
+  source, and does not belong in the `HeadingSource` enum at all.
 
 ### 4. Course over ground needs motion, and standing still is a designed state
 
@@ -212,8 +244,11 @@ heading, and a stale heading. The assertion that matters: **no configuration of
 inputs causes a wrist-relative arrow to be drawn from a `NodeBody` or
 `CourseOverGround` source.** On hardware: `NOT EXECUTED — HARDWARE REQUIRED`.
 
-**Open.** **H10** — the speed gate, per GNSS module. **A5/A6** — whether a
-magnetometer is intended at all, and whether the node carries one. Whether
-`RemoteSensor` heading is worth surfacing in Diagnostics before any of that is
-answered (probably yes; it is nearly free and it makes the frame distinction
-visible to whoever implements the transform later).
+**Open.** **H10** — the speed gate, per GNSS module. **A5 and A6 are answered**
+(2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-16): a
+magnetometer is intended, external, on the watch, placement not yet chosen
+(T-109); the node will never carry one. What remains open is whether
+`RemoteSensor` heading is worth surfacing in Diagnostics even with no live
+source today — probably yes; it is nearly free and it makes the frame
+distinction visible to whoever implements a transform later, on the day some
+other remote device is capable of one.

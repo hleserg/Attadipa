@@ -443,10 +443,11 @@ available on this board.
   above; **nothing in this repository may say `PASS` until somebody runs a test
   on the board and writes down what came out.**
 - **T-011 interference measurement** — still blocked, and note that arriving
-  hardware does not help: neither board has a magnetometer, so the headline
-  haptics-versus-compass concern is not measurable on either of them in any
-  configuration. On the Waveshare it is doubly not measurable — that unit has no
-  vibration motor fitted at all.
+  hardware does not fully help: an external magnetometer is ordered for the
+  Waveshare unit (A5, [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)),
+  but it is not yet placed (T-109), so the headline haptics-versus-compass
+  concern is not measurable *yet*, not never. On the Waveshare it is currently
+  doubly not measurable — that unit has no vibration motor fitted at all.
 
 ## Waiting on the owner
 
@@ -455,11 +456,18 @@ available on this board.
 | A1 | Is either board physically available, and which revision? | everything hardware |
 | A2 | If a T-Watch: which radio chip and which GNSS module? | decides whether the watch can join a MeshCore network at all — two of the five candidate radios cannot ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 | A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
-| A5 | Is an external magnetometer intended at all? | decides whether five magnetometer epics are dormant or dead |
-| A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
 None of these blocks M1. All of them block hardware work.
+
+**A5 and A6 are answered** — [#56](https://github.com/hleserg/Attadipa/issues/56),
+on 2026-08-22, recorded as
+[OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one).
+An external magnetometer is intended for the watch (hardware ordered, placement
+not yet chosen — T-109); the node will never carry one, and gets an
+accelerometer and probably a gyroscope instead, for GNSS power optimisation —
+filed as its own capability question,
+[#93](https://github.com/hleserg/Attadipa/issues/93) (T-111).
 
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as
