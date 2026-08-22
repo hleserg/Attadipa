@@ -272,6 +272,19 @@ jobs:
                 else "is_error=\(.is_error), subtype=\(.subtype), turns=\(.num_turns), cost=$\(.total_cost_usd // 0)"
                 end' "${EXEC_FILE}" 2>/dev/null || echo "the execution log could not be parsed")"
             detail="The session's own result record says: ${summary}"
+            # AND THE PART THE STRUCTURAL FIELDS CANNOT REACH. `is_error=true,
+            # subtype=success` is a true sentence that names nothing, and the
+            # agent workflow lost an afternoon to exactly that shape on #67
+            # (run 32589375744). .github/scripts/failure-reason.sh reads the
+            # same log for text matching a whitelist of error grammars only --
+            # an API status, a context refusal, a credit balance, an expired
+            # token -- so the free-text `result` still never reaches a comment
+            # we author, but a recognised failure gets to say its own name.
+            reason="$(bash .github/scripts/failure-reason.sh "${EXEC_FILE}")"
+            case "${reason}" in
+              unclassified*|"the run reported no error"*) ;;
+              *) detail="${detail}"$'\n'"Reason: ${reason}" ;;
+            esac
           fi
           {
             echo "detail<<ATTADIPA_EOF"
