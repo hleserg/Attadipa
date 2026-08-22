@@ -98,6 +98,7 @@ attadipa_receipt() {
 #
 # KIND is one of:
 #   done_pr    DETAIL is the pull request number, no `#`
+#   done_pr_cut       same, but the run did not finish -- EXTRA is the conclusion
 #   done_here  DETAIL is the pull request number this comment is being posted on
 #   done_here_cut     same, but the run did not finish -- EXTRA is the conclusion
 #   done_here_nopush  same, but the head did not move -- it ran and pushed nothing
@@ -114,7 +115,7 @@ attadipa_outcome() {
   local kind="$1" run_url="$2" detail="${3:-}" extra="${4:-}"
 
   case "$kind" in
-    done_pr|done_here|done_here_cut|done_here_nopush)
+    done_pr|done_pr_cut|done_here|done_here_cut|done_here_nopush)
       case "$detail" in
         ""|*[!0-9]*) kind=bad_detail ;;
       esac ;;
@@ -122,6 +123,27 @@ attadipa_outcome() {
 
   echo "<!-- attadipa-outcome -->"
   case "$kind" in
+    done_pr_cut)
+      echo "### Pull request #$detail exists, and the run that made it did not finish"
+      echo
+      echo "#$detail says it closes this issue, so real work is on a branch — this"
+      echo "is not a run that did nothing. But it ended as \`${extra:-no conclusion}\`"
+      echo "rather than reaching a conclusion, so **what is in that pull request may"
+      echo "be part of the task rather than all of it**, and nothing here can tell"
+      echo "you which part."
+      echo
+      echo "**Read the pull request against this issue's acceptance criteria before"
+      echo "the review does.** A partial change that compiles is the expensive kind:"
+      echo "CI will go green on it and say nothing about the requirement that was"
+      echo "never implemented. If it is incomplete, say what is missing on the pull"
+      echo "request rather than reopening the work here."
+      echo
+      echo "**Now waiting on:** CI and the independent review. Neither of them knows"
+      echo "the run was cut off."
+      echo
+      echo "[Run log]($run_url) — the reason it stopped is in there, and it decides"
+      echo "whether the rest is worth restarting."
+      ;;
     done_here)
       echo "### Done — pushed to this pull request"
       echo

@@ -669,16 +669,6 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "::notice::pull request head before this run: ${SHA:-not a pull request}"
 
-          # AND WHEN THIS RUN BEGAN. The hand-over step's second question is
-          # "which open pull request mentions this issue at all", and a mention
-          # is only evidence of THIS run's work if it was made during it. An
-          # issue that cites a pull request as evidence -- #75 cites #71 five
-          # times -- creates that same cross-reference the moment it is filed,
-          # and the step reported "Done — pull request #71" for a run that
-          # produced nothing. Stamped here rather than in the gate for the same
-          # reason as the head above: this is where the writer queue lets go.
-          date -u +%Y-%m-%dT%H:%M:%SZ | sed 's/^/started=/' >> "$GITHUB_OUTPUT"
-
       - name: Run Claude
         if: steps.auth.outputs.ok == 'true'
         id: claude
@@ -870,7 +860,6 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
           HEAD_BEFORE: ${{ steps.prhead.outputs.sha }}
-          RUN_STARTED: ${{ steps.prhead.outputs.started }}
           CONCLUSION: ${{ steps.claude.outputs.conclusion }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -887,31 +876,30 @@ jobs:
           # opens a second, competing pull request. The message meant to prevent
           # duplicate work would have caused it.
           #
-          # TWO QUESTIONS, ASKED IN ORDER, because they are not the same one.
+          # ONE QUESTION, and it used to be two.
           #
-          #   1. Which open pull request CLOSES this issue? GitHub resolves the
-          #      closing keyword itself, so this is a fact rather than a grep
-          #      for "Fixes".
-          #   2. Failing that, which open pull request MENTIONS it at all? A
-          #      cross-reference is raised by any pull request whose body names
-          #      #N, keyword or not.
+          #   Which open pull request CLOSES this issue? GitHub resolves the
+          #   closing keyword itself, so this is a fact rather than a grep for
+          #   "Fixes".
           #
-          # The second exists because the prompt requires `Fixes #N` only in the
-          # implementation branch. Three of the five task types are research-only
-          # and their branch says just "open a documentation pull request", so a
-          # perfectly compliant agent produces a pull request the first query
-          # cannot see. Found by review on #58 rather than in production, which
-          # is the cheaper of the two places.
+          # THE SECOND QUESTION IS GONE, and its removal is the point. It asked
+          # which open pull request MENTIONS the issue at all, on the reasoning
+          # that research-only branches were told merely to "open a
+          # documentation pull request" and so produced work no closing keyword
+          # could find. That reasoning expired: the prompt above now requires
+          # `Fixes #N` from a research pull request in the same words as an
+          # implementation one, and says why.
           #
-          # AND THE TRIGGER IS NOT ALWAYS AN ISSUE. `@claude` on a pull request
-          # starts an agent whose $ISSUE is that pull request's number, and
-          # GraphQL's `issue(number:)` does not resolve pull requests — it
-          # returns NOT_FOUND. `gh` then exits non-zero having already written
-          # the error document to stdout, which `|| echo ""` does not undo, so
-          # $PR became the JSON. On #71 that shipped as
-          # `### Done — pull request #{"data":{"repository":{"issue":null}}...`.
-          # `issueOrPullRequest` answers for both, and a pull request that
-          # triggered its own agent is its own answer.
+          # What the fallback cost while it lived: a cross-reference is created
+          # by ANY pull request that names the issue, including one somebody
+          # else edits mid-run to discuss the same problem. #75 cites #71 five
+          # times as evidence and was told "Done — pull request #71". The first
+          # repair filtered mentions by time, which proves only that a mention
+          # appeared during the run -- not that this run caused it. Correlation
+          # was standing in for ownership, and it also let a weak signal
+          # outrank a failed conclusion. Reported by the producing agent as #76
+          # against 5087913, and it is right: the honest fix is to stop asking
+          # the second question rather than to qualify it further.
           # shellcheck disable=SC2016  # $owner/$repo/$number are GraphQL
           # variables bound by -F below, not shell expansions.
           FOUND=$(gh api graphql -f query='
@@ -924,14 +912,6 @@ jobs:
                     closedByPullRequestsReferences(first:5, includeClosedPrs:false) {
                       nodes { number state }
                     }
-                    timelineItems(last:30, itemTypes:[CROSS_REFERENCED_EVENT]) {
-                      nodes {
-                        ... on CrossReferencedEvent {
-                          referencedAt
-                          source { ... on PullRequest { number state } }
-                        }
-                      }
-                    }
                   }
                 }
               }
@@ -940,11 +920,8 @@ jobs:
                   | if $i.__typename == "PullRequest"
                     then (if $i.state == "OPEN"
                           then "here \($i.number) \($i.headRefOid)" else "" end)
-                    else (([$i.closedByPullRequestsReferences.nodes[]?
-                             | select(.state == "OPEN") | "pr \(.number)"]
-                            + [$i.timelineItems.nodes[]?
-                               | select(.source?.state? == "OPEN")
-                               | "xref \(.source.number) \(.referencedAt)"])
+                    else ([$i.closedByPullRequestsReferences.nodes[]?
+                            | select(.state == "OPEN") | "pr \(.number)"]
                           | first // "")
                     end' 2>/dev/null || echo "")
 
@@ -967,7 +944,7 @@ jobs:
             read -r DETAIL
             read -r EXTRA
           } < <(bash .github/scripts/handover-decision.sh \
-                  "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}" "$RUN_STARTED")
+                  "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}")
           echo "::notice::hand over as $KIND (${DETAIL:-no detail}${EXTRA:+, $EXTRA})"
 
           # The agent labels the issue itself when it blocks — and a BLOCKED
@@ -989,7 +966,7 @@ jobs:
           case "$KIND" in
             done_pr|done_here|done_here_nopush|done_nopr)
               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
-            done_here_cut)
+            done_pr_cut|done_here_cut)
               # agent:review only, and NOT agent:ready. The first version added
               # both -- a commit to read, and somebody to pick up the rest --
               # and review pointed out that the second label is inert on a pull

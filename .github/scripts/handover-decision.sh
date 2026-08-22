@@ -22,30 +22,25 @@
 # here: no network, no `gh`, no environment, every input an argument, and
 # .github/tests/handover-decision-test.sh asserts on the exact output.
 
-# attadipa_handover_decision FOUND HEAD_BEFORE CONCLUSION RUN_STARTED
+# attadipa_handover_decision FOUND HEAD_BEFORE CONCLUSION
 #
 # FOUND is the raw output of the workflow's lookup, which is trusted for
-# nothing. Three shapes mean something:
+# nothing. Two shapes mean something:
 #
 #   "here <number> <sha>"  the task IS an open pull request -- the trigger was
 #                          a comment on it -- and <sha> is its head now
 #   "pr <number>"          the task is an issue, and that open pull request
-#                          declares it CLOSES it. Definitive: somebody wrote
-#                          "Fixes #N" and GitHub resolved the keyword itself.
-#   "xref <number> <iso>"  the task is an issue and that open pull request
-#                          merely MENTIONS it, at <iso>. Not definitive, and
-#                          this is the third defect this step shipped: #75
-#                          cites #71 five times as evidence, so filing #75
-#                          created that cross-reference before any agent ran,
-#                          and the step announced "Done — pull request #71" for
-#                          a run that produced nothing and then labelled the
-#                          issue agent:review so nothing would re-queue it. A
-#                          mention is evidence only if it was made DURING this
-#                          run, so it is kept only when <iso> is at or after
-#                          RUN_STARTED. Both are UTC in the same format, which
-#                          is what makes a string comparison sound; a malformed
-#                          or missing RUN_STARTED discards the mention, because
-#                          an unverifiable claim of work must not be printed.
+#                          declares it CLOSES it. Somebody wrote "Fixes #N" and
+#                          GitHub resolved the keyword itself, which is a fact
+#                          rather than a coincidence of wording.
+#
+# THERE WAS A THIRD, AND REMOVING IT IS WHY THIS FILE CHANGED. "xref" meant a
+# pull request that merely MENTIONED the issue, kept when the mention postdated
+# the run. A mention is created by any pull request naming the issue, including
+# one somebody edits mid-run to discuss the same problem -- so the timestamp
+# proved a mention appeared during the run, never that this run caused it.
+# Correlation standing in for ownership. Reported as #76 against 5087913 by the
+# agent that had reported #75, and right both times.
 #
 # Anything else is treated as "found nothing", including an error document, a
 # partial response, and whatever a future `gh` decides to print. A lookup that
@@ -57,12 +52,12 @@
 #
 # CONCLUSION is the action's own conclusion word, possibly empty.
 #
-# Prints three lines: the kind, the detail, then an extra field that only
-# done_here_cut uses (the conclusion word). The third line is always printed,
-# empty when unused, so a caller can read a fixed number of lines.
+# Prints three lines: the kind, the detail, then an extra field that only the
+# _cut kinds use (the conclusion word). The third line is always printed, empty
+# when unused, so a caller can read a fixed number of lines.
 attadipa_handover_decision() {
-  local found="$1" head_before="$2" conclusion="$3" run_started="${4:-}"
-  local where="" pr="" head_now="" rest="" seen_at=""
+  local found="$1" head_before="$2" conclusion="$3"
+  local where="" pr="" head_now="" rest=""
 
   case "$found" in
     "here "[0-9]*)
@@ -77,31 +72,6 @@ attadipa_handover_decision() {
       esac ;;
     "pr "[0-9]*)
       where="pr"; pr="${found#pr }" ;;
-    "xref "[0-9]*)
-      rest="${found#xref }"
-      pr="${rest%% *}"
-      case "$rest" in
-        *" "*) seen_at="${rest#* }" ;;
-        *)     seen_at="" ;;
-      esac
-      # A mention made before this run started belongs to somebody else's
-      # work, or to the issue's own text. Only a mention made during the run
-      # is evidence that this run made it.
-      case "$run_started" in
-        20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z) ;;
-        *) run_started="" ;;
-      esac
-      case "$seen_at" in
-        20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z) ;;
-        *) seen_at="" ;;
-      esac
-      where=""
-      if [ -n "$run_started" ] && [ -n "$seen_at" ]; then
-        if [ "$seen_at" = "$run_started" ] || [ "$seen_at" \> "$run_started" ]; then
-          where="pr"
-        fi
-      fi
-      [ -n "$where" ] || pr="" ;;
   esac
 
   case "$pr" in
@@ -119,12 +89,15 @@ attadipa_handover_decision() {
     moved=yes
   fi
 
-  # A pull request number is the whole story, so it wins over every other
-  # signal -- including a run whose conclusion never arrived. An agent that
-  # opened a pull request and then timed out has still done the work, and
-  # reporting that as a failure would send somebody looking for a branch that
-  # is already there. That reasoning does NOT extend to `here`: there, the
-  # pull request's existence is not the agent's doing.
+  # A closing reference is strong evidence -- an agent that opened a pull request
+  # saying "Fixes #N" and then timed out has still done something real, and
+  # calling that a plain failure would send somebody looking for a branch that
+  # is already there. But it is not proof the work is FINISHED, which is what
+  # this step used to treat it as, checking it before the conclusion was
+  # consulted at all. The two facts are reported separately below.
+  #
+  # None of it extends to `here`: there, the pull request's existence is not the
+  # agent's doing.
   if [ "$where" = "here" ] && [ "$moved" = "yes" ]; then
     # A moved head is real work that landed, so this is never a bare failure --
     # "nothing was left half-applied" would be a lie about a branch that has a
@@ -141,8 +114,16 @@ attadipa_handover_decision() {
     printf 'done_here_nopush\n%s\n\n' "$pr"
   elif [ "$where" = "here" ]; then
     printf 'failed\n%s\n\n' "${conclusion:-no conclusion}"
-  elif [ -n "$pr" ]; then
+  elif [ -n "$pr" ] && [ "$conclusion" = "success" ]; then
     printf 'done_pr\n%s\n\n' "$pr"
+  elif [ -n "$pr" ]; then
+    # A pull request that closes this issue exists, and the run that made it did
+    # not finish. Both are true and both matter, so neither is dropped: "failed"
+    # would send somebody looking for work that is on a branch, and "done" would
+    # hide that it may be half of it. Same shape as done_here_cut, and it exists
+    # because #76 was right that a found pull request must not launder a failed
+    # conclusion into a success.
+    printf 'done_pr_cut\n%s\n%s\n' "$pr" "${conclusion:-no conclusion}"
   elif [ "$conclusion" = "success" ]; then
     printf 'done_nopr\n\n\n'
   else
@@ -152,5 +133,5 @@ attadipa_handover_decision() {
 
 # Callable as a script as well as sourceable.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  attadipa_handover_decision "${1:-}" "${2:-}" "${3:-}" "${4:-}"
+  attadipa_handover_decision "${1:-}" "${2:-}" "${3:-}"
 fi

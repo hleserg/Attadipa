@@ -22,10 +22,10 @@ cd "$(dirname "$0")/../.." || exit 1
 
 pass=0; fail=0
 
-# decide FOUND HEAD_BEFORE CONCLUSION [RUN_STARTED] -> "KIND|DETAIL|EXTRA"
+# decide FOUND HEAD_BEFORE CONCLUSION -> "KIND|DETAIL|EXTRA"
 decide() {
   local out
-  out=$(bash .github/scripts/handover-decision.sh "$1" "$2" "$3" "${4:-}")
+  out=$(bash .github/scripts/handover-decision.sh "$1" "$2" "$3")
   printf '%s|%s|%s' \
     "$(printf '%s' "$out" | sed -n 1p)" \
     "$(printf '%s' "$out" | sed -n 2p)" \
@@ -48,8 +48,12 @@ SHA_B=4cd0ff514e9feb3ee5335b6ec007495ac2475929
 echo "An issue whose agent opened a pull request"
 says "a closing or cross-referenced pull request is the answer" \
      "$(decide "pr 71" "" success)" "done_pr|71|"
-says "and it outranks a conclusion that never arrived — the work is there" \
-     "$(decide "pr 71" "" "")" "done_pr|71|"
+says "#76: a closing reference no longer launders a dead run into a success" \
+     "$(decide "pr 71" "" "")" "done_pr_cut|71|no conclusion"
+says "nor does it when the run reported a failure" \
+     "$(decide "pr 71" "" failure)" "done_pr_cut|71|failure"
+says "and the work is still named rather than reported as nothing" \
+     "$(decide "pr 71" "" cancelled)" "done_pr_cut|71|cancelled"
 says "a clean run that opened nothing says so" \
      "$(decide "" "" success)" "done_nopr||"
 says "a run that died reports the conclusion word" \
@@ -97,30 +101,21 @@ says "and neither field is taken from a longer line than the shape allows" \
      "$(decide "here 71 $SHA_B extra" "$SHA_A" success)" "done_here_nopush|71|"
 
 echo
-echo "A pull request that merely mentions the issue"
-# Shipped on #75, in production, while this pull request was open: #75 cites
-# #71 five times as evidence, so filing #75 created the cross-reference before
-# any agent ran. The step announced "Done — pull request #71" for a run that
-# produced nothing, and labelled the issue agent:review so nothing re-queued it.
-STARTED=2026-08-22T15:26:00Z
-says "THE #75 DEFECT: a mention made before the run is not this run's work" \
-     "$(decide "xref 71 2026-08-22T15:25:59Z" "" success "$STARTED")" "done_nopr||"
-says "and it is a failure, not a no-op, when the run also died" \
-     "$(decide "xref 71 2026-08-22T15:25:59Z" "" cancelled "$STARTED")" "failed|cancelled|"
-says "a mention made during the run is the work" \
-     "$(decide "xref 71 2026-08-22T15:36:49Z" "" success "$STARTED")" "done_pr|71|"
-says "a mention made in the same second counts, since the stamp is whole seconds" \
-     "$(decide "xref 71 $STARTED" "" success "$STARTED")" "done_pr|71|"
-says "no start stamp at all discards the mention rather than trusting it" \
-     "$(decide "xref 71 2026-08-22T15:36:49Z" "" success "")" "done_nopr||"
-says "a malformed start stamp discards it too" \
-     "$(decide "xref 71 2026-08-22T15:36:49Z" "" success "yesterday")" "done_nopr||"
-says "a malformed reference time discards it, rather than comparing garbage" \
-     "$(decide "xref 71 whenever" "" success "$STARTED")" "done_nopr||"
-says "a mention with no time at all is discarded" \
-     "$(decide "xref 71" "" success "$STARTED")" "done_nopr||"
-says "but a CLOSING reference needs no timestamp — Fixes #N is definitive" \
-     "$(decide "pr 71" "" success "")" "done_pr|71|"
+echo "A pull request that merely mentions the issue is not an answer at all"
+# The fallback that read a bare cross-reference as this run's output is gone.
+# It cost two false claims: #75 was told "Done — pull request #71" for citing
+# #71 as evidence, and the timestamp filter that followed proved only that a
+# mention appeared during the run, never that this run caused it. Reported as
+# #76 and right: the prompt already requires `Fixes #N` from research pull
+# requests too, so nothing compliant needs the fallback.
+says "THE #76 DEFECT: a mention is not a shape this accepts any more" \
+     "$(decide "xref 71 2026-08-22T15:36:49Z" "" success)" "done_nopr||"
+says "and a mention over a dead run is a failure, not an attribution" \
+     "$(decide "xref 71 2026-08-22T15:36:49Z" "" failure)" "failed|failure|"
+says "a bare mention with no timestamp is equally not a shape" \
+     "$(decide "xref 71" "" success)" "done_nopr||"
+says "a CLOSING reference still is one — Fixes #N is resolved by GitHub" \
+     "$(decide "pr 71" "" success)" "done_pr|71|"
 
 echo
 echo "The head moved for a reason that was not this run"

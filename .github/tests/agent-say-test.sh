@@ -175,6 +175,16 @@ says "and warns that a second @claude is a second billed agent" -- "$NOPUSH" -- 
 # The second review's finding: a moved head on a run that never finished is
 # neither "done" nor "nothing happened". Real work is on the branch AND it may
 # be half of it.
+# #76: a closing reference must not launder a dead run into a success. The
+# outcome says both true things instead of picking one.
+PRCUT=$(attadipa_outcome done_pr_cut "$RUN" 71 failure)
+says "names the pull request and says the run did not finish" -- "$PRCUT" -- \
+     "#71" "did not finish" '`failure`'
+says "warns it may be part of the task rather than all of it" -- "$PRCUT" -- \
+     "part of the task rather than all of it" "which part"
+says "and sends the reader to the acceptance criteria, not back to the issue" -- \
+     "$PRCUT" -- "acceptance criteria" "rather than reopening the work here"
+
 CUT=$(attadipa_outcome done_here_cut "$RUN" 71 cancelled)
 says "says a commit landed and the run did not finish, both" -- "$CUT" -- \
      "commit landed" "did not finish" "#71"
