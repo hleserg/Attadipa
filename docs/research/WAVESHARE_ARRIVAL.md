@@ -232,6 +232,64 @@ level*), while Waveshare's `QMI8658_ADDRESS_HIGH` is also 0x6B (HIGH = the
 *numeric value*). The two board demos look like they disagree and do not. Any
 Attadipa wrapper that re-exports either name hands the next reader the same trap.
 
+### 3.2a The QMI8658's INT1 is routed, and INT2 is not — filed against #53
+
+The question this closes: whether a raise-of-wrist gesture built on the
+Waveshare's IMU can wake the SoC from deep sleep on an interrupt, or has to
+poll the IMU over I2C while the SoC stays up — the difference between a
+low-power feature and a moderate-power one. `HARDWARE_MATRIX.md:318` recorded
+bus and address straps for the QMI8658 only, with no interrupt line at all,
+which is an extraction gap rather than a finding of absence — the same gap the
+extraction already had on the button GPIOs (D5).
+
+**Re-read the schematic directly**, `Schematic/ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`
+from `waveshareteam/ESP32-S3-Touch-AMOLED-2.06` (the only revision the repository
+publishes), with `pdftotext -bbox-layout` for word-level coordinates rather than
+the earlier plain-text pass, and verified a second time by an independent agent
+working from the same PDF without seeing this write-up first.
+
+**INT1 (package pin 4) is routed. `VERIFIED`.** U5 pin 4's net label `QMI_INT1`
+sits at (609.6, 382.7) pt. The same net label reappears, unconnected to any
+drawn wire between the two points but tied by name — the normal Altium idiom
+for a net that a schematic does not draw end to end — at (627.0, 353.5) on a
+wire segment that also carries the label `GPIO21` at (645.6, 353.5): same
+y-coordinate, one continuous conductor. `GPIO21` appears a third time, as the
+SoC's own pin name, and a fourth time in the board's pin-allocation table
+(`GPIO21 | QMI_INT1` at y = 80.75) — printed on the same sheet as, and using the
+identical idiom as, two already-`VERIFIED` facts: `GPIO38 | TP_INT` (the FT3168
+touch interrupt, `HARDWARE_MATRIX.md:316`) and the `GPIO19`/`GPIO20` →
+`USB_N`/`USB_P` pair through the 22 Ω series resistors
+(`HARDWARE_MATRIX.md:331`). Reproducing two independently-known facts by the
+same method, on the same sheet, is what makes this a schematic reading rather
+than a coordinate coincidence. `GPIO21` occurs nowhere else in the document, so
+nothing else claims that pin.
+
+**INT2 (package pin 9) is not routed to the SoC. `VERIFIED` as unrouted.** Its
+net label `QMI_INT2` occurs exactly **once** in the whole PDF, at the pin
+itself (609.6, 385.5) — no second occurrence, so no alias to a GPIO exists to
+find. The pin's wire instead runs to test point `TP15`
+(`PITP1501`/`PIU509` share y = 387.1). Same shape as the T-Watch's BMA423
+INT2, **bonded out but not routed** (`HARDWARE_MATRIX.md:86`) — on both boards
+the IMU ships with one usable interrupt line, not two.
+
+**GPIO21 is wake-capable.** ESP-IDF, `esp32s3` target, *System API → Sleep
+Modes*, `esp_sleep_enable_ext0_wakeup()`: *"Only GPIOs with the RTC
+functionality can be used. For different SoCs, the related GPIOs are: ...
+ESP32-S3: 0-21."* GPIO21 is the top of that range — `ext0` and `ext1`
+deep-sleep wakeup are both valid on it, and the T-Watch's BMA423 INT1 sits on
+GPIO14, inside the identical range on the identical SoC. The two boards' IMU
+wake paths are the same shape, which is the case #53 needs for "one
+implementation, both boards."
+
+**What this does not establish, and stays `UNKNOWN` until a board answers it.**
+The net label states connectivity, not electrical behaviour: whether INT1 is
+push-pull or open-drain, and its active level, are QMI8658C register fields
+(`CTRL1`), not schematic facts — no pull resistor is drawn on the net. Nor does
+it establish which of the physically received units carries this schematic
+revision; V1.0 is simply the only one published. Any current or latency number
+for this path is `ESTIMATED` at best from the QMI8658C datasheet and
+`UNMEASURED` until it runs on a board — `NOT EXECUTED — HARDWARE REQUIRED`.
+
 ### 3.3 What the vendor BSP actually does with the draw buffer
 
 This one matters because it was cited as evidence for a decision it does not

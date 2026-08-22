@@ -1353,7 +1353,7 @@ stale silently. The protocol is
 ### T-087 · Living watch faces: the passive/active model
 - **Priority:** P2 — this is the *"чтобы детишкам нравилось"* feature, and the
   survey says it is a power model before it is a feature
-- **Dependencies:** T-086, and the wrist-raise gesture, which needs T-060
+- **Dependencies:** T-086, and T-089 (the wrist-raise gesture)
 - **Goal:** the animation model. A cheap passive loop, an expensive active
   sequence played on wrist-raise, a cooldown so it cannot re-trigger continuously,
   and a duration so one pack cannot pin itself on screen. Flipper recommends
@@ -1401,6 +1401,51 @@ stale silently. The protocol is
   above them.
 - **Hardware required:** no for the logic; yes for anything said about what
   continuous recording costs.
+
+### T-089 · Display wake sources: raise gesture, button, touch — accelerometer only
+
+- **Priority:** P1 — [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a10-the-display-wakes-on-raise-button-or-touch-the-raise-gesture-reads-the-accelerometer-only)
+  makes display-off-by-default the product answer to A10, and T-087 (living
+  watch faces) already lists this as a dependency it cannot start without.
+- **Dependencies:** T-045 (`PowerState`), T-061 (step counting — same sensor,
+  same `MotionSensing` capability), [OPEN_QUESTIONS H16](docs/research/OPEN_QUESTIONS.md)
+  for INT1's electrical polarity, H8 for whether the IMU rail survives SoC
+  sleep on either board.
+- **Goal:** implement the three display-wake sources OD-16 names — wrist raise,
+  button, touch — as one capability an application never has to distinguish by
+  board.
+- **Wrist raise is accelerometer-only, on both boards, and that is fixed by the
+  hardware rather than by preference.** The T-Watch's BMA423 carries no
+  gyroscope; the Waveshare's QMI8658 does. A gesture built on gyro data would
+  therefore be a feature that silently exists on one board and not the other —
+  the thing `core/` and `apps/` are never allowed to know. Built on the
+  accelerometer's gravity vector, both boards answer yes. Do not read
+  `GYROSCOPE` availability anywhere in this path.
+- **The interrupt routing is now known, and changes the shape of the
+  implementation.** [WAVESHARE_ARRIVAL §3.2a](docs/research/WAVESHARE_ARRIVAL.md)
+  traces the Waveshare's QMI8658 INT1 to ESP32-S3 GPIO 21 — inside the SoC's
+  RTC-IO range, so `esp_sleep_enable_ext0/1_wakeup()` can arm it — and the
+  T-Watch's BMA423 INT1 is already `VERIFIED` on GPIO 14, the same range on the
+  same SoC family (`HARDWARE_MATRIX.md:86`). Both IMUs give exactly one usable
+  interrupt line (the second is bonded out on the T-Watch, routed only to a
+  test point on the Waveshare), and on the T-Watch that one line is already
+  shared six ways by LilyGo's own board support (step counter, any-motion,
+  no-motion, activity, tilt, wake-up) via a status register read — design for
+  a shared line on both boards rather than a private one.
+- **What must not be assumed:** that INT1's polarity or push-pull/open-drain
+  configuration is known — it is not (H16); that the IMU rail survives SoC deep
+  sleep — H8 is `CONFLICTING`, not answered; that button GPIOs are known — the
+  extraction never resolved them (D5, `HARDWARE_MATRIX.md:325`), so the button
+  wake source may need its own schematic pass first.
+- **Acceptance:** a host test exercising all three wake sources through the
+  same code path with a fake board, including the case where the board reports
+  `MotionSensing` as `Degraded`; a design note or ADR update stating the
+  accelerometer-only rule so it cannot be silently reintroduced with a
+  gyroscope; no application-visible difference between the two boards' wake
+  paths.
+- **Hardware required:** for the power and latency numbers, yes — `NOT
+  EXECUTED — HARDWARE REQUIRED` until measured. For the accelerometer-only
+  logic and the host tests, no.
 
 ### T-095 · What the day theme costs on a 400 mAh emissive board
 - **Priority:** P1 — it is a default, and a default nobody costed.
