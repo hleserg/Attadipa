@@ -5,6 +5,12 @@ A daily Claude Code routine, 08:00 Europe/Tallinn, scoped to
 that the routine is reviewable and reproducible rather than a paragraph that
 exists only in one account's settings.
 
+**The two drifted once**, on 2026-08-21: the live prompt was edited directly and
+this file was not, so the document described a routine that no longer existed.
+Change this file first, then paste the block below into the routine — and the
+prompt itself now says so, so a session that notices the difference knows which
+way to reconcile it.
+
 ## Why it exists, and what it deliberately does not do
 
 `agent-queue-watchdog.yml` already runs hourly and already handles the two
@@ -106,7 +112,23 @@ STEP 1 — ANOMALIES. Cheap API queries only. Look for exactly these:
   * REFUSED TASK — an issue carrying a `attadipa-agent-task` marker with a
     `attadipa-intake-refused` comment on it. The gate rejected a producer that
     believed it had filed work. This is the failure mode the queue exists to
-    prevent: report it with the actor and the stated reason.
+    prevent: report it with the actor and the stated reason. If the actor is a
+    legitimate producing app the owner has not yet named in the repository
+    variable `ATTADIPA_TRUSTED_PRODUCERS`, say so — that is a one-variable fix,
+    not a code change.
+  * REVIEW WITHOUT A VERDICT — a pull request carrying an
+    `attadipa-review-did-not-run` comment. Two causes, and the run log
+    separates them: the pull request edits `.github/workflows/claude-*.yml`, so
+    the action refused to review a modified version of itself (correct, not a
+    failure), or the Anthropic quota is spent. Only the second is worth
+    reporting.
+  * A FINISHED PULL REQUEST NOBODY MERGED — open, every check green, carrying
+    `ai-review:pass`, no blocking labels, no unresolved review threads, and
+    untouched for over six hours. Usually a draft whose session ended before
+    anybody flipped the bit. **Merge it**, under the conditions in the limits
+    below, which are not negotiable. Observed on 2026-08-21: three of them, all
+    11/11 green and reviewed, sat as drafts because the sessions that wrote
+    them finished and nobody was left to press the button.
 
   None of these present → print one line,
   "Automation healthy: N issues in queue, M open PRs, CI <state>", and stop.
@@ -118,14 +140,36 @@ re-run the workflow that should have run, file an issue with a correct marker
 and `agent:ready` where one is genuinely needed.
 
   Limits:
-    - still never merge a pull request — the orchestrator does that, not the
-      backstop. You repair pipeline state; deciding a change is good is not
-      state repair;
+    - merge ONLY a pull request where every decision has already been made by
+      something else, and ALL of these hold. Check each; do not infer any:
+        * every check run on the head commit is `success` or `skipped`;
+        * `ai-review:pass` is present — the independent reviewer put it there,
+          and its absence means no verdict, not a silent yes;
+        * `ai-review:blocking`, `agent:blocked` and `needs-owner` are absent;
+        * no unresolved review threads;
+        * `mergeable_state` is `clean` — never resolve a conflict to merge one;
+        * untouched for over six hours, so an active session is not about to
+          push to it.
+      Everything else is somebody's decision and none of it is yours. You are
+      not judging the change — the reviewer already did, and its label is the
+      only place you may read that judgement from;
+    - at most THREE such merges per run. If more qualify, take the oldest three
+      and say how many are left. A backstop that empties the queue in one go is
+      indistinguishable from one that has gone wrong;
+    - comment on each before merging, naming which conditions you checked and
+      what they were. A merge nobody can trace to a reason is the failure this
+      pipeline keeps producing in other forms;
     - never change code on main and never open a code pull request — you repair
       pipeline state, you do not write features;
     - unblock at most one dependent task per run;
     - at most ten state changes per run. More anomalies than that: fix the most
-      blocking, and say how many are left.
+      blocking, and say how many are left;
+    - NEVER write a live closing keyword ("fixes", "closes", "resolves"
+      immediately followed by a hash and an issue number) into a commit
+      message, pull request body or comment unless you actually intend to close
+      that issue. GitHub does not distinguish a quoted example from a real one.
+      This exact mistake closed issue #10 on 2026-08-21 and made it invisible
+      to the intake gate, which refuses closed issues.
 
 STEP 3 — ESCALATE ONLY ON A REAL BLOCKER: a credential, a GitHub setting, a
 product decision, a physical hardware test, or automation broken in a way only
@@ -152,6 +196,42 @@ REPORT, in Russian, technical terms in English, short:
   * an OWNER DECISION REQUIRED block only if one is genuinely needed.
 All healthy → one line. Do not write a report for the sake of a report.
 ```
+
+## Why it merges, and what that costs
+
+The first version of this prompt said *never merge a pull request; you repair
+pipeline state, and deciding a change is good is not state repair*. The
+reasoning was right and the boundary was in the wrong place.
+
+A finished pull request left as a draft is not a judgement waiting to be made.
+CI has run, the independent reviewer has published a verdict and labelled it,
+and the only thing missing is that the session which wrote it ended. That is a
+forgotten flag — which *is* pipeline state, and exactly what this routine is
+for. On 2026-08-21 three accumulated in a single day.
+
+**What it costs, stated plainly:** a change that both CI and the independent
+reviewer got wrong now reaches `main` with no human having looked. Before, the
+need for somebody to press a button was an accidental last check. It is gone.
+
+That is a deliberate trade, not an oversight. It is bounded by conditions that
+are each a decision already taken by something else, by a cap of three per run,
+and by a comment on every merge naming what was checked. Nothing lands
+silently, and `git revert` is cheap. A queue that stalls overnight because a
+person was asleep is the more expensive failure, and it is the one this project
+has actually had.
+
+**The judgement is still not the backstop's.** It reads the reviewer's label;
+it does not form an opinion. A pull request with no `ai-review:pass` is left
+alone no matter how good it looks.
+
+## And why this is not a second routine
+
+The obvious shape for "chase stale pull requests daily" is a new routine. It
+would be wrong for the same reason the review routine would be: a second daily
+session scanning the same repository pays twice for one answer, and routines
+draw on the subscription and a daily run cap. This routine already runs, already
+walks the open pull requests, and already had `ORPHAN PR` in its list. It
+needed a rule, not a sibling.
 
 ## Why there is no second review routine
 
