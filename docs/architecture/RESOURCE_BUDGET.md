@@ -116,7 +116,7 @@ gets a number, the method it came from goes next to it.
 |---|---|
 | Bootloader + partition table | `idf.py size` after the first embedded build |
 | Application image | `idf.py size` |
-| Assets (fonts, icons) | image manifest, sized before inclusion |
+| Assets (fonts, icons) | image manifest, sized before inclusion. **Two rows now have numbers** — see below |
 | NVS, littlefs / SPIFFS partitions | partition table — an ADR, not an accident |
 | OTA slots — does the image fit twice? | partition table arithmetic against the flash ceiling |
 
@@ -124,6 +124,37 @@ Firmware update needs two application slots plus the data partitions. Neither
 board looks tight: 16 MB on the T-Watch and 32 MB on the Waveshare board — which
 is, conveniently, the board with 3.57× the pixels and therefore the larger asset
 burden. Convenient, not planned; do the arithmetic once there is an image.
+
+#### The two asset pipelines, with numbers
+
+Both are `CALCULATED` from what the generators emit, not `MEASURED` on a device
+— nothing has been linked into a firmware image yet, and `idf.py size` is the
+only thing that will settle the difference between an array's size and its cost
+after alignment and section placement.
+
+| Asset set | Bytes | How |
+|---|---|---|
+| Text fonts — Montserrat Medium, 181 codepoints, 4 bpp, at 14 / 16 / 20 / 28 px | **78 930** | `MEASURED` with xtensa `size -A` on the generated objects: 13 033 + 15 248 + 19 356 + 31 293 |
+| Icons — three masks at 33, 39 and 47 px | **14 457** | `CALCULATED`: `A8` is one byte per pixel with `stride == width`, so an icon costs exactly its pixel count. Reported per asset by `tools/assets/generate_images.py` and repeated in the generated header |
+
+The icon number is the one worth watching, because it is the one that scales
+with the product rather than with the alphabet. Nine masks are 14 kB; the whole
+cross-product of four `IconSize` tokens against two board densities is **seven
+distinct pixel sizes**, so a full set of three icons would be 39 kB and a
+realistic set of thirty would be about 400 kB. That is why
+`tools/assets/manifest.py` names the sizes it generates rather than taking the
+cross-product, and why adding one is a deliberate line rather than a
+consequence.
+
+Two knobs exist and neither has been turned, both for the same reason — nothing
+has been measured:
+
+- **compression.** `LVGLImage.py` offers RLE and LZ4. Both trade flash for
+  decode time and a scratch buffer, on a device whose PSRAM sits behind a QSPI
+  bus nobody has timed. 14 kB is not worth a guess.
+- **fewer sizes.** Dropping to one pixel size per icon and letting LVGL scale
+  would cut the count, and it is exactly what final §86 forbids — a 47-pixel
+  drawing resampled to 33 is a different, worse drawing.
 
 ### Internal RAM
 

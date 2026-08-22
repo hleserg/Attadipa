@@ -79,21 +79,53 @@ stale silently. The protocol is
 
 ## NEXT
 
-### T-034 · Image asset pipeline
-- **Priority:** P0
-- **Dependencies:** T-032 (**done**)
-- **Goal:** reproducible conversion from cleaned source art to board-appropriate
-  LVGL assets — `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`
-  (final §45), using LVGL 9.5.0's `scripts/LVGLImage.py`.
-- **Acceptance:** a script regenerates every asset deterministically; CI reports
-  sizes and detects stale output; no hand-maintained C arrays; the 1448-pixel
-  reference PNGs are never shipped as watch assets; small sizes are drawn
-  deliberately rather than scaled down (final §86).
-- **Research status:** partial — `LVGLImage.py` and `LV_COLOR_FORMAT_RGB565A8`
-  confirmed present at the pinned version
-- **Implementation status:** not started
-- **Tests:** regeneration reproducibility; per-board asset budget
-- **Hardware required:** for decode and render cost, yes
+### T-034 · Image asset pipeline — **DONE** 2026-08-22
+- `ui/assets/source/` → `tools/assets/` → `ui/assets/generated/`, exactly the
+  three directories final §45 names, with LVGL v9.5.0's `LVGLImage.py` vendored
+  unmodified at `tools/assets/vendor/` and pinned by hash.
+- **Deterministic**, verified rather than assumed: two runs, byte-compared.
+- **The staleness gate covers the converter as well as the art.** An encoder
+  that changes its output *is* the asset changing, so its SHA-256 is inside
+  `INPUTS.sha256` and a bump fails `ui_images_are_current` until the tree is
+  regenerated.
+- **Three refusals, each with a test that triggers it:** a source over 512 px
+  (the 1440-pixel concept sheets, §41); a source under `docs/` or `pics/`; and a
+  pixel size with no drawing behind it — which is final §86 made mechanical
+  rather than aspirational, because the pipeline **never resamples one size into
+  another** and `icon()` returns `nullptr` rather than the nearest thing it has.
+- **Proved with three icons** — `mesh`, `position`, `warning` — authored at 33,
+  39 and 47 px with per-size geometry in `tools/assets/icon_drawings.py`. Nine
+  A8 masks, **14 457 B** of `.rodata`, reported per asset rather than estimated.
+- **Assets are named by pixels, never by board.** `icon.size.lg` at 261 dpi and
+  `icon.size.md` at 315 dpi are both 39 px and share one file; a test asserts the
+  two lookups return the same pointer. Four tokens × two densities is seven
+  distinct sizes, and the manifest names the three it generates rather than
+  taking the cross-product, because a mask costs its pixel count in flash.
+- Review sheet: `docs/ui/specimens/sheet-icons.png`, day and night, 1:1.
+  DESIGN_SYSTEM gained §7.1 and §7.2; RESOURCE_BUDGET gained the numbers; the
+  reuse ledger records `USE AS-IS` for the vendored converter.
+- **Not done, and split out rather than quietly dropped:** the mascot — T-034a.
+- **Not measured on hardware.** The byte counts are `CALCULATED` from the
+  format; `idf.py size` is the only thing that settles cost after alignment.
+
+### T-034a · The mascot, at a size somebody drew
+- **Priority:** P2, and it is **an owner decision before it is work.**
+- **Dependencies:** T-034 (**done**)
+- **Goal:** get one mascot pose into `ui/assets/source/` at a size the pipeline
+  will accept. `docs/ui/reference/lumar_mascot_sheet.png` supplies four named
+  poses and DESIGN_SYSTEM §7 already maps them to states, but the sheet is a
+  1440-pixel desktop concept drawing and the pipeline refuses it — correctly.
+- **The question, and it is not an agent's to answer:** at `image.size.hero`
+  (120 dp — 196 px on the T-Watch, 236 px on the Waveshare) a pose lifted from
+  the sheet is roughly a 2× reduction, which is arguably the *"derived and
+  cleaned artwork"* path `docs/ui/reference/README.md` describes. At icon sizes
+  it is not arguable at all: 40 px of a 450-pixel drawing is noise, and §86
+  forbids it outright. So: **derive at hero size, or redraw?** The owner should
+  decide looking at pixels, not at this paragraph.
+- **Acceptance:** either a committed source asset with its provenance recorded,
+  or a written decision that the mascot is redrawn and by whom. Not a scaled
+  crop committed quietly.
+- **Hardware required:** no. **Owner required:** yes.
 
 ### T-037 · The first Clock
 - **Priority:** P0
@@ -236,47 +268,33 @@ stale silently. The protocol is
 - **Tests:** none. It produces a research record.
 - **Hardware required:** no.
 
-### T-064 · Beacon profiles, and the scheduler that arbitrates them
-- **Priority:** P3 — **blocked on the owner**, question 1 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
-- **Dependencies:** T-063 (which may make it unnecessary), T-068, T-069
-- **Goal:** if the owner wants the watch findable by a crowd-sourced network,
-  build it as a core-owned slot scheduler with one registered profile per
-  ecosystem — never as an application.
-- **The shape, and why it is not an application:** a beacon that stops when the
-  screen goes off is not a beacon; the moment you need it is the moment the
-  device is idle or flat. And several ecosystems at once means several
-  advertising sets on one radio: interval, duty cycle, current and coexistence
-  with Wi-Fi and the node link. Arbitration of a shared radio resource does not
-  live above the platform layer. An application chooses which profiles are on
-  and reads their state; Child Mode's setup is a preset over that, not a second
-  mechanism.
-- **What the research already settled, so it is not re-derived:** two of the
-  three ecosystems are shut before the radio is involved — Google needs
-  registration, an email allowlist and third-party certification, and its only
-  readable implementation is licensed for Nordic silicon only; Samsung's SDK
-  ships for no Espressif part and an unregistered advertisement is inert.
-  OpenHaystack and macless-haystack are AGPL-3.0 and cannot be copied into an
-  MIT repository.
-- **Non-negotiable if it is built at all:** identifier and BLE address rotate
-  together, per DULT — 15 minutes near-owner, 24 hours separated. A tag that
-  does not rotate is a stalking device. A tag that rotates *faster than the
-  platforms' detectors sample* may be one too, and whether that is still true in
-  2026 is `UNKNOWN` (§1.6). Settle it before shipping, not after.
-- **Acceptance:** blocked. Do not start without an answer to §5 question 1.
-- **Research status:** done — §1
-- **Implementation status:** blocked on the owner
-- **Tests:** the profile state machine and the slot scheduler are host-testable;
-  every power and cadence figure is `NOT EXECUTED — HARDWARE REQUIRED`.
-- **Hardware required:** for anything anybody would believe, yes.
-
 ### T-065 · `track/`: recording, storage, and a simplifier that fits
-- **Priority:** P2 — **sized by the owner**, question 2 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
-- **Dependencies:** T-046 (crash-safe persistence), T-047 (two clocks), T-067
+- **Priority:** P2 — **sized, unblocked**, by
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature) §2
+- **Dependencies:** T-046 (crash-safe persistence), T-047 (two clocks), T-067,
+  and now T-060/T-061 — see the recording rule below
 - **Goal:** a core library that records a track and survives the application
   being closed, the device sleeping, and a flat battery — because a breadcrumb
   trail that stops when the screen does is not one.
+- **THE RECORDING RULE IS NOT A TIMER, and this is what the owner answered.** A
+  track exists for a walk somebody may have to retrace on foot. So: the watch
+  learns **familiar ground** — places where the wearer stays a long time while
+  moving only locally; inside it nothing is recorded; past a threshold beyond
+  its edge, **on foot**, recording starts; on return the track is **erased**.
+  Vehicles are out of scope — that is what a phone is for. Background recording
+  is configurable and **on by default**.
+- **What that rule costs, named rather than discovered later:**
+  - **"on foot" needs motion-mode recognition**, or the watch records in a car,
+    which is the one case that was excluded. It rests on the pedometer, which
+    exists only as OD-6 — so this task cannot ship ahead of T-060/T-061;
+  - **"familiar ground" is learned anchors**, i.e. stored personal history. That
+    is a privacy surface and it belongs to T-069, in Child Mode especially;
+  - **threshold, hysteresis and dwell are three numbers that do not exist.**
+    Propose them with arithmetic. Too small records every trip to the shop; too
+    large starts recording once it is already too late;
+  - the **upper bound is now a walk**: order of a couple of hours, single-digit
+    kilometres, hundreds to a few thousand points — not the multi-day route §3
+    sized against. Recompute the encoding budget from that, do not inherit it.
 - **What has to be decided rather than assumed:**
   - **every point carries its source and its uncertainty.** A GNSS point, a
     point reckoned from an anchor and a point with no anchor at all are three
@@ -391,8 +409,16 @@ stale silently. The protocol is
 - **Why it is not hypothetical:** the product as specified is a wearable that
   reports a person's position to a remote party over a mesh; Child Mode makes
   that person a six-year-old; DULT's own scope enumerates "Watch" as an
-  accessory category; and T-066's track exchange is a location-sharing channel
-  that has never been read against a threat model at all.
+  accessory category (value 146 in the Accessory Category table — confirmed in
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md) §1.3); and
+  T-066's track exchange is a location-sharing channel that has never been read
+  against a threat model at all.
+- **Where to start, so this is not re-derived:** `draft-ietf-dult-threat-model-05`
+  is an **active** IETF working-group document (latest revision 2026-08-06,
+  not expired like the accessory protocol) and is the primary source naming
+  what DULT itself considers a threat — found but not read in full by T-070's
+  research; [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md)
+  §"Relationship to T-069" hands it over.
 - **Second half, and it is specific rather than general:** a child's position
   leaving the device engages GDPR Article 8 (consent, thresholds 13–16 by member
   state), the UK Age Appropriate Design Code and COPPA. Google scoping Find Hub
@@ -413,7 +439,8 @@ stale silently. The protocol is
 
 ### T-070 · The watch as a tracker detector, which is the opposite feature
 - **Priority:** P2
-- **Dependencies:** T-069
+- **Dependencies:** T-069 for implementation. The research half did not need
+  T-069 and was done directly — see below.
 - **Goal:** scan for an unknown BLE identifier that has stayed near the wearer
   for an implausibly long time, and say so.
 - **Why it is worth more than emulation for this product:** it **protects** the
@@ -422,19 +449,47 @@ stale silently. The protocol is
   it uses a radio the watch certainly has; and `seemoo-lab/AirGuard` is
   Apache-2.0, MIT-compatible and actively maintained, so there is something to
   learn from rather than invent.
-- **The honest limit, stated up front:** a detector that keys off a repeated
-  identifier is defeated by fast rotation, which §1.6 records as an `UNKNOWN` in
-  2026. Do not ship a detector that implies it catches everything.
+- **The honest limit, stated up front, and now sourced rather than deferred.**
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md) §3: two
+  independent 2025/2026 studies — one peer-reviewed (PoPETs 2025), one an
+  unreviewed 2026 preprint — report that an identifier rotated faster than a
+  detector's correlation window evades or substantially delays Apple's,
+  Google's **and AirGuard's** detection, on every ecosystem except Samsung's
+  aging-counter scheme. Both used an ESP32 to demonstrate it. The exact 2022
+  methodology against a *current* iOS build remains untested and `UNKNOWN`.
+  **Do not ship a detector that implies it catches everything** — AirGuard's
+  own shipped strings do not, and neither should Attadipa's.
+- **What the research also settled, so implementation does not re-derive it —
+  all in [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md):**
+  AirGuard's actual thresholds (3 sightings / 14 days, ≥2–4 distinct locations
+  150 m apart, altitude gates for the aeroplane case — §2); DULT's current
+  broadcast format and rotation intervals, and that no shipping accessory has
+  been observed using DULT's own `0xFCB2` service data yet (§1); that
+  Espressif publishes no BLE-scanning current figure at all — 93 mA RX peak is
+  the nearest documented proxy, and the scanning power story is still gated on
+  T-068's open question of whether either board can reach a 32 kHz sleep floor
+  between scan bursts (§4); that concurrent scan-while-connected is documented
+  as supported and costs 828 B per activity, but its cost to the companion
+  link's latency is undocumented (§5); and a correction — ADR-0003 does not
+  claim a shared T-Watch BLE/LoRa front end, contrary to how this task was
+  first framed (§5.3).
 - **Acceptance:** host tests over recorded advertisement sequences — a
   co-travelling identifier is flagged, a shop full of stationary beacons is not.
-- **Research status:** not started
+- **Research status:** done —
+  [`TRACKER_DETECTION.md`](docs/research/TRACKER_DETECTION.md); reuse ledger
+  record added.
 - **Implementation status:** not started
 - **Tests:** host, over synthetic scan traces.
-- **Hardware required:** for a real scan, yes.
+- **Hardware required:** for a real scan and for the power figures, yes — see
+  T-068, which this task's power story now depends on explicitly.
 
 ### T-071 · Dead reckoning: odometry, the disk, and what makes it stop
-- **Priority:** P2 — **sized by the owner**, question 3 of
-  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) §5
+- **Priority:** P2 — **not blocked.**
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature)
+  §2 answers question 3 without being asked it: everything is built around
+  getting back on foot, which is the one purpose that survives the physics.
+  Build for *"get me back to the tent"*, not for *"reconstruct my route"* —
+  the second is T-088, where GNSS is present and reckoning is not needed.
 - **Dependencies:** T-060, T-061 (it is the same step detector, not a second
   one), T-065, [ADR-0009](docs/adr/0009-heading.md)
 - **Goal:** when GNSS is lost, say how far the wearer has walked and where they
@@ -1326,6 +1381,41 @@ stale silently. The protocol is
   on which pixels. `UNKNOWN`, hardware required.
 - **Hardware required:** yes, for every power number
 
+### T-088 · Save a whole track on request — the second track feature, not a mode of the first
+- **Priority:** P2 —
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature) §3
+- **Dependencies:** T-065 (the storage and the simplifier are shared), T-046
+- **Goal:** an application the wearer starts deliberately, which records a track
+  until they stop it and keeps it to look at afterwards on a map.
+- **Why this is a separate task and not a flag on T-065.** They differ in every
+  dimension that matters to an implementation:
+
+  | | T-065, the way back | T-088, saved on request |
+  |---|---|---|
+  | starts | by itself, on leaving familiar ground | because a person asked |
+  | how the wearer is travelling | on foot only | **any** — a car is fine here |
+  | ends | on return, and the track is **erased** | when the wearer stops it, and the track is **kept** |
+  | when storage fills | drop the oldest, the tail is what gets you home | this is a data-loss event and the wearer is told |
+  | consumer | the wearer, right now, lost | the wearer, later, on a map |
+
+  A single mechanism with a flag would have to be right about all five at once,
+  and the erase rule and the keep rule are the same code path with opposite
+  requirements. That is the shape that produces a track deleted while somebody
+  was relying on it.
+- **The form the owner asked for:** an application, allowed to keep recording in
+  the background so other applications keep working. Background here is a
+  capability the platform grants, not a thread an application starts — the
+  ownership question belongs in the design, not in the app.
+- **Acceptance:** host tests over a recording that outlives the application
+  being closed and the device sleeping; an explicit, tested behaviour when
+  storage fills that never silently discards; the "was this simplified" flag
+  honest end to end.
+- **What must not be assumed:** that this shares the recording *rule* with
+  T-065. It shares the storage, the encoding and the simplifier, and nothing
+  above them.
+- **Hardware required:** no for the logic; yes for anything said about what
+  continuous recording costs.
+
 ## BLOCKED
 
 ### T-010 · Board bring-up
@@ -1406,6 +1496,33 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
+- **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
+  [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
+  answering A7 on [#33](https://github.com/hleserg/Attadipa/issues/33): *"Не
+  делаем. Ни Apple, ни какую-либо ещё."*
+- **Why, and the order matters.** The research found the feature expensive
+  before it found it unwanted, and the decision is the second one. Two of the
+  three ecosystems are shut before the radio is involved — Google needs
+  registration, an email allowlist and third-party certification, and its only
+  readable implementation is licensed for Nordic silicon; Samsung's SDK ships
+  for no Espressif part. Apple is reachable and costs an Apple ID bootstrapped
+  on Apple hardware, a self-hosted endpoint and, for anything a person would
+  recognise as Find My, MFi — which excludes individuals. **None of that is the
+  reason.** The owner decided the feature is not wanted, which is a product
+  decision and outranks the obstacles.
+- **What still answers the need:** T-063 — the companion phone remembers where
+  it last saw the watch over BLE. No account, no other company's identifier, no
+  network, and it works with the companion this project already specifies.
+- **What the research keeps, because it is about the device and not the
+  feature:** DULT, rotation intervals and the 2022 fast-rotation evasion are
+  still live input to T-069 and T-070. §1 of
+  [TAGS_TRACKS_RECKONING](docs/research/TAGS_TRACKS_RECKONING.md) is not
+  obsolete; only this task is.
+- **If this is ever revisited:** nothing in the ecosystems changed the answer,
+  so nothing in them would change it back. It is one decision to reverse.
+
 
 ### T-073 · Meshtastic as a companion — **REJECTED**, owner decision 2026-08-22
 - **Outcome:** not supported. [OD-12](docs/research/OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
