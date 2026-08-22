@@ -2012,6 +2012,33 @@ Recommended next action:
   All five red. The fourth was green on the first attempt and the test was wrong,
   not the code: nothing exercised the guarantee below 80 dpi where it bites.
 
+### T-109 · A9: the day theme on an emissive panel, plumbed as its own value — **DONE** 2026-08-22
+- Closes [#52](https://github.com/hleserg/Attadipa/issues/52). For
+  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a9-automatic-by-panel-technology-and-the-theme-toggle-is-unchanged),
+  the owner's option 4: automatic by panel technology, theme toggle unchanged.
+- `ui::PixelCost` (`Fixed` / `PerPixel`) is the new value, alongside `Theme` and
+  `Metrics` — never a `PanelTechnology`, never a chip name. `ui/src/color.cpp`
+  gained a fourth, explicit `day_emissive` column: night's already-audited
+  background and text, `AccentPrimary` kept at day's own Attadipa Orange so the
+  toggle still means something on an emissive panel. No new hex — every value
+  already existed in the seed set.
+- `sim/boot_screen.cpp`'s `pixel_cost()` is the one function that maps
+  `platform::PanelTechnology` to `ui::PixelCost` — the composition root's job,
+  same as `metrics()` beside it. `ui/CMakeLists.txt` is unchanged: still
+  `attadipa_headers` only.
+- Contrast audit in `tests/test_ui_tokens.cpp` and DESIGN_SYSTEM §3/§3.2: every
+  emissive-day foreground clears 3:1 on its own page; the accent clears body
+  text at 5.08:1, where it never cleared 2.2:1 on Warm Ivory.
+- **Not done:** screenshots for the review sheet. The simulator needs SDL2,
+  absent from this environment (`apt-get` failed on the lock file, not a
+  missing package) — an environment gap, not `NOT EXECUTED — HARDWARE
+  REQUIRED`, since no board is involved either way. Whoever next has SDL2 can
+  run `cmake -S . -B build -DATTADIPA_BUILD_SIMULATOR=ON` and
+  `sim/attadipa_sim --board waveshare --theme day` (then `T`).
+- **Unaffected:** T-095 (measuring what the day theme actually costs in mA) —
+  that measurement was never a precondition for this decision, and still is not
+  for anything past it.
+
 ### T-083 · No box characters in any build — **DONE** 2026-08-22
 - The owner saw a `□` in a screenshot and asked the obvious question. It was
   real: the build drew with LVGL's stock Montserrat, generated from

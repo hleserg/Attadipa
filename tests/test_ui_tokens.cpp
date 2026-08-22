@@ -323,6 +323,79 @@ void test_muted_text_fails_on_a_raised_card_in_daylight()
     CHECK(against(ColorRole::Success, ColorRole::BackgroundSurface, Theme::Night) == 354);
 }
 
+// OD-16 / issue #52's option 4: the day theme on a `PerPixel` panel resolves
+// against its own column rather than the near-white one above. `Theme::Night`
+// takes no `pixel_cost` argument at all — it is unaffected on either panel
+// technology, so there is nothing to test there.
+void test_day_is_unaffected_by_pixel_cost_on_a_fixed_panel()
+{
+    for (ColorRole role : kAllRoles) {
+        CHECK(color(role, Theme::Day) == color(role, Theme::Day, PixelCost::Fixed));
+        CHECK(is_defined_for(role, Theme::Day) == is_defined_for(role, Theme::Day, PixelCost::Fixed));
+    }
+}
+
+// The emissive day palette shares its page and its ink with night's — both
+// audited already — with one deliberate exception: `AccentPrimary` keeps
+// Day's own Attadipa Orange, which is the entire difference left between day
+// and night once both sit on a dark canvas. A palette where that difference
+// disappeared would make the theme toggle silently do nothing on this panel.
+void test_day_on_an_emissive_panel_is_nights_page_with_days_own_accent()
+{
+    const PixelCost emissive = PixelCost::PerPixel;
+
+    CHECK(*color(ColorRole::BackgroundPrimary, Theme::Day, emissive) ==
+          *color(ColorRole::BackgroundPrimary, Theme::Night));
+    CHECK(*color(ColorRole::BackgroundSurface, Theme::Day, emissive) ==
+          *color(ColorRole::BackgroundSurface, Theme::Night));
+    CHECK(*color(ColorRole::TextPrimary, Theme::Day, emissive) ==
+          *color(ColorRole::TextPrimary, Theme::Night));
+    CHECK(*color(ColorRole::TextMuted, Theme::Day, emissive) ==
+          *color(ColorRole::TextMuted, Theme::Night));
+
+    // The one deliberate divergence: Day's own accent survives, Night's does not.
+    CHECK(*color(ColorRole::AccentPrimary, Theme::Day, emissive) ==
+          *color(ColorRole::AccentPrimary, Theme::Day, PixelCost::Fixed));
+    CHECK(*color(ColorRole::AccentPrimary, Theme::Day, emissive) !=
+          *color(ColorRole::AccentPrimary, Theme::Night));
+
+    // The gap this theme was never going to fill either: no raised background
+    // is defined for it, matching the same gap night already has.
+    CHECK(!color(ColorRole::BackgroundRaised, Theme::Day, emissive).has_value());
+    CHECK(!color(ColorRole::Danger, Theme::Day, emissive).has_value());
+}
+
+// The contrast audit §3.1 asked for. Every foreground the emissive day theme
+// defines clears at least the graphic threshold on its own page — the same
+// property night's table already holds, which this table borrows most of.
+void test_the_emissive_day_palette_clears_the_graphic_threshold()
+{
+    const PixelCost emissive = PixelCost::PerPixel;
+    for (ColorRole role : kAllRoles) {
+        if (kind_of(role) != ColorKind::Foreground ||
+            !color(role, Theme::Day, emissive).has_value()) {
+            continue;   // Danger: UNKNOWN here too, on purpose
+        }
+        if (!legible_as_graphic(role, Theme::Day, emissive)) {
+            std::fprintf(stderr, "FAIL: %s is %u:100 on the emissive day page\n", name_of(role),
+                         contrast_against_page_centi(role, Theme::Day, emissive));
+            ++failures;
+        }
+    }
+
+    // The measured values, to a hundredth. Unlike the Fixed-panel day table,
+    // AccentPrimary now clears *body text* too (5.08:1) — Attadipa Orange was
+    // never illegible, it was only ever illegible on Warm Ivory.
+    CHECK(contrast_against_page_centi(ColorRole::AccentPrimary, Theme::Day, emissive) == 508);
+    CHECK(legible_as_body_text(ColorRole::AccentPrimary, Theme::Day, emissive));
+    CHECK(contrast_against_page_centi(ColorRole::TextPrimary, Theme::Day, emissive) == 1110);
+
+    // Its tightest case, same role and same number as night's, because it is
+    // night's own value: Success on the page, not enough for a word.
+    CHECK(contrast_against_page_centi(ColorRole::Success, Theme::Day, emissive) == 396);
+    CHECK(!legible_as_body_text(ColorRole::Success, Theme::Day, emissive));
+}
+
 void test_the_contrast_maths_is_the_standard_one()
 {
     const Rgb white{0xFF, 0xFF, 0xFF};
@@ -366,6 +439,7 @@ void test_everything_has_a_name()
     };
 
     for (ColorRole r : kAllRoles) { record(name_of(r)); }
+    for (PixelCost p : {PixelCost::Fixed, PixelCost::PerPixel}) { record(name_of(p)); }
     for (Space s : kAllSpace) { record(name_of(s)); }
     for (Radius r : kAllRadius) { record(name_of(r)); }
     for (Motion m : {Motion::Instant, Motion::Fast, Motion::Base, Motion::Slow}) {
@@ -392,7 +466,7 @@ void test_everything_has_a_name()
         record(name_of(c));
     }
 
-    CHECK(seen.size() == 12 + 6 + 4 + 4 + 3 + 4 + 4 + 2 + 3 + 6 + 7 + 5);
+    CHECK(seen.size() == 12 + 2 + 6 + 4 + 4 + 3 + 4 + 4 + 2 + 3 + 6 + 7 + 5);
 }
 
 // An unscaled Metrics is the identity and admits it, so that a screen drawn
@@ -426,6 +500,9 @@ int main()
     test_every_night_foreground_survives_the_night_page();
     test_the_day_accents_cannot_carry_meaning_alone();
     test_muted_text_fails_on_a_raised_card_in_daylight();
+    test_day_is_unaffected_by_pixel_cost_on_a_fixed_panel();
+    test_day_on_an_emissive_panel_is_nights_page_with_days_own_accent();
+    test_the_emissive_day_palette_clears_the_graphic_threshold();
     test_the_contrast_maths_is_the_standard_one();
     test_a_packed_colour_round_trips();
 

@@ -24,7 +24,7 @@ compiled for the target and measured.
 | `attadipa_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
 | `attadipa_apps` | `AppManifest` and the launcher gating rule | core only |
 | `attadipa_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
-| `attadipa_ui` | the design tokens: `Dp` against a 160 dpi reference, twelve colour roles across two themes with WCAG contrast arithmetic, and the spacing, radius, motion, size and feedback scales | `attadipa_headers` only — **deliberately not platform** |
+| `attadipa_ui` | the design tokens: `Dp` against a 160 dpi reference, twelve colour roles across two themes (three on the day side, since T-109) with WCAG contrast arithmetic, and the spacing, radius, motion, size and feedback scales | `attadipa_headers` only — **deliberately not platform** |
 | `attadipa_replay` | the deterministic navigation replay rig, in `tests/` | core |
 | `attadipa_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
 
@@ -132,6 +132,20 @@ identical one, and **Rev D has deleted it** — feature list, chapter and regist
 part: the engine retroactively counts steps it had discarded once it decides a
 walk is real, and updates its registers only every N steps, so **a read is stale
 by design**. [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md).
+
+**T-109 — A9 answered and plumbed — done.** The owner took option 4: automatic
+by panel technology, theme toggle unchanged
+([OD-16](docs/research/OWNER_DECISIONS.md)). `ui::PixelCost` (`Fixed` /
+`PerPixel`) travels alongside `Theme` and `Metrics`, mapped from
+`platform::PanelTechnology` in exactly one function in `sim/boot_screen.cpp` —
+`ui/` still does not link `platform`. The day theme now has a third,
+emissive-panel colour column in `ui/src/color.cpp`, built entirely from
+already-adopted seed colours: night's background and text, with `AccentPrimary`
+kept at day's own Attadipa Orange so the toggle still changes something visible
+on the Waveshare. Contrast-audited in `tests/test_ui_tokens.cpp` and
+DESIGN_SYSTEM §3.2. Not done: screenshots for the review sheet, since this
+environment has neither SDL2 nor permission to install it — an environment
+limit, not a hardware one.
 
 ## Lookahead research
 
