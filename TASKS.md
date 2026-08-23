@@ -182,6 +182,15 @@ stale silently. The protocol is
 - **Acceptance:** either a committed source asset with its provenance recorded,
   or a written decision that the mascot is redrawn and by whom. Not a scaled
   crop committed quietly.
+- **Carries D19, because it is likely the first colour asset.** Every asset the
+  pipeline emits today is `A8` — a mask, one byte per pixel, no byte order. A
+  mascot in `RGB565A8` is two bytes per pixel and the first thing in this
+  repository whose bytes have an order. **The panel's transfer byte order is
+  `UNKNOWN`** ([OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) D19): the vendor
+  files prove only their own on-disk order, and the one readable display path
+  swaps. Take the setting from the CO5300 datasheet or from a measurement — not
+  from T-103. Nothing here is blocked *by* it: the pipeline and the owner
+  decision both proceed, and only the swap flag waits.
 - **Hardware required:** no. **Owner required:** yes.
 
 ### T-037 · The first Clock
@@ -1930,20 +1939,32 @@ Recommended next action:
 ### T-103 · What the vendor's three images actually are — **DONE** 2026-08-22
 - **Six files, not three.** `/image/image1..3.bin` and a `/music/` directory
   holding three MP3s. The earlier record came from `strings` and was incomplete.
-- **The image format is settled, not inferred**: each image is exactly
+- **The stored format is settled, not inferred**: each image is exactly
   **411 652** bytes = a **12-byte header** plus **410 × 502 RGB565
   little-endian**. Header is `u32` magic `0x00001219`, `u16` width, `u16` height,
   `u32` stride (820 = width × 2). `12 + w·h·2` equals the file length exactly.
-- **The byte order was settled by rendering**, which is the only thing that could
-  settle it: little-endian gives coherent artwork, big-endian gives noise.
+- **The on-disk byte order was settled by rendering**, which is the only thing
+  that could settle it: little-endian gives coherent artwork, big-endian gives
+  noise.
 - **`tools/flash/spiffs_extract.py`** does the extraction without `mkspiffs` and
   without an ESP-IDF build — the blocker the original task named. `strings`
   recovers a SPIFFS image's names and none of its bodies.
-- **Feeds T-034**, and the distinction matters: the panel's pixel format and byte
-  order are facts about the hardware; the vendor's header is not, and is worth
-  noticing rather than copying — it has width, height and stride but **no format
-  field**, which is the field needed the moment a second format exists. Three
-  full frames cost 1.18 MB.
+- **Feeds T-034**, and the distinction matters: the vendor's header is not a
+  hardware fact and is worth noticing rather than copying — it has width, height
+  and stride but **no format field**, which is the field needed the moment a
+  second format exists. Three full frames cost 1.18 MB.
+- **Corrected 2026-08-23, and the correction is the point of the entry now.**
+  This record used to continue *"the panel's pixel format and byte order are
+  facts about the hardware"*. The pixel **format** half stands. The byte
+  **order** half was an inference across a boundary the render never crossed, and
+  the one display path readable in pinned source **swaps every pixel** before
+  transfer (`.swap_bytes = 1` → `lv_draw_sw_rgb565_swap()` → `tx_color()`
+  verbatim). The transfer order is now **`UNKNOWN`**, registered as **D19**, with
+  two routes to close it in
+  [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §7. Nothing
+  shipped is wrong — T-034 emits `A8` masks, which have no byte order — but the
+  first colour asset must not read its answer off this task. Issue
+  [#109](https://github.com/hleserg/Attadipa/issues/109).
 - **Two findings outside the task's scope**, both recorded in
   [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md): the music gives T-105 a
   strong prior that `AAC210602A1` is the speaker, and the factory image carries
@@ -2041,6 +2062,16 @@ Recommended next action:
 - **Not done, and split out rather than quietly dropped:** the mascot — T-034a.
 - **Not measured on hardware.** The byte counts are `CALCULATED` from the
   format; `idf.py size` is the only thing that settles cost after alignment.
+- **A prerequisite that was closed on an unproven fact, reopened 2026-08-23.**
+  T-103 told this task the panel's byte order was settled; it was not — only the
+  vendor *files*' on-disk order was, and D19 now holds the real question. **This
+  task is unaffected in fact**: every asset it emits is `LV_COLOR_FORMAT_A8`
+  (`tools/assets/generate_images.py:134`), one byte per pixel, no byte order to
+  get wrong — so `DONE` is still honest and no output needs regenerating. It is
+  affected in *inheritance*: the first task to add a colour format —
+  `RGB565`/`RGB565A8`, so T-034a's mascot is the likely first — inherits D19 and
+  must take the swap setting from a datasheet or a measurement. Issue
+  [#109](https://github.com/hleserg/Attadipa/issues/109).
 
 ### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22
 - [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md), and four entries in
@@ -2694,16 +2725,25 @@ Recommended next action:
 
 - **Priority:** P2 — it decides part of T6 with evidence rather than preference.
 - **Dependencies:** feeds open question T6.
-- **Goal:** `waveshare/esp_lcd_sh8601` is a two-line fork of
-  `espressif/esp_lcd_sh8601` — its own files carry Espressif's SPDX headers. One
-  line is inert. The other, at `:280`, calls `tx_color(...)` bare where upstream
-  wraps it in `ESP_RETURN_ON_ERROR`, inside `panel_sh8601_draw_bitmap`, which
+- **Goal:** `waveshare/esp_lcd_sh8601` is a fork of `espressif/esp_lcd_sh8601` —
+  its own files carry Espressif's SPDX headers. At `:280`, inside
+  `panel_sh8601_draw_bitmap`, `tx_color(...)` is called bare and the function
   then returns `ESP_OK` unconditionally: **a failed frame transfer is reported as
   success.** Present in 1.0.2, which the published demo pins, and in 2.0.0.
   Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named
   `esp_lcd_co5300` — QSPI, accepting a custom init table — under the same
   Apache-2.0. Take the pin map and the init table; depend on upstream.
-- **Evidence:** [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §3.3.
+- **Sharpened 2026-08-23, and one premise withdrawn.** The unchecked call is
+  **not** a fork divergence: upstream carried it at the same line 280 from
+  `694ece03` (2023-11-03) until `e5b9295a` (2025-12-10), where the changelog
+  records *"Fix draw_bitmap not propagating tx_color errors"* for **`v2.0.1`**.
+  So the fork inherited it. The task's conclusion is unchanged and better
+  evidenced — upstream **has** the fix and the pinned fork does not — but the
+  "two-line fork" count was derived against *today's* upstream and must be
+  re-derived against the revision the fork was taken from before it is quoted
+  again. Also: upstream lives in `espressif/esp-iot-solution`, not `esp-bsp`.
+- **Evidence:** [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §3.3,
+  including the 2026-08-23 correction block.
 
 ### T-093 · The LVGL draw-buffer ADR has no vendor existence proof to lean on
 

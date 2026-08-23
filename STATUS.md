@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -146,7 +146,9 @@ One to two steps ahead, per final §68 — not twenty.
 **not** taken — RLE and LZ4 both trade flash for decode time and a scratch buffer
 on a display bus nobody has timed, and nine masks are 14 kB. `RGB565A8` is
 present and unused: every asset so far is an `A8` mask, because an icon with a
-baked colour cannot follow a theme.
+baked colour cannot follow a theme. That also means **no asset in this repository
+has a byte order yet** — one byte per pixel — which is why D19, the panel's
+transfer byte order, blocks nothing today and blocks the first colour asset.
 
 ## Long-running operations
 
@@ -192,8 +194,12 @@ REQUIRED`.**
 - **The vendor BSP is not the existence proof it is taken for.** Its PSRAM
   draw-buffer configuration is dead code; what ships is one ~80 KiB partial
   buffer in internal SRAM. T-093.
-- **Its `esp_lcd_sh8601` fork drops an error check**, so a failed frame transfer
-  reports success. T-092.
+- **Its `esp_lcd_sh8601` leaves an error check off**, so a failed frame transfer
+  reports success. T-092. **Re-attributed 2026-08-23:** the unchecked
+  `tx_color()` came from upstream, not from the fork — upstream carried it until
+  `v2.0.1` (2025-12-10) and fixed it there — so the defect is inherited and the
+  "depend on upstream" conclusion is firmer, while the "two-line fork" count is
+  withdrawn until it is re-derived against the right base.
 - **Two questions went to the owner**: [A9](docs/research/OPEN_QUESTIONS.md) —
   does the day theme keep its near-white page on an emissive panel, where the
   rendered face draws an estimated 4.2× to 13.9× the night theme; and A10 — what
@@ -362,11 +368,20 @@ came off the unit the same day —
 - **The vendor bakes raw pixel buffers**, not encoded images, with no decoder on
   the device — and **T-103 has since decoded them.** Each image is exactly
   411 652 bytes: a 12-byte header (`u32` magic, `u16` width 410, `u16` height
-  502, `u32` stride 820) followed by **410 × 502 RGB565 little-endian**. The byte
-  order was settled by rendering, which is the only thing that could settle it —
-  little-endian gives coherent artwork, big-endian gives noise. The panel's pixel
-  format and byte order are now facts about the hardware rather than a preference
-  of T-034's.
+  502, `u32` stride 820) followed by **410 × 502 RGB565 little-endian on disk**.
+  The **stored** byte order was settled by rendering the file — little-endian
+  gives coherent artwork, big-endian gives noise.
+- **Half of that was overstated, and it was corrected 2026-08-23.** The record
+  went on to say the panel's byte order was a hardware fact. It is not: a host
+  render never crosses the display driver. Traced through pinned source, the one
+  complete display path for this board **swaps every pixel before transfer** —
+  `xiaozhi@bb9122ab lcd_display.cc:160,166` sets `.swap_bytes = 1`,
+  `esp-bsp@2f51931 esp_lvgl_port_disp.c:739-741` acts on it, and
+  `esp_lcd_sh8601.c:279-280` then transfers verbatim. The **pixel format** half
+  stands (`COLMOD 3Ah = 0x55`); the **transfer byte order is `UNKNOWN`**, now
+  **D19**, closable by the CO5300 datasheet or by a measurement. Nothing shipped
+  is wrong — every generated asset is an `A8` mask with no byte order — and the
+  first colour asset inherits the question. `NOT EXECUTED — HARDWARE REQUIRED`.
 - **And the partition holds six files, not three.** There is a `/music/`
   directory with three MP3 background tracks, two stereo, 112–128 kbps. That
   gives **T-105** a strong prior that `AAC210602A1` is the speaker rather than a

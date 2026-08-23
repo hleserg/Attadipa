@@ -266,16 +266,45 @@ constraint; internal SRAM, PSRAM bandwidth and cache coherency are.
 
 **A live defect in the panel driver the vendor depends on.**
 `waveshare/esp_lcd_sh8601` is a fork of `espressif/esp_lcd_sh8601` — its own files
-carry Espressif's SPDX headers — differing by exactly two lines. One is a tear
+carry Espressif's SPDX headers — differing by ~~exactly two lines~~ (that count is
+withdrawn; see the correction below). One difference is a tear
 scanline in a default init table the BSP overrides, and it is provably inert. The
-other is not: at `:280` the fork calls `tx_color(...)` bare where upstream wraps
-it in `ESP_RETURN_ON_ERROR`, inside `panel_sh8601_draw_bitmap`, which then
-returns `ESP_OK` unconditionally. **A failed frame transfer is reported as
-success.** It is present in 1.0.2, the version the published demo pins, as well
-as in 2.0.0. Espressif ships both an unforked `esp_lcd_sh8601` and a
-purpose-named `esp_lcd_co5300` — QSPI, accepting a custom init table — under the
-same Apache-2.0, which is the strongest concrete argument yet recorded for T6
-resolving as "take the pin map and the init table, depend on upstream."
+second thing this paragraph named is not a difference at all: at `:280`, inside
+`panel_sh8601_draw_bitmap`, `tx_color(...)` is
+called bare and the function then returns `ESP_OK` unconditionally. **A failed
+frame transfer is reported as success.** It is present in 1.0.2, the version the
+published demo pins, as well as in 2.0.0. Espressif ships both an unforked
+`esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300` — QSPI, accepting a custom
+init table — under the same Apache-2.0, which is the strongest concrete argument
+yet recorded for T6 resolving as "take the pin map and the init table, depend on
+upstream."
+
+> **Corrected 2026-08-23 — the defect is real, the attribution was wrong.** This
+> paragraph used to read *"the fork calls `tx_color(...)` bare **where upstream
+> wraps it in `ESP_RETURN_ON_ERROR`**"*, and that half is false for the period it
+> matters. Upstream's own `esp_lcd_sh8601.c` carried the bare call at the
+> identical line 280 from `694ece03` (2023-11-03) until `e5b9295a` (2025-12-10),
+> and the changelog dates the fix to **`v2.0.1`** — *"Fix draw_bitmap not
+> propagating tx_color errors."* Only four commits have ever touched that file,
+> so nothing changed in it across 1.0.0, 1.0.2 and 2.0.0. **The check the fork was
+> said to have dropped did not exist upstream to drop**, over exactly the period
+> the comparison was about. Read at `espressif/esp-iot-solution@5d75f3f0` and
+> `@694ece03`, source **S14** — and note that upstream is `esp-iot-solution`, not
+> `esp-bsp`, whose `components/lcd` contains no `esp_lcd_sh8601` at all.
+>
+> **Stated as narrowly as the evidence allows:** what was read here is upstream,
+> at two revisions. The Waveshare fork's own source was **not** re-read — its
+> registry host does not resolve from this environment — so this corrects the
+> claim *about upstream* and leaves the fork's contents on the earlier record's
+> authority. That is also why the line count cannot simply be re-stated as one.
+>
+> The conclusion for **T6 is unchanged and if anything firmer**: the fix exists
+> upstream and does not exist in the pinned fork, so "depend on upstream" now
+> buys a specific, dated bug fix rather than a hypothetical one. What changes is
+> the count — the "exactly two differing lines" figure was derived against
+> current upstream and should not be quoted until it is re-derived against the
+> revision the fork was actually taken from. Nobody has done that; the fork's own
+> source is on a registry host unreachable from CI.
 
 ### 3.4 A correction to the schematic reading: J3 is the display FPC
 
