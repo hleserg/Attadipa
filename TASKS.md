@@ -130,15 +130,25 @@ stale silently. The protocol is
   an API status line, a context refusal, a credit balance, an expired OAuth
   token, a service `overloaded_error`. Anything else is reported as
   `unclassified`, honestly and uselessly.
-- **Acceptance:** when a failure comment says `unclassified`, the pattern that
+- **Acceptance:** when a failure comment says `unclassified`, the detector that
   would have named it is added with a test case, and the run that motivated it
-  is cited in the test the way every other case there is. The whitelist is the
-  security model — the same log holds every tool result — so a pattern is added
-  by shape, anchored and length-bounded, and never by widening one until
-  something matches.
+  is cited in the test the way every other case there is.
+- **A detector is now two things, and the second one is the point.** Adding to
+  this list used to be a security review, because the pattern that *recognised*
+  an error also chose the text that was *printed* — which is exactly how #106
+  happened. It no longer does. An entry is a detector plus an
+  `attadipa__render_<name>` function that writes its own sentence, and that
+  sentence may contain nothing but literal text and captures from a bounded
+  alphabet: a three-digit status, a digit group, a name from
+  `ATTADIPA_ERROR_TYPES`. **Never a fragment of the match.** A detector may
+  therefore be as loose as it needs to be; a renderer may not. If a new
+  classification seems to need a piece of the message to be useful, that is the
+  finding — say so on the issue rather than routing it through the renderer.
 - **Tests:** `.github/tests/failure-reason-test.sh`, which must keep its
   leak cases: an API key, a token-shaped string and a private key sitting in the
-  log beside a real error, asserting only the error comes out.
+  log beside a real error, asserting only the error comes out — including the
+  #106 loop, which puts a secret behind **every** recognised prefix, so a new
+  entry is covered the moment its prefix joins the list.
 - **Hardware required:** no.
 
 

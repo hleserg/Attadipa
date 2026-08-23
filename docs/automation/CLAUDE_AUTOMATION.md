@@ -385,6 +385,55 @@ where nothing matched. An `unclassified` failure is a gap in that list, and the
 honest response is to widen the list rather than to widen the grammar until
 something matches — the failure comment says so, in those words, on the issue.
 
+#### Recognising an error and disclosing the text around it are not one act
+
+The first version of that whitelist made them one, and
+[#106](https://github.com/hleserg/Attadipa/issues/106) is what that cost. Eleven
+of the thirteen patterns were a prefix followed by `[^"]{0,NNN}`, and the **whole
+match** was printed — so a result string reading `API Error: 500
+GH_TOKEN=ghp_…` put the token in a public comment, a nested `error.message` did
+the same, and because the patterns were grepped over the raw file rather than
+over the record that holds the verdict, an error prefix quoted in an unrelated
+**tool result** was published *and* announced as the run's cause. Every one of
+those is a whitelisted pattern behaving exactly as written.
+
+What the extractor does now is decide **which sentence of the script** to print.
+The log is read to *recognise*; it is never a source of characters. Each line is
+assembled from
+
+* literal text written in `failure-reason.sh`, plus
+* captures from a bounded alphabet — a three-digit HTTP status, a group of at
+  most twelve digits, or a name from the closed list in `ATTADIPA_ERROR_TYPES`.
+
+A secret cannot be spelled in three digits and cannot be spelled
+`overloaded_error`, so **widening what is recognised no longer widens what is
+disclosed.** That is the property that matters for T-108: adding a classification
+used to be a security review, and is now a detector plus a renderer that writes
+its own sentence. A detector may be as loose as it needs to be; a renderer may
+contain no fragment of the match.
+
+Recognition is scoped as well as rendered. The detectors read `.result` and
+`.error` of the **last `result` record** and nothing else, so no tool result can
+become the verdict. The whole-file scan survives in one place only — a log with
+no readable result record, which is what a truncated write looks like — and a
+line produced that way says where it came from, because it may belong to an
+earlier record than the failure. `subtype` and `num_turns`, the two fields
+printed without being recognised first, are held to `[a-z_]` and `[0-9]`.
+
+The test carries 80 assertions. The original 27 all still pass **unchanged** —
+they are the leak cases, and a fix that had to weaken them would not have been
+one — and the new ones put a secret behind *every* recognised prefix. Two of them
+are about the test itself: the fixture list is compared against the script's own
+condition table, so a classification added without a case turns the suite red on
+the commit that adds it; and the script under test is overridable, so "red before
+the fix" is a command rather than a claim:
+
+```bash
+git show 5fd2738:.github/scripts/failure-reason.sh > /tmp/old.sh
+ATTADIPA_REASON_SH=/tmp/old.sh bash .github/tests/failure-reason-test.sh
+#   47 passed, 22 failed
+```
+
 ### A green check is not a review, and until now they looked the same
 
 The reviewer's own reporting keyed off `steps.review.outcome == 'failure'`,

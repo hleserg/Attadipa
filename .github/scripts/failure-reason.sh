@@ -23,15 +23,42 @@
 # appear, and tool results carry file contents and token-shaped strings into a
 # world-readable log. So this reads the full execution log -- which the action
 # writes to $RUNNER_TEMP and which never leaves the runner -- and emits ONLY
-# what matches a known error grammar.
+# what a closed vocabulary below can say.
 #
-# THE WHITELIST IS THE SECURITY MODEL. Nothing is printed because it looked
-# interesting. A string is printed because it matches a pattern below that can
-# only be produced by an API or SDK error path, and each pattern is anchored and
-# length-bounded. Anything unrecognised is reported as `unclassified` together
-# with the facts that are structural rather than textual -- subtype, turn count,
-# whether a result string existed at all. An unclassified failure is a gap in
-# this list, and the honest thing is to say so rather than to widen the grammar
+# NOTHING FROM THE LOG IS COPIED OUT. That is the security model, and the first
+# version of this file did not have it: its patterns were written as
+# `API Error: [0-9]{3}[^"]{0,240}` and the WHOLE MATCH was printed, so 240
+# characters of whatever followed a status code went into a public comment. A
+# tool result reading `API Error: 500 GH_TOKEN=ghp_...` published the token; so
+# did a nested `error.message`; and because the patterns were run over the raw
+# file rather than over a parsed record, an error prefix sitting in unrelated
+# tool output became the run's stated verdict. Reported as #106.
+#
+# What replaces it: the log is READ to decide WHICH SENTENCE OF THIS FILE to
+# print. Every line this emits is assembled from
+#
+#   * literal text written here, plus
+#   * captures drawn from a bounded alphabet -- a three-digit HTTP status, a
+#     group of at most twelve digits, or a name from the closed list in
+#     ATTADIPA_ERROR_TYPES.
+#
+# There is no path by which a byte of message text reaches stdout. A secret
+# cannot be spelled in three digits, and it cannot be spelled as
+# `overloaded_error`, so widening what is *recognised* no longer widens what is
+# *disclosed* -- which is what made the old grammar-by-grammar review so
+# delicate.
+#
+# Recognition is also scoped: the detectors run over the KNOWN FIELDS OF THE
+# LAST `result` RECORD (`.result` and `.error`, the latter serialised), not over
+# the file. The whole-file scan survives only for a log with no readable result
+# record -- a truncated write, a shape jq cannot parse -- and a line produced
+# that way says where it came from, because it may belong to some earlier
+# record rather than to the failure.
+#
+# Anything unrecognised is reported as `unclassified` together with facts that
+# are structural rather than textual -- subtype, turn count, whether a result
+# string existed at all. An unclassified failure is a gap in the vocabulary
+# (T-108), and the honest thing is to say so rather than to widen a pattern
 # until something matches.
 #
 # attadipa_failure_reason PATH
@@ -41,37 +68,162 @@
 # line, because the caller runs in `if: always()` and a diagnostic that can
 # itself fail is one more thing to diagnose.
 
-# Ordered most specific first. Each entry is a grep -oE pattern; the first that
-# matches anything wins, and only the matched text is printed.
+# The closed list of error type names. A `type` field is printed only when it is
+# spelled exactly like one of these -- so `"type":"result"`, `"type":"text"` and
+# `"type":"tool_result"`, which occur all over the log, are not classifications,
+# and neither is anything an attacker would rather put there.
+ATTADIPA_ERROR_TYPES='overloaded_error|rate_limit_error|api_error|authentication_error|permission_error|invalid_request_error|billing_error|not_found_error|request_too_large|timeout_error'
+
+# The conditions worth naming, most specific first. Each entry is
+# `name<space>ERE`; the renderer is `attadipa__render_<name>`, which receives
+# the matched fragment and returns a sentence of ITS OWN, optionally carrying
+# digits it re-extracted from that fragment. The fragment itself is never
+# printed, so the trailing parts of these patterns exist to make digits
+# available to the renderer and for no other reason.
 #
 # `Prompt is too long` / `input length` — the API refusing a request larger than
 #   the context window. The 2026-08-22 suspicion on #67, unconfirmed: the
 #   reading list CLAUDE.md and the agent prompt mandate is over 500 KB before
 #   the agent opens a file of its own.
 # `exceed... max_tokens` — the same refusal from the other side.
-# `Credit balance` / `rate_limit` / `overloaded` / `Request timed out` — the
-#   account and the service rather than the task. These must be distinguishable
-#   from a task failure, because re-queueing is right for one and wrong for the
-#   other.
+# `Credit balance` / `Request timed out` — the account and the service rather
+#   than the task. These must be distinguishable from a task failure, because
+#   re-queueing is right for one and wrong for the other.
 # `OAuth token has expired` — .github/workflows/claude-agent.yml authenticates
 #   with a token refreshed by a scheduled workflow; an expiry looks exactly like
 #   a broken agent from the issue page.
 # shellcheck disable=SC2016  # These are grep -E patterns, not shell strings;
 # the backticks below are literal characters the API's own message contains.
-ATTADIPA_REASON_PATTERNS=(
-  'Prompt is too long[^"]{0,200}'
-  'input length and `?max_tokens`? exceed[^"]{0,200}'
-  'input length exceeds[^"]{0,200}'
-  'exceeds? the maximum (allowed )?(number of )?(input )?tokens[^"]{0,160}'
-  "Claude's response exceeded the [0-9]+ output token maximum"
-  'Credit balance is too low[^"]{0,160}'
-  'OAuth (authentication|token)[^"]{0,160}'
-  'API Error: [0-9]{3}[^"]{0,240}'
-  '"type" *: *"(overloaded_error|rate_limit_error|api_error|authentication_error|permission_error|invalid_request_error|billing_error)"'
-  'Request (timed out|was aborted)[^"]{0,160}'
-  'Error: ENOSPC[^"]{0,120}'
-  'JavaScript heap out of memory'
+ATTADIPA_REASON_CONDITIONS=(
+  'prompt_too_long [Pp]rompt is too long(: [0-9]{1,12} tokens > [0-9]{1,12} maximum)?'
+  'input_and_max_tokens input length and `?max_tokens`? exceed( context limit: [0-9]{1,12} \+ [0-9]{1,12} > [0-9]{1,12})?'
+  'input_length input length exceeds'
+  'max_input_tokens exceeds? the maximum (allowed )?(number of )?(input )?tokens'
+  "output_maximum Claude's response exceeded the [0-9]{1,12} output token maximum"
+  'credit_balance Credit balance is too low'
+  'oauth_expired OAuth token has expired'
+  'oauth_refused OAuth (authentication|token)'
+  'request_timeout Request timed out'
+  'request_aborted Request was aborted'
+  'disk_full Error: ENOSPC'
+  'heap_oom JavaScript heap out of memory'
 )
+
+# --- renderers -------------------------------------------------------------
+# Each takes the matched fragment and prints a sentence. Every character of that
+# sentence is either written here or a digit group re-extracted under an
+# anchored pattern. `[[ =~ ]]` with the pattern in a variable, because a bare
+# `>` inside `[[ ]]` is an operator rather than part of a regex.
+
+attadipa__render_prompt_too_long() {
+  local re='([0-9]{1,12}) tokens > ([0-9]{1,12}) maximum'
+  if [[ "$1" =~ $re ]]; then
+    printf 'Prompt is too long: %s tokens > %s maximum' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+  else
+    printf 'the prompt is too long for the context window'
+  fi
+}
+
+# shellcheck disable=SC2016  # The backticks below quote `max_tokens` for the
+# Markdown of an issue comment; nothing is meant to expand.
+attadipa__render_input_and_max_tokens() {
+  local re='([0-9]{1,12}) \+ ([0-9]{1,12}) > ([0-9]{1,12})'
+  if [[ "$1" =~ $re ]]; then
+    printf 'input length and `max_tokens` exceed the context limit: %s + %s > %s' \
+      "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+  else
+    printf 'input length and `max_tokens` exceed the context limit'
+  fi
+}
+
+attadipa__render_input_length() {
+  printf 'the input length exceeds what the model accepts'
+}
+
+attadipa__render_max_input_tokens() {
+  printf 'the request exceeds the maximum number of input tokens'
+}
+
+attadipa__render_output_maximum() {
+  local re='the ([0-9]{1,12}) output token maximum'
+  if [[ "$1" =~ $re ]]; then
+    printf "Claude's response exceeded the %s output token maximum" "${BASH_REMATCH[1]}"
+  else
+    printf "Claude's response exceeded the output token maximum"
+  fi
+}
+
+attadipa__render_credit_balance() {
+  printf 'Credit balance is too low to pay for this request'
+}
+
+attadipa__render_oauth_expired() {
+  printf 'OAuth token has expired and needs refreshing'
+}
+
+attadipa__render_oauth_refused() {
+  printf 'the OAuth credential was not accepted'
+}
+
+attadipa__render_request_timeout() {
+  printf 'Request timed out'
+}
+
+attadipa__render_request_aborted() {
+  printf 'Request was aborted'
+}
+
+attadipa__render_disk_full() {
+  printf 'the runner ran out of disk space (ENOSPC)'
+}
+
+attadipa__render_heap_oom() {
+  printf 'JavaScript heap out of memory'
+}
+
+# The status codes this pipeline can actually meet, so that a bare number is not
+# the whole of what a reader gets. Anything else prints as the number alone --
+# a status is three digits either way, and inventing a word for one we have
+# never seen would be a guess dressed as a fact.
+attadipa__status_word() {
+  case "$1" in
+    400) printf 'bad request' ;;
+    401) printf 'unauthenticated' ;;
+    403) printf 'forbidden' ;;
+    404) printf 'not found' ;;
+    413) printf 'request too large' ;;
+    429) printf 'rate limited' ;;
+    500) printf 'server error' ;;
+    502|503) printf 'service unavailable' ;;
+    529) printf 'overloaded' ;;
+  esac
+}
+
+# Structural fields are printed only when they are spelled the way the SDK
+# spells them. `subtype` and `num_turns` come from a record the SDK wrote, not
+# from the session -- but they are the two things this file prints without
+# recognising them first, so they get an alphabet rather than trust. A token has
+# digits in it and a key has punctuation; neither survives `[a-z_]`.
+attadipa__safe_name() {
+  local re='^[a-z][a-z_]{0,39}$'
+  [[ "$1" =~ $re ]] && printf '%s' "$1"
+}
+
+attadipa__safe_count() {
+  local re='^[0-9]{1,9}$'
+  [[ "$1" =~ $re ]] && printf '%s' "$1"
+}
+
+# One matcher for both sources, so the file scan and the record scan cannot
+# drift apart in what they recognise. `-a` because a log with a stray NUL byte
+# would otherwise be reported as "Binary file matches" and match nothing.
+attadipa__scan() {
+  local mode="$1" src="$2" pattern="$3"
+  case "$mode" in
+    file) grep -aoEm1 "$pattern" "$src" 2>/dev/null | head -1 ;;
+    text) printf '%s\n' "$src" | grep -aoEm1 "$pattern" 2>/dev/null | head -1 ;;
+  esac
+}
 
 attadipa_failure_reason() {
   local path="${1:-}"
@@ -81,7 +233,7 @@ attadipa_failure_reason() {
     return 0
   fi
 
-  local subtype="" is_error="" turns="" had_result="" fields=""
+  local subtype="" is_error="" turns="" had_result="" fields="" head_line="" body=""
   if command -v jq >/dev/null 2>&1; then
     # `-s` plus `flatten(1)` because this action writes ONE JSON ARRAY on some
     # runs and ONE OBJECT PER LINE on others. Both shapes have been seen and
@@ -90,19 +242,28 @@ attadipa_failure_reason() {
     # slurps to [[...]] and flattens back, objects slurp to [...] already.
     #
     # The last `result` record is the verdict; earlier ones belong to
-    # sub-sessions. One jq invocation rather than four, so a partially readable
-    # log cannot answer three questions and fail the fourth.
+    # sub-sessions. One jq invocation rather than five, so a partially readable
+    # log cannot answer four questions and fail the fifth: line one is the
+    # structural fields, and everything after it is the only text the detectors
+    # are allowed to look at -- `.result` and `.error`, and nothing else in the
+    # record, nothing at all from any other record.
     fields=$(jq -rs '
+      def astext: if . == null then "" elif type == "string" then . else tojson end;
       flatten(1)
       | [.[] | select(type == "object" and .type == "result")] | last
       | if . == null then "||||no"
-        else [ (.subtype? // ""),
-               (if has("is_error") then (.is_error | tostring) else "" end),
-               ((.num_turns? // "") | tostring),
-               (if (.result? // "") == "" then "no" else "yes" end) ]
-             | join("|")
+        else ([ (.subtype | astext),
+                (if has("is_error") then (.is_error | tostring) else "" end),
+                (.num_turns | astext),
+                (if (.result // "") == "" then "no" else "yes" end) ]
+              | join("|"))
+             + "\n" + (.result | astext) + "\n" + (.error | astext)
         end' "$path" 2>/dev/null)
-    IFS='|' read -r subtype is_error turns had_result <<< "$fields"
+    head_line=${fields%%$'\n'*}
+    if [ "$fields" != "$head_line" ]; then body=${fields#*$'\n'}; fi
+    IFS='|' read -r subtype is_error turns had_result <<< "$head_line"
+    subtype=$(attadipa__safe_name "$subtype")
+    turns=$(attadipa__safe_count "$turns")
   fi
 
   if [ "$is_error" = "false" ]; then
@@ -110,16 +271,76 @@ attadipa_failure_reason() {
     return 0
   fi
 
-  local pattern hit
-  for pattern in "${ATTADIPA_REASON_PATTERNS[@]}"; do
-    hit=$(grep -oEm1 "$pattern" "$path" 2>/dev/null | head -1)
+  # WHERE THE DETECTORS MAY LOOK. A readable result record is the verdict, and
+  # its two text fields are the whole search space -- so an error prefix in a
+  # tool result is no longer able to become the run's stated cause. Only when no
+  # result record could be read at all does the file itself become the source,
+  # and a line found that way is labelled as such below.
+  local mode="file" src="$path" provenance=""
+  if [ "$head_line" = "||||no" ]; then
+    provenance=" (not from the result record: the log has none)"
+  elif [ -n "$head_line" ]; then
+    mode="text"; src="$body"
+  else
+    provenance=" (not from the result record: the log could not be parsed)"
+  fi
+
+  # The transport half: a status code and a type name, both from closed
+  # alphabets. `${hit##* }` takes the digits off `API Error: 500` -- the pattern
+  # guarantees there is nothing else in the match.
+  local hit="" code="" etype="" transport="" re=""
+  hit=$(attadipa__scan "$mode" "$src" 'API Error: [0-9]{3}')
+  [ -n "$hit" ] && code="${hit##* }"
+  hit=$(attadipa__scan "$mode" "$src" "\"type\" *: *\"($ATTADIPA_ERROR_TYPES)\"")
+  re="\"($ATTADIPA_ERROR_TYPES)\"\$"
+  if [[ "$hit" =~ $re ]]; then etype="${BASH_REMATCH[1]}"; fi
+
+  if [ -n "$code" ]; then
+    transport="API Error: $code"
+    if [ -n "$etype" ]; then
+      transport="$transport (\`$etype\`)"
+    else
+      hit=$(attadipa__status_word "$code")
+      [ -n "$hit" ] && transport="$transport ($hit)"
+    fi
+  elif [ -n "$etype" ]; then
+    transport="the API reported \`$etype\`"
+  fi
+
+  # The condition half: first entry that matches wins, and what is printed is
+  # the renderer's sentence rather than the match. An entry whose renderer does
+  # not exist is skipped rather than run -- a table typo then costs a
+  # classification, which is what `unclassified` is for, instead of putting a
+  # name from the table through the command line.
+  local entry name pattern condition=""
+  for entry in "${ATTADIPA_REASON_CONDITIONS[@]}"; do
+    read -r name pattern <<< "$entry"
+    declare -F "attadipa__render_$name" >/dev/null 2>&1 || continue
+    hit=$(attadipa__scan "$mode" "$src" "$pattern")
     if [ -n "$hit" ]; then
-      # One line, bounded, and stripped of the quoting that surrounds it in JSON.
-      hit=$(printf '%s' "$hit" | tr -d '\n\r' | cut -c1-300)
-      echo "$hit"
-      return 0
+      condition=$("attadipa__render_$name" "$hit")
+      [ -n "$condition" ] && break
     fi
   done
+
+  local line=""
+  if [ -n "$transport" ] && [ -n "$condition" ]; then
+    line="$transport — $condition"
+  elif [ -n "$transport" ]; then
+    line="$transport"
+  elif [ -n "$condition" ]; then
+    line="$condition"
+  fi
+
+  if [ -n "$line" ]; then
+    # One line, and bounded, because an issue comment is not a log viewer. Both
+    # are belt-and-braces now that nothing from the log is copied -- the
+    # renderers above are the length bound -- and they stay, because the cost of
+    # being wrong about that is a run log in a comment.
+    line=$(printf '%s' "$line$provenance" | tr -d '\n\r' | cut -c1-300)
+    echo "$line"
+    return 0
+  fi
 
   # NOT A GUESS. Everything here is structural: a name the SDK chose, a count it
   # kept, and whether a final message existed. None of it is text the session
