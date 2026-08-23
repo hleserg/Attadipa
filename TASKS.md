@@ -71,6 +71,33 @@ stale silently. The protocol is
   smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
   intake, marker-derived labels, the `@claude` dedup override and a green Claude
   run, and exposed the stuck-label defect now fixed.
+- **The privileged tail no longer runs the reviewed branch's code — written,
+  verified, and waiting on one `git apply`**
+  ([#133](https://github.com/hleserg/Attadipa/issues/133), 2026-08-23). The gate
+  has been pinned to the default branch since it was written; `Hand over` and
+  `Work out why the run died` at the far end of the same file were not, and read
+  their five helpers out of `$GITHUB_WORKSPACE` — which is `refs/pull/N/merge`
+  on two of the five triggers, and on all five is whatever the model session
+  left behind. Both writer workflows now stage an orchestration bundle from the
+  default branch into `$RUNNER_TEMP` before the session starts, and a bundle
+  that cannot be staged produces a shorter inline outcome plus recoverable
+  labels rather than a step that dies before the comment.
+  `.github/tests/orchestration-bundle-test.sh` extracts the `Hand over` shell
+  from the YAML and executes it against a stub `gh` with a hostile working
+  tree — 23 assertions with the patch applied, 3 without it.
+- **Owner action, and it is the whole of what is left:** the change is in
+  `.github/workflows/`, which a GitHub App may not push, so it is parked as
+  `docs/automation/pending/133-orchestration-bundle.patch`.
+  `docs/automation/pending/README.md` has the three commands. **`main` carries
+  the defect until somebody runs them**, and the test is deliberately not in
+  `ci.yml` until then — its line is inside the patch — because red CI over a fix
+  nobody has applied is how people learn to ignore CI.
+- **Still `NOT EXECUTED` after that:** the bundle has never run on a real
+  `pull_request_review` event. Every assertion above is a host test; the fetch
+  itself — a sparse `actions/checkout` of the default branch into a second path
+  on a runner that already has a full checkout — has not been observed in
+  production. The first agent run started from a review comment on a pull
+  request is what would close it.
 - **Hardware required:** no.
 - **Not verified by execution:** the no-credential BLOCKED path (a credential is
   configured, so that step is skipped rather than run), and the producer-identity

@@ -115,6 +115,61 @@ ordinary checkout would fetch a fork's version of the very script that decides
 whether a write-capable agent may run. The gate's rules come from `main` or from
 nowhere.
 
+### The same rule, at the other end of the run
+
+**The gate had that pin; the hand-over did not.** For a year of this
+repository's short life the steps *after* the model session — `Work out why the
+run died`, `Hand over` — read `failure-reason.sh`, `gh-label.sh`,
+`handover-decision.sh`, `agent-say.sh` and `promote-decision.sh` out of
+`$GITHUB_WORKSPACE`. Those steps hold `contents: write`, `issues: write`,
+`pull-requests: write` and a live `GH_TOKEN`, and they decide what a run is
+allowed to say and which state the queue is left in. The workspace is not
+`main`, for three separate reasons:
+
+| How the workspace stops being `main` | Consequence |
+|---|---|
+| `pull_request_review` and `pull_request_review_comment` set `GITHUB_REF` to `refs/pull/N/merge` ([GitHub's events table](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)) — two of five triggers | for any file the branch edits, the branch's version wins that merge |
+| the model session runs **between** the checkout and those steps, with write access to the tree | an agent sent to fix `failure-reason.sh` (#106) or to add a hand-over script (#129) had its own half-finished reporting code executed by the reporting step |
+| a branch predating a helper, deleting one, or a session that moved one | `set -euo pipefail` killed the step *before* the outcome comment; the issue sat on `agent:working` with nothing said until the watchdog swept it two hours later |
+
+Reported as [#133](https://github.com/hleserg/Attadipa/issues/133), and the same
+execution path had already been flagged once in review of
+[#85](https://github.com/hleserg/Attadipa/pull/85).
+
+> **Not landed yet.** The change is entirely inside `.github/workflows/`, which
+> a GitHub App may not push without the `workflows` permission, so it is parked
+> as [`pending/133-orchestration-bundle.patch`](pending/133-orchestration-bundle.patch)
+> for the owner to apply. Everything below describes the patched workflows; on
+> `main` the hand-over still reads its helpers from the workspace. Applying the
+> patch is what makes this section true.
+
+So both writer workflows stage an **orchestration bundle**: a sparse
+checkout of `.github/scripts` pinned to the default branch, copied to
+`$RUNNER_TEMP` and deleted from the workspace **before** `Run Claude` starts.
+`actions/checkout` refuses a `path:` outside `$GITHUB_WORKSPACE`, so it lands
+inside and is moved out immediately — *that ordering is the guarantee*, not a
+tidy-up, and the test asserts the ordering rather than the presence.
+
+Three properties, and each is a decision rather than a detail:
+
+- **The workspace is never a fallback.** A missing bundle does not mean "use the
+  copy in the branch"; that copy is the thing being protected against.
+- **It fails toward saying something.** With no bundle the hand-over writes a
+  shorter outcome comment inline — inline text comes from the workflow file,
+  which GitHub reads from the default branch for all of these events — and
+  leaves recoverable labels. It re-queues as `agent:failed` + `agent:ready` only
+  when no open pull request closes the issue; when one does, it says
+  `agent:review` instead, because re-queueing finished work starts a second
+  billed writer on it.
+- **It never promotes on a reduced report.** `gh pr ready` is the step that
+  makes a branch eligible for the unattended backstop, so a hand-over that could
+  not read `promote-decision.sh` holds the draft and says so.
+
+[`.github/tests/orchestration-bundle-test.sh`](../../.github/tests/orchestration-bundle-test.sh)
+extracts the `Hand over` step's shell out of the YAML and **runs** it against a
+stub `gh` with a hostile working tree — the same argument the gate makes for
+being a file. It is red on `7558728` and green after.
+
 Two further habits, both deliberate:
 
 - **Untrusted text never reaches a shell.** An issue body is passed through an

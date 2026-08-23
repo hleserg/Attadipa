@@ -240,6 +240,21 @@ is missed too. No narrating tool calls, no progress bars, no "working on it".
 `BLOCKED:` comment says more than the step could, so the step releases the claim
 and does not talk over it.
 
+**"On every exit path" includes the one where the step cannot read its own
+wording** — or it will, once
+[`pending/133-orchestration-bundle.patch`](pending/133-orchestration-bundle.patch)
+is applied; the change is in `.github/workflows/`, which the agent's token may
+not push. Under that patch `agent-say.sh` and the three decision scripts beside
+it are staged from the default branch before the session starts, never read from
+the working tree — see [the security model](CLAUDE_AUTOMATION.md#the-same-rule-at-the-other-end-of-the-run)
+for why the working tree is not `main`. When that staging fails, the hand-over
+writes a shorter comment inline and leaves recoverable labels: `agent:review` if
+an open pull request closes the issue, `agent:failed` + `agent:ready` if none
+does. It does **not** fall back to the copy in the branch, and it does not mark
+anything ready for review. Before 2026-08-23 that case was the third fixed point
+failing silently — the shape [#133](https://github.com/hleserg/Attadipa/issues/133)
+was opened about.
+
 None of this can loop. Every one of these is written with the built-in
 `GITHUB_TOKEN`, and GitHub deliberately does not start workflow runs from events
 that token creates.
