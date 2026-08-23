@@ -25,10 +25,51 @@ constexpr std::size_t kOutputWatermark = 16 * 1024;
 // client was holding.
 constexpr std::size_t kOutputMax = 4 * 1024 * 1024;
 
+// A bound on how many chunks one poll may hand to the socket, independent of
+// how many bytes they came to. The watermark below cannot bound this by itself:
+// `out_sent_` does not move inside the pump loop -- `flush()` runs after it --
+// so the loop stops only once 16 KiB has *accumulated*, which at a 199-byte
+// frame is about eighty chunks, each paying two passes of a bitwise CRC. On a
+// desktop that is invisible. This file is named as the model for the firmware
+// transport (`TASKS.md` T-114), where the same loop is an eighty-chunk burst of
+// bitwise CRC on the task that services the interface -- the shape `pump`
+// exists to avoid.
+constexpr int kMaxChunksPerPoll = 16;
+
 bool set_non_blocking(int fd)
 {
     const int flags = fcntl(fd, F_GETFL, 0);
     return flags >= 0 && fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+
+// Is something serving this socket right now?
+//
+// A stale socket file left by a killed simulator and a live one belonging to a
+// running simulator are the same directory entry; only a connection tells them
+// apart. `ECONNREFUSED` means the inode outlived its server and may be removed.
+// Anything else -- a successful connect, a permission error, a timeout -- is
+// answered "live", because the cost of being wrong in that direction is a
+// refusal the operator can read, and in the other direction it is deleting a
+// running simulator's socket.
+//
+// The connect is seen by the other server as a client that attaches and leaves
+// immediately, which its one-client rule handles the same way it handles any
+// disconnect.
+bool socket_is_served(const std::string& path)
+{
+    const int probe = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    if (probe < 0) {
+        return true;
+    }
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
+
+    const int  rc      = ::connect(probe, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+    const int  err     = errno;
+    const bool refused = rc != 0 && err == ECONNREFUSED;
+    ::close(probe);
+    return !refused;
 }
 
 }  // namespace
@@ -53,10 +94,40 @@ bool DebugServer::listen(const std::string& path)
     }
 
     // A stale socket file from a simulator that was killed rather than closed
-    // would make bind() fail with EADDRINUSE forever. Removing it is safe
-    // because a live server holds the path open and a second one is refused at
-    // the accept, not here.
-    ::unlink(path.c_str());
+    // would make bind() fail with EADDRINUSE forever, so one has to be removed.
+    // What must not happen is removing anything else.
+    //
+    // The previous spelling was an unconditional `unlink`, and its stated
+    // reason -- "a live server holds the path open and a second one is refused
+    // at the accept" -- is not true: two servers on one path do not know about
+    // each other. The second unlinks the first's inode and binds its own, and
+    // the first goes on printing that it is listening while nothing can reach
+    // it. That is the *documented* usage, not a corner case:
+    // docs/testing/WATCH_CONTROL.md names one path for both boards and then
+    // says to check both boards every time. And with a non-socket path it is
+    // worse still -- `--debug-socket /tmp/keepme` deleted the file, silently,
+    // which is the one thing CLAUDE.md says never to do without looking first.
+    struct stat existing {};
+    if (::stat(path.c_str(), &existing) == 0) {
+        if (!S_ISSOCK(existing.st_mode)) {
+            std::fprintf(stderr,
+                         "debug: %s exists and is not a socket -- refusing to remove it\n",
+                         path.c_str());
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return false;
+        }
+        if (socket_is_served(path)) {
+            std::fprintf(stderr,
+                         "debug: %s is already served by a running simulator; "
+                         "give this one a different --debug-socket path\n",
+                         path.c_str());
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return false;
+        }
+        ::unlink(path.c_str());
+    }
 
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
@@ -100,6 +171,12 @@ bool DebugServer::listen(const std::string& path)
     }
 
     path_ = path;
+    // Remember which inode this bind created; `close` unlinks only that one.
+    struct stat bound {};
+    if (::stat(path_.c_str(), &bound) == 0) {
+        path_dev_ = bound.st_dev;
+        path_ino_ = bound.st_ino;
+    }
     std::printf("debug: listening on %s\n", path_.c_str());
     std::fflush(stdout);
     return true;
@@ -116,8 +193,26 @@ void DebugServer::close()
         listen_fd_ = -1;
     }
     if (!path_.empty()) {
-        ::unlink(path_.c_str());
+        // Only if the path still names the inode this server created. Another
+        // simulator may have taken the name in the meantime -- refused now, but
+        // an older build in the same working tree does not refuse -- and a
+        // normal exit must not delete a live server's socket.
+        //
+        // Best effort, and the residual case is worth naming rather than
+        // implying it is closed: a filesystem may reuse a freed inode number,
+        // so if somebody unlinks this socket by hand and a second simulator
+        // binds the same path, that new socket can land on the same number and
+        // be removed here. There is no portable way to ask a bound AF_UNIX
+        // descriptor which inode it holds, so a stat is the strongest check
+        // available.
+        struct stat current {};
+        if (::stat(path_.c_str(), &current) == 0 && current.st_dev == path_dev_ &&
+            current.st_ino == path_ino_) {
+            ::unlink(path_.c_str());
+        }
         path_.clear();
+        path_dev_ = 0;
+        path_ino_ = 0;
     }
 }
 
@@ -321,7 +416,10 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
 
     // Pump the screenshot while there is room. The watermark is what keeps a
     // 600 kB transfer from stopping the interface: the socket sets the pace.
-    while (out_.size() - out_sent_ < kOutputWatermark) {
+    for (int chunk = 0; chunk < kMaxChunksPerPoll; ++chunk) {
+        if (out_.size() - out_sent_ >= kOutputWatermark) {
+            break;
+        }
         if (!bridge.pump(&DebugServer::emit, this)) {
             break;
         }
@@ -330,9 +428,11 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
     bridge.tick(now_ms, &DebugServer::emit, this);
     flush();
 
-    if (client_fd_ < 0) {
-        drop_client(now_ms, bridge, "write failed");
-    }
+    // No write-failure branch here. `flush` never clears `client_fd_` -- it
+    // says so where it breaks out -- because the disconnect is handled in
+    // exactly one place, the read side, and a failed write surfaces there as
+    // an EOF on the next poll. A second branch here looked like belt and
+    // braces and was unreachable code claiming to be a safety net.
 }
 
 }  // namespace attadipa::sim

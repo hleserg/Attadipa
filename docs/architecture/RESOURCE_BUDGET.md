@@ -185,6 +185,17 @@ high-water mark is never sampled is an unbudgeted task.
 | Per-task high-water mark | `uxTaskGetStackHighWaterMark()` after a soak run |
 | Headroom policy | to be decided — a stack sized to its exact high-water mark is a crash waiting for a deeper call path |
 
+**One figure is already known, before any task exists.** The debug bridge's
+deepest path — `Bridge::handle` into a message decode and out through a reply
+— puts about **1 KB of zero-initialised locals on the stack**, `ESTIMATED` by
+reading the frames rather than measured, because there is no firmware to measure
+on. It is recorded here rather than left to be discovered because of where that
+path will run: the task that services the interface, which on ESP-IDF is
+routinely created with 4 KB. A quarter of the stack in one call chain is not a
+defect on a desktop and is a sizing decision on a device. Whoever writes that
+`xTaskCreate` (**T-114**) owns the number; this line exists so they do not meet
+it for the first time in a stack overflow.
+
 ### Mesh state and message history
 
 The parts of the budget that grow with use rather than with the build. These are

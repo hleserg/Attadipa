@@ -184,6 +184,8 @@ class ErrorCode(IntEnum):
     RATE_LIMITED = 8
     VERSION_MISMATCH = 9
     QUEUE_FULL = 10
+    CAPTURE_FAILED = 11
+    SCREEN_GEOMETRY = 12
 
 
 
@@ -217,6 +219,12 @@ ERROR_TEXT = {
                           "(the interface may be stalled)",
     ErrorCode.RATE_LIMITED: "too many input events per second",
     ErrorCode.VERSION_MISMATCH: "the device speaks a different protocol version",
+    ErrorCode.CAPTURE_FAILED: "the device could not produce a frame at all "
+                              "(the renderer is out of memory, most likely) -- "
+                              "waiting and retrying will not fix this one",
+    ErrorCode.SCREEN_GEOMETRY: "the screen the device is showing is not the panel's size, "
+                               "so the pixels and the reported dimensions disagree -- "
+                               "look at what built that screen, not at the transport",
 }
 
 

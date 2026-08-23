@@ -59,6 +59,19 @@ class ScreenSource {
 public:
     virtual ~ScreenSource() = default;
 
+    // Why a capture returned false. Every value maps to a different thing for
+    // the reader to go and look at, which is the whole point: rolled into one
+    // answer they all read as "wait for a frame and try again", and only one of
+    // them is fixed by waiting.
+    enum class Failure : std::uint8_t {
+        None = 0,          // the capture succeeded
+        ShapeQuery,        // no buffer was passed; the geometry is filled and nothing copied
+        BufferTooSmall,    // this build's frame buffer cannot hold this panel
+        NotRendered,       // there is no frame yet -- the only one waiting fixes
+        RendererFailed,    // the renderer could not produce one, typically out of memory
+        GeometryMismatch,  // the active screen is not the panel size
+    };
+
     // Copies the currently displayed frame into `out`.
     //
     // The copy is the point: it must be one consistent frame, taken at a moment
@@ -76,10 +89,12 @@ public:
     // both shipped implementations honoured it by coincidence of authorship
     // until it was written down here.
     //
-    // On every path the geometry outputs are filled before returning.
+    // On every path the geometry outputs are filled before returning, and so is
+    // `why_out` -- `Failure::None` exactly when the return is true.
     virtual bool capture(std::uint8_t* out, std::size_t capacity, std::uint16_t& width_out,
                          std::uint16_t& height_out, PixelFormat& format_out,
-                         Orientation& orientation_out, std::size_t& bytes_out) = 0;
+                         Orientation& orientation_out, std::size_t& bytes_out,
+                         Failure& why_out) = 0;
 
     // Board and build identity for Hello, and the button list for Capabilities.
     virtual const char* board_id() const  = 0;
@@ -129,6 +144,16 @@ struct BridgeLimits {
     // and named rather than smoothed. Injection is cheap,
     // but a client in a loop can outrun the interface's ability to drain the
     // queue, and the failure mode is a UI that looks hung.
+    //
+    // **This is above what the simulator's interface absorbs**, deliberately
+    // and not by oversight. `sim/remote_input.cpp` dispatches at most sixteen
+    // transitions per `lv_indev_read`, and LVGL reads an input device once per
+    // `LV_DEF_REFR_PERIOD` -- 33 ms in that build -- so about 485 a second
+    // reach a widget. A client between the two numbers is refused nothing and
+    // sees its events counted and typed on the way in, rather than silently
+    // outrunning the drain. The cap belongs to the transport; how fast an
+    // interface consumes is the interface's own fact, and a source with a
+    // slower one does not get a slower protocol.
     std::uint16_t max_events_per_s = 500;
 };
 

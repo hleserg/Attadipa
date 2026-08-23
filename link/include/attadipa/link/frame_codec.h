@@ -54,7 +54,7 @@ inline constexpr std::size_t kOverheadBytes = kHeaderBytes + kTrailerBytes;
 
 // The largest payload one frame may carry.
 //
-// Derived, not copied. ADR-0005 §4's envelope is 12 bytes, and MeshCore's
+// Derived, not copied. ADR-0005 §4's envelope is 10 bytes, and MeshCore's
 // companion frames cap at 176 — so 192 carries a full companion frame inside a
 // Attadipa envelope with room left, and is a round number of cache lines' worth
 // on the part. RESOURCE_BUDGET §4 requires that any pool be sized to the

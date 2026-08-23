@@ -547,13 +547,19 @@ def an_error_code_this_build_does_not_know_is_still_a_sentence() -> None:
     # neither `WatchError` nor `ProtocolError`: it escaped `main()`'s handler
     # and `scenario.py`'s, so `cmd_run` never reached its cleanup `input_reset`
     # and the scenario left a finger down until the 30-second expiry.
+    #
+    # The value is computed rather than written, because the first spelling of
+    # this test hard-coded 11 and stopped testing anything the day 11 became
+    # `CaptureFailed`. It failed loudly, which is the good outcome; a test that
+    # asserts a property of "unknown" must derive the unknown.
+    unknown = max(int(code) for code in p.ErrorCode) + 1
     ahead = Watch(ScriptedDevice(
-        lambda e: [_reply_to(e, p.Op.ERROR, struct.pack("<H", 11))]), timeout=1.0)
+        lambda e: [_reply_to(e, p.Op.ERROR, struct.pack("<H", unknown))]), timeout=1.0)
     try:
         ahead.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,))
         check(False, "an unknown error code was not reported at all")
     except p.ProtocolError as exc:
-        check("11" in str(exc), f"the unknown code is named: {exc}")
+        check(str(unknown) in str(exc), f"the unknown code is named: {exc}")
         check("newer build" in str(exc), "and the reader is told what to suspect")
     except Exception as exc:  # noqa: BLE001
         check(False, f"an unknown error code raised {type(exc).__name__}: {exc}")

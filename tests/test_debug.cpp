@@ -60,21 +60,24 @@ public:
 
     bool capture(std::uint8_t* out, std::size_t capacity, std::uint16_t& width_out,
                  std::uint16_t& height_out, PixelFormat& format_out, Orientation& orientation_out,
-                 std::size_t& bytes_out) override
+                 std::size_t& bytes_out, Failure& why_out) override
     {
         width_out       = w_;
         height_out      = h_;
         format_out      = f_;
         orientation_out = Orientation::Deg0;
         bytes_out       = image_.size();
+        why_out         = Failure::None;
 
-        if (fail_capture_) {
+        if (fail_capture_ != Failure::None) {
             bytes_out = 0;
+            why_out   = fail_capture_;
             return false;
         }
         // A metadata-only query: the caller passed no buffer, so the shape is
         // filled and the copy refused. This is how Capabilities asks.
         if (out == nullptr || capacity == 0) {
+            why_out = Failure::ShapeQuery;
             return false;
         }
         if (capacity < image_.size()) {
@@ -97,7 +100,7 @@ public:
     const ButtonDescriptor* buttons() const override { return buttons_; }
 
     const std::vector<std::uint8_t>& image() const { return image_; }
-    void fail_capture(bool on) { fail_capture_ = on; }
+    void fail_capture(Failure why) { fail_capture_ = why; }
 
     std::uint32_t idle_ms_ = 0;
 
@@ -123,7 +126,7 @@ private:
     PixelFormat               f_;
     std::vector<std::uint8_t> image_;
     ButtonDescriptor          buttons_[2] = {};
-    bool                      fail_capture_ = false;
+    Failure                   fail_capture_ = Failure::None;
 };
 
 // --- collecting what the bridge emits -------------------------------------
@@ -590,10 +593,41 @@ void a_build_without_a_frame_buffer_says_so()
 void nothing_rendered_yet_is_a_typed_error()
 {
     Rig rig;
-    rig.screen.fail_capture(true);
+    rig.screen.fail_capture(ScreenSource::Failure::NotRendered);
     rig.send(request(Opcode::ScreenRequest, 1));
     CHECK(rig.sink.last_error() == ErrorCode::NoScreen);
     CHECK(!rig.bridge.transfer_in_progress());
+}
+
+// The three ways a capture fails that waiting does not fix. They used to be one
+// answer -- NoScreen, "nothing has been rendered yet" -- which sent the reader
+// to look at the interface when LVGL was out of memory or the composition root
+// had built a screen the wrong size.
+void a_capture_that_waiting_will_not_fix_says_which_one_it_is()
+{
+    {
+        Rig rig;
+        rig.screen.fail_capture(ScreenSource::Failure::RendererFailed);
+        rig.send(request(Opcode::ScreenRequest, 1));
+        CHECK(rig.sink.last_error() == ErrorCode::CaptureFailed);
+        CHECK(!rig.bridge.transfer_in_progress());
+    }
+    {
+        Rig rig;
+        rig.screen.fail_capture(ScreenSource::Failure::GeometryMismatch);
+        rig.send(request(Opcode::ScreenRequest, 2));
+        CHECK(rig.sink.last_error() == ErrorCode::ScreenGeometry);
+        CHECK(!rig.bridge.transfer_in_progress());
+    }
+    // And the one that waiting *does* fix keeps its own code, so the
+    // troubleshooting table's advice stays true of exactly the case it is true
+    // of.
+    {
+        Rig rig;
+        rig.screen.fail_capture(ScreenSource::Failure::NotRendered);
+        rig.send(request(Opcode::ScreenRequest, 3));
+        CHECK(rig.sink.last_error() == ErrorCode::NoScreen);
+    }
 }
 
 std::vector<std::uint8_t> input_request(core::InputEventType type, std::uint16_t req_id,
@@ -1168,6 +1202,7 @@ int main()
     a_second_screenshot_while_one_is_running_is_refused();
     a_build_without_a_frame_buffer_says_so();
     nothing_rendered_yet_is_a_typed_error();
+    a_capture_that_waiting_will_not_fix_says_which_one_it_is();
 
     an_injected_tap_reaches_the_same_queue_a_finger_would();
     a_clients_own_timestamps_are_kept();

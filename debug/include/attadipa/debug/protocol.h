@@ -102,6 +102,8 @@ enum class ErrorCode : std::uint16_t {
     RateLimited      = 8,
     VersionMismatch  = 9,
     QueueFull        = 10,  // the input queue overran; the event was dropped
+    CaptureFailed    = 11,  // the renderer could not produce a frame -- typically out of memory
+    ScreenGeometry   = 12,  // the active screen is not the panel size
 };
 
 // Appended, never renumbered. A value on this wire is a fact somebody's log
@@ -113,6 +115,16 @@ enum class ErrorCode : std::uint16_t {
 // second screenshot arriving mid-transfer, and a swipe point that found the
 // input queue full. A dropped gesture reporting itself as a screenshot
 // collision sends the reader to the wrong subsystem.
+//
+// `CaptureFailed` and `ScreenGeometry` exist for the same reason one layer up.
+// Every way a capture can fail used to answer `NoScreen`, "nothing has been
+// rendered yet" -- so an LVGL allocation failure, which is a real prospect
+// because `lv_conf_simulator.h` fixes `LV_MEM_SIZE` at 1 MiB deliberately "so
+// that the simulator can still run out of LVGL memory the way a watch would",
+// told the operator to wait for a frame and take the picture again. Waiting
+// does not fix either of these. `NoScreen` keeps its meaning and no shipped
+// source returns it today: `lv_snapshot_take` re-renders, so it succeeds before
+// the first `lv_timer_handler` too. A device source may still need it.
 
 struct Envelope {
     std::uint8_t  version  = kDebugProtocolVersion;

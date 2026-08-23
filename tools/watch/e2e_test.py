@@ -105,7 +105,105 @@ def pixel(rgb: bytes, width: int, x: int, y: int) -> tuple[int, int, int]:
     return rgb[at], rgb[at + 1], rgb[at + 2]
 
 
+def _socket_path_is_not_a_scratch_pad(simulator: str, board: str) -> None:
+    """`--debug-socket` used to delete whatever was at the path, then bind.
+
+    Two ways that went wrong, and both are here because the fix is one `stat`
+    and the failure is somebody's file. The first is a mistyped path: the
+    simulator unlinked a regular file, silently, and the CLAUDE.md rule about
+    looking at a target before deleting it is not suspended because the caller
+    typed the path. The second is the *documented* usage -- one socket path,
+    both boards -- where the second simulator unlinked the first's inode and
+    bound its own, leaving the first alive, still printing that it was
+    listening, and unreachable for the rest of its life.
+    """
+    environment = dict(os.environ, SDL_VIDEODRIVER="dummy")
+    with tempfile.TemporaryDirectory() as workdir:
+        keepme = os.path.join(workdir, "keepme.txt")
+        Path(keepme).write_text("a file that is not a socket\n")
+
+        refused = subprocess.run(
+            [simulator, "--board", board, "--debug-socket", keepme],
+            capture_output=True, text=True, env=environment, timeout=60)
+        check(Path(keepme).exists(), "a non-socket path is not deleted")
+        check(Path(keepme).read_text() == "a file that is not a socket\n",
+              "and it is not overwritten either")
+        check(refused.returncode != 0, "and the simulator exits non-zero")
+        check("not a socket" in (refused.stdout + refused.stderr),
+              f"and says why: {(refused.stdout + refused.stderr)[-200:]!r}")
+
+        # Now the two-simulator case, on a path the first one is serving.
+        taken = os.path.join(workdir, "taken.sock")
+        log_path = os.path.join(workdir, "first.log")
+        with open(log_path, "wb") as log:
+            first = subprocess.Popen(
+                [simulator, "--board", board, "--debug-socket", taken],
+                stdout=log, stderr=subprocess.STDOUT, env=environment)
+            try:
+                deadline = time.monotonic() + 30
+                while not os.path.exists(taken) and time.monotonic() < deadline:
+                    if first.poll() is not None:
+                        break
+                    time.sleep(0.05)
+                check(os.path.exists(taken), "the first simulator listens")
+                before = os.stat(taken)
+
+                second = subprocess.run(
+                    [simulator, "--board", board, "--debug-socket", taken],
+                    capture_output=True, text=True, env=environment, timeout=60)
+                check(second.returncode != 0, "a second simulator on the same path is refused")
+                check("already served" in (second.stdout + second.stderr),
+                      f"and says so: {(second.stdout + second.stderr)[-200:]!r}")
+
+                after = os.stat(taken)
+                check((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino),
+                      "and the first simulator still owns the inode it bound")
+                check(first.poll() is None, "and is still running")
+            finally:
+                first.terminate()
+                try:
+                    first.wait(timeout=10)
+                except subprocess.TimeoutExpired:      # pragma: no cover
+                    first.kill()
+
+        # The first was killed rather than closed, so its socket file outlives
+        # it -- which is the case the unlink exists for in the first place. A
+        # third simulator must now take the path, because nothing is serving it:
+        # `connect` gets ECONNREFUSED, which is the only signal that tells a
+        # stale inode from a live one.
+        check(os.path.exists(taken), "a killed simulator leaves its socket behind")
+        third_log = os.path.join(workdir, "third.log")
+        with open(third_log, "wb") as log:
+            third = subprocess.Popen(
+                [simulator, "--board", board, "--debug-socket", taken],
+                stdout=log, stderr=subprocess.STDOUT, env=environment)
+            try:
+                # Not asserted by inode: /tmp is tmpfs here and reuses a freed
+                # inode number immediately, so the replacement socket routinely
+                # lands on the same one. What is being tested is that the stale
+                # entry did not turn into a refusal, so the assertion is that it
+                # bound and said so.
+                deadline = time.monotonic() + 30
+                listening = False
+                while time.monotonic() < deadline and third.poll() is None:
+                    if "listening on" in Path(third_log).read_text(errors="replace"):
+                        listening = True
+                        break
+                    time.sleep(0.05)
+                check(third.poll() is None, "and a stale one does not block the next simulator")
+                check(listening, "which binds the path and says so")
+            finally:
+                third.terminate()
+                try:
+                    third.wait(timeout=10)
+                except subprocess.TimeoutExpired:      # pragma: no cover
+                    third.kill()
+
+
 def run(simulator: str, board: str = "waveshare-amoled-206") -> int:
+    print("socket path")
+    _socket_path_is_not_a_scratch_pad(simulator, board)
+
     with tempfile.TemporaryDirectory() as workdir:
         socket_path = os.path.join(workdir, "sim.sock")
         log_path = os.path.join(workdir, "sim.log")
@@ -311,7 +409,14 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
             except WatchError as exc:
                 if "PyYAML" not in str(exc):
                     raise
-                print("  --   the scenario is YAML and PyYAML is absent; skipped")
+                # A failure, not a skip. Elsewhere this branch registers a
+                # failing test when a dependency is missing rather than
+                # printing a line nobody reads (`tests/CMakeLists.txt`), and
+                # the shipped scenario is the only end-to-end coverage the
+                # tour has. A silent skip is how "23/23 on both boards" stops
+                # meaning anything without the number changing.
+                check(False, "the scenario is YAML and PyYAML is absent -- "
+                             "install it (python3-yaml) or this test proves nothing")
             else:
                 report = scenario_mod.run(watch, steps, os.path.join(workdir, "tour"))
                 detail = "; ".join(f"{s.action}: {s.detail}" for s in report.steps if not s.ok)

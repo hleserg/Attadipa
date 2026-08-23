@@ -53,6 +53,13 @@ SDL_VIDEODRIVER=dummy ./build-sim/sim/attadipa_sim \
 too. `--board t-watch-s3-plus` for the other geometry — **check both**, the
 Definition of Done says so and 240×240 breaks layouts that 410×502 does not.
 
+**Give the second board its own socket path.** Two simulators cannot share one:
+the second is refused now, with a message saying which path is taken. Run it on
+`/tmp/attadipa-tw.sock` and pass `--socket /tmp/attadipa-tw.sock` to the tool —
+the default search covers `/tmp/attadipa-sim.sock` only. A path that exists and
+is not a socket is refused too; `--debug-socket` used to delete whatever was
+there.
+
 The simulator listens **only** when given `--debug-socket`. That is deliberate:
 the feature is off unless asked for.
 
@@ -186,6 +193,9 @@ so a `press` and a much later `release` genuinely test a hold.
 | `the device refused: that input is impossible…` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info`. **If you ran `press` in one command and `release` in the next, this is the expected answer, not a fault** — see section 4 |
 | `the device refused: this stack is single-touch` | you asked for a second finger | there is no multitouch; use one-point gestures |
 | `the device refused: a screenshot is already in progress` | two overlapping requests | let the first finish |
+| `the device refused: the device could not produce a frame at all…` | the renderer is out of memory | **retrying will not fix it.** A 410 × 502 screenshot asks LVGL's 1 MiB pool for 617 kB over the widget tree; simplify the screen or look at what is holding memory. It used to answer `nothing has been rendered yet`, which sent you to wait for a frame that was already drawn |
+| `the device refused: the screen the device is showing is not the panel's size…` | the active screen is not the display's size | look at what built that screen — the capture is refused rather than reporting the board's dimensions over the wrong pixels |
+| `the device refused: nothing has been rendered yet` | genuinely no frame yet | the one capture failure that waiting *does* fix. The simulator never returns it |
 | `the frame is incomplete` / `does not match its checksum` | a torn transfer | retry once; if it repeats, it is a bug — report it with the message |
 | the screen is stuck mid-gesture | a crashed run left a finger down | `python3 tools/watch_control.py input-reset` |
 | a button is stuck down | same | `input-reset`. The device also releases after 30 s and on disconnect |

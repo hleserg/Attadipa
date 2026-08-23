@@ -43,14 +43,27 @@ The simulator listens **only** when asked. There is no always-on debug port.
 cmake -S . -B build-sim -DATTADIPA_BUILD_SIMULATOR=ON
 cmake --build build-sim -j
 
-# with a window
+# with a window, on the path the tool finds without being told
 ./build-sim/sim/attadipa_sim --board waveshare-amoled-206 \
     --debug-socket /tmp/attadipa-sim.sock
 
 # headless, for CI or over ssh
 SDL_VIDEODRIVER=dummy ./build-sim/sim/attadipa_sim --board t-watch-s3-plus \
-    --debug-socket /tmp/attadipa-sim.sock &
+    --debug-socket /tmp/attadipa-tw.sock &
+# and then: python3 tools/watch_control.py --socket /tmp/attadipa-tw.sock info
 ```
+
+**One path per simulator, and the second one needs `--socket`.** These two used
+to name the same socket, four lines apart, under a heading that says to run both
+boards every time. Starting the second on a path the first is serving is now
+**refused**, with a message saying so — rather than the second quietly taking
+the name, which is what used to happen: the first stayed alive, went on printing
+that it was listening, and was unreachable for the rest of its life while the
+tool drove the other one.
+
+A path that exists and is **not** a socket is refused too. `--debug-socket` used
+to unlink whatever was at the path before binding, so a mistyped
+`--debug-socket ~/notes.md` deleted the file without a word.
 
 Add `--diagnostic` for the test pattern instead of the capability screen — see
 [the diagnostic screen](#the-diagnostic-screen).
@@ -199,7 +212,9 @@ the expectation would move together.
 | `this stack is single-touch` | a second finger was requested | there is no multitouch; use one-point gestures |
 | `a screenshot is already in progress` | two overlapping requests | let the first finish. This means **only** a screen transfer collision now |
 | `the device's input queue is full…` | the interface is not draining, so an event was dropped | its own code, because it used to answer with the row above and send you to the wrong subsystem. Look at why the interface stalled |
-| `nothing has been rendered yet` | the screen has not been drawn | take the screenshot after the first frame |
+| `nothing has been rendered yet` | the screen has not been drawn | take the screenshot after the first frame. **This is now the only capture failure that waiting fixes**, and no shipped source returns it: `lv_snapshot_take` re-renders, so it succeeds before the first `lv_timer_handler` too. A device source may still need it |
+| `the device could not produce a frame at all…` | the renderer is out of memory | **waiting will not fix it.** The simulator fixes `LV_MEM_SIZE` at 1 MiB on purpose, and a 410 × 502 screenshot asks that pool for 617,460 bytes plus stride over the widget tree and the display buffers. Its own code because it used to answer with the row above, which sent you to wait for a frame that had already been drawn |
+| `the screen the device is showing is not the panel's size…` | the active screen is smaller or larger than the display | look at what built that screen. Reporting the board's dimensions over the snapshot's pixels would produce a skewed image that still looked like a picture, so the capture is refused instead |
 | `the frame is incomplete: N bytes never arrived` | a torn transfer | **not retried automatically** — run the command again. The retry in `request()` covers a lost request, not a torn stream, and a screenshot does not go through it |
 | `the assembled frame does not match its checksum` | chunks assembled wrongly | same — the framing already proved each chunk was intact, so this is an assembly bug |
 | `this build of the firmware cannot do that` | the debug channel is compiled out, **or** the frame buffer is smaller than the panel, **or** the button is one this board will not simulate | for a button, `info` prints which are simulated; the T-Watch's `boot` is a boot-mode strap and produces no software event on real hardware |

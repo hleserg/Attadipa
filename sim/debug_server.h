@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include "attadipa/debug/bridge.h"
 #include "attadipa/link/frame_codec.h"
 
@@ -66,6 +69,12 @@ private:
     int         listen_fd_ = -1;
     int         client_fd_ = -1;
     std::string path_;
+    // The inode `bind` created, so that `close` unlinks the socket it made and
+    // not whatever occupies that path by then. Two simulators sharing a path is
+    // the documented usage in docs/testing/WATCH_CONTROL.md, and without this a
+    // normal exit deletes a live server's socket out from under it.
+    dev_t       path_dev_ = 0;
+    ino_t       path_ino_ = 0;
 
     // Set by `queue` when the outgoing buffer passes its watermark, acted on by
     // `poll`. Deferred rather than immediate so the bridge is never re-entered

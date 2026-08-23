@@ -41,7 +41,8 @@ public:
 
     bool capture(std::uint8_t* out, std::size_t capacity, std::uint16_t& width_out,
                  std::uint16_t& height_out, debug::PixelFormat& format_out,
-                 debug::Orientation& orientation_out, std::size_t& bytes_out) override;
+                 debug::Orientation& orientation_out, std::size_t& bytes_out,
+                 debug::ScreenSource::Failure& why_out) override;
 
     const char*                    board_id() const override { return board_.id; }
     const char*                    build_id() const override;

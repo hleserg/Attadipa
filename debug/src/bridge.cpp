@@ -154,7 +154,8 @@ void Bridge::handle_capabilities(std::uint16_t req_id, Emit emit, void* ctx)
     // a board fact and this class is not allowed to hold a table of board
     // facts. Capture into a zero-capacity buffer: the source fills the
     // metadata and refuses the copy, which is exactly the query we want.
-    (void)source_.capture(nullptr, 0, w, h, f, o, n);
+    ScreenSource::Failure why = ScreenSource::Failure::None;
+    (void)source_.capture(nullptr, 0, w, h, f, o, n, why);
 
     caps.width            = w;
     caps.height           = h;
@@ -211,19 +212,42 @@ void Bridge::handle_screen(std::uint16_t req_id, std::uint32_t now_ms, Emit emit
     // is answerable as itself. Rolled into NoScreen it read as "nothing has
     // been rendered yet", which sends the reader to look at the interface when
     // the fault is a number in the composition root.
-    (void)source_.capture(nullptr, 0, w, h, f, o, n);
+    ScreenSource::Failure why = ScreenSource::Failure::None;
+    (void)source_.capture(nullptr, 0, w, h, f, o, n, why);
     if (n > frame_capacity_) {
         send_error(req_id, ErrorCode::Unsupported, emit, ctx);
         return;
     }
 
-    w = 0;
-    h = 0;
-    f = PixelFormat::Unknown;
-    o = Orientation::Deg0;
-    n = 0;
-    if (!source_.capture(frame_buffer_, frame_capacity_, w, h, f, o, n) || n == 0) {
-        send_error(req_id, ErrorCode::NoScreen, emit, ctx);
+    w   = 0;
+    h   = 0;
+    f   = PixelFormat::Unknown;
+    o   = Orientation::Deg0;
+    n   = 0;
+    why = ScreenSource::Failure::None;
+    if (!source_.capture(frame_buffer_, frame_capacity_, w, h, f, o, n, why) || n == 0) {
+        // Each failure names a different place to look. Answering all of them
+        // with NoScreen -- "nothing has been rendered yet" -- told the operator
+        // to wait for a frame, which fixes exactly one of them.
+        ErrorCode code = ErrorCode::NoScreen;
+        switch (why) {
+        case ScreenSource::Failure::BufferTooSmall:
+            // Pre-screened above, so this is a source disagreeing with its own
+            // shape query rather than the ordinary path. Still its own answer.
+            code = ErrorCode::Unsupported;
+            break;
+        case ScreenSource::Failure::RendererFailed:
+            code = ErrorCode::CaptureFailed;
+            break;
+        case ScreenSource::Failure::GeometryMismatch:
+            code = ErrorCode::ScreenGeometry;
+            break;
+        case ScreenSource::Failure::None:
+        case ScreenSource::Failure::ShapeQuery:
+        case ScreenSource::Failure::NotRendered:
+            break;
+        }
+        send_error(req_id, code, emit, ctx);
         return;
     }
 
@@ -385,6 +409,10 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
         return;
     }
 
+    // Read before `apply`, for the PointerMove rollback below.
+    const std::int16_t before_x = state_.pointer_x();
+    const std::int16_t before_y = state_.pointer_y();
+
     if (!state_.apply(event, source_.button_count())) {
         ++stats_.events_refused;
         send_error(req_id, ErrorCode::BadInput, emit, ctx);
@@ -415,6 +443,16 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
             break;
         case core::InputEventType::PointerUp:
             undo.type = core::InputEventType::PointerDown;
+            (void)state_.apply(undo, source_.button_count());
+            break;
+        case core::InputEventType::PointerMove:
+            // A move has no inverse type, so it is undone by moving back. The
+            // coordinates were read before `apply` overwrote them, because
+            // afterwards there is nothing left to read: `release_all` and
+            // `tick` both lift "where it was last seen", and a refused move
+            // left that reading a place the finger never travelled to.
+            undo.x = before_x;
+            undo.y = before_y;
             (void)state_.apply(undo, source_.button_count());
             break;
         default:

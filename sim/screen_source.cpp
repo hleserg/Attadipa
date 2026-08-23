@@ -75,8 +75,10 @@ std::size_t LvglScreenSource::frame_bytes() const
 
 bool LvglScreenSource::capture(std::uint8_t* out, std::size_t capacity, std::uint16_t& width_out,
                                std::uint16_t& height_out, debug::PixelFormat& format_out,
-                               debug::Orientation& orientation_out, std::size_t& bytes_out)
+                               debug::Orientation& orientation_out, std::size_t& bytes_out,
+                               debug::ScreenSource::Failure& why_out)
 {
+    why_out = debug::ScreenSource::Failure::None;
     width_out  = board_.display.width_px;
     height_out = board_.display.height_px;
     format_out = debug::PixelFormat::Bgr888;
@@ -91,15 +93,22 @@ bool LvglScreenSource::capture(std::uint8_t* out, std::size_t capacity, std::uin
     // A metadata-only query: capabilities asks the shape without wanting the
     // pixels.
     if (out == nullptr || capacity == 0) {
+        why_out = debug::ScreenSource::Failure::ShapeQuery;
         return false;
     }
     if (capacity < bytes_out) {
+        why_out = debug::ScreenSource::Failure::BufferTooSmall;
         return false;
     }
 
+    // 410 x 502 x 3 is 617,460 bytes plus stride, asked of the pool
+    // `lv_conf_simulator.h` fixes at 1 MiB on purpose, over the widget tree and
+    // the display buffers. When it goes, it is LVGL that is out of memory --
+    // not a screen that has not been drawn yet, which is what this used to say.
     lv_draw_buf_t* snapshot = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB888);
     if (snapshot == nullptr) {
         bytes_out = 0;
+        why_out   = debug::ScreenSource::Failure::RendererFailed;
         return false;
     }
 
@@ -114,6 +123,7 @@ bool LvglScreenSource::capture(std::uint8_t* out, std::size_t capacity, std::uin
     if (width != board_.display.width_px || height != board_.display.height_px) {
         lv_draw_buf_destroy(snapshot);
         bytes_out = 0;
+        why_out   = debug::ScreenSource::Failure::GeometryMismatch;
         return false;
     }
 
