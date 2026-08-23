@@ -1709,9 +1709,11 @@ stale silently. The protocol is
 - **Definitely not:** guessing. A resolver that picks a device when it cannot
   identify one is the bug with extra steps.
 
-### T-117 · Neither of the two things that got past the checks was something the checks look for
-- **Priority:** P3 — nothing is broken; two known blind spots, written down
-  before the next thing walks through one of them.
+### T-117 · Nothing that has got past the checks was something the checks look for
+- **Priority:** P3 for the first two — nothing is broken, they are blind spots
+  written down before the next thing walks through one of them. **P2 for the
+  third**, which is not hypothetical: five open pull requests are standing in it
+  right now.
 - **Dependencies:** none.
 - **What got through:**
   1. **29 stray files** reached a branch because `git add -A` was run at the
@@ -1728,9 +1730,35 @@ stale silently. The protocol is
      only group 1 — so `FILE.md#a-heading-that-was-reworded` is *"clean"*. The
      same file finds **duplicate** task IDs and never dangling ones, which is
      how a reference to a task on an unmerged branch survived a green run.
-- **Goal:** a size/binary gate on pull requests, and an anchor check that
-  resolves `#…` against the target file's headings using the same slug rule
-  GitHub applies. Both are host checks with no hardware in them.
+  3. **`OD-nn` is a sequence with no allocator and no check**, and it has
+     already collided. On 2026-08-23, `main` ends at **OD-15** and *four* open
+     pull requests each introduce an **OD-16** —
+     [#92](https://github.com/hleserg/Attadipa/pull/92) (A1–A3),
+     [#95](https://github.com/hleserg/Attadipa/pull/95) (A9),
+     [#97](https://github.com/hleserg/Attadipa/pull/97) (A10) and
+     [#134](https://github.com/hleserg/Attadipa/pull/134) (the bench unit) —
+     while [#94](https://github.com/hleserg/Attadipa/pull/94) numbers itself
+     **OD-17** on the assumption that #92 lands first. Whichever merges first
+     wins; the rest carry a number that is now somebody else's, and nothing
+     fails. `check_task_ids` (`:162`) is the only ID check in the repository and
+     it knows about `T-nnn` alone.
+
+     **This one is worse than a duplicate heading.** A task ID is cited inside
+     this file; an `OD-nn` is cited from ADRs, from `STATUS.md` and from
+     agent replies, under a rule in `CLAUDE.md` that owner decisions are not
+     ours to overturn — so a collision does not merely repeat a number, it makes
+     every existing citation ambiguous about *which* decision it was obeying.
+- **Goal:** a size/binary gate on pull requests, an anchor check that resolves
+  `#…` against the target file's headings using the same slug rule GitHub
+  applies, and a duplicate-`OD-nn` check shaped like `check_task_ids`. All three
+  are host checks with no hardware in them.
+- **What the third one does not solve, said plainly:** a check inside the
+  repository fires *after* a merge, so it turns a silent collision into a loud
+  one and does not prevent it. Preventing it needs an allocator across open
+  branches, which is the same problem the T-number space has and solves by
+  convention — check every remote branch before claiming a number. Write that
+  convention down for `OD-nn` too; a check that only shouts afterwards is worth
+  having and is not the whole answer.
 - **Definitely not:** raising these to blocking on existing content before
   running them once and reading the output. A check that goes red across the
   repository on its first run gets disabled rather than obeyed.
