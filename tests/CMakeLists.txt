@@ -221,6 +221,50 @@ if(ATTADIPA_BUILD_SIMULATOR)
     target_link_libraries(test_ui_icons PRIVATE attadipa_images)
     add_test(NAME ui_icons COMMAND test_ui_icons)
     set_tests_properties(ui_icons PROPERTIES LABELS design)
+
+    # ---------------------------------------------------------------------
+    # The other half of ui_no_raw_values (issue #68).
+    #
+    # That scan refuses raw pixel counts, durations and colours, and it can
+    # only refuse what tools/ui/lvgl_inventory.py knows about. The inventory is
+    # written down rather than read out of LVGL, because this option is OFF by
+    # default and a scan that needs LVGL on disk is a scan that stops running
+    # on four of five CI jobs — so the scan itself stays where it is, above,
+    # with no dependency at all.
+    #
+    # Here is where LVGL *is* on disk, so here is where the written-down list
+    # can be held against it. Without this the inventory is checked by example,
+    # which is exactly how lv_obj_set_ext_click_area came to be missing from a
+    # list whose own comment said it had been read out of the header that
+    # declares it.
+    #
+    # ${lvgl_SOURCE_DIR} comes from FetchContent and is already verified
+    # against the pinned tag *and* commit by cmake/AttadipaLvgl.cmake, so this
+    # is checking against the version the build actually uses rather than
+    # whatever happens to be on the machine.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME ui_inventory_matches_lvgl
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/ui/check_inventory.py
+                         ${lvgl_SOURCE_DIR})
+        add_test(NAME ui_inventory_check_rejects_mistakes
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/ui/selftest_inventory.py
+                         ${lvgl_SOURCE_DIR})
+        set_tests_properties(ui_inventory_matches_lvgl
+                             ui_inventory_check_rejects_mistakes
+                             PROPERTIES LABELS design)
+    else()
+        add_test(NAME ui_inventory_check_unavailable
+                 COMMAND ${CMAKE_COMMAND} -E false)
+        set_tests_properties(ui_inventory_check_unavailable
+                             PROPERTIES LABELS design)
+        message(WARNING
+            "Python 3.11+ was not found, so the LVGL inventory completeness "
+            "check cannot run even though LVGL is available. A deliberately "
+            "failing test is registered in its place, for the same reason as "
+            "the others: a skipped check reads as a passing one.")
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------

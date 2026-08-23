@@ -280,8 +280,9 @@ pixel count or a duration written as a number anywhere under `ui/`, `sim/` or
 what somebody copying a line out of the palette would paste. Exactly one file is
 exempt, `ui/src/color.cpp`, because being the palette is its job; six other
 candidates were tried and removed on finding they were exempt from a rule they
-never broke. `tools/ui/selftest.py` proves the checker rejects thirty real
-mistakes and accepts twenty-eight correct forms.
+never broke. `tools/ui/selftest.py` proves the checker rejects fifty-eight real
+mistakes, accepts forty-three correct forms and reports five diagnostics
+usefully.
 
 **It reads calls, not lines, and that distinction was bought.** Until
 [#68](https://github.com/hleserg/Attadipa/issues/68) the checker matched one
@@ -293,6 +294,26 @@ bodies, takes each call whole by balancing parentheses, and judges arguments by
 position against an inventory of LVGL entry points read out of the pinned v9.5.0
 headers. Half the self-test is the same call written twice, one line and
 wrapped, because the two disagreeing is precisely what nobody noticed.
+
+**It reads values, not spellings, for the same reason.** `1'2`, `12.0f` and
+`0x10 / 2` are twelve, twelve and eight to a compiler, and all three passed the
+first fix: the old test was "the whole argument is an integer literal, or
+contains no letter at all", and the `x` of a hex prefix is a letter. The
+argument is now tokenised with C++'s own preprocessing-number rule, so a prefix
+and a suffix are inside the number rather than mistaken for a name. A cast is
+read the same way — `(int32_t)12` names a type, never a meaning — while
+`static_cast<Dp>(12)` still passes, because `Dp` is a design type and is not on
+the fixed list of arithmetic ones.
+
+**The inventory is now checked for completeness, not by example.** It lives in
+`tools/ui/lvgl_inventory.py` and every LVGL entry point with a numeric argument
+is classified: either it carries a length, a duration or a colour, or it says in
+one line what it carries instead. `tools/ui/check_inventory.py` holds that
+against the pinned headers in the simulator build — where LVGL is on disk — and
+fails on anything unclassified, in either direction. The primary scan stays
+dependency-free, because it is the one that runs everywhere. That check is what
+found `shadow_ofs_x`, `anim_time` and `lv_anim_set_reverse_time`: entry points
+that still compile, take a length or a duration, and had never been on any list.
 
 **It is a rule about lengths, not about numbers.** A repeat count, a rotation in
 tenths of a degree, a gradient stop between 0 and 255, a flex weight and an

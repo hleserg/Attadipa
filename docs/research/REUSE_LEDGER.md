@@ -1590,18 +1590,29 @@ in v9 it is a compatibility macro for `lv_anim_set_duration`, so both spellings
 compile — and the old hand-written list knew only the compatibility one, which
 meant the name a v9 screen would actually reach for was the one nobody checked.
 
-**Weakness, stated rather than discovered:** the inventory is a list in a Python
-file, so LVGL can grow a setter and the checker will not know. That is the price
-of not depending on the headers at check time, and it is paid where it can be
-seen — [DEPENDENCIES](DEPENDENCIES.md) carries re-deriving the inventory as a
-step of an LVGL bump, beside retesting both geometries.
+**Weakness, stated rather than discovered — and then it happened.** The
+paragraph here used to end: *the inventory is a list in a Python file, so LVGL
+can grow a setter and the checker will not know; that is the price of not
+depending on the headers at check time, and it is paid where it can be seen —*
+[DEPENDENCIES](DEPENDENCIES.md) *carries re-deriving the inventory as a step of
+an LVGL bump.* The follow-up review on the same issue showed that price being
+paid immediately rather than at some future bump:
+`lv_obj_set_ext_click_area(obj, 12)` was clean, and it is declared in
+`src/core/lv_obj_pos.h` — one of the seven headers named above as having been
+read. Nothing was growing. The list had simply never been held against the
+headers, and no test could tell the difference between "read carefully" and
+"remembered".
+
+The price is now paid by a check rather than by a paragraph, and the decision
+about *how* to read the headers is below.
 
 **Source revision:** no third-party code taken, so nothing to pin. The revisions
 above are recorded so the rejections can be re-examined rather than re-argued.
 
 **Attadipa integration:** `tools/ui/check_raw_values.py`, run by the
 `ui_no_raw_values` test; `tools/ui/selftest.py`, run by
-`ui_check_rejects_mistakes`.
+`ui_check_rejects_mistakes`; the inventory it reads is
+`tools/ui/lvgl_inventory.py`.
 
 **Tests required:** every negative fixture in both formattings — one line and
 wrapped — because the whole defect was that those two disagreed. Plus the
@@ -1612,3 +1623,64 @@ mutation-checked three ways: disabling the comment/string blanking, loosening
 the colour rule back to where it would read `Rgb make_colour()\n{...}` as a
 colour literal, and dropping the zero exemption each turn it red. No hardware —
 this is a source-tree checker and touches no board.
+
+### Proving that inventory still describes LVGL
+
+**Problem:** the entry above chose a written-down inventory over a parse, for a
+good reason — LVGL is behind `ATTADIPA_BUILD_SIMULATOR`, **OFF** by default, so
+a scan that needs the headers stops running on four of the five CI jobs. What it
+did not do is check that the written-down list matched the headers, and
+[#68](https://github.com/hleserg/Attadipa/issues/68)'s follow-up found
+`lv_obj_set_ext_click_area` missing from a list whose own comment named the
+header that declares it. **This is a different question from the one above**, and
+the difference decides the answer: reading *declarations out of headers*, in the
+one configuration where those headers are guaranteed present.
+
+**Projects investigated:**
+
+| Candidate | Licence, at revision | Why it was not taken |
+|---|---|---|
+| `clang.cindex` | Apache-2.0 WITH LLVM-exception (header of `cindex.py`) | The objection from the entry above — LVGL's headers are absent — **does not apply here**, because this check only runs where they are present, so it was re-examined rather than inherited. It fails on its own terms instead: `libclang.so` is a system package CI does not install, and a *correct* parse needs LVGL's include path and its generated `lv_conf.h`, so the check would depend on the simulator's full configuration to answer a question that is decided by the text of a declaration. Rejected on cost, not on capability, and it stays the right answer if the question ever becomes semantic |
+| `pycparser` | BSD-3-Clause (`LICENSE`, Eli Bendersky); `release_v3.00` `77de509f0268f44ee587b5a4d9f0d680e269fcae` | Needs a real preprocessor first, and LVGL's headers are full of conditional compilation. The list wanted here is the union across configurations, which is what the *unpreprocessed* text says and what a preprocessor would throw away |
+| `tree-sitter` + `tree-sitter-cpp` | MIT both; grammar `v0.23.4` `f41e1a044c8a84ea9fa8577fdd2eab92ec96de02` | Still the strongest of the three and still a wheel. It would buy a correct parameter list where a regex buys a mostly-correct one — but the failure mode of "mostly" here is a *missed* declaration, which the check reports rather than hides, because it also asks the reverse question |
+| LVGL's own `style_api_gen.py` and its `lv_obj_style_gen.h` | MIT (LVGL) | Read, not taken. It generates the 140 style setters from one table and confirms the property-name-keyed shape the inventory uses, which is why those are classified once by property rather than 140 times by name |
+
+**Decision:** `REIMPLEMENT` in `tools/ui/lvgl_api.py` — a declaration reader over
+LVGL's public headers, about 200 lines. `REJECT` all three parsers again, for a
+different reason than last time, which is why this is its own entry rather than
+a sentence in the one above.
+
+**Reason, and it is the check's own design rather than a preference:** a
+one-directional check ("is everything LVGL declares classified?") would let a
+sloppy reader pass, because a declaration it fails to see is a declaration it
+does not complain about. So the check runs **both** ways — every name in the
+inventory must still be declared by LVGL. That turns a parser bug into a loud
+failure instead of a silent gap, and it earned its keep within an hour of being
+written: `#define LV_HOR_RES lv_display_get_horizontal_resolution(lv_display_get_default())`
+was being read as a declaration whose argument list ran through the next forty
+lines, so `lv_dpx()` was invisible. The forward direction saw nothing wrong. The
+reverse direction reported `lv_dpx` as no longer declared, which is how the bug
+was found. With a real parser that class of bug is less likely; with the reverse
+check it is *visible*, and the second property is worth more than the first.
+
+**Source revision:** no third-party code taken. LVGL v9.5.0 at
+`85aa60d18b3d5e5588d7b247abf90198f07c8a63` is what the inventory was derived
+from and what `tools/ui/check_inventory.py` refuses to run against any other
+version of.
+
+**Attadipa integration:** `tools/ui/lvgl_api.py` and
+`tools/ui/check_inventory.py`, run by `ui_inventory_matches_lvgl`;
+`tools/ui/selftest_inventory.py`, run by
+`ui_inventory_check_rejects_mistakes`. Both are registered only in the simulator
+build, and both exit 2 rather than 0 when no LVGL tree is reachable, so a run
+that checked nothing cannot be read as a run that found nothing.
+
+**Tests required:** nine mutations of the inventory, each the kind somebody will
+actually make — deleting `lv_obj_set_ext_click_area` (the issue's own case),
+dropping a style property, adding one LVGL does not have, naming a function LVGL
+renamed, pointing at an argument position past the end of a signature, pointing
+at one that is not a number, leaving a numeric argument unaccounted for, and
+putting one call in both tables at once. The suite also asserts the unmodified
+inventory is clean first, so a case cannot pass because everything was already
+red, and again afterwards, so the cases cannot contaminate each other. No
+hardware — this reads text files.

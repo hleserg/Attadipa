@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -662,6 +662,50 @@ four more things at no cost:
   names no address; the bus scan above settles `0x6B` by measurement instead.
 
 ## Recently completed
+
+- **The same invariant, twice more, and both from one root cause: a curated
+  list checked by example.** [#68](https://github.com/hleserg/Attadipa/issues/68)
+  again, follow-up review on `f2b6853`. Two independent ways past a green
+  `ui_no_raw_values` remained after the fix below.
+  `lv_obj_set_ext_click_area(obj, 12)` was clean because the name was not in the
+  inventory — and it is declared in `src/core/lv_obj_pos.h`, one of the seven
+  headers the inventory's own comment said it had been read out of. Nothing had
+  changed in LVGL; the list had simply never been *held against* the headers,
+  and no test could tell "read carefully" from "remembered". Separately
+  `1'2`, `12.0f` and `0x10 / 2` were all clean, because the literal test was
+  "the whole argument is an integer literal, or it contains no letter at all"
+  and the `x` of a hex prefix is a letter — so the rule had only ever been right
+  about decimal.
+  Both halves are now derived rather than recalled. An argument is tokenised
+  with C++'s own preprocessing-number production, so a prefix and a suffix are
+  inside the number rather than mistaken for a name, and a cast of a literal is
+  refused (`(int32_t)12` names a type, never a meaning) while
+  `static_cast<Dp>(12)` still passes. The inventory moved to
+  `tools/ui/lvgl_inventory.py`, where **every** LVGL entry point with a numeric
+  argument is classified — 221 carry a length, a duration or a colour, 294 say
+  in one line what they carry instead, and there is no default, so a setter LVGL
+  adds is *unclassified* rather than *unnoticed*.
+  `tools/ui/check_inventory.py` holds that against the pinned v9.5.0 headers in
+  the simulator build, where LVGL is on disk; the primary scan still needs
+  nothing installed, which is why it still runs on every job. That check found
+  **five more unchecked entry points nobody had reported**: `shadow_ofs_x`,
+  `shadow_ofs_y` and the `anim_time` style property (v8 spellings that are still
+  `#define`d and still compile), `lv_anim_set_reverse_time` (a deprecated
+  *function*, so no compatibility map resolves it) and the `lv_img_set_*`
+  family; plus `lv_color32_make` and `lv_color_hex3`, raw colours no rule looked
+  at.
+  **The check runs in both directions, and that is what caught a bug in the
+  checker itself.** `#define LV_HOR_RES lv_display_get_horizontal_resolution(lv_display_get_default())`
+  was being read as a declaration whose argument list ran on for forty lines, so
+  `lv_dpx()` — declared just past it — was invisible. Asking only "is everything
+  LVGL declares classified?" saw nothing wrong. Asking also "does LVGL still
+  declare everything we list?" reported `lv_dpx` as gone, which is how it was
+  found. `58 rejected / 43 accepted / 5 diagnostics`, and nine mutations of the
+  inventory each turn `check_inventory` red, including deleting the entry point
+  the issue named. Against the checker on `f2b6853` the new fixtures find 27
+  negatives it let through and 1 positive it wrongly refused. Host 24/24,
+  simulator 29/29. Hardware: **NOT EXECUTED — HARDWARE REQUIRED**, and none is
+  needed — this is a source-tree checker and touches no C++.
 
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).

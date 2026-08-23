@@ -80,19 +80,42 @@ Two things checked rather than assumed, on 2026-08-21:
 | `GIT_SHALLOW TRUE` is **not** a small download | CMake 3.28's generated `lvgl-populate-gitclone.cmake` runs `clone --no-checkout --depth 1 --no-single-branch --progress` and then `checkout "v9.5.0" --`. One commit off *every* ref, not off one branch. **MEASURED** on a GitHub runner with a cold cache (run `32462413273`): the clone takes **22.8 s** and leaves a `_deps` tree that caches at **366 761 925 B — 350 MiB**. Recorded because the opposite is the natural reading of `GIT_SHALLOW`, and preventing exactly that is what this file is for |
 
 **What a bump has to revisit, beyond the two geometries.**
-`tools/ui/check_raw_values.py` carries a written-out inventory of which LVGL
-entry points take a pixel length, a duration or a colour, and at which argument
-position. It was read out of this pin's own headers — `lv_obj_style_gen.h`,
-`lv_style_gen.h`, `lv_obj_style.h`, `lv_obj_pos.h`, `lv_obj_scroll.h`,
-`lv_anim.h` and `lv_api_map_v9_1.h` — rather than remembered, and it is a list
-rather than a parse because `ui_no_raw_values` runs in every CI job while LVGL
-itself is behind `ATTADIPA_BUILD_SIMULATOR`, which is **OFF** by default. A
-checker that needed the headers would silently stop checking on four of the five
-jobs. The cost of that choice is this line: **a version bump re-derives the
-inventory from the new tree**, because a setter LVGL adds is a setter the
-checker will not know about, and it will not say so. The reasoning is in
-[REUSE_LEDGER](REUSE_LEDGER.md) under *Reading a C++ call expression well enough
-to police it*.
+`tools/ui/lvgl_inventory.py` carries a written-out inventory of which LVGL entry
+points take a pixel length, a duration or a colour, and at which argument
+position. It is a list rather than a parse because `ui_no_raw_values` runs in
+every CI job while LVGL itself is behind `ATTADIPA_BUILD_SIMULATOR`, which is
+**OFF** by default: a scan that needed the headers would silently stop checking
+on four of the five jobs. The reasoning is in [REUSE_LEDGER](REUSE_LEDGER.md)
+under *Reading a C++ call expression well enough to police it*.
+
+**The bump step is now mechanical, and it is a test rather than a paragraph.**
+Until [#68](https://github.com/hleserg/Attadipa/issues/68)'s follow-up this
+section said "a version bump re-derives the inventory" and nothing checked that
+anybody had. `tools/ui/check_inventory.py` is what checks: in the simulator
+build — the one configuration where LVGL *is* on disk — it enumerates every
+declaration in LVGL's screen-reachable headers with a numeric parameter and
+fails on any that `lvgl_inventory.py` does not classify, in **both**
+directions. An entry we list that LVGL no longer declares is equally an error,
+because a renamed function still on our list is a rule that has quietly stopped
+applying to anything.
+
+So a bump now goes:
+
+1. change `ATTADIPA_LVGL_TAG` and `ATTADIPA_LVGL_COMMIT` in
+   `cmake/AttadipaLvgl.cmake`, and `DERIVED_FROM` in
+   `tools/ui/check_inventory.py`;
+2. configure the simulator and run `ctest -R ui_inventory_matches_lvgl`. It
+   names every entry point the new LVGL added or renamed, with its signature and
+   its header;
+3. classify each one — `ENTRY_POINTS` if an argument is a length, a duration or
+   a colour, `NOT_A_DESIGN_VALUE` with a reason if none is. There is no third
+   answer, which is the point: an omission cannot look like a decision;
+4. re-run the two geometries.
+
+Checking `DERIVED_FROM` separately from the CMake pin is deliberate. Bumping
+LVGL and forgetting step 3 then fails with "this tree is LVGL x.y.z and the
+inventory was derived from 9.5.0" rather than passing quietly on an inventory
+that no longer describes the library.
 
 **Since answered (T-032):** the subset is 181 codepoints, `lv_font_conv` is
 pinned at 1.5.3 under MIT, and a Latin + Cyrillic subset has been generated and

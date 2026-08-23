@@ -2236,8 +2236,8 @@ Recommended next action:
 - **Acceptance met.** `tools/ui/check_raw_values.py` refuses a colour, a pixel
   count or a duration written as a number under `ui/`, `sim/` or `apps/`, with
   one file exempted for holding the palette; `tools/ui/selftest.py` proves the
-  checker rejects thirty real mistakes, accepts twenty-eight correct forms
-  and reports three diagnostics usefully. `sim/boot_screen.cpp` no longer
+  checker rejects fifty-eight real mistakes, accepts forty-three correct forms
+  and reports five diagnostics usefully. `sim/boot_screen.cpp` no longer
   contains a hex colour or a raw padding.
 - **The acceptance criterion was weaker than it read, and is now what it says**
   — [#68](https://github.com/hleserg/Attadipa/issues/68), fixed 2026-08-23. The
@@ -2246,9 +2246,26 @@ Recommended next action:
   `lv_obj_set_size`/`lv_obj_set_pos` were never on the list at all. It now blanks
   comment and string bodies, takes each call whole by balancing parentheses, and
   judges arguments by position against an inventory read out of the pinned LVGL
-  v9.5.0 headers. **A bump of the LVGL pin has to re-derive that inventory** —
-  the step is recorded in [DEPENDENCIES](docs/research/DEPENDENCIES.md), and why
-  it is a list rather than a parse is in
+  v9.5.0 headers.
+- **And then twice more, from the same root cause: two curated lists checked by
+  example.** The follow-up review on the same issue, 2026-08-23, found
+  `lv_obj_set_ext_click_area(obj, 12)` clean — it was in `lv_obj_pos.h`, which
+  the inventory said it had been read from — and `1'2`, `12.0f` and `0x10 / 2`
+  clean too, because "an integer literal, or no letter anywhere" is not what
+  C++ calls a number. Both halves are now derived rather than remembered:
+  arguments are tokenised with C++'s preprocessing-number rule, and the
+  inventory moved to `tools/ui/lvgl_inventory.py` where **every** LVGL entry
+  point with a numeric argument is classified — 221 carry a design value, 294
+  say what they carry instead, none is left to a default.
+  `tools/ui/check_inventory.py` enforces that against the pinned headers in the
+  simulator build and found five more unchecked entry points nobody had
+  reported: `shadow_ofs_x`, `shadow_ofs_y`, the `anim_time` property,
+  `lv_anim_set_reverse_time` and the `lv_img_set_*` family.
+- **A bump of the LVGL pin has to re-derive that inventory**, and that is now a
+  test rather than a sentence — `ui_inventory_matches_lvgl` names every entry
+  point the new version added. The four steps are in
+  [DEPENDENCIES](docs/research/DEPENDENCIES.md), and why the scan itself is a
+  list rather than a parse is in
   [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
 - **Both themes are now switchable without a rebuild** — `T` at runtime,
   `--theme day|night` for CI — for the same reason the locale is: a reviewer who

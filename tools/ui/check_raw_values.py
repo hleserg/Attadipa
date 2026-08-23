@@ -43,6 +43,11 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lvgl_inventory import (COLOUR, DURATION, ENTRY_POINTS,   # noqa: E402
+                            LENGTH)
+
 ROOT = Path(__file__).resolve().parents[2]
 
 # Where screens are written. Everything under these is checked.
@@ -65,136 +70,21 @@ SUFFIXES = {".c", ".cpp", ".h", ".hpp"}
 # ---------------------------------------------------------------------------
 # The inventory
 #
-# Derived from LVGL v9.5.0 — the tag cmake/AttadipaLvgl.cmake pins and refuses
-# to build without — by reading the generated headers rather than by
-# remembering:
+# Which LVGL entry points take a length, a duration or a colour lives in
+# tools/ui/lvgl_inventory.py, next door. It is written down rather than read out
+# of LVGL's headers at check time, on purpose: the simulator — and therefore
+# LVGL — is OFF by default, so a scan that needs LVGL on disk is a scan that
+# stops running on most CI jobs.
 #
-#   src/core/lv_obj_style_gen.h   every lv_obj_set_style_* and its value type
-#   src/misc/lv_style_gen.h       the lv_style_set_* half of the same table
-#   src/core/lv_obj_style.h       the static-inline convenience helpers
-#   src/core/lv_obj_pos.h         geometry and alignment
-#   src/core/lv_obj_scroll.h      scrolling
-#   src/misc/lv_anim.h            animation timing
-#   src/lv_api_map_v9_1.h         the older names that still compile
-#
-# It is written out rather than generated at check time on purpose: the
-# simulator, and therefore LVGL, is OFF by default in this build, and a checker
-# that only runs when an optional dependency was fetched is a checker that stops
-# running. The cost is that a version bump has to come back here — which is why
-# docs/research/DEPENDENCIES.md carries that as a step of the bump.
+# A written-down list is checked by example, and that is how issue #68's
+# follow-up found lv_obj_set_ext_click_area missing from a list whose comment
+# said it had been read out of the header that declares it. So
+# tools/ui/check_inventory.py holds that file against the pinned headers
+# wherever they *are* available — the simulator build — and fails on anything
+# unclassified, in either direction. Neither half is optional: this one costs
+# nothing and runs everywhere, that one proves it still describes LVGL.
 # ---------------------------------------------------------------------------
 
-LENGTH = "length"
-DURATION = "duration"
-
-# Style properties whose value is a pixel count. Every `int32_t` property in
-# lv_obj_style_gen.h that is a distance on the panel.
-LENGTH_PROPERTIES = (
-    "width", "min_width", "max_width",
-    "height", "min_height", "max_height",
-    "length",
-    "x", "y",
-    "transform_width", "transform_height",
-    "transform_pivot_x", "transform_pivot_y",
-    "translate_x", "translate_y", "translate_radial",
-    "pad_top", "pad_bottom", "pad_left", "pad_right",
-    "pad_row", "pad_column", "pad_radial",
-    "margin_top", "margin_bottom", "margin_left", "margin_right",
-    "radius", "radial_offset",
-    "border_width", "outline_width", "outline_pad",
-    "shadow_width", "shadow_spread", "shadow_offset_x", "shadow_offset_y",
-    "blur_radius", "drop_shadow_radius",
-    "drop_shadow_offset_x", "drop_shadow_offset_y",
-    "line_width", "line_dash_width", "line_dash_gap",
-    "arc_width",
-    "text_letter_space", "text_line_space", "text_outline_stroke_width",
-    # The static-inline helpers, which are not in the generated table but are
-    # what people actually type — pad_all is in the reproducer on issue #68.
-    "pad_all", "pad_hor", "pad_ver", "pad_gap",
-    "margin_all", "margin_hor", "margin_ver",
-)
-
-# The other `int32_t` style properties, left alone deliberately. A number in one
-# of these is not a pixel count, and refusing it would be the "broad exemption in
-# reverse" — a rule that cries often enough to be turned off.
-#
-#   bg_main_stop, bg_grad_stop          0..255 along the gradient
-#   grid_cell_column_pos / _span        track indices
-#   grid_cell_row_pos / _span           track indices
-#   transform_rotation                  tenths of a degree
-#   transform_skew_x / _y               tenths of a degree
-#   transform_scale_x / _y              256 is 1x
-#   rotary_sensitivity  (uint32_t)      a ratio, also x256
-#   flex_grow           (uint8_t)       a weight
-#   every lv_opa_t property             0..255 alpha, and LVGL names both ends
-#
-# Also left alone: lv_timer_create()'s period. A timer tick is not a motion
-# token — a clock that updates once a second is not making a design decision —
-# and T-009's invariant is over the design system, not over every millisecond.
-
-# Style properties whose value is a duration in milliseconds.
-DURATION_PROPERTIES = ("anim_duration",)
-
-
-def _style_entry_points() -> dict[str, tuple[tuple[int, str], ...]]:
-    """Both halves of every property: on an object, and on a bare style."""
-    table: dict[str, tuple[tuple[int, str], ...]] = {}
-    for properties, kind in ((LENGTH_PROPERTIES, LENGTH),
-                             (DURATION_PROPERTIES, DURATION)):
-        for prop in properties:
-            # lv_obj_set_style_x(obj, value, selector)
-            table[f"lv_obj_set_style_{prop}"] = ((1, kind),)
-            # lv_style_set_x(style, value)
-            table[f"lv_style_set_{prop}"] = ((1, kind),)
-    return table
-
-
-# Which arguments of which call are a length or a duration, counting from zero.
-# The object or the style is always argument 0, which is why nothing here is 0.
-ENTRY_POINTS: dict[str, tuple[tuple[int, str], ...]] = {
-    **_style_entry_points(),
-
-    # Two lengths in one call — the shape the old single-value regex could not
-    # express at all, and the shape half of issue #68 was about.
-    "lv_obj_set_style_size":    ((1, LENGTH), (2, LENGTH)),   # (obj, w, h, sel)
-    "lv_style_set_size":        ((1, LENGTH), (2, LENGTH)),   # (style, w, h)
-
-    # Geometry: lv_obj_pos.h.
-    "lv_obj_set_pos":            ((1, LENGTH), (2, LENGTH)),  # (obj, x, y)
-    "lv_obj_set_size":           ((1, LENGTH), (2, LENGTH)),  # (obj, w, h)
-    "lv_obj_set_x":              ((1, LENGTH),),
-    "lv_obj_set_y":              ((1, LENGTH),),
-    "lv_obj_set_width":          ((1, LENGTH),),
-    "lv_obj_set_height":         ((1, LENGTH),),
-    "lv_obj_set_content_width":  ((1, LENGTH),),
-    "lv_obj_set_content_height": ((1, LENGTH),),
-    # (obj, align, x_ofs, y_ofs) — the alignment is a name, the offsets are not.
-    "lv_obj_align":              ((2, LENGTH), (3, LENGTH)),
-    # (obj, base, align, x_ofs, y_ofs)
-    "lv_obj_align_to":           ((3, LENGTH), (4, LENGTH)),
-
-    # Scrolling: lv_obj_scroll.h. (obj, dx, dy, anim_en)
-    "lv_obj_scroll_by":          ((1, LENGTH), (2, LENGTH)),
-    "lv_obj_scroll_by_bounded":  ((1, LENGTH), (2, LENGTH)),
-    "lv_obj_scroll_to":          ((1, LENGTH), (2, LENGTH)),
-    "lv_obj_scroll_to_x":        ((1, LENGTH),),
-    "lv_obj_scroll_to_y":        ((1, LENGTH),),
-
-    # Animation timing: lv_anim.h. These are the v9 names.
-    "lv_anim_set_duration":         ((1, DURATION),),
-    "lv_anim_set_delay":            ((1, DURATION),),
-    "lv_anim_set_reverse_duration": ((1, DURATION),),
-    "lv_anim_set_reverse_delay":    ((1, DURATION),),
-    "lv_anim_set_repeat_delay":     ((1, DURATION),),
-    # And these are the v8 spellings that lv_api_map_v9_1.h still defines, so
-    # they compile and have to be caught. The old checker knew *only* these
-    # three, which meant the name a v9 screen would actually reach for —
-    # lv_anim_set_duration — was the one it did not check.
-    "lv_anim_set_time":             ((1, DURATION),),
-    "lv_anim_set_playback_time":    ((1, DURATION),),
-    "lv_anim_set_playback_delay":   ((1, DURATION),),
-    # lv_anim_set_repeat_count is a count, not a duration, and stays out.
-}
 
 # One alternation over every name above. `\b` before it refuses
 # `my_lv_obj_set_width(` because `_` is a word character, and the trailing
@@ -202,13 +92,19 @@ ENTRY_POINTS: dict[str, tuple[tuple[int, str], ...]] = {
 CALL = re.compile(
     r"\b(" + "|".join(sorted(ENTRY_POINTS, key=len, reverse=True)) + r")\s*\(")
 
-# A colour, written as one, in the four forms this codebase can produce it.
+# A colour, written as one, in the forms this codebase can produce *without*
+# naming a function — the ones the inventory cannot reach.
 #
 # Six hex digits is a colour in every UI codebase that has ever existed; four is
 # usually a mask and is left alone. `Rgb{0xFF, 0xF6, 0xE8}` is the form the
 # palette itself uses, and it is the form somebody copying a line out of
-# color.cpp would paste. `lv_color_make` is LVGL's own three-channel constructor
-# and means exactly the same thing.
+# color.cpp would paste.
+#
+# LVGL's own constructors used to be a fourth alternative here, matching
+# `lv_color_make(` and refusing the call whatever was in it — so
+# `lv_color_make(red, green, blue)` was refused for naming three roles. They are
+# in lvgl_inventory.py now, argument by argument, which both fixes that and
+# picks up `lv_color32_make`, the four-channel spelling this pattern never knew.
 #
 # These run over the whole file rather than over one line, which is what lets
 # the brace form be found when it is split across lines. Widening it that far
@@ -222,7 +118,6 @@ COLOUR = re.compile(
     r"0[xX][0-9a-fA-F]{6}\b"
     r"|(?<!struct )(?<!class )\bRgb\b[^;{()]{0,120}\{[^}]{0,200}\d"
     r"|(?<!struct )(?<!class )\bRgb\s*\(\s*[+-]?\d"
-    r"|\blv_color_make\s*\("
 )
 
 # How far the argument scan will walk before it gives up on a call. Four
@@ -232,16 +127,62 @@ COLOUR = re.compile(
 # checking, and that is the failure this whole change is about.
 MAX_CALL_CHARS = 4000
 
-# An argument that is only an integer literal is a raw value. One that names
-# anything — Metrics::px(dp_of(Space::Sm)), lv_pct(100), LV_SIZE_CONTENT, a
-# constant — is not, and that is the line this check deliberately does not cross:
-# a number in UI code is not automatically a pixel count, only a number handed to
-# an LVGL length is.
-INT_LITERAL = re.compile(r"[+-]?(?:0[xX][0-9a-fA-F]+|0[bB][01]+|\d+)[uUlL]*", re.ASCII)
-# ...and neither is `240 / 2`, `(12)` or `12.5`, which name nothing either. An
-# expression with no letter anywhere in it cannot be reading a token.
-ARITHMETIC_ONLY = re.compile(r"[-+*/%().\s0-9]+", re.ASCII)
-NON_ZERO_DIGIT = re.compile(r"[1-9]", re.ASCII)
+# An argument that names something — Metrics::px(dp_of(Space::Sm)), lv_pct(100),
+# LV_SIZE_CONTENT, a constant — is not a raw value, and that is the line this
+# check deliberately does not cross: a number in UI code is not automatically a
+# pixel count, only a number handed to an LVGL length is.
+#
+# Deciding which is which used to be two regexes: "the whole argument is an
+# integer literal", or "the whole argument contains no letter at all". Both were
+# too narrow, and issue #68's follow-up named three arguments that are plainly
+# numbers and matched neither:
+#
+#   1'2       a digit separator is legal C++ and the pattern had no apostrophe
+#   12.0f     a floating literal's suffix is a letter, so it was not an integer
+#             and not letter-free either
+#   0x10 / 2  the *x* of a hex prefix is a letter, so "has a letter, therefore
+#             names a token" was never sound — it was only ever right about
+#             decimal
+#
+# One rule replaces all three: tokenise the argument, taking numeric literals
+# *first*, and then ask whether any identifier is left over. A hex prefix and a
+# float suffix are inside the literal by then, so neither can be mistaken for a
+# name. That is C++'s own preprocessing-number production ([lex.ppnumber]) and
+# it is deliberately generous — `0xE-1` is a single pp-number to a real
+# compiler too, and reading a malformed number as a number rather than as a name
+# fails towards refusing, which is the safe direction here.
+
+_DIGITS = frozenset("0123456789")
+_IDENTIFIER_START = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_")
+_IDENTIFIER = _IDENTIFIER_START | _DIGITS
+
+# Names an argument may contain and still be naming nothing. A cast says what
+# *type* a number is, never what it means, so `(int32_t)12` is the same raw
+# pixel count as `12` — and none of these spellings was refused before.
+# `static_cast<Dp>(12)` still passes, because `Dp` is not on this list: that is
+# exactly the distinction, and it is a fixed list of arithmetic type names
+# rather than a pattern so that nothing is ever added to it by accident.
+CAST_ONLY = frozenset({
+    "static_cast", "const_cast", "reinterpret_cast", "dynamic_cast",
+    "signed", "unsigned", "char", "short", "int", "long", "float", "double",
+    "bool", "void", "size_t", "ptrdiff_t", "intptr_t", "uintptr_t",
+    "int8_t", "int16_t", "int32_t", "int64_t",
+    "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+    # LVGL's own coordinate spellings, for the same reason.
+    "lv_coord_t", "lv_value_precise_t", "lv_opa_t",
+})
+
+# Zero is the absence of a length, and a zero delay is a decision to have no
+# delay rather than a duration nobody chose. Deciding whether a literal is zero
+# needs its base, so each shape is read rather than searched for a `[1-9]`.
+# Anything that matches none of them is treated as non-zero, which reports
+# rather than misses.
+_ZERO_HEX = re.compile(r"0[xX]([0-9a-fA-F]*)(?:\.([0-9a-fA-F]*))?"
+                       r"(?:[pP][+-]?[0-9]+)?[a-zA-Z_]*", re.ASCII)
+_ZERO_BINARY = re.compile(r"0[bB]([01]+)[a-zA-Z_]*", re.ASCII)
+_ZERO_DECIMAL = re.compile(r"([0-9]*)(?:\.([0-9]*))?"
+                           r"(?:[eE][+-]?[0-9]+)?[a-zA-Z_]*", re.ASCII)
 
 
 class Offence:
@@ -376,35 +317,79 @@ def call_arguments(code: str, open_paren: int) -> tuple[list[tuple[str, int]], i
     return None
 
 
+def tokenize(text: str) -> tuple[list[str], list[str]]:
+    """The numeric literals in an expression, and the names in it.
+
+    Literals are taken first and whole, so the `x` of `0x10` and the `f` of
+    `12.0f` are part of the number rather than the start of a name. Everything
+    else that begins with a letter or an underscore is a name; operators,
+    brackets and whitespace are neither and are stepped over.
+    """
+    literals: list[str] = []
+    names: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch in _DIGITS or (ch == "." and i + 1 < n and text[i + 1] in _DIGITS):
+            start = i
+            i += 1
+            while i < n:
+                here = text[i]
+                nxt = text[i + 1] if i + 1 < n else ""
+                # `1e-3` and `0x1p-3`: the sign belongs to the exponent.
+                if here in "eEpP" and nxt in "+-":
+                    i += 2
+                    continue
+                # `1'000`: a digit separator, always between two characters of
+                # the number, never at its end.
+                if here == "'" and nxt in _IDENTIFIER:
+                    i += 2
+                    continue
+                if here in _IDENTIFIER or here == ".":
+                    i += 1
+                    continue
+                break
+            literals.append(text[start:i])
+        elif ch in _IDENTIFIER_START:
+            start = i
+            while i < n and text[i] in _IDENTIFIER:
+                i += 1
+            names.append(text[start:i])
+        else:
+            i += 1
+    return literals, names
+
+
+def is_zero(literal: str) -> bool:
+    """Whether a numeric literal is zero, in whichever base it is written."""
+    body = literal.replace("'", "")
+    for pattern in (_ZERO_BINARY, _ZERO_HEX, _ZERO_DECIMAL):
+        match = pattern.fullmatch(body)
+        if match is None:
+            continue
+        digits = "".join(group for group in match.groups() if group)
+        return bool(digits) and set(digits) == {"0"}
+    return False    # unreadable: report it rather than let it through as zero
+
+
 def raw_value(argument: str) -> str | None:
     """The literal this argument is, or None if it names something.
 
     Zero is not a length, it is the absence of one — and a zero delay is a
     decision to have no delay rather than a duration nobody chose. That holds
-    for both kinds, which is why this takes no kind.
+    for every kind, which is why this takes no kind.
     """
     text = " ".join(argument.split())
     if not text:
         return None
-    if INT_LITERAL.fullmatch(text):
-        return None if _value_of(text) == 0 else text
-    if ARITHMETIC_ONLY.fullmatch(text) and NON_ZERO_DIGIT.search(text):
-        return text
-    return None
-
-
-def _value_of(literal: str) -> int:
-    digits = literal.rstrip("uUlL")
-    negative = digits.startswith("-")
-    digits = digits.lstrip("+-")
-    prefix = digits[:2].lower()
-    if prefix == "0x":
-        value = int(digits[2:], 16)
-    elif prefix == "0b":
-        value = int(digits[2:], 2)
-    else:
-        value = int(digits, 10)
-    return -value if negative else value
+    literals, names = tokenize(text)
+    if not literals:
+        return None
+    if any(name not in CAST_ONLY for name in names):
+        return None
+    if all(is_zero(literal) for literal in literals):
+        return None
+    return text
 
 
 def check_text(rel: str, text: str) -> list[Offence]:
@@ -435,15 +420,42 @@ def check_text(rel: str, text: str) -> list[Offence]:
             literal = raw_value(arguments[index][0])
             if literal is None:
                 continue
-            why = (f"{literal} px — a pixel count is a different physical size "
-                   f"on each panel; use Metrics::px(dp_of(...))"
-                   if kind == LENGTH else
-                   "a duration written as a number — use milliseconds_of(Motion::…)")
             offences.append(Offence(rel, source.line_of(match.start()),
-                                    source.quote(match.start(), close), why))
+                                    source.quote(match.start(), close),
+                                    diagnostic(kind, literal)))
 
     offences.sort(key=lambda o: (o.line_no, o.why))
-    return offences
+    return deduplicate(offences)
+
+
+def diagnostic(kind: str, literal: str) -> str:
+    if kind == LENGTH:
+        return (f"{literal} px — a pixel count is a different physical size "
+                f"on each panel; use Metrics::px(dp_of(...))")
+    if kind == DURATION:
+        return "a duration written as a number — use milliseconds_of(Motion::…)"
+    return "a colour written as a number — ask for a ColorRole"
+
+
+def deduplicate(offences: list[Offence]) -> list[Offence]:
+    """One complaint per line per reason.
+
+    `lv_color_hex(0xFFF6E8)` is a colour twice over — the six hex digits, and
+    the argument of a call the inventory knows takes a colour. Both rules are
+    worth having on their own, because one catches `constexpr auto kInk =
+    0x2F3A2E` outside any call and the other catches `lv_color_hex3(0xABC)`,
+    which has three digits and no call-free tell. Saying so twice would only
+    teach the reader to skim.
+    """
+    seen: set[tuple[int, str, str]] = set()
+    kept: list[Offence] = []
+    for offence in offences:
+        key = (offence.line_no, offence.why, offence.quoted)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(offence)
+    return kept
 
 
 def check(path: Path) -> list[Offence]:

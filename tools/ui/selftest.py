@@ -111,6 +111,73 @@ MUST_REJECT = {
     # --- a comment does not launder the line that follows it --------------
     "a raw value after a block comment on the same line":
         'lv_obj_set_style_pad_all(screen, /* was a token */ 10, 0);',
+
+    # --- the entry points the re-derived inventory added ------------------
+    # Issue #68's follow-up found the first of these by hand. The rest came out
+    # of holding lvgl_inventory.py against the pinned headers, which is what
+    # check_inventory.py now does on every simulator build.
+    "the extended click area is measured in pixels":
+        'lv_obj_set_ext_click_area(obj, 12);',
+    "the extended click area, wrapped":
+        'lv_obj_set_ext_click_area(\n'
+        '    obj,\n'
+        '    12);',
+    "the v8 spelling of the shadow offset still compiles":
+        'lv_obj_set_style_shadow_ofs_x(card, 4, 0);',
+    "the v8 spelling of the style animation duration":
+        'lv_obj_set_style_anim_time(bar, 300, 0);',
+    "the deprecated reverse-time setter is a real function, not a macro":
+        'lv_anim_set_reverse_time(&anim, 200);',
+    "the v8 spelling of the image offset":
+        'lv_img_set_offset_x(icon, 8);',
+    "the v8 spelling of the column width":
+        'lv_table_set_col_width(table, 0, 60);',
+    "a column width is a pixel count":
+        'lv_table_set_column_width(table, 0, 60);',
+    "a tab bar size is a pixel count":
+        'lv_tabview_set_tab_bar_size(tabs, 48);',
+    "LVGL's own density helper still takes a raw size":
+        'lv_obj_set_width(row, lv_dpx(40));',
+    "a scroll threshold is a distance on the panel":
+        'lv_indev_set_scroll_limit(indev, 10);',
+    "a gradient runs between two points on the panel":
+        'lv_grad_linear_init(&grad, 0, 0, 0, 120, LV_GRAD_EXTEND_PAD);',
+    "text measurement takes the same spacings the style does":
+        'lv_text_get_size(&size, txt, font, 2, 4, 200, LV_TEXT_FLAG_NONE);',
+    "a window button has a width":
+        'lv_win_add_button(win, LV_SYMBOL_CLOSE, 40);',
+    "the four-channel colour constructor":
+        'lv_obj_set_style_bg_color(screen, lv_color32_make(255, 246, 232, 255), 0);',
+    "a three-digit hex colour has no six-digit tell":
+        'lv_obj_set_style_bg_color(screen, lv_color_hex3(0xABC), 0);',
+    "a screen transition is a motion decision":
+        'lv_screen_load_anim(next, LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);',
+    "a delayed delete waits out an animation":
+        'lv_obj_delete_delayed(toast, 2000);',
+    "a fade is a transition":
+        'lv_obj_fade_out(card, 200, 0);',
+
+    # --- C++ says these are numbers, and the old patterns did not ---------
+    # All four returned "clean" on f2b6853. They are the same defect as the
+    # wrapped call: a rule about the spelling instead of about the value.
+    "a digit separator does not stop it being twelve":
+        "lv_obj_set_width(obj, 1'2);",
+    "a floating literal's suffix is not a name":
+        'lv_obj_set_width(obj, 12.0f);',
+    "hex arithmetic names nothing either":
+        'lv_obj_set_width(obj, 0x10 / 2);',
+    "a hex literal on its own":
+        'lv_obj_set_style_pad_all(obj, 0x0C, 0);',
+    "an exponent is still a number":
+        'lv_anim_set_duration(&anim, 2e2);',
+    "a long suffix is not a name":
+        'lv_obj_set_style_radius(card, 12UL, 0);',
+    "a binary literal is a number":
+        'lv_obj_set_style_pad_top(label, 0b1100, 0);',
+    "a C-style cast says the type, never the meaning":
+        'lv_obj_set_style_pad_all(obj, (int32_t)12, 0);',
+    "and neither does a static_cast to a primitive":
+        'lv_obj_set_width(row, static_cast<int32_t>(240));',
 }
 
 MUST_ACCEPT = {
@@ -196,6 +263,48 @@ MUST_ACCEPT = {
     "an array index is not a coordinate":
         'const int steps = history[3];',
 
+    # --- the numbers the widened literal grammar must not start refusing --
+    # Widening what counts as a *literal* is only safe if what counts as a
+    # *name* held. Each of these has a number in it and names something, and
+    # each would be a false positive if the tokenizer read a hex prefix, a
+    # float suffix or a cast type as evidence either way.
+    "zero written as a float is still zero":
+        'lv_obj_set_style_pad_all(obj, 0.0f, 0);',
+    "zero written in hex is still zero":
+        'lv_obj_set_style_pad_top(label, 0x0, 0);',
+    "a cast to a design type is naming the design type":
+        'lv_obj_set_width(row, static_cast<Dp>(kRowWidth));',
+    "a token with a digit in its name":
+        'lv_obj_set_style_pad_all(obj, px(Space::Sm2), 0);',
+    "a constant whose name starts with a type word":
+        'lv_obj_set_width(row, int_width_token);',
+
+    # --- the entry points the inventory deliberately does not treat -------
+    # The non-goal again, now that the inventory covers every LVGL entry point
+    # with a numeric argument: being *in* the inventory is not the same as
+    # carrying a design value, and check_inventory.py makes each of these a
+    # written-down decision rather than an omission.
+    "a timer period is not a motion token":
+        'lv_timer_create(tick, 1000, nullptr);',
+    "a long-press threshold is an input constant":
+        'lv_indev_set_long_press_time(indev, 400);',
+    "a bar value is data":
+        'lv_bar_set_value(bar, 50, LV_ANIM_OFF);',
+    "an arc angle is an angle":
+        'lv_arc_set_bg_angles(arc, 135, 45);',
+    "a calendar field is a date":
+        'lv_calendar_set_today_date(cal, 2026, 8, 23);',
+    "a table cell is addressed by row and column":
+        'lv_table_set_cell_value(table, 0, 1, "steps");',
+    "an image scale of 256 is no scaling":
+        'lv_image_set_scale(icon, 256);',
+    "a percentage is not a pixel count, even as a bare call":
+        'lv_obj_set_width(row, lv_pct(50));',
+    "LVGL's channel constructor with three named roles":
+        'lv_obj_set_style_bg_color(screen, lv_color_make(r, g, b), 0);',
+    "a panel resolution is a board fact":
+        'lv_display_set_resolution(display, 410, 502);',
+
     # --- the false positive the widened colour rule had to not create -----
     "a function returning Rgb is not a colour literal":
         'Rgb make_colour(Theme theme)\n'
@@ -225,6 +334,18 @@ DIAGNOSTIC_CASES = (
         "each length of a two-length call is named separately",
         'lv_obj_set_size(obj, 10, 20);',
         ("10 px", "20 px"),
+    ),
+    (
+        "an entry point the inventory added is reported like any other",
+        'lv_obj_set_ext_click_area(\n'
+        '    obj,\n'
+        '    12);',
+        ("fixture.cpp:1:", "12 px"),
+    ),
+    (
+        "a colour caught through the inventory says it is a colour",
+        'lv_obj_set_style_bg_color(screen, lv_color_hex3(0xABC), 0);',
+        ("fixture.cpp:1:", "ask for a ColorRole"),
     ),
     (
         "a call further down the file keeps its own line number",
