@@ -1731,17 +1731,36 @@ stale silently. The protocol is
      same file finds **duplicate** task IDs and never dangling ones, which is
      how a reference to a task on an unmerged branch survived a green run.
   3. **`OD-nn` is a sequence with no allocator and no check**, and it has
-     already collided. On 2026-08-23, `main` ends at **OD-15** and *four* open
-     pull requests each introduce an **OD-16** —
-     [#92](https://github.com/hleserg/Attadipa/pull/92) (A1–A3),
-     [#95](https://github.com/hleserg/Attadipa/pull/95) (A9),
-     [#97](https://github.com/hleserg/Attadipa/pull/97) (A10) and
-     [#134](https://github.com/hleserg/Attadipa/pull/134) (the bench unit) —
-     while [#94](https://github.com/hleserg/Attadipa/pull/94) numbers itself
-     **OD-17** on the assumption that #92 lands first. Whichever merges first
-     wins; the rest carry a number that is now somebody else's, and nothing
-     fails. `check_task_ids` (`:162`) is the only ID check in the repository and
-     it knows about `T-nnn` alone.
+     already failed in three different ways at once. On 2026-08-23 `main` ends
+     at **OD-15**, and a sweep of every remote branch — not just the open pull
+     requests — finds all three:
+
+     - **Five branches each introduce an `OD-16`**:
+       [#92](https://github.com/hleserg/Attadipa/pull/92) (A1–A3),
+       [#95](https://github.com/hleserg/Attadipa/pull/95) (A9),
+       [#97](https://github.com/hleserg/Attadipa/pull/97) (A10),
+       [#112](https://github.com/hleserg/Attadipa/pull/112) (A5/A6) and
+       [#134](https://github.com/hleserg/Attadipa/pull/134) (the bench unit).
+       Whichever merges first wins and the rest carry a number that has become
+       somebody else's.
+     - **One decision has two numbers.**
+       [#94](https://github.com/hleserg/Attadipa/pull/94) and
+       [#112](https://github.com/hleserg/Attadipa/pull/112) both carry *"A5 and
+       A6: an external magnetometer is coming for the watch; the node will never
+       carry one"* — same heading, same date, same issue
+       [#56](https://github.com/hleserg/Attadipa/issues/56) — as **OD-17** and
+       **OD-16** respectively. Merge both and nothing collides: the register
+       simply holds one decision twice under two numbers, which is the outcome
+       it is least able to survive, because both numbers are then citable and
+       neither is wrong.
+     - **One branch leaves a hole.**
+       [#126](https://github.com/hleserg/Attadipa/pull/126) numbers itself
+       **OD-21** with nothing between `OD-15` and it. If it merges before the
+       others the register skips five numbers that nothing will ever fill — and
+       a gap does not announce itself the way a duplicate eventually does.
+
+     Nothing fails on any of them. `check_task_ids` (`:162`) is the only ID
+     check in the repository and it knows about `T-nnn` alone.
 
      **This one is worse than a duplicate heading.** A task ID is cited inside
      this file; an `OD-nn` is cited from ADRs, from `STATUS.md` and from
@@ -1750,8 +1769,10 @@ stale silently. The protocol is
      every existing citation ambiguous about *which* decision it was obeying.
 - **Goal:** a size/binary gate on pull requests, an anchor check that resolves
   `#…` against the target file's headings using the same slug rule GitHub
-  applies, and a duplicate-`OD-nn` check shaped like `check_task_ids`. All three
-  are host checks with no hardware in them.
+  applies, and an `OD-nn` check shaped like `check_task_ids` that catches all
+  three failures above — a repeated number, a repeated *heading* under two
+  numbers, and a gap in the sequence. All three are host checks with no hardware
+  in them.
 - **What the third one does not solve, said plainly:** a check inside the
   repository fires *after* a merge, so it turns a silent collision into a loud
   one and does not prevent it. Preventing it needs an allocator across open

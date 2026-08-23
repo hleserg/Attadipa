@@ -610,11 +610,13 @@ left for whoever picks the task up. **T-117** records the blind spots that
 let the strays and a dangling task reference through a green run: nothing checks
 what a pull request adds in bytes, and `check_docs.py` never validates a link's
 anchor. A third was found while this branch was in review and is not
-hypothetical — **`OD-nn` has no allocator and no check, and four open pull
-requests each introduce an `OD-16`** (#92, #95, #97 and this one) while #94
-numbers itself `OD-17` on the assumption that #92 lands first. Whichever merges
-first wins and the rest carry somebody else's number, with nothing failing;
-`check_task_ids` knows about `T-nnn` alone.
+hypothetical: **`OD-nn` has no allocator and no check**, and a sweep of every
+remote branch finds it already broken three ways. Five branches each introduce
+an `OD-16` (#92, #95, #97, #112 and this one); #94 and #112 carry the *same*
+decision — A5/A6, issue #56 — as `OD-17` and `OD-16`, so merging both duplicates
+one decision under two citable numbers; and #126 numbers itself `OD-21` with
+nothing between it and `OD-15`, leaving a five-number hole if it lands first.
+Nothing fails on any of them: `check_task_ids` knows about `T-nnn` alone.
 
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing
