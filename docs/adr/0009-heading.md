@@ -219,7 +219,10 @@ separate, and no two of them may be stored in the same field."* Co-location is
 an **eleventh axis** and not one of that table's ten — it is a *provenance
 geometry* question, "is this fix's body the wearer's body", answered by neither
 `PositionSource` (which body produced it) nor `Origin` (which side of the link
-served it), and it belongs beside them rather than inside either. Note also that
+served it), and it belongs beside them rather than inside either. "Eleventh" is a
+position in that table, not a claim that the register is complete: `PositionSource`
+and `Origin` are not in it either, so a reader counting the axes a position
+actually carries counts more than eleven. Note also that
 `PositionValidity` is **not**
 [`Validity`](../../core/include/attadipa/core/availability.h), which *does* carry
 `Unknown` and is the freshness axis — an implementer who reaches for the name
@@ -237,8 +240,11 @@ screen says which, in words."* So a node-supplied *position* reaches the wearer'
 screen, labelled as the node's; a node-supplied *heading* does not reach the
 arrow at all.
 
-**One detector already in the tree fires on this configuration, and an earlier
-version of this section tried to legislate it away.**
+**Two detectors already in the tree fire on this configuration, and an earlier
+version of this section named one of them and tried to legislate it away.** The
+one it named is the lighter of the two, and the one it missed needs only a
+single provider — which is the Waveshare board's ordinary day. Both are below;
+neither is changed here.
 `TrustEvaluator::compare_provider`
 ([`core/src/trust.cpp`](../../core/src/trust.cpp)) raises
 `TrustReason::ProviderDisagreement` when two positions inside the 5 s comparison
@@ -273,10 +279,43 @@ weight-30 spoofing-relevant signal unreachable. **An ADR does not get to switch
 off a trust signal in prose**, and one that reaches for a rule this large has
 stopped describing a decision and started making an undocumented one.
 
+**And the second detector is heavier, needs no second provider, and was missed
+by the paragraph above until review named it.**
+`TrustReason::MotionDisagreement` — weight **45**, the heaviest short of the
+receiver reporting spoofing — is raised by
+`moved_at_rest = motion.known && !motion.moving && moved > policy.jump_while_still_mm`
+([`core/src/trust.cpp`](../../core/src/trust.cpp)), at **50 m** rather than 250,
+against **one** position rather than a pair. `motion` is the wrist's
+`MotionEvidence`; `observation` is whatever `LocationService` handed in,
+`PositionSource::NodeGnss` included. The comment above that line states the
+same-body premise out loud — *"a still wrist is genuinely still, so a position
+that walks away from a stationary device is evidence"* — and this section is the
+one saying that premise does not survive a change of body.
+
+On a Waveshare board the reproduction is the product working normally: no
+receiver of its own, a node attached, so `NodeGnss` is the only position there
+is. The wearer sits at a desk and OD-6's always-on IMU reports
+`known = true, moving = false`; somebody picks the bag up and walks 60 m. Two
+node fixes 60 m apart clear the 50 m threshold, `MotionDisagreement` alone
+reaches 45 against a `degrade_at` of 30, and the only fix the board has comes
+out `Degraded` — with a reason saying the device moved while the accelerometer
+says it did not. No second provider is involved and no 250 m threshold applies.
+`Unknown` co-location withholds nothing here, because this section governs the
+claim and this is arithmetic.
+
+**Both belong to T-141, and it is the enumeration rather than the behaviour that
+this section had wrong.** An implementer reading *"one detector"* builds to a
+list short by the likeliest case and reads the silence as coverage.
+[#112](https://github.com/hleserg/Attadipa/issues/112) is already on the code
+side of the second one — *a wrist's stillness stops judging a node's position* —
+which sharpens the point rather than closing it: this ADR must not read as
+settled-and-singular while another branch removes a case it does not mention.
+Found in review.
+
 **So this section governs the claim, not the arithmetic.** Co-location decides
 what the screen may say a position is *about*. It is not an input to
-`TrustState`, it does not gate `compare_provider`, and it changes nothing in the
-two fixtures above.
+`TrustState`, it does not gate `compare_provider` or `moved_at_rest`, and it
+changes nothing in the two fixtures above.
 
 **Who produces the value, because a state nothing can set is a constant.** A fix
 from this board's own receiver is co-located *by construction* — the receiver is
@@ -286,6 +325,16 @@ measures the separation between the wearer and whatever produced the fix, which
 is this section's own premise. There is deliberately no third producer and no
 way to promote `Unknown` to `SameBody` by inference: the promotion would be the
 confident number on an unobservable quantity that §3 exists to refuse.
+
+**`PositionSource` has six enumerators and the sixth is the default.**
+`PositionSource::Unknown` ([`position.h`](../../core/include/attadipa/core/position.h))
+is the field's initialiser — what a driver that forgets to stamp provenance
+produces — so *shown with its actual source* can print `Unknown` for the source
+**and** `Unknown` for the co-location: two different questions answered with one
+word. A screen that renders both as the same string is telling the reader
+nothing twice. The two are separate fields and must read back separately, and a
+source of `Unknown` is a defect to surface rather than a provenance to display.
+Found in review.
 
 **`Unknown` is not a synonym for "the node's".** An earlier draft of the quoted
 rule said such a position *"must be shown as the node's fix"*, and
@@ -461,10 +510,20 @@ For §3a, four more, none of which need hardware. **One:** a node-supplied
 position with co-location `Unknown` reaches the screen and is labelled as the
 node's fix, not the wearer's — the Waveshare configuration, where refusing it
 would leave the board with no navigation at all. The label is
-`LocationService`'s: under [ADR-0002](0002-companion-is-optional.md) rule 4 an
-application asks the owning service and provenance is that service's business,
-so the distinction is drawn where the position is handed out and **not** by an
-application reading `PositionSource`, which ADR-0004 forbids. **And the same
+`LocationService`'s: under
+[ADR-0004](0004-capability-sources.md) — *"No application queries node state.
+[ADR-0002] rule 2 extends here unchanged: an application asks `LocationService`
+for a position and never learns where it came from"* — the distinction is drawn
+where the position is handed out and **not** by an application reading
+`PositionSource`. An earlier version of this sentence cited ADR-0002 **rule 4**
+directly, and it was wrong twice: rule 4 is *"all companion input is untrusted:
+range-checked, expiry-checked, refusable"*, and ADR-0002 says in as many words
+that *"an Attadipa node is not a companion, and the rule above does not apply to
+it"*. An implementer following it lands on an untrusted-input rule, finds
+nothing about labels, and either re-derives the boundary or concludes an
+application may read `PositionSource` after all. Found in review — the third
+time a load-bearing citation in this ADR has pointed at the wrong text, which is
+the failure this section itself names: *the next agent follows it.* **And the same
 case again with a `Manual` fix on a board with no node attached**, because
 `Unknown` co-location is not a synonym for *the node's*: the label must read
 back the source the fix actually has, and the case that catches the wrong

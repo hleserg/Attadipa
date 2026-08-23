@@ -1069,12 +1069,14 @@ the two that actually conflicted.
 > what this branch adds; [#92](https://github.com/hleserg/Attadipa/pull/92) is
 > open and does add one, and whichever of the two merges first takes the number
 > while the rest renumber. Read the sentence as *"this branch does not claim
-> OD-16"*, not as a fact about the repository a week from now. Three
-> open pull requests each wrote an entry numbered OD-16 against the same `main`,
-> so the number belongs to whichever lands first and the rest renumber. Writing a
-> forward reference here would be a prediction about merge order — it would point
-> at the wrong record or at a permanent hole, depending on an ordering nobody
-> controls.
+> OD-16"*, not as a fact about the repository a week from now. **Five** open
+> branches wrote an entry numbered OD-16 against the same `main` at the time of
+> the orchestrator's sweep on 2026-08-23 — an earlier version of this note said
+> three — so the number belongs to whichever lands first and the rest renumber.
+> Writing a forward reference here would be a prediction about merge order — it
+> would point at the wrong record or at a permanent hole, depending on an
+> ordering nobody controls. This branch has since moved its own entry to
+> **OD-17** rather than wait for the sweep.
 >
 > `check_docs.py` catches the *duplicate* (a second OD-16 heading fails the
 > merge) but not this: a bare number carries no anchor for even a fixed checker
@@ -1285,11 +1287,24 @@ visible to the owner at all; it is now
 table in [STATUS.md](../../STATUS.md) beside the rest. Found in review.
 Those remain in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). A5 and A6 are answered
 above; A1–A3 have their own record in this file as it lands. **Deliberately
-not a number**: three open pull requests each wrote OD-16, and a hard-coded
+not a number**: five open branches each wrote OD-16, and a hard-coded
 forward reference here would be a prediction about which one merges first — it
 would point at the wrong record, or at a permanent hole, depending on an
 ordering nobody controls. `check_docs.py` sees none of this (T-122), and a bare
 number carries no anchor for even a fixed checker to catch. Found in review.
+
+**And renumbering does not fix the collision that matters here.**
+[#112](https://github.com/hleserg/Attadipa/pull/112) records **the same A5/A6
+decision** — same heading, same date, same issue — under a number of its own, so
+merging both leaves two owner-decision records for one owner decision, each
+with a distinct number and therefore a distinct heading. `check_docs.py`'s
+duplicate-number check is satisfied by exactly that: two headings that differ.
+The next reader finds two entries, cannot tell which is authoritative, and the
+checker says the file is fine. Whichever of the two lands first, the second one
+must be **deleted rather than renumbered**, and the branch that lands second
+carries that deletion. #112 also *implements* T-111, which this branch files as
+*not started*; that line is true of `main` and will not be true of it for long.
+Found in review.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
 answered from a datasheet: whether Meshtastic's protocol definitions are licensed

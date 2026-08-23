@@ -468,7 +468,7 @@ available on this board.
   [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)), which turns
   this from impossible into blocked on things this project can actually do.
   **Placement is not the last gate, and an earlier version of this bullet
-  implied it was.** Five things are open, and each corrupts the measurement
+  implied it was.** Four things are open, and each corrupts the measurement
   rather than merely delaying it: the placement (T-109) — whose own
   part-choosing measurement needs the field with the motor driven, on a unit
   with **no motor fitted** (T-097, or T-105), so a motor-idle survey would meet
@@ -538,8 +538,9 @@ receiver of its own would take a permanent trust penalty. That is the product
 **Committed to**, its **Testable** list and T-026's acceptance — it was in none
 of them, so nothing would have noticed it was never built.
 
-*§3a sits next to a detector already in the tree, and the second draft tried to
-overrule it in prose.* `TrustEvaluator::compare_provider` raises
+*§3a sits next to two detectors already in the tree, and the second draft named
+one of them and tried to overrule it in prose.*
+`TrustEvaluator::compare_provider` raises
 `ProviderDisagreement` past 250 m inside a 5 s window with no notion of which
 body either fix came from, and §3a makes two bodies 300 m apart the ordinary
 case — a node in a bag by the door, the configuration OD-8 asks for by name. The
@@ -554,6 +555,23 @@ by this board's own receiver for its own fixes, co-location is never an input to
 `TrustState`, and the pair comparison keeps the behaviour its tests describe.
 Whether that behaviour should change is **T-141**, an ADR of its own — because
 an amendment that switches off a trust signal is a decision, not a description.
+
+*The fifth pass found the second detector, which is heavier and was named
+nowhere.* `MotionDisagreement` — weight **45**, threshold **50 m**, and it needs
+**one** provider rather than a pair — is raised from
+`motion.known && !motion.moving && moved > jump_while_still_mm`, where `motion`
+is the wrist's and the observation is whatever `LocationService` handed in,
+`NodeGnss` included. On a Waveshare board with no receiver of its own that is
+the ordinary day: wearer at a desk, node in a bag somebody carries 60 m down the
+corridor, and the only fix the board has comes out `Degraded` with a reason
+saying the device moved while the accelerometer says it did not. §3a *saw* the
+path — its OD-10 paragraph says the receiver sits on the node and calls it two
+bodies — and then never asked what the tree already does with the wrist's
+stillness and a node's position. Both detectors are now named in §3a, in T-141's
+scope and in T-026's acceptance; the behaviour is unchanged and stays T-141's to
+decide. [#112](https://github.com/hleserg/Attadipa/pull/112) is already on the
+code side of the second one, which is why the ADR must not read as
+settled-and-singular.
 
 *And the fourth pass found the rewritten sentence still wrong in one word.* It
 said a position whose co-location is `Unknown` *"must be shown as the node's

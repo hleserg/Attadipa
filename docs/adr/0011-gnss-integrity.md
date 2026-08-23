@@ -95,9 +95,12 @@ by the door rather than about the wearer — a quantity none of the ten above ca
 express, and one that no receiver reports because it is not a property of the
 receiver. [ADR-0009](0009-heading.md) §3a decides where it lives and what it
 withholds; it is recorded here because this table is the register an
-implementer consults, and the three wrong homes §3a rules out — `Availability`,
-`PositionValidity`, a `TrustReason` bit — are precisely what a reader of this
-section alone would reach for. Found in review.
+implementer consults, and the three wrong homes §3a rules out —
+`PositionValidity`, **`TrustState`**, a `TrustReason` bit — are precisely what a
+reader of this section alone would reach for. An earlier version of this
+sentence listed `Availability` in place of `TrustState`, which dropped the one
+of the three that had actually been in this ADR once and had to come out, and
+substituted an axis §3a does not discuss. Found in review, twice.
 
 The case that forces this: **a provider can be `Ready`, with a numerically valid,
 fresh, accurate-looking fix, and still be unusable for navigation** — because the

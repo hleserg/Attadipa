@@ -133,16 +133,25 @@ partly — the mapping itself needs a placed sensor), one is `RESEARCH`, and fiv
 are `BLOCKED` — but **not all five on the same thing**, and an earlier version of
 this paragraph said they were.
 
-- **Two are blocked on placement alone (T-109)** — a sensor that is ordered and
-  not yet in the unit: G-06 and G-07, the two calibration epics. They are
-  sensor-only: a magnetometer held still and turned, with nothing else on the
-  board needing to be decided first. **Placement itself is not the floor**,
-  though: T-109 chooses *which part* from the field at the mounting position
-  with the motor driven, and this unit has no motor fitted (T-097). Until T-097
-  or T-105 lands, a motor-idle survey can be recorded but cannot choose the
-  part — the QMC's ±800 µT ceiling is exactly what a driven motor magnet
-  threatens, so a survey without one finds nothing and reads as if it had
-  looked. Found in review.
+- **Two — G-06 and G-07, the calibration epics — need placement AND the rail.**
+  An earlier version of this bullet called them *"sensor-only … with nothing else
+  on the board needing to be decided first"*, which is the same mistake this
+  document spent two rounds removing from G-09 and G-10 one bullet down, twelve
+  lines above a G-14 row that says **rail is still open**. A sensor sharing a
+  rail with the subsystem it is measuring returns a confounded number, and the
+  number still comes out labelled `MEASURED`. It matters *more* here than for
+  the interference tests, because the output of a calibration epic is
+  **stored**: G-04 is calibration storage, and
+  [ADR-0009](../adr/0009-heading.md) invalidates a record only *"when the
+  provider changes"* — which a load appearing on the shared rail is not. A
+  hard-iron offset fitted on the wrong rail therefore outlives the session that
+  produced it. Found in review.
+  **Placement is not the floor either**: T-109 chooses *which part* from the
+  field at the mounting position with the motor driven, and this unit has no
+  motor fitted (T-097). Until T-097 or T-105 lands, a motor-idle survey can be
+  recorded but cannot choose the part — the QMC's ±800 µT ceiling is exactly
+  what a driven motor magnet threatens, so a survey without one finds nothing
+  and reads as if it had looked. Found in review.
 - **Two more — G-09 and G-10 — need placement AND a rail AND the bus.** An
   earlier version of this bullet folded them in with the calibration epics as
   blocked on placement alone, three lines under a G-14 row that says **"rail is

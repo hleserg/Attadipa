@@ -233,32 +233,52 @@ stale silently. The protocol is
   moved.
 - **Hardware required:** no.
 
-### T-141 · Should co-location scope `ProviderDisagreement`? An ADR, not an amendment
+### T-141 · Should co-location scope the two cross-body trust detectors? An ADR, not an amendment
 - **Priority:** P2
 - **Dependencies:** [ADR-0009](docs/adr/0009-heading.md) §3a (**done**), which
   defines the state and deliberately does not use it here.
-- **Goal:** `TrustEvaluator::compare_provider` raises `ProviderDisagreement`
+- **Goal:** **two** detectors in the tree judge a position using evidence from a
+  body it may not belong to, and an earlier version of this task named one.
+  `TrustEvaluator::compare_provider` raises `ProviderDisagreement`
   when two fixes inside the 5 s window are more than 250 m apart, with no notion
   of which body either came from. ADR-0009 §3a makes two bodies far apart the
   ordinary case — a node in a bag by the door while the wearer sits at a desk is
   the configuration [OD-8](docs/research/OWNER_DECISIONS.md) asks for by name —
-  so a good node fix costs trust in a good local fix, at weight 30. **That is a
+  so a good node fix costs trust in a good local fix, at weight 30.
+  **`MotionDisagreement` is the heavier of the two and needs no second
+  provider**: `moved_at_rest = motion.known && !motion.moving && moved >
+  policy.jump_while_still_mm` in `core/src/trust.cpp` fires at **50 m** on a
+  **single** observation at weight **45**, from the *wrist's* `MotionEvidence`
+  against whatever `LocationService` handed in — `PositionSource::NodeGnss`
+  included. On a Waveshare board, which has no receiver of its own, that is the
+  only kind of position there is: the wearer sits at a desk, somebody carries
+  the bag 60 m, and the board's only fix goes `Degraded` with a reason saying
+  the device moved while the accelerometer says it did not. **That is a
   real tension and it is not a documentation defect.** An earlier draft of §3a
   tried to settle it in prose and review proved the settlement wrong three ways:
   it failed its own fixture, it contradicted two passing tests, and because
   nothing produced any co-location value but `Unknown` it would have disabled
   the signal for every pair including local-versus-local.
-- **Acceptance:** an ADR that decides one of — scope the comparison by
-  co-location; keep raising the bit but stop weighting it when the two fixes are
-  known not to share a body; report the separation without a reason bit; or
-  leave it exactly as it is and say why. Whatever it decides, it states what
-  `ProviderDisagreement` then means under
+- **Acceptance:** an ADR that decides, **for both detectors**, one of — scope the
+  comparison by co-location; keep raising the bit but stop weighting it when the
+  two bodies are known not to be the same; report the separation without a
+  reason bit; or leave it exactly as it is and say why. It may reach different
+  answers for the two, and if it does it says why: `ProviderDisagreement` is
+  evidence about a pair, `MotionDisagreement` is one body's motion applied to
+  another body's position, and the second is the one
+  [#112](https://github.com/hleserg/Attadipa/pull/112) is already changing on
+  the code side — so this ADR must read that branch rather than assume the
+  tree. Whatever it decides, it states what each reason bit then means under
   [ADR-0011](docs/adr/0011-gnss-integrity.md) §4 (*evidence about both providers,
   belonging to neither*), and it rewrites or keeps
   `tests/test_trust.cpp`'s two fixtures **deliberately** — the ~550 m
   `NodeGnss` disagreement and the live-bit-left-standing case — rather than
   discovering them when the build goes red. A change that clears a live bit is
-  refused outright: `trust.cpp` and the same test file already forbid it, and a
+  refused outright **on the not-comparable path**, which is the qualifier an
+  earlier version of this line dropped: `compare_provider` clears the bit on
+  every *agreeing* comparison, and that is correct. What is refused is clearing
+  a live bit because a comparison could not be made. `trust.cpp` and the same
+  test file already forbid that, and a
   test written as *"assert no bit is set"* cannot tell an early return from a
   `set(..., false)` that clears one. Any test here asserts both the bit's
   absence **and** that a previously raised bit survives.
@@ -1233,7 +1253,11 @@ stale silently. The protocol is
   co-location is `Unknown` reaches the screen labelled with the source it
   actually has, and the label is `LocationService`'s rather than an
   application's, per
-  [ADR-0002](docs/adr/0002-companion-is-optional.md) rule 4. **A second case
+  [ADR-0004](docs/adr/0004-capability-sources.md) — *"no application queries
+  node state; ADR-0002 rule 2 extends here unchanged"*. Not ADR-0002 rule 4,
+  which this acceptance used to cite: rule 4 is the untrusted-input rule, and
+  ADR-0002 says outright that a node is not a companion and its rules do not
+  apply to one. **A second case
   with a `Manual` fix on a board with no node attached**, because `Unknown`
   co-location is not a synonym for *the node's*: `Companion`, `Manual` and
   `Simulated` all carry it, and a screen that credits a node for a position the
@@ -1244,14 +1268,21 @@ stale silently. The protocol is
   fix, replay it with the state `SameBody` and with it `Unknown`, and assert an
   identical verdict and identical reason bits — scoped to the fix's own weight,
   which is the assertion that fails if somebody re-implements the state as a
-  reason bit. **It is not an input to the pair comparison.**
-  `TrustEvaluator::compare_provider` keeps the behaviour
-  `tests/test_trust.cpp` already asserts — a `NodeGnss` fix ~550 m out raises
-  `ProviderDisagreement`, and a live bit is left standing by a comparison that
-  could not be made — and an implementation of this task that reddens either has
-  changed something nobody asked it to. Whether that behaviour *should* change,
-  given that a node in a bag by the door is the configuration OD-8 asks for, is
-  **T-141** and not this task.
+  reason bit.
+  **It is not an input to either trust detector that fires on this
+  configuration, and there are two.** `compare_provider` raises
+  `ProviderDisagreement` past 250 m over a *pair* at weight 30; the heavier
+  `MotionDisagreement` fires at **50 m** over a **single** observation at weight
+  45, from the wrist's stillness against whatever `LocationService` handed in,
+  `NodeGnss` included — so it is the one that fires on a Waveshare board, which
+  has no second provider at all. An earlier version of this acceptance named
+  only the first, and an implementer would have built to a list short by the
+  likeliest case. Both keep the behaviour `tests/test_trust.cpp` already
+  asserts: a `NodeGnss` fix ~550 m out raises `ProviderDisagreement`, and a live
+  bit is left standing by a comparison that could not be made. An implementation
+  of this task that reddens either has changed something nobody asked it to.
+  Whether that behaviour *should* change, given that a node in a bag by the door
+  is the configuration OD-8 asks for, is **T-141** and not this task.
 - **Research status:** done
 - **Implementation status:** not started
 - **Tests:** host tests over recorded NMEA including stationary traces; a
