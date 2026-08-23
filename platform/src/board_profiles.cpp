@@ -88,6 +88,21 @@ BoardProfile make_twatch()
     // Every capability derived from the radio therefore comes out "we cannot
     // say", which is the truth. Override it with --radio in the simulator.
     p.radio = radio_info_for(RadioChip::Unknown);
+
+    // Traced, not recalled: HARDWARE_MATRIX ':112'. PWR is SW7 and wires to the
+    // AXP2101's `PWRON` pin -- it **never reaches a GPIO**, so every press
+    // arrives as a PMU interrupt. BOOT and RST both sit on the GNSS
+    // daughterboard and reach the main board over the FPC, which is why a unit
+    // without that daughterboard has no reset button and no way into download
+    // mode at all.
+    //
+    // RST is not listed. It resets the SoC; there is no software event to
+    // deliver and nothing for a debug channel to simulate. BOOT is listed and
+    // marked not injectable for the same reason in weaker form: it is a
+    // boot-mode strap read at reset, not an interface control.
+    p.buttons[0] = ButtonSpec{"power", /*role_known=*/true, /*injectable=*/true};
+    p.buttons[1] = ButtonSpec{"boot", /*role_known=*/true, /*injectable=*/false};
+    p.button_count = 2;
     return p;
 }
 
@@ -102,6 +117,22 @@ BoardProfile make_waveshare()
     p.display.technology          = PanelTechnology::Amoled;
     p.present_mask                = kWaveshareFeatures;
     p.radio                       = {};  // no radio is fitted; the struct is meaningless
+
+    // **Two, counted by the owner pressing them** on the assembled case,
+    // 2026-08-23 (source S13). What that does not settle is which named input
+    // each one reaches: the schematic lists `Key1`, `Key3` and `PWRON`, a key
+    // may sit on `PWRON` *and* a GPIO at once, and `PWRON` may reach neither --
+    // on the T-Watch it wires to SW7 with no GPIO at all. That is open question
+    // D5, and until it closes these are numbered rather than named.
+    //
+    // Numbering them is not a placeholder to be tidied up later. A profile that
+    // said "power" and "back" would put a guess about wiring where an
+    // application would read it as a fact, which is the failure ADR-0003 is
+    // about. `role_known = false` is the honest field, and the debug tool
+    // prints it.
+    p.buttons[0] = ButtonSpec{"button-1", /*role_known=*/false, /*injectable=*/true};
+    p.buttons[1] = ButtonSpec{"button-2", /*role_known=*/false, /*injectable=*/true};
+    p.button_count = 2;
     return p;
 }
 

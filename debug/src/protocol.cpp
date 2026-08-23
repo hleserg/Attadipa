@@ -109,6 +109,7 @@ std::uint8_t bytes_per_pixel(PixelFormat format)
 {
     switch (format) {
     case PixelFormat::Rgb888:
+    case PixelFormat::Bgr888:
         return 3;
     case PixelFormat::Rgb565Le:
     case PixelFormat::Rgb565Be:

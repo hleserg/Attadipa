@@ -35,6 +35,19 @@ SCANNED = ("sim", "apps", "ui")
 # is not a courtesy but a hole. An exemption that is not load-bearing is removed.
 ALLOWED = {
     "ui/src/color.cpp",   # the palette, transcribed from final §42
+
+    # The diagnostic test pattern. Its colours are not design values, they are
+    # test vectors: pure red, pure green, pure blue and a mid grey at known
+    # 8-bit values, so that a screenshot coming back with the channels swapped
+    # is visible instead of merely plausible. A pattern drawn from theme tokens
+    # could not detect a swapped channel, because both the pattern and the
+    # expectation would move together. Its geometry is literal for the same
+    # reason: a coordinate grid whose spacing scaled with the panel could not
+    # reveal a scale error.
+    #
+    # Load-bearing, by this file's own test: remove it and the check fails on a
+    # file whose whole purpose is to contain known raw values.
+    "sim/diagnostic_screen.cpp",
 }
 
 SUFFIXES = {".c", ".cpp", ".h", ".hpp"}

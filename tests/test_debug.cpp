@@ -318,6 +318,7 @@ void the_bodies_survive_a_round_trip()
 void bytes_per_pixel_is_defined_for_every_format()
 {
     CHECK(bytes_per_pixel(PixelFormat::Rgb888) == 3);
+    CHECK(bytes_per_pixel(PixelFormat::Bgr888) == 3);
     CHECK(bytes_per_pixel(PixelFormat::Rgb565Le) == 2);
     CHECK(bytes_per_pixel(PixelFormat::Rgb565Be) == 2);
     CHECK(bytes_per_pixel(PixelFormat::Unknown) == 0);

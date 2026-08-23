@@ -141,6 +141,14 @@ enum class PixelFormat : std::uint8_t {
     Rgb888     = 1,  // three bytes per pixel, R then G then B
     Rgb565Le   = 2,  // two bytes per pixel, little-endian: low byte first
     Rgb565Be   = 3,  // two bytes per pixel, big-endian
+    // Three bytes per pixel, B then G then R. Not a curiosity: this is how
+    // LVGL stores LV_COLOR_FORMAT_RGB888 in memory (`lv_color_t` in
+    // src/misc/lv_color.h), so it is what a snapshot of the simulator actually
+    // contains. Naming it on the wire is the alternative to swapping every
+    // pixel on the device and hoping both ends agree -- and a swapped channel
+    // is the single most common way a screenshot comes back looking almost
+    // right, which is exactly the failure the owner asked to be ruled out.
+    Bgr888     = 4,
 };
 
 std::uint8_t bytes_per_pixel(PixelFormat format);
