@@ -355,10 +355,17 @@ came off the unit the same day —
   `factory` and **`xiaozhi` `1.8.5`** in `ota_0`, both built with **ESP-IDF
   `v5.5.1-dirty`** — read out of the application descriptors, not guessed from a
   wake-word model. T-104 should read xiaozhi at **tag `1.8.5`**, not `HEAD`.
-- **The stock firmware is `xiaozhi-esp32`.** The `model` partition holds WakeNet9
-  `wn9_nihaoxiaozhi_tts`, so the launcher's AIChats app is that project — which
-  means this board's audio path is already written down by somebody who had it
-  working. Licence first: **T-104**.
+- **`xiaozhi-esp32` is *on* the unit and is not what runs.** ~~The stock
+  firmware is `xiaozhi-esp32`~~ — **retracted 2026-08-23**, and both halves of
+  the old claim with it. `otadata` is blank, so the bootloader falls through to
+  `factory`, which holds `phone_s3_box_3`; the `xiaozhi 1.8.5` image sits
+  unselected in `ota_0` (`WAVESHARE_FLASH_LAYOUT` §2.1). The wake-word inference
+  — the `model` partition holding `wn9_nihaoxiaozhi_tts`, therefore the
+  launcher's AIChats app is that project — is withdrawn outright by §3 of the
+  same file. What survives is worth keeping: an image built from
+  `xiaozhi-esp32` is on this board's flash, so this board's audio path is
+  written down somewhere by somebody who had it working. Licence first:
+  **T-104**, and at tag `1.8.5`.
 - **The vendor bakes raw pixel buffers**, not encoded images, with no decoder on
   the device — and **T-103 has since decoded them.** Each image is exactly
   411 652 bytes: a 12-byte header (`u32` magic, `u16` width 410, `u16` height
@@ -629,8 +636,8 @@ no timeout at all, which makes "no" `LIKELY` and settles nothing — that clone 
 from 2026-08-10 and the unit's build is from 4 Nov 2025, and `phone_s3_box_3`
 has not been *identified* with it. The capacity figure, for what it is
 worth here, is **250–310 mAh `ESTIMATED`** with 300 mAh as the working number
-(`BATTERY_UPGRADE` §1.2 for the pair; §3 says *"expect 250–300"*) against
-400 mAh printed on the label — three converging
+(`BATTERY_UPGRADE` §1.2 for the pair, §3 for its
+basis) against 400 mAh printed on the label — three converging
 lines of reasoning, not a weighing, and nobody has weighed it.
 
 **BENCH_HANDLING** — not the battery research the sentence before it cites —

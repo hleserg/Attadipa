@@ -118,7 +118,12 @@ EASTER_EGGS.md
 # match and the next `git add -A` at the root would carry -- a fourth prefix for
 # the recurrence T-117 is written about, one directory from the one just closed.
 # So the second line, which catches that directory at any depth while still
-# leaving `docs/hardware/artifacts/` visible. Both verified in a scratch
+# leaving `docs/hardware/artifacts/` visible -- files directly in it, that is.
+# `docs/hardware/artifacts/watch/` would be hidden, by construction: the second
+# line matches that name at every depth and cannot tell whose it is. Said here
+# because `docs/hardware/` is both where this branch puts its new file and a
+# prefix the unattended sweep may merge, so the one directory name to avoid
+# there is `artifacts/watch/`. Both verified in a scratch
 # repository with `check-ignore --no-index`.
 /artifacts/
 **/artifacts/watch/

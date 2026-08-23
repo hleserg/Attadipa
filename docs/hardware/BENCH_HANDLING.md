@@ -216,9 +216,12 @@ paragraph is a bound, not a number.
 
 **The cell, which nothing above weighs.** The unit has a battery fitted — a
 `402728` marked 400 mAh, honest expectation **250–310 mAh `ESTIMATED`, with
-300 mAh as the working figure** (`BATTERY_UPGRADE` §1.2 for the pair; §3 is the
-reasoning, and states it as *"expect 250–300 mAh"* — three independent lines
-converging, nothing weighed)
+300 mAh as the working figure** (`BATTERY_UPGRADE` §1.2 for the pair, §3 for
+the three independent lines that converge on it; nothing weighed). An earlier
+version of this parenthesis corroborated it with §2's *"expect 250–300 mAh"*,
+which is **a different cell** — the expected capacity of a *replacement* pack,
+whose very next sentence uses the fitted cell as its denominator. Two
+near-identical numbers about two different objects, reading as agreement
 ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — its plug visibly mated, and
 net `VBAT1` has **no protection FET, no fuel gauge, no load switch and no
 disconnect switch** ([BATTERY_UPGRADE](../research/BATTERY_UPGRADE.md) §1.1).

@@ -374,6 +374,19 @@ housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
 - **One I²C read burst at `0x34`** covering `0x62`, `0x50`, `0x58`, `0x12`,
   `0x69` — the five eFuse-defaulted registers of §1.3. Until then every
   "default" claimed for them is `UNKNOWN`.
+- **And two more in the same burst, added 2026-08-23: `0x64` (CV target) and
+  `0x63` (bit 4, termination enable).** A *different* class from the five above
+  and named separately for that reason: these are not eFuse-defaulted, they hold
+  whatever the running image last wrote and the PMU never sees a POR while the
+  cell is connected (§6). With `0x63[4]` clear the part holds CV indefinitely on
+  a cell with no protection FET, and OD-16 keeps the unit on the charger — so
+  this pair is the only cell-safety question the repository has, and this burst
+  is the only route from `UNKNOWN` to read. **Do not close T-106 with five.**
+- **One thing this visit cannot also do.** Reading those registers means running
+  our code on the unit, which resets it, and OD-16 item 2 says a reset leaves
+  the panel's brightness mitigation unconfirmed. The two `UNKNOWN`s want the
+  same trip and cannot both be closed by it: note the brightness the panel comes
+  back at, or accept that this visit reopens it.
   **Watch for one pathological combination**: `0x50` bit 4 = 0 *and* bits 3:2 =
   00 (current source off) makes `TS` read 0 V through `RP2`, which the part sees
   as "battery far too hot" and refuses to charge. With the source at its 50 µA

@@ -1110,7 +1110,9 @@ survives only here.)
    is reachable rather than theoretical. Until somebody looks at the panel after
    a reset, **a session that reset the unit must not report the mitigation as
    still in force**; it must say it reset the board and that the brightness is
-   unconfirmed. `WAVESHARE_FLASH_LAYOUT` §7 is the precedent for making it
+   unconfirmed. `WAVESHARE_FLASH_LAYOUT` §2.2, under
+   *"`nvs`, `otadata` and `phy_init` did not move either"*, is the precedent for
+   making it
    `MEASURED`: the owner watched the panel through six download-mode cycles and
    that is how the `nvs` result stopped being a guess — nobody wrote down what
    brightness it came back at, which is the one observation that would settle

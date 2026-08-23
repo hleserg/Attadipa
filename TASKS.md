@@ -1550,7 +1550,7 @@ stale silently. The protocol is
   Stereo source material decoded to one transducer is still mono output.
 - **Hardware required:** yes — a meter on the board.
 
-### T-106 · Three measurements and five registers, before any cell is ordered
+### T-106 · Three measurements and seven registers, before any cell is ordered
 - **Priority:** P1 — it gates the battery decision, and every part of it is
   cheap. Nothing here needs a soldering iron.
 - **Dependencies:** the research is done —
@@ -1583,7 +1583,9 @@ stale silently. The protocol is
   not exist, so until now the question had no owner in this file at all. Reading
   them is a read, not a write, and needs no permission beyond having the unit.
 - **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
-  instrument named, the five register values recorded as read, and the sizing
+  instrument named, **all seven** register values recorded as read — including
+  `0x63` and `0x64`, which are the cell-safety pair and not part of the original
+  five — and the sizing
   table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
   row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
 - **What must not be assumed:** that the sticker settles the capacity. Reading
@@ -1827,6 +1829,15 @@ stale silently. The protocol is
   it, the same shape `check_docs.py` already uses. Whichever it is, it must be
   a decision recorded once and not a number that creeps upward every time the
   check is inconvenient.
+- **And item 3 has a priced cost, not just a tidiness one.**
+  [#97](https://github.com/hleserg/Attadipa/pull/97) cites its own `OD-16` by
+  **deep anchor** from both `TASKS.md` and `STATUS.md`. Whichever branch
+  renumbers, those anchors go stale **silently**, because `check_docs.py`
+  resolves a link's path and never its `#…` fragment — which is item 2 of this
+  same task, met in advance. #97 is the likelier one to be asked to renumber,
+  since its `OD-16` *answers* A10 while the one on `docs/bench-handling` records
+  A10 as open. So the anchor check and the `OD-nn` check are the same incident
+  from two sides, and doing either alone leaves the other half live.
 - **And item 1 has a cheaper answer than the one it proposes.**
   `tools/docs/check_docs.py`'s *"Nothing unexpected is tracked at the repository
   root"* was written for exactly this failure — `git add -A` sweeping in a stray
