@@ -122,8 +122,12 @@ def _axis(value, watch: Watch | None, axis: str) -> int:
             raise WatchError(
                 f"a fractional coordinate ({value}) needs the device's screen size, "
                 f"and this step was resolved without a connection")
-        caps = watch._caps()  # noqa: SLF001 - the runner is the client's own caller
-        span = caps.width if axis == "width" else caps.height
+        # The *displayed* geometry, the same one `_check_point` bounds against
+        # and the same one the PNG is in. Reading it off `caps` directly would
+        # put a fraction in the framebuffer's frame on a rotated device, which
+        # is the divergence `Watch.screen_size` exists to close.
+        width, height = watch.screen_size()
+        span = width if axis == "width" else height
         return int(round(value * span))
     return int(value)
 
@@ -154,7 +158,17 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
             elif action == "wait":
                 time.sleep(float(step.get("seconds", 0.2)))
             elif action == "wait_stable":
-                watch.wait_stable()
+                quiet_ms = int(step.get("quiet_ms", 300))
+                limit = float(step.get("timeout", 5.0))
+                if not watch.wait_stable(quiet_ms, limit):
+                    # A step that cannot fail is not a step. This used to
+                    # discard the boolean, so the action passed whatever the
+                    # interface was doing -- and the device end could not have
+                    # said "settled" truthfully anyway.
+                    raise WatchError(
+                        f"the interface never went quiet for {quiet_ms} ms "
+                        f"within {limit:g} s")
+                result.detail = f"quiet {quiet_ms} ms"
             elif action == "tap":
                 watch.tap(*_xy(step, watch))
             elif action == "long_tap":

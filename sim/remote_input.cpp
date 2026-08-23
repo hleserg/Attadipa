@@ -43,6 +43,13 @@ struct PointerTransition {
 // so backpressure lands in the queue -- which counts -- instead of silently
 // eating a swipe point here.
 constexpr std::size_t     kTransitionCapacity = core::InputQueue::kCapacity;
+
+// How many transitions one `lv_indev_read` burst may dispatch. Sixteen at the
+// 33 ms read period is ~480 points a second, far above a finger and above the
+// swipe interpolation this tool generates, so it bounds the pathological case
+// without slowing a real gesture.
+constexpr std::size_t     kMaxTransitionsPerRead = 16;
+std::size_t               g_read_burst           = 0;
 PointerTransition         g_transitions[kTransitionCapacity];
 std::size_t               g_transition_head  = 0;
 std::size_t               g_transition_count = 0;
@@ -101,7 +108,20 @@ void read_pointer(lv_indev_t* indev, lv_indev_data_t* data)
         // for a gesture recogniser -- but LVGL uses this field for
         // `last_activity_time`, and a timestamp from another epoch would break
         // the inactivity clock the screen dimming will later rest on.
-        data->continue_reading = g_transition_count > 0;
+        // Bounded. `continue_reading` used to be "is there another one", which
+        // lets a single `lv_indev_read` dispatch all 64 queued transitions --
+        // and every widget event they fire -- inside one `lv_timer_handler`.
+        // That is the pause the screenshot is chunked to avoid
+        // (`bridge.h:139-145`), reintroduced next door. The remainder is not
+        // lost, it waits for the next 33 ms read, and a burst larger than this
+        // is a client outrunning the interface rather than a gesture.
+        ++g_read_burst;
+        if (g_transition_count == 0 || g_read_burst >= kMaxTransitionsPerRead) {
+            data->continue_reading = false;
+            g_read_burst           = 0;
+        } else {
+            data->continue_reading = true;
+        }
     }
 
     data->point.x = g_pointer_x;

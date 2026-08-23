@@ -89,15 +89,18 @@ public:
     virtual std::uint8_t button_count() const = 0;
     virtual const ButtonDescriptor* buttons() const = 0;
 
-    // True once the interface has been idle for at least `ms`.
+    // True once the interface has been idle for at least `ms` -- a duration,
+    // not a point in time. The caller supplies it; `WaitStable` carries it in
+    // the body for exactly this reason, because a source cannot know how long
+    // "settled" is for the animation the host is waiting on.
     //
-    // A source with no idle tracking answers true unconditionally, and the
-    // reply carries one bit, so it **cannot** say which of the two it meant.
-    // The host must therefore not read `StableOk` as evidence that the
-    // interface settled -- only as evidence that the device was asked. This
-    // sentence replaces one claiming the reply says so; it does not, and a
-    // scenario step resting on it would have been vacuous.
-    virtual bool stable_since(std::uint32_t ms) const { (void)ms; return true; }
+    // **No default.** A source with no idle tracking must say so by writing
+    // `return false;` and meaning it, because the reply carries one bit and
+    // cannot distinguish "settled" from "not tracked". A default of `true` here
+    // reaches every test double by inheritance and makes the step vacuous
+    // wherever it is not overridden -- which is what happened, twice: first in
+    // the host step that discarded the answer, then here.
+    virtual bool stable_since(std::uint32_t ms) const = 0;
 };
 
 // The caps section 10 of the request asks for, at namespace scope rather than

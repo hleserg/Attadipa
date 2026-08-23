@@ -48,12 +48,16 @@ public:
     std::uint8_t                   button_count() const override { return button_count_; }
     const debug::ButtonDescriptor* buttons() const override { return buttons_; }
 
-    // The interface has been idle for at least `ms`.
+    // The interface has been idle for at least `ms` -- a duration the caller
+    // chooses, which `WaitStable` now carries in its body.
     //
-    // Real, not a constant: LVGL tracks the last input activity per display,
-    // so the simulator can answer the question `WaitStable` actually asks. A
-    // source that returned true unconditionally made the scenario step
-    // vacuous, and a vacuous step in a test harness reads as a passing one.
+    // Real, not a constant: LVGL tracks the last input activity, so the
+    // simulator can answer the question `WaitStable` actually asks. Two things
+    // had to be true for that, and only the first one was: the source must
+    // measure something, *and* the caller must pass a duration rather than the
+    // monotonic tick. Passing `now_ms` reduced this to "idle since boot",
+    // which is true before the first input and false forever after. A vacuous
+    // step in a test harness reads as a passing one, at either end.
     bool stable_since(std::uint32_t ms) const override;
 
     // The frame buffer the bridge needs, sized for this board's panel.

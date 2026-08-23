@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import socket
 import stat
+import struct
 import time
 from dataclasses import dataclass
 
@@ -187,8 +188,11 @@ class Watch:
         self._next_req_id = 1
         self._pending: list[p.Envelope] = []
         # req_ids whose screen transfer we have given up on. Chunks still in
-        # flight for them are dropped on arrival rather than queued.
-        self._abandoned: set[int] = set()
+        # flight for them are dropped on arrival rather than queued. A dict
+        # rather than a set because the eviction below argues from age, and a
+        # set has no order to evict by -- it could drop the id abandoned a
+        # microsecond ago and keep one from last week.
+        self._abandoned: dict[int, None] = {}
         self.hello: p.Hello | None = None
         self.capabilities: p.Capabilities | None = None
 
@@ -213,7 +217,8 @@ class Watch:
         for payload in self._decoder:
             try:
                 envelope = p.envelope_decode(payload)
-                if envelope.req_id in self._abandoned and envelope.op is p.Op.SCREEN_DATA:
+                if envelope.req_id in self._abandoned and envelope.op in (
+                        p.Op.SCREEN_DATA, p.Op.SCREEN_END):
                     continue
                 self._pending.append(envelope)
             except p.ProtocolError:
@@ -293,34 +298,47 @@ class Watch:
         self._transport.send(p.frame_encode(p.envelope_encode(
             p.Envelope(op=p.Op.SCREEN_REQUEST, req_id=req_id))))
 
-        info = p.ScreenInfo.decode(self._await(req_id, (p.Op.SCREEN_INFO,), timeout).body)
-        self._check_frame_shape(info)
-        buffer = bytearray(info.total_bytes)
-        seen = bytearray(info.total_bytes)
-
         deadline = time.monotonic() + (timeout if timeout is not None else max(self._timeout, 30.0))
+
+        # `ScreenInfo.decode` and `_check_frame_shape` belong **inside** the
+        # try. Outside it they raised past the cleanup, and the device went on
+        # pumping ~3400 chunks into `_pending` with nothing to consume them:
+        # `_await` rescans that backlog linearly on every pass, there is no
+        # cancel opcode, `screenshot` bypasses `request`, and only a reconnect
+        # recovered. That is the leak the cleanup exists to close, escaping
+        # through the two lines placed above it. Unreachable on a Unix socket;
+        # on `SerialTransport` at T-114 a mid-frame resync is the expected
+        # event.
         try:
-            return self._collect_frame(req_id, info, buffer, seen, deadline)
-        finally:
-            # Whatever happened, this transfer is over as far as we are
-            # concerned. Its envelopes leave the backlog and its id is
-            # blacklisted, so chunks still in flight are discarded on arrival
-            # instead of accumulating -- a Waveshare frame is ~3400 of them,
-            # and `_await` rescans the backlog linearly on every pass.
+            info = p.ScreenInfo.decode(self._await(req_id, (p.Op.SCREEN_INFO,), timeout).body)
+            self._check_frame_shape(info)
+            buffer = bytearray(info.total_bytes)
+            seen = bytearray(info.total_bytes)
+            shot = self._collect_frame(req_id, info, buffer, seen, deadline)
+        except BaseException:
+            # Only on the way out through an exception. A transfer that
+            # finished consumed its own chunks and left nothing in flight, so
+            # blacklisting its id buys nothing and costs the next 65535 ids a
+            # membership test against a set that grew for no reason.
             #
             # Blacklisted **here**, not on the way in: an id marked abandoned
             # before the transfer starts drops the very chunks it is waiting
             # for, which is a 600 kB image arriving as 14 kB.
             self._pending = [e for e in self._pending if e.req_id != req_id]
             self._abandon(req_id)
+            raise
+        return shot
 
     def _abandon(self, req_id: int) -> None:
-        self._abandoned.add(req_id)
-        # req_id wraps at 16 bits, so the set is bounded to well under one
-        # cycle: an id that old cannot still be in flight, and keeping every
-        # one forever would be the leak this method exists to prevent.
+        self._abandoned.pop(req_id, None)   # re-insert, so it is the newest
+        self._abandoned[req_id] = None
+        # req_id wraps at 16 bits, so this is bounded to well under one cycle:
+        # an id that old cannot still be in flight, and keeping every one
+        # forever would be the leak this method exists to prevent. `dict`
+        # preserves insertion order, so the 32 kept really are the 32 newest --
+        # which is what "an id that old" needs in order to mean anything.
         if len(self._abandoned) > 64:
-            self._abandoned = set(list(self._abandoned)[-32:])
+            self._abandoned = dict.fromkeys(list(self._abandoned)[-32:])
 
     def _collect_frame(self, req_id, info, buffer, seen, deadline) -> Screenshot:
         while True:
@@ -384,9 +402,32 @@ class Watch:
         p.write_png(path, shot.rgb, shot.width, shot.height)
         return os.path.abspath(path), shot
 
-    def wait_stable(self, timeout: float | None = None) -> bool:
-        reply = self.request(p.Op.WAIT_STABLE, b"", (p.Op.STABLE_OK,), timeout)
-        return bool(reply.body and reply.body[0])
+    def wait_stable(self, quiet_ms: int = 300, timeout: float = 5.0,
+                    poll: float = 0.05) -> bool:
+        """Poll until the interface has been idle for `quiet_ms`, or give up.
+
+        Returns True if it settled, False if `timeout` ran out first. The
+        caller decides what a False means -- `scenario.py` fails the step.
+
+        The duration goes **on the wire**. It used to be an empty body, and the
+        device answered `stable_since(now_ms)`: "idle for as long as the process
+        has run", true before the first input and false ever after. The single
+        request is also why it used to be misnamed: one ask is not a wait, and
+        the old caller discarded the answer, so no scenario could observe
+        either half of the defect.
+        """
+        if not 0 <= quiet_ms <= 0xFFFF:
+            raise WatchError(f"quiet_ms must fit in 16 bits, got {quiet_ms}")
+        body = struct.pack("<H", quiet_ms)
+        deadline = time.monotonic() + timeout
+        while True:
+            reply = self.request(p.Op.WAIT_STABLE, body, (p.Op.STABLE_OK,),
+                                 max(0.1, deadline - time.monotonic()))
+            if reply.body and reply.body[0]:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(poll)
 
     # --- input ------------------------------------------------------------
 
@@ -436,12 +477,36 @@ class Watch:
                 f"so a {duration:.1f}s hold would be cut short")
         self.button_click(name, duration)
 
-    def _check_point(self, x: int, y: int) -> tuple[int, int]:
+    def screen_size(self) -> tuple[int, int]:
+        """The geometry a coordinate is expressed in: the **displayed** one.
+
+        Three definitions used to be in play and nothing chose between them.
+        `caps.width`/`height` are the *framebuffer's*; `apply_orientation`
+        transposes the image for `DEG90` and `DEG270`, so the PNG an agent reads
+        a coordinate off is the other way round on a rotated device; and
+        `core/input.h` says an injected point is logical, *after* rotation.
+
+        That last one wins, and everything here follows it: a coordinate is in
+        the frame of the picture. It has to be, because the rule the whole tool
+        exists to serve is "look at the frame, find the element in it, then tap
+        it" -- a bound in a geometry the agent never sees cannot enforce that.
+
+        Both boards report `DEG0` today, so the swap below has never run against
+        a real rotation. **T-114.** Written down regardless: an untested branch
+        with a stated convention is a smaller problem than three conventions.
+        """
         caps = self._caps()
-        if not (0 <= x < caps.width and 0 <= y < caps.height):
+        if caps.orientation in (p.Orientation.DEG90, p.Orientation.DEG270):
+            return caps.height, caps.width
+        return caps.width, caps.height
+
+    def _check_point(self, x: int, y: int) -> tuple[int, int]:
+        width, height = self.screen_size()
+        if not (0 <= x < width and 0 <= y < height):
             raise WatchError(
-                f"({x}, {y}) is outside the {caps.width}x{caps.height} screen. "
-                f"Coordinates are logical, with the origin at the top left")
+                f"({x}, {y}) is outside the {width}x{height} screen. "
+                f"Coordinates are logical, with the origin at the top left, "
+                f"in the frame of the picture the tool returns")
         return x, y
 
     def tap(self, x: int, y: int) -> None:

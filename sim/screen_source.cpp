@@ -40,8 +40,9 @@ bool LvglScreenSource::stable_since(std::uint32_t ms) const
     // LVGL stamps `last_activity_time` on every input event it processes, so
     // this is the same clock the interface itself reacts to -- including the
     // events the debug bridge injected, because they arrive through a real
-    // indev. `lv_display_get_inactive_time(nullptr)` reports the default
-    // display, which is the only one the simulator has.
+    // indev. `lv_display_get_inactive_time(nullptr)` reports the *smallest*
+    // inactive time across all displays, not the default one's -- which is the
+    // conservative answer, and identical here because the simulator has one.
     return lv_display_get_inactive_time(nullptr) >= ms;
 }
 

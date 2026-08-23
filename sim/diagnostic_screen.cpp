@@ -26,6 +26,12 @@ constexpr std::size_t kTrailPoints = 24;
 // which can count them exactly from a PNG without an OCR dependency -- the same
 // trick the touch trail uses, and for the same reason: a number a machine can
 // read off the screen needs no new wire field to carry it.
+// Eight, and a counter past eight stops being readable from the picture. That
+// is a real ceiling, not a rounding: `e2e_test.py` differences two counts read
+// off two PNGs, so past the cap it would difference two saturated rows and
+// report no clicks rather than too many. The test asserts it stayed below the
+// cap; a tour long enough to reach it must raise this and re-check the layout
+// at 240 px, where the row is already only 88 px wide.
 constexpr std::size_t   kClickMarks     = 8;
 constexpr std::uint32_t kClickMarkColour = 0x9090FF;
 
@@ -369,9 +375,16 @@ void diagnostic_screen_on_button(const core::InputEvent& event)
     g.last_button_at   = event.at_ms;
 
     if (g.last_button_down) {
-        g.button_down_at[event.button] = event.at_ms;
+        // `lv_tick_get`, not `event.at_ms`. A client replaying a recording
+        // stamps events from its own epoch, and the hold watchdog
+        // (`bridge.cpp`) stamps its synthetic release with the *device* clock
+        // -- so a down from one and an up from the other differenced to
+        // whatever the two epochs happened to be apart. The screen's own job
+        // is to say how long the button was down, which is a question the
+        // device can answer without trusting anybody's timestamp.
+        g.button_down_at[event.button] = lv_tick_get();
     } else {
-        g.last_button_held = event.at_ms - g.button_down_at[event.button];
+        g.last_button_held = lv_tick_get() - g.button_down_at[event.button];
     }
     refresh_labels();
 }

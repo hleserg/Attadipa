@@ -398,6 +398,146 @@ def every_error_code_has_a_human_sentence() -> None:
           "and it does not say the same thing as BUSY, which was the bug")
 
 
+# --- the host's own logic, without a device --------------------------------
+
+class ScriptedDevice:
+    """A device made of a callback. No socket, no simulator, no board.
+
+    The two defects this file grew for both lived in the *host*: a poll that
+    never polled, and a blacklist that outlived what it was protecting. The
+    end-to-end test cannot reach either -- it needs a running simulator, so it
+    cannot be a host test, and it exercises the happy path in any case. This is
+    the missing rig: the wire is real, and what is behind it is a table.
+    """
+
+    def __init__(self, reply) -> None:
+        self._reply = reply
+        self._decoder = p.FrameDecoder()
+        self._out = bytearray()
+        self.asked: list[tuple] = []
+
+    def send(self, data: bytes) -> None:
+        self._decoder.push(data)
+        for payload in self._decoder:
+            envelope = p.envelope_decode(payload)
+            self.asked.append((envelope.op, envelope.body))
+            for out in self._reply(envelope):
+                self._out += p.frame_encode(out)
+
+    def recv(self, timeout: float) -> bytes:  # noqa: ARG002 - answers are already queued
+        data = bytes(self._out)
+        self._out.clear()
+        return data
+
+    def close(self) -> None:
+        pass
+
+    def describe(self) -> str:
+        return "scripted"
+
+
+def _reply_to(envelope, op: "p.Op", body: bytes = b"") -> bytes:
+    return p.envelope_encode(p.Envelope(op=op, req_id=envelope.req_id, body=body))
+
+
+def a_stability_wait_actually_waits() -> None:
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    # Not settled for the first three asks, settled on the fourth.
+    state = {"asks": 0}
+
+    def device(envelope):
+        if envelope.op is not p.Op.WAIT_STABLE:
+            return []
+        state["asks"] += 1
+        return [_reply_to(envelope, p.Op.STABLE_OK,
+                          b"\x01" if state["asks"] >= 4 else b"\x00")]
+
+    watch = Watch(ScriptedDevice(device), timeout=2.0)
+    check(watch.wait_stable(250, timeout=2.0, poll=0.0),
+          "a wait that eventually settles returns True")
+
+    # The old implementation sent one request and returned whatever came back,
+    # which is why it could not have waited for anything.
+    check(state["asks"] == 4, f"and it asked until it did ({state['asks']} times)")
+
+    # The duration reaches the device. It used to be an empty body, so the
+    # device answered `stable_since(now_ms)` -- a question about uptime.
+    op, body = watch._transport.asked[0]  # noqa: SLF001 - the point of the rig
+    check(op is p.Op.WAIT_STABLE and body == struct.pack("<H", 250),
+          f"and 250 ms travelled as {body!r}")
+
+
+def a_stability_wait_that_never_settles_says_so() -> None:
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    never = Watch(ScriptedDevice(
+        lambda e: [_reply_to(e, p.Op.STABLE_OK, b"\x00")]
+        if e.op is p.Op.WAIT_STABLE else []), timeout=1.0)
+
+    # False, not an exception and not a silent True. `scenario.py` turns this
+    # into a failed step; a step that cannot fail is not a step.
+    check(never.wait_stable(100, timeout=0.15, poll=0.0) is False,
+          "an interface that never goes quiet reports False rather than passing")
+
+    check_raises(WatchError, "a quiet period too large for the wire is refused",
+                 lambda: never.wait_stable(70000))
+
+
+def a_finished_screenshot_blacklists_nothing() -> None:
+    from watch.client import Watch  # noqa: PLC0415
+
+    width, height = 4, 3
+    image = bytes((i * 37 + 11) & 0xFF for i in range(width * height * 3))
+
+    def device(envelope):
+        if envelope.op is p.Op.HELLO:
+            return []
+        if envelope.op is not p.Op.SCREEN_REQUEST:
+            return []
+        info = struct.pack("<IHHBBIII", 1, width, height,
+                           int(p.PixelFormat.RGB888), int(p.Orientation.DEG0),
+                           len(image), p.crc32_of(image), 0)
+        out = [_reply_to(envelope, p.Op.SCREEN_INFO, info)]
+        step = 16
+        for offset in range(0, len(image), step):
+            out.append(_reply_to(envelope, p.Op.SCREEN_DATA,
+                                 struct.pack("<I", offset) + image[offset:offset + step]))
+        out.append(_reply_to(envelope, p.Op.SCREEN_END))
+        return out
+
+    watch = Watch(ScriptedDevice(device), timeout=2.0)
+    watch.capabilities = p.Capabilities(width=width, height=height,
+                                        format=p.PixelFormat.RGB888)
+    shot = watch.screenshot()
+    check(shot.rgb == image, "a scripted frame reassembles to the bytes that were sent")
+
+    # A transfer that finished consumed its own chunks: there is nothing left in
+    # flight for the blacklist to catch. Blacklisting anyway grew the set on
+    # every screenshot and made every later envelope pay for a membership test
+    # that could never match.
+    check(watch._abandoned == {},  # noqa: SLF001 - the point of the rig
+          "and it leaves no req_id blacklisted")
+
+
+def an_abandoned_transfer_evicts_the_oldest_id() -> None:
+    from watch.client import Watch  # noqa: PLC0415
+
+    watch = Watch(ScriptedDevice(lambda e: []), timeout=0.1)
+    for req_id in range(1, 100):
+        watch._abandon(req_id)  # noqa: SLF001 - the point of the rig
+
+    kept = list(watch._abandoned)  # noqa: SLF001
+    check(len(kept) <= 64, f"the blacklist stays bounded ({len(kept)})")
+
+    # The comment on the eviction argues from age -- "an id that old cannot
+    # still be in flight". A `set` has no order to deliver that, so slicing one
+    # could evict the id abandoned a microsecond ago and keep one from an hour
+    # back, which is the opposite of what was claimed.
+    check(kept == sorted(kept) and kept[-1] == 99,
+          "and what it keeps is the newest, which is what the eviction claims")
+
+
 CASES = (
     fixed_vectors,
     framing_round_trip,
@@ -422,6 +562,10 @@ CASES = (
     a_scenario_that_runs_nothing_is_not_a_pass,
     an_unknown_wire_value_is_reported_not_raised,
     every_error_code_has_a_human_sentence,
+    a_stability_wait_actually_waits,
+    a_stability_wait_that_never_settles_says_so,
+    a_finished_screenshot_blacklists_nothing,
+    an_abandoned_transfer_evicts_the_oldest_id,
 )
 
 

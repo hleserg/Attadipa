@@ -84,6 +84,13 @@ public:
         return true;
     }
 
+    // No idle tracking of its own -- the rig sets the answer. Spelled out
+    // rather than inherited: the base class used to default this to `true`, and
+    // a double that inherits "yes, settled" turns every assertion resting on it
+    // into a pass. That is how the vacuous step survived a review.
+    bool stable_since(std::uint32_t ms) const override { return idle_ms_ >= ms; }
+    void set_idle(std::uint32_t ms) { idle_ms_ = ms; }
+
     const char*             board_id() const override { return "waveshare-amoled-206"; }
     const char*             build_id() const override { return "test"; }
     std::uint8_t            button_count() const override { return 2; }
@@ -91,6 +98,8 @@ public:
 
     const std::vector<std::uint8_t>& image() const { return image_; }
     void fail_capture(bool on) { fail_capture_ = on; }
+
+    std::uint32_t idle_ms_ = 0;
 
     // Every button was injectable until now, which is exactly why the refusal
     // path had never existed: the board profile that motivates the flag
@@ -1013,6 +1022,94 @@ void a_flush_is_counted_like_an_overrun()
     CHECK(s.pushed == s.popped + s.dropped + s.flushed + queue.size());
 }
 
+// --- wait_stable: the duration has to travel, and be the one measured ------
+
+// Reads the single byte `StableOk` carries. Nothing else does, so it is local.
+int stable_reply(const Rig& rig)
+{
+    Envelope            e;
+    const std::uint8_t* body = nullptr;
+    const auto&         last = rig.sink.messages.back();
+    if (!decode_message(last.data(), last.size(), e, body) || body == nullptr ||
+        e.body_len < 1) {
+        return -1;
+    }
+    return body[0];
+}
+
+void a_stability_question_with_no_duration_in_it_is_refused()
+{
+    Rig rig;
+    rig.screen.set_idle(50);
+    rig.send(request(Opcode::WaitStable, 1), 10000);
+
+    // An empty body used to be the whole message, and the device answered
+    // `stable_since(now_ms)` -- "idle for as long as the process has run",
+    // which is true until the first input and false ever after, however long
+    // the host waits. The duration is the caller's to choose and must be on
+    // the wire; a message without one is not answerable.
+    CHECK(rig.sink.last_is(Opcode::Error));
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+}
+
+void the_stability_answer_is_measured_against_the_duration_that_was_asked_for()
+{
+    Rig rig;
+    rig.screen.set_idle(400);
+
+    const std::uint8_t three_hundred[2] = {0x2C, 0x01};
+    rig.send(request(Opcode::WaitStable, 1, three_hundred, sizeof(three_hundred)), 10000);
+    CHECK(rig.sink.last_is(Opcode::StableOk));
+    CHECK(stable_reply(rig) == 1);
+
+    // The same instant, the same idle time, a longer question: the opposite
+    // answer. That is the property the old code could not have -- it ignored
+    // the body, so no two questions could ever differ.
+    rig.sink.messages.clear();
+    const std::uint8_t one_second[2] = {0xE8, 0x03};
+    rig.send(request(Opcode::WaitStable, 2, one_second, sizeof(one_second)), 10000);
+    CHECK(rig.sink.last_is(Opcode::StableOk));
+    CHECK(stable_reply(rig) == 0);
+}
+
+void a_hold_the_client_left_behind_is_still_released_once_it_is_gone()
+{
+    Rig rig;
+    rig.send(input_request(core::InputEventType::ButtonDown, 1, 0, 0, /*button=*/0),
+             /*now=*/1000);
+    CHECK(rig.state.button_down(0));
+
+    // The queue fills while the hold is live. Not contrived: `remote_input.cpp`
+    // stops draining by design once its transition FIFO is full.
+    fill_queue(rig.queue);
+    rig.bridge.on_disconnect(1500);
+
+    // `release_all` could not queue the release and kept the hold rather than
+    // lose it -- the deliberate half. Nothing about that is repaired by the
+    // client leaving; the retry is `tick`, and this is the case it exists for.
+    CHECK(rig.state.button_down(0));
+
+    core::InputEvent drained;
+    while (rig.queue.pop(drained)) {
+    }
+
+    rig.bridge.tick(1000 + 30001, &Collector::emit, &rig.sink);
+    CHECK(!rig.state.button_down(0));
+    CHECK(rig.bridge.stats().holds_expired == 1);
+
+    core::InputEvent up;
+    CHECK(rig.queue.pop(up));
+    CHECK(up.type == core::InputEventType::ButtonUp);
+    CHECK(up.button == 0);
+
+    // Two tests already covered the halves -- disconnect with a drainable
+    // queue, and a full queue with a live client. Their intersection is the
+    // one that stayed broken, and in the simulator it stayed broken twice
+    // over: `DebugServer::poll` returned above its own `tick` as soon as
+    // `client_fd_ < 0`, so on the only path that matters the retry never ran.
+}
+
+
 int main()
 {
     an_envelope_survives_a_round_trip();
@@ -1063,6 +1160,9 @@ int main()
     a_frame_too_large_for_the_buffer_says_so_as_itself();
     a_decoded_capabilities_body_can_never_claim_more_buttons_than_it_holds();
     a_flush_is_counted_like_an_overrun();
+    a_stability_question_with_no_duration_in_it_is_refused();
+    the_stability_answer_is_measured_against_the_duration_that_was_asked_for();
+    a_hold_the_client_left_behind_is_still_released_once_it_is_gone();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d debug-channel check(s) failed\n", failures);

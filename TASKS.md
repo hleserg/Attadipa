@@ -121,7 +121,23 @@ stale silently. The protocol is
      `core::InputQueue` with `InputOrigin::Physical`. That is what makes remote
      and physical input coexist, and it is not extra work for this task — it is
      how the drivers should push events anyway.
-- **Acceptance:** `tools/watch_control.py --port /dev/ttyACM0 info` answers, a
+  6. **Measure the capture pause, and fix the peak allocation.** Two numbers
+     this milestone could not produce.
+     - The pause is **3.6 ms** on a desktop for a 617 kB frame and `UNKNOWN` on
+       a board, and the reason it cannot be scaled is in
+       [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md): the frame must live in
+       PSRAM, which is octal at 80 MHz with a 10-cycle latency here (D12a), and
+       a byte-at-a-time CRC over that is a different machine. Measure it. If it
+       is over ~50 ms, take the CRC and/or the copy off the interface thread, or
+       run the CRC block by block between frames.
+     - `lv_snapshot_take` allocates **a second full frame** before the row copy,
+       so the peak is ~1.24 MB rather than 617 kB. On a desktop that is
+       invisible; on a board with 8 MB of PSRAM and a draw buffer already in it,
+       it is a number to have decided about rather than discovered. Snapshot
+       into the bridge's own buffer, or size the budget for two.
+- **Acceptance:** `tools/watch_control.py info` answers over a port **resolved
+  from the unit's USB serial and not named on the command line** — `ttyACM0` is
+  not an identity on this host and T-116 is the resolver — a
   screenshot of the real panel is written and **looked at**, the diagnostic
   screen shows the corners and colours where they belong, and a swipe leaves a
   trail rather than two dots. `tools/watch/e2e_test.py` is the model for what to

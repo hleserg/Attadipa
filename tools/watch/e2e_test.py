@@ -74,6 +74,12 @@ def lvgl_clicks(watch, workdir, name):
     return marked // 64
 
 
+# The screen draws at most this many markers -- `diagnostic_screen.cpp`. Past it
+# the row saturates and two counts differenced report *no* clicks rather than
+# too many, so the difference below has to know where it stops being arithmetic.
+CLICK_MARK_CAP = 8
+
+
 def read_png(path: str) -> tuple[int, int, bytes]:
     """Decode our own PNG without an image library, to check what was written."""
     raw = Path(path).read_bytes()
@@ -151,7 +157,12 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         absolute, shot = watch.save_screenshot(os.path.join(workdir, "01.png"))
         check(os.path.getsize(absolute) > 1000, "a screenshot writes a non-trivial file")
         width, height, rgb = read_png(absolute)
-        check((width, height) == (caps.width, caps.height),
+        # `screen_size`, not `caps.width/height`: the PNG has been through
+        # `apply_orientation`, which transposes it for DEG90 and DEG270, so
+        # comparing it to the framebuffer geometry asserts an identity that
+        # only holds while the device reports DEG0. Both boards do today --
+        # which is exactly why the wrong comparison passed.
+        check((width, height) == watch.screen_size(),
               f"the PNG is the size the device declared: {width}x{height}")
 
         # The diagnostic screen's corner markers, by colour. This is what
@@ -227,6 +238,10 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         watch.tap(int(caps.width * 0.70), int(caps.height * 0.45))
         time.sleep(0.4)
         after_clicks = lvgl_clicks(watch, workdir, "06-after.png")
+        check(after_clicks < CLICK_MARK_CAP,
+              f"the click marker row has room left ({after_clicks} of "
+              f"{CLICK_MARK_CAP}) -- at the cap the difference below stops "
+              f"counting and starts reporting zero")
         check(after_clicks - before_clicks == 2,
               f"two taps with no gap produced {after_clicks - before_clicks} LVGL "
               f"click(s), and must produce 2 -- one would mean the input path "

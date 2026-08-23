@@ -235,6 +235,21 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
     }
 
     if (client_fd_ < 0) {
+        // `Bridge::tick` is the retry that `core/input.h` promises for a
+        // release which could not be queued -- and the case the promise exists
+        // for is precisely this one: a client that left with a button held,
+        // whose `release_all` found the queue full and *deliberately* left the
+        // input held rather than lose the release. Returning above the tick
+        // meant nothing ever tried again. The hold outlived the connection, a
+        // reconnecting client pressing that button got `BadInput`, and only
+        // `input reset` cleared it -- while `WATCH_CONTROL.md` sold the
+        // 30-second expiry as the backstop for exactly this.
+        //
+        // The two `drop_client` paths below still return without ticking, and
+        // may: this branch is reached on every subsequent poll, so the retry
+        // continues for as long as the hold does. No `flush` -- `tick` only
+        // pushes into the input queue and ignores its `emit`.
+        bridge.tick(now_ms, &DebugServer::emit, this);
         return;
     }
 
@@ -253,18 +268,23 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
             const std::size_t total = static_cast<std::size_t>(got);
             std::size_t       at    = 0;
             while (at < total) {
+                // Drain *first*, then offer. The other order -- push, and on a
+                // refusal drain and push the same bytes again -- counted them
+                // into `input_dropped` on every attempt, because
+                // `Decoder::push` adds `length - accepted` itself
+                // (`frame_codec.cpp:89-91`). So the bytes were never lost
+                // silently; they were reported several times over, which is the
+                // same statistic being wrong in the friendlier direction.
+                // Draining first means a zero take is a real refusal, counted
+                // once, and there is nothing left to try.
+                (void)dispatch_ready(now_ms, bridge);
                 const std::size_t taken = decoder_.push(chunk + at, total - at);
-                if (taken == 0 && at < total) {
-                    // The decoder took nothing and the buffer is not empty:
-                    // drain it and try again rather than spinning.
-                    if (!dispatch_ready(now_ms, bridge)) {
-                        break;
-                    }
-                    continue;
+                if (taken == 0) {
+                    break;
                 }
                 at += taken;
-                (void)dispatch_ready(now_ms, bridge);
             }
+            (void)dispatch_ready(now_ms, bridge);
             continue;
         }
         if (got == 0) {

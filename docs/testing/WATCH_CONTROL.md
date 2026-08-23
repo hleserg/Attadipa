@@ -142,7 +142,9 @@ steps:
     since: 01-untouched
 ```
 
-Actions: `screenshot` (named), `wait`, `wait_stable`, `tap`, `long_tap`,
+Actions: `screenshot` (named), `wait`, `wait_stable` (`quiet_ms`, `timeout` —
+polls until the interface has been idle that long, and **fails the step** if it
+never is), `tap`, `long_tap`,
 `double_tap`, `swipe`, `drag`, `gesture`, `button`, `input_reset`,
 `expect_screen_changed`, `expect_screen_same`.
 
@@ -210,17 +212,18 @@ holding. The device does it by itself too — on a dropped connection, and after
 | | |
 |---|---|
 | **Off by default** | The simulator listens only with `--debug-socket`. A firmware build will gate the whole subsystem behind a config option, off in release. |
-| **RAM, when on** | one full frame. 410 × 502 × 3 = **617 kB** on the Waveshare at RGB888, 240 × 240 × 3 = **173 kB** on the T-Watch. At RGB565 on a device, half of each. The buffer is allocated by the composition root, not by the debug code, so a build that does not want it does not have it. |
+| **RAM, when on** | **two** full frames at the peak, not one. The bridge's own buffer is 410 × 502 × 3 = **617 kB** on the Waveshare at RGB888 and 240 × 240 × 3 = **173 kB** on the T-Watch — but `lv_snapshot_take` allocates a second one of its own before the row copy, so the peak is ~**1.24 MB** and ~**346 kB**. At RGB565 on a device, half of each. This row said one frame and the whole argument for the design rested on it; the second allocation is in the capture path, `sim/screen_source.cpp`, and `screen_source.h` says that call would be the right one on a device too, so T-114 inherits the peak rather than avoiding it. The bridge's buffer is allocated by the composition root, not by the debug code, so a build that does not want it does not have it — the snapshot's is not, which is the part to fix on a device. |
 | **RAM, always** | the input queue: 64 events × 16 bytes ≈ **1 kB**, and it is the ordinary input path rather than a debug cost. |
 | **Flash** | the protocol and bridge are a few kB of code, plus a bitwise CRC-32 chosen over a 1 kB table for exactly this reason. |
 | **Time, per screenshot** | ~0.5 s for the Waveshare over a Unix socket, measured. On USB it will be bounded by the link, not by the device. |
 | **Interface pause, streaming** | none measurable, and true by construction: the frame is streamed a chunk at a time only while the outgoing buffer is below a watermark, so the transport sets the pace and nothing blocks waiting for a transfer to finish. |
-| **Interface pause, capture** | **UNKNOWN on a device, and not measured in the simulator either.** The capture itself is synchronous on the interface's own thread: `lv_snapshot_take` re-renders the tree, then a row-by-row copy of up to 617 kB, then a **bitwise** CRC-32 over all of it — 4.94 million inner loops before the first chunk goes out. Milliseconds on a desktop; on an ESP32-S3 this is the term that matters, and it is the one the watermark above does **not** protect. T-114 owns it. |
+| **Interface pause, capture** | **3.6 ms MEASURED on this desktop** for a 617 kB frame; **UNKNOWN on a device.** Synchronous on the interface's own thread, and the watermark above does not protect it. The row copy is nothing — 0.008 ms — and the **bitwise** CRC-32 is everything: 4.94 M inner loops, 3.605 ms, a factor of 450. On the T-Watch's 173 kB, 1.009 ms. The device figure is deliberately *not* this one scaled by clock. The ESP32-S3 runs at 240 MHz against this host's several GHz and has none of its width — and, the part that actually decides it, **a 617 kB frame buffer cannot live in internal SRAM and must sit in PSRAM**, which on this board is octal at 80 MHz with a 10-cycle fixed latency (D12a, from the vendor boot log). A byte-at-a-time CRC over PSRAM is a different machine from one over cache-resident DRAM, so scaling would be an estimate wearing a measurement's clothes. **T-114** owns the number; this row exists so nobody re-derives the question. |
 | **Wire cost** | ~10 % overhead: 7 bytes of framing and 10 of envelope per 182-byte body. |
 
 Every figure above is **MEASURED** on a desktop simulator over a Unix socket
-**except the capture pause, which is labelled UNKNOWN and is not measured
-anywhere.** No figure here is a hardware measurement, because there is no
+**and none of them is a device figure** — including the capture pause, whose
+desktop number is measured and whose device number is `UNKNOWN` for the reason
+in its own row. No figure here is a hardware measurement, because there is no
 firmware to measure — and the one row that would matter most on hardware is the
 one nothing has measured yet, which is why it says so rather than sitting under
 the banner with the others.
@@ -309,7 +312,12 @@ protocol. When there is:
 
 1. build the firmware with the debug channel enabled;
 2. flash it — **which needs the owner's authorisation**, `CLAUDE.md`;
-3. `python3 tools/watch_control.py --port /dev/ttyACM0 info`.
+3. `python3 tools/watch_control.py --port <the unit's port> info` — and
+   **resolve that port from the unit's USB serial, never type `ttyACM0`.** Two
+   ESP32-S3 devices are attached to this host and both enumerate as
+   `303a:1001`; one of them is the owner's MeshCore node. No tool resolves it
+   yet, which is **T-116**, so until it exists a session writes its own guard or
+   does not write.
 
 `SerialTransport` in `tools/watch/client.py` is written and **NOT EXECUTED** —
 it has never spoken to a device, because there has been no device to speak to.

@@ -91,10 +91,21 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         handle_input_reset(envelope.req_id, now_ms, emit, ctx);
         return;
     case Opcode::WaitStable: {
+        // The body is the quiet period the host wants, in milliseconds. It used
+        // to be empty, and this call used to pass `now_ms` -- the monotonic tick
+        // -- as the duration, which asks "has the interface been idle for as
+        // long as the process has been running". That is true until the first
+        // input and false ever after, however long you wait.
+        if (body == nullptr || envelope.body_len < 2) {
+            send_error(envelope.req_id, ErrorCode::BadInput, emit, ctx);
+            return;
+        }
+        const std::uint32_t quiet_ms =
+            static_cast<std::uint32_t>(body[0]) | (static_cast<std::uint32_t>(body[1]) << 8);
         Envelope reply;
         reply.req_id             = envelope.req_id;
         reply.op                 = Opcode::StableOk;
-        const std::uint8_t ready = source_.stable_since(now_ms) ? 1u : 0u;
+        const std::uint8_t ready = source_.stable_since(quiet_ms) ? 1u : 0u;
         send(reply, &ready, 1, emit, ctx);
         return;
     }

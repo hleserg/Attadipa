@@ -14,6 +14,15 @@
 # same problem for buttons -- the two boards share no button name, and which
 # physical input the Waveshare's two reach is open question D5.
 #
+# **Nothing here holds a button.** `first-injectable` is `power` on the T-Watch,
+# whose only other button is not injectable, and on the Waveshare it is
+# `button-1`, whose role is D5 and may be the same key. Injection bypasses the
+# PMU, but firmware is free to map a held power key to a shutdown flow, and an
+# unattended smoke scenario must not be the thing that discovers it. A held
+# *pointer* measures the same thing on the same screen and risks nothing. The
+# button hold path is covered by `tests/test_debug.cpp`; running it on a device
+# waits for D5 and T-114.
+#
 #   tools/watch_control.py run tests/ui/scenarios/diagnostic_tour.yaml
 #
 # Screenshots land in artifacts/watch/diagnostic_tour/ and their absolute paths
@@ -75,13 +84,18 @@ steps:
     name: 05-after-click
 
   # Held long enough that the screen's own measured duration separates it from
-  # the click above by looking.
-  - action: button
-    button: first-injectable
-    event: hold
+  # a tap by looking. A pointer rather than a button -- see the header.
+  - action: long_tap
+    x: 0.5
+    y: 0.62
     duration: 1.0
-  - action: wait
-    seconds: 0.2
+
+  # And a real wait rather than a fixed sleep: this one can fail. It used to
+  # discard the device's answer, and the device could not have answered
+  # truthfully anyway, so the step passed whatever the interface was doing.
+  - action: wait_stable
+    quiet_ms: 300
+    timeout: 5.0
   - action: screenshot
     name: 06-after-hold
   - action: expect_screen_changed

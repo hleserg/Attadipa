@@ -15,7 +15,7 @@ items closed plus one the review did not list
 ## Current implementation
 
 **Attadipa has code.** As of 2026-08-23 the repository builds seven libraries, a
-simulator and **thirty-one tests**, and has a font pipeline whose output has been
+simulator and **thirty-two tests**, and has a font pipeline whose output has been
 compiled for the target and measured. Since 2026-08-23 it can also **drive its
 own interface and look at the result** — screenshot, inject a tap or a swipe or
 a button, screenshot again — over a debug channel the simulator serves today and
@@ -579,7 +579,7 @@ firmware endpoint, the day there is firmware.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **thirty-one tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **thirty-two tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code, plus the three added on 2026-08-23 for the input layer, the
 debug wire format and the host tool -- the last of which holds an independent
