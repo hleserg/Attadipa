@@ -122,6 +122,7 @@ jobs:
             # GraphQL in one round trip for the facts REST splits across four
             # endpoints, including the two REST cannot answer at all:
             # mergeStateStatus and whether a review thread is resolved.
+            # shellcheck disable=SC2016  # $owner/$name/$number are GraphQL variables, bound by -F below
             FACTS="$(gh api graphql -f query='
               query($owner:String!, $name:String!, $number:Int!) {
                 repository(owner:$owner, name:$name) {
@@ -323,6 +324,6 @@ jobs:
           # sweep with nothing to do, 48 times a day. So a refusal fails the run
           # once, loudly, with the thing to go and look at.
           if [ "$REFUSED" -gt 0 ]; then
-            echo "::error::$REFUSED merge(s) were refused by GitHub. This is usually a repository setting rather than a transient: check whether `main` requires a review it is not getting, or whether squash merging is disabled."
+            echo "::error::$REFUSED merge(s) were refused by GitHub. This is usually a repository setting rather than a transient: check whether 'main' requires a review it is not getting, or whether squash merging is disabled."
             exit 1
           fi
