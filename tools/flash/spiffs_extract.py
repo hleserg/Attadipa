@@ -102,6 +102,23 @@ class Write(NamedTuple):
     replaces: bool  # a regular file --force is allowed to overwrite
 
 
+class Failure(NamedTuple):
+    """Why the writing stopped, and what it left behind that cannot be undone.
+
+    `kept` and `emptied` are the whole reason this is a record rather than a
+    string. Everything this run *created* is removed on the way out, but a file
+    `--force` replaced was somebody else's: the ones already written hold the
+    extracted bytes, and the one that was emptied and then failed holds neither
+    those nor what it used to. Reporting `0 extracted` over that, with no names,
+    is the shape of defect this file exists to stop.
+    """
+
+    item: Write
+    why: str
+    kept: list[str]
+    emptied: str | None
+
+
 def extract(image: bytes, page: int, block: int) -> tuple[list[dict], list[str]]:
     pages_per_block = block // page
     lookup_pages = -(-pages_per_block * 2 // page)  # ceil
@@ -180,17 +197,35 @@ def inside(root: str, path: str) -> bool:
         return False
 
 
+def _under(relative: str, directories: set[str]) -> bool:
+    """Is this path inside one of those directories?"""
+    parent = os.path.dirname(relative)
+    while parent:
+        if parent in directories:
+            return True
+        parent = os.path.dirname(parent)
+    return False
+
+
 def plan(files: list[dict], outdir: str, force: bool = False) -> tuple[list[Write], list[str]]:
     """Give every file a destination inside outdir, or say why it cannot have one.
 
     Changes nothing on disk. Every refusal below is a way two names could have
     become one file, or one name could have become a file somewhere it was never
     meant to be, and all of them are found before the first byte is written.
+
+    **A name that appears in the refusals never appears in the writes**, and that
+    is the invariant rather than a nicety: the default aborts on any refusal, so
+    a name in both lists cost nothing, and `--allow-partial` then acted on it —
+    writing through a directory the same run had just refused as a symlink.
+    Caught in review; hence `ambiguous` and `refused_directories` below, which
+    drop everything under a refusal rather than only the entry that raised it.
     """
     root = os.path.realpath(outdir)
     resolved: list[tuple[dict, str]] = []
     refusals: list[str] = []
     claimed: dict[str, str] = {}
+    ambiguous: set[str] = set()
 
     for entry in files:
         name = entry["name"]
@@ -201,9 +236,23 @@ def plan(files: list[dict], outdir: str, force: bool = False) -> tuple[list[Writ
             continue
         relative = os.path.join(*parts)
         if relative in claimed:
-            refusals.append(
-                f"{name}: would be written to the same path as {claimed[relative]} "
-                f"({relative})")
+            # Two objects under one name is not a corruption: a file deleted and
+            # recreated on the device keeps its name and gets a new object id,
+            # and this parser reads the stale object index header as well as the
+            # live one. Which of the two is live is UNKNOWN here — nothing reads
+            # the delete flag — so *neither* is written. Picking by object id
+            # would be picking by an ordering that is not a recency, and writing
+            # the deleted copy into evidence is worse than writing nothing.
+            first = claimed[relative]
+            if first == name:
+                refusals.append(
+                    f"{name}: two objects in this image carry this name, and which "
+                    f"is live is UNKNOWN — neither is written")
+            else:
+                refusals.append(
+                    f"{name}: would be written to the same path as {first} "
+                    f"({relative})")
+            ambiguous.add(relative)
             continue
         if not inside(root, os.path.join(outdir, relative)):
             refusals.append(f"{name}: {relative} resolves outside {root}")
@@ -221,18 +270,26 @@ def plan(files: list[dict], outdir: str, force: bool = False) -> tuple[list[Writ
             directories.setdefault(parent, entry["name"])
             parent = os.path.dirname(parent)
 
+    refused_directories: set[str] = set()
     for relative, wanted_by in sorted(directories.items()):
         path = os.path.join(outdir, relative)
         if os.path.islink(path):
             refusals.append(
                 f"{wanted_by}: {relative} is a symlink, and nothing is written "
                 f"through one — where it points is not this tool's decision")
+            refused_directories.add(relative)
         elif os.path.exists(path) and not os.path.isdir(path):
             refusals.append(f"{wanted_by}: {relative} is already a file, not a directory")
+            refused_directories.add(relative)
 
     writes: list[Write] = []
     for entry, relative in resolved:
         name = entry["name"]
+        if relative in ambiguous or _under(relative, refused_directories):
+            # Already refused above, as the path itself or as something it is
+            # inside. Saying it twice would be noise; writing it would be the
+            # defect.
+            continue
         if relative in directories:
             refusals.append(
                 f"{name}: {directories[relative]} needs {relative} to be a directory")
@@ -278,20 +335,33 @@ def _undo(action: Callable[[str], None], path: str) -> None:
         pass
 
 
-def write_all(writes: list[Write]) -> tuple[list[Write], str | None]:
+def _shut(descriptor: int) -> None:
+    """Close a descriptor os.fdopen never took ownership of."""
+    try:
+        os.close(descriptor)
+    except OSError:
+        pass
+
+
+def write_all(writes: list[Write]) -> tuple[list[Write], Failure | None]:
     """Write every planned file, or undo what this run created and say why not.
 
     plan() has already refused everything that can be refused by looking. What
     is left is the filesystem saying no while the writing is under way — a full
-    disk, a permission, or two names that are one name on a case-insensitive
-    filesystem, which no check on this side can tell apart from two names.
+    disk, a quota, a file-size limit — and one thing no amount of looking at
+    paths can see: two destinations that are **one file** on the filesystem
+    underneath, because it folds case or because somebody hard-linked them. That
+    is what the `st_dev`/`st_ino` check below is for; `O_EXCL` catches it when
+    nothing was there to begin with, and `--force` is exactly where `O_EXCL` is
+    not available, which is also where the tool is at its most destructive.
     """
     made_files: list[str] = []
     made_dirs: list[str] = []
     done: list[Write] = []
-    replaced = 0
+    kept: list[str] = []  # replacements that completed: these hold the new bytes
+    written_files: set[tuple[int, int]] = set()
 
-    def undone(item: Write, why: OSError) -> str:
+    def rolled_back(item: Write, why: str, emptied: str | None) -> Failure:
         # Undo only what this run made. A file --force replaced belonged to
         # somebody else before this run and its old bytes are gone either way;
         # deleting it as well would turn a failed extraction into a deletion.
@@ -300,39 +370,55 @@ def write_all(writes: list[Write]) -> tuple[list[Write], str | None]:
             _undo(os.unlink, path)
         for path in reversed(made_dirs):
             _undo(os.rmdir, path)
-        note = ", and the files this run created were removed"
-        if replaced:
-            note += (f" — but {replaced} file(s) already replaced under --force "
-                     f"cannot be put back")
-        return f"{item.entry['name']} -> {item.dest}: {why}{note}"
+        return Failure(item, why, list(kept), emptied)
 
     for item in writes:
         try:
             _ensure_directory(os.path.dirname(item.dest), made_dirs)
+            # No O_TRUNC even under --force: the file has to survive as far as
+            # the identity check below, or a destination that turns out to be a
+            # file this run already wrote would be emptied before anything
+            # noticed. ftruncate does the emptying afterwards.
             flags = os.O_WRONLY | os.O_CREAT | NOFOLLOW | BINARY
-            flags |= os.O_TRUNC if item.replaces else os.O_EXCL
+            if not item.replaces:
+                flags |= os.O_EXCL
             descriptor = os.open(item.dest, flags, 0o644)
         except OSError as why:
-            return [], undone(item, why)
+            return [], rolled_back(item, str(why), None)
 
-        # The destination exists from this line on — O_CREAT made it, and under
-        # --force O_TRUNC has already emptied whatever was there. So it is
-        # recorded *before* anything is written to it: a write that fails at the
-        # flush inside close() (a full disk, a quota, a file-size limit) would
-        # otherwise leave a truncated file behind while the message below said
-        # every file this run created had been removed. That is the same shape as
-        # the defect this whole file was rewritten for — an output that asserts
-        # the opposite of what is on disk — and it was caught in review.
-        if item.replaces:
-            replaced += 1
-        else:
+        # The destination exists from this line on — O_CREAT made it — so it is
+        # recorded *before* anything is written to it. A write that fails at the
+        # flush inside close() would otherwise leave a truncated file behind
+        # while the message said every file this run created had been removed:
+        # the same shape as the defect this whole file was rewritten for, an
+        # output that asserts the opposite of what is on disk. Caught in review.
+        if not item.replaces:
             made_files.append(item.dest)
+
+        emptied: str | None = None
+        try:
+            here = os.fstat(descriptor)
+            if (here.st_dev, here.st_ino) in written_files:
+                _shut(descriptor)
+                return [], rolled_back(
+                    item,
+                    "this is the same file on disk as one already written in this "
+                    "run — two names this filesystem cannot tell apart", None)
+            written_files.add((here.st_dev, here.st_ino))
+            if item.replaces:
+                os.ftruncate(descriptor, 0)
+                emptied = item.dest
+        except OSError as why:
+            _shut(descriptor)
+            return [], rolled_back(item, str(why), emptied)
 
         try:
             with os.fdopen(descriptor, "wb") as handle:
                 handle.write(item.entry["data"])
         except OSError as why:
-            return [], undone(item, why)
+            return [], rolled_back(item, str(why), emptied)
+        if item.replaces:
+            kept.append(item.dest)
         done.append(item)
 
     return done, None
@@ -388,8 +474,18 @@ def main() -> int:
               f"{entry['pages']:>5} pages  -> {item.dest}"
               f"{'  (replaced)' if item.replaces else ''}")
     if failure is not None:
-        print(f"FAILED  {failure}", file=sys.stderr)
-        print(f"\n0 extracted, {len(problems)} incomplete")
+        print(f"FAILED  {failure.item.entry['name']} -> {failure.item.dest}: "
+              f"{failure.why}", file=sys.stderr)
+        print("        every file this run created has been removed", file=sys.stderr)
+        for path in failure.kept:
+            print(f"        {path} was replaced under --force and now holds the "
+                  f"extracted bytes — its old contents cannot be put back",
+                  file=sys.stderr)
+        if failure.emptied is not None:
+            print(f"        {failure.emptied} was emptied under --force and holds "
+                  f"neither its old contents nor the new ones", file=sys.stderr)
+        print(f"\n0 extracted, {len(failure.kept)} left replaced, "
+              f"{len(refusals)} refused, {len(problems)} incomplete")
         return 2
 
     refused = f", {len(refusals)} refused" if refusals else ""

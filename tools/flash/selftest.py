@@ -329,12 +329,46 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         code, output = run_limited(1024, image, out, "--force")
         check("a --force replacement that fails is reported, not papered over",
               code == 2, f"— exit {code}\n{output}")
-        check("  and says the old bytes cannot be put back",
-              "cannot be put back" in output, f"— {output}")
+        check("  and says the file is now neither one thing nor the other",
+              "holds neither its old contents nor the new ones" in output, f"— {output}")
         check("  and does not delete the file it replaced",
               (out / "big.bin").exists(), f"— {sorted(tree(out))}")
         check("  which is no longer what it was, exactly as the message says",
               content(out / "big.bin") != b"the file this replaced")
+
+    # And the case that made `0 extracted` a lie: a replacement that *succeeded*
+    # before the failure. It is not rolled back — it was somebody else's file —
+    # so it holds the extracted bytes, and the run has to name it.
+    with workspace([("/a.bin", b"a" * 100), ("/big.bin", b"b" * 4096)]) as (image, base):
+        out = base / "out"
+        out.mkdir()
+        (out / "a.bin").write_bytes(b"older a")
+        (out / "big.bin").write_bytes(b"older big")
+        code, output = run_limited(1024, image, out, "--force")
+        check("a replacement completed before the failure is named", code == 2
+              and "a.bin was replaced under --force" in output, f"— exit {code}\n{output}")
+        check("  and it holds the extracted bytes, as the message says",
+              content(out / "a.bin") == b"a" * 100)
+        check("  and the summary counts it rather than claiming nothing happened",
+              "\n0 extracted, 1 left replaced" in output, f"— {output}")
+
+    # Two destinations that are one file underneath. A case-insensitive
+    # filesystem is the reason this check exists and cannot be produced on this
+    # one; a hard link is the same condition and can. Without --force O_EXCL
+    # refuses the second open; with it there is no O_EXCL, which is exactly
+    # where the tool is most destructive.
+    with workspace({"/A.bin": b"first", "/a.bin": b"second"}) as (image, base):
+        out = base / "out"
+        out.mkdir()
+        (out / "A.bin").write_bytes(b"older")
+        os.link(out / "A.bin", out / "a.bin")
+        code, output = run(image, out, "--force")
+        check("two names that are one file underneath are caught, not merged",
+              code == 2, f"— exit {code}\n{output}")
+        check("  and it says so in those words",
+              "same file on disk" in output, f"— {output}")
+        check("  and the summary does not claim two files",
+              "\n0 extracted" in output, f"— {output}")
 
     print("\ntwo object ids can carry one name, and a used image will")
     # A file deleted and recreated on the device keeps its name and gets a new
@@ -347,11 +381,46 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
               f"— exit {code}\n{output}")
         check("  and nothing is written", tree(out) == set(), f"— {sorted(tree(out))}")
         code, output = run(image, out, "--allow-partial")
-        check("--allow-partial writes the one that was unambiguous",
-              content(out / "x.bin") == b"first copy", f"— {sorted(tree(out))}")
+        check("--allow-partial writes neither copy, because which is live is UNKNOWN",
+              tree(out) == set(), f"— {sorted(tree(out))}")
+        check("  and says that, rather than picking by object id",
+              "which is live is UNKNOWN" in output, f"— {output}")
         check("  and still fails", code == 2, f"— exit {code}\n{output}")
-        check("  and still lists what it skipped", "REFUSED" in output, f"— {output}")
-        check("  and counts both in the summary", "\n1 extracted, 1 refused" in output,
+
+    print("\n--allow-partial writes what was safe and nothing that was not")
+    # The flag has to act on plan()'s writes, and plan() has to have taken every
+    # refused name *and everything under it* out of that list. The first version
+    # left them in, which was invisible while any refusal aborted the run and
+    # became a write through a refused symlink the moment it did not.
+    # The link points *inside* outdir on purpose: one pointing out is already
+    # refused by inside(), so it would prove nothing about this rule.
+    with workspace({"/good.bin": b"keep me",
+                    "/image/x.bin": b"not through a link"}) as (image, base):
+        out = base / "out"
+        (out / "real").mkdir(parents=True)
+        os.symlink("real", out / "image")
+        code, output = run(image, out, "--allow-partial")
+        check("the good file is written", content(out / "good.bin") == b"keep me",
+              f"— {sorted(tree(out))}")
+        check("  and nothing goes through the symlinked directory",
+              list((out / "real").iterdir()) == [],
+              f"— {list((out / 'real').iterdir())}")
+        check("  and the run still fails", code == 2, f"— exit {code}\n{output}")
+        check("  and the summary counts both sides",
+              "\n1 extracted, 1 refused" in output, f"— {output}")
+
+    with workspace({"/good.bin": b"keep me too",
+                    "/image/x.bin": b"under a file"}) as (image, base):
+        out = base / "out"
+        out.mkdir()
+        (out / "image").write_bytes(b"an ordinary file called image")
+        code, output = run(image, out, "--allow-partial")
+        check("a file where a directory is needed does not throw away the good ones",
+              content(out / "good.bin") == b"keep me too", f"— {sorted(tree(out))}")
+        check("  and the file in the way is untouched",
+              content(out / "image") == b"an ordinary file called image")
+        check("  and the reason is the one plan() diagnosed, not FileExistsError",
+              "is already a file, not a directory" in output and "Errno 17" not in output,
               f"— {output}")
 
     print("\nan image this parser does not understand is not a success")

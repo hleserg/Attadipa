@@ -691,36 +691,44 @@ four more things at no cost:
   device's hierarchy is kept rather than flattened, two names may never claim one
   path, `/a` may not be a file while `/a/b` needs `a` to be a directory, every
   destination is confirmed inside the canonical output directory through
-  `realpath`, and writes go through `O_CREAT|O_EXCL|O_NOFOLLOW`, so nothing
-  already there is replaced and no symlink is followed — `--force` allows
+  `realpath`, writes go through `O_CREAT|O_EXCL|O_NOFOLLOW` so nothing already
+  there is replaced and no symlink is followed, and two destinations that turn
+  out to be **one file underneath** — a case-folding filesystem, a hard link —
+  are caught by `st_dev`/`st_ino` rather than by the path text. `--force` allows
   replacing a regular file and still refuses a symlink. A run that cannot give
-  every name a safe destination of its own writes **nothing** — `--allow-partial`
+  every name a safe destination of its own writes **nothing**; `--allow-partial`
   writes the ones that were safe, still lists every refusal and still exits
-  non-zero — and a write that fails part-way removes what it created. **The
-  independent review caught that last clause being false in the first version of
-  the fix**, which is worth recording because it is the same defect one layer
-  down: `os.open` creates the file and `--force` truncates it, and the
-  destination was only recorded for rollback *after* the write returned, so a
-  failure at the flush inside `close()` — a full disk, a quota, a size limit —
-  left a truncated file behind under a message saying every file this run created
-  had been removed. Recording it between the open and the write is the fix, and
-  the two cases that prove it drive a real `RLIMIT_FSIZE` rather than a read-only
-  directory, which fails at `open()` where the rollback was already correct.
-  **The tool had no automated test at all** — the reuse ledger's entry said so
+  non-zero.
+- **Two rounds of independent review on that fix, both blocking, and both worth
+  recording, because each found the same defect one layer further down.** Round
+  one: a write that failed *after* `os.open` had created the file left it there,
+  because the destination was recorded for rollback only once the write
+  returned — so a full disk left a truncated file under a message saying every
+  file this run created had been removed. Round two, in `--allow-partial`
+  itself: `plan()` refused a directory and left the entries *under* it in the
+  write list, harmless while any refusal aborted the run and, the moment one did
+  not, a write through a symlinked directory the same run had just refused.
+  Neither is subtle in hindsight and neither was visible from the diff that
+  introduced it. The invariant is now stated where it can be checked — a name in
+  the refusals is never in the writes — and both are covered by cases that drive
+  a real `RLIMIT_FSIZE` and a real hard link rather than a permission bit that
+  does nothing as root.
+- **The tool had no automated test at all** — the reuse ledger's entry said so
   about itself, because the only image we have is the Waveshare factory dump and
   that cannot be committed. So `tools/flash/selftest.py` builds its own images
   from the layout the extractor documents, and is registered in ctest as
-  `flash_spiffs_extract_refuses_mistakes`. Ninety-eight assertions, and they are
-  known to bite: pointed at the extractor as it was, the end-to-end half fails
-  **forty-seven** ways — starting with the finding, where one file exists where
-  two names did — before reaching the unit checks of functions that version does
-  not have. **One limitation is known and left open**: a used image can hold two
-  object ids carrying one name, because a file deleted and recreated on the
-  device keeps its name, and this parser reads the stale object index header as
-  well as the live one — `extract()` discards the page `flags` and consults no
-  lookup table. That pair is refused rather than merged, which is right, and
-  `--allow-partial` is the way past it. Reading the delete flag would be better
-  and is a SPIFFS fact nobody here has traced to the sources yet.
+  `flash_spiffs_extract_refuses_mistakes`. **110 assertions**, and they are known
+  to bite: pointed at the extractor as it was, **67** fail — starting with the
+  finding, where one file exists where two names did. **One limitation is known
+  and left open**: a used image can hold two object ids carrying one name,
+  because a file deleted and recreated on the device keeps its name, and this
+  parser reads the stale object index header as well as the live one —
+  `extract()` discards the page `flags` and consults no lookup table. Which of
+  the two is live is `UNKNOWN`, so **neither** is written, under both flags:
+  picking by object id would be picking by an ordering that is not a recency,
+  and writing a deleted copy into evidence is worse than writing nothing.
+  Reading the delete flag would settle it and is a SPIFFS fact nobody here has
+  traced to the sources yet.
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same
