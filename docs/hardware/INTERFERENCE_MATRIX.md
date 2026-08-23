@@ -37,21 +37,23 @@ is known to exist.
 
 | Subsystem A | Subsystem B | Suspected effect | Evidence | Severity | Method | Mitigation | Board | Firmware |
 |---|---|---|---|---|---|---|---|---|
-| Haptic motor | Magnetometer | magnetic field distorts heading | **BLOCKED** | — | — | — | — | — |
+| Haptic motor | Magnetometer | magnetic field distorts heading | **BLOCKED** — no motor is fitted to the retrofit board | — | — | — | Waveshare (no motor); T-Watch (not owned) | — |
 | Haptic motor | IMU | vibration corrupts accelerometer | THEORETICAL RISK | — | — | — | — | — |
 | LoRa TX | GNSS acquisition | RF desensitisation | THEORETICAL RISK | — | — | — | — | — |
 | Watch↔node link TX | GNSS acquisition | RF desensitisation | THEORETICAL RISK | both | — | — | — | — |
 | Watch↔node link TX | LoRa RX (T-Watch) | RF desensitisation | THEORETICAL RISK | T-Watch | — | — | — | — |
-| LoRa TX | Magnetometer | supply current transient | **BLOCKED** | — | — | — | — | — |
+| LoRa TX | Magnetometer | supply current transient | **BLOCKED** — the retrofit board has no LoRa at all, so no placement or rail decision opens this one | — | — | — | T-Watch only, and not owned | — |
 | Display DMA | GNSS | broadband EMI | THEORETICAL RISK | — | — | — | — | — |
 | High brightness | Battery / GNSS | supply droop | THEORETICAL RISK | — | — | — | — | — |
-| Audio amplifier | Magnetometer | speaker magnet and coil current | **BLOCKED** | — | — | — | — | — |
+| Audio amplifier | Magnetometer | speaker magnet and coil current | **BLOCKED** — sensor not placed (T-109), rail open (G-14), external pull-ups, T-096 | — | — | — | Waveshare | — |
 | Battery charging | GNSS | switching noise | THEORETICAL RISK | — | — | — | — | — |
-| Battery charging | Magnetometer | charge current field | **BLOCKED** | — | — | — | — | — |
+| Battery charging | Magnetometer | charge current field | **BLOCKED** — sensor not placed (T-109), rail open (G-14), external pull-ups, T-096 | — | — | — | Waveshare | — |
 
-**On the four `BLOCKED` rows.** Every magnetometer pair in this matrix is
-untestable on the boards this project targets, because **neither board has a
-magnetometer** — the T-Watch carries only a BMA423 accelerometer and the
+**On the four `BLOCKED` rows.** No magnetometer pair in this matrix can be
+measured on either board **as shipped** — and three of the four have a route
+that does not need a different board, described below, which is why they are
+`BLOCKED` and not "never". Neither board has a
+magnetometer — the T-Watch carries only a BMA423 accelerometer and the
 Waveshare board only a QMI8658 six-axis IMU
 ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)). They are kept in the table
 rather than deleted, because the day an external sensor is fitted they become
@@ -73,9 +75,19 @@ closed list of two that was true of one row:
 
   1. **The rail.** `MAGNETOMETER_BACKLOG` G-14 says *"rail is still open"* in the
      same table that called these unblocked. An unpowered sensor measures
-     nothing, and a sensor sharing ALDO3 with the disturbing subsystem measures a
-     confounded circuit — which is worse than not measuring, because the number
-     comes out `MEASURED` and nobody can retract it.
+     nothing, and a sensor **sharing a rail with** the disturbing subsystem
+     measures a confounded circuit — which is worse than not measuring, because
+     the number comes out `MEASURED` and nobody can retract it. Deliberately not
+     naming a rail: on the Waveshare board
+     [HARDWARE_MATRIX](../research/HARDWARE_MATRIX.md) lists ALDO1, ALDO2 and
+     ALDO3 as three bare 3.3 V rails and says which load sits on which is *"not
+     resolved from the text extraction"*, and both disturbing sources here carry
+     `D13` for exactly that. An earlier version named ALDO3 — which is the
+     **T-Watch's** display-and-touch rail, and neither the audio path nor the
+     charge path on either board. An engineer who read "don't share ALDO3",
+     mounted on ALDO1 and believed the confound cleared would have a one-in-three
+     chance of a confounded circuit and a certainty of a clean-looking number, in
+     the one paragraph whose subject is an irretractable `MEASURED`.
   2. **Pull-ups.** [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md)
      records *"external pull-ups required"* for the retrofit.
   3. **The bus.** The sensor is the **seventh** device on the Waveshare main I2C
@@ -122,8 +134,10 @@ list of two quietly broke.
 
 Note that this includes the pair the master plan uses to motivate the whole
 coexistence architecture. The architecture is still justified — by the shared
-I2C bus, the shared ALDO3 rail and the amplifier's missing shutdown pin, all of
-which are real on these boards — but not by this example. See
+I2C bus, a 3.3 V rail shared between a sensor and a disturbing subsystem, and
+the amplifier's missing shutdown pin, all of which are real on these boards (the
+shared rail is documented as ALDO3 on the T-Watch and is unresolved among
+ALDO1/2/3 on Waveshare, which is why it is named by role here) — but not by this example. See
 [COEXISTENCE_BACKLOG](COEXISTENCE_BACKLOG.md).
 
 These five rows continue the table above. They followed two paragraphs of prose
@@ -206,3 +220,11 @@ one needs a T-Watch that is not owned. Keeping that distinction visible is the
 whole point of this file: "not yet measured", "blocked on a thing we can do" and
 "cannot be measured here at all" must never look alike, and collapsing the last
 two into one word is how the previous version of this file got it wrong.
+
+That distinction now lives **in the rows**, which is where a reader meets it.
+Review pointed out that it was true of this paragraph and false of the table
+above: four identical `BLOCKED` cells with every other column `—`, a hundred and
+sixty-five lines from the sentence explaining that they are not the same state.
+Each row now names its own blocker and its own board — including the LoRa row,
+which is the *"cannot be measured here at all"* case and had been indistinguishable
+from the two that a placement and a rail decision will open.

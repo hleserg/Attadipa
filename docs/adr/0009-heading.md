@@ -154,19 +154,56 @@ The qualifier is the whole rule and an earlier draft of this paragraph dropped
 it, which made the rule forbid the product. Orientation does not survive a
 change of body **at all**: a node lying in a bag and a wrist held out in front
 share no transform, and the error is unbounded — the node can be pointing any
-way. Position survives, to within the separation of the two bodies: a node in
-the same bag as the wearer is a metre away, which is inside the error of the fix
-itself. That is why [ADR-0004](0004-capability-sources.md):288-291 can say an
-application asks `LocationService` for a position and never learns where it came
-from, and why the Waveshare board — which has no GNSS of its own — has a
-navigation story at all ([OD-1](../research/OWNER_DECISIONS.md),
-[OD-8](../research/OWNER_DECISIONS.md)). A node-supplied *position* reaches the
-wearer as the position; a node-supplied *heading* does not reach the arrow.
+way. Position differs, and the difference is in kind rather than degree. A node's
+heading is uncorrelated with the wearer's — a device loose in a bag can point
+any way, so the error is the whole circle. A node's position differs from the
+wearer's by exactly the separation of the two bodies, whatever that separation
+happens to be.
 
-What the separation bound does **not** license is presenting a node's fix as the
-wearer's own: [OD-7](../research/OWNER_DECISIONS.md) item 3 already has the
-careful version — carried, but never presented as the wearer's own fix, and
-carried with `PositionValidity` and `TrustState` saying so.
+**That last sentence is this ADR's own reasoning and is sourced nowhere else.**
+An earlier version attributed it to `ADR-0004`, which says no such thing: the
+lines it cited are the *"No application queries node state"* layering rule, and
+`ADR-0004`'s only use of "bounded" is about hostile input at the link edge.
+A wrong citation under a load-bearing premise is the worse of the two failures,
+because the next agent follows it, finds a layering rule, and either re-derives
+the physics or assumes it settled.
+
+**So the separation is not an assumption here. It is a state, and it defaults to
+unknown.** A metre in the same bag is one case, not a bound: OD-7 makes the
+companion *any* node, OD-8's own example is *"a fix relayed from a node on a
+roof"*, and this section's own closing example is a node in a bag by the door
+while the wearer sits at a desk. Nothing on either board measures node-to-wearer
+separation, so a rule phrased as *"bounded by how far apart the two bodies can
+be"* is satisfied by construction and evaluates nothing — a confident number
+resting on an unobservable quantity, which is the failure §3 above exists to
+refuse, moved from heading to position. §3 gates orientation with four
+conditions and refuses otherwise. Cross-body position gets the same shape:
+
+> **Co-location is a required state carried on `PositionValidity` /
+> `TrustState`, never an assumption. It defaults to `Unknown`, and `Unknown` is
+> the ordinary case rather than a failure. What it withholds is the *claim*: a
+> position whose co-location is `Unknown` may be shown, and must be shown as the
+> node's fix rather than as the wearer's.**
+
+That is what lets the Waveshare board — which has no GNSS of its own — have a
+navigation story at all ([OD-1](../research/OWNER_DECISIONS.md),
+[OD-8](../research/OWNER_DECISIONS.md)) without the story being a lie. The
+decision that governs is **OD-8 item 2**, which this section did not previously
+cite: *"Provenance travels with the position, always. A fix from the wearer's own
+receiver, a fix relayed from a node on a roof, and a coordinate lifted out of
+somebody else's message are three different claims about where the wearer is, and
+exactly one of them is about the wearer. The user-facing consequence is that the
+screen says which, in words."* So a node-supplied *position* reaches the wearer's
+screen, labelled as the node's; a node-supplied *heading* does not reach the
+arrow at all.
+
+[OD-7](../research/OWNER_DECISIONS.md) item 3's *"never presented as the wearer's
+own fix"* says the same thing, and an earlier version of this section rested on it
+alone. That was a mis-scoping worth naming: the clause attaches to *"a coordinate
+taken out of somebody else's message"*, one of the three arrival paths item 3
+lists, and the companion's own receiver is a different one — the Waveshare
+product. OD-8 item 2 covers all three, and `CLAUDE.md` ranks `OWNER_DECISIONS.md`
+above this ADR.
 
 Two worked examples, because they land on opposite sides of the same line:
 
@@ -299,7 +336,7 @@ inputs causes a wrist-relative arrow to be drawn from a `NodeBody` or
 (2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-17): a
 magnetometer is intended, external, on the watch, placement not yet chosen
 (T-109); **the *Attadipa* node will never carry one**, which is the scope §3
-insists on 178 lines above — OD-7 makes the companion any node, and whether a
+insists in §3a above — OD-7 makes the companion any node, and whether a
 third party's carries a magnetometer is `UNKNOWN` rather than no. An earlier
 draft of this line said "the node" unqualified, so this ADR contradicted itself
 end to end. What remains open is whether `RemoteSensor` heading is worth

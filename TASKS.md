@@ -1838,10 +1838,18 @@ Recommended next action:
   version of this bullet said "those seven epics" — which matches nothing: the
   bullet above names two and
   [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md) counts five
-  `BLOCKED` — and gave placement as the last gate, which `STATUS.md` had already
-  been corrected out of. Roadmap and status disagreeing is the worse half, since
-  the roadmap is what selects work: pick up T-014 here, land the placement, run
-  G-08 on a motorless unit, see no interference, write `PASS`. Found in review.
+  `BLOCKED` — and gave placement as the last gate. Roadmap and status
+  disagreeing is the worse half, since the roadmap is what selects work: pick up
+  T-014 here, land the placement, run G-08 on a motorless unit, see no
+  interference, write `PASS`. Found in review.
+
+  An earlier version of this paragraph said `STATUS.md` *"had already been
+  corrected out of"* the placement-as-last-gate reading. It had not — this
+  bullet corrected four files and left the two `CLAUDE.md` sends an agent to
+  first, then claimed one of them was already right. `STATUS.md` T-011 is
+  corrected now, in the same round and after a second review said so, and it
+  names all four gates: the placement (T-109), the rail (G-14), the external
+  pull-ups and T-096.
 
   The distinction the
   other files are careful about holds here too: a **stock** board still has no

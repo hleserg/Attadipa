@@ -466,10 +466,17 @@ available on this board.
   ordered two magnetometer modules and is soldering one on
   ([#83](https://github.com/hleserg/Attadipa/issues/83),
   [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)), which turns
-  this from impossible into merely waiting for parts — and for a placement,
-  which is not chosen yet (T-109). On the Waveshare unit it stays doubly
-  blocked for a second, unrelated reason: that unit has no vibration motor
-  fitted at all, so there is nothing to interfere.
+  this from impossible into blocked on things this project can actually do.
+  **Placement is not the last gate, and an earlier version of this bullet
+  implied it was.** Four things are open, and each corrupts the measurement
+  rather than merely delaying it: the placement (T-109), the **rail** the sensor
+  sits on (`MAGNETOMETER_BACKLOG` G-14 — a sensor sharing a rail with the
+  disturbing subsystem measures a confounded circuit and the number still comes
+  out `MEASURED`), the **external pull-ups** the retrofit requires, and
+  **T-096**, the sensor being the seventh device on the Waveshare main I2C bus.
+  On that same Waveshare unit the haptic pair stays doubly blocked for a second,
+  unrelated reason: it has no vibration motor fitted at all, so there is nothing
+  to interfere.
 
 ## Waiting on the owner
 
@@ -485,12 +492,17 @@ None of these blocks M1. All of them block hardware work.
 **A5 and A6 are answered** — [#56](https://github.com/hleserg/Attadipa/issues/56),
 on 2026-08-22, recorded as
 [OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one).
-An external magnetometer is intended for the watch: the owner has ordered a
-**CJMCU-9911 (AK09911C)** and a **GY-271 (QMC5883L)**, and one of them is going
-inside. The five magnetometer epics are dormant, not dead. Which of the two
-parts, and where it physically sits, are open — T-109, and
+An external magnetometer is intended for the **Waveshare
+ESP32-S3-Touch-AMOLED-2.06** — the unit on the owner's desk, and the board
+naming matters rather than being pedantry: it has no LoRa and no motor, which is
+what makes two of the four `BLOCKED` interference rows unopenable by any
+retrofit. The owner has ordered a **CJMCU-9911 (AK09911C)** and a **GY-271
+(QMC5883L)**, and one of them is going inside. The five magnetometer epics are
+dormant, not dead. Which of the two parts, where it physically sits (T-109),
+which rail it sits on (G-14), the external pull-ups it needs, and T-096 for its
+place on the main I2C bus are all open —
 [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) has the
-datasheet comparison and the one measurement that decides it. The **Attadipa**
+datasheet comparison and the one measurement that decides the part. The **Attadipa**
 node will never carry one — the scope is the answer's own, since OD-7 makes the
 companion *any* node and a third party's is `UNKNOWN`, which is why
 `HeadingSource::RemoteSensor` and its gate stay. It gets an accelerometer and

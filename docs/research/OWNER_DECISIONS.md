@@ -1086,10 +1086,17 @@ is not needed there.
 Two modules are ordered for the Waveshare unit: a **CJMCU-9911** (AK09911C) and
 a **GY-271** (QMC5883L) — traced in [#83](https://github.com/hleserg/Attadipa/issues/83)
 and researched in full in PR #87 (`docs/research/MAGNETOMETER_RETROFIT.md`,
-not yet merged at the time of this record). **Placement is the open part, not
-the part number** — #83 is explicit that nothing gets soldered until a survey
-of the case's magnetic environment (speaker magnet, motor pads, battery leads)
-says where, tracked as **T-109**. So `Capability::Heading` has a *watch-side*
+not yet merged at the time of this record). **Both the part and the placement are
+open, and placement is the one that gates.** An earlier version of this entry
+read *"placement is the open part, not the part number"*, which put the
+authoritative file at odds with the three documents that treat the part as
+undecided — T-109's acceptance criteria, `MAGNETOMETER_BACKLOG` G-14, and
+`INTERFERENCE_MATRIX`, which allows for both being fitted (*"would make eight"*
+devices on the bus). Two modules are ordered and which one goes in is a decision
+`MAGNETOMETER_RETROFIT` sets up and does not make. Placement gates because #83
+is explicit that nothing gets soldered until a survey of the case's magnetic
+environment (speaker magnet, motor pads, battery leads) says where, tracked as
+**T-109** — and the rail, the pull-ups and T-096 gate alongside it. So `Capability::Heading` has a *watch-side*
 external-magnetometer path in prospect, and every compass feature stays behind
 that survey rather than behind the parcel.
 
@@ -1163,9 +1170,17 @@ QMI8658, from the other end: a power feature wearing a positioning name.
    which forbids the product: the Attadipa node's **position** is a reading taken
    on the node's body and presented as the wearer's, which is OD-1 and OD-8 and
    the entire navigation story on a Waveshare unit that has no GNSS of its own.
-   That is sound because position error is *bounded* by how far apart a node and
-   its wearer can be, where orientation error is unbounded
-   ([ADR-0004](../adr/0004-capability-sources.md):289-291). The draft survived
+   That is sound because a node's heading is uncorrelated with the wearer's
+   while its position differs from the wearer's by exactly the separation of the
+   two bodies — reasoning stated in
+   [ADR-0009](../adr/0009-heading.md) §3a and nowhere else. An earlier version of
+   this entry sourced it to `ADR-0004:289-291`, which is that ADR's *"No
+   application queries node state"* layering rule and makes no claim about error;
+   the citation was wrong under a load-bearing premise, which is the worse
+   combination, and review caught it. Nothing bounds that separation, so §3a
+   carries it as a **state defaulting to `Unknown`** rather than as an
+   assumption: an unlocated node's fix may be shown, and is shown as the node's
+   rather than the wearer's. The draft survived
    here after the ADR was corrected, in the file `CLAUDE.md` ranks above the
    ADR — so an agent reaching it first would have refused the product in the
    owner's name. Found in review.
