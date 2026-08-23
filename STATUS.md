@@ -405,10 +405,19 @@ open question**, gated on three measurements only the owner can take: the
 closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
 the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
 280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
-need. **T-106** holds all three; the bus scan half is **done** — 2026-08-23,
-and `0x6A` is free after all, which is what the claim said before anybody could
-know it. What remains under T-106 is confirming the magnetometer modules once
-they arrive
+need. **T-106** holds all three, and **all three are still untaken** — a kitchen
+scale, a ruler and a feeler gauge, and none of them has been used. The bus-scan
+half of T-106 is **done** — 2026-08-23, and `0x6A` is free after all, which is
+what the claim said before anybody could know it — and an earlier version of
+this paragraph let that stand in for the rest, listing *"what remains"* as the
+magnetometer modules and the register reads while silently dropping the
+clearance, the rectangle-and-diagonal and the mass. That is the one wrong
+sentence here that spends money: an owner reading it concludes the battery gate
+is clear and orders against the `ESTIMATED` 250–310 mAh tree without the mass —
+this paragraph's own lie detector — or the diagonal, which T-106 calls the
+measurement that gets forgotten. Found in review. **What remains under T-106 is
+M1, M2 and M3 — the clearance, the rectangle and its diagonal, and the mass —
+plus** confirming the magnetometer modules once they arrive
 ([#83](https://github.com/hleserg/Attadipa/issues/83)), and the register reads
 that go with them.
 

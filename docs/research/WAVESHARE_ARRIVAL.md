@@ -213,10 +213,15 @@ in any collision check.
 | 0x6B | QMI8658C IMU | Schematic prints `0X6B` inside the U5 block; pin 1 SDO/SA0 is tied to GND and pin 12 CS to VCC3V3, selecting I2C. See the conflict below |
 
 Five of the six are fixed or confirmed and none of them collides. **The sixth
-address is the IMU's, and whether 0x6A is occupied or free is exactly what is
-in conflict below** — 0x6A is one of the two candidate addresses for the same
-device printed as 0x6B, not a separate, empty slot. Calling it "unoccupied" begs
-the question a scan is supposed to answer.
+address was the IMU's, and it is settled: `0x6A` does not answer, the IMU is at
+`0x6B`, measured 2026-08-23**
+([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1). The
+paragraph below reports the datasheet conflict and is kept as the record of what
+was in doubt and why — but the doubt is closed, and the sentence that used to
+stand here (*"whether 0x6A is occupied or free is exactly what is in conflict
+below"*, *"a scan **is supposed to** answer"*) survived the scan by three
+documents. `0x6A` **is** free, and it is free because a NACK was observed rather
+than because a datasheet was believed. Found in review.
 
 **A datasheet conflict on the IMU, reported rather than resolved.** The board
 grounds SA0. QMI8658C Rev 0.6 (2021-01-13, marked ADVANCE INFORMATION) maps
@@ -227,7 +232,8 @@ own product wiki links as "QMI8658 Datasheet", so following the vendor's link an
 reading the strap honestly yields 0x6A and an IMU that never answers. The weight
 is three later revisions plus the schematic's printed `0X6B` plus both vendor
 driver call sites against one superseded document, but a NACK is the only thing
-that closes it.
+that closes it — **and the NACK was observed on 2026-08-23. Rev 0.6 is
+retired.**
 
 **A naming trap worth not re-deriving.** Two vendor-shipped drivers use opposite
 conventions: SensorLib's `QMI8658_L_SLAVE_ADDRESS` is 0x6B (L = the SA0 *pin
@@ -497,8 +503,13 @@ working init sequence is now observable; and real evidence for T6.
 console: `i2cconfig --port=0 --sda=15 --scl=14 --freq=100000`, then `i2cdetect`.
 Run this **early in the session**, because the FT3168 datasheet documents that
 the touch controller stops answering after the host addresses another slave on
-the same bus while it is in Monitor or Sleep mode. *Expected:* six ACKs — 0x18,
-0x34, 0x38, 0x40, 0x51 and 0x6B. *Failure:* fewer. A missing device is **not**
+the same bus while it is in Monitor or Sleep mode. *Expected:* **five** ACKs —
+0x18, 0x34, 0x40, 0x51 and 0x6B — and 0x38 (touch) **only after its reset is
+pulsed on GPIO 9**, which is what the board actually does and what this step
+used to call a failure. It demanded six on a bare scan, so re-running it on a
+known-good board failed its own criterion. Measured 2026-08-23; found in review.
+*Failure:* fewer than five, or 0x38 still silent after the reset pulse, or
+anything at 0x6A. A missing device is **not**
 proof of absence: the AXP2101 may not have enabled the rail feeding it, and D13
 leaves rail assignment unknown, so record a missing part as UNKNOWN rather than
 ABSENT. `UU` in the table means a timeout, which points at pull-ups rather than
@@ -508,10 +519,10 @@ table.
 **Step 6 — settle the QMI8658 datasheet conflict.** Stay in the same `i2c_tools`
 console as step 5, so nothing new has to be built. If step 5 showed 0x6B, run
 `i2cget -c 0x6b -r 0x00 -l 1`; *expected:* `WHO_AM_I = 0x05`, which confirms
-the Rev A mapping and retires Rev 0.6. If step 5 showed 0x6A instead, the
-silicon follows Rev 0.6 and Waveshare's own wiki link was right — record that,
-because it inverts a strap-to-address rule the next agent will otherwise
-re-derive wrongly. While here, read the FocalTech identity block —
+the Rev A mapping and retires Rev 0.6. The branch that used to sit here — *"if
+step 5 showed 0x6A instead"* — is dead: the scan ran and 0x6A did not answer, so
+this step now confirms `WHO_AM_I` rather than choosing between two datasheet
+revisions. While here, read the FocalTech identity block —
 `i2cget -c 0x38 -r 0xa3 -l 1` and the same for `0xa6`, `0xa8` and `0xa1` — and
 **record the raw bytes** rather than comparing them to a remembered constant,
 since no FT3168 datasheet publishes a register map. Then write and read back one
@@ -593,7 +604,7 @@ answer a vendor file already contains.
 
 | # | What is unknown | The one measurement that settles it |
 |---|---|---|
-| 1 | Does the QMI8658C answer 0x6B or 0x6A — i.e. which datasheet revision the silicon follows | Step 5's scan; 0x6A is unoccupied, so whichever address ACKs *is* the answer |
+| 1 | ~~Does the QMI8658C answer 0x6B or 0x6A~~ — **settled 2026-08-23** | The scan ran: 0x6B ACKs, 0x6A does not. Rev A mapping, Rev 0.6 retired |
 | 2 | Does the FT3168 answer 0x38 at all | The same scan. No datasheet states this address; it is driver-source-only |
 | 3 | Does the FT3168 accept the nine blind writes to 0x80–0x89 that `touch_ft5x06_init()` performs | Step 6's write-and-read-back of 0x80 |
 | 4 | Is the flash 16 MB or 32 MB — vendor `sdkconfig` against schematic and wiki | `Detected flash size` in step 2 |

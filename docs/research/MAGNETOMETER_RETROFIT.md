@@ -380,8 +380,7 @@ The main I2C bus on the Waveshare board is already occupied
 | `0x38` | FT3168 touch — answers only after its reset is pulsed on GPIO 9 |
 | `0x40` | ES7210 microphone ADC — `VERIFIED` by scan |
 | `0x51` | PCF85063ATL RTC — datasheet-fixed, `VERIFIED` by scan |
-| `0x6B` | QMI8658 IMU — **`MEASURED`**. `0x6A` does not answer, so the
-datasheet-revision conflict is settled and `0x6A` is free |
+| `0x6B` | QMI8658 IMU — **`MEASURED`**. `0x6A` does not answer, so the datasheet-revision conflict is settled and `0x6A` is free |
 
 **`0x0C`, `0x0D` and `0x1E` are all free**, measured on 2026-08-23 rather than
 inferred — [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1. No

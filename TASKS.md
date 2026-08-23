@@ -1596,17 +1596,49 @@ stale silently. The protocol is
     consistent with 280–330 mAh; 7.5–8 g is the only mass consistent with a
     genuine 400 mAh**, and no sampled pouch reaches that density. A kitchen
     scale settles what 51 datasheets can only estimate.
-  - **M4 — the bus scan**, folded in here rather than filed as a task of its
-    own ([#83](https://github.com/hleserg/Attadipa/issues/83)). One
-    `i2cdetect`-equivalent pass on `SDA 15` / `SCL 14` settles whether `0x6A`
-    is free or is the IMU's own address under the other datasheet revision
-    ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md), IMU row —
-    `address CONFLICTING`), and, once the magnetometer modules are on flying
-    leads, confirms both `0x0C` (AK09911C, `CAD` tied to `VSS`) and `0x0D`
-    (QMC5883L) actually ACK. The QMC5883L confirmation is not optional: cheap
-    GY-271 modules sold under that name are regularly relabelled HMC5883L at
-    `0x1E` instead, and unlike the AK09911C there is no `WIA1`/`WIA2`-style ID
-    register to catch the swap — the address it answers at *is* the check.
+  - **M4 — the bus scan. The `0x6A` half is DONE**, measured 2026-08-23:
+    `0x6A` does not answer, the IMU is at `0x6B`, and
+    [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)'s IMU row now reads
+    `MEASURED` / `VERIFIED` rather than `address CONFLICTING`
+    ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
+    §3.1). This bullet asked for it as pending for 120 lines after the record of
+    it landing, which left two documents in this repository disagreeing about
+    whether a hardware fact was established — and *never trust, verify* gives a
+    reader no tie-break, so the honest outcome would have been re-running a
+    bench session that already happened. Found in review.
+    **What is left of M4** ([#83](https://github.com/hleserg/Attadipa/issues/83))
+    is the magnetometer half, once the modules are in hand:
+    - **Scan one module at a time, and strap `CAD` before scanning.** The AKM
+      module *breaks `CAD` out* ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)
+      §4.1) — it is not tied to `VSS` by the manufacturer, and this bullet used
+      to state that as delivered fact. Unstrapped or high, the AK09911C sits at
+      **`0x0D`**, which is exactly where the QMC5883L is and where the QMC
+      cannot move from. So with both modules on flying leads and `CAD`
+      floating, a scan ACKs `0x0D` only, and an operator following the old
+      wording writes down *"QMC5883L confirmed, AK09911C absent"* — wrong twice
+      and recorded as `MEASURED`. A verified low strap on `CAD` is a
+      **precondition** of this measurement, not part of it. Found in review.
+    - **Neither part is identified by the ACK alone, and the ID registers are
+      the opposite way round from what this bullet used to say.** The
+      **QMC5883L does** have a chip-ID register — offset `0x0D`, returning
+      `0xFF` (§5.2) — and the **AK09911C's `WIA1`/`WIA2` are `UNKNOWN` from a
+      primary source** in this repository (§2.4, which closes *"do not copy
+      register numbers out of an Arduino library"*). The old sentence had both
+      halves backwards and would have sent a driver author to an Arduino
+      library for AKM register numbers, the one move §2.4 forbids by name.
+      The QMC's ID is not a clean check either: `0xFF` is a valid ID *and* the
+      classic signature of an absent device on a floating bus (§5.2), so the
+      probe is the address ACK — with one module fitted at a time, which is
+      what makes the ACK unambiguous. Found in review.
+    - Cheap GY-271 modules sold as QMC5883L are regularly relabelled HMC5883L
+      at `0x1E`, so an ACK at `0x1E` and silence at `0x0D` is the relabelled
+      part rather than a missing one.
+    - **This half needs a soldering iron and parts in the post**, which the
+      title of this task does not. `IO15`/`IO14` are bare plated pads
+      (`HARDWARE_MATRIX.md:358` "Expansion pad row"), and `CAD` needs strapping.
+      **T-109** already owns the modules, the `CAD` decision and both
+      footprints, so if this half slips, it goes there rather than holding a
+      P1 battery task open. M1 through M3 do not wait on any of it.
 - **And five registers, on the board, whenever convenient:** `0x62` (charge
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
@@ -1614,9 +1646,12 @@ stale silently. The protocol is
 - **Acceptance:** each of M1, M2, M3 and M4 recorded as `MEASURED` with the
   instrument named, the five register values recorded as read, and the sizing
   table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
-  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken. M4's `0x0C`
-  and `0x0D` legs stay `UNKNOWN` until the magnetometer modules have arrived —
-  M1 through M3 do not wait on that.
+  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken. **M4's `0x6A`
+  leg is satisfied** — measured 2026-08-23, recorded in `HARDWARE_MATRIX` and
+  `WAVESHARE_RUNNING_OUR_CODE` §3.1. M4's `0x0C` and `0x0D` legs stay `UNKNOWN`
+  until the magnetometer modules have arrived and `CAD` is strapped low and
+  verified — **M1 through M3 do not wait on any of that**, and neither does
+  ordering a cell: they are the gate, and they have not been taken.
 - **What must not be assumed:** that the sticker settles the capacity. Reading
   it was verified; what it means is exactly what is in doubt.
 - **Hardware required:** yes — the board, a caliper, a scale, a bus scan, and
@@ -1637,16 +1672,29 @@ stale silently. The protocol is
   away). Whether the registry needs a third source class, and how to add one
   **without** letting an application learn which source answered — the
   invariant [ADR-0007](docs/adr/0007-two-capability-layers.md) exists to
-  protect — is an ADR question. Related: `Availability::Unsupported` is
-  documented as terminal and must be stable at runtime, and an I2C probe that
-  finds nothing is indistinguishable from a cold solder joint, so "probe at
-  boot" is not by itself an answer to how a soldered-on source announces
-  itself.
+  protect — is an ADR question. The lifecycle half of it is already decided,
+  and it is decided by
+  [ADR-0004](docs/adr/0004-capability-sources.md) rather than by ADR-0007 or
+  ADR-0009: `docs/adr/0004-capability-sources.md:186` reads
+  "terminal. Nothing may leave it. Ever." of `Availability::Unsupported`, and
+  `:198` already reasons about this exact case by name —
+  "nothing ever reaches `Unsupported`", because a device that never had a
+  magnetometer does not acquire one when a node says so, it acquires a
+  *provider*, and that is a different edge. A part the owner solders on is not a
+  provider walking up, and it is the case ADR-0004 does **not** cover: so the
+  question this task has to answer is what state a per-unit capability sits in
+  **before** that specific unit has been probed, given that it may never leave
+  `Unsupported` and that an I2C probe finding nothing is indistinguishable from
+  a cold solder joint. "Probe at boot" is not by itself an answer to how a
+  soldered-on source announces itself.
 - **Acceptance:** an ADR, accepted or explicitly deferred with a reason, that
   says whether a third source class exists, what state a per-device (not
   per-board-type) capability is in before that specific unit has been probed,
-  and how [ADR-0009](docs/adr/0009-heading.md) is superseded or amended once it
-  does.
+  and how [ADR-0004](docs/adr/0004-capability-sources.md) and
+  [ADR-0009](docs/adr/0009-heading.md) are superseded or amended once it does —
+  ADR-0004 because the two-source model and the terminal `Unsupported` state
+  are its, ADR-0009 because it is the document that assumes heading has no
+  on-board source on either board.
 - **Hardware required:** no.
 
 ### T-112 · The pedometer has a datasheet now; it still needs someone to walk
