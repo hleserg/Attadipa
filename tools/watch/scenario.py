@@ -93,12 +93,43 @@ def load(path: str) -> list[dict]:
     return data
 
 
-def _point(step: dict, key: str) -> tuple[int, int]:
+def _point(step: dict, key: str, watch: Watch | None = None) -> tuple[int, int]:
+    """A coordinate, in pixels or as a fraction of the screen.
+
+    Whole numbers are pixels. A number strictly between 0 and 1 -- or a string
+    ending in `%` -- is a fraction of the panel, resolved against what the
+    device reported. That is what makes one scenario run on both boards: the
+    shipped tour hard-coded `(350, 420)`, which is off the edge of a 240x240
+    T-Watch, so it silently only ever ran on the Waveshare while
+    `WATCH_CONTROL.md` said "both boards, every time".
+    """
     value = step[key]
     if isinstance(value, str):
         x, _, y = value.partition(",")
-        return int(x), int(y)
-    return int(value[0]), int(value[1])
+        return _axis(x, watch, "width"), _axis(y, watch, "height")
+    return _axis(value[0], watch, "width"), _axis(value[1], watch, "height")
+
+
+def _axis(value, watch: Watch | None, axis: str) -> int:
+    if isinstance(value, str):
+        value = value.strip()
+        if value.endswith("%"):
+            value = float(value[:-1]) / 100.0
+        else:
+            value = float(value) if "." in value else int(value)
+    if isinstance(value, float) and 0.0 < value < 1.0:
+        if watch is None:
+            raise WatchError(
+                f"a fractional coordinate ({value}) needs the device's screen size, "
+                f"and this step was resolved without a connection")
+        caps = watch._caps()  # noqa: SLF001 - the runner is the client's own caller
+        span = caps.width if axis == "width" else caps.height
+        return int(round(value * span))
+    return int(value)
+
+
+def _xy(step: dict, watch: Watch) -> tuple[int, int]:
+    return _axis(step["x"], watch, "width"), _axis(step["y"], watch, "height")
 
 
 def run(watch: Watch, steps: list[dict], output_dir: str,
@@ -125,23 +156,33 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
             elif action == "wait_stable":
                 watch.wait_stable()
             elif action == "tap":
-                watch.tap(int(step["x"]), int(step["y"]))
+                watch.tap(*_xy(step, watch))
             elif action == "long_tap":
-                watch.long_tap(int(step["x"]), int(step["y"]),
-                               float(step.get("duration", 1.0)))
+                watch.long_tap(*_xy(step, watch), float(step.get("duration", 1.0)))
             elif action == "double_tap":
-                watch.double_tap(int(step["x"]), int(step["y"]))
+                watch.double_tap(*_xy(step, watch))
             elif action == "swipe":
-                watch.swipe(_point(step, "from"), _point(step, "to"),
+                watch.swipe(_point(step, "from", watch), _point(step, "to", watch),
                             float(step.get("duration", 0.4)), int(step.get("steps", 0)))
             elif action == "drag":
-                watch.drag(_point(step, "from"), _point(step, "to"),
+                watch.drag(_point(step, "from", watch), _point(step, "to", watch),
                            float(step.get("duration", 1.0)), int(step.get("steps", 0)))
             elif action == "gesture":
-                watch.gesture([_point({"p": pt}, "p") for pt in step["points"]],
+                watch.gesture([_point({"p": pt}, "p", watch) for pt in step["points"]],
                               float(step.get("duration", 0.5)))
             elif action == "button":
                 name = str(step["button"])
+                if name == "first-injectable":
+                    # The two boards share no button name: the T-Watch has
+                    # `power`/`boot`, the Waveshare `button-1`/`button-2`, and
+                    # which physical input either of the latter reaches is open
+                    # question D5. A scenario that must run on both asks for
+                    # "one this board will actually simulate" instead of
+                    # naming one and failing everywhere else.
+                    injectable = [b for b in watch._caps().buttons if b.injectable]  # noqa: SLF001
+                    if not injectable:
+                        raise WatchError("this board simulates no buttons at all")
+                    name = injectable[0].id
                 what = str(step.get("event", "click"))
                 if what == "press":
                     watch.button_press(name)

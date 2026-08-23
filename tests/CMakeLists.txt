@@ -237,14 +237,23 @@ if(ATTADIPA_BUILD_SIMULATOR)
     # which corner, whether the swatches are pure, how many pixels a swipe left
     # behind. A pixel-exact expectation against a live renderer fails on an
     # antialiased glyph and gets switched off within a week.
+    #
+    # Both boards, which is what the documentation always claimed. It ran only
+    # on the Waveshare because the shipped scenario hard-coded coordinates off
+    # the edge of a 240x240 panel and a button name the T-Watch does not have;
+    # both are now expressed as fractions and `first-injectable`, so the same
+    # file exercises both geometries. The Definition of Done asks for "reviewed
+    # at both geometries" and CI was reviewing one.
     if(Python3_Interpreter_FOUND)
-        add_test(NAME watch_control_end_to_end
-                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/watch/e2e_test.py
-                         $<TARGET_FILE:attadipa_sim> waveshare-amoled-206)
-        set_tests_properties(watch_control_end_to_end PROPERTIES
-            ENVIRONMENT "SDL_VIDEODRIVER=dummy"
-            TIMEOUT 180
-            LABELS simulator)
+        foreach(_board t-watch-s3-plus waveshare-amoled-206)
+            add_test(NAME watch_control_end_to_end_${_board}
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/watch/e2e_test.py
+                             $<TARGET_FILE:attadipa_sim> ${_board})
+            set_tests_properties(watch_control_end_to_end_${_board} PROPERTIES
+                ENVIRONMENT "SDL_VIDEODRIVER=dummy"
+                TIMEOUT 180
+                LABELS simulator)
+        endforeach()
     endif()
 endif()
 
@@ -281,8 +290,8 @@ set_tests_properties(link PROPERTIES LABELS transport)
 #
 # Split into two executables because they fail for different reasons and a
 # reader should be able to tell which. test_input is the queue and the state
-# machine every source pushes into -- a finger, the simulator's SDL driver, and
-# the debug bridge alike. test_debug is the wire format and the bridge, and it
+# machine the debug bridge pushes into, and that a touch controller and the
+# board's buttons will push into once T-114 gives them a driver. test_debug is the wire format and the bridge, and it
 # runs with no LVGL, no socket and no device, which is the whole reason the
 # bridge takes its transport and its frame source as seams.
 #

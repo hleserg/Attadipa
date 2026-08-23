@@ -187,13 +187,16 @@ the expectation would move together.
 |---|---|---|
 | `no watch found` | nothing is listening | start the simulator **with** `--debug-socket`; the feature is off by default |
 | `could not connect to …` | the path is wrong, or the simulator died | check the path; `ls -l` the socket |
-| `the device did not answer within 10.0s` | wedged, or another client holds the connection | only one client is served; close the other. `--timeout` to wait longer |
+| `the device did not answer within 10.0s` | the device is wedged | `--timeout` to wait longer. This is **not** what a second client sees — see the next row |
+| `the device closed the connection…` | the simulator exited, or it already had a client | only one is served at a time; close the other. The refusal is immediate, not a timeout |
 | `that input is impossible from the current state` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info` |
 | `this stack is single-touch` | a second finger was requested | there is no multitouch; use one-point gestures |
-| `a screenshot is already in progress` | two overlapping requests | let the first finish |
-| `the frame is incomplete: N bytes never arrived` | a torn transfer | it retries once by itself; if it repeats, that is a bug worth reporting with the message |
+| `a screenshot is already in progress` | two overlapping requests | let the first finish. This means **only** a screen transfer collision now |
+| `the device's input queue is full…` | the interface is not draining, so an event was dropped | its own code, because it used to answer with the row above and send you to the wrong subsystem. Look at why the interface stalled |
+| `nothing has been rendered yet` | the screen has not been drawn | take the screenshot after the first frame |
+| `the frame is incomplete: N bytes never arrived` | a torn transfer | **not retried automatically** — run the command again. The retry in `request()` covers a lost request, not a torn stream, and a screenshot does not go through it |
 | `the assembled frame does not match its checksum` | chunks assembled wrongly | same — the framing already proved each chunk was intact, so this is an assembly bug |
-| `this build of the firmware cannot do that` | the debug channel is compiled out | rebuild with it enabled |
+| `this build of the firmware cannot do that` | the debug channel is compiled out, **or** the frame buffer is smaller than the panel, **or** the button is one this board will not simulate | for a button, `info` prints which are simulated; the T-Watch's `boot` is a boot-mode strap and produces no software event on real hardware |
 | the screen is stuck mid-gesture | a crashed run left a finger down | `input-reset` |
 
 `input-reset` lifts only what the **remote** is holding, never what a person is
@@ -211,11 +214,16 @@ holding. The device does it by itself too — on a dropped connection, and after
 | **RAM, always** | the input queue: 64 events × 16 bytes ≈ **1 kB**, and it is the ordinary input path rather than a debug cost. |
 | **Flash** | the protocol and bridge are a few kB of code, plus a bitwise CRC-32 chosen over a 1 kB table for exactly this reason. |
 | **Time, per screenshot** | ~0.5 s for the Waveshare over a Unix socket, measured. On USB it will be bounded by the link, not by the device. |
-| **Interface pause** | none measurable. The frame is snapshotted in one call and then streamed a chunk at a time, only while the outgoing buffer is below a watermark — the transport sets the pace and the interface keeps running. Nothing blocks waiting for a transfer to finish. |
+| **Interface pause, streaming** | none measurable, and true by construction: the frame is streamed a chunk at a time only while the outgoing buffer is below a watermark, so the transport sets the pace and nothing blocks waiting for a transfer to finish. |
+| **Interface pause, capture** | **UNKNOWN on a device, and not measured in the simulator either.** The capture itself is synchronous on the interface's own thread: `lv_snapshot_take` re-renders the tree, then a row-by-row copy of up to 617 kB, then a **bitwise** CRC-32 over all of it — 4.94 million inner loops before the first chunk goes out. Milliseconds on a desktop; on an ESP32-S3 this is the term that matters, and it is the one the watermark above does **not** protect. T-114 owns it. |
 | **Wire cost** | ~10 % overhead: 7 bytes of framing and 10 of envelope per 182-byte body. |
 
-These are **MEASURED** on a desktop simulator over a Unix socket. No figure here
-is a hardware measurement, because there is no firmware to measure.
+Every figure above is **MEASURED** on a desktop simulator over a Unix socket
+**except the capture pause, which is labelled UNKNOWN and is not measured
+anywhere.** No figure here is a hardware measurement, because there is no
+firmware to measure — and the one row that would matter most on hardware is the
+one nothing has measured yet, which is why it says so rather than sitting under
+the banner with the others.
 
 ---
 
@@ -251,10 +259,18 @@ Five decisions worth knowing:
    requires the bound be declared. Screenshots are chunked to fit rather than
    widening a buffer every other subsystem shares.
 
-3. **Injected input goes into the ordinary input queue**, the same one a finger
-   and LVGL's SDL mouse push into. Nothing calls a screen's handler directly. A
+3. **Injected input goes into the ordinary input queue** and reaches the
+   interface through a real LVGL input device, so a widget cannot tell an
+   injected tap from a finger. Nothing calls a screen's handler directly; a
    test that drove the interface through a private door would pass against code
    no finger can reach.
+
+   Said precisely, because a looser sentence here was wrong: the simulator's
+   own mouse is LVGL's `lv_sdl_mouse_create()` and reaches LVGL as its **own**
+   indev without passing through the queue. The two coexist because LVGL runs
+   each indev independently, not because they meet in the queue. The bridge is
+   the queue's only producer today; the touch controller and the buttons are
+   T-114's, and they are what `InputOrigin::Physical` is for.
 
 4. **Physical input keeps working** while remote input is connected. Events
    carry an origin, and the origin is used for exactly one thing: cleaning up

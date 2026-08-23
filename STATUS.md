@@ -529,10 +529,16 @@ What was built:
 - **The input layer this repository did not have.** Nothing under `core/`,
   `platform/`, `ui/` or `apps/` modelled a press or a touch, because until now
   the only thing driving the interface was a person in front of the simulator.
-  There is now one queue, and every source pushes into it: a finger through
-  LVGL's SDL devices, and the debug bridge. The interface cannot tell them
-  apart, which is the whole point — a debug path that called screen handlers
-  directly would produce tests that pass against code no finger can reach.
+  There is now one queue, and it reaches the interface through a real LVGL
+  input device, so a widget cannot tell an injected tap from a finger — which
+  is the whole point; a debug path that called screen handlers directly would
+  produce tests that pass against code no finger can reach. **The bridge is
+  that queue's only producer today**: the simulator's own mouse is LVGL's SDL
+  device and reaches LVGL separately, and `InputOrigin::Physical` is waiting for
+  T-114's touch controller. Recorded that way because the first version of this
+  entry said every source pushed into the queue, and the independent review of
+  [#121](https://github.com/hleserg/Attadipa/pull/121) was right that it did
+  not.
 - **A debug message class, not a second channel.** `link::frame_codec`'s framing
   carries an [ADR-0005](docs/adr/0005-node-protocol.md) §4 envelope with a new
   `class` value. `kMaxPayload` stays 192 and screenshots are chunked to fit,
@@ -544,6 +550,12 @@ What was built:
   labelled grid for scale, the last button event **with its measured hold**, and
   a touch trail. A swipe replayed as one artificial jump draws two dots; a real
   `down → move… → up` draws a line, and the end-to-end test counts those pixels.
+  The trail is drawn by the queue drain, so it proves the **transport**; a
+  separate counter driven by LVGL's own click events proves the **interface**,
+  and the two are on the screen side by side because they genuinely came apart
+  — two rapid taps once reached the queue as four events and LVGL as one click,
+  and before that LVGL was receiving nothing at all because the test pattern's
+  own decorations were swallowing every press.
 - **`tools/watch_control.py`** — `info`, `screenshot` (single or a series),
   `tap`, `long-tap`, `double-tap`, `swipe`, `drag`, `gesture`, `button`
   press/release/click/hold, `input-reset`, `run <scenario>` and `live`.

@@ -90,6 +90,7 @@ what you can see, then tap.
 python3 tools/watch_control.py tap --x 205 --y 250 --screenshot-after
 python3 tools/watch_control.py long-tap --x 205 --y 250 --duration 1.0
 python3 tools/watch_control.py swipe --from 350,120 --to 60,420 --duration 0.5
+#   those are Waveshare pixels; `info` prints the size of the board you are on
 python3 tools/watch_control.py drag  --from 60,420  --to 350,420 --duration 1.2
 python3 tools/watch_control.py button button-1 click
 python3 tools/watch_control.py button button-1 hold --duration 1.5
@@ -107,6 +108,15 @@ Coordinates are logical, origin top-left, in the size `info` reported.
 A swipe is sent as a genuine `down → move… → up` at the speed you asked for. A
 `drag` is the same shape, slower — and the difference is the point, so do not
 substitute one for the other.
+
+**Two rapid actions need a gap, and when they do not get one that is a bug
+worth reporting rather than working around.** LVGL reads its input devices
+every 33 ms while the loop runs far faster, so a handoff that keeps one state
+instead of a queue merges them. The diagnostic screen shows both views side by
+side — the touch trail is drawn from the transport, the `lvgl:` line and its
+markers from LVGL's own click events. If the trail shows a gesture the `lvgl:`
+line did not count, the input path is dropping it **after** delivery, and no
+screenshot of the app itself will tell you that.
 
 ## 5. Wait, then look again
 

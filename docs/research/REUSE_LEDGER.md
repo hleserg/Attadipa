@@ -1551,10 +1551,20 @@ swipe or press, wait, screenshot again. Owner request, 2026-08-23, filed as
     re-renders an object tree into a fresh buffer. This is the "штатный
     screenshot API графической библиотеки" the request asks to prefer, and it
     is preferred.
-  - `lv_indev_create` + `LV_INDEV_TYPE_POINTER` with a read callback
-    (`src/indev/lv_indev.h`). Several input devices may be registered at once
-    and LVGL arbitrates, which is what lets a person's SDL mouse and an
-    injected touch coexist without either knowing about the other.
+  - `lv_indev_create` + `LV_INDEV_TYPE_POINTER` with a read callback, and
+    `lv_indev_data_t::continue_reading` to hand LVGL a queue of transitions in
+    one pass (`src/indev/lv_indev.c`: the read timer is created at `:132` with
+    `LV_DEF_REFR_PERIOD`, and `:253-287` is the
+    `do { read; process } while (continue_reading)` loop).
+    Several indevs may be registered at once, **each with its own read timer
+    and its own press state**, and each dispatches independently to whatever
+    lies under its own point — which is what lets a person's SDL mouse and an
+    injected touch coexist without either knowing about the other. LVGL does
+    **not** arbitrate between them: `LV_STATE_PRESSED` is per widget, so a
+    release from one clears the state the other is holding. An earlier version
+    of this entry said "LVGL arbitrates" and cited the header; the word was
+    wrong and the citation was to the API rather than to the behaviour.
+    Read 2026-08-23.
 - **LVGL's own `lv_test_indev_*` harness** (`tests/src/`) — rejected, and worth
   saying why. It drives LVGL's simulator inside LVGL's own unit-test build with
   a fake tick, which is the opposite of what is wanted: the point here is a
