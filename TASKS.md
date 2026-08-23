@@ -64,9 +64,33 @@ stale silently. The protocol is
   gate whose entire security model is the actor's write access.
 - **Implementation status:** live. Six workflows, an hourly watchdog, and a
   daily backstop routine scoped to what a workflow cannot detect about itself.
+  A third watchdog scan is written, tested and **not deployed**:
+  [#74](https://github.com/hleserg/Attadipa/issues/74) — a pull request with a
+  merge conflict gets **no CI run at all**, because GitHub cannot build
+  `refs/pull/N/merge` to run `pull_request` workflows against, and every check
+  this repository produces on a pull request is `pull_request`-triggered. #65
+  sat that way across two pushes with nothing red and nothing said. The
+  `conflicts` job comments once per head commit and returns an `agent:review`
+  issue to `agent:ready`.
+
+  **What is blocking it is not the work.** GitHub refuses to let a GitHub App
+  create or update anything under `.github/workflows/` without the `workflows`
+  permission, and the cloud agent's `claude[bot]` token does not have it — the
+  push is rejected outright. The job waits as
+  `docs/automation/pending/74-watchdog-conflicts-job.patch`; landing it is three
+  commands from a local session, written up as step 8 of
+  [HANDOFF_LOCAL_CODER](docs/automation/HANDOFF_LOCAL_CODER.md#8-land-the-workflow-half-of-a-change-a-cloud-session-could-not-push).
+  Whether to grant that permission instead, and permanently, is an owner
+  decision with a real argument on each side; it is stated there rather than
+  taken. Until one or the other happens, the guard does not exist and
+  `mergeable` is checked by hand.
 - **Tests:** `actionlint` over six workflows with shellcheck integration —
-  clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
-  cases — 16/16; host build 10/10; simulator 12/12, both geometries. Production:
+  clean; `shellcheck -x` over every script and test — clean; intake gate, 16
+  hostile cases — 16/16; the merge-conflict guard's rule, 33 cases covering
+  `dirty`, `clean` and `null` in both directions — 33/33, proved to fail against
+  three mutations rather than merely asserted to pass, and **not yet wired into
+  CI**, because that line is in `ci.yml` and rides the same blocked patch; host
+  build 10/10; simulator 12/12, both geometries. Production:
   smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
   intake, marker-derived labels, the `@claude` dedup override and a green Claude
   run, and exposed the stuck-label defect now fixed.

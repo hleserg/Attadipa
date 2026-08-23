@@ -1,0 +1,335 @@
+diff --git a/.github/workflows/agent-queue-watchdog.yml b/.github/workflows/agent-queue-watchdog.yml
+index fbe05bb..a553e7e 100644
+--- a/.github/workflows/agent-queue-watchdog.yml
++++ b/.github/workflows/agent-queue-watchdog.yml
+@@ -111,3 +111,308 @@ jobs:
+               "The agent that claimed this did not come back within two hours, so the task has been returned to the queue. If it was mid-flight, its branch is still there."
+             gh issue edit "$n" --repo "$REPO" --remove-label agent:working --add-label agent:ready || true
+           done < /tmp/stuck
++
++  # A pull request with a merge conflict gets no CI at all, and until this job
++  # existed nothing said so. GitHub's own reference is unambiguous:
++  #
++  #   "Workflows will not run on `pull_request` activity if the pull request has
++  #    a merge conflict. The merge conflict must be resolved first."
++  #   -- Events that trigger workflows, docs.github.com, read 2026-08-23
++  #
++  # Every check this repository produces on a pull request is `pull_request`-
++  # triggered -- ci.yml and codeql.yml take `push` for `main` only, and
++  # claude-pr-review.yml has no other trigger -- and there is no
++  # `pull_request_target` workflow here, which is the one exception that page
++  # names. So a conflict silences every check there is, and silence is read as
++  # health by everything downstream: the orchestrator merges once CI is green,
++  # the backstop's conditions are checks on a verdict that does not exist, and
++  # an agent pushing a fix to its own pull request learns nothing about whether
++  # the fix built. #65 sat that way for over an hour across two pushes.
++  #
++  # No model is invoked and nothing is checked out from a pull request, so this
++  # costs nothing from Anthropic and nothing from a branch can execute here.
++  #
++  # Deliberately NOT behind `CLAUDE_AUTOMATION_ENABLED`, and the `stuck` job
++  # above is the precedent: the kill switch stops Anthropic spending, and
++  # telling somebody their pull request cannot be built is neither billable nor
++  # something that should stop when the writers do. Nothing this job does can
++  # start a writer either -- the `scan` job is gated, and a label written with
++  # the built-in GITHUB_TOKEN does not raise an `issues` event that GitHub will
++  # start a workflow run from.
++  conflicts:
++    name: Anything conflicted and therefore untested
++    runs-on: ubuntu-latest
++    permissions:
++      # write to comment on the pull request; the labels moved below are on the
++      # issue the pull request closes, never on the pull request itself.
++      pull-requests: write
++      issues: write
++      # the check-run count that the comment quotes as evidence
++      checks: read
++      contents: read
++    steps:
++      # Same reason the scan job pins its checkout to the default branch: the
++      # rule applied here comes from `main` or from nowhere.
++      - name: Fetch the decision script from the default branch
++        uses: actions/checkout@v7
++        with:
++          ref: ${{ github.event.repository.default_branch }}
++          sparse-checkout: .github/scripts
++          sparse-checkout-cone-mode: false
++          persist-credentials: false
++
++      - name: Say so when a pull request cannot be built
++        env:
++          GH_TOKEN: ${{ github.token }}
++          REPO: ${{ github.repository }}
++          # Through `env:` rather than interpolated into the script below. A
++          # `${{ }}` inside a `run:` block is substituted before the shell sees
++          # it, so anything quotable in the value is quotable in the program;
++          # through the environment it is only ever data. The branch name is
++          # repository-controlled and this is not a live hole -- it is the habit
++          # that keeps the next one from being.
++          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
++        run: |
++          set -euo pipefail
++
++          # --paginate ALONE writes one JSON array per page, back to back, which
++          # is not a JSON document and which `jq -s .[]` then reads as a stream
++          # of arrays rather than of pull requests. --slurp collects the pages
++          # into one outer array and `add` flattens them. The length/type guard
++          # keeps this correct if a future `gh` returns the flat array directly,
++          # rather than depending on a shape nothing here can test.
++          gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp \
++            | jq 'if (length > 0 and (.[0] | type) == "array") then add else . end' \
++            | jq -r '.[].number' > /tmp/open-prs
++
++          # `mergeable` is not in the LIST response -- only in the single-pull-
++          # request one -- so this is one GET each. It is also the request that
++          # ASKS GitHub to compute mergeability: "If the value is null, then
++          # GitHub has started a background job to compute the mergeability."
++          # (Pulls REST reference, read 2026-08-23.) So a tick that finds null
++          # has still done useful work; the value is there for the next one.
++          #
++          # One retry, once, for the whole batch rather than per pull request:
++          # a fresh push is null for a few seconds, and without the retry every
++          # conflict pushed in the last minute of an hour waits a full hour to
++          # be reported. A single sleep bounds that at three seconds no matter
++          # how many pull requests are open.
++          UNDETERMINED=""
++          : > /tmp/facts
++
++          # This function prints the facts and NOTHING ELSE. Its callers use
++          # `$(...)`, so anything it says for a human is captured as data rather
++          # than reaching the log -- which is how the "could not read #121" line
++          # disappeared in the first dry run of this job. Messages belong to the
++          # caller, where stdout is still stdout.
++          fetch_facts() {
++            local n="$1" raw
++            raw=$(gh api "repos/$REPO/pulls/$n" 2>/dev/null) || return 1
++            # -e so a response that is not the shape promised fails here rather
++            # than producing "null" strings that the decision would have to
++            # guess at. `gh` writes error documents to stdout, and #71's outcome
++            # comment went out as a JSON blob because something downstream
++            # trusted one.
++            printf '%s' "$raw" | jq -e -r '
++              [ (.mergeable | tostring),
++                (.mergeable_state // ""),
++                (.head.sha // ""),
++                (.draft | tostring) ] | @tsv' 2>/dev/null
++          }
++
++          while read -r n; do
++            [ -n "$n" ] || continue
++            if facts=$(fetch_facts "$n"); then
++              case "$facts" in
++                null*) UNDETERMINED="$UNDETERMINED $n" ;;
++                *)     printf '%s\t%s\n' "$n" "$facts" >> /tmp/facts ;;
++              esac
++            else
++              # A failed lookup is not a finding. Say nothing about this one.
++              echo "::notice::Could not read pull request #$n; skipping it this tick."
++            fi
++          done < /tmp/open-prs
++
++          if [ -n "$UNDETERMINED" ]; then
++            echo "::notice::Mergeability not yet computed for:$UNDETERMINED. Asking again in three seconds."
++            sleep 3
++            for n in $UNDETERMINED; do
++              if facts=$(fetch_facts "$n"); then
++                printf '%s\t%s\n' "$n" "$facts" >> /tmp/facts
++              else
++                echo "::notice::Could not read pull request #$n on the retry either; skipping it this tick."
++              fi
++            done
++          fi
++
++          while IFS=$'\t' read -r NUM MERGEABLE STATE HEAD DRAFT; do
++            [ -n "$NUM" ] || continue
++
++            # Only a conflicted pull request costs anything beyond the fetch
++            # above, so a healthy repository pays one GET per pull request and
++            # nothing else.
++            ALREADY=no
++            LABELS=""
++            ISSUE=""
++            if [ "$MERGEABLE" = "false" ]; then
++              # The marker is keyed on the HEAD COMMIT, not on the pull request.
++              # A pull request left conflicted for a week gets one comment; a new
++              # push that is still conflicted gets one more, because that push
++              # also got no CI. Anything unreadable leaves ALREADY at its
++              # fail-quiet value rather than risking a duplicate.
++              #
++              # The answer is read as a WORD rather than as jq's exit status,
++              # and that is the whole point: `jq -e` exits non-zero both for a
++              # clean `false` and for a filter that blew up on a shape it did
++              # not expect, so an `if` here would read "the response changed
++              # shape" as "nothing has been said yet" -- and then say it again
++              # every hour. Only a literal `false` is allowed to mean no.
++              ALREADY=unreadable
++              MARKED=""
++              if COMMENTS=$(gh api "repos/$REPO/issues/$NUM/comments?per_page=100" \
++                              --paginate --slurp 2>/dev/null); then
++                MARKED=$(printf '%s' "$COMMENTS" \
++                           | jq -r --arg m "<!-- attadipa-conflict:$HEAD -->" \
++                               'if (length > 0 and (.[0] | type) == "array") then add else . end
++                                | any(.[]; (.body // "") | contains($m))' 2>/dev/null || true)
++              fi
++              case "$MARKED" in
++                true)  ALREADY=yes ;;
++                false) ALREADY=no ;;
++                *)     echo "::warning::Could not tell whether #$NUM has already been told about $HEAD; staying quiet rather than risking a duplicate." ;;
++              esac
++
++              # GitHub resolves the closing keyword itself, so this is a fact
++              # about the pull request rather than a guess at somebody's wording
++              # -- the same reason handover-decision.sh stopped parsing prose.
++              # The labels come back in the same call, so the relabel decision
++              # costs no extra request.
++              # shellcheck disable=SC2016  # $owner/$name/$number are GraphQL
++              # variables, bound by the -f/-F flags above, not shell ones.
++              if LINK=$(gh api graphql -f owner="${REPO%%/*}" -f name="${REPO##*/}" \
++                          -F number="$NUM" -f query='
++                            query($owner:String!,$name:String!,$number:Int!) {
++                              repository(owner:$owner,name:$name) {
++                                pullRequest(number:$number) {
++                                  closingIssuesReferences(first:5) {
++                                    nodes { number labels(first:50) { nodes { name } } }
++                                  }
++                                }
++                              }
++                            }' 2>/dev/null); then
++                ISSUE=$(printf '%s' "$LINK" | jq -e -r '
++                  .data.repository.pullRequest.closingIssuesReferences.nodes[0].number // ""' 2>/dev/null || echo "")
++                LABELS=$(printf '%s' "$LINK" | jq -e -r '
++                  [.data.repository.pullRequest.closingIssuesReferences.nodes[0].labels.nodes[].name]
++                  | join(",")' 2>/dev/null || echo "")
++              fi
++            fi
++
++            DECISION=$(bash .github/scripts/pr-conflict-decision.sh \
++                         "$MERGEABLE" "$STATE" "$ALREADY" "$LABELS")
++            ACTION=$(printf '%s' "$DECISION" | sed -n 1p)
++            REASON=$(printf '%s' "$DECISION" | sed -n 2p)
++
++            if [ "$ACTION" = "quiet" ]; then
++              if [ "$REASON" = "contradiction" ]; then
++                echo "::warning::#$NUM reports mergeable=true beside mergeable_state=dirty. Saying nothing; the rule in pr-conflict-decision.sh needs rereading if this persists."
++              else
++                echo "::notice::#$NUM: $REASON"
++              fi
++              continue
++            fi
++
++            # The comment claims there are no checks, so it COUNTS them rather
++            # than asserting it, and then says whichever of the two things the
++            # count actually supports. A third-party app can leave a status on a
++            # commit no workflow ever built -- on #110's head 244c4c0 the
++            # combined-status endpoint answered `success` for exactly that
++            # reason -- and runs against an earlier head are still listed under
++            # the branch. Both look like coverage. A guard that prints "none of
++            # them is red" over a non-zero count has told a small lie in the
++            # sentence people will quote back at it.
++            RUNS=$(gh api "repos/$REPO/commits/$HEAD/check-runs" --jq '.total_count' 2>/dev/null || echo "?")
++            SHORT=${HEAD:0:7}
++            # `""|*[!0-9]*` and not `?*[!0-9]*`: the second does not match a
++            # one-character value, so the `?` this writes when the count cannot
++            # be read would have fallen through and been printed as a number.
++            case "$RUNS" in
++              0) EVIDENCE="and \`GET /commits/$SHORT/check-runs\` answers \`total_count: 0\`"
++                 COVERAGE="There are none on it now and **nothing is red**, which is exactly what makes this easy to miss: every consumer downstream reads \"no failing check\" as \"not failing\"." ;;
++              ""|*[!0-9]*)
++                 EVIDENCE="and its check runs could not be counted"
++                 COVERAGE="The check-run count could not be read, so treat whatever the pull request page shows as unverified." ;;
++              *) EVIDENCE="and \`GET /commits/$SHORT/check-runs\` answers \`total_count: $RUNS\`"
++                 COVERAGE="That count is not zero, so read what is actually on this head before trusting it — a status left by a third-party app, and runs against an *earlier* head listed under the same branch, both look like coverage and are neither." ;;
++            esac
++            # An `if` rather than `[ ... ] && VAR=...`, because the second form
++            # is one edit away from being the last statement in its block, and
++            # then `set -e` takes a false test as a failure and ends the job
++            # silently on the first pull request that is not a draft.
++            WHAT_DRAFT=""
++            if [ "$DRAFT" = "true" ]; then
++              WHAT_DRAFT=" It being a draft makes no difference: the conflict, not the draft flag, is what suppresses the run."
++            fi
++
++            # Every line goes through `printf '%s\n'` with a DOUBLE-quoted
++            # argument and escaped backticks. A single-quoted printf format
++            # holding markdown code spans reads to SC2016 as command
++            # substitution, and the two ways round it are both worse: disabling
++            # SC2016 over the whole block would also stop it noticing a `$ISSUE`
++            # genuinely written inside single quotes, and a heredoc cannot start
++            # at column zero inside a YAML block scalar.
++            #
++            # (A comment line here must also not BEGIN with the linter's own
++            # name, or it is parsed as a directive and the whole block stops
++            # being valid shell. That cost ten minutes.)
++            {
++              printf '%s\n' "<!-- attadipa-conflict:$HEAD -->"
++              printf '%s\n' "### This pull request has a merge conflict, so nothing is building it"
++              printf '\n%s\n\n' "Head \`$SHORT\` reports \`mergeable: false\` (\`mergeable_state: ${STATE:-unknown}\`), $EVIDENCE.$WHAT_DRAFT"
++              printf '%s\n\n' "That is not CI being slow. GitHub builds \`refs/pull/$NUM/merge\` to run \`pull_request\` workflows against, and [it does not run them at all when that ref cannot be built](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request):"
++              printf '%s\n' "> Workflows will not run on \`pull_request\` activity if the pull request has a merge conflict. The merge conflict must be resolved first."
++              printf '\n%s\n\n' "Every check this repository produces on a pull request — CI, CodeQL and the review — is \`pull_request\`-triggered, and there is no \`pull_request_target\` workflow here, which is the one exception that page names. So none of them will run against this head while the conflict stands. $COVERAGE"
++              printf '%s\n\n' "Resolve the conflict and push; the checks start on the next commit."
++              printf '%s\n%s\n%s\n' '```bash' "git fetch origin && git rebase origin/$DEFAULT_BRANCH   # or merge, either starts CI" '```'
++              # `-n "$ISSUE"` on BOTH branches. say_and_requeue can only be
++              # reached through labels that came from a resolved issue, so an
++              # empty number here means the two halves of one GraphQL response
++              # disagreed -- and the failure that would print is the sentence
++              # "Issue # carried agent:review", which is worse than saying
++              # nothing about the issue at all.
++              if [ "$ACTION" = "say_and_requeue" ] && [ -n "$ISSUE" ]; then
++                printf '\n%s\n' "Issue #$ISSUE carried \`agent:review\`, which says the work is with the reviewers. It is not — there is no verdict for them to have reached — so it is back to \`agent:ready\` and the next watchdog tick can pick it up."
++              elif [ -n "$ISSUE" ]; then
++                printf '\n%s\n' "Issue #$ISSUE is linked and its labels were left alone (\`$REASON\`)."
++              fi
++              printf '\n%s\n' "Said once per head commit, not once per hour: push again while still conflicted and this appears again, because that push will not have been built either."
++            } > /tmp/conflict-body.md
++
++            echo "::warning::#$NUM is conflicted at $SHORT with $RUNS check runs; commenting ($REASON)."
++            # </dev/null on both writes: a command that reads stdin inside a
++            # `while read` loop eats the loop's own input, and the symptom is a
++            # sweep that silently stops after its first conflicted pull request.
++            if ! gh pr comment "$NUM" --repo "$REPO" --body-file /tmp/conflict-body.md </dev/null; then
++              echo "::error::Could not comment on #$NUM. Not touching any label, because the comment that explains the change did not land."
++              continue
++            fi
++
++            # Relabel only after the comment landed. A label change with no
++            # comment behind it is the state moving with nothing saying why,
++            # which is the shape this whole workflow exists to remove.
++            #
++            # agent:review is REMOVED, not merely joined by agent:ready.
++            # queue-scan.jq drops any issue carrying agent:review, so adding
++            # agent:ready beside it would promise a pick-up the filter refuses
++            # to deliver -- which is #82, exactly, and it is not worth
++            # rediscovering in a second place.
++            if [ "$ACTION" = "say_and_requeue" ]; then
++              if [ -n "$ISSUE" ]; then
++                gh issue edit "$ISSUE" --repo "$REPO" \
++                  --remove-label agent:review --add-label agent:ready </dev/null \
++                  || echo "::warning::Commented on #$NUM but could not relabel issue #$ISSUE."
++              else
++                echo "::warning::#$NUM was to be re-queued but no issue number came back with the labels that said so. Nothing relabelled."
++              fi
++            fi
++          done < /tmp/facts
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 5dedf1e..d8fa327 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -301,6 +301,17 @@ jobs:
+       - name: The staleness summary
+         run: bash .github/tests/compare-summary-test.sh
+ 
++      # And whether anything notices a pull request that CANNOT be built. A
++      # merge conflict stops GitHub creating the `pull_request` run at all, so
++      # #65 sat with `total_count: 0` across two pushes: not a red check, no
++      # check, and every consumer downstream reads that as "not failing". The
++      # guard's own failure mode is the opposite one and it is easier to ship --
++      # `mergeable` is null for a few seconds after every push, and a guard that
++      # reads null as false would accuse every push in flight, hourly, forever.
++      # All three states are asserted here in both directions.
++      - name: A conflicted pull request gets told
++        run: bash .github/tests/pr-conflict-decision-test.sh
++
+   docs:
+     name: Documentation consistency
+     runs-on: ubuntu-latest

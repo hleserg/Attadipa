@@ -95,11 +95,41 @@ guard rejected it and why. That is what those notices are for.
 
 ### A pull request has no CI checks at all
 
-The classic symptom of the wrong GitHub credential. GitHub does not start
-workflow runs for events created with the built-in `GITHUB_TOKEN`, so a pull
-request opened with it looks fine and has no checks. Fix by installing
-<https://github.com/apps/claude> or by setting `ATTADIPA_AGENT_TOKEN` — see
+Two causes, and they look identical from the pull request page. Check the second
+first — it is one command, and it is the one that recurs.
+
+**A merge conflict.** GitHub will not run `pull_request` workflows on a
+conflicted head at all: *"Workflows will not run on `pull_request` activity if
+the pull request has a merge conflict. The merge conflict must be resolved
+first."* ([Events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request),
+read 2026-08-23.) Every check this repository produces on a pull request is
+`pull_request`-triggered, so a conflict silences all three and none of them goes
+red.
+
+```bash
+gh api repos/hleserg/Attadipa/pulls/<n> --jq '{mergeable, mergeable_state}'
+```
+
+`false` / `dirty` is it. Fix it on the branch — `git fetch origin && git rebase
+origin/main`, or merge; either starts CI on the next commit. `mergeable: null`
+means GitHub has not finished computing, not that there is no conflict: ask
+again in a few seconds.
+
+**Nothing tells you this yet — check it by hand.** The watchdog job that would
+comment on the pull request and return an `agent:review` issue to `agent:ready`
+is written and tested but not on `main`: it is a `.github/workflows/` change and
+GitHub refuses those from the agent's App token. It waits in
+[`docs/automation/pending/`](pending/README.md) for a local session — three
+commands, [step 8 of the handoff](HANDOFF_LOCAL_CODER.md#8-land-the-workflow-half-of-a-change-a-cloud-session-could-not-push).
+
+**The wrong GitHub credential.** GitHub does not start workflow runs for events
+created with the built-in `GITHUB_TOKEN`, so a pull request opened with it looks
+fine and has no checks. Fix by installing <https://github.com/apps/claude> or by
+setting `ATTADIPA_AGENT_TOKEN` — see
 [CLAUDE_AUTOMATION](CLAUDE_AUTOMATION.md#2-the-github-credential--and-why-it-is-not-github_token).
+
+Both are written up with their evidence in
+[CI_AND_REVIEW_PIPELINE](CI_AND_REVIEW_PIPELINE.md#what-no-run-means-which-is-the-dangerous-one).
 
 ### An agent branch needs removing
 

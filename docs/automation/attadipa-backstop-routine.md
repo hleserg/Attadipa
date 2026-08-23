@@ -28,6 +28,7 @@ scenarios people reach for first:
 |---|---|
 | a `agent:ready` task nobody picked up | it dispatches one per tick, priority first |
 | an `agent:working` claim with nobody behind it | it returns the task to the queue after two hours |
+| an open pull request with a merge conflict, and therefore **no CI at all** | its `conflicts` job comments once per head commit and returns an `agent:review` issue to `agent:ready` — **written and tested, not yet on `main`**: a workflow change the agent's App token cannot push, waiting in [`pending/`](pending/README.md) |
 
 Two checks in two places is churn, and the second one to run finds nothing and
 bills for the privilege. So the backstop's scope is **what the watchdog cannot
@@ -51,9 +52,17 @@ implements them, CI builds and tests, `claude-pr-review.yml` reviews, and
 `claude-ci-repair.yml` fixes red CI. You duplicate none of that.
 
 `agent-queue-watchdog.yml` runs hourly inside GitHub Actions and already
-handles stranded `agent:ready` tasks and `agent:working` claims older than two
+handles stranded `agent:ready` tasks, `agent:working` claims older than two
 hours. DO NOT re-check those — it is the same check twice and the second one
 costs money to find nothing.
+
+A third watchdog scan is written but NOT YET DEPLOYED: open pull requests whose
+merge conflict is stopping GitHub from running any check on them at all. Until
+it is on `main`, a conflicted pull request with no checks IS worth reporting
+here, and the one line that establishes it is
+`gh api repos/hleserg/Attadipa/pulls/N --jq '{mergeable, mergeable_state}'` —
+`false` / `dirty` is the whole diagnosis. Once the job is deployed, stop:
+look for the watchdog's own comment on the pull request before saying anything.
 
 Your scope is what a workflow cannot detect about itself: that GitHub Actions
 has stopped running the automation at all, and that the pipeline's own state

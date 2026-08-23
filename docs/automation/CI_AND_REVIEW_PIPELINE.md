@@ -78,6 +78,70 @@ is needed it is written up as a plan — equipment, procedure, measured quantity
 pass and fail criteria — in `docs/testing/HIL_PLANS.md`, so that somebody with a
 board can execute it and record a real result.
 
+## What *no* run means, which is the dangerous one
+
+A red check argues with you. **A missing one does not**, and everything
+downstream reads "no failing check" as "not failing": the orchestrator merges
+once CI is green, the backstop's conditions are checks *on* a verdict that does
+not exist, `agent:review` says the work is with the reviewers indefinitely, and
+an agent pushing a fix to its own pull request gets no signal that its fix was
+never built.
+
+There are two causes, and they look identical from the pull request page.
+
+**1 — The wrong credential.** GitHub does not start workflow runs from events
+created with the built-in `GITHUB_TOKEN`, so a pull request opened with it has
+no checks and nothing wrong with it. Covered in
+[CLAUDE_AUTOMATION](CLAUDE_AUTOMATION.md#2-the-github-credential--and-why-it-is-not-github_token).
+
+**2 — A merge conflict**, and this one is documented rather than inferred:
+
+> Workflows will not run on `pull_request` activity if the pull request has a
+> merge conflict. The merge conflict must be resolved first.
+>
+> — [Events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request),
+> docs.github.com, read 2026-08-23
+
+GitHub builds `refs/pull/N/merge` for `pull_request` workflows to run against,
+and a conflicted head has no such ref to build. The same page names one
+exception — `pull_request_target` workflows run anyway — and **this repository
+has none**, so the exception buys nothing here. Every check it produces on a
+pull request is `pull_request`-triggered: `ci.yml` and `codeql.yml` take `push`
+for `main` only, and `claude-pr-review.yml` has no other trigger. A conflict is
+therefore total: three workflows, zero runs, nothing red.
+
+Observed on #65 (head `210b880`, two pushes, `total_count: 0`; resolving the
+conflict started all three within seconds of `a41b114`) and again on #110 (head
+`244c4c0`, 2026-08-23) — where the combined-status endpoint answered
+**`state: success`**, because a third-party app had left one passing status on a
+commit no workflow had ever built. So the signal is not merely absent. It can be
+positively green.
+
+**The guard, and what is and is not switched on.** The rule that decides whether
+to say anything is
+[`pr-conflict-decision.sh`](../../.github/scripts/pr-conflict-decision.sh), a
+file rather than shell inside a workflow so that
+[`pr-conflict-decision-test.sh`](../../.github/tests/pr-conflict-decision-test.sh)
+can execute it — in particular over the three states of `mergeable`, whose third
+state is `null` while GitHub computes the answer. Reading that as `false` would
+accuse every push in flight of a conflict it does not have, hourly, forever,
+which is a worse guard than none.
+
+It says one thing per *head commit* — not per hour, and not per pull request,
+because a new push that still conflicts also got no CI and deserves its own line
+— and when the pull request's `Fixes #N` names an issue carrying `agent:review`,
+that issue goes back to `agent:ready`, because "with the reviewers" is false when
+there is no verdict for them to have reached.
+
+**The watchdog job that calls it is not on `main` yet.** It is a `.github/`
+workflow change, and a cloud agent's App token is refused by GitHub on those —
+so it waits in
+[`docs/automation/pending/`](pending/README.md) for a local session, which is
+[step 8 of the handoff](HANDOFF_LOCAL_CODER.md#8-land-the-workflow-half-of-a-change-a-cloud-session-could-not-push).
+Until that lands, this section describes a rule that is tested and a guard that
+is not running: check `mergeable` by hand, as
+[RECOVERY](RECOVERY.md#a-pull-request-has-no-ci-checks-at-all) says.
+
 ## The independent review
 
 `claude-pr-review.yml` runs in a context that did not write the code, because an

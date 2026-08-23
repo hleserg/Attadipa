@@ -585,6 +585,82 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 ## Recently completed
 
+- **A pull request with a merge conflict gets no CI at all, and nothing said
+  so.** [#74](https://github.com/hleserg/Attadipa/issues/74). #65 sat with
+  `total_count: 0` check runs across two pushes — not a red check, *no* check —
+  and the Actions list held nothing for the branch. The cause was a merge
+  conflict, and GitHub documents the consequence rather than leaving it to be
+  inferred: *"Workflows will not run on `pull_request` activity if the pull
+  request has a merge conflict. The merge conflict must be resolved first."*
+  ([Events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request),
+  read 2026-08-23). The issue's own framing was slightly **wider** than the
+  documented rule and is corrected here: the same page names one exception,
+  `pull_request_target`, which runs anyway. This repository has no such
+  workflow, so the exception buys nothing and the blast radius is total — CI,
+  CodeQL and the review are all `pull_request`-triggered, all three go silent,
+  and **none of them goes red**. Everything downstream reads "no failing check"
+  as "not failing". Re-verified live rather than taken from the issue: on
+  2026-08-23 at 00:05Z #110's head `244c4c0` reported `mergeable: false` /
+  `mergeable_state: dirty` with zero check runs while the newest runs on the
+  branch were still on the previous head — **and the combined-status endpoint
+  answered `state: success`**, because a third-party app had left one passing
+  status on a commit no workflow had ever built. So the signal is not merely
+  absent; it can be positively green. Fixed by a fourth job in
+  `agent-queue-watchdog.yml` that comments on the conflicted pull request and,
+  when its `Fixes #N` names an issue carrying `agent:review`, moves that issue
+  back to `agent:ready` — `agent:review` **removed**, not merely joined, because
+  `queue-scan.jq` drops anything carrying it and adding `agent:ready` beside it
+  would promise a pick-up the filter refuses to deliver, which is
+  [#82](https://github.com/hleserg/Attadipa/issues/82) in a second place. The
+  repeat bound is **one comment per head commit**, keyed on a
+  `<!-- attadipa-conflict:<sha> -->` marker: a pull request left conflicted for
+  a week gets one comment, and a new push that still conflicts gets one more,
+  because that push also got no CI. The decision is
+  `.github/scripts/pr-conflict-decision.sh` rather than shell inside the
+  workflow, for the reason `handover-decision.sh` is a file, and
+  `.github/tests/pr-conflict-decision-test.sh` runs it in CI over **33
+  assertions**. The guard's own failure mode is the opposite of the defect and
+  easier to ship: `mergeable` is a **three-state** field whose third state is
+  `null` while GitHub computes the answer, so every push passes through it, and
+  a guard reading `null` as `false` would accuse every push in flight, hourly,
+  forever. The test proves it does not, and was proved to fail against three
+  mutations — reading `null` as `false` (26/7), keying the conflict on
+  `mergeable_state == "dirty"` alone as the issue's prose phrases it (22/11,
+  including every conflicted **draft**, which is every pull request an agent
+  opens), and matching labels by substring so `agent:reviewed` reads as
+  `agent:review` (30/3). `mergeable` is the assertion and `mergeable_state` only
+  corroborates, because the second is not in the same REST reference and its
+  value set has already moved under this repository: it once returned `draft`
+  for a draft, masking every other state, and on 2026-08-23 all four open drafts
+  reported `clean` or `unstable` instead.
+
+  **Half of it is on `main` and half is not, and that half is blocked on a
+  person.** The rule, its test and the documentation are here. The watchdog job
+  that calls the rule is a `.github/workflows/` change, and **GitHub refuses to
+  let a GitHub App create or update a workflow file** unless the installation
+  holds the `workflows` permission, which `claude[bot]` does not:
+  `refusing to allow a GitHub App to create or update workflow ... without
+  workflows permission`, on the push, not as a warning. That is why every
+  workflow change in #85, #96 and #113 carries `committer: Claude` — a local
+  session — while `3019fcd`, the one commit in #85 an App actually made, touches
+  only `.github/scripts/` and `.github/tests/`. Rediscovered three times and now
+  written down: `docs/automation/pending/74-watchdog-conflicts-job.patch`, with
+  the three commands to land it as step 8 of
+  [HANDOFF_LOCAL_CODER](docs/automation/HANDOFF_LOCAL_CODER.md#8-land-the-workflow-half-of-a-change-a-cloud-session-could-not-push).
+  So the guard is **not running**, and no document here says it is.
+
+  **The job has also never run, which is a separate honesty from the one
+  above** — it is a schedule and none has fired. Its shell was exercised offline
+  against fixtures with a stubbed `gh` (five pull requests: conflicted with an
+  `agent:review` issue, clean, a conflicted draft already commented on, one that
+  is `null` on the first read and `dirty` on the retry, and one the API refuses
+  entirely), and every jq expression and the GraphQL query were run against the
+  live API read-only. That is not a run and is not recorded as one. Documented
+  in
+  [CI_AND_REVIEW_PIPELINE](docs/automation/CI_AND_REVIEW_PIPELINE.md#what-no-run-means-which-is-the-dangerous-one)
+  with the source, and in [RECOVERY](docs/automation/RECOVERY.md) beside the
+  `GITHUB_TOKEN` cause it is constantly mistaken for.
+
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the
   built-in `GITHUB_TOKEN`, so the actor is `github-actions[bot]`;

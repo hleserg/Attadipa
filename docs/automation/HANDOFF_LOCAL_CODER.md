@@ -347,6 +347,51 @@ re-run hoping for a different result.
 **Note:** commenting `@claude` yourself works because you have write access. It
 does not answer task 1 — that is still about ChatGPT's own account.
 
+## 8. Land the workflow half of a change a cloud session could not push
+
+**This is a standing item, not a one-off.** It is here because it has now
+happened three times and each time was rediscovered from scratch.
+
+A cloud session's credential is a `claude[bot]` App installation token, and
+GitHub refuses outright to let an App create or update anything under
+`.github/workflows/` unless the installation holds the **`workflows`**
+permission. Not a warning — the push is rejected:
+
+```
+! [remote rejected] claude/... -> claude/...
+  (refusing to allow a GitHub App to create or update workflow
+   `.github/workflows/agent-queue-watchdog.yml` without `workflows` permission)
+```
+
+Observed 2026-08-23 on issue #74. It is also why every workflow change in #85,
+#96 and #113 carries `committer: Claude` — a local session — while the one
+commit in #85 that an App actually made (`3019fcd`) touches only
+`.github/scripts/` and `.github/tests/`.
+
+So a cloud agent whose fix lives in a workflow file writes everything it can,
+puts the rest in `docs/automation/pending/` as a patch, and stops. Landing it is
+one command here:
+
+```bash
+git fetch origin && git checkout <the agent's branch>
+git apply docs/automation/pending/<name>.patch
+git rm docs/automation/pending/<name>.patch
+git commit -am "Apply the workflow half from a local session" && git push
+```
+
+**Delete the patch in the same commit that applies it.** A patch file that
+outlives its application is a second copy of a workflow, and the second copy is
+the one that goes stale.
+
+**The standing fix, which is the owner's call and not an agent's.** Granting the
+Claude App installation `Workflows: Read and write` removes this step for good.
+Against it: an agent could then edit `permissions:` blocks and `if:` gates in the
+files that decide who may drive a billable writer, which is the security boundary
+itself. For it: the agent already holds `contents: write` and can therefore
+already edit `.github/scripts/`, which those workflows execute — so the boundary
+is thinner than the permission split suggests. Either answer is defensible; what
+is not defensible is discovering the question again next month.
+
 ## Do not do these
 
 - Do not disable Issues, or use interaction limits.
