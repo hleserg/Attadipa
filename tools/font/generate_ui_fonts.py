@@ -261,8 +261,8 @@ def write_stamp() -> None:
 def check_against_stamp() -> int:
     problems = stamp.verify(stamp_path(), inputs_digest(), outputs())
     if problems:
-        print(f"the generated fonts in {OUT_DIR.relative_to(ROOT)} do not match "
-              f"their stamp:\n", file=sys.stderr)
+        print(f"generate_ui_fonts: {OUT_DIR.relative_to(ROOT)} does not match its "
+              f"stamp:\n", file=sys.stderr)
         for problem in problems:
             print(f"  * {problem}", file=sys.stderr)
         print("\nRun: python3 tools/font/generate_ui_fonts.py", file=sys.stderr)
@@ -298,6 +298,9 @@ def check_against_fresh_generation(ttf: Path, converter: list[str]) -> int:
     differences += stamp.verify(stamp_path(), inputs_digest(), outputs())
 
     if differences:
+        print(f"generate_ui_fonts: {OUT_DIR.relative_to(ROOT)} is not what "
+              f"lv_font_conv {CONVERTER_VERSION} produces from these inputs:\n",
+              file=sys.stderr)
         for difference in differences:
             print(f"  * {difference}", file=sys.stderr)
         print("\nRun: python3 tools/font/generate_ui_fonts.py", file=sys.stderr)

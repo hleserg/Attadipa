@@ -72,10 +72,30 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
+def basenames(outputs: Sequence[Path]) -> list[str]:
+    """The names a stamp records, refusing a set that cannot be recorded.
+
+    A stamp keys on the file name, because both generated trees are one flat
+    directory and a relative path would only make the file harder to read. That
+    is an assumption, so it is checked rather than assumed: two outputs sharing
+    a basename would silently become one line, and one of them would then be
+    unguarded while the check still reported the full count.
+    """
+    names = [path.name for path in outputs]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            f"two generated files share a name: {', '.join(duplicates)}. A stamp "
+            f"records names, so this tree needs relative paths and this module "
+            f"needs to learn them.")
+    return names
+
+
 def render(explanation: str, inputs_digest: str, outputs: Sequence[Path]) -> str:
     """The stamp's exact text, so a caller can compare without writing a file."""
     if not DIGEST.match(inputs_digest):
         raise ValueError(f"not a sha256 digest: {inputs_digest!r}")
+    basenames(outputs)
     lines = [f"# {line}".rstrip() for line in explanation.strip().splitlines()]
     lines.append(f"inputs  {inputs_digest}")
     for path in outputs:
@@ -152,6 +172,7 @@ def verify(stamp_path: Path, inputs_digest: str, outputs: Iterable[Path]) -> lis
     one makes them look the same.
     """
     expected = list(outputs)
+    basenames(expected)
     if not stamp_path.exists():
         return [f"{stamp_path.name} is missing — this tree has never been generated, "
                 f"or the stamp was deleted"]

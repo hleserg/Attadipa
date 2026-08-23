@@ -264,15 +264,18 @@ def drop_output_line(stamp_file: Path, name: str) -> None:
 
 
 def swap_recorded_hash(stamp_file: Path, name: str) -> None:
-    """Replace one file's recorded digest with another file's — still valid hex."""
+    """Give one file another file's recorded digest — still 64 valid hex characters.
+
+    The point of this case is that the stamp stays perfectly well-formed. The
+    doctored-hash case is rejected by the parser before anything is compared;
+    this one can only be caught by hashing the file and looking.
+    """
     lines = stamp_file.read_text(encoding="utf-8").splitlines()
-    outputs = [line for line in lines if line.startswith("output  ")]
-    target = next(line for line in outputs if line.endswith(f"  {name}"))
-    donor = next(line for line in outputs if line is not target)
-    replaced = f"output  {donor.split()[1]}  {name}"
-    stamp_file.write_text(
-        "\n".join(replaced if line is target else line for line in lines) + "\n",
-        encoding="utf-8", newline="\n")
+    outputs = [index for index, line in enumerate(lines) if line.startswith("output  ")]
+    target = next(index for index in outputs if lines[index].endswith(f"  {name}"))
+    donor = next(index for index in outputs if index != target)
+    lines[target] = f"output  {lines[donor].split()[1]}  {name}"
+    stamp_file.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def image_cases(sandbox: Path) -> None:
