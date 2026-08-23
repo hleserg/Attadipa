@@ -736,6 +736,66 @@ four more things at no cost:
 
 ## Recently completed
 
+- **T-009's invariant was a property of the formatting, not of the code.**
+  [#68](https://github.com/hleserg/Attadipa/issues/68).
+  `tools/ui/check_raw_values.py` read one physical line at a time, so the same
+  call got two different verdicts depending on where the line breaks fell:
+  `lv_obj_set_style_pad_all(obj, 12, 0)` was refused, and the identical call
+  wrapped across four lines — which is what `clang-format` produces at a narrow
+  enough column — returned `1 file(s) clean`. Nobody had to mean it; ordinary
+  formatting was enough to walk a raw pixel count past a green
+  `ui_no_raw_values`. Reproduced on `359b02f`, 101 commits after the commit the
+  finding was made against, so the staleness check said implement rather than
+  close. The same defect had a second face: the setter list was hand-written, so
+  `lv_obj_set_size(obj, 10, 20)` and `lv_obj_set_pos(obj, 10, 20)` went through
+  in **any** formatting, having never been on it. Both are one mistake — matching
+  surface syntax instead of the call — and the fix is three passes: blank the
+  comment and string bodies keeping every offset, walk each known LVGL entry
+  point forward balancing parentheses to the end of its argument list, and judge
+  arguments **by position** against the signature. A bounded tokenizer, and
+  deliberately not a C++ front end; the parsers examined and why none of them is
+  in the primary CI gate are in
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md). The inventory of which entry
+  points take a length, a duration or a colour is now read out of the pinned
+  LVGL v9.5.0 headers rather than remembered — which is how the third hole
+  surfaced: `lv_anim_set_time` is a **v8 compatibility macro** in v9, and the
+  old list knew only the compatibility spellings, so `lv_anim_set_duration`, the
+  name a v9 screen would actually reach for, was the one nobody checked.
+  Thirty negative fixtures and twenty-eight positive ones, most of them the
+  same call written twice — one line and wrapped — because the two disagreeing
+  was the whole defect; the previous suite was single-line throughout and would
+  never have seen it. Run against the pre-fix checker, the new suite finds
+  **twenty negatives it let through and one positive it wrongly refused** — a
+  colour inside a string literal, which the line-at-a-time reader had no way to
+  tell from code — so the fixtures are known to bite rather than assumed to.
+  Three mutants (blanking off, the colour rule loosened, the zero exemption
+  dropped) turn the suite red. The positives are
+  the other half of the contract: a repeat count, a rotation in tenths of a
+  degree, a gradient stop, a flex weight and an array index are numbers in UI
+  code that are **not** pixel counts, and they are tests rather than a comment
+  saying so.
+
+- **The unattended merge sweep failed before it looked at a single pull
+  request.** `pr-merge-sweep.yml` merged green on 2026-08-23 and its cron had
+  not yet registered, so it was dispatched by hand to get the evidence its own
+  merge commit recorded as `NOT EXECUTED`. It exited 1 in eleven seconds:
+  `gh` refuses `--slurp` together with `--jq` — *"the `--slurp` option is not
+  supported with `--jq` or `--template`"* — and returns before making a request.
+  The workflow carried the combination three times. The first is the fatal one;
+  the other two are worse, because both are `|| CODEX_*=""` and the rejection
+  therefore landed as *"could not read its comments, leaving it alone"* on every
+  candidate — a sweep that decides nothing and reads as a sweep with nothing to
+  decide, 48 times a day. Nothing in the repository could have caught it:
+  shellcheck saw a well-formed command, actionlint saw valid YAML, and the
+  workflow only runs on a schedule. Fixed by piping into a separate `jq`, which
+  is what `agent-queue-watchdog.yml` already did and is why the watchdog was
+  unaffected, plus `.github/tests/gh-api-usage-test.sh` — a scan over every
+  workflow, with seven fixtures proving the scan itself catches the shape and
+  leaves the recommended one alone, verified to flag all three lines on the tree
+  as it was. The general lesson is the one that produced this: **dispatch a new
+  scheduled workflow once by hand instead of waiting for its cron**, because
+  reading it had already passed it.
+
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the
   built-in `GITHUB_TOKEN`, so the actor is `github-actions[bot]`;
