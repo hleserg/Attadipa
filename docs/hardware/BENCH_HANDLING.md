@@ -27,7 +27,7 @@ worst one.
 
 | | Effect | Cost to development |
 |---|---|---|
-| **Screen timeout, shortest available** | removes the static image entirely | **none** — see below |
+| **Screen timeout, shortest available** | removes the static image entirely | **none** — see below. **Not available on the received unit**: the vendor firmware ships no timeout, as two paragraphs above says, so this row is what a *firmware* should offer, not something anyone can select today |
 | **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | none |
 | **Unplug** | stops it completely | the unit is not reachable |
 
@@ -81,6 +81,17 @@ sequence; no datasheet for the emitter has been obtained. Class figures for
 "AMOLED" are not this part's. **The residual risk at minimum brightness is
 `UNKNOWN`, not "safe"**, and a number here would be an estimate wearing a
 measurement's clothes.
+
+What the repository *does* have is a hedged bound from two comparable modules,
+and it is worth having because the owner's question was about a working session:
+[WAVESHARE_ARRIVAL](../research/WAVESHARE_ARRIVAL.md) §3.5 reads them together as
+*"one debugging afternoon of a static frame will not leave visible sticking …
+but twelve hours of full white is roughly 8 % of a rated white-pattern lifetime,
+so repeated sessions spend real life"*, and marks both *"it will burn in this
+afternoon"* and *"it is free"* unsupported. Those figures are at white and at
+maximum luminance, so against OD-16's minimum brightness they are a ceiling
+rather than an estimate — which is why the residual risk stays `UNKNOWN` and
+this paragraph is a bound, not a number.
 
 ## Identify a board by its USB serial, never by its port
 

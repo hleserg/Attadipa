@@ -564,7 +564,11 @@ writing a byte to the owner's flash.
   this host and **both enumerate as `303a:1001`** — the watch and a V4 MeshCore
   node, which is also an ESP32-S3. `/dev/ttyACM0` is not an identity. Every write
   in this session went through a guard that resolves the tty from the unit's USB
-  serial and exits non-zero rather than guessing. The serial string is
+  serial and exits non-zero rather than guessing — **that guard was this
+  session's own script and did not survive it. No shared resolver exists: this
+  bullet is an obligation on the next writer, not a rail already in place, and
+  building one is [T-116](../../TASKS.md).** The rules for the unit between
+  sessions are [BENCH_HANDLING](../hardware/BENCH_HANDLING.md). The serial string is
   deliberately not reproduced here: on an ESP32-S3 the USB serial *is* the base
   MAC, and that is the owner's, not the repository's — see
   [`WAVESHARE_EFUSE_READ.md`](WAVESHARE_EFUSE_READ.md) §0.

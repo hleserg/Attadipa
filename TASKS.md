@@ -1645,18 +1645,22 @@ stale silently. The protocol is
 ### T-116 · Nothing resolves a board by its USB serial, and two boards answer to `ttyACM0`
 
 - **Priority:** P1 — cheap, and the failure it prevents writes to the wrong
-  device. T-114 will flash things unattended.
-- **Dependencies:** none.
+  device. It is P1 **now, with no caller**, because the rule is already written
+  down in two places as though it were satisfied, which is worse than its being
+  absent.
+- **Dependencies:** none, and it must not acquire any. The point is that the
+  resolver exists **before** the first thing that would need it, so no writer
+  ever has to choose between shipping and building a rail.
 - **Why now:** two ESP32-S3 devices are attached to the development host and
   **both enumerate as `303a:1001`** — the Waveshare and a V4 MeshCore node that
   is the owner's. `/dev/ttyACM0` names whichever enumerated first.
-  [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md) states the rule that a tool
-  must resolve the port from the unit's USB serial and exit non-zero rather than
-  guess — and **no such tool exists**. The guard every write in
+  [WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md) §7
+  and [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md) both state the rule that
+  a tool must resolve the port from the unit's USB serial and exit non-zero
+  rather than guess. **No such tool exists.** The guard every write in
   [#110](https://github.com/hleserg/Attadipa/pull/110) went through was that
-  session's own script and did not survive it, so the rule is currently an
-  obligation with nothing behind it.
-- **Goal:** one shared resolver, used by everything that opens a port.
+  session's own script and did not survive it.
+- **Goal:** one shared resolver, and a check that keeps it the only route.
   1. Map USB serial → tty, refuse on no match and on more than one match, and
      exit non-zero either way. Never fall back to "the only one there is".
   2. **The serial string must not be written down.** On an ESP32-S3 it *is* the
@@ -1667,10 +1671,17 @@ stale silently. The protocol is
      `open()`, and a caller that needs a RAM image alive must hold the port open
      ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
      §2.2, §2.3).
-- **Acceptance:** the resolver exists, has host tests covering no-match,
-  one-match and ambiguous-match, and every tool in `tools/` that opens a serial
-  port goes through it. `tools/watch/serial_transport.py` is the first caller
-  and is still `NOT EXECUTED — HARDWARE REQUIRED` until T-114.
+- **Acceptance:** the resolver exists and has host tests covering no-match,
+  one-match and ambiguous-match — **and a lint that fails the build when
+  anything under `tools/` reaches a serial port without it** (`import serial`,
+  `serial.Serial`, `esptool`, a literal `/dev/tty…`).
+  [`tools/docs/check_docs.py`](tools/docs/check_docs.py) is the model for a
+  repository check with an exemption list that has to state its reason.
+  **The lint is not optional**, because today **nothing under `tools/` opens a
+  serial port at all** — every other criterion here is satisfied by the empty
+  set, and a task that can be marked done without a caller documents a rail that
+  connects to nothing. The lint is the part that still means something when the
+  first caller arrives.
 - **Definitely not:** guessing. A resolver that picks a device when it cannot
   identify one is the bug with extra steps.
 
