@@ -347,6 +347,13 @@ def call_arguments(code: str, open_paren: int) -> tuple[list[tuple[str, int]], i
     parenthesis, or None if the call does not close within MAX_CALL_CHARS.
     Nesting is counted over all three bracket kinds, so a comma inside
     `px(dp_of(a, b))` or `table[i, j]` is not an argument separator.
+
+    Angle brackets are deliberately *not* counted, because `a < b, c > d` is
+    two arguments and `foo<a, b>()` is one, and telling those apart is the
+    ambiguity that needs a real parser. Every entry point in ENTRY_POINTS is
+    from LVGL's C API and takes no template argument, so the case cannot arise
+    at the position being read — and if it somehow did, the misaligned argument
+    would name something and be passed over rather than misreported.
     """
     arguments: list[tuple[str, int]] = []
     depth = 0
