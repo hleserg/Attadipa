@@ -663,6 +663,60 @@ four more things at no cost:
 
 ## Recently completed
 
+- **A degree of longitude at 89.9°N measured 1.96 km instead of 194 m, and it
+  got worse the closer you stood to the pole.**
+  [#28](https://github.com/hleserg/Attadipa/issues/28). `lon_e7_to_mm`
+  (`core/src/geo.cpp`) took the mean latitude, divided it by 1e7 to get a whole
+  degree, and used that as the index into `kCosTable1024` — so the fractional
+  part was discarded and every latitude in [89.0°, 90.0°) was scaled by
+  `cos 89°`. The overstatement is unbounded rather than merely large: inside
+  that last degree the true longitude scale falls from 0.01745 to zero while a
+  step function holds 0.01745, which is ten times over at 89.9° and a thousand
+  times over at 89.999°. Everywhere below 89° the same defect is a real but
+  unremarkable sub-percent error, which is why nothing noticed.
+  **What it would have cost:** ADR-0011 §6 makes implied speed and motion
+  disagreement evidence against a fix, and `TrustEvaluator::observe` computes
+  the first by dividing exactly this distance by an interval. A stationary
+  device at a high latitude, whose longitude wanders by the metre as any
+  receiver's does, would have produced kilometre-scale movement against an
+  accelerometer saying the wrist never moved — `PositionJump` and degraded
+  trust, for being at a high latitude, which is not a fault. **The fix** is
+  linear interpolation between the two bracketing table entries at the full
+  1e-7-degree resolution: integers throughout, no new table, no floating point
+  in the hot path, `kCosTable1024` and the `distance_mm()` contract untouched,
+  and every product bounded in the source — the widest is 2.0e10 × 2^24 ≈
+  3.4e17, a factor of 27 below the top of the type. Two details are load-bearing
+  and both are commented: the interpolation is written as a weighted mean rather
+  than the algebraically identical `lower + (upper − lower) · frac`, because the
+  latter subtracts two nearly equal numbers in the last degree and loses three
+  digits of a four-digit value; and the cosine is carried at 2^24 rather than the
+  table's 1024, because at 1024 the interpolated factor inside the last degree
+  rounds to *zero* — the same defect pointed the other way, and the direction
+  that silently passes a `distance > threshold` test.
+  **The envelope is measured, not claimed.** `tests/test_position.cpp` now
+  re-derives it on every run against an independent haversine reference — a
+  different method, no cosine table, no mean-latitude reduction, no
+  antimeridian case, because `sin(dlon/2)` is periodic and wraps for free.
+  Within **0.9%** from the equator to 89.999°, worst case 0.76%, flat rather
+  than growing towards the pole; inside the last 111 m the fixed-point quantum
+  takes over and the relative error eventually reaches 100%, where a whole
+  degree of longitude is a third of a millimetre — so what is bounded there is
+  the absolute error, under 20 mm, and the test says so instead of widening a
+  tolerance. The residual 0.7% is *not* the interpolation: it is
+  `kCosTable1024[89] = 18` against a true 17.871, and it is smaller than the
+  equirectangular approximation's own error at the same latitude, so a finer
+  table would buy nothing that survives the method it feeds.
+  Regression matrix covering 0°/45°/80°/89°/89.5°/89.9°/89.99°/89.999° in both
+  hemispheres, a swept envelope, the antimeridian at 89.9°N as well as at the
+  equator, the grid corners, coincident points, symmetry and saturation. Every
+  new check confirmed red against the pre-fix code — 10 017 of them — while
+  every pre-existing distance test passed against it, which is exactly why the
+  suite could not see this: they only ever asked whole degrees. Host, strict
+  warnings (`-Werror -Wconversion -Wsign-conversion -Wold-style-cast`), Clang,
+  ASan+UBSan with `-fno-sanitize-recover=all`, and the simulator build all
+  clean. **No hardware involved and none needed** — the defect and its fix are
+  entirely host-reproducible arithmetic.
+
 - **The unattended merge sweep failed before it looked at a single pull
   request.** `pr-merge-sweep.yml` merged green on 2026-08-23 and its cron had
   not yet registered, so it was dispatched by hand to get the evidence its own

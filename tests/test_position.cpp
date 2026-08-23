@@ -73,6 +73,84 @@ void check_near(std::uint32_t actual, std::uint64_t expected, unsigned percent, 
 #define CHECK_NEAR(actual, expected, percent) \
     check_near((actual), (expected), (percent), #actual, __LINE__)
 
+// CHECK_NEAR's one metre of unconditional slack is right for a continental
+// distance and useless at the pole, where the entire answer is 194 mm and a
+// metre of slack would pass an implementation returning zero. These two carry
+// no floor: one states the tolerance as a fraction, the other in millimetres,
+// and which one a test wants depends on whether the error being bounded scales
+// with the answer.
+void check_relative(std::uint32_t actual, double expected, double percent, const char* what,
+                    int line)
+{
+    const double deviation = (static_cast<double>(actual) - expected) / expected * 100.0;
+    const double magnitude = deviation < 0.0 ? -deviation : deviation;
+    if (!(magnitude <= percent)) {
+        std::fprintf(stderr, "FAIL line %d: %s is %u mm, expected %.1f mm — %.3f%% out, %.3f%% allowed\n",
+                     line, what, actual, expected, magnitude, percent);
+        ++failures;
+    }
+}
+
+#define CHECK_RELATIVE(actual, expected, percent) \
+    check_relative((actual), (expected), (percent), #actual, __LINE__)
+
+void check_within(std::uint32_t actual, double expected, double tolerance_mm, const char* what,
+                  int line)
+{
+    const double deviation = static_cast<double>(actual) - expected;
+    const double magnitude = deviation < 0.0 ? -deviation : deviation;
+    if (!(magnitude <= tolerance_mm)) {
+        std::fprintf(stderr, "FAIL line %d: %s is %u mm, expected %.3f mm — %.3f mm out, %.3f allowed\n",
+                     line, what, actual, expected, magnitude, tolerance_mm);
+        ++failures;
+    }
+}
+
+#define CHECK_WITHIN(actual, expected, tolerance_mm) \
+    check_within((actual), (expected), (tolerance_mm), #actual, __LINE__)
+
+// ---------------------------------------------------------------------------
+// An independent reference for the distance tests.
+//
+// Computed by a different method than the thing it checks: haversine, in double
+// precision, on a sphere. No cosine table, no whole-degree index, no
+// mean-latitude reduction, and no explicit antimeridian case — `sin(dlon / 2)`
+// is periodic, so a wrap that the implementation has to handle deliberately
+// falls out of the reference for free. A reference assembled from the same
+// parts as the implementation agrees with it about its own mistakes; this one
+// cannot.
+//
+// The radius is WGS-84's semi-major axis, because that is the sphere the
+// implementation already implies: kMillimetresPerLatE7Num of 11 132 is
+// 111 320 m per degree, which is 6 378 137 m of radius to six figures. Choosing
+// a different sphere — the mean radius 6 371 009 m, say — would fold a fixed
+// 0.11% disagreement about *which* sphere into every tolerance below and hide
+// the arithmetic these tests exist to measure. That 0.11% is the method's, it
+// predates this file, and the one test that cares about it says so.
+constexpr double kPi                 = 3.14159265358979323846;
+constexpr double kReferenceRadiusMm  = 6378137000.0;
+
+double radians(double degrees) { return degrees * kPi / 180.0; }
+
+double reference_distance_mm(Position a, Position b)
+{
+    const double lat1 = radians(a.latitude_e7 / 1e7);
+    const double lat2 = radians(b.latitude_e7 / 1e7);
+    const double dlat = lat2 - lat1;
+    const double dlon = radians(b.longitude_e7 / 1e7 - a.longitude_e7 / 1e7);
+
+    const double sin_half_lat = __builtin_sin(dlat / 2.0);
+    const double sin_half_lon = __builtin_sin(dlon / 2.0);
+    const double h            = sin_half_lat * sin_half_lat +
+                     __builtin_cos(lat1) * __builtin_cos(lat2) * sin_half_lon * sin_half_lon;
+
+    return 2.0 * kReferenceRadiusMm * __builtin_asin(__builtin_sqrt(h));
+}
+
+// A position at `lat_e7`, and the same one `dlon_e7` to the east.
+Position at_lat(std::int32_t lat_e7) { return Position{lat_e7, 0}; }
+Position east_of(std::int32_t lat_e7, std::int32_t dlon_e7) { return Position{lat_e7, dlon_e7}; }
+
 MonotonicTime at(std::uint64_t ms) { return MonotonicTime{ms}; }
 
 GnssObservation fix_at(std::uint64_t ms)
@@ -274,6 +352,243 @@ void test_a_degree_of_longitude_shrinks_with_latitude()
     // Near the pole a degree of longitude has almost collapsed: cos 89° is
     // about 0.01745, so 111.32 km becomes about 1.94 km.
     CHECK_NEAR(distance_mm(Position{890000000, 0}, Position{890000000, 10000000}), 1943000ULL, 3);
+
+    // 89° is where this test used to stop, and stopping there is what let the
+    // defect below live: every latitude in [89°, 90°) returned this same
+    // 1.94 km, and only the whole degrees were ever asked.
+}
+
+// The regression this file was reopened for.
+//
+// `distance_mm()` indexed the cosine table by the *truncated* degree of the
+// mean latitude, so everything from 89.0° to 89.999999° was scaled by cos 89°.
+// A degree of longitude at 89.9°N is about 194 m; the implementation returned
+// 1 956 796 mm — ten times over — and by 89.999° it was a thousand times over,
+// because inside that last degree the true scale falls to zero while a step
+// function holds its last value.
+//
+// Ten times a distance is not a rounding error to a jump detector. ADR-0011 §6
+// makes implied speed and motion disagreement evidence against the fix, so a
+// stationary device at a high latitude, whose longitude wanders by the metre as
+// any receiver's does, would have produced kilometre-scale movement, an
+// implausible speed, and a position the trust engine degrades — for being at a
+// high latitude, which is not a fault.
+//
+// The check is deliberately blunt as well as precise: kilometres and metres are
+// far enough apart that the loose bound alone would have caught it, and a
+// future change that reintroduces the truncation fails the loose bound whatever
+// it does to the tolerances.
+void test_a_degree_of_longitude_near_the_pole_is_metres_not_kilometres()
+{
+    const Position west = at_lat(899000000);              // 89.9°N
+    const Position east = east_of(899000000, 10000000);   // one degree east
+
+    CHECK(distance_mm(west, east) < 1000000U);            // under a kilometre, blunt
+    CHECK_RELATIVE(distance_mm(west, east), reference_distance_mm(west, east), 1.0);
+
+    // The southern hemisphere is the same physics and a different sign, which is
+    // exactly the sort of thing an abs() in the wrong place gets wrong.
+    const Position south_west = at_lat(-899000000);
+    const Position south_east = east_of(-899000000, 10000000);
+    CHECK(distance_mm(south_west, south_east) == distance_mm(west, east));
+
+    // And it keeps collapsing rather than sticking. Each rung stands a tenth as
+    // far from the pole as the one above it, so each answer must be about a
+    // tenth of the one before — a shape the step function cannot produce at any
+    // tolerance, because it returned the same number for all four.
+    const std::int32_t ladder[] = {890000000, 899000000, 899900000, 899990000};
+    std::uint64_t previous = 0;
+    for (std::int32_t lat_e7 : ladder) {
+        const Position a = at_lat(lat_e7);
+        const Position b = east_of(lat_e7, 10000000);
+        CHECK_RELATIVE(distance_mm(a, b), reference_distance_mm(a, b), 1.0);
+
+        const std::uint64_t here = distance_mm(a, b);
+        if (previous != 0) {
+            CHECK(here * 9U < previous);   // shrank by at least nine
+            CHECK(here * 11U > previous);  // but not by more than eleven
+        }
+        previous = here;
+    }
+}
+
+// The matrix the review asked for, every entry against the independent
+// reference rather than against a number this file also derives from a cosine
+// table. 1° of longitude at each latitude, north and south.
+void test_the_longitude_scale_matches_a_spherical_reference()
+{
+    const std::int32_t latitudes[] = {
+        0,           // equator
+        450000000,   // 45°
+        800000000,   // 80°
+        890000000,   // 89°
+        895000000,   // 89.5° — inside the interval the old code could not see
+        899000000,   // 89.9°
+        899900000,   // 89.99°
+        899990000,   // 89.999°
+    };
+
+    for (std::int32_t lat_e7 : latitudes) {
+        for (std::int32_t sign : {1, -1}) {
+            const Position a = at_lat(sign * lat_e7);
+            const Position b = east_of(sign * lat_e7, 10000000);
+            CHECK_RELATIVE(distance_mm(a, b), reference_distance_mm(a, b), 1.0);
+            CHECK(distance_mm(a, b) == distance_mm(b, a));
+        }
+    }
+}
+
+// The error envelope as a measurement rather than a claim. Every documented
+// bound in geo.h and geo.cpp is re-derived here on every run, so a change that
+// quietly widens it fails rather than being noticed by whoever next reads a
+// comment.
+//
+// 1% against a haversine on the sphere the implementation implies. The measured
+// worst case is 0.76%, and it is not the interpolation: it is the rounding of
+// kCosTable1024's own entries, which is why the bound is flat from the equator
+// to 89.999° instead of growing towards the pole.
+void test_the_error_envelope_holds_at_every_latitude()
+{
+    const std::int32_t dlon_e7 = 10000000;  // 1°, the widest baseline worth checking here
+
+    // Two bands, two resolutions: coarse where the old code was merely
+    // imprecise, a hundred times finer over the degree where it was wrong. The
+    // last thousandth of a degree belongs to the test below, which asks a
+    // different question about it.
+    struct Band { std::int64_t from; std::int64_t to; std::int64_t step; };
+    const Band bands[] = {
+        {0, 890000000, 10000},          // 0° .. 89°, every 0.001°
+        {890000000, 899990000, 100},    // 89° .. 89.999°, every 0.00001°
+    };
+
+    double worst          = 0.0;
+    std::int64_t worst_at = 0;
+    for (const Band& band : bands) {
+        for (std::int64_t lat_e7 = band.from; lat_e7 <= band.to; lat_e7 += band.step) {
+            const Position a = at_lat(static_cast<std::int32_t>(lat_e7));
+            const Position b = east_of(static_cast<std::int32_t>(lat_e7), dlon_e7);
+            const double reference = reference_distance_mm(a, b);
+            const double got       = static_cast<double>(distance_mm(a, b));
+            const double deviation = (got - reference) / reference * 100.0;
+            const double magnitude = deviation < 0.0 ? -deviation : deviation;
+            if (magnitude > worst) {
+                worst    = magnitude;
+                worst_at = lat_e7;
+            }
+        }
+    }
+
+    if (!(worst <= 1.0)) {
+        std::fprintf(stderr,
+                     "FAIL line %d: worst relative error %.4f%% at latitude %.5f, 1%% allowed\n",
+                     __LINE__, worst, static_cast<double>(worst_at) / 1e7);
+        ++failures;
+    }
+
+    // And the other side of it, which is not a bug guard but a documentation
+    // guard. The envelope is written into geo.h and geo.cpp as a number a caller
+    // may choose a threshold against, and the measured worst case is 0.76% —
+    // all of it kCosTable1024's own rounding. If that drops below half a
+    // percent, the table has been made finer and three comments now understate
+    // what this function can do. That is a good change and a stale document, so
+    // it should be noticed rather than passed over in silence.
+    if (!(worst > 0.5)) {
+        std::fprintf(stderr,
+                     "FAIL line %d: worst relative error is now %.4f%%, better than the 0.76%% "
+                     "recorded — the documented envelope in geo.h and geo.cpp needs updating\n",
+                     __LINE__, worst);
+        ++failures;
+    }
+}
+
+// Where the arithmetic runs out, and what it does there.
+//
+// Past about 63 m from the pole the fixed-point cosine has single digits left
+// and the *relative* error starts to grow — 100% of it in the final 20 cm,
+// where a degree of longitude is a third of a millimetre and the answer is
+// zero. Saying so is the point of this test. What has to stay bounded at that
+// scale is the absolute error, and it does: across the whole last 111 m a full
+// degree of longitude is under two metres and never more than 20 mm out.
+//
+// The failure being guarded against is the old one — a kilometre where there
+// should be a metre — and not the last digit of a millimetre, which no receiver
+// this firmware will ever see could supply anyway.
+void test_the_final_metres_of_the_pole_degrade_in_millimetres()
+{
+    double worst = 0.0;
+    for (std::int64_t lat_e7 = 899990000; lat_e7 <= 900000000; ++lat_e7) {
+        const Position a = at_lat(static_cast<std::int32_t>(lat_e7));
+        const Position b = east_of(static_cast<std::int32_t>(lat_e7), 10000000);
+        const double reference = reference_distance_mm(a, b);
+        const double got       = static_cast<double>(distance_mm(a, b));
+        const double deviation = got > reference ? got - reference : reference - got;
+        if (deviation > worst) {
+            worst = deviation;
+        }
+        CHECK(distance_mm(a, b) <= 2000U);  // never more than two metres, whatever else
+    }
+
+    if (!(worst <= 20.0)) {
+        std::fprintf(stderr, "FAIL line %d: worst absolute error in the last 111 m is %.3f mm, 20 allowed\n",
+                     __LINE__, worst);
+        ++failures;
+    }
+
+    // At the pole itself every longitude is the same place, and the answer is
+    // zero rather than a leftover scale.
+    CHECK(distance_mm(at_lat(900000000), east_of(900000000, 1800000000)) == 0U);
+    CHECK(distance_mm(at_lat(-900000000), east_of(-900000000, -1800000000)) == 0U);
+}
+
+// The antimeridian again, this time at a latitude where the old code's scale
+// error and the wrap would have compounded. Both are in the same expression and
+// a fix to one is exactly the sort of change that breaks the other.
+void test_the_antimeridian_still_is_not_a_wall_near_the_pole()
+{
+    const Position west{899000000, 1799995000};   // 89.9°N, 179.9995°E
+    const Position east{899000000, -1799995000};  // 89.9°N, 179.9995°W
+
+    // A thousandth of a degree of longitude, at a latitude where that is under
+    // two tenths of a metre rather than the 111 m it is at the equator. Stated
+    // in millimetres rather than as a percentage: the whole answer is 194 mm,
+    // and a percentage of that is smaller than the unit it is returned in.
+    CHECK_WITHIN(distance_mm(west, east), reference_distance_mm(west, east), 5.0);
+    CHECK(distance_mm(west, east) < 1000U);
+    CHECK(distance_mm(west, east) == distance_mm(east, west));
+
+    // The same longitudes at the equator, to show the wrap itself is unchanged.
+    CHECK_NEAR(distance_mm(Position{0, 1799995000}, Position{0, -1799995000}), 111000ULL, 1);
+}
+
+// The corners of the coordinate grid are answers, not crashes — and one step
+// outside them is the saturated value, not a wrapped small one.
+void test_the_grid_boundaries_are_answers()
+{
+    const Position north_east{kLatitudeMaxE7, kLongitudeMaxE7};
+    const Position north_west{kLatitudeMaxE7, -kLongitudeMaxE7};
+    const Position south_east{-kLatitudeMaxE7, kLongitudeMaxE7};
+
+    CHECK(distance_mm(north_east, north_east) == 0U);
+    CHECK(distance_mm(north_east, north_west) == 0U);  // both are the north pole
+    CHECK(distance_mm(north_east, south_east) == kDistanceSaturated);
+    CHECK(distance_mm(north_east, south_east) == distance_mm(south_east, north_east));
+
+    // One unit outside the grid in each of the four directions. Saturated,
+    // because a coordinate that is not on the globe has no distance to
+    // anywhere — and saturated rather than wrapped, because the callers' test
+    // is `distance > threshold` and a wrapped value passes it silently.
+    const Position origin{0, 0};
+    CHECK(distance_mm(origin, Position{kLatitudeMaxE7 + 1, 0}) == kDistanceSaturated);
+    CHECK(distance_mm(origin, Position{-kLatitudeMaxE7 - 1, 0}) == kDistanceSaturated);
+    CHECK(distance_mm(origin, Position{0, kLongitudeMaxE7 + 1}) == kDistanceSaturated);
+    CHECK(distance_mm(origin, Position{0, -kLongitudeMaxE7 - 1}) == kDistanceSaturated);
+
+    // The extremes of the type, which is what arrives from a hostile or
+    // corrupted packet rather than from a receiver.
+    const Position absurd{2147483647, -2147483647 - 1};
+    CHECK(distance_mm(origin, absurd) == kDistanceSaturated);
+    CHECK(distance_mm(absurd, origin) == kDistanceSaturated);
+    CHECK(distance_mm(absurd, absurd) == kDistanceSaturated);
 }
 
 // The antimeridian. Two points a hundred metres apart across 180° are a hundred
@@ -380,7 +695,13 @@ int main()
 
     test_a_degree_of_latitude_is_the_same_everywhere();
     test_a_degree_of_longitude_shrinks_with_latitude();
+    test_a_degree_of_longitude_near_the_pole_is_metres_not_kilometres();
+    test_the_longitude_scale_matches_a_spherical_reference();
+    test_the_error_envelope_holds_at_every_latitude();
+    test_the_final_metres_of_the_pole_degrade_in_millimetres();
     test_the_antimeridian_is_not_a_wall();
+    test_the_antimeridian_still_is_not_a_wall_near_the_pole();
+    test_the_grid_boundaries_are_answers();
     test_distance_is_zero_symmetric_and_bounded();
     test_the_cosine_table_is_monotonic_and_ends_where_it_should();
     test_short_distances_keep_their_resolution();
