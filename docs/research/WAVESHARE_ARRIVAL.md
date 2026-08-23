@@ -66,6 +66,13 @@ dark page with a few bright static elements ages *those elements* and leaves
 their shape behind. The two problems pull in opposite directions, and only one of
 them is what people mean by "burn-in".
 
+That is the *product* question — what Attadipa's own screens should do. The
+*bench* question is separate and simpler: the received unit boots the vendor
+firmware to a fixed desktop and stays there for as long as it has power, with
+none of the mitigations enabled, for as long as nobody is looking. Rules for
+that are in [BENCH_HANDLING](../hardware/BENCH_HANDLING.md), including why an
+agent must not try to blank the panel itself.
+
 ---
 
 ## 2. What the repository already establishes
