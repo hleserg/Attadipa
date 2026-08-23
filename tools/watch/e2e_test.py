@@ -47,6 +47,33 @@ def check(condition: bool, what: str) -> None:
     print(f"  {'ok  ' if condition else 'FAIL'} {what}")
 
 
+
+def lvgl_clicks(watch, workdir, name):
+    """How many clicks LVGL dispatched, counted off the diagnostic screen.
+
+    The screen draws one 8x8 marker per click in a colour it uses nowhere else,
+    so this is an exact count from the PNG -- no OCR, and no new wire field to
+    carry a number the screen already shows. Same trick as the touch trail, for
+    the same reason.
+
+    This is the only assertion in this file that observes the **interface**
+    rather than the transport. Everything else here would still pass on an
+    input path that delivered every event perfectly and then merged them before
+    a widget saw them, which is exactly the defect that shipped.
+    """
+    path = os.path.join(workdir, name)
+    watch.save_screenshot(path)
+    _, _, pixels = read_png(path)
+    marked = 0
+    for index in range(0, len(pixels), 3):
+        r, g, b = pixels[index], pixels[index + 1], pixels[index + 2]
+        if 0x80 <= r <= 0xA0 and 0x80 <= g <= 0xA0 and b >= 0xF0:
+            marked += 1
+    # 8x8 per marker; integer-divide so antialiasing at the edges cannot
+    # promote seven markers into eight.
+    return marked // 64
+
+
 def read_png(path: str) -> tuple[int, int, bytes]:
     """Decode our own PNG without an image library, to check what was written."""
     raw = Path(path).read_bytes()
@@ -177,9 +204,33 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
                 trail += 1
         # Each point is a 6x6 dot, so a genuine multi-point swipe leaves far
         # more than two dots' worth of pixels.
+        #
+        # **What this proves and what it does not.** The trail is drawn by the
+        # queue-drain listener, so it proves the transport delivered every
+        # point of a real down/move/up. It says nothing about what LVGL then
+        # made of them -- and those genuinely came apart: an input path that
+        # merged two taps into one click left a trail showing both. The next
+        # check is the one that watches the interface.
         check(trail > 6 * 6 * 4,
-              f"the swipe left a trail of {trail} pixels -- a real down/move/up, "
-              f"not one artificial jump")
+              f"the swipe left a trail of {trail} pixels -- the transport delivered "
+              f"a real down/move/up, not one artificial jump")
+
+        print("\nwhat LVGL actually received")
+        # Two taps with no gap between them, which is the case that used to
+        # collapse. LVGL reads its devices every 33 ms; the simulator loop runs
+        # at 5 ms, so both taps land inside one read window and a naive
+        # one-state-per-read handoff reports a single click at the second tap's
+        # coordinates. The diagnostic screen counts LVGL's own LV_EVENT_CLICKED,
+        # so the interface's view is legible in a screenshot.
+        before_clicks = lvgl_clicks(watch, workdir, "06-before.png")
+        watch.tap(int(caps.width * 0.30), int(caps.height * 0.45))
+        watch.tap(int(caps.width * 0.70), int(caps.height * 0.45))
+        time.sleep(0.4)
+        after_clicks = lvgl_clicks(watch, workdir, "06-after.png")
+        check(after_clicks - before_clicks == 2,
+              f"two taps with no gap produced {after_clicks - before_clicks} LVGL "
+              f"click(s), and must produce 2 -- one would mean the input path "
+              f"merged them before any widget saw them")
 
         print("\nbuttons")
         injectable = [b for b in caps.buttons if b.injectable]

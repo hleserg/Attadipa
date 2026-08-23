@@ -258,7 +258,10 @@ def cmd_run(watch: Watch, args) -> int:
         print(f"{'PASSED' if report.ok else 'FAILED'}: "
               f"{sum(1 for s in report.steps if s.ok)}/{len(steps)} steps, "
               f"{len(report.artefacts)} image(s) in {os.path.abspath(output_dir)}")
-    return 0 if report.ok else 1
+    # `report.steps` as well as `report.ok`: a run that executed nothing must
+    # not exit 0. `load()` now refuses an empty scenario outright, so this is
+    # the second lock on the same door.
+    return 0 if (report.ok and report.steps) else 1
 
 
 LIVE_HELP = """commands
@@ -483,7 +486,11 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         watch = connect(port=args.port, socket_path=args.socket_path, timeout=args.timeout)
-    except WatchError as exc:
+    except (WatchError, p.ProtocolError) as exc:
+        # `ProtocolError` as well as `WatchError`: the handshake is where a
+        # `VersionMismatch` reply lands, and that is a typed refusal. Catching
+        # only `WatchError` here turned the one error this tool has the
+        # friendliest message for into a traceback.
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

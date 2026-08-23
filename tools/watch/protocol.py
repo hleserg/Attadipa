@@ -183,6 +183,25 @@ class ErrorCode(IntEnum):
     BUSY = 7
     RATE_LIMITED = 8
     VERSION_MISMATCH = 9
+    QUEUE_FULL = 10
+
+
+
+def _enum(cls, value):
+    """Look up a wire value, or say which value the device sent.
+
+    `cls(value)` on an IntEnum raises a bare `ValueError` whose message names
+    neither the field nor the device, and it escapes as an unhandled traceback
+    rather than as the human-language error this tool already has for every
+    other refusal. A device one version ahead is a thing to report, not to
+    crash on.
+    """
+    try:
+        return cls(value)
+    except ValueError as exc:
+        raise ProtocolError(
+            f"the device reported {value}, which is not a {cls.__name__} this tool knows. "
+            f"Is it running a newer build than this checkout?") from exc
 
 
 ERROR_TEXT = {
@@ -194,6 +213,8 @@ ERROR_TEXT = {
     ErrorCode.TOO_MANY_TOUCHES: "this stack is single-touch",
     ErrorCode.NO_SCREEN: "nothing has been rendered yet",
     ErrorCode.BUSY: "a screenshot is already in progress",
+    ErrorCode.QUEUE_FULL: "the device's input queue is full, so the event was dropped "
+                          "(the interface may be stalled)",
     ErrorCode.RATE_LIMITED: "too many input events per second",
     ErrorCode.VERSION_MISMATCH: "the device speaks a different protocol version",
 }
@@ -347,7 +368,8 @@ class Capabilities:
                 ))
             at += BUTTON_BYTES
         max_body, max_hold, max_rate = struct.unpack("<HIH", body[at:at + 8])
-        return Capabilities(width, height, PixelFormat(fmt), Orientation(orientation),
+        return Capabilities(width, height, _enum(PixelFormat, fmt),
+                            _enum(Orientation, orientation),
                             touches, buttons, max_body, max_hold, max_rate)
 
 
@@ -368,7 +390,8 @@ class ScreenInfo:
             raise ProtocolError("a short screen-info body")
         frame_id, width, height, fmt, orientation, total, crc, at_ms = struct.unpack(
             "<IHHBBIII", body[:SCREEN_INFO_BYTES])
-        return ScreenInfo(frame_id, width, height, PixelFormat(fmt), Orientation(orientation),
+        return ScreenInfo(frame_id, width, height, _enum(PixelFormat, fmt),
+                          _enum(Orientation, orientation),
                           total, crc, at_ms)
 
 

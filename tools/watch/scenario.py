@@ -38,6 +38,7 @@ import time
 from dataclasses import dataclass, field
 
 from .client import Watch, WatchError
+from .protocol import ProtocolError
 
 
 @dataclass
@@ -76,9 +77,19 @@ def load(path: str) -> list[dict]:
         data = json.loads(text)
 
     if isinstance(data, dict):
-        data = data.get("steps", [])
+        if "steps" not in data:
+            # `.get("steps", [])` turned a mis-keyed document -- `step:`,
+            # `actions:`, a typo -- into zero steps, which then reported
+            # success and exited 0. A scenario runner that passes when it ran
+            # nothing is the failure mode a scenario runner exists to prevent.
+            raise WatchError(
+                f"{path} has no 'steps' list; its top-level keys are: "
+                f"{', '.join(sorted(map(str, data))) or '(none)'}")
+        data = data["steps"]
     if not isinstance(data, list):
         raise WatchError(f"{path} does not contain a list of steps")
+    if not data:
+        raise WatchError(f"{path} contains no steps")
     return data
 
 
@@ -159,7 +170,14 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
             else:
                 result.ok = False
                 result.detail = f"unknown action '{step.get('action')}'"
-        except (WatchError, KeyError, ValueError) as exc:
+        except (WatchError, ProtocolError, KeyError, ValueError) as exc:
+            # `ProtocolError` is a typed refusal from the device -- BadInput,
+            # RateLimited, QueueFull. It is a `RuntimeError`, not a
+            # `WatchError`, so it used to escape `run()` entirely: past the
+            # per-step summary, past the artefact list, and past `cmd_run`'s
+            # `input_reset` cleanup. A scenario that deletes its own evidence
+            # on failure is useless exactly when it matters, which is what
+            # this file promises at the top.
             result.ok = False
             result.detail = str(exc)
 

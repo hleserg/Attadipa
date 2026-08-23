@@ -21,12 +21,23 @@ namespace {
 
 constexpr std::size_t kTrailPoints = 24;
 
+// One marker per click LVGL dispatched, in a colour used nowhere else on this
+// screen. The text label beside them is for a person; these are for a test,
+// which can count them exactly from a PNG without an OCR dependency -- the same
+// trick the touch trail uses, and for the same reason: a number a machine can
+// read off the screen needs no new wire field to carry it.
+constexpr std::size_t   kClickMarks     = 8;
+constexpr std::uint32_t kClickMarkColour = 0x9090FF;
+
+
 struct Diagnostic {
     lv_obj_t* screen      = nullptr;
     lv_obj_t* touch_label = nullptr;
     lv_obj_t* button_label= nullptr;
+    lv_obj_t* lvgl_label  = nullptr;
     lv_obj_t* trail[kTrailPoints] = {};
     std::size_t trail_next = 0;
+    lv_obj_t* click_marks[kClickMarks] = {};
 
     platform::BoardProfile board{};
     bool built = false;
@@ -37,6 +48,18 @@ struct Diagnostic {
     std::uint32_t last_button_at    = 0;
     std::uint32_t last_button_held  = 0;
     std::uint32_t button_down_at[core::kMaxButtons] = {};
+
+    // Counted by **LVGL**, from its own LV_EVENT_CLICKED and LV_EVENT_PRESSED
+    // on the screen -- not by the queue drain that draws everything else here.
+    //
+    // This is the only element on this screen that reports what the *interface*
+    // received rather than what the *transport* delivered, and it exists
+    // because the two came apart: the trail is drawn by the drain listener, so
+    // it kept showing every point of a gesture LVGL had merged into one click.
+    // A tool whose evidence cannot tell those apart cannot rule out the bug it
+    // is used to rule out.
+    std::uint32_t lvgl_clicks  = 0;
+    std::uint32_t lvgl_presses = 0;
 };
 
 Diagnostic g;
@@ -78,6 +101,13 @@ lv_obj_t* block(lv_obj_t* parent, int w, int h, std::uint32_t colour)
 {
     lv_obj_t* o = lv_obj_create(parent);
     lv_obj_remove_style_all(o);
+    // Not clickable. `lv_obj_create` sets LV_OBJ_FLAG_CLICKABLE by default, and
+    // LVGL dispatches a press to the topmost clickable object under the point
+    // without bubbling unless asked -- so these decorations were swallowing
+    // every press before the screen's own handler saw it. Everything drawn by
+    // this file is a test pattern, not a control; the only thing on this
+    // screen that should answer a touch is the screen.
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_size(o, w, h);
     lv_obj_set_style_bg_color(o, rgb(colour), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(o, LV_OPA_COVER, LV_PART_MAIN);
@@ -151,6 +181,22 @@ void draw_swatches(lv_obj_t* parent, int width, int height)
     }
 }
 
+void refresh_labels();
+
+void on_lvgl_pressed(lv_event_t* event)
+{
+    (void)event;
+    ++g.lvgl_presses;
+    refresh_labels();
+}
+
+void on_lvgl_clicked(lv_event_t* event)
+{
+    (void)event;
+    ++g.lvgl_clicks;
+    refresh_labels();
+}
+
 void refresh_labels()
 {
     if (!g.built) {
@@ -173,6 +219,17 @@ void refresh_labels()
         }
     }
     lv_label_set_text(g.button_label, text);
+
+    std::snprintf(text, sizeof(text), "lvgl: %u press, %u click", g.lvgl_presses, g.lvgl_clicks);
+    lv_label_set_text(g.lvgl_label, text);
+
+    for (std::size_t i = 0; i < kClickMarks; ++i) {
+        if (i < g.lvgl_clicks) {
+            lv_obj_remove_flag(g.click_marks[i], LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(g.click_marks[i], LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }
 
 }  // namespace
@@ -253,11 +310,41 @@ void build_diagnostic_screen(const platform::BoardProfile& board)
     lv_obj_set_style_text_color(g.touch_label, rgb(0xE0E0E0), LV_PART_MAIN);
     lv_obj_align(g.touch_label, LV_ALIGN_CENTER, 0, height / 5);
 
+    // What LVGL itself received, as distinct from what the transport
+    // delivered. Every other element here is drawn by the queue-drain
+    // listener; this one is driven by LVGL's own events on the screen object,
+    // so the two disagreeing is visible in a photograph instead of having to
+    // be reasoned about. It is the only element that can catch an input path
+    // that delivers events perfectly and still merges them before a widget
+    // sees them -- which is a defect this file's trail cannot see by
+    // construction.
+    // In the band between the title and the button line, which is the only
+    // place both geometries have room. Under the touch label it fitted at
+    // 410x502 and ran into the swatch row at 240x240 -- the panel where the
+    // vertical budget is 38 px between fixed elements, and where every layout
+    // mistake this screen exists to catch shows up first.
+    g.lvgl_label = lv_label_create(screen);
+    lv_obj_set_style_text_color(g.lvgl_label, rgb(0xE0E0E0), LV_PART_MAIN);
+    lv_obj_align(g.lvgl_label, LV_ALIGN_TOP_MID, 0, height / 12 + 30);
+    lv_obj_add_flag(screen, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(screen, on_lvgl_pressed, LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(screen, on_lvgl_clicked, LV_EVENT_CLICKED, nullptr);
+
     // The trail, pre-created and recycled. Creating an object per touch point
     // during a swipe would make the act of measuring the thing change it.
     for (std::size_t i = 0; i < kTrailPoints; ++i) {
         g.trail[i] = block(screen, 6, 6, 0x00FFC0);
         lv_obj_add_flag(g.trail[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    for (std::size_t i = 0; i < kClickMarks; ++i) {
+        g.click_marks[i] = block(screen, 8, 8, kClickMarkColour);
+        // Under the title, in the band between it and the button line. The
+        // first placement put them on the blue swatch, which both looked
+        // broken and sat in the region the colour-purity check reads.
+        lv_obj_align(g.click_marks[i], LV_ALIGN_TOP_MID,
+                     static_cast<std::int32_t>(i) * 11 - 44, height / 12 + 18);
+        lv_obj_add_flag(g.click_marks[i], LV_OBJ_FLAG_HIDDEN);
     }
     g.trail_next = 0;
     g.built      = true;

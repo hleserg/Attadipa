@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import os
+import struct
 import sys
 import tempfile
 import zlib
@@ -354,6 +355,49 @@ def scenarios_load() -> None:
               "a JSON scenario loads without PyYAML")
 
 
+def a_scenario_that_runs_nothing_is_not_a_pass() -> None:
+    from watch import scenario  # noqa: PLC0415
+    from watch.client import WatchError  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as directory:
+        empty = os.path.join(directory, "empty.json")
+        Path(empty).write_text("[]", encoding="utf-8")
+        check_raises(WatchError, "an empty scenario is refused, not passed",
+                     lambda: scenario.load(empty))
+
+        # The failure this actually guards: a mis-keyed document. `.get("steps",
+        # [])` turned `actions:` into zero steps, and zero steps reported
+        # success and exited 0.
+        wrong = os.path.join(directory, "wrong.json")
+        Path(wrong).write_text('{"actions": [{"action": "wait"}]}', encoding="utf-8")
+        check_raises(WatchError, "a document with no 'steps' key is refused",
+                     lambda: scenario.load(wrong))
+
+
+def an_unknown_wire_value_is_reported_not_raised() -> None:
+    # A device one build ahead sends a pixel format this checkout does not
+    # know. That is a thing to report; `PixelFormat(fmt)` raised a bare
+    # ValueError that escaped as a traceback.
+    body = struct.pack("<HHBBBB", 240, 240, 99, 0, 1, 0)
+    body += b"\0" * (p.BUTTON_BYTES * 4)
+    body += struct.pack("<HIH", 182, 30000, 500)
+    check_raises(p.ProtocolError, "an unknown pixel format is a typed error",
+                 lambda: p.Capabilities.decode(body))
+
+
+def every_error_code_has_a_human_sentence() -> None:
+    # The two sides are mirrored by hand, so the way this drifts is a code
+    # added to one and not the other -- and the symptom is a device refusal
+    # printed as a bare enum name at the moment somebody needed a sentence.
+    missing = [code.name for code in p.ErrorCode
+               if code is not p.ErrorCode.NONE and code not in p.ERROR_TEXT]
+    check(not missing, f"every ErrorCode has an ERROR_TEXT entry (missing: {missing})")
+    check(p.ErrorCode.QUEUE_FULL in p.ERROR_TEXT,
+          "including QUEUE_FULL, which is what a dropped input event now says")
+    check(p.ERROR_TEXT[p.ErrorCode.QUEUE_FULL] != p.ERROR_TEXT[p.ErrorCode.BUSY],
+          "and it does not say the same thing as BUSY, which was the bug")
+
+
 CASES = (
     fixed_vectors,
     framing_round_trip,
@@ -375,6 +419,9 @@ CASES = (
     a_screenshot_survives_the_whole_chain,
     the_tool_fails_loudly_with_no_device,
     scenarios_load,
+    a_scenario_that_runs_nothing_is_not_a_pass,
+    an_unknown_wire_value_is_reported_not_raised,
+    every_error_code_has_a_human_sentence,
 )
 
 

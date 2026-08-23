@@ -17,9 +17,9 @@ was rotated.
 
 from __future__ import annotations
 
-import glob
 import os
 import socket
+import stat
 import time
 from dataclasses import dataclass
 
@@ -64,11 +64,21 @@ class SocketTransport(Transport):
     def recv(self, timeout: float) -> bytes:
         self._sock.settimeout(timeout)
         try:
-            return self._sock.recv(65536)
+            data = self._sock.recv(65536)
         except socket.timeout:
             return b""
         except OSError as exc:
             raise WatchError(f"the connection dropped while reading: {exc}") from exc
+        if not data:
+            # A clean EOF. Returning b"" here would be indistinguishable from
+            # "nothing arrived yet", so the caller would spin at full speed
+            # until its whole timeout expired and then blame the device for not
+            # answering. The simulator exiting, or refusing us as a second
+            # client, both land here.
+            raise WatchError(
+                "the device closed the connection. It exited, or it already "
+                "had a client -- only one is served at a time.")
+        return data
 
     def close(self) -> None:
         self._sock.close()
@@ -123,11 +133,34 @@ class SerialTransport(Transport):
 
 
 def discover_socket() -> str | None:
+    """The documented default, and nothing else.
+
+    An earlier version fell back to globbing ``/tmp/attadipa-*.sock``, which on
+    a shared host means connecting to whatever another user happened to leave
+    lying around -- and driving their interface. Auto-discovery that guesses
+    across ownership boundaries is not a convenience. ``--socket`` is one flag.
+    """
     for candidate in SOCKET_CANDIDATES:
-        if os.path.exists(candidate):
+        if os.path.exists(candidate) and _is_ours(candidate):
             return candidate
-    found = sorted(glob.glob("/tmp/attadipa-*.sock"))
-    return found[0] if found else None
+    return None
+
+
+def _is_ours(path: str) -> bool:
+    """True if this socket belongs to us and nobody else may write to it.
+
+    The simulator creates it 0600 on purpose. Checking here as well means a
+    socket that somehow ended up group- or world-writable is skipped by
+    auto-discovery rather than silently used -- the user can still name it with
+    ``--socket`` and take responsibility for it.
+    """
+    try:
+        info = os.stat(path)
+    except OSError:
+        return False
+    if info.st_uid != os.geteuid():
+        return False
+    return not info.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
 
 
 @dataclass
@@ -153,6 +186,9 @@ class Watch:
         self._timeout = timeout
         self._next_req_id = 1
         self._pending: list[p.Envelope] = []
+        # req_ids whose screen transfer we have given up on. Chunks still in
+        # flight for them are dropped on arrival rather than queued.
+        self._abandoned: set[int] = set()
         self.hello: p.Hello | None = None
         self.capabilities: p.Capabilities | None = None
 
@@ -176,7 +212,10 @@ class Watch:
             self._decoder.push(data)
         for payload in self._decoder:
             try:
-                self._pending.append(p.envelope_decode(payload))
+                envelope = p.envelope_decode(payload)
+                if envelope.req_id in self._abandoned and envelope.op is p.Op.SCREEN_DATA:
+                    continue
+                self._pending.append(envelope)
             except p.ProtocolError:
                 # A frame that framed correctly but did not decode is counted
                 # and dropped. It cannot be answered: req_id was one of the
@@ -184,7 +223,8 @@ class Watch:
                 continue
 
     def _await(self, req_id: int, ops: tuple[p.Op, ...], timeout: float | None = None):
-        deadline = time.monotonic() + (timeout if timeout is not None else self._timeout)
+        waited = timeout if timeout is not None else self._timeout
+        deadline = time.monotonic() + waited
         while True:
             for index, envelope in enumerate(self._pending):
                 if envelope.req_id != req_id:
@@ -200,7 +240,7 @@ class Watch:
                     return envelope
             if time.monotonic() >= deadline:
                 raise WatchError(
-                    f"the device did not answer within {self._timeout:.1f}s. "
+                    f"the device did not answer within {waited:.1f}s. "
                     f"Is it still running, and is anything else connected to it?")
             self._pump(0.05)
 
@@ -254,10 +294,35 @@ class Watch:
             p.Envelope(op=p.Op.SCREEN_REQUEST, req_id=req_id))))
 
         info = p.ScreenInfo.decode(self._await(req_id, (p.Op.SCREEN_INFO,), timeout).body)
+        self._check_frame_shape(info)
         buffer = bytearray(info.total_bytes)
         seen = bytearray(info.total_bytes)
 
         deadline = time.monotonic() + (timeout if timeout is not None else max(self._timeout, 30.0))
+        try:
+            return self._collect_frame(req_id, info, buffer, seen, deadline)
+        finally:
+            # Whatever happened, this transfer is over as far as we are
+            # concerned. Its envelopes leave the backlog and its id is
+            # blacklisted, so chunks still in flight are discarded on arrival
+            # instead of accumulating -- a Waveshare frame is ~3400 of them,
+            # and `_await` rescans the backlog linearly on every pass.
+            #
+            # Blacklisted **here**, not on the way in: an id marked abandoned
+            # before the transfer starts drops the very chunks it is waiting
+            # for, which is a 600 kB image arriving as 14 kB.
+            self._pending = [e for e in self._pending if e.req_id != req_id]
+            self._abandon(req_id)
+
+    def _abandon(self, req_id: int) -> None:
+        self._abandoned.add(req_id)
+        # req_id wraps at 16 bits, so the set is bounded to well under one
+        # cycle: an id that old cannot still be in flight, and keeping every
+        # one forever would be the leak this method exists to prevent.
+        if len(self._abandoned) > 64:
+            self._abandoned = set(list(self._abandoned)[-32:])
+
+    def _collect_frame(self, req_id, info, buffer, seen, deadline) -> Screenshot:
         while True:
             envelope = self._await(req_id, (p.Op.SCREEN_DATA, p.Op.SCREEN_END),
                                    max(0.1, deadline - time.monotonic()))
@@ -286,6 +351,32 @@ class Watch:
         rgb, width, height = p.apply_orientation(rgb, info.width, info.height, info.orientation)
         return Screenshot(info=info, rgb=rgb, width=width, height=height)
 
+    def _check_frame_shape(self, info) -> None:
+        """Refuse a declared length the geometry does not support.
+
+        ``total_bytes`` is a 32-bit field straight off the wire and two
+        ``bytearray`` allocations were made on it before anything looked -- a
+        device (or a resync landing mid-frame) claiming 4 GB would have been
+        obeyed. The wire format checks a length before trusting it everywhere
+        else; this is the one place the host was not doing the same.
+        """
+        stride = p.BYTES_PER_PIXEL.get(info.format)
+        if stride is None:
+            raise p.ProtocolError(
+                f"the device reported pixel format {info.format!r}, which has no known size")
+        expected = info.width * info.height * stride
+        if info.total_bytes != expected:
+            raise p.ProtocolError(
+                f"the device declared a {info.total_bytes}-byte frame, which is not "
+                f"{info.width}x{info.height} in {info.format.name} ({expected} bytes)")
+        caps = self.capabilities
+        if caps is not None and (info.width != caps.width or info.height != caps.height):
+            # width and height are themselves device-claimed 16-bit fields, so
+            # the self-consistency test above still admits 65535x65535.
+            raise p.ProtocolError(
+                f"the device sent a {info.width}x{info.height} frame but reported a "
+                f"{caps.width}x{caps.height} screen")
+
     def save_screenshot(self, path, timeout: float | None = None) -> tuple[str, Screenshot]:
         shot = self.screenshot(timeout)
         directory = os.path.dirname(os.path.abspath(path))
@@ -312,8 +403,18 @@ class Watch:
         raise WatchError(f"this board has no button called '{name}'. It has: {names}")
 
     def _event(self, event_type: p.EventType, **kwargs) -> None:
+        # `retries=0`, and it is the only call site that says so.
+        #
+        # `request()` retries because a request lost to a resync is
+        # indistinguishable from a wedged device until a second attempt is
+        # answered. That argument holds for every operation here *except this
+        # one*: injecting an event twice is not injecting it once. The device
+        # has no req_id de-duplication, so a retried ButtonDown that actually
+        # arrived the first time comes back `BadInput` -- "that press was
+        # impossible" -- about a press that worked. Reporting a successful
+        # action as an impossible one is worse than reporting a timeout.
         self.request(p.Op.INPUT_EVENT, p.input_event_encode(event_type, **kwargs),
-                     (p.Op.INPUT_OK,))
+                     (p.Op.INPUT_OK,), retries=0)
 
     def button_press(self, name: str) -> None:
         self._event(p.EventType.BUTTON_DOWN, button=self.button_index(name))
