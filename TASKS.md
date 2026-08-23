@@ -1642,6 +1642,38 @@ stale silently. The protocol is
   BSP's touch bring-up with a comment saying why a level will not do.
 - **Hardware required:** no for (1), yes to re-verify (2).
 
+### T-116 · Nothing resolves a board by its USB serial, and two boards answer to `ttyACM0`
+
+- **Priority:** P1 — cheap, and the failure it prevents writes to the wrong
+  device. T-114 will flash things unattended.
+- **Dependencies:** none.
+- **Why now:** two ESP32-S3 devices are attached to the development host and
+  **both enumerate as `303a:1001`** — the Waveshare and a V4 MeshCore node that
+  is the owner's. `/dev/ttyACM0` names whichever enumerated first.
+  [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md) states the rule that a tool
+  must resolve the port from the unit's USB serial and exit non-zero rather than
+  guess — and **no such tool exists**. The guard every write in
+  [#110](https://github.com/hleserg/Attadipa/pull/110) went through was that
+  session's own script and did not survive it, so the rule is currently an
+  obligation with nothing behind it.
+- **Goal:** one shared resolver, used by everything that opens a port.
+  1. Map USB serial → tty, refuse on no match and on more than one match, and
+     exit non-zero either way. Never fall back to "the only one there is".
+  2. **The serial string must not be written down.** On an ESP32-S3 it *is* the
+     base MAC, which is the owner's — resolve it at runtime, take it from the
+     environment or a gitignored file, and keep it out of the repository and out
+     of log output.
+  3. Handle the two reset mechanisms while there: DTR and RTS low **before**
+     `open()`, and a caller that needs a RAM image alive must hold the port open
+     ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
+     §2.2, §2.3).
+- **Acceptance:** the resolver exists, has host tests covering no-match,
+  one-match and ambiguous-match, and every tool in `tools/` that opens a serial
+  port goes through it. `tools/watch/serial_transport.py` is the first caller
+  and is still `NOT EXECUTED — HARDWARE REQUIRED` until T-114.
+- **Definitely not:** guessing. A resolver that picks a device when it cannot
+  identify one is the bug with extra steps.
+
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do
   when they land is decided now, while there is time to be wrong about it

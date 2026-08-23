@@ -1062,6 +1062,68 @@ the two that actually conflicted.
 
 ---
 
+## OD-16 — The received unit stays powered, with its brightness at minimum
+
+**Decided:** 2026-08-23, in session. Raised by the owner, unprompted, while the
+unit sat on the desk showing the vendor firmware's desktop.
+
+**As stated**, the concern first:
+
+> «слух, я чет беспокоюсь - ты пока кодишь часы лежат включенные с одной и той
+> же картинкой рабочего стола. ты сам говорил что амолед можно выжечь так. может
+> между прогонами будешь их выключать? гасить экран? хорошо бы это сделать
+> правилом»
+
+**In English:** while you code, the watch lies powered with one and the same
+desktop picture — you said yourself an AMOLED can be burned that way. Could you
+switch it off between runs, or blank the screen? It would be good to make that a
+rule.
+
+And then the decision, after the options were laid out:
+
+> «нашел в настройках яркость экрана - выкрутил на минимум, на малой яркости они
+> не проебутся да? Не хочу выключать, хочу чтобы у тебя была возможность
+> прогнать код на железе когда понадобится»
+
+**In English:** found the brightness setting and turned it to minimum — at low
+brightness they will not be ruined, right? I do not want to switch it off; I want
+you to be able to run code on the hardware whenever it is needed.
+
+**What it obliges:**
+
+1. **The unit stays powered and attached.** Availability for a hardware run was
+   chosen over the safer state, knowingly. An agent does not power it down, does
+   not ask for it to be unplugged, and does not treat "unplug it" as the
+   recommendation when reporting on this.
+2. **Minimum brightness is the mitigation in force**, set by the owner in the
+   vendor firmware. Nothing of ours can change it, because nothing of ours runs
+   on the unit.
+3. **The question in it was answered honestly and stays answered that way.**
+   "They will not be ruined, right?" is `UNKNOWN`, not "safe" — no lifetime
+   figure exists for this panel, D7 has not settled even its initialisation
+   sequence, and class figures for "AMOLED" are not this part's. Minimum
+   brightness slows ageing at least in proportion to luminance; it does not stop
+   it. An agent must not upgrade that to a reassurance.
+4. **The rule the owner asked for exists**, narrowed to what an agent can
+   actually do:
+   [`../hardware/BENCH_HANDLING.md`](../hardware/BENCH_HANDLING.md). An agent
+   cannot blank the panel — there is no Attadipa firmware on the unit — so the
+   obligation is to *say* at the end of a bench session, or before a long stretch
+   that does not need the unit, that it is sitting lit. The action is the
+   owner's.
+
+**What it invalidates:** the preference table in `BENCH_HANDLING.md` ranks a
+screen timeout first and unplugging last. That ranking stands as the general
+case; for **this** unit the owner has chosen the second row, and this decision
+outranks the table.
+
+**What it does not decide:** nothing about the product. Whether the firmware
+ships an idle dim, a screen timeout, pixel shift or an always-on face is
+[WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §1 and §3.5, and remains open as **A9**
+in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). This is about a board on a desk.
+
+---
+
 ## Still with the owner
 
 Nothing here answers A1–A3, A5 or the compass question. Those remain in

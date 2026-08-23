@@ -588,6 +588,17 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 ## The bench session of 2026-08-23
 
+**The unit stays on the desk, powered.** The owner raised AMOLED ageing while it
+sat showing the vendor firmware's static desktop, and chose availability over the
+safer state: powered and attached, brightness at minimum, so a hardware run is
+possible on demand — [OD-16](docs/research/OWNER_DECISIONS.md). What an agent may
+and may not do about that, including why it must not open the serial port to try
+to blank the panel, is
+[BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md). The residual risk at minimum
+brightness is `UNKNOWN`, not "safe". That file also states the
+resolve-by-USB-serial rule and says plainly that no tool implements it yet —
+**T-116**.
+
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing
 needed to be flashed** — the bench sequence ran out of RAM, wrote nothing, and
