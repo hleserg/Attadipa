@@ -187,12 +187,14 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
 
     print("\nnames that must be refused")
     cases: list[tuple[str, dict[str, bytes], str]] = [
-        ("a name that climbs out of outdir", {"/../escape": b"x"}, "escape"),
-        ("a name that climbs out further in", {"/a/../../escape": b"x"}, "escape"),
+        ("a name that climbs out of outdir", {"/../escape": b"x"}, "move the destination"),
+        ("a name that climbs out further in",
+         {"/a/../../escape": b"x"}, "move the destination"),
         ("repeated separators colliding with the plain name",
          {"/a//b": b"first", "/a/b": b"second"}, "same path"),
-        ("a backslash, which is a separator on another host", {"/a\\b": b"x"}, "separator"),
-        ("a drive letter", {"/C:/x": b"x"}, "separator"),
+        ("a backslash, which is a separator on another host",
+         {"/a\\b": b"x"}, "separator or a drive marker"),
+        ("a drive letter", {"/C:/x": b"x"}, "separator or a drive marker"),
         ("a file where another name needs a directory",
          {"/a": b"file", "/a/b": b"under it"}, "directory"),
         ("a name that is nothing but separators", {"//": b"x"}, "separators"),
@@ -273,6 +275,30 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         code, output = run(image, out, "--force")
         check("a directory at the destination is refused even with --force", code == 2,
               f"— exit {code}\n{output}")
+
+    print("\na write that fails part-way keeps nothing")
+    # The one failure plan() cannot see coming: the filesystem refusing a write
+    # that was already under way. A read-only directory is the portable way to
+    # produce one — except as root, where the permission bits are advice.
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        print("  skip  running as root, where a read-only directory is not read-only")
+    else:
+        with workspace({"/a.bin": b"written first",
+                        "/sub/b.bin": b"never gets there"}) as (image, base):
+            out = base / "out"
+            (out / "sub").mkdir(parents=True)
+            os.chmod(out / "sub", 0o500)
+            try:
+                code, output = run(image, out)
+                check("the run fails", code == 2, f"— exit {code}\n{output}")
+                check("  and says which file stopped it",
+                      "FAILED" in output and "/sub/b.bin" in output, f"— {output}")
+                check("  and the file it had already written is gone",
+                      not (out / "a.bin").exists(), f"— {sorted(tree(out))}")
+                check("  and the directory it did not create is still there",
+                      (out / "sub").is_dir())
+            finally:
+                os.chmod(out / "sub", 0o700)
 
     print("\nwhat the image itself got wrong")
     with workspace({"/good.bin": b"all here", "/short.bin": b"truncated"},
