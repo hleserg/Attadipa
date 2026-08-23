@@ -62,9 +62,10 @@ stale silently. The protocol is
   must live in `claude-agent.yml` and cannot be a routine — and a routine's API
   trigger carries a bearer token but no actor, which is the wrong shape for a
   gate whose entire security model is the actor's write access.
-- **Implementation status:** live. Six workflows, an hourly watchdog, and a
+- **Implementation status:** live. Seven workflows, an hourly watchdog, a
+  half-hourly merge sweep applying the backstop's own path allowlist, and a
   daily backstop routine scoped to what a workflow cannot detect about itself.
-- **Tests:** `actionlint` over six workflows with shellcheck integration —
+- **Tests:** `actionlint` over seven workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
   cases — 16/16; host build 10/10; simulator 12/12, both geometries. Production:
   smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
@@ -138,6 +139,27 @@ stale silently. The protocol is
 - **Tests:** `.github/tests/failure-reason-test.sh`, which must keep its
   leak cases: an API key, a token-shaped string and a private key sitting in the
   log beside a real error, asserting only the error comes out.
+- **Hardware required:** no.
+
+
+### T-126 · The merge sweep has still never merged anything
+- **Priority:** P1
+- **Dependencies:** the `--slurp`/`--jq` fix, which is what this checks.
+- **Goal:** `pr-merge-sweep.yml` has run exactly once, by hand, and exited 1 in
+  eleven seconds without reading a pull request. The fix is argued and unit
+  guarded, but the workflow's own claim — that it merges what is finished — is
+  still `NOT EXECUTED`. A workflow that has never completed its loop is not a
+  working workflow, however good the diff looks.
+- **Acceptance:** a dispatched run that reaches `sweep finished, N merged` and
+  prints a per-candidate line for every open pull request, with the reason each
+  was held. Then a run that actually merges one, on a pull request that was
+  going to be merged anyway. Both run IDs recorded here. Until that second run
+  exists, the orchestrator merges by hand and does not treat the sweep as cover.
+- **Watch for:** the two conditions that can only fail on a real repository and
+  not in a unit test — `mergeStateStatus` values GitHub returns that
+  `merge-candidate.sh` does not enumerate, and a `gh pr merge` refused by branch
+  protection, which the workflow deliberately turns into one loud failure rather
+  than 48 quiet warnings a day.
 - **Hardware required:** no.
 
 
@@ -1627,6 +1649,66 @@ stale silently. The protocol is
   does.
 - **Hardware required:** no.
 
+### T-112 · The pedometer has a datasheet now; it still needs someone to walk
+- **Filed as [#116](https://github.com/hleserg/Attadipa/issues/116)**, which also
+  carries the probe's source and the RAM loader in full — they otherwise exist
+  only in a session scratch directory.
+- **Priority:** P1 — OD-6 makes the pedometer mandatory and this is the last
+  unverified step between the register map and a step count.
+- **Dependencies:** none technical. It needs a **person holding the watch**, which
+  is the only reason it is not already done.
+- **Why now:** the bench session of 2026-08-23 settled *which* datasheet
+  describes this silicon — `REVISION_ID = 0x7C`, the QMI8658A `13-52-25` Rev A
+  value, against `0x79` for the QMI8658C Rev 0.6 document
+  ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
+  §3.2). Rev A's chapter 11 documents a complete hardware pedometer; Rev 0.6 calls
+  `CTRL8` *"Reserved: Not Used"* and has none. `CTRL8 = 0x90` was written and read
+  back exactly, so the register is real. **What has not been shown is that the
+  engine counts.** Step count stayed 0 throughout — on a board lying on a desk,
+  which is the correct reading and no evidence either way.
+- **Goal:** enable the engine and count real steps.
+- **What is already prepared:** the probe is written and builds — it loads over
+  USB into RAM, writes `CTRL2`/`CTRL7`/`CTRL8` on the IMU and nothing else
+  anywhere, prints accelerometer and step count once a second for four minutes,
+  and restores the defaults on the way out. Running it is one command; the rest is
+  walking twenty steps with the watch in hand.
+- **Acceptance:** step count rises with real steps and the count is within a
+  sensible fraction of the steps actually taken, recorded in `docs/research/`
+  with the number walked beside the number counted. If the engine does **not**
+  count, that is equally a result: the step counter becomes firmware on this
+  board and the power budget changes.
+- **What must not be assumed:** that a matching revision byte proves the feature
+  works. It proves which document applies. Chapter 11 still has to be exercised.
+- **Also worth one minute while the watch is in hand:** H15's other half — tilt
+  the **assembled** watch through known angles and read the raw axes. The board
+  frame is silkscreened; the case rotation is not, and one is useless without the
+  other.
+- **Hardware required:** yes — the owner's unit, and a person.
+
+### T-113 · Touch needs a reset pulse, and the part number is still a guess
+- **Priority:** P2 — the behaviour is understood, which is the part that blocked
+  anything. What remains is provenance.
+- **Dependencies:** none.
+- **Why now:** the FT3168 does not acknowledge on the main I2C bus at all until
+  **GPIO 9 is pulsed low then high** — driving it high and holding it is not
+  enough, the falling edge is what brings the controller up
+  ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
+  §3.3). It then reads chip ID `0x64`, firmware `0x02`, vendor `0x11`. That
+  confirms the `0x38` address, which this repository had on driver source alone.
+- **Goal:** two things the measurement does not give.
+  1. **Which part `0x64` denotes.** `0x11` is FocalTech's vendor byte and `0x64`
+     is the ID the FT5x06/FT6x36-family drivers expect, which is consistent with
+     an FT3168 behind that driver — but no FT3168 datasheet has been obtained and
+     the mapping is `UNKNOWN`. Find the datasheet or record that it is not
+     obtainable, the way [ADR-0003](docs/adr/0003-radio-not-lora.md) had to.
+  2. **The reset pulse belongs in the board layer**, not in an application and
+     not in a probe. A BSP that configures GPIO 9 as a high output at init sees
+     an empty bus and reports no error, which is the worst kind of wrong.
+- **Acceptance:** the part-number question answered or recorded as unobtainable
+  with the search documented, and the reset sequence written into the Waveshare
+  BSP's touch bring-up with a comment saying why a level will not do.
+- **Hardware required:** no for (1), yes to re-verify (2).
+
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do
   when they land is decided now, while there is time to be wrong about it
@@ -1640,7 +1722,10 @@ stale silently. The protocol is
   - **`CAD` goes to ground.** That puts the AKM part at `0x0C` and leaves the
     QST part at its fixed `0x0D`, so both can be on the bus at once — which is
     the only way to compare them in the same magnetic environment on the same
-    wrist. `0x34`, `0x38` and `0x6A`/`0x6B` are taken; these two are free.
+    wrist. **Measured on 2026-08-23, not predicted:** `0x18`, `0x34`, `0x40`,
+    `0x51` and `0x6B` answer a bare scan, and `0x38` (touch) answers after its
+    reset is pulsed on GPIO 9. `0x6A` does **not** answer — the IMU is at
+    `0x6B` — so `0x0C`, `0x0D` and `0x1E` are all free, and so is `0x6A`.
   - **The IMU will not read the magnetometer for us, and the reason is stronger
     than "wrong part".** QMI8658C Mag Mode names AK09915C, AK09918CZ and QMC6308
     — neither ordered part among them — but the decisive point is that `CTRL4`
