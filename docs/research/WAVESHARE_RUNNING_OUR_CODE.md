@@ -220,12 +220,14 @@ I (821) main_task: Started on CPU0
 I (821) main_task: Calling app_main()
 ```
 
-Thirty seconds watched. **No `rst:0x`, no `ESP-ROM:` banner, no reset at all.**
+Fifteen seconds watched. **No `rst:0x`, no `ESP-ROM:` banner, no reset at all.**
 The image runs. `PURE_RAM_APP` over USB-Serial/JTAG works on this board; §3 is
 the full probe doing real work through the same path.
 
-Tooling: `ramhold.py`, kept with the session's scratch scripts rather than in the
-repository — it is thirty lines and its content is quoted above in full.
+Tooling: `ramhold.py`. The three lines above are its core; the whole script is
+reproduced in [#116](https://github.com/hleserg/Attadipa/issues/116) together with
+the pedometer probe, because a session scratch directory under `/tmp` is not a
+durable home for something this document calls prepared.
 
 ### 2.4 A second reason run 4 looked dead
 
@@ -306,6 +308,15 @@ Recorded precisely, because the distinction matters:
   evidence about which document applies, not a functional test. Chapter 11's
   engine has to be enabled and counted against real walking, which needs a person
   and the board in their hand — see §6.
+- **The one wrinkle, named before someone else finds it:** both documents'
+  register-map *summary* tables give `REVISION_ID`'s default as `0x68`,
+  disagreeing with their own §5.3 detail sections (`0x7C` / `0x79`). So the
+  measured `0x7C` matches exactly one of the four places the byte is stated —
+  Rev A's detail section — and contradicts both summary tables. The corroboration
+  that does not depend on the byte at all is the stronger evidence: `CTRL8` is
+  writable and reads back `0x90` on a part whose other candidate document calls
+  that register *"Reserved: Not Used"*, and gravity measures 1.03 g under Rev A's
+  ±8 g scaling.
 - One correction to [OPEN_QUESTIONS](OPEN_QUESTIONS.md) H14 in passing: the
   document number of the Rev A datasheet is **13-52-25**, not 13-52-27.
 

@@ -1582,6 +1582,9 @@ stale silently. The protocol is
 - **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
 
 ### T-112 · The pedometer has a datasheet now; it still needs someone to walk
+- **Filed as [#116](https://github.com/hleserg/Attadipa/issues/116)**, which also
+  carries the probe's source and the RAM loader in full — they otherwise exist
+  only in a session scratch directory.
 - **Priority:** P1 — OD-6 makes the pedometer mandatory and this is the last
   unverified step between the register map and a step count.
 - **Dependencies:** none technical. It needs a **person holding the watch**, which

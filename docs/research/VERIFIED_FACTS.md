@@ -921,9 +921,10 @@ facts that change what may be written are here.
 - **Source:** S13. Decisive test — `esptool` used as a library in one process so
   the port is never closed (`detect_chip` → `cmds.load_ram` → read `esp._port`
   directly), run against the *same* minimal driverless image that had failed as
-  attempt 4. Thirty seconds watched: no `rst:0x`, no `ESP-ROM:` banner, ESP-IDF's
-  own startup log instead. The full bench probe then ran the same way for two
-  minutes.
+  attempt 4. Fifteen seconds watched: no `rst:0x`, no `ESP-ROM:` banner, ESP-IDF's
+  own startup log instead. Four further images ran the same way — the bench probe
+  for 30 s, the pedometer probe for **two minutes**, the touch probe for 25 s and
+  the register restore for 8 s — each running to the end of its watch window.
 - **The reset cause was the evidence all along.** `rst:0x15
   (USB_UART_CHIP_RESET)` is by definition a **host-driven** reset through the
   USB-Serial/JTAG peripheral; no misbehaving image produces it. Two other

@@ -611,7 +611,9 @@ the unit is byte-identical to the T-099 backup with `verify-flash` over all
   exiting was itself the reset. `rst:0x15 (USB_UART_CHIP_RESET)` says *the host
   did it* and should have been read that way the first time. Driving `load-ram`
   from a single process that never closes the port, the same driverless image
-  that "failed" runs indefinitely.
+  that "failed" ran to the end of every watch window — up to two minutes, across
+  five images. Nothing was watched for longer than that, so "runs indefinitely"
+  would be an estimate wearing a measurement's clothes.
 
 ### What the probes then read off the board, without one flash write
 
