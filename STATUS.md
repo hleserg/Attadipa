@@ -15,7 +15,7 @@ items closed plus one the review did not list
 ## Current implementation
 
 **Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
-simulator and twenty tests, and has a font pipeline whose output has been
+simulator and twenty-four tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -446,18 +446,21 @@ available on this board.
 
 ## Blocked
 
-- **T-061 the pedometer** — partly, and less than before. T-060a settled the
-  BMA423 side: the power story is **13–14 µA at 50 Hz in low-power mode**, the
-  counter runs while the host sleeps, and the wrist preset is already the
-  default. What remains blocked is the **Waveshare** side — the board's IMU
-  variant is unknown, the QMI8658**C** documents a pedometer and the QMI8658A's
-  **current** datasheet revision has deleted one — and one board question that
-  is nobody's datasheet, and which is **already filed as [H8](docs/research/OPEN_QUESTIONS.md)**
-  rather than new: whether the AXP2101 keeps the IMU's rail up across an
-  SoC sleep. If it does not, the 6 kB blob is gone and the 150 ms is owed again
-  on every wake. **Both are now bench questions rather than reading questions** —
-  the Waveshare is on the desk, so `WHO_AM_I` settles the variant and a rail
-  measurement across a sleep settles H8. Neither has been done.
+- **T-061 the pedometer** — down to one question, and it is not a reading
+  question. T-060a settled the BMA423 side: **13–14 µA at 50 Hz in low-power
+  mode**, the counter runs while the host sleeps, and the wrist preset is already
+  the default. The Waveshare side was blocked on *which* QMI8658 document
+  describes the silicon, and **the silicon answered on 2026-08-23**:
+  `REVISION_ID = 0x7C`, the QMI8658A `13-52-25` Rev A value, against `0x79` for
+  the QMI8658C Rev 0.6 document that has no pedometer in it. `CTRL8 = 0x90` was
+  written and read back exactly — the register Rev 0.6 calls *"Reserved: Not
+  Used"*. So the hardware engine is documented and the register map is settled.
+  What is left is **T-112: someone has to walk with the watch.** Step count
+  stayed 0 on a board lying on a desk, which is the correct reading and no
+  evidence either way.
+  Still open beside it, and unchanged: **[H8](docs/research/OPEN_QUESTIONS.md)** —
+  whether the AXP2101 keeps the IMU's rail up across an SoC sleep. If it does
+  not, the 6 kB blob is gone and the 150 ms is owed again on every wake.
 - **T-010 board bring-up** — **half unblocked as of 2026-08-22.** A physical
   Waveshare `ESP32-S3-Touch-AMOLED-2.06` is on the desk; a T-Watch is not, and
   the T-Watch's variant question (which of five radios, which of two GNSS
@@ -513,14 +516,14 @@ hysteresis and dwell — are to be computed and shown, not chosen.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-one tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
-| Agent automation | **live — and the unattended half of it had never once worked.** The hourly watchdog hands a task over with `gh workflow run claude-agent.yml` under `GH_TOKEN: ${{ github.token }}` (`agent-queue-watchdog.yml:51,:85`), so the dispatching actor is `github-actions[bot]`. `claude-agent.yml` passed `allowed_bots: ""` to `anthropics/claude-code-action`, which refuses a non-User actor absent from that list: *"Workflow initiated by non-human actor: github-actions (type: Bot)."* Five seconds, no execution log written, and the hand-over could only report `no conclusion`. Every autonomous run since the watchdog was added died there; #27, #28, #67 and #69 were written off as unexplained model deaths and **T-107 was opened to investigate the reading list, which was the leading theory and was wrong**. The only successes were runs a *person* started by commenting — which is invisible unless the actor of each run is lined up against its outcome. Fixed by naming the dispatcher: `allowed_bots: "github-actions"`, which is strictly narrower than `'*'` (that would let any installed GitHub App drive a write-capable agent, and a test now refuses it) and is **not** a producer grant — `queue-scan.jq` still refuses `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so this repository's own output still cannot enqueue a billable writer. Both halves were defensible alone and only the *pair* was wrong, which no single file's review could ever show, so it is a test rather than a comment: `.github/tests/bot-actor-test.sh`, 19 assertions, reimplementing `isAllowedBot` in shell and asserting the watchdog still dispatches with the built-in token — proven to fail against the pre-fix tree, in both places. Found only because #81's `failure-reason.sh` replaced *"the cause is in the run log"* with *"no execution log was written — the agent step did not get far enough to leave one"*, which pointed at the step instead of the model. **And the same defect was in the reviewer, where it hid better.** `claude-pr-review.yml`'s `if:` deliberately admits `claude[bot]` — a blanket bot guard had skipped the review on the agent's own pull requests, the ones it exists for — and then handed the action `allowed_bots: ""`, the one list that does not contain `claude`. Runs `32597016812` (#95), `32596445164` (#94), `32595947792` (#92) and `32595273274` (#88): five, five, five and four seconds, byte-identical *"Workflow initiated by non-human actor: claude (type: Bot)"*, no execution log. **No agent-authored pull request had ever been reviewed**, and every one of those jobs reported **success**, because the `Review` step carries `continue-on-error` — which is right for its own reason and turned a refusal into a green tick. The workflow's own "the review did not run" comment listed five candidate causes and this was not among them; it is now cause 1. Fixed as `allowed_bots: "claude"`, and the test now asserts the *rule* — a workflow that admits a bot in its `if:` must name it, and none may name `'*'` — over all three agent workflows, so a fourth is checked the day it grows an exemption. **And the writer's turn ceiling was the same day's most expensive defect.** Six runs on 2026-08-22 — #71 three times, #67, #75, #78 — were accepted, posted an accurate plan about three minutes in, and died at turn 61 of a 60 ceiling with nothing on the branch: `error_max_turns`, `num_turns: 61`, **$3.00 each**, after 8 min 49 s of real work (run `32587675386`). An accurate report over an empty branch is the one outcome nobody can act on. The identical incident had already happened to the *reviewer* the same day and been fixed — 40 → 100, with the reasoning written down — and the writer, which does strictly more, was left at 60. Now 200; spend stays bounded by `timeout-minutes: 60`, which is what is actually billed. **Raising it exposed the failure underneath**: the next run of #67 died in ninety seconds instead of nine minutes with `subtype: success`, `is_error: true`, `num_turns: 20`, `permission_denials_count: 0` (run `32589375744`) — a real session that ended badly under a name reserved for one that did not, naming no cause, and `permission_denials_count: 0` rules out the tool-list failure. The published log holds the SDK options, an init line and that object, because `show_full_output` is off and that is correct — so the outcome comment was telling people the cause was in a log emptied of the cause on purpose. `.github/scripts/failure-reason.sh` now reads the *unpublished* execution log on the runner and puts one line on the issue, chosen by a whitelist of error grammars (an API status, a context refusal, a credit balance, an expired token) with everything else reported as `unclassified` plus structural facts only. The whitelist is the security model: that log holds every tool result, and the 27-case test puts an API key, a token and a private key beside a real error to prove only the error comes out. **Why #67 died is now known — it is the `allowed_bots` refusal above**, and the whitelisted line was what pointed at it. The 500 KB reading order the prompt mandates, `TASKS.md` alone 149 KB before the agent opens a file of its own, was the suspected cause and was not it; it survives as T-110 on its own merits rather than as an explanation for anything. **live and exercised in production.** Six workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all six with shellcheck integration, `shellcheck` clean over both scripts, the intake gate's 40-case hostile-input test and the watchdog filter's 17-case test pass. **Three defects fixed on 2026-08-22, all silent and all found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all; and the hand-over step's pull-request lookup asked GraphQL for `issue(number:)`, which does not resolve pull requests, so an agent started from a comment **on a pull request** got a `NOT_FOUND` document that `gh` had already written to stdout — `|| echo ""` does not undo that — and the outcome comment on #71 went out as ``### Done — pull request #{"data":{"repository":{"issue":null}}…``. `issueOrPullRequest` answers for both, and — the review's finding on the first fix — *pushed to this pull request* now requires the head to have actually moved, because a pull request is open before the agent starts and open after whatever it does; a clean run that pushed nothing says so instead. And the *before* head is read inside the writer queue rather than at event time — the gate fires the instant an event arrives while the agent job waits in `attadipa-agent-writer` for up to an hour, so a gate-time snapshot would have credited this run with a push made by whoever moved the branch in that window. A run that pushed a commit and then died says both things: work landed, and it may be half of it. And a cross-reference is evidence only if it was made **during** the run: #75 cites #71 five times, so filing #75 created that reference before any agent started, and the step announced *"Done — pull request #71"* for a run that produced nothing — then labelled the issue `agent:review`, so nothing would re-queue it. A `Fixes #N` still needs no timestamp; a bare mention does. **And a bare cross-reference is not an answer at all** — the fourth defect in this one step, reported as [#76](https://github.com/hleserg/Attadipa/issues/76) by the producing agent an hour after the third was merged. The step's second question was *which open pull request mentions this issue at all*, and a mention is created by any pull request naming it: #75 cites #71 five times as evidence, so filing #75 made that reference before any agent existed, and a run that produced nothing announced *"Done — pull request #71"*. Filtering mentions by time proved only that one appeared **during** the run, never that this run **caused** it — correlation standing in for ownership. The question is now gone rather than qualified again, and the reason it could go is in the prompt: a research pull request is required to carry `Fixes #N` in the same words as an implementation one, so nothing compliant needed the fallback. A closing reference also no longer launders a failed run into a success — a pull request that exists over a run that died says both things. A cut-off run is also told, in words, that **nothing automated will come back for the unfinished part**: the watchdog scans issues, not pull requests, so no label on a pull request queues anything — the first version added `agent:ready` there and review pointed out the label was promising something that could not happen. The whole decision moved into `.github/scripts/handover-decision.sh` with a 37-case test, because every defect this step has had lived in shell embedded in a workflow where nothing could execute it. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. **And nobody had ever recorded which model was answering.** The action has no `model:` input, so the model is a string inside `claude_args` — and an absent string is not an error, it is a silent fall back to the CLI default. All three agent workflows had run that way since the day they were built, which makes every past result unattributable and any comparison between two runs meaningless. Now `--model claude-opus-5 --effort max` in the writer, the reviewer and the CI repairer, with the flags read off `claude --help` rather than guessed (`--effort` takes one of `low, medium, high, xhigh, max`; there is no `ultracode` level, and the test rejects one). The full model name is pinned rather than the `opus` alias so that a new Opus cannot quietly change what this loop is. Owner decision, 2026-08-22; `bot-actor-test.sh` now holds it, and fails both when a pin is missing and when the level is not one the CLI accepts. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
+| Agent automation | **live — and the unattended half of it had never once worked.** The hourly watchdog hands a task over with `gh workflow run claude-agent.yml` under `GH_TOKEN: ${{ github.token }}` (`agent-queue-watchdog.yml:51,:85`), so the dispatching actor is `github-actions[bot]`. `claude-agent.yml` passed `allowed_bots: ""` to `anthropics/claude-code-action`, which refuses a non-User actor absent from that list: *"Workflow initiated by non-human actor: github-actions (type: Bot)."* Five seconds, no execution log written, and the hand-over could only report `no conclusion`. Every autonomous run since the watchdog was added died there; #27, #28, #67 and #69 were written off as unexplained model deaths and **T-107 was opened to investigate the reading list, which was the leading theory and was wrong**. The only successes were runs a *person* started by commenting — which is invisible unless the actor of each run is lined up against its outcome. Fixed by naming the dispatcher: `allowed_bots: "github-actions"`, which is strictly narrower than `'*'` (that would let any installed GitHub App drive a write-capable agent, and a test now refuses it) and is **not** a producer grant — `queue-scan.jq` still refuses `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so this repository's own output still cannot enqueue a billable writer. Both halves were defensible alone and only the *pair* was wrong, which no single file's review could ever show, so it is a test rather than a comment: `.github/tests/bot-actor-test.sh`, 19 assertions, reimplementing `isAllowedBot` in shell and asserting the watchdog still dispatches with the built-in token — proven to fail against the pre-fix tree, in both places. Found only because #81's `failure-reason.sh` replaced *"the cause is in the run log"* with *"no execution log was written — the agent step did not get far enough to leave one"*, which pointed at the step instead of the model. **And the same defect was in the reviewer, where it hid better.** `claude-pr-review.yml`'s `if:` deliberately admits `claude[bot]` — a blanket bot guard had skipped the review on the agent's own pull requests, the ones it exists for — and then handed the action `allowed_bots: ""`, the one list that does not contain `claude`. Runs `32597016812` (#95), `32596445164` (#94), `32595947792` (#92) and `32595273274` (#88): five, five, five and four seconds, byte-identical *"Workflow initiated by non-human actor: claude (type: Bot)"*, no execution log. **No agent-authored pull request had ever been reviewed**, and every one of those jobs reported **success**, because the `Review` step carries `continue-on-error` — which is right for its own reason and turned a refusal into a green tick. The workflow's own "the review did not run" comment listed five candidate causes and this was not among them; it is now cause 1. Fixed as `allowed_bots: "claude"`, and the test now asserts the *rule* — a workflow that admits a bot in its `if:` must name it, and none may name `'*'` — over all three agent workflows, so a fourth is checked the day it grows an exemption. **And the writer's turn ceiling was the same day's most expensive defect.** Six runs on 2026-08-22 — #71 three times, #67, #75, #78 — were accepted, posted an accurate plan about three minutes in, and died at turn 61 of a 60 ceiling with nothing on the branch: `error_max_turns`, `num_turns: 61`, **$3.00 each**, after 8 min 49 s of real work (run `32587675386`). An accurate report over an empty branch is the one outcome nobody can act on. The identical incident had already happened to the *reviewer* the same day and been fixed — 40 → 100, with the reasoning written down — and the writer, which does strictly more, was left at 60. Now 200; spend stays bounded by `timeout-minutes: 60`, which is what is actually billed. **Raising it exposed the failure underneath**: the next run of #67 died in ninety seconds instead of nine minutes with `subtype: success`, `is_error: true`, `num_turns: 20`, `permission_denials_count: 0` (run `32589375744`) — a real session that ended badly under a name reserved for one that did not, naming no cause, and `permission_denials_count: 0` rules out the tool-list failure. The published log holds the SDK options, an init line and that object, because `show_full_output` is off and that is correct — so the outcome comment was telling people the cause was in a log emptied of the cause on purpose. `.github/scripts/failure-reason.sh` now reads the *unpublished* execution log on the runner and puts one line on the issue, chosen by a whitelist of error grammars (an API status, a context refusal, a credit balance, an expired token) with everything else reported as `unclassified` plus structural facts only. The whitelist is the security model: that log holds every tool result, and the 27-case test puts an API key, a token and a private key beside a real error to prove only the error comes out. **Why #67 died is now known — it is the `allowed_bots` refusal above**, and the whitelisted line was what pointed at it. The 500 KB reading order the prompt mandates, `TASKS.md` alone 149 KB before the agent opens a file of its own, was the suspected cause and was not it; it survives as T-110 on its own merits rather than as an explanation for anything. **live and exercised in production.** Seven workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all seven with shellcheck integration, `shellcheck` clean over every script, the intake gate's 49-case hostile-input test and the watchdog filter's 37-case test pass. **Three defects fixed on 2026-08-22, all silent and all found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all; and the hand-over step's pull-request lookup asked GraphQL for `issue(number:)`, which does not resolve pull requests, so an agent started from a comment **on a pull request** got a `NOT_FOUND` document that `gh` had already written to stdout — `|| echo ""` does not undo that — and the outcome comment on #71 went out as ``### Done — pull request #{"data":{"repository":{"issue":null}}…``. `issueOrPullRequest` answers for both, and — the review's finding on the first fix — *pushed to this pull request* now requires the head to have actually moved, because a pull request is open before the agent starts and open after whatever it does; a clean run that pushed nothing says so instead. And the *before* head is read inside the writer queue rather than at event time — the gate fires the instant an event arrives while the agent job waits in `attadipa-agent-writer` for up to an hour, so a gate-time snapshot would have credited this run with a push made by whoever moved the branch in that window. A run that pushed a commit and then died says both things: work landed, and it may be half of it. And a cross-reference is evidence only if it was made **during** the run: #75 cites #71 five times, so filing #75 created that reference before any agent started, and the step announced *"Done — pull request #71"* for a run that produced nothing — then labelled the issue `agent:review`, so nothing would re-queue it. A `Fixes #N` still needs no timestamp; a bare mention does. **And a bare cross-reference is not an answer at all** — the fourth defect in this one step, reported as [#76](https://github.com/hleserg/Attadipa/issues/76) by the producing agent an hour after the third was merged. The step's second question was *which open pull request mentions this issue at all*, and a mention is created by any pull request naming it: #75 cites #71 five times as evidence, so filing #75 made that reference before any agent existed, and a run that produced nothing announced *"Done — pull request #71"*. Filtering mentions by time proved only that one appeared **during** the run, never that this run **caused** it — correlation standing in for ownership. The question is now gone rather than qualified again, and the reason it could go is in the prompt: a research pull request is required to carry `Fixes #N` in the same words as an implementation one, so nothing compliant needed the fallback. A closing reference also no longer launders a failed run into a success — a pull request that exists over a run that died says both things. A cut-off run is also told, in words, that **nothing automated will come back for the unfinished part**: the watchdog scans issues, not pull requests, so no label on a pull request queues anything — the first version added `agent:ready` there and review pointed out the label was promising something that could not happen. The whole decision moved into `.github/scripts/handover-decision.sh` with a 37-case test, because every defect this step has had lived in shell embedded in a workflow where nothing could execute it. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. **And nobody had ever recorded which model was answering.** The action has no `model:` input, so the model is a string inside `claude_args` — and an absent string is not an error, it is a silent fall back to the CLI default. All three agent workflows had run that way since the day they were built, which makes every past result unattributable and any comparison between two runs meaningless. Now `--model claude-opus-5 --effort max` in the writer, the reviewer and the CI repairer, with the flags read off `claude --help` rather than guessed (`--effort` takes one of `low, medium, high, xhigh, max`; there is no `ultracode` level, and the test rejects one). The full model name is pinned rather than the `opus` alias so that a new Opus cannot quietly change what this loop is. Owner decision, 2026-08-22; `bot-actor-test.sh` now holds it, and fails both when a pin is missing and when the level is not one the CLI accepts. **And the last link in the queue had no automation in it at all.** An agent opens a pull request, CI goes green, the reviewer sets `ai-review:pass` — and then nothing happens, because [CLAUDE.md](CLAUDE.md) makes the merge an *orchestrator* act and an orchestrator is a live session. On 2026-08-22 six finished pull requests (#88, #92, #94, #95, #97, #103) sat green for hours, each carrying `Fixes #N`, and the six issues behind them stayed open — which is what the owner actually complained about, one link downstream of the cause. Two defects fed it: five of the six had been left as **drafts**, and nothing merges a draft (`claude-agent.yml`'s Hand over step now runs `gh pr ready` on the two outcome kinds that carry a pull request the run actually moved, and never `--undo`); and the unattended backstop merges `docs/` only, three per run, so a green pull request touching `core/` was waiting for a human-shaped event the design never scheduled. **`pr-merge-sweep.yml`** closes it, every half hour, on the same conditions the owner had already approved for the backstop — transcribed rather than reinvented, **including the path allowlist**. It invokes no model and costs nothing from Anthropic. **Not** GitHub's native auto-merge, which cannot read a label: `ai-review:blocking` is a label on purpose, because a verdict is a judgement and a red tick is a fact, so arming native auto-merge would merge exactly the pull requests the reviewer stopped. The decision is a file rather than shell inside a workflow — `.github/scripts/merge-candidate.sh`, 80 assertions in `.github/tests/merge-candidate-test.sh`, every condition asserted in both directions plus the *order* of two of them, proven to fail against four distinct real defects. **The first version of this dropped three conditions, all in the widening direction, and review caught every one.** It had no path condition at all, so it merged over `core/`, `.github/` and `docs/automation/` — an agent could have opened a pull request replacing this very rule and had the sweep merge it, and a gate that can widen itself is not a gate. It read `ai-review:pass` as present-or-absent, when the label records that a verdict was reached and never *which commit* it was reached on: a review that reaches no verdict — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, so the next commit would have merged reviewed by nothing. And it had no per-run cap. All three now hold, plus a `timeout-minutes`, a Codex condition that no longer counts a bot's own comment as an answer, and an API failure that no longer prints the same line as an empty queue. It also claimed undrafting starts a fresh review: it does not — GitHub raises no workflow run from a `GITHUB_TOKEN` event, and saying a second opinion was obtained when none was is worse than not splitting the passes at all. What guards the merge is the head-commit condition, which survives an undraft because undrafting changes no commit. **So a green pull request touching `core/` still waits for an orchestrator session**, exactly as [CLAUDE.md](CLAUDE.md) says: widening that is the owner's decision, not this rule's. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
@@ -589,7 +592,103 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   Labs datasheets, which refused automated retrieval. Recorded as **PARTIAL**,
   not VERIFIED.
 
+## The bench session of 2026-08-23
+
+The owner authorised flashing the unit
+([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing
+needed to be flashed** — the bench sequence ran out of RAM, wrote nothing, and
+the unit is byte-identical to the T-099 backup with `verify-flash` over all
+33 554 432 bytes to say so. Full write-up:
+[WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md).
+
+### Two routes tried; the second one works
+
+- **`ota_1` can never boot.** It sits at exactly `0x1000000`, and the ROM and
+  second-stage bootloader address flash with 24 bits, so the address **aliases to
+  `0x0`** — the bootloader read its own image and said so. Waveshare ships a
+  partition table containing an OTA slot their own bootloader cannot use. **For
+  Attadipa: every app partition on this board lives below 16 MB**, unless somebody
+  proves ESP-IDF's experimental `BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH` on it,
+  which nobody has.
+- **A `PURE_RAM_APP` runs fine — if the serial port is never closed.** Four
+  earlier attempts reset within milliseconds and were written up as proof the
+  board refuses RAM images. They were not: the kernel drops DTR and RTS on the
+  *last* close of a `ttyACM`, those lines are GPIO0 and EN here, and `esptool`
+  exiting was itself the reset. `rst:0x15 (USB_UART_CHIP_RESET)` says *the host
+  did it* and should have been read that way the first time. Driving `load-ram`
+  from a single process that never closes the port, the same driverless image
+  that "failed" ran to the end of every watch window — up to two minutes, across
+  five images. Nothing was watched for longer than that, so "runs indefinitely"
+  would be an estimate wearing a measurement's clothes.
+
+### What the probes then read off the board, without one flash write
+
+- **The IMU is at `0x6B`, measured** — `0x6A` does not answer. The address
+  conflict is resolved; the schematic and revisions 0.8/0.9/A were right.
+- **H14 resolves, and it matters for OD-6.** The QMI8658 reports
+  `REVISION_ID = 0x7C` — the value in `13-52-25 ∙ QMI8658A ∙ Rev A`, whose
+  chapter 11 documents a hardware pedometer. The QMI8658C Rev 0.6 document, which
+  has no pedometer and calls `CTRL8` *"Reserved: Not Used"*, gives `0x79`. **The
+  schematic prints `QMI8658C` twice and it does not describe this part.**
+  Corroborated by writing: `CTRL2`/`CTRL7`/`CTRL8` all read back exactly as
+  written, and the accelerometer reported gravity at 1.03 g under Rev A's ±8 g
+  scaling. What is left is T-112 — someone has to walk with it.
+- **Touch is held in reset until GPIO 9 is pulsed.** `0x38` is absent from the
+  bus scan; driving GPIO 9 high and holding it changes nothing; **a 10 ms low
+  pulse brings it up**, reading chip ID `0x64`, firmware `0x02`, vendor `0x11`.
+  A BSP that configures GPIO 9 as a high output at init would see an empty bus
+  and report no error. T-113.
+- **`0x0C`, `0x0D` and `0x1E` are free** for the magnetometer retrofit (T-109).
+- **The AXP2101's rail registers are recorded raw** — `IC_TYPE = 0x4A`,
+  `LDO_ON_OFF0 = 0xFF`, the DCDC and ALDO/BLDO voltage bytes — read from the
+  powered board without writing anything. That is the input D13 and H8 were
+  waiting for; decoding it into a rail map still needs the datasheet beside it.
+
+### And the vendor's own boot log, captured from 62 ms
+
+Which took resetting over the CDC control lines, because the ordinary route
+reconnects at ~580 ms and misses the bootloader's decision entirely. It settled
+four more things at no cost:
+
+- **D12a is now confirmed on silicon.** The `octal_psram` driver enumerates the
+  part: `vendor id 0x0d (AP)`, `density 0x03 (64 Mbit)`, `VCC 0x01 (3V)`,
+  `Readlatency 0x02 (10 cycles@Fixed)`, `Found 8MB PSRAM device`, `Speed: 80MHz`.
+  A quad part would not have loaded that driver. This is step 4 of
+  `WAVESHARE_ARRIVAL` §5, executed — and the latency and burst figures are the
+  real numbers to redo §3.3's bandwidth arithmetic against.
+- **D14 closes: the SD card is SDMMC.** The vendor's firmware calls
+  `sdmmc_common`/`vfs_fat_sdmmc`, not `sdspi`. The schematic's `MOSI`/`SCK`/`MISO`
+  net names are labels, not a mode.
+- **`esp_lcd_sh8601` initialises this panel** — `LCD panel create success,
+  version: 1.0.2`, then `Backlight on`. That is evidence about the driver, not
+  about the die, so the CO5300 row stands; what it settles is that the
+  documented mismatch will not bite at bring-up.
+- **Flash boots QIO at 80 MHz**, `detected chip: gd`, 32 MB; `chip revision
+  v0.2`; `efuse block revision v1.4`; `QMI8658 initialized successfully` — which
+  names no address; the bus scan above settles `0x6B` by measurement instead.
+
 ## Recently completed
+
+- **The unattended merge sweep failed before it looked at a single pull
+  request.** `pr-merge-sweep.yml` merged green on 2026-08-23 and its cron had
+  not yet registered, so it was dispatched by hand to get the evidence its own
+  merge commit recorded as `NOT EXECUTED`. It exited 1 in eleven seconds:
+  `gh` refuses `--slurp` together with `--jq` — *"the `--slurp` option is not
+  supported with `--jq` or `--template`"* — and returns before making a request.
+  The workflow carried the combination three times. The first is the fatal one;
+  the other two are worse, because both are `|| CODEX_*=""` and the rejection
+  therefore landed as *"could not read its comments, leaving it alone"* on every
+  candidate — a sweep that decides nothing and reads as a sweep with nothing to
+  decide, 48 times a day. Nothing in the repository could have caught it:
+  shellcheck saw a well-formed command, actionlint saw valid YAML, and the
+  workflow only runs on a schedule. Fixed by piping into a separate `jq`, which
+  is what `agent-queue-watchdog.yml` already did and is why the watchdog was
+  unaffected, plus `.github/tests/gh-api-usage-test.sh` — a scan over every
+  workflow, with seven fixtures proving the scan itself catches the shape and
+  leaves the recommended one alone, verified to flag all three lines on the tree
+  as it was. The general lesson is the one that produced this: **dispatch a new
+  scheduled workflow once by hand instead of waiting for its cron**, because
+  reading it had already passed it.
 
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the
@@ -945,8 +1044,47 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   through the one door that no longer asks. The repository's own output starting
   its own writer: the exact loop the allowlist was built to prevent. The
   non-listable rule is now enforced in both places, the scan filter moved to
-  `.github/scripts/queue-scan.jq` so it can be executed, and 17 tests cover it in
+  `.github/scripts/queue-scan.jq` so it can be executed, and 37 tests cover it in
   CI. There was no test before, which is why review caught it and CI did not.
+- **The queue's own hand-over had four more of the same shape, and the review
+  that found them is the first one this repository has ever actually run.** All
+  four are a sentence that a mechanism does not honour, or a premise that holds
+  for issues and not for pull requests — [#82](https://github.com/hleserg/Attadipa/issues/82)'s
+  shape, one file over from where it was fixed. (1) The failure comment's only
+  budget-reset route was *"add `agent:ready` yourself"*, and by the time anybody
+  reads it the hand-over has already added that label: adding one that is
+  present raises no `labeled` event, so `failure-count.jq` records no reset and
+  an owner who fixed the real cause is escalated carrying every pre-fix failure.
+  It now says **remove it and add it back**, which is the only version that
+  raises the event. (2) The claim step's argument for stripping `agent:blocked`
+  — *"there is exactly one way an issue carrying it can reach this step"* — is
+  true of issues and false of pull requests: three of five triggers fire on one,
+  and `claude-ci-repair.yml` writes `ci:failed` + `agent:blocked` on a **pull
+  request** when repair gives up. Stripping it there clears a human escalation
+  and hands the branch to the unattended backstop, which requires `agent:blocked`
+  absent and never reads `ci:failed`. The strip is now issue-only and the
+  hand-over reads a **recorded** `ATTADIPA_BLOCKED_BEFORE` instead of inferring
+  ownership from the label's presence — an unreadable read reports rather than
+  falls silent, because silence is the defect. (3) `gh pr ready` was pointed at
+  whichever open pull request declares `Fixes #N`, which an abandoned branch
+  also declares; a draft can never read `mergeable_state: clean`, so undrafting
+  is precisely what makes a branch backstop-eligible. It now goes through
+  `.github/scripts/promote-decision.sh`, which promotes only on evidence this
+  run owns the branch — created during the run, or its head committed during it
+  — and holds on anything it cannot read. (4) The assertion guarding that step
+  **could not fail**: `grep -A3 'gh pr ready'` saw the three lines after the
+  command while the `case` selecting the kinds was above it. It is anchored on
+  the case block now, and each of these four is asserted in the direction that
+  reproduces the defect. Also: `gh issue edit` resolves `repository.issue(number:)`,
+  which does not resolve pull requests — the field that once put a GraphQL error
+  document inside an outcome comment — so every label edit now goes through
+  `.github/scripts/gh-label.sh`, and the stranded sweep applies `queue-scan.jq`'s
+  author filter so it stops re-queueing issues the scan will never pick. Two new
+  suites and three widened ones — `promote-decision-test.sh` 29,
+  `blocked-restart-test.sh` 21, `stranded-failures-test.sh` 18,
+  `gh-label-test.sh` 10 against a stub `gh` on `PATH`, `agent-say-test.sh` 61 —
+  and every one of the four findings above has an assertion proven to fail
+  against the code as it was.
 - **The silent refusal was reproduced, not theorised.** A task with a valid
   marker filed through the GitHub API ([#10](https://github.com/hleserg/Attadipa/issues/10))
   arrived as `claude[bot]`, was refused by the bot guard — correctly — and was

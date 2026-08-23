@@ -199,10 +199,12 @@
           <p class="lang-ru">Первая целевая модель полного продукта. В продаже встречаются разные варианты радио и GNSS, поэтому возможности выводятся из реально установленного железа, а не из названия часов.</p>
         </article>
         <article class="hardware-card reveal">
-          <div class="hw-top"><span class="chip">SECOND TARGET</span><span class="hw-dot teal-dot"></span></div>
+          <div class="hw-top"><span class="chip">SECOND TARGET · ON THE DESK</span><span class="hw-dot teal-dot"></span></div>
           <h3>Waveshare ESP32-S3 Touch AMOLED 2.06</h3>
           <p class="lang-en">A larger AMOLED target with no onboard sub-GHz mesh radio and no onboard GNSS. Those capabilities can be supplied by a separate Attadipa Node.</p>
           <p class="lang-ru">Модель с большим AMOLED-дисплеем, но без встроенного sub-GHz mesh-радио и GNSS. Эти возможности может предоставлять отдельный Attadipa Node.</p>
+          <p class="lang-en">One unit is here and has answered for itself over its own USB port: factory-default eFuses, 8&nbsp;MB PSRAM on the memory rail, external quad flash, chip revision v0.2. Nothing has been burned, and nothing has been measured.</p>
+          <p class="lang-ru">Одна плата уже здесь и ответила за себя через собственный USB-порт: eFuse на заводских значениях, 8&nbsp;МБ PSRAM на линии памяти, внешняя quad-флеш, ревизия кристалла v0.2. Ничего не прожжено — и ничего не измерено.</p>
         </article>
         <article class="hardware-card node-card reveal">
           <div class="hw-top"><span class="chip node-chip">COMPANION HARDWARE</span><span class="hw-dot amber-dot"></span></div>
@@ -246,19 +248,21 @@
         <div class="status-copy">
           <div class="status-label"><span class="pulse-dot"></span><span class="lang-en">Current milestone: M1</span><span class="lang-ru">Текущий этап: M1</span></div>
           <h2><span class="lang-en">The foundation is real. The watch firmware is still early.</span><span class="lang-ru">Фундамент уже работает. Сама прошивка часов пока на раннем этапе.</span></h2>
-          <p class="lang-en">The repository already builds the host architecture, localization and desktop simulator; the font pipeline is measured and CI exercises the simulator from a clean environment. Device firmware and hardware validation are not done yet.</p>
-          <p class="lang-ru">В репозитории уже собираются host-архитектура, локализация и desktop-симулятор; шрифтовый пайплайн измерен, а CI поднимает симулятор с чистого окружения. Прошивка для реального устройства и аппаратная валидация ещё не закончены.</p>
+          <p class="lang-en">The repository builds six libraries, the two-geometry desktop simulator and 24 host tests; screens draw through the design tokens in day and night themes, and CI raises the simulator from a clean machine. The first target board is now on the desk and has been read over its own USB port — the first evidence here that came from silicon rather than a document. Device firmware and every hardware measurement are still ahead.</p>
+          <p class="lang-ru">В репозитории собираются шесть библиотек, desktop-симулятор двух геометрий и 24 хостовых теста; экраны рисуются через дизайн-токены в дневной и ночной темах, а CI поднимает симулятор с чистой машины. Первая целевая плата уже на столе и прочитана через собственный USB-порт — это первое свидетельство здесь, пришедшее с кремния, а не из документа. Прошивка для устройства и все аппаратные измерения ещё впереди.</p>
           <div class="status-actions">
             <a class="btn primary" href="https://github.com/hleserg/Attadipa/blob/main/STATUS.md" target="_blank" rel="noreferrer"><span class="lang-en">Live project status</span><span class="lang-ru">Живой статус проекта</span> ↗</a>
             <a class="btn secondary" href="https://github.com/hleserg/Attadipa/blob/main/TASKS.md" target="_blank" rel="noreferrer"><span class="lang-en">Roadmap</span><span class="lang-ru">План работ</span></a>
           </div>
         </div>
         <div class="status-list">
-          <div><span class="ok">✓</span><span class="lang-en">Host libraries & capability model</span><span class="lang-ru">Host-библиотеки и модель возможностей</span></div>
+          <div><span class="ok">✓</span><span class="lang-en">Host libraries &amp; capability model</span><span class="lang-ru">Host-библиотеки и модель возможностей</span></div>
           <div><span class="ok">✓</span><span class="lang-en">Two-geometry desktop simulator</span><span class="lang-ru">Desktop-симулятор двух геометрий</span></div>
-          <div><span class="ok">✓</span><span class="lang-en">EN/RU localization & font tooling</span><span class="lang-ru">Локализация EN/RU и шрифтовый пайплайн</span></div>
+          <div><span class="ok">✓</span><span class="lang-en">EN/RU localization &amp; font tooling</span><span class="lang-ru">Локализация EN/RU и шрифтовый пайплайн</span></div>
+          <div><span class="ok">✓</span><span class="lang-en">Design tokens, day &amp; night themes</span><span class="lang-ru">Дизайн-токены, дневная и ночная темы</span></div>
+          <div><span class="ok">✓</span><span class="lang-en">First board on the desk, read on silicon</span><span class="lang-ru">Первая плата на столе, прочитана с кремния</span></div>
           <div><span class="wait">○</span><span class="lang-en">ESP32-S3 device firmware</span><span class="lang-ru">Прошивка для ESP32-S3</span></div>
-          <div><span class="wait">○</span><span class="lang-en">Hardware measurements & bring-up</span><span class="lang-ru">Аппаратные измерения и bring-up</span></div>
+          <div><span class="wait">○</span><span class="lang-en">Hardware measurements &amp; bring-up</span><span class="lang-ru">Аппаратные измерения и bring-up</span></div>
           <div class="honesty"><strong>NOT EXECUTED — HARDWARE REQUIRED</strong><span class="lang-en"> means exactly that.</span><span class="lang-ru"> здесь означает именно это.</span></div>
         </div>
       </div>
