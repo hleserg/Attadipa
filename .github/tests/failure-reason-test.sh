@@ -212,28 +212,75 @@ contains "a nested error message is classified by its type" "$got" "api_error"
 contains "and by its condition" "$got" "the prompt is too long"
 lacks "but the message itself does not come out" "$got" "EXAMPLEKEYMATERIAL"
 
-# The third shape, and the one that is not only a disclosure: an error prefix in
-# UNRELATED tool or model text used to become the run's stated verdict, because
-# the patterns were grepped over the whole file rather than over the record that
-# holds the verdict. The result record here says the run merely gave up.
+# The third shape: an error prefix in UNRELATED tool or model text. Whatever
+# else happens the token does not come out — and the result record, which is the
+# run's verdict, is read FIRST, so a tool result cannot outrank it.
 got=$(reason "$(log '[
   {"type":"user","message":{"content":[{"type":"tool_result",
     "content":"API Error: 500 GH_TOKEN=ghp_EXAMPLENOTAREALTOKEN0123456789"}]}},
   {"type":"assistant","message":{"content":[{"type":"text",
     "text":"I will retry: API Error: 500 sk-ant-EXAMPLE-NOT-REAL"}]}},
-  {"type":"result","subtype":"success","is_error":true,"num_turns":7,"result":"I gave up"}]')")
+  {"type":"result","subtype":"success","is_error":true,"num_turns":7,
+   "result":"Credit balance is too low to run this request"}]')")
 lacks "a token quoted in a tool result is not disclosed" "$got" "ghp_"
 lacks "nor one the model repeated back in its own text" "$got" "sk-ant-"
-contains "and neither becomes the verdict — the result record is what failed" \
-     "$got" "unclassified — SDK subtype \`success\`, ended at turn 7"
+contains "and the result record outranks both — it is the run's verdict" \
+     "$got" "Credit balance is too low"
+lacks "so a tool result's status code is not the answer" "$got" "API Error: 500"
 
-# The one path that still reads the whole file, because there is no record to
-# read instead. It may name an error that belongs to some earlier line, so it
-# says so — but it still cannot print anything but the classification.
+# ORDER IS NOT SCOPE, and the review of this branch is what settled it. The
+# record is read first; the file is read when the record said nothing. Scoping
+# to the record alone goes quiet on run 32589375744 — the run this script was
+# written for, whose result record has neither `.result` nor `.error` — and
+# quiet is the one thing it may not be, because `show_full_output: false`
+# publishes that record and withholds everything else.
+got=$(reason "$(log '[
+  {"type":"assistant","message":{"content":[{"type":"text",
+    "text":"API Error: 529 {\"type\":\"overloaded_error\"}"}]}},
+  {"type":"result","subtype":"success","is_error":true,"duration_ms":84607,
+   "num_turns":20,"total_cost_usd":0.689,"permission_denials_count":0}]')")
+contains "an error outside a wordless result record is still found" "$got" "API Error: 529"
+contains "and carries the type from that same error" "$got" "overloaded_error"
+contains "and says it was not the record that said so" "$got" "found outside the result record"
+
+# The same, where there is no record at all to read instead.
 got=$(reason "$(log '[{"type":"result","is_error":true,"result":"API Error: 429 GH_TOKEN=ghp_EXAMPLENOTAREALTOKEN')")
 contains "a truncated log is still classified" "$got" "API Error: 429"
-contains "and admits it did not read that from the result record" "$got" "not from the result record"
+contains "and admits it did not read that from the result record" "$got" "found outside the result record"
 lacks "and still discloses nothing" "$got" "ghp_"
+
+# A CONDITION ON ITS OWN IS WORDS, AND SAYS SO. `.result` is model output, and
+# `agent-say.sh` follows this line with "extracted on the runner from the
+# action's full execution log". An agent that dies while writing about this very
+# file leaves `Credit balance is too low` in its final message; naming a spend
+# failure that did not happen sends the retry decision the wrong way, and the
+# retry decision is why these are distinguished at all.
+got=$(reason "$(log '[{"type":"result","subtype":"success","is_error":true,"num_turns":9,
+  "result":"T-108: I was adding a detector for Credit balance is too low when I ran out of turns"}]')")
+contains "a condition with nothing structural beside it is still reported" \
+     "$got" "Credit balance is too low"
+contains "but the reader is told what it stood on" "$got" "no status code or error type beside it"
+got=$(reason "$(log '[{"type":"result","is_error":true,
+  "result":"API Error: 400 {\"type\":\"billing_error\",\"message\":\"Credit balance is too low\"}"}]')")
+contains "a status code beside the words is corroboration" "$got" "API Error: 400"
+contains "and names the type from that same error" "$got" "billing_error"
+lacks "so that line is not hedged" "$got" "no status code"
+
+# Two unrelated errors in one body must not be spliced into a third that never
+# happened: the status and the type come out of a single bounded window.
+got=$(reason "$(log '[{"type":"result","is_error":true,
+  "result":"first API Error: 500 internal, then two hundred characters of unrelated narration — aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa — and only then an \"type\":\"rate_limit_error\" from a tool"}]')")
+contains "the status is reported" "$got" "API Error: 500"
+lacks "but a type from elsewhere in the body is not attached to it" "$got" "rate_limit_error"
+
+# A `subtype` carrying the field separator used to shift every field right, so a
+# failed run would report itself as `is_error=false` — sanitised output over a
+# decision taken on unsanitised input. The alphabet check is inside the jq now,
+# where the framing happens, as well as at the print site.
+got=$(reason "$(log '[{"type":"result","subtype":"x|false|1|no","is_error":true,"num_turns":5,
+  "result":"API Error: 503 nothing to see here"}]')")
+lacks "a subtype full of separators does not shift the fields" "$got" "reported no error"
+contains "and the run is still read as the failure it was" "$got" "API Error: 503"
 
 # `subtype` and `num_turns` are the two fields printed without being recognised
 # first. They come from a record the SDK wrote, so this is not a live threat —
@@ -250,9 +297,15 @@ says "a clean run's subtype survives the same check" \
 
 echo
 echo "Malformed input, which is what a changed action version looks like"
-says "a file that is not JSON is not a crash" \
-     "$(reason "$(log 'this is not json at all')")" "unclassified"
-says "neither is an empty file" "$(reason "$(log '')")" "unclassified"
+# These two used to assert a bare `unclassified`, which is what the reader got
+# whether the vocabulary had a gap or the file was unreadable — and `agent-say.sh`
+# answers `unclassified` with "widening that whitelist is the fix, and it is a
+# task", which is the wrong instruction for a log nothing could parse.
+says "a file that is not JSON is not a crash, and says which kind of nothing it is" \
+     "$(reason "$(log 'this is not json at all')")" \
+     "unclassified — the log could not be parsed"
+says "neither is an empty file" "$(reason "$(log '')")" \
+     "unclassified — the log has no result record"
 contains "nor is a JSON document of an entirely different shape" \
      "$(reason "$(log '{"messages":[]}')")" "unclassified"
 # A truncated log is the realistic failure: the runner died mid-write.
@@ -284,8 +337,15 @@ says "a sub-session's own clean result does not become the run's verdict" \
 
 echo
 echo "Length, because an issue comment is not a log viewer"
+# `cut -c1-300` can no longer fire — the renderers are the bound, and the longest
+# line they can build is under two hundred characters. So this case is now about
+# what it was always really about: four thousand characters sit behind a
+# recognised prefix and none of them come out. The length assertion stays as the
+# contract on the callers, and would catch a renderer that reintroduced an
+# unbounded capture.
 long=$(printf 'API Error: 400 %s' "$(head -c 4000 /dev/zero | tr '\0' 'x')")
 got=$(reason "$(log "[{\"type\":\"result\",\"is_error\":true,\"result\":\"$long\"}]")")
+lacks "four thousand characters behind a prefix stay behind it" "$got" "xxxxxxxxxx"
 if [ "${#got}" -le 300 ]; then
   printf '  ok    %s\n' "a very long error is cut to something a person will read"; pass=$((pass + 1))
 else
@@ -296,6 +356,14 @@ if [ "$(printf '%s' "$got" | wc -l)" -eq 0 ]; then
 else
   printf '  FAIL  %s\n' "the reason must be a single line"; fail=$((fail + 1))
 fi
+# The digit captures are bounded too, and by the pattern rather than by the cut:
+# thirty digits in the API's own grammar yield at most twelve.
+got=$(reason "$(log '[{"type":"result","is_error":true,
+  "result":"Prompt is too long: 123456789012345678901234567890 tokens > 200000 maximum"}]')")
+contains "a context refusal with an absurd token count is still named" \
+     "$got" "prompt is too long"
+lacks "but the count itself does not come out at all — the grammar did not fit" \
+     "$got" "123456789012"
 
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"

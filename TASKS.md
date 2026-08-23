@@ -144,11 +144,23 @@ stale silently. The protocol is
   therefore be as loose as it needs to be; a renderer may not. If a new
   classification seems to need a piece of the message to be useful, that is the
   finding — say so on the issue rather than routing it through the renderer.
+- **Where a detector reaches, and why the line is stamped.** The result record's
+  `.result` and `.error` are read first, then the whole file if those said
+  nothing. Do not narrow that to the record: `show_full_output: false` publishes
+  the result record and withholds the rest, so a record-only reader answers with
+  the half a person already had — and run `32589375744`, the run this script
+  exists for, has neither field. A line says `(found outside the result record)`
+  or `(no status code or error type beside it)` when that is what it stood on. A
+  new detector that only ever fires on free text will be stamped, and should be:
+  `.result` is model output, and an agent writing *about* an error is
+  indistinguishable from one hitting it until something structural says
+  otherwise.
 - **Tests:** `.github/tests/failure-reason-test.sh`, which must keep its
   leak cases: an API key, a token-shaped string and a private key sitting in the
   log beside a real error, asserting only the error comes out — including the
-  #106 loop, which puts a secret behind **every** recognised prefix, so a new
-  entry is covered the moment its prefix joins the list.
+  #106 loop, which puts a secret behind **every** recognised prefix. The loop's
+  fixture list is checked against the script's own condition table, so adding an
+  entry without a case turns the suite red rather than going uncovered.
 - **Hardware required:** no.
 
 

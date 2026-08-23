@@ -412,26 +412,63 @@ used to be a security review, and is now a detector plus a renderer that writes
 its own sentence. A detector may be as loose as it needs to be; a renderer may
 contain no fragment of the match.
 
-Recognition is scoped as well as rendered. The detectors read `.result` and
-`.error` of the **last `result` record** and nothing else, so no tool result can
-become the verdict. The whole-file scan survives in one place only — a log with
-no readable result record, which is what a truncated write looks like — and a
-line produced that way says where it came from, because it may belong to an
-earlier record than the failure. `subtype` and `num_turns`, the two fields
-printed without being recognised first, are held to `[a-z_]` and `[0-9]`.
+#### Ordered, not scoped — and the difference was a blocking review
 
-The test carries 80 assertions. The original 27 all still pass **unchanged** —
-they are the leak cases, and a fix that had to weaken them would not have been
-one — and the new ones put a secret behind *every* recognised prefix. Two of them
-are about the test itself: the fixture list is compared against the script's own
-condition table, so a classification added without a case turns the suite red on
-the commit that adds it; and the script under test is overridable, so "red before
-the fix" is a command rather than a claim:
+Recognition is ordered as well as rendered, and the first version of this fix
+made it *scoped*, which the independent review blocked on. The detectors read
+`.result` and `.error` of the **last `result` record** first, because that record
+is the run's verdict and an error prefix quoted in a tool result is not. If
+nothing there matches, the whole file is read after all.
+
+Reading only the record would have been a silent regression, for the reason this
+very section gives two screens up: `show_full_output: false` **publishes the
+result record and withholds everything else**, so a script that reads only the
+published part is answering the question with the half a person already had. Run
+`32589375744` — the run this script exists for — has neither `.result` nor
+`.error`, and every `error_max_turns` death has the same shape.
+
+So each line says what it stood on:
+
+| stamp | what it means |
+|---|---|
+| *(none)* | the result record's own fields, corroborated by a status code or an error type |
+| `(found outside the result record)` | matched elsewhere in the log; it may belong to an earlier line |
+| `(no status code or error type beside it)` | the words matched and nothing structural agreed |
+
+The last one exists because `.result` is **model output**, as
+`claude-pr-review.yml` says in its own comment. An agent that dies while writing
+about this file leaves `Credit balance is too low` in its final message, and
+`agent-say.sh` follows the line with *"extracted on the runner"* — a spend
+failure that never happened, asserted as evidence, when the retry decision turns
+on exactly that distinction. Naming the evidence is the fix; the detectors are
+not the place for it.
+
+Two smaller properties came from the same review. The status code and the error
+type are taken from **one bounded window**, so two unrelated errors in one body
+cannot be spliced into an `API Error: 500 (rate_limit_error)` that never
+happened. And the field alphabets moved **inside the jq**: the head line is
+`|`-joined, so a `subtype` of `x|false|1|no` used to shift every field right and
+make a failed run report `is_error=false` — sanitised output over a decision
+taken on unsanitised input.
+
+The test carries 96 assertions. 25 of the original 27 pass **unchanged** — they
+are the leak cases, and a fix that had to weaken them would not have been one.
+The two that changed are the malformed-input pair: they asserted a bare
+`unclassified`, and now assert which kind of nothing it was, because
+`agent-say.sh` answers `unclassified` with *"widening that whitelist is the
+fix, and it is a task"* — right for a gap in the vocabulary, wrong for a log
+nothing could parse.
+
+The new ones put a secret behind *every* recognised prefix. Two are about the
+test itself: the fixture list is compared against the script's own condition
+table, so a classification added without a case turns the suite red on the commit
+that adds it; and the script under test is overridable, so "red before the fix"
+is a command rather than a claim:
 
 ```bash
 git show 5fd2738:.github/scripts/failure-reason.sh > /tmp/old.sh
 ATTADIPA_REASON_SH=/tmp/old.sh bash .github/tests/failure-reason-test.sh
-#   47 passed, 22 failed
+#   53 passed, 32 failed
 ```
 
 ### A green check is not a review, and until now they looked the same

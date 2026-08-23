@@ -48,12 +48,28 @@
 # *disclosed* -- which is what made the old grammar-by-grammar review so
 # delicate.
 #
-# Recognition is also scoped: the detectors run over the KNOWN FIELDS OF THE
-# LAST `result` RECORD (`.result` and `.error`, the latter serialised), not over
-# the file. The whole-file scan survives only for a log with no readable result
-# record -- a truncated write, a shape jq cannot parse -- and a line produced
-# that way says where it came from, because it may belong to some earlier
-# record rather than to the failure.
+# Recognition is ORDERED rather than scoped, and the difference is a review
+# finding on #106's own pull request. The detectors read the known fields of the
+# LAST `result` RECORD first -- `.result` and `.error`, the latter serialised --
+# because that record is the run's verdict and an error prefix quoted in some
+# tool result is not. But if nothing there matches, the file itself is read, and
+# the line says so: `show_full_output: false` publishes the result record and
+# withholds everything else, so a reader who cannot be told about the rest is
+# being sent to a log that has already been emptied. Run 32589375744 -- the run
+# this file was written for -- has neither `.result` nor `.error`, which is
+# exactly the shape a record-only reader would go quiet on.
+#
+# A line is therefore stamped with what it stands on:
+#
+#   (found outside the result record)     -- an earlier line may have said it
+#   (no status code or error type beside it)  -- the words matched, and nothing
+#                                                structural corroborated them
+#
+# The second matters because `.result` is model output. An agent that dies while
+# writing about this very file leaves `Credit balance is too low` in its final
+# message, and a spend failure that never happened is worse than an
+# `unclassified` -- the retry decision turns on that distinction. The detectors
+# are not the place to solve it; saying what the evidence was is.
 #
 # Anything unrecognised is reported as `unclassified` together with facts that
 # are structural rather than textual -- subtype, turn count, whether a result
@@ -73,6 +89,13 @@
 # `"type":"tool_result"`, which occur all over the log, are not classifications,
 # and neither is anything an attacker would rather put there.
 ATTADIPA_ERROR_TYPES='overloaded_error|rate_limit_error|api_error|authentication_error|permission_error|invalid_request_error|billing_error|not_found_error|request_too_large|timeout_error'
+
+# The same field, spelled for both places it is read from. Out of a parsed
+# `.result` it arrives as `"type":"api_error"`; out of the raw file it is still
+# inside a JSON string, so every quote wears a backslash. A reader that knew only
+# the first spelling was silent on every whole-file match, which is the quiet
+# kind of broken -- it never errors, it just stops recognising.
+ATTADIPA_TYPE_FIELD='\\?"type\\?" *: *\\?"('"$ATTADIPA_ERROR_TYPES"')\\?"'
 
 # The conditions worth naming, most specific first. Each entry is
 # `name<space>ERE`; the renderer is `attadipa__render_<name>`, which receives
@@ -102,7 +125,7 @@ ATTADIPA_REASON_CONDITIONS=(
   "output_maximum Claude's response exceeded the [0-9]{1,12} output token maximum"
   'credit_balance Credit balance is too low'
   'oauth_expired OAuth token has expired'
-  'oauth_refused OAuth (authentication|token)'
+  'oauth_refused OAuth (authentication|token) (failed|error|has expired|is expired|is invalid|is required|was refused|is (currently )?not supported)'
   'request_timeout Request timed out'
   'request_aborted Request was aborted'
   'disk_full Error: ENOSPC'
@@ -234,6 +257,7 @@ attadipa_failure_reason() {
   fi
 
   local subtype="" is_error="" turns="" had_result="" fields="" head_line="" body=""
+  local state="unreadable"
   if command -v jq >/dev/null 2>&1; then
     # `-s` plus `flatten(1)` because this action writes ONE JSON ARRAY on some
     # runs and ONE OBJECT PER LINE on others. Both shapes have been seen and
@@ -244,26 +268,44 @@ attadipa_failure_reason() {
     # The last `result` record is the verdict; earlier ones belong to
     # sub-sessions. One jq invocation rather than five, so a partially readable
     # log cannot answer four questions and fail the fifth: line one is the
-    # structural fields, and everything after it is the only text the detectors
-    # are allowed to look at -- `.result` and `.error`, and nothing else in the
-    # record, nothing at all from any other record.
+    # structural fields, and everything after it is the record's own text.
+    #
+    # THE ALPHABET CHECKS ARE IN HERE, not only at the print site, because line
+    # one is `|`-joined and `read` splits on `|`. A `subtype` of `x|false|1|no`
+    # would otherwise shift every field right and make a failed run report
+    # itself as `is_error=false` -- sanitised output over a decision taken on
+    # unsanitised input. `name` and `count` cannot emit a `|`, so the frame
+    # holds by construction.
     fields=$(jq -rs '
       def astext: if . == null then "" elif type == "string" then . else tojson end;
+      def name:  if (type == "string") and test("^[a-z][a-z_]{0,39}$") then . else "" end;
+      def count: (if type == "number" then tostring elif type == "string" then . else "" end)
+                 | if test("^[0-9]{1,9}$") then . else "" end;
       flatten(1)
       | [.[] | select(type == "object" and .type == "result")] | last
-      | if . == null then "||||no"
-        else ([ (.subtype | astext),
-                (if has("is_error") then (.is_error | tostring) else "" end),
-                (.num_turns | astext),
+      | if . == null then "NORESULT"
+        else ([ (.subtype | name),
+                (if .is_error == true then "true"
+                 elif .is_error == false then "false" else "" end),
+                (.num_turns | count),
                 (if (.result // "") == "" then "no" else "yes" end) ]
               | join("|"))
              + "\n" + (.result | astext) + "\n" + (.error | astext)
         end' "$path" 2>/dev/null)
     head_line=${fields%%$'\n'*}
-    if [ "$fields" != "$head_line" ]; then body=${fields#*$'\n'}; fi
-    IFS='|' read -r subtype is_error turns had_result <<< "$head_line"
-    subtype=$(attadipa__safe_name "$subtype")
-    turns=$(attadipa__safe_count "$turns")
+    if [ -z "$fields" ]; then
+      state="unreadable"
+    elif [ "$head_line" = "NORESULT" ]; then
+      state="none"
+    else
+      state="ok"
+      if [ "$fields" != "$head_line" ]; then body=${fields#*$'\n'}; fi
+      IFS='|' read -r subtype is_error turns had_result <<< "$head_line"
+      # Belt and braces: the same rule at the print site, so a change to the jq
+      # above cannot quietly widen what a comment may contain.
+      subtype=$(attadipa__safe_name "$subtype")
+      turns=$(attadipa__safe_count "$turns")
+    fi
   fi
 
   if [ "$is_error" = "false" ]; then
@@ -271,29 +313,56 @@ attadipa_failure_reason() {
     return 0
   fi
 
-  # WHERE THE DETECTORS MAY LOOK. A readable result record is the verdict, and
-  # its two text fields are the whole search space -- so an error prefix in a
-  # tool result is no longer able to become the run's stated cause. Only when no
-  # result record could be read at all does the file itself become the source,
-  # and a line found that way is labelled as such below.
-  local mode="file" src="$path" provenance=""
-  if [ "$head_line" = "||||no" ]; then
-    provenance=" (not from the result record: the log has none)"
-  elif [ -n "$head_line" ]; then
-    mode="text"; src="$body"
-  else
-    provenance=" (not from the result record: the log could not be parsed)"
-  fi
+  # WHERE THE DETECTORS LOOK, AND IN WHAT ORDER. The result record first,
+  # because it is the run's verdict and a tool result is not; the whole file
+  # second, because `show_full_output: false` publishes the record and withholds
+  # the rest, so a reader told nothing about the rest has been sent to an empty
+  # log. Run 32589375744 has neither `.result` nor `.error`, and a record-only
+  # reader is silent on exactly the run this file was written for.
+  local mode src outside="no" hit="" re="" window=""
+  local code="" etype="" transport="" condition="" entry name pattern pass
+  for pass in 1 2; do
+    if [ "$pass" = 1 ] && [ "$state" = "ok" ]; then
+      mode="text"; src="$body"
+    else
+      mode="file"; src="$path"; outside="yes"
+    fi
 
-  # The transport half: a status code and a type name, both from closed
-  # alphabets. `${hit##* }` takes the digits off `API Error: 500` -- the pattern
-  # guarantees there is nothing else in the match.
-  local hit="" code="" etype="" transport="" re=""
-  hit=$(attadipa__scan "$mode" "$src" 'API Error: [0-9]{3}')
-  [ -n "$hit" ] && code="${hit##* }"
-  hit=$(attadipa__scan "$mode" "$src" "\"type\" *: *\"($ATTADIPA_ERROR_TYPES)\"")
-  re="\"($ATTADIPA_ERROR_TYPES)\"\$"
-  if [[ "$hit" =~ $re ]]; then etype="${BASH_REMATCH[1]}"; fi
+    # The transport half. Both the status and the type come out of ONE bounded
+    # window, so two unrelated errors in one body cannot be spliced into
+    # `API Error: 500 (rate_limit_error)`. The window is internal; only the
+    # three digits and the closed-list name are ever printed.
+    window=$(attadipa__scan "$mode" "$src" 'API Error: [0-9]{3}.{0,160}')
+    re='API Error: ([0-9]{3})'
+    if [[ "$window" =~ $re ]]; then
+      code="${BASH_REMATCH[1]}"
+      re="$ATTADIPA_TYPE_FIELD"
+      if [[ "$window" =~ $re ]]; then etype="${BASH_REMATCH[1]}"; fi
+    else
+      hit=$(attadipa__scan "$mode" "$src" "$ATTADIPA_TYPE_FIELD")
+      re="$ATTADIPA_TYPE_FIELD"
+      if [[ "$hit" =~ $re ]]; then etype="${BASH_REMATCH[1]}"; fi
+    fi
+
+    # The condition half: first entry that matches wins, and what is printed is
+    # the renderer's sentence rather than the match. An entry whose renderer
+    # does not exist is skipped rather than run -- a table typo then costs a
+    # classification, which is what `unclassified` is for, instead of putting a
+    # name from the table through the command line.
+    for entry in "${ATTADIPA_REASON_CONDITIONS[@]}"; do
+      read -r name pattern <<< "$entry"
+      declare -F "attadipa__render_$name" >/dev/null 2>&1 || continue
+      hit=$(attadipa__scan "$mode" "$src" "$pattern")
+      if [ -n "$hit" ]; then
+        condition=$("attadipa__render_$name" "$hit")
+        [ -n "$condition" ] && break
+      fi
+    done
+
+    # Something was recognised, or there is nothing left to read.
+    if [ -n "$code" ] || [ -n "$etype" ] || [ -n "$condition" ] || [ "$outside" = "yes" ]
+    then break; fi
+  done
 
   if [ -n "$code" ]; then
     transport="API Error: $code"
@@ -307,22 +376,6 @@ attadipa_failure_reason() {
     transport="the API reported \`$etype\`"
   fi
 
-  # The condition half: first entry that matches wins, and what is printed is
-  # the renderer's sentence rather than the match. An entry whose renderer does
-  # not exist is skipped rather than run -- a table typo then costs a
-  # classification, which is what `unclassified` is for, instead of putting a
-  # name from the table through the command line.
-  local entry name pattern condition=""
-  for entry in "${ATTADIPA_REASON_CONDITIONS[@]}"; do
-    read -r name pattern <<< "$entry"
-    declare -F "attadipa__render_$name" >/dev/null 2>&1 || continue
-    hit=$(attadipa__scan "$mode" "$src" "$pattern")
-    if [ -n "$hit" ]; then
-      condition=$("attadipa__render_$name" "$hit")
-      [ -n "$condition" ] && break
-    fi
-  done
-
   local line=""
   if [ -n "$transport" ] && [ -n "$condition" ]; then
     line="$transport — $condition"
@@ -333,11 +386,19 @@ attadipa_failure_reason() {
   fi
 
   if [ -n "$line" ]; then
+    # WHAT THE LINE STANDS ON, said rather than implied. `agent-say.sh` follows
+    # this with "extracted on the runner", so a line matched in an agent's own
+    # prose would be an inference wearing an extraction's clothes.
+    if [ "$outside" = "yes" ]; then
+      line="$line (found outside the result record)"
+    elif [ -z "$transport" ]; then
+      line="$line (no status code or error type beside it)"
+    fi
     # One line, and bounded, because an issue comment is not a log viewer. Both
     # are belt-and-braces now that nothing from the log is copied -- the
     # renderers above are the length bound -- and they stay, because the cost of
     # being wrong about that is a run log in a comment.
-    line=$(printf '%s' "$line$provenance" | tr -d '\n\r' | cut -c1-300)
+    line=$(printf '%s' "$line" | tr -d '\n\r' | cut -c1-300)
     echo "$line"
     return 0
   fi
@@ -352,6 +413,13 @@ attadipa_failure_reason() {
   case "$had_result" in
     no)  detail="$detail, with no final message at all" ;;
     yes) detail="$detail, and its final message matched no known error shape" ;;
+  esac
+  # `agent-say.sh` answers `unclassified` with "widening that whitelist is the
+  # fix, and it is a task". That is the right advice for a gap in the vocabulary
+  # and the wrong advice for a log nothing could read, so the two say which.
+  case "$state" in
+    none)       detail="$detail — the log has no result record" ;;
+    unreadable) detail="$detail — the log could not be parsed" ;;
   esac
   echo "$detail"
 }
