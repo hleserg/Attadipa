@@ -159,19 +159,55 @@ stale silently. The protocol is
     collision) and #97 (A10). Renumbering one silently breaks every hard-coded
     anchor pointing at it, and six of them were in `STATUS.md` and `TASKS.md`
     alone;
-  - one is broken on `main` already. `STATUS.md` records **A7** as answered by
-    **OD-13**, with OD-13's anchor; `OPEN_QUESTIONS.md` records A7 as answered
-    by **OD-15**, and OD-13's own header also claims to answer A7. One of the
-    three is wrong, the checker cannot see it, and it is not clear from here
-    which — **so this task fixes the checker and reports the discrepancy, it
-    does not guess which document is right.**
+  - a **second** kind of silent rot this checker still would not see, kept here
+    because it was found looking for the first. `STATUS.md:501` records **A7**
+    as the tag-emulation question ([#33](https://github.com/hleserg/Attadipa/issues/33),
+    OD-13); `OPEN_QUESTIONS.md:40` records A7 as the palette question
+    ([#57](https://github.com/hleserg/Attadipa/issues/57), OD-15); and
+    `REUSE_LEDGER.md:1196` uses A7 for a third thing.
+    `STATUS.md:578` says out loud that the palette conflict was *"once recorded
+    here as A7"*. **So A7 is a reused question ID, not a mislinked anchor**, and
+    the fix is renumbering rather than anything a link checker can do — an
+    earlier version of this task called it a broken link and coupled its
+    acceptance to resolving it, which would have held a cheap tooling fix behind
+    an owner decision it does not depend on. Both anchors involved resolve, or
+    carry no anchor at all, so the proposed checker stays green over the whole
+    discrepancy. Found in review. **Recorded, not guessed at**: which question
+    keeps A7 is a documentation decision, and it is filed as T-125 below rather
+    than settled here.
 - **Acceptance:** the checker resolves a fragment against the target file's
   headings using the same slug rule GitHub applies, fails on one that resolves
   to nothing, and has a mutation test per direction — including one asserting it
   does **not** fire on a bare `#L12-L20` line reference, which is a different
-  thing. `main` green afterwards, which means the OD-13/OD-15 discrepancy is
-  resolved with the owner or by evidence first.
-- **Hardware required:** no. **Owner required:** possibly, for the A7 question.
+  thing. `main` green afterwards — which this change alone achieves, since every
+  anchor on `main` today resolves. **Not** contingent on the A7 question: see
+  above.
+- **Hardware required:** no. **Owner required:** no.
+
+### T-125 · `A7` names three different questions
+- **Priority:** P3. Nothing is blocked by it; it is a trap for the next reader.
+- **Dependencies:** none. **Not** a dependency of T-122 either way, which is the
+  correction that produced this task.
+- **Goal:** give each of the three questions currently called A7 its own
+  identifier, and leave a line saying which was which.
+- **The three:** the **tag-emulation** question — should the watch be findable
+  by an external tracker — `STATUS.md:501`,
+  [#33](https://github.com/hleserg/Attadipa/issues/33), answered by OD-13; the
+  **palette** question — which orange, which olive —
+  `docs/research/OPEN_QUESTIONS.md:40`,
+  [#57](https://github.com/hleserg/Attadipa/issues/57), answered by OD-15; and a
+  third use at `docs/research/REUSE_LEDGER.md:1196`. `STATUS.md:578` records the
+  reuse in passing — *"once recorded here as A7"* — which is how it was found.
+- **Why it is not just tidiness:** all three are answered, so nothing is waiting
+  on it. But `OPEN_QUESTIONS.md` is the register `CLAUDE.md` sends every agent
+  to, and an `A`-number that resolves to three different questions makes every
+  citation of it ambiguous — including the ones in `REUSE_LEDGER.md`, which is
+  the file the reuse rule points at.
+- **Acceptance:** one question keeps `A7`, the others take fresh numbers clear of
+  every open branch, and a line in `OPEN_QUESTIONS.md` records the renumbering
+  so an old citation can still be resolved. No link may be left pointing at a
+  number that has moved.
+- **Hardware required:** no.
 
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
@@ -1754,14 +1790,29 @@ Recommended next action:
   POSSIBLE` rather than left looking pending. Past tense on purpose: the next
   bullet supersedes the status word, and `NOT POSSIBLE` against `BLOCKED` is
   precisely the distinction
-  [INTERFERENCE_MATRIX](docs/hardware/INTERFERENCE_MATRIX.md):52-53 says must
-  never be allowed to look alike.
+  [INTERFERENCE_MATRIX](docs/hardware/INTERFERENCE_MATRIX.md) says must never be
+  allowed to look alike — §"On the four `NOT MEASURABLE` rows", quoted rather
+  than cited by line, because the last line citation here was written in the
+  same patch that moved the line it pointed at.
 - **Superseded 2026-08-22, and the status word has to change with it.** A5 and
   A6 are answered: the owner ordered a CJMCU-9911 and a GY-271 and is soldering
   one in ([#83](https://github.com/hleserg/Attadipa/issues/83),
   [OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)).
-  Those seven epics are **blocked pending a part in the post and a placement
-  that is not chosen yet (T-109)**, not `NOT POSSIBLE`. The distinction the
+  **Those two epics are `BLOCKED`, not `NOT POSSIBLE` — and they are not blocked
+  on the same thing.** The audio/magnetometer one (G-09) is gated on **placement
+  alone** (T-109): the speaker is on the unit, `VERIFIED` at
+  `WAVESHARE_BOARD_RECEIVED` §1.8, so placing the sensor makes it measurable.
+  The haptic one (G-08) is gated on placement **and** on a vibration motor the
+  unit does not have (§1.7, `OBSERVED`; the pads are bare, T-097). An earlier
+  version of this bullet said "those seven epics" — which matches nothing: the
+  bullet above names two and
+  [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md) counts five
+  `BLOCKED` — and gave placement as the last gate, which `STATUS.md` had already
+  been corrected out of. Roadmap and status disagreeing is the worse half, since
+  the roadmap is what selects work: pick up T-014 here, land the placement, run
+  G-08 on a motorless unit, see no interference, write `PASS`. Found in review.
+
+  The distinction the
   other files are careful about holds here too: a **stock** board still has no
   magnetometer and the firmware still has to run on one, so the epics describe a
   capability that will exist on exactly one physical device — which is a registry

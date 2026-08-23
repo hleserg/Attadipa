@@ -1101,12 +1101,24 @@ corrected, exactly as PR #87 records it.
 
 ### A6 — no, and deliberately
 
-**No magnetometer on the nodes, ever, by design.** This closes A6 in the
-direction [ADR-0009](../adr/0009-heading.md) was written to survive: the ADR
-refused to present `NodeBody` heading as `WatchBody` heading without a known,
-calibrated, still-valid transform, and noted no such transform exists for a
-device loose in a bag. That refusal now costs nothing, because there is no node
-heading to be tempted by.
+**No magnetometer on the *Attadipa* node, ever, by design** — and the scope of
+that sentence is load-bearing. It is the owner's decision about the node this
+project builds, and [OD-7](#od-7--the-companion-is-any-node-not-only-ours) makes the companion **any** node: a
+third-party MeshCore device may carry a magnetometer, and whether it does is
+`UNKNOWN` rather than no.
+
+So this closes A6 in the direction [ADR-0009](../adr/0009-heading.md) was
+written to survive without making the ADR's machinery dead code.
+`HeadingSource::RemoteSensor` and the four-condition gate stay, and they stay
+*because* of the scope: the ADR refuses to present `NodeBody` heading as
+`WatchBody` heading without a known, calibrated, still-valid transform, and no
+such transform exists for a device loose in a bag — a third party's node
+included. What this decision removes is the temptation to build **for** a node
+heading, not the guard against one arriving.
+
+An earlier draft said *"no magnetometer on the nodes, ever"* unqualified, which
+over-reads A6 and makes the gate look like code nobody needs. Corrected here
+after the same over-reading was corrected in the ADR; found in review.
 
 ### What is *planned* for the node instead, and what it would not buy
 
@@ -1139,12 +1151,29 @@ QMI8658, from the other end: a power feature wearing a positioning name.
    rather than left marked unavailable, per the owner's own framing on #56.
 2. [ADR-0009](../adr/0009-heading.md) §3's "if A6 comes back yes" framing is
    answered rather than open, and the ADR records the general rule the two
-   answers here share: *a sensor may correct another reading taken on the same
-   body, and may not be presented as a reading from a different one.* The
-   node's IMU improving the node's own GNSS position composes correctly and
-   needs no transform, because both sit on the node's body; a node's heading
-   would not, because the node and the wrist point in different directions.
-   Neither is an exception to the other.
+   answers here share, **in §3a's wording and not an earlier draft of it**:
+
+   > *An **orientation** may not be carried across bodies. A sensor may correct
+   > another reading taken on the same body; when it corrects a reading taken on
+   > a different one, what it may correct is bounded by how far apart the two
+   > bodies can be.*
+
+   The qualifier is the whole rule. An earlier draft of this item dropped it and
+   read *"may not be presented as a reading from a different one"* full stop,
+   which forbids the product: the Attadipa node's **position** is a reading taken
+   on the node's body and presented as the wearer's, which is OD-1 and OD-8 and
+   the entire navigation story on a Waveshare unit that has no GNSS of its own.
+   That is sound because position error is *bounded* by how far apart a node and
+   its wearer can be, where orientation error is unbounded
+   ([ADR-0004](../adr/0004-capability-sources.md):289-291). The draft survived
+   here after the ADR was corrected, in the file `CLAUDE.md` ranks above the
+   ADR — so an agent reaching it first would have refused the product in the
+   owner's name. Found in review.
+
+   The node's IMU improving the node's own GNSS position composes correctly and
+   needs no transform, because both sit on the node's body; a node's *heading*
+   still may not cross, because the node and the wrist point in different
+   directions and nothing bounds the difference.
 3. The node IMU is a **capability question of its own**, in the
    [ADR-0004](../adr/0004-capability-sources.md)/[ADR-0007](../adr/0007-two-capability-layers.md)
    provider-registry sense — it arrives with an attached node, needs an owner,
@@ -1180,7 +1209,12 @@ feature of the product or of one modified device. **Unlike A1–A3, A9, A10 and
 D16, Q2 has no issue number** — this list is the only place it is visible to the
 owner at all.
 Those remain in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). A5 and A6 are answered
-above; A1–A3 have their own record in OD-16 as it lands.
+above; A1–A3 have their own record in this file as it lands. **Deliberately
+not a number**: three open pull requests each wrote OD-16, and a hard-coded
+forward reference here would be a prediction about which one merges first — it
+would point at the wrong record, or at a permanent hole, depending on an
+ordering nobody controls. `check_docs.py` sees none of this (T-122), and a bare
+number carries no anchor for even a fixed checker to catch. Found in review.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
 answered from a datasheet: whether Meshtastic's protocol definitions are licensed

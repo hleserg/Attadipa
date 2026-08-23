@@ -490,10 +490,13 @@ An external magnetometer is intended for the watch: the owner has ordered a
 inside. The five magnetometer epics are dormant, not dead. Which of the two
 parts, and where it physically sits, are open — T-109, and
 [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) has the
-datasheet comparison and the one measurement that decides it. The node will
-never carry one, and gets an accelerometer and probably a gyroscope instead,
-for GNSS power optimisation — filed as its own capability question,
-[#93](https://github.com/hleserg/Attadipa/issues/93) (T-111).
+datasheet comparison and the one measurement that decides it. The **Attadipa**
+node will never carry one — the scope is the answer's own, since OD-7 makes the
+companion *any* node and a third party's is `UNKNOWN`, which is why
+`HeadingSource::RemoteSensor` and its gate stay. It gets an accelerometer and
+probably a gyroscope instead, for GNSS power optimisation — filed as its own
+capability question, [#93](https://github.com/hleserg/Attadipa/issues/93)
+(T-111).
 
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as

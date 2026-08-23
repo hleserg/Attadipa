@@ -44,7 +44,14 @@ backpack or clipped to a belt measuring its own orientation, related to the
 watch's by an unmeasured transform — no longer describes a live possibility.
 ADR-0009 §3 still states the rule that would have applied if it had (a remote
 heading is never presented as `WatchBody` heading without a calibrated
-transform), because the rule generalises beyond this one dead path.
+transform) — **and it is not a dead path, which matters most to whoever
+implements G-02.** The owner's decision is about *this project's* node; OD-7
+makes the companion **any** node, and whether a third-party MeshCore device
+carries a magnetometer is `UNKNOWN`. So `HeadingSource::RemoteSensor` and its
+four-condition gate are the code that runs when one turns up, not scaffolding
+around a possibility that has been closed. An earlier version of this paragraph
+called it "this one dead path", which is exactly the sentence that would make an
+implementer delete the gate.
 
 **A5 is answered, and the compass path is a retrofit, not a board fact.** An
 external module is ordered for the Waveshare unit — a CJMCU-9911 (AK09911C) and
@@ -114,20 +121,36 @@ partly — the mapping itself needs a placed sensor), one is `RESEARCH`, and fiv
 are `BLOCKED` — but **not all five on the same thing**, and an earlier version of
 this paragraph said they were.
 
-- Two are blocked on placement alone (T-109): a sensor that is ordered and not
-  yet in the unit.
-- **Three — G-08, G-09 and G-10, the interference tests — are blocked on
-  placement *and* on a vibration motor that is not there.** The sensor is going
-  into the Waveshare unit (OD-17), and
-  [WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.7
-  records `OBSERVED`: *"There is no vibration motor on this unit."* The pads are
-  bare. So placing the magnetometer does **not** unblock them — it leaves them
-  with a compass and still nothing to disturb it, which is exactly the state
-  §"What this backlog is not" twenty lines above describes.
+- **Four are blocked on placement alone (T-109)** — a sensor that is ordered and
+  not yet in the unit: G-06 and G-07, the two calibration epics, and **G-09 and
+  G-10**. G-09 is the *speaker* test and G-10 the *charging* test
+  ([the table above](#backlog)), mapping to *Audio amplifier × Magnetometer* and
+  *Battery charging × Magnetometer* in
+  [INTERFERENCE_MATRIX](INTERFERENCE_MATRIX.md). Neither disturbing source is
+  the vibration motor and both are on the unit: the speaker is `VERIFIED` —
+  `AAC210602A1`, a metal-can micro-speaker in the back cover
+  ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.8) —
+  and the AXP2101 charge path is characterised at §1.3. So placement alone
+  unblocks them.
+- **One — G-08, the haptic test — is blocked on placement *and* on a vibration
+  motor that is not there.** The sensor is going into the Waveshare unit
+  (OD-17), and `WAVESHARE_BOARD_RECEIVED` §1.7 records `OBSERVED`: *"There is no
+  vibration motor on this unit."* The pads are bare. So placing the magnetometer
+  does not unblock this one — it leaves it with a compass and still nothing to
+  disturb it, which is exactly the state §"What this backlog is not" twenty
+  lines above describes.
 
-The distinction is the point of writing it down. An agent who believes placement
-was the last gate runs G-08 on a unit with no motor, sees no interference, and
-writes `PASS` — a fake green reached through the file that exists to prevent
-it. Fitting a motor to `P1`/`P2` is T-097 and is a separate physical change.
+An earlier version of this paragraph said two and three, folding G-09 and G-10
+in with G-08 because all three are "the interference tests". Found in review,
+and it is the mirror image of the failure named below: it parks two runnable
+measurements behind a soldering job they never needed, on the pairing most
+likely to actually bite — a speaker magnet sitting beside a magnetometer inside
+a closed case.
+
+The distinction is the point of writing it down, in both directions. An agent
+who believes placement was the last gate runs **G-08** on a unit with no motor,
+sees no interference, and writes `PASS` — a fake green reached through the file
+that exists to prevent it. Fitting a motor to `P1`/`P2` is T-097 and is a
+separate physical change.
 
 Recorded as such rather than left to look like a plan in progress.

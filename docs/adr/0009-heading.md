@@ -285,8 +285,11 @@ inputs causes a wrist-relative arrow to be drawn from a `NodeBody` or
 **Open.** **H10** — the speed gate, per GNSS module. **A5 and A6 are answered**
 (2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-17): a
 magnetometer is intended, external, on the watch, placement not yet chosen
-(T-109); the node will never carry one. What remains open is whether
-`RemoteSensor` heading is worth surfacing in Diagnostics even with no live
-source today — probably yes; it is nearly free and it makes the frame
-distinction visible to whoever implements a transform later, on the day some
-other remote device is capable of one.
+(T-109); **the *Attadipa* node will never carry one**, which is the scope §3
+insists on 178 lines above — OD-7 makes the companion any node, and whether a
+third party's carries a magnetometer is `UNKNOWN` rather than no. An earlier
+draft of this line said "the node" unqualified, so this ADR contradicted itself
+end to end. What remains open is whether `RemoteSensor` heading is worth
+surfacing in Diagnostics even with no live source today — probably yes; it is
+nearly free and it makes the frame distinction visible to whoever implements a
+transform later, on the day some other remote device is capable of one.
