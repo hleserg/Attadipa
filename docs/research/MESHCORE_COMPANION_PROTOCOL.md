@@ -109,7 +109,9 @@ The first payload byte is always the command or response code.
 > transport"*. It is not. 176 is what the **protocol** agrees and what the
 > **buffer** holds; what a **link** delivers is a separate quantity, and on BLE it
 > is smaller. Upstream lost three bytes per full frame for months on exactly this
-> conflation, and the arithmetic is now measured rather than inferred —
+> conflation, and the arithmetic is now derived and executed rather than assumed
+> — though **nothing here was measured**; the losses are upstream's, on their
+> boards and their BLE stack —
 > [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md), issue
 > [#143](https://github.com/hleserg/Attadipa/issues/143).
 
@@ -120,7 +122,7 @@ Four numbers, and a client that treats any of them as the others will be wrong:
 | 1 | **Protocol / buffer maximum** | **176** | `MAX_FRAME_SIZE`. Both peers must agree; not negotiable |
 | 2 | **ATT notification payload** | **173** | the Bluetooth Core specification: negotiated ATT MTU − 3 |
 | 3 | **Effective frame ceiling** | **173** | `min(1, 2)`, and across a fan-out wrapper the minimum over the sinks the write reaches |
-| 4 | **Application chunk payload** | **171** | 3 minus the frame builder's own header |
+| 4 | **Application chunk payload** | **173 at this revision**; 171 in the derivative that measured it | 3 minus the frame builder's own header — and **vanilla has no chunked builder at all**, so its header is 0 and rows 3 and 4 coincide. The 171 that appears throughout the upstream evidence is 173 minus a 2-byte chunk header belonging to `caplog` and the config stream, which are *not* commands of this protocol |
 
 Numbers 2 to 4 apply to **BLE only**. On the four byte-stream transports the
 frame carries its own 3-byte length prefix outside the payload (§2.1), so
@@ -546,7 +548,8 @@ Consequences only. Designs go in ADRs and tasks, not here.
 3. **176 bytes is the packet budget, and it is not ours to change — but it is
    not the transport's capacity either.** Every queue and buffer on our side is
    bounded by 176; every *chunking* decision is bounded by what the link
-   delivers, which on BLE is 173 and after a 2-byte builder header is 171. The
+   delivers, which on BLE is **173** — less any header a chunking builder of our
+   own adds, and vanilla has no such builder, so 173 is the whole of it here. The
    research prompt's §6 — *sizes come from the real transport* — asks for the
    second number, and this document gave it the first until 2026-08-23. §2 and
    [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md).

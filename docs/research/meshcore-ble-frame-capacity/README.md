@@ -77,6 +77,13 @@ git clone --filter=blob:none https://github.com/OffbandMesh/meshcore-firmware /t
 `OFFBAND_SRC` overrides the clone location and `CXX` the compiler. Output goes
 to `build/`, which is ignored.
 
+**`run.sh` refuses to run unless both revisions are built**, by name rather than
+by count. Half of this measures nothing — the finding *is* the difference — and
+without the check a `post` build that failed to compile would leave a `pre`-only
+run printing *"expected: pre fails"* and exiting 0, which reads exactly like a
+pass. `firmware-base` is not a branch we control, so a SHA becoming unreachable
+is a real way for that to happen rather than a hypothetical one.
+
 Recorded result, 2026-08-23, g++ 13.3.0 on Ubuntu:
 
 ```

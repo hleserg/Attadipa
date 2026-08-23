@@ -2154,13 +2154,16 @@ Recommended next action:
   maximum; an ATT notification carries the negotiated MTU minus 3; the effective
   ceiling is the smaller of those, taken across the sinks a write actually
   reaches; a chunk payload is that minus the builder's own header. On an ESP32 at
-  MTU 176 they are **176, 173, 173 and 171**. T-072's *"176 bytes is the frame
-  budget"* was the first of the four presented as all of them.
+  MTU 176 they are **176, 173, 173** and — for a **vanilla** node, which has no
+  chunked-download command and so no builder header — **173** again. The 171 that
+  runs through the upstream evidence is a *derivative's* number, 173 less its
+  2-byte chunk header. T-072's *"176 bytes is the frame budget"* was the first of
+  the four presented as all of them.
 - **Why the number is 3 short and not by chance:** `begin()` requests exactly
   `MAX_FRAME_SIZE` as the MTU, so the buffer size becomes the MTU and the ATT
   header is then taken out of it.
 - **The upstream defect is a wrapper, not arithmetic.** A MeshCore derivative
-  merged three fixes to code its own firmware never called: the wrapper holding
+  merged four fixes to code its own firmware never called: the wrapper holding
   the transports overrode eight methods and not the capacity query, so the
   MTU-aware leaf was unreachable and its tests passed anyway. Reproduced here by
   compiling their headers either side of the fix — `pre` fails exactly the four
@@ -2168,8 +2171,9 @@ Recommended next action:
 - **Vanilla at our pin cannot have that defect, and has a plainer one.**
   `maxFrameSize` does not exist in the tree at all. Four producers size against
   the buffer: `logRxRaw` fills a frame to exactly 176, and three others guard at
-  `sizeof(out_frame)` = 177 — one byte more than any transport accepts — so their
-  top of range is a frame that is dropped with no message in a stock build.
+  `sizeof(out_frame)` = 177 — one byte more than any transport accepts — so at
+  exactly one input length (`payload_len` = 173) they build a frame that is
+  dropped with no message in a stock build.
 - **The one that reaches the ceiling carries raw received LoRa bytes**, so a
   truncated frame reads as a radio fault. A client must rule out its own link
   before it says anything about the radio.

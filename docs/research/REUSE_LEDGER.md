@@ -71,7 +71,7 @@ want to inherit the experience, not only the code.
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
 | `lv_i18n` | github.com/lvgl/lv_i18n | `08944ec6dc2faed83121c53e9cf9ba05013a6686` | 2026-03-30 | LVGL's own localization generator — the closest existing answer to T-033 |
 | `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
-| `meshcore-firmware` (Offband) | github.com/OffbandMesh/meshcore-firmware | `4f5e8b7aa63408370d95d44cdf60ba4125f07ea0` (branch `firmware-base`) | 2026-08-23 | a MeshCore derivative that measured the BLE frame-capacity defect on hardware; T-143. Examined at three revisions — `fda4cdd8`, `4f5e8b7a`, `7549cf30`. **Not** a GitHub fork of `meshcore-dev/MeshCore`: the API reports `fork: false` and no parent, so it is an independent tree, and its divergence has to be read rather than diffed |
+| `meshcore-firmware` (Offband) | github.com/OffbandMesh/meshcore-firmware | `4f5e8b7aa63408370d95d44cdf60ba4125f07ea0` (branch `firmware-base`) | 2026-08-23 | a MeshCore derivative that measured the BLE frame-capacity defect on hardware; T-127. Examined at three revisions — `fda4cdd8`, `4f5e8b7a`, `7549cf30`. **Not** a GitHub fork of `meshcore-dev/MeshCore`: the API reports `fork: false` and no parent, so it is an independent tree, and its divergence has to be read rather than diffed |
 
 ### Licences, checked before anything was depended on
 
@@ -931,7 +931,7 @@ and has no `maxFrameSize` concept at all.
 **Reason.** The transferable finding is not the number 173. It is that a correct
 leaf implementation behind a wrapper that does not delegate is indistinguishable
 from no implementation — and worse than none, because the leaf's own tests
-testify that the behaviour exists. Three upstream fixes were merged, tested and
+testify that the behaviour exists. Four upstream fixes were merged, tested and
 shipped against code the firmware never called. Attadipa's capability registry is
 a wrapper by construction, and every capability query added to it inherits that
 hazard the day it is not forwarded.

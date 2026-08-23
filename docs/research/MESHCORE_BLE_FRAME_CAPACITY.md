@@ -33,9 +33,18 @@ The executable half is [`meshcore-ble-frame-capacity/`](meshcore-ble-frame-capac
 | 3 | **Effective frame ceiling** | the **smaller of rows 1 and 2**, and on a fan-out wrapper the **minimum across the sinks a write actually reaches** | upstream `deliverableFrame()` and `MultiSerialInterface::maxFrameSize()` | the transport set's, and it changes when an interface is enabled or disabled |
 | 4 | **Application chunk payload** | **row 3 minus the builder's own header** (2 bytes for the chunked paths measured upstream) | each frame builder | the application's |
 
-On an ESP32 companion whose link negotiates MTU 176 those are **176, 173, 173
-and 171** — four different numbers, and the one a client must size its chunks
-against is the last.
+On an ESP32 companion whose link negotiates MTU 176 those are **176, 173, 173**
+and, in the derivative that measured them, **171** — four quantities, and the one
+a client must size its chunks against is the last.
+
+**Row 4 is 171 upstream and 173 here, and the difference is not arithmetic.**
+The 2-byte header is a *chunk* header, belonging to `caplog`, the config stream
+and the other chunked downloads — and **vanilla has none of those commands**
+(§4.1). At our pin the builder header is zero and row 4 collapses onto row 3. The
+171 is quoted throughout this document because it is what upstream's evidence is
+denominated in; it is **not** a fact about the protocol a vanilla node speaks,
+and carrying it across that boundary would be the same move as the defect being
+corrected — a number taken out of the context that produced it.
 
 **Why 176 negotiates at all**: `begin()` asks for exactly `MAX_FRAME_SIZE`
 (`BLEDevice::setMTU(MAX_FRAME_SIZE)`,
@@ -187,8 +196,16 @@ vanilla's exposure is **per-frame**, not per-transfer.
 | `onTraceRecv` → `PUSH_CODE_TRACE_DATA` (0x89) | `12 + path_len + (path_len >> path_sz) + 1 > sizeof(out_frame)` (`MyMesh.cpp:824`) | **177** by the guard | only if `path_len` can exceed `MAX_PATH_SIZE` = 64; that is a parser-bounds question and belongs to [#142](https://github.com/hleserg/Attadipa/issues/142), not here |
 
 Everything else fits comfortably: `RESP_CODE_CONTACT` is **148** bytes
-(`MyMesh.cpp:166-186`), `RESP_CODE_SELF_INFO` is 58 + the node name, and
-`RESP_CODE_DEVICE_INFO` is 82.
+(`MyMesh.cpp:166-186`) and `RESP_CODE_DEVICE_INFO` is 82.
+
+`RESP_CODE_SELF_INFO` is 58 plus the node name, and the name **is** bounded:
+`char node_name[32]` (`examples/companion_radio/NodePrefs.h:15`), copied out with
+`strlen`, so at most 31 characters and a **89-byte** frame. Worth stating with
+its source rather than as "fits comfortably", because the field is written
+unterminated to the end of the frame (§3 of
+[MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md)) — a *client* has
+no length to check and cannot tell a truncated name from a short one, so this is
+a bound on **this** firmware's sender and not a rule a parser may assume.
 
 **Two distinct failures, and both are silent.**
 
@@ -204,8 +221,17 @@ Everything else fits comfortably: `RESP_CODE_CONTACT` is **148** bytes
   stock build the frame simply never appears.
 
 So the guard `+ 4 > sizeof(out_frame)` reads as a bounds check and behaves as a
-frame-dropper for the top four bytes of its range. Neither producer's caller
-checks the return value.
+frame-dropper — **for exactly one input value.** It admits `payload_len <= 173`;
+`writeFrame()` accepts frames up to 176, i.e. `payload_len <= 172`. Only
+`payload_len == 173` falls in the gap. Neither producer's caller checks the
+return value.
+
+> **Corrected after review.** This said *"the top four bytes of its range"*,
+> which is three values too many and mixes the two failures the paragraph above
+> exists to separate. At 174–176 bytes a frame is **accepted and truncated over
+> BLE**; only at 177 is it **dropped, on every transport including the serial one
+> that has no MTU at all**. §7 step 5 provokes the drop with a single 173-byte
+> payload, which is the whole of it.
 
 ### 4.3 What that costs a client
 
@@ -277,14 +303,32 @@ Consequences only. Designs go in ADRs and tasks.
    half of the upstream defect and it applies to any Attadipa transport
    abstraction with a wrapper in it — including the provider registry, which is a
    wrapper by construction.
-3. **No ADR is opened by this.** It corrects a number and adds a rule for
-   something not yet built. [ADR-0005](../adr/0005-node-protocol.md) is about the
-   Attadipa node link — a **different protocol**, with its own framing, checksum
-   and refusal of over-long frames — and nothing here touches it. `kMaxPayload =
-   192` in `link/` is derived from the largest MeshCore *packet* (184) plus our
-   own header, not from `MAX_FRAME_SIZE`, and is unaffected. When a companion
-   client is actually specified, *then* an ADR decides whether capacity is an
-   interface method, a state, or both.
+3. **The rule reaches `link/` after all, and it lands on
+   [ADR-0005](../adr/0005-node-protocol.md) §8.** The node link is a different
+   protocol, with its own framing, checksum and refusal of over-long frames — but
+   its size constant is *not* independent of MeshCore's, and an earlier revision
+   of this section said it was. `kMaxPayload = 192` is derived **from
+   `MAX_FRAME_SIZE`**: the constant's own comment says so — *"ADR-0005 §4's
+   envelope is 12 bytes, and MeshCore's companion frames cap at 176 — so 192
+   carries a full companion frame"* (`link/include/attadipa/link/frame_codec.h:57-62`).
+   The derivation this section previously gave, 184 plus our envelope, does not
+   even produce it: 184 + 12 = 196.
+
+   So `kMaxFrame` is 192 + 7 = **199** (`frame_codec.h:51-53,64`), and at MTU 176
+   a BLE notification carries 173. **A maximum node-link frame does not fit one
+   notification.** ADR-0005 §8 already calls fragmentation mandatory and names BLE
+   as the presumed transport; what this document adds is the number it must be
+   sized against — *the link's, not the buffer's*, which is the same mistake one
+   layer down. Registered rather than closed.
+
+   **Still no ADR from this task, and now for a better reason than "untouched".**
+   ADR-0005 §8 already mandates the mechanism; nothing here changes the decision,
+   only the quantity it will be built against, and there is no fragmentation code
+   yet to be wrong. When a companion client or that fragmentation is actually
+   specified, *then* an ADR decides whether capacity is an interface method, a
+   state, or both. **No live bug today:** `link/` has no transport, its CRC makes
+   truncation detectable rather than silent, and `FrameQueue::push` refuses an
+   over-long frame (`link/include/attadipa/link/frame_queue.h:59-75`).
 4. **Truncation must be detectable, not inferred.** Every upstream report here
    was diagnosed from arithmetic on a byte count — 147 = 3 × 49 — because
    nothing on the wire said the frame was short. A companion client cannot fix

@@ -37,8 +37,11 @@ An entry that cannot name its source does not belong here. It belongs in
   Value Notification carries **173** bytes, because the PDU spends 3 octets on
   its opcode and handle. MeshCore's frame buffer is `MAX_FRAME_SIZE` = **176**,
   and its ESP32 BLE interface requests exactly that as the MTU. So a full frame
-  is **3 bytes larger than the link it asked for**, and after a 2-byte
-  application header a chunked payload is **171** rather than 174.
+  is **3 bytes larger than the link it asked for**. **173 is the number for a
+  vanilla node**, which has no chunked-download command and so subtracts no
+  builder header; the **171** that appears throughout the upstream evidence is
+  173 minus a 2-byte chunk header belonging to a derivative's `caplog` and config
+  stream, and it is not a fact about this protocol.
 - **Source:** the `− 3` is the Bluetooth Core specification's, not either
   project's. `MAX_FRAME_SIZE` is `src/helpers/BaseSerialInterface.h:5` and the
   request is `BLEDevice::setMTU(MAX_FRAME_SIZE)` at
@@ -69,8 +72,10 @@ An entry that cannot name its source does not belong here. It belongs in
   `len + 3 <= MAX_FRAME_SIZE` (`examples/companion_radio/MyMesh.cpp:287`) and is
   called for every received raw packet (`src/Dispatcher.cpp:199`). Three others
   guard against `sizeof(out_frame)` = `MAX_FRAME_SIZE + 1` = 177 — one byte more
-  than any `writeFrame()` accepts — so their top four bytes of range produce a
-  frame that is **dropped**, silently: `ArduinoSerialInterface.cpp:25-28` returns
+  than any `writeFrame()` accepts. The guard admits `payload_len <= 173` and
+  `writeFrame()` accepts 176, so **exactly one value drops**: `payload_len` of
+  precisely 173, building a 177-byte frame. It is **dropped**, on every transport
+  and silently: `ArduinoSerialInterface.cpp:25-28` returns
   0 with no message, and `MESH_DEBUG_PRINTLN` is `{}` unless `MESH_DEBUG` is
   defined (`src/MeshCore.h:29-32`), which the root `platformio.ini` does not.
 - **Source:** the files and lines above, read at the pinned revision.

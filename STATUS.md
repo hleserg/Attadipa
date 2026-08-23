@@ -76,17 +76,23 @@ in both cases.
   (issue [#143](https://github.com/hleserg/Attadipa/issues/143)).
   [MESHCORE_BLE_FRAME_CAPACITY](docs/research/MESHCORE_BLE_FRAME_CAPACITY.md),
   with a harness that compiles upstream's own headers either side of the fix.
-  **One number was doing the work of four**: 176 is the protocol buffer, 173 is
-  what an MTU-176 BLE link delivers, and 171 is a chunk payload after a 2-byte
-  header. A MeshCore derivative lost the difference for months and shipped three
+  **One number was doing the work of four**: 176 is the protocol buffer, and 173
+  is what an MTU-176 BLE link delivers. **173 is the number for a vanilla node**
+  — the 171 that appears in the upstream evidence is 173 minus a 2-byte chunk
+  header belonging to a *derivative's* chunked downloads, which vanilla does not
+  have. A MeshCore derivative lost the difference for months and shipped four
   fixes to code the firmware never called, because the wrapper holding the
   transports overrode eight methods and not the capacity query. **Vanilla at our
   pin cannot have that defect — it has no capacity query at all**, and four of
   its producers size against the buffer: `logRxRaw` fills a frame to exactly 176,
-  and three others can build 177 bytes, which every transport refuses silently.
-  The one that reaches the ceiling carries **raw received LoRa bytes**, so a
-  truncated frame reads as a radio fault. Nothing measured here — the field
-  evidence is upstream's, on their boards and a different BLE stack.
+  and three others build 177 bytes at one input length, which every transport
+  refuses silently. The one that reaches the ceiling carries **raw received LoRa
+  bytes**, so a truncated frame reads as a radio fault. It also lands on
+  [ADR-0005](docs/adr/0005-node-protocol.md) §8: `link/`'s own `kMaxFrame` is 199
+  and does not fit one notification either, and its fragmentation — already
+  mandatory, not yet built — must be sized against the link rather than the
+  buffer. Nothing measured here; the field evidence is upstream's, on their
+  boards and a different BLE stack.
 - **T-042 — GNSS integrity — done**, in its architecture-only scope.
   [ADR-0011](docs/adr/0011-gnss-integrity.md): the observation keeps the
   receiver's native values as well as a normalized form, ten state axes that may

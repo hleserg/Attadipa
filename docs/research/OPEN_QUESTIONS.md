@@ -170,9 +170,12 @@ reconcile with rather than override.
 ### What a frame fits over BLE, and what is left of the question
 
 Opened 2026-08-23 by [#143](https://github.com/hleserg/Attadipa/issues/143). The
-model is corrected and the arithmetic is measured — 176 is the buffer, 173 is
-what an MTU-176 link delivers, 171 is a chunk payload after a 2-byte header —
-and the full reading is
+model is corrected and the arithmetic is derived and executed — 176 is the
+buffer and 173 is what an MTU-176 link delivers, which for a **vanilla** node is
+the whole answer, since it has no chunked builder to subtract a header for. The
+171 in the upstream evidence is a *derivative's* number. **Nothing was measured
+here**; the losses are upstream's, on their boards and their BLE stack. The full
+reading is
 [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md). These are what it
 left open, and the first two need a board.
 
