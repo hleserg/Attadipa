@@ -59,17 +59,26 @@ EASTER_EGGS.md
 # CTest scratch. `ctest` writes Testing/Temporary/ next to the source tree
 # whenever it is run from the repository root; none of it describes the project.
 #
-# **Anchored**, both of these. Without the leading slash gitignore(5) matches the
-# name at any depth, so a vendored `components/*/Testing/` or a future
-# `docs/hardware/artifacts/` would vanish from `git add -A` -- this hunk's own
-# failure mode, inverted. `Testing/` unanchored is worse than that on a
-# case-insensitive checkout, where it also swallows `docs/testing/` -- and that
-# is not a hypothetical directory. #121 puts `docs/testing/WATCH_CONTROL.md` in
-# it, the file `CLAUDE.md` sends every agent to for the screenshot loop, and
-# `docs/` is what the unattended merge sweep is allowed to touch. An unanchored
-# line would make it untrackable and a docs-only change would stop carrying it,
-# silently. This is written here rather than in a pull request body because a
-# squash merge keeps the file and discards the body.
+# **Anchored -- and see the note under `/artifacts/` below, which is the same
+# argument and applies to that line too.** Without the leading slash gitignore(5)
+# matches the name at any depth, so a vendored `components/*/Testing/` or a
+# future `docs/hardware/artifacts/` would vanish from `git add -A` -- this hunk's
+# own failure mode, inverted. `Testing/` unanchored is worse than that on a
+# case-insensitive checkout, where it also swallows `docs/testing/` -- which is
+# a tracked directory **today**: `docs/testing/HIL_PLANS.md` is in it on `main`,
+# before #121 adds `WATCH_CONTROL.md` beside it. `docs/` is also the one prefix
+# the unattended merge sweep may touch, so an unanchored line would make a
+# tracked file untrackable and a docs-only change would stop carrying it,
+# silently.
+#
+# **#121 adds these same two names unanchored, in this same place in this same
+# file, from this same base.** Whichever merges second conflicts, and gitignore
+# is additive -- keeping both hunks leaves the unanchored pair in force and
+# recreates exactly what this comment argues against. **These two lines replace
+# them; they do not join them.**
+#
+# Written here rather than in a pull request body because a squash merge keeps
+# the file and discards the body.
 /Testing/
 
 # Screenshots and scenario output from the UI test tooling: evidence for a
@@ -77,4 +86,10 @@ EASTER_EGGS.md
 # and a megabyte of PNG per commit is what this line is for. (The tool itself
 # arrives with #121; this entry is deliberately written not to depend on it,
 # because a rule that cites a file the reader cannot open is unverifiable.)
+#
+# **Anchored, for the reason spelled out above `/Testing/`** -- repeated here in
+# one line because whoever next edits this entry will be looking at this entry,
+# not at that one, and an argument that lives only next to its sibling is an
+# argument that gets dropped. Unanchored, `artifacts/` would also hide a future
+# `docs/hardware/artifacts/`. #121 adds this name unanchored; this replaces it.
 /artifacts/

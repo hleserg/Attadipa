@@ -597,11 +597,15 @@ to blank the panel, is
 [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md). The residual risk at minimum
 brightness is `UNKNOWN`, not "safe" — and so is the risk to the **cell**, which
 is the second consumable in *"powered indefinitely"* and which neither that file
-nor OD-16 had weighed: unplugging does not stop the static desktop, it moves it
-onto a ~280 mAh cell on a rail with no disconnect switch, and leaving it plugged
-sits on a charger whose CV and termination registers hold whatever the opaque
-factory image last wrote. No register has been read, so both states stay
-`UNKNOWN` and the file recommends neither on the cell's account. That file also
+nor OD-16 had weighed. The schematic gives the cell no way to be disconnected —
+`VBAT1` has no disconnect switch — so unplugging does not remove power; **what
+the factory image does on battery is `UNKNOWN`, because this unit has only ever
+been run on USB and nobody has looked.** And leaving it plugged sits on a charger
+whose CV and termination registers hold whatever that opaque image last wrote.
+No register has been read either, so both states stay `UNKNOWN` and the file
+recommends neither on the cell's account. The working capacity figure, for what
+it is worth here, is **300 mAh** (`BATTERY_UPGRADE` §3), against 400 mAh on the
+label. That file also
 states the
 resolve-by-USB-serial rule and says plainly that no tool implements it yet —
 **T-116**, whose first caller (`SerialTransport`, arriving with

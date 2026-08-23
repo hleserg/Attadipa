@@ -1706,6 +1706,15 @@ stale silently. The protocol is
   the resolver and the lint ship alone, `tools/` has nothing to convert, and the
   conversion arrives with #121 instead. Neither order leaves an exemption behind
   — which is the part that is not conditional.
+- **Research status:** done. The two reset mechanisms, the shared `303a:1001`
+  identifier and pyserial's constructor behaviour are all traced above.
+- **Implementation status:** not started.
+- **Tests:** host only — no-match, one-match and ambiguous-match against a fake
+  device list, and the lint proven against a file that reaches a port.
+- **Hardware required:** **no to write it, yes to prove it end to end.** The
+  resolver and its lint are host code with a faked device list. Confirming that
+  the string it resolves is the right board, and that DTR and RTS stay low
+  through an open, needs the unit on the desk.
 - **Definitely not:** guessing. A resolver that picks a device when it cannot
   identify one is the bug with extra steps.
 
@@ -1780,6 +1789,29 @@ stale silently. The protocol is
   convention — check every remote branch before claiming a number. Write that
   convention down for `OD-nn` too; a check that only shouts afterwards is worth
   having and is not the whole answer.
+- **Acceptance:** all three checks exist, run in CI, and have been run once
+  against the repository as it stands with the output read before any of them is
+  made blocking. The byte gate names a threshold and what it does at it; the
+  anchor check resolves `#…` against the target file's headings and is proven
+  against a deliberately broken anchor; the `OD-nn` check catches a repeated
+  number, a repeated heading under two numbers, and a gap — each with a test in
+  both directions.
+
+  **The gap check needs a floor, and this is the part that is easy to get
+  wrong.** A historical gap can never be filled: if #126's `OD-21` merges before
+  the numbers between, the register carries a hole for good, and a check that
+  reports it goes red on its first run and stays red until somebody switches it
+  off. So the check takes a floor — the highest number below which gaps are
+  accepted as history — or an explicit exemption list with the reason written in
+  it, the same shape `check_docs.py` already uses. Whichever it is, it must be
+  a decision recorded once and not a number that creeps upward every time the
+  check is inconvenient.
+- **Research status:** done. All three blind spots were established by reading
+  the checkers and the branches, and are cited by line above.
+- **Implementation status:** not started.
+- **Tests:** host only. Each check gets cases in both directions, including the
+  gap check's floor.
+- **Hardware required:** no.
 - **Definitely not:** raising these to blocking on existing content before
   running them once and reading the output. A check that goes red across the
   repository on its first run gets disabled rather than obeyed.

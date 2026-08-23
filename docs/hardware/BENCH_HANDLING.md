@@ -30,14 +30,24 @@ worst one.
 | | Effect | Cost to development |
 |---|---|---|
 | **Screen timeout, shortest available** | removes the static image entirely | **none** — see below. **Not available on the received unit**: the vendor firmware ships no timeout, as two paragraphs above says, so this row is what a *firmware* should offer, not something anyone can select today |
-| **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | none |
-| **Unplug** | **does not stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so the AXP2101 keeps the system up and the same static desktop with it, until the cell is flat | the unit is not reachable, *and* the cell is being discharged and then sat at low state of charge |
+| **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | **not none** — it is the *plugged-in* state, and what that costs the cell is `UNKNOWN` rather than nothing: see **the cell** under *"What is not established"* |
+| **Unplug** | **cannot be assumed to stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so removing USB does not remove power; what the factory image does on battery is `UNKNOWN`, unobserved | the unit is not reachable, *and* the cell is being discharged and then sat at low state of charge |
 
 That third row used to read *"stops it completely"*, which is what pulling a
-cable does on a board with no battery. This is not one: see **the cell** under
-*"What is not established"*. Pulling the cable moves the same lit desktop onto a
-cell of perhaps 280 mAh; it changes which consumable is paying, not whether one
-is.
+cable does on a board with no battery. This is not one: the schematic gives the
+cell no way to be disconnected, so unplugging does not remove power — see **the
+cell** under *"What is not established"*.
+
+**What it does not say is that the desktop stays lit on battery.** That has never
+been observed: this unit has only ever been seen on USB, and nothing in
+`WAVESHARE_RUNNING_OUR_CODE`, `WAVESHARE_BOARD_RECEIVED`, `WAVESHARE_ARRIVAL` or
+`VERIFIED_FACTS` records a run with the cable out. Devices dim, blank or sleep on
+battery routinely, and this file calls the running image opaque forty lines
+below — so asserting what it does there would be leaning on exactly the unread
+state the same file refuses to lean on about the charger. **A thirty-second look
+by the owner would settle it as `MEASURED`, and nobody has looked.** If it does
+blank, row 3 becomes the only mitigation that works and this table is wrong about
+it.
 
 That ranking is the general case. **For the unit on this desk the owner has
 chosen row 2**, and an owner decision outranks a preference table — see below.
@@ -45,11 +55,16 @@ chosen row 2**, and an owner decision outranks a preference table — see below.
 **A dark panel costs a hardware session nothing.** What a bench run needs is the
 ESP32-S3 reachable over USB, not the display showing anything. The RAM-load
 route established in [#110](https://github.com/hleserg/Attadipa/pull/110) writes
-no flash and need not light the panel at all. So "powered, screen off" is the
-state to aim for: fully available, ageing nothing.
+no flash and need not light the panel at all. So "powered, screen off" **will
+be** the state to aim for: fully available, ageing nothing.
 
-**[OD-16](../research/OWNER_DECISIONS.md#od-16--the-received-unit-stays-powered-with-its-brightness-at-minimum),
-2026-08-23:** the received unit stays powered and attached so that hardware runs
+Future tense on purpose. It is a statement about a firmware Attadipa has not
+written — row 1 is unavailable on the received unit, nothing of ours can address
+its display, and OD-16 fixes it at row 2. There is no route to that state today
+and this paragraph is not offering one.
+
+**[OD-16 — *The received unit stays powered, with its brightness at
+minimum*](../research/OWNER_DECISIONS.md), 2026-08-23:** the received unit stays powered and attached so that hardware runs
 are possible on demand, with the vendor firmware's brightness at minimum. The
 decision and its wording live there; this file only acts on it.
 
@@ -123,15 +138,18 @@ nobody here has mapped to cd/m², and no cd/m² figure for this panel exists in
 paragraph is a bound, not a number.
 
 **The cell, which nothing above weighs.** The unit has a battery fitted — a
-`402728` marked 400 mAh, honest expectation **250–310 mAh**
+`402728` marked 400 mAh, honest expectation **250–310 mAh with 300 mAh as the
+working figure** (`BATTERY_UPGRADE` §3, three independent lines converging)
 ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — its plug visibly mated, and
 net `VBAT1` has **no protection FET, no fuel gauge, no load switch and no
 disconnect switch** ([BATTERY_UPGRADE](../research/BATTERY_UPGRADE.md) §1.1).
 Two consequences follow, both from facts this repository already holds at
 `VERIFIED`, and neither of them a conclusion about harm:
 
-- **Unplugging does not stop the ageing above**, it hands the bill to the cell.
-  This is the correction to the third row of the table.
+- **Unplugging does not remove power**, it changes which consumable pays. Whether
+  the panel keeps ageing on battery depends on what the factory image does there,
+  which is `UNKNOWN` — unobserved, not weighed and discarded. This is the
+  correction to the third row of the table.
 - **Leaving it plugged sits on a charge path nobody here has read.** The
   AXP2101 `TS` pin goes through `RP2` to `GND` and never reaches `J1`, so **the
   charger never sees cell temperature**; Waveshare's BSP configures the charger
