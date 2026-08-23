@@ -64,12 +64,25 @@ EASTER_EGGS.md
 # matches the name at any depth, so a vendored `components/*/Testing/` or a
 # future `docs/hardware/artifacts/` would vanish from `git add -A` -- this hunk's
 # own failure mode, inverted. `Testing/` unanchored is worse than that on a
-# case-insensitive checkout, where it also swallows `docs/testing/` -- which is
-# a tracked directory **today**: `docs/testing/HIL_PLANS.md` is in it on `main`,
-# before #121 adds `WATCH_CONTROL.md` beside it. `docs/` is also the one prefix
-# the unattended merge sweep may touch, so an unanchored line would make a
-# tracked file untrackable and a docs-only change would stop carrying it,
-# silently.
+# case-insensitive checkout, where it also swallows `docs/testing/`.
+#
+# **The hazard is a file that arrives there, not the ones already in it.**
+# gitignore reaches untracked paths only, so `docs/testing/HIL_PLANS.md`, which
+# is tracked on `main`, stays tracked under either spelling and its edits still
+# stage. What an unanchored `Testing/` costs is the **next** file in that
+# directory -- `docs/testing/WATCH_CONTROL.md` arriving with #121, the file
+# CLAUDE.md sends every agent to -- which would never be offered by `git add -A`
+# and would go unnoticed, `docs/` being the one prefix the unattended merge sweep
+# may touch.
+#
+# Checked rather than asserted, because the mechanism has two traps in it. A
+# scratch repository, `git check-ignore -v --no-index` (without `--no-index` it
+# consults the index and calls any *tracked* path not-ignored, whichever patterns
+# are in force, so it answers the same for both spellings and proves nothing),
+# and `-c core.ignorecase=true` (this working tree has it true, being NTFS under
+# WSL, but a case-sensitive checkout does not and would not exercise the fold at
+# all). Under those two: unanchored `Testing/` matches `docs/testing/HIL_PLANS.md`
+# and `docs/testing/WATCH_CONTROL.md`; anchored `/Testing/` matches neither.
 #
 # **#121 adds these same two names unanchored, in this same place in this same
 # file, from this same base.** Whichever merges second conflicts, and gitignore
@@ -92,4 +105,16 @@ EASTER_EGGS.md
 # not at that one, and an argument that lives only next to its sibling is an
 # argument that gets dropped. Unanchored, `artifacts/` would also hide a future
 # `docs/hardware/artifacts/`. #121 adds this name unanchored; this replaces it.
+#
+# **And the anchor assumes the tool is run from the repository root**, the same
+# assumption `/Testing/` states for `ctest` above. It is not always true:
+# `tools/watch_control.py` defaults its output to `artifacts/watch` relative to
+# the *process* working directory, so `cd sim && python3 ../tools/watch_control.py
+# screenshot` writes `sim/artifacts/watch/*.png`, which `/artifacts/` does not
+# match and the next `git add -A` at the root would carry -- a fourth prefix for
+# the recurrence T-117 is written about, one directory from the one just closed.
+# So the second line, which catches that directory at any depth while still
+# leaving `docs/hardware/artifacts/` visible. Both verified in a scratch
+# repository with `check-ignore --no-index`.
 /artifacts/
+**/artifacts/watch/

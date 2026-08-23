@@ -6,11 +6,20 @@ about what the firmware should do — that is
 near-white face, image retention and static content as *product* decisions and
 leave them to the owner. This file is about the hours nobody is looking.
 
-## The AMOLED must not sit lit on a static screen
+## The AMOLED sits lit on a static screen, and the owner has decided it stays
 
 The Waveshare ESP32-S3-Touch-AMOLED-2.06 boots the vendor firmware to a fixed
-desktop and stays there for as long as it has power. **Do not leave it that
-way.**
+desktop and stays there for as long as it has power. **That is the state
+[OD-16](../research/OWNER_DECISIONS.md) chose, knowingly, over the safer one, and
+an agent does not ask for it to be undone** — it does not power the unit down and
+does not offer "unplug it" as the recommendation. What follows is why the state
+costs something, what the mitigation in force is, and the one thing an agent
+owes about it; the general ranking below is the *general* case and this unit is
+not it. This heading used to be an instruction, forty lines above the decision
+that reverses it.
+
+The rest of this section is the reasoning behind the risk, not a request to act
+on it.
 
 OLED emitters age with the current through them, and current tracks luminance.
 A static image with bright elements on a dark ground ages *those elements* and
@@ -31,7 +40,7 @@ worst one.
 |---|---|---|
 | **Screen timeout, shortest available** | removes the static image entirely | **none** — see below. **Not available on the received unit**: the vendor firmware ships no timeout, as two paragraphs above says, so this row is what a *firmware* should offer, not something anyone can select today |
 | **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | **not none** — it is the *plugged-in* state, and what that costs the cell is `UNKNOWN` rather than nothing: see **the cell** under *"What is not established"* |
-| **Unplug** | **cannot be assumed to stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so removing USB does not remove power; what the factory image does on battery is `UNKNOWN`, unobserved | the unit is not reachable, *and* the cell is being discharged and then sat at low state of charge |
+| **Unplug** | **cannot be assumed to stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so removing USB does not remove power; what the factory image does on battery is `UNKNOWN`, unobserved | the unit is not reachable, *and* the cell carries the load instead of USB. Direction only: **how fast, and therefore whether it is left sitting at a low state of charge, depends on the same unread image behaviour the effect cell declines to lean on** |
 
 That third row used to read *"stops it completely"*, which is what pulling a
 cable does on a board with no battery. This is not one: the schematic gives the
@@ -138,8 +147,9 @@ nobody here has mapped to cd/m², and no cd/m² figure for this panel exists in
 paragraph is a bound, not a number.
 
 **The cell, which nothing above weighs.** The unit has a battery fitted — a
-`402728` marked 400 mAh, honest expectation **250–310 mAh with 300 mAh as the
-working figure** (`BATTERY_UPGRADE` §3, three independent lines converging)
+`402728` marked 400 mAh, honest expectation **250–310 mAh `ESTIMATED`, with
+300 mAh as the working figure** (`BATTERY_UPGRADE` §3, three independent lines
+converging; nothing has been weighed)
 ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — its plug visibly mated, and
 net `VBAT1` has **no protection FET, no fuel gauge, no load switch and no
 disconnect switch** ([BATTERY_UPGRADE](../research/BATTERY_UPGRADE.md) §1.1).

@@ -1651,9 +1651,14 @@ stale silently. The protocol is
 - **Dependencies:** none to start — but **the first caller is already written**,
   and this task is not the empty set it would like to be. `SerialTransport` in
   `tools/watch/client.py` arrives with
-  [#121](https://github.com/hleserg/Attadipa/pull/121), which merges before this
-  branch. So *"nothing under `tools/` opens a serial port"* is true of `main` at
-  the moment these words were written and false shortly afterwards. That caller
+  [#121](https://github.com/hleserg/Attadipa/pull/121). **No merge order is
+  claimed here and none exists**: #121 touches `core/`, `debug/`, `platform/`,
+  `sim/`, `tests/` and `tools/`, so it is off the unattended sweep's allowlist
+  and waits on an orchestrator session exactly as this branch does — see
+  Acceptance, which is conditional on #121 for that reason. What is true is that
+  *"nothing under `tools/` opens a serial port"* describes `main` at the moment
+  these words were written and stops describing it the moment #121 lands,
+  whenever that is. That caller
   is `NOT EXECUTED — HARDWARE REQUIRED` and has never spoken to a device, so
   nothing is broken today; what would break is **this task**, picked up by
   somebody who believed it had nothing to convert.

@@ -603,11 +603,14 @@ the factory image does on battery is `UNKNOWN`, because this unit has only ever
 been run on USB and nobody has looked.** And leaving it plugged sits on a charger
 whose CV and termination registers hold whatever that opaque image last wrote.
 No register has been read either, so both states stay `UNKNOWN` and the file
-recommends neither on the cell's account. The working capacity figure, for what
-it is worth here, is **300 mAh** (`BATTERY_UPGRADE` §3), against 400 mAh on the
-label. That file also
-states the
-resolve-by-USB-serial rule and says plainly that no tool implements it yet —
+recommends neither on the cell's account. The capacity figure, for what it is
+worth here, is **250–310 mAh `ESTIMATED`** with 300 mAh as the working number
+(`BATTERY_UPGRADE` §3) against 400 mAh printed on the label — three converging
+lines of reasoning, not a weighing, and nobody has weighed it.
+
+**BENCH_HANDLING** — not the battery research the sentence before it cites —
+also states the resolve-by-USB-serial rule and says plainly that no tool
+implements it yet —
 **T-116**, whose first caller (`SerialTransport`, arriving with
 [#121](https://github.com/hleserg/Attadipa/pull/121)) is named there rather than
 left for whoever picks the task up. **T-117** records the blind spots that

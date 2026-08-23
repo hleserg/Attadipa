@@ -1140,6 +1140,19 @@ reason to reopen the decision — the owner chose availability knowingly and tha
 choice stands. It is here so that the decision is not read as having weighed a
 question it was never asked.
 
+**Waiting on the owner: this register is published.** `docs/` is the GitHub Pages
+root for this repository — `docs/.nojekyll`, `docs/robots.txt` with `Allow: /` —
+so every file here, including this one, is served from
+`https://hleserg.github.io/Attadipa/`. That means the owner's own words above,
+quoted verbatim as this register's convention requires and as OD-1 already does,
+are on the project's public website. **Verbatim is the right convention and
+changing the owner's words is not an agent's call; neither is deciding what the
+site publishes.** It is recorded here rather than left in a pull request comment
+because a squash merge keeps the file and discards the comment, and because this
+is the register the unattended sweep is denied — which is the point of putting an
+owner-facing question in it. Raised 2026-08-23; no answer yet, and nothing is
+being changed while there is none.
+
 **A known asymmetry, recorded rather than worked around.** This decision lives in
 this register, which
 [`merge-candidate.sh`](../../.github/scripts/merge-candidate.sh) denies to the
