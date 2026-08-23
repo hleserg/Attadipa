@@ -63,7 +63,13 @@ EASTER_EGGS.md
 # name at any depth, so a vendored `components/*/Testing/` or a future
 # `docs/hardware/artifacts/` would vanish from `git add -A` -- this hunk's own
 # failure mode, inverted. `Testing/` unanchored is worse than that on a
-# case-insensitive checkout, where it also swallows `docs/testing/`.
+# case-insensitive checkout, where it also swallows `docs/testing/` -- and that
+# is not a hypothetical directory. #121 puts `docs/testing/WATCH_CONTROL.md` in
+# it, the file `CLAUDE.md` sends every agent to for the screenshot loop, and
+# `docs/` is what the unattended merge sweep is allowed to touch. An unanchored
+# line would make it untrackable and a docs-only change would stop carrying it,
+# silently. This is written here rather than in a pull request body because a
+# squash merge keeps the file and discards the body.
 /Testing/
 
 # Screenshots and scenario output from the UI test tooling: evidence for a
