@@ -164,4 +164,18 @@ std::uint8_t InputState::release_all(InputOrigin origin, std::uint32_t at_ms, In
     return written;
 }
 
+std::uint8_t InputState::held_count(InputOrigin origin) const
+{
+    std::uint8_t held = 0;
+    for (std::uint8_t i = 0; i < kMaxButtons; ++i) {
+        if (button_held_[i] && button_origin_[i] == origin) {
+            ++held;
+        }
+    }
+    if (pointer_down_ && pointer_origin_ == origin) {
+        ++held;
+    }
+    return held;
+}
+
 }  // namespace attadipa::core

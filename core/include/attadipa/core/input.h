@@ -226,6 +226,14 @@ public:
     // and the debug bridge's hold expiry retries.
     std::uint8_t release_all(InputOrigin origin, std::uint32_t at_ms, InputQueue& queue);
 
+    // How many inputs `origin` is still holding. The count `release_all`
+    // returns cannot answer this on its own: zero written means *either*
+    // nothing was held *or* the queue refused every release and everything
+    // still is, and those are opposite states. Asking after the call
+    // distinguishes them, and a partial release -- a button out, a finger
+    // still down -- is the case a count alone reports as complete.
+    std::uint8_t held_count(InputOrigin origin) const;
+
 private:
     bool         button_held_[kMaxButtons]   = {};
     InputOrigin  button_origin_[kMaxButtons] = {};

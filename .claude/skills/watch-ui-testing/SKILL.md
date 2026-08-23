@@ -207,7 +207,16 @@ so a `press` and a much later `release` genuinely test a hold.
 | a button is stuck down | same | `input-reset`. The device also releases after 30 s and on disconnect |
 
 **`input-reset` is the escape hatch and it is safe.** It lifts only what the
-remote is holding.
+remote is holding — never a key a person has their finger on.
+
+**Read its second number.** It answers `released N, still_held M`, and exits
+non-zero when `M` is not zero, because the device marks an input released only
+if the release actually reached the interface's queue. A full queue is exactly
+the stalled interface that made you reach for this command, so `released 0` on
+its own means either *nothing was stuck* or *everything still is*. `M` is what
+separates them. Nothing is lost when `M > 0` — the device's own 30 s hold expiry
+retries, and so does a reconnect — but a run that continues past it is running
+against a screen that still has a finger on it.
 
 ## 10. Keep the evidence
 

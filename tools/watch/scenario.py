@@ -200,11 +200,20 @@ def _axis(value, watch: Watch | None, axis: str) -> int:
         # is the divergence `Watch.screen_size` exists to close.
         width, height = watch.screen_size()
         span = width if axis == "width" else height
-        if value == 1.0:
-            # `span` is one past the last pixel; the far edge is `span - 1`.
-            # Only the exact endpoint is mapped -- anything above 1.0 resolves
-            # out of bounds on purpose and is refused rather than clamped.
-            return span - 1
+        if value <= 1.0:
+            # `span` is one past the last pixel, so the far edge is `span - 1`
+            # -- and so is everything that *rounds* onto `span`, which is the
+            # whole band from `(span - 0.5) / span` up. Mapping only the exact
+            # `1.0` left `0.999` and `"99.9%"` resolving to pixel 240 on a
+            # 240-wide panel, refused by `_check_point` as outside the screen:
+            # the endpoint was fixed and its neighbourhood was not.
+            #
+            # The clamp is deliberately below 1.0 and not above it. Anything
+            # over the full span -- `"120%"` -- still resolves out of bounds and
+            # is refused rather than silently pulled back to the edge, because
+            # a scenario asking for 120 % of the screen is wrong about the
+            # screen and should hear so.
+            return min(span - 1, int(round(value * span)))
         return int(round(value * span))
     return int(value)
 
@@ -299,8 +308,17 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
                 else:
                     watch.button_click(name, float(step.get("duration", 0.05)))
             elif action == "input_reset":
-                released = watch.input_reset()
+                released, still_held = watch.input_reset()
                 result.detail = f"released {released}"
+                if still_held:
+                    # The step fails rather than reporting a number, because
+                    # everything after it runs against an interface that still
+                    # has a finger on it -- and the count alone would read as a
+                    # successful cleanup.
+                    raise WatchError(
+                        f"released {released} input(s), but {still_held} could not be "
+                        f"released: the device's input queue is full, so it kept them "
+                        f"held rather than stranding a pressed widget")
             elif action in ("expect_screen_changed", "expect_screen_same"):
                 since = str(step["since"])
                 if since not in shots:

@@ -226,10 +226,24 @@ def cmd_gesture(watch: Watch, args) -> int:
 
 
 def cmd_input_reset(watch: Watch, args) -> int:
-    released = watch.input_reset()
-    emit(args, {"released": released},
-         f"released {released} stuck input(s)" if released else "nothing was held")
-    return 0
+    released, still_held = watch.input_reset()
+    # Three outcomes, not two. The device releases an input only if the event
+    # reached its queue, so a `released` of 0 over a `still_held` of 2 is the
+    # stalled interface this command exists for -- and printing "nothing was
+    # held" there would be the escape hatch reporting success for the state
+    # that made it necessary.
+    if still_held:
+        line = (f"released {released} stuck input(s), and {still_held} could not be "
+                f"released -- the interface queue is full, so the device kept them "
+                f"held rather than stranding a pressed widget. Its hold expiry "
+                f"retries; try again once the interface drains")
+    elif released:
+        line = f"released {released} stuck input(s)"
+    else:
+        line = "nothing was held"
+    emit(args, {"released": released, "still_held": still_held}, line)
+    # A command whose whole job is to leave nothing held has not done it.
+    return 1 if still_held else 0
 
 
 def cmd_run(watch: Watch, args) -> int:
@@ -256,7 +270,11 @@ def cmd_run(watch: Watch, args) -> int:
     # through a swipe leaves a finger down, and the next run would start with
     # the screen already being pressed.
     try:
-        watch.input_reset()
+        _, still_held = watch.input_reset()
+        if still_held:
+            print(f"warning: {still_held} input(s) are still held -- the interface "
+                  f"queue was full and the device kept them rather than stranding a "
+                  f"pressed widget", file=sys.stderr)
     except WatchError:
         pass
 
@@ -351,7 +369,9 @@ def cmd_live(watch: Watch, args) -> int:
                 print_shots(argparse.Namespace(json=False), shots)
                 continue
             if verb == "reset":
-                print(f"released {watch.input_reset()}")
+                released, still_held = watch.input_reset()
+                print(f"released {released}" +
+                      (f", {still_held} still held (interface queue full)" if still_held else ""))
                 continue
 
             if verb == "tap":
@@ -520,7 +540,14 @@ def main(argv: list[str] | None = None) -> int:
         # this too on a dropped connection; doing it here as well means an
         # ordinary exit does not depend on the disconnect being noticed.
         try:
-            watch.input_reset()
+            _, still_held = watch.input_reset()
+            # Saying nothing here is how the tool exits 0 having left a finger
+            # down: the comment above promises the opposite, and the state that
+            # defeats the promise is the one nobody is watching for.
+            if still_held:
+                print(f"warning: exiting with {still_held} input(s) still held -- the "
+                      f"interface queue was full. The device retries on its own hold "
+                      f"expiry; a reconnect will also clear them", file=sys.stderr)
         except Exception:
             pass
         watch.close()

@@ -413,6 +413,16 @@ def scenarios_load() -> None:
           "and a half is still a half")
     check(scenario.resolve_point([1, 1], screen) == (1, 1),
           "a whole number is a pixel, including 1")
+    # The endpoint's neighbourhood, which the first fix left out. Everything
+    # from `(span - 0.5) / span` up *rounds* onto `span`, one past the last
+    # pixel, and `_check_point` then refused it as outside the screen -- so
+    # `0.999` was an error on a 240-wide panel while `1.0` was fine.
+    check(scenario.resolve_point([0.999, 0.999], screen) == (239, 319),
+          "0.999 lands on the last pixel rather than one past it")
+    check(scenario.resolve_point("99.9%,99.9%", screen) == (239, 319),
+          "and so does 99.9%")
+    check(scenario.resolve_point([0.9, 0.9], screen) == (216, 288),
+          "a fraction well inside the span is untouched by that clamp")
     # Past the edge resolves out of bounds on purpose rather than clamping, so
     # the refusal names the coordinate instead of silently moving it.
     check(scenario.resolve_point("120%,0", screen)[0] == 288,

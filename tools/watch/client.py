@@ -651,9 +651,25 @@ class Watch:
             time.sleep(gap)
         self._event(p.EventType.POINTER_UP, x=checked[-1][0], y=checked[-1][1])
 
-    def input_reset(self) -> int:
+    def input_reset(self) -> tuple[int, int]:
+        """Lift everything this connection is holding. Returns (released, still_held).
+
+        Two numbers because one cannot tell the two failures apart. The device
+        marks an input released only if its event reached the input queue, so a
+        `released` of 0 means *either* nothing was stuck *or* the queue was full
+        and everything still is -- and this command is advertised as the escape
+        hatch for the stalled interface that produces the second. A partial
+        release is the quieter half of the same problem: a button out and a
+        finger still down answers 1, which reads as complete.
+
+        `still_held` is not an error. Nothing is lost -- the device's hold
+        expiry retries -- so the caller decides whether to wait, retry or say
+        so. It is only a lie when it is not reported.
+        """
         reply = self.request(p.Op.INPUT_RESET, b"", (p.Op.INPUT_OK,))
-        return reply.body[0] if reply.body else 0
+        released = reply.body[0] if len(reply.body) >= 1 else 0
+        still_held = reply.body[1] if len(reply.body) >= 2 else 0
+        return released, still_held
 
 
 def connect(port: str | None = None, socket_path: str | None = None,

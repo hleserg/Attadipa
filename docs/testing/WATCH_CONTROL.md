@@ -163,8 +163,10 @@ steps:
 ```
 
 Actions: `screenshot` (named), `wait`, `wait_stable` (`quiet_ms`, `timeout` —
-polls until the interface has been idle that long **and nothing is animating**,
-and **fails the step** if it never is), `tap`, `long_tap`,
+polls until **three** things hold at once: the device holds no queued input,
+nothing has been pumped to the interface and left unread, and the interface has
+then been idle that long with nothing animating; and **fails the step** if it
+never is), `tap`, `long_tap`,
 `double_tap`, `swipe`, `drag`, `gesture`, `button`, `input_reset`,
 `expect_screen_changed`, `expect_screen_same`.
 
@@ -226,6 +228,19 @@ the expectation would move together.
 `input-reset` lifts only what the **remote** is holding, never what a person is
 holding. The device does it by itself too — on a dropped connection, and after
 30 seconds of any one hold.
+
+**It answers with two numbers — `released N, still_held M` — and exits non-zero
+when `M` is not zero.** The device marks an input released only if the release
+reached the interface's queue; if that queue is full it deliberately keeps the
+input held, because the widget under it still believes it is pressed and
+forgetting about it here would strand that belief. So `released 0` alone means
+*either* nothing was stuck *or* the queue refused every release and everything
+still is — opposite states — and `released 1` alone reads as complete when a
+button went out and the finger did not. The stalled interface is exactly the
+condition that sends people to this command, so the count on its own is least
+trustworthy where it is most needed. Nothing is lost when `M > 0`: the hold
+expiry retries. A run that continues past it is running against a pressed
+screen.
 
 ---
 

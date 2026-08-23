@@ -354,6 +354,39 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
               f"click(s), and must produce 2 -- one would mean the input path "
               f"merged them before any widget saw them")
 
+        print("\nwhat wait_stable is answering about")
+        # The half of `stable_since` that only the simulator can reach. Its
+        # other two terms -- the bridge's own queue, and LVGL's idle timer --
+        # are pinned in `test_debug.cpp`; the third, `remote_input_pending()`,
+        # cannot be, because `FakeScreen` has no transition FIFO. Delete that
+        # term and every host test stays green.
+        #
+        # The shape below is the one that fails without it. A screenshot takes
+        # long enough that LVGL is already idle past `quiet_ms` before the tap,
+        # so the idle timer answers "settled" on the first ask -- while the tap
+        # is still sitting between `remote_input_pump` and the 33 ms indev read
+        # (the loop runs at 5 ms with a client attached). The tour's own
+        # `wait_stable` cannot catch it: it follows a `long_tap`, and a held
+        # pointer restamps the idle timer on every read.
+        #
+        # Counted off LVGL's own LV_EVENT_CLICKED rather than off the touch
+        # trail, because the trail is drawn by the drain listener before LVGL
+        # reads anything -- it would show the dot either way.
+        stable_before = lvgl_clicks(watch, workdir, "07-before.png")
+        time.sleep(0.5)
+        watch.tap(int(inject_w * 0.50), int(inject_h * 0.45))
+        settled = watch.wait_stable(300)
+        stable_after = lvgl_clicks(watch, workdir, "07-after.png")
+        check(settled, "wait_stable settled within its timeout after a bare tap")
+        check(stable_after < CLICK_MARK_CAP,
+              f"the click marker row still has room ({stable_after} of "
+              f"{CLICK_MARK_CAP})")
+        check(stable_after - stable_before == 1,
+              f"a tap followed by wait_stable produced "
+              f"{stable_after - stable_before} LVGL click(s) by the time the wait "
+              f"returned, and must produce 1 -- zero means wait_stable answered "
+              f"about LVGL's idle timer while the tap was still in flight")
+
         print("\nbuttons")
         injectable = [b for b in caps.buttons if b.injectable]
         check(bool(injectable), "at least one button can be simulated")
@@ -388,9 +421,10 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
 
         print("\nstuck input")
         watch._event(p.EventType.POINTER_DOWN, x=10, y=10)
-        released = watch.input_reset()
+        released, still_held = watch.input_reset()
         check(released == 1, f"input reset lifted {released} held input")
-        check(watch.input_reset() == 0, "and running it again is not an error")
+        check(still_held == 0, f"and left nothing held ({still_held})")
+        check(watch.input_reset() == (0, 0), "and running it again is not an error")
 
         # A disconnect mid-press must lift the finger by itself. Proved from a
         # second connection, because the first one is gone.
@@ -398,7 +432,7 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         watch._transport.close()
         time.sleep(0.5)
         watch = connect(socket_path=socket_path, timeout=30.0)
-        check(watch.input_reset() == 0,
+        check(watch.input_reset() == (0, 0),
               "a dropped connection released its own held finger, without being asked")
 
         print("\nscenario")

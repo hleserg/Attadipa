@@ -111,8 +111,11 @@ void read_pointer(lv_indev_t* indev, lv_indev_data_t* data)
         // Bounded. `continue_reading` used to be "is there another one", which
         // lets a single `lv_indev_read` dispatch all 64 queued transitions --
         // and every widget event they fire -- inside one `lv_timer_handler`.
-        // That is the pause the screenshot is chunked to avoid
-        // (`bridge.h:176-182`), reintroduced next door. The remainder is not
+        // That is the pause the screenshot is chunked to avoid -- the
+        // argument above `Bridge::pump` in `bridge.h`, cited by name because a
+        // line range into a file still being edited goes stale on the next
+        // commit, and this one has now done it twice -- reintroduced next
+        // door. The remainder is not
         // lost, it waits for the next 33 ms read, and a burst larger than this
         // is a client outrunning the interface rather than a gesture.
         ++g_read_burst;

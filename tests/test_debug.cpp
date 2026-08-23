@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "attadipa/debug/bridge.h"
@@ -863,6 +864,20 @@ void a_disconnect_lifts_what_the_remote_was_holding()
     CHECK(saw_button_up);
 }
 
+// Reads the two bytes `InputOk` carries for an `InputReset`: what was released,
+// and what is still held. Nothing else carries a two-byte body, so it is local.
+std::pair<int, int> input_reset_reply(const Rig& rig)
+{
+    Envelope            e;
+    const std::uint8_t* body = nullptr;
+    const auto&         last = rig.sink.messages.back();
+    if (!decode_message(last.data(), last.size(), e, body) || body == nullptr ||
+        e.body_len < 2) {
+        return {-1, -1};
+    }
+    return {body[0], body[1]};
+}
+
 void input_reset_is_available_as_a_command()
 {
     Rig rig;
@@ -882,6 +897,55 @@ void input_reset_is_available_as_a_command()
     rig.sink.clear();
     rig.send(request(Opcode::InputReset, 3), 30);
     CHECK(rig.sink.last_is(Opcode::InputOk));
+    CHECK(input_reset_reply(rig).first == 0);
+    CHECK(input_reset_reply(rig).second == 0);
+}
+
+void input_reset_says_what_it_could_not_release()
+{
+    // The state this command exists for. `release_all` marks an input released
+    // only if its event reached the queue, so on a stalled interface it writes
+    // nothing and keeps everything held -- deliberately, because the widget
+    // under each one still believes it is pressed. The count alone cannot say
+    // so: a released of 0 is also what a clean device answers.
+    Rig rig;
+    rig.send(input_request(core::InputEventType::PointerDown, 1, 5, 5), 10);
+    rig.send(input_request(core::InputEventType::ButtonDown, 2, 0, 0, 1), 20);
+    CHECK(rig.state.pointer_down());
+    CHECK(rig.state.button_down(1));
+
+    // Fill the queue so that no release can be written.
+    rig.queue.clear();
+    core::InputEvent filler;
+    filler.type   = core::InputEventType::PointerMove;
+    filler.origin = core::InputOrigin::Remote;
+    while (rig.queue.push(filler)) {
+    }
+    const std::size_t full = rig.queue.size();
+
+    rig.sink.clear();
+    rig.send(request(Opcode::InputReset, 3), 30);
+    CHECK(rig.sink.last_is(Opcode::InputOk));
+
+    const auto answer = input_reset_reply(rig);
+    CHECK(answer.first == 0);   // nothing reached the interface
+    CHECK(answer.second == 2);  // and both inputs are still held
+
+    // The state was not falsified to make the answer tidy: the finger and the
+    // button are still down, so the hold expiry has something to retry.
+    CHECK(rig.state.pointer_down());
+    CHECK(rig.state.button_down(1));
+    CHECK(rig.queue.size() == full);
+
+    // Drain, and the same command now succeeds and says so.
+    rig.queue.clear();
+    rig.sink.clear();
+    rig.send(request(Opcode::InputReset, 4), 40);
+    const auto second = input_reset_reply(rig);
+    CHECK(second.first == 2);
+    CHECK(second.second == 0);
+    CHECK(!rig.state.pointer_down());
+    CHECK(!rig.state.button_down(1));
 }
 
 void a_physical_press_survives_a_remote_disconnect()
@@ -1321,6 +1385,7 @@ int main()
     a_finger_held_past_the_cap_is_lifted_with_the_id_it_went_down_with();
     a_disconnect_lifts_what_the_remote_was_holding();
     input_reset_is_available_as_a_command();
+    input_reset_says_what_it_could_not_release();
     a_physical_press_survives_a_remote_disconnect();
 
     a_button_the_board_will_not_simulate_is_refused_by_the_device();

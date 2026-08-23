@@ -570,6 +570,19 @@ What was built:
   press/release/click/hold, `input-reset`, `run <scenario>` and `live`.
 - **A rule in [CLAUDE.md](CLAUDE.md) and a skill agents read**, because a
   mechanism nobody is told to use is a mechanism nobody uses.
+- **Two answers that had to stop being one number each.** `wait_stable` used to
+  ask only what LVGL had already *processed*, so a tap that had reached the
+  device and not yet the interface — a window one 33 ms read period wide,
+  against a 5 ms loop — was reported as a settled screen, and the next
+  screenshot showed the frame from before it. It now asks three things: the
+  device's own input queue, the transitions pumped but unread, and only then
+  LVGL's idle timer and animations. Proved by the end-to-end test, which counts
+  LVGL's own clicks after a bare tap and goes red on either half being removed.
+  And `input-reset` — the escape hatch for a stalled interface — answered with a
+  count that was least trustworthy exactly where it was most needed: the device
+  releases an input only if the release reaches the queue, so `0` meant both
+  "nothing was stuck" and "the queue is full and everything still is". It now
+  answers `released N, still_held M` and exits non-zero on `M`.
 
 Two limits are stated rather than worked around. **Single touch** — LVGL's
 pointer device carries one point, so nothing above the input layer could consume

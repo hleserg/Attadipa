@@ -517,10 +517,23 @@ void Bridge::handle_input_reset(std::uint16_t req_id, std::uint32_t now_ms, Emit
 {
     const std::uint8_t released = state_.release_all(core::InputOrigin::Remote, now_ms, queue_);
 
+    // Two numbers, because one cannot tell the two failures apart. `released`
+    // counts what reached the queue; `still_held` is what `release_all`
+    // deliberately left held because the queue refused it (`input.h`, above
+    // `release_all`). A lone `0` means both "nothing was stuck" and "everything
+    // still is", and a lone `1` reads as complete when a button went out and
+    // the finger did not -- and this command is advertised as the escape hatch
+    // for exactly the stalled interface that produces those.
+    //
+    // Still `InputOk` rather than `QueueFull`: the release is not lost, the
+    // hold expiry retries it, and a command that half-succeeded is not a
+    // refused one. The caller is told enough to say which happened.
+    const std::uint8_t body[2] = {released, state_.held_count(core::InputOrigin::Remote)};
+
     Envelope envelope;
     envelope.req_id = req_id;
     envelope.op     = Opcode::InputOk;
-    send(envelope, &released, 1, emit, ctx);
+    send(envelope, body, sizeof(body), emit, ctx);
 }
 
 void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
