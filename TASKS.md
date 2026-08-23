@@ -2259,9 +2259,21 @@ Recommended next action:
   only the composition root knows which panel answered.
 - **Acceptance met.** `tools/ui/check_raw_values.py` refuses a colour, a pixel
   count or a duration written as a number under `ui/`, `sim/` or `apps/`, with
-  two files exempted for holding the palette and the scale; `tools/ui/selftest.py`
-  proves the checker rejects seven real mistakes and accepts seven correct
-  lines. `sim/boot_screen.cpp` no longer contains a hex colour or a raw padding.
+  one file exempted for holding the palette; `tools/ui/selftest.py` proves the
+  checker rejects thirty real mistakes, accepts twenty-eight correct forms
+  and reports three diagnostics usefully. `sim/boot_screen.cpp` no longer
+  contains a hex colour or a raw padding.
+- **The acceptance criterion was weaker than it read, and is now what it says**
+  — [#68](https://github.com/hleserg/Attadipa/issues/68), fixed 2026-08-23. The
+  checker matched one physical line at a time against a hand-written list of
+  setter names, so wrapping a call across lines changed the verdict and
+  `lv_obj_set_size`/`lv_obj_set_pos` were never on the list at all. It now blanks
+  comment and string bodies, takes each call whole by balancing parentheses, and
+  judges arguments by position against an inventory read out of the pinned LVGL
+  v9.5.0 headers. **A bump of the LVGL pin has to re-derive that inventory** —
+  the step is recorded in [DEPENDENCIES](docs/research/DEPENDENCIES.md), and why
+  it is a list rather than a parse is in
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
 - **Both themes are now switchable without a rebuild** — `T` at runtime,
   `--theme day|night` for CI — for the same reason the locale is: a reviewer who
   must rebuild to see the second one checks the first.
