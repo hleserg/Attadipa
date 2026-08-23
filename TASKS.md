@@ -1550,7 +1550,7 @@ stale silently. The protocol is
   Stereo source material decoded to one transducer is still mono output.
 - **Hardware required:** yes — a meter on the board.
 
-### T-106 · Three measurements and seven registers, before any cell is ordered
+### T-106 · Three measurements and eight registers, before any cell is ordered
 - **Priority:** P1 — it gates the battery decision, and every part of it is
   cheap. Nothing here needs a soldering iron.
 - **Dependencies:** the research is done —
@@ -1570,22 +1570,36 @@ stale silently. The protocol is
     consistent with 280–330 mAh; 7.5–8 g is the only mass consistent with a
     genuine 400 mAh**, and no sampled pouch reaches that density. A kitchen
     scale settles what 51 datasheets can only estimate.
-- **And seven registers, on the board, whenever convenient:** `0x62` (charge
+- **And eight registers, on the board, whenever convenient:** `0x62` (charge
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
-  `0x12` and `0x69`, at I²C address `0x34` — **and `0x64` (CV target) and
-  `0x63[4]` (termination enable), added 2026-08-23.** Those two are the only
-  cell-safety question this repository has: the PMU never sees a POR while the
-  cell is connected, so both persist as whatever the running image last wrote,
-  and with `0x63[4]` clear the charger holds CV indefinitely — float-charging a
-  Li-ion ([BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md), *"What is not
-  established"*). They were raised there and cited to a task number that does
+  `0x12` and `0x69`, at I²C address `0x34` — **and `0x64` (CV target),
+  `0x63[4]` (termination enable) and `0x61` (precharge current), added
+  2026-08-23.** Those three are the repository's cell-safety questions: none is
+  eFuse-defaulted, the PMU never sees a POR while the cell is connected, so all
+  three persist as whatever the running image last wrote.
+
+  **The pair and the third are live in different states, which is why all three
+  are here rather than two.** With `0x63[4]` clear the charger holds CV
+  indefinitely — float-charging a Li-ion — and OD-16 keeps the unit on a charger
+  indefinitely, so that pair is live now
+  ([BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md), *"What is not
+  established"*). `0x61` is not: precharge does not run on a plugged and full
+  cell. It becomes live down the path that same file's own table contemplates —
+  unplug, sit at a low state of charge, plug back in below 3.0 V — where the
+  125 mA POR figure is 0.42C on a ~300 mAh cell, four times the convention for
+  exactly that state ([BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) §6).
+  One more byte in a burst already being taken, against a second trip to the
+  bench that costs the panel's brightness `UNKNOWN`.
+
+  The pair was raised in `BENCH_HANDLING` and cited to a task number that did
   not exist, so until now the question had no owner in this file at all. Reading
-  them is a read, not a write, and needs no permission beyond having the unit.
+  any of them is a read, not a write, and needs no permission beyond having the
+  unit.
 - **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
-  instrument named, **all seven** register values recorded as read — including
-  `0x63` and `0x64`, which are the cell-safety pair and not part of the original
-  five — and the sizing
+  instrument named, **all eight** register values recorded as read — including
+  `0x61`, `0x63` and `0x64`, which are the cell-safety registers and not part of
+  the original five — and the sizing
   table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
   row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
 - **What must not be assumed:** that the sticker settles the capacity. Reading
@@ -1745,8 +1759,16 @@ stale silently. The protocol is
 - **Priority:** P3 for the first two — nothing is broken, they are blind spots
   written down before the next thing walks through one of them. **P2 for the
   third**, which is not hypothetical: five open pull requests are standing in it
-  right now.
-- **Dependencies:** none.
+  right now. The P2 used to rest on *"nothing fails on any of them"*, and #92
+  makes that false for the duplicate-number half; it rests now on the two
+  failures #92 does **not** catch, and on the renumber those five branches owe
+  each other either way.
+- **Dependencies:** [#92](https://github.com/hleserg/Attadipa/pull/92) builds
+  the anchor check and the duplicate-`OD-nn` check, so what this task builds is
+  decided by whether #92 has landed. It is a dependency in the ordinary sense
+  and in the queue's: solving the same finding twice is what the issue queue
+  exists to prevent, and the second attempt would collide by *name* — `T-127`
+  and `check_decision_ids` are both taken.
 - **What got through:**
   1. **29 stray files** reached a branch because `git add -A` was run at the
      repository root. [#134](https://github.com/hleserg/Attadipa/pull/134)
@@ -1756,12 +1778,20 @@ stale silently. The protocol is
      adds in *bytes*: a documentation-only change that carries a new binary, or
      grows by megabytes, passes every check there is. **"Fixed" and "cannot
      recur" are different claims** and only the first is true today.
-  2. **Anchors are never validated.**
-     [`tools/docs/check_docs.py`](tools/docs/check_docs.py) captures the `#…`
-     part of a link into `LINK` group 2 (`:55`) and `check_links` (`:99`) reads
-     only group 1 — so `FILE.md#a-heading-that-was-reworded` is *"clean"*. The
-     same file finds **duplicate** task IDs and never dangling ones, which is
-     how a reference to a task on an unmerged branch survived a green run.
+  2. **Task IDs are checked for duplicates and never for dangling.**
+     [`tools/docs/check_docs.py`](tools/docs/check_docs.py) finds a repeated
+     `T-nnn` and says nothing about a citation to one that does not exist, which
+     is how a reference to a task on an unmerged branch survived a green run.
+
+     **The anchor half of this item is already built and is not ours to build
+     again.** [#92](https://github.com/hleserg/Attadipa/pull/92) carries
+     `### T-127 · A link's #anchor is captured and then never checked` as
+     **DONE**: `check_links` now resolves every `#…` against the target
+     document's own headings using GitHub's slug rule, including the two-hyphen
+     em-dash case, captures same-document `](#…)` links for the first time, has
+     seven mutation cases and fixed one pre-existing broken anchor. Verify with
+     `gh pr diff 92 | grep -n "T-127"`. What is left here is the dangling
+     task-ID check, which T-127 does not touch.
   3. **`OD-nn` is a sequence with no allocator and no check**, and it has
      already failed in three different ways at once. On 2026-08-23 `main` ends
      at **OD-15**, and a sweep of every remote branch — not just the open pull
@@ -1791,20 +1821,38 @@ stale silently. The protocol is
        others the register skips five numbers that nothing will ever fill — and
        a gap does not announce itself the way a duplicate eventually does.
 
-     Nothing fails on any of them. `check_task_ids` (`:162`) is the only ID
-     check in the repository and it knows about `T-nnn` alone.
+     **One of the three now fails loudly, and again it is not ours to build.**
+     [#92](https://github.com/hleserg/Attadipa/pull/92) adds `check_decision_ids`
+     — a sixth check, *"Duplicate owner-decision numbers"*,
+     `DECISION_HEADING = re.compile(r"^##\s+(OD-\d+)\b")` over
+     `OWNER_DECISIONS.md`, wired into `main()` beside `check_task_ids`, with
+     tests. Its docstring is this task's own finding. So **merging #92 first
+     turns the `OD-16` collision from silent into loud**, with file, line and
+     instruction, which is better than what the rest of this item predicts.
+     Verify with `gh pr diff 92 | grep -n "check_decision_ids"`.
+
+     The other two failures have no counterpart there: a repeated *heading*
+     under two numbers (#94/#112) passes a duplicate-number check by
+     construction, and a gap in the sequence is not a duplicate at all — and the
+     floor argument below is the reason a gap check is the harder of the two.
 
      **This one is worse than a duplicate heading.** A task ID is cited inside
      this file; an `OD-nn` is cited from ADRs, from `STATUS.md` and from
      agent replies, under a rule in `CLAUDE.md` that owner decisions are not
      ours to overturn — so a collision does not merely repeat a number, it makes
      every existing citation ambiguous about *which* decision it was obeying.
-- **Goal:** a size/binary gate on pull requests, an anchor check that resolves
-  `#…` against the target file's headings using the same slug rule GitHub
-  applies, and an `OD-nn` check shaped like `check_task_ids` that catches all
-  three failures above — a repeated number, a repeated *heading* under two
-  numbers, and a gap in the sequence. All three are host checks with no hardware
-  in them.
+- **Goal:** close the root-**directory** case in `check_root_files`, add a
+  **dangling** task-ID check beside the duplicate one, and extend the `OD-nn`
+  check with the two failures a duplicate-number check cannot see — a repeated
+  *heading* under two numbers, and a gap in the sequence. All host checks with
+  no hardware in them.
+
+  **Not in scope, because #92 built them:** the `#anchor` resolver, and
+  `check_decision_ids` itself. This task **extends** that function rather than
+  writing one, and if #92 has not landed when this is picked up, the extension
+  waits for it instead of being reimplemented alongside. A size-or-binary gate
+  stays in the backlog rather than the goal — see the item-1 bullet below for
+  why the one-line fix comes first.
 - **What the third one does not solve, said plainly:** a check inside the
   repository fires *after* a merge, so it turns a silent collision into a loud
   one and does not prevent it. Preventing it needs an allocator across open
@@ -1812,13 +1860,13 @@ stale silently. The protocol is
   convention — check every remote branch before claiming a number. Write that
   convention down for `OD-nn` too; a check that only shouts afterwards is worth
   having and is not the whole answer.
-- **Acceptance:** all three checks exist, run in CI, and have been run once
-  against the repository as it stands with the output read before any of them is
-  made blocking. The byte gate names a threshold and what it does at it; the
-  anchor check resolves `#…` against the target file's headings and is proven
-  against a deliberately broken anchor; the `OD-nn` check catches a repeated
-  number, a repeated heading under two numbers, and a gap — each with a test in
-  both directions.
+- **Acceptance:** every check named in the Goal exists, runs in CI, and has been
+  run once against the repository as it stands with the output read before any of
+  them is made blocking. `check_root_files` catches a stray inside a root-level
+  directory; the dangling task-ID check names the citation and the missing ID;
+  `check_decision_ids` additionally catches a repeated heading under two numbers
+  and a gap — each with a test in both directions, added to the tests #92 ships
+  rather than replacing them.
 
   **The gap check needs a floor, and this is the part that is easy to get
   wrong.** A historical gap can never be filled: if #126's `OD-21` merges before
@@ -1832,12 +1880,15 @@ stale silently. The protocol is
 - **And item 3 has a priced cost, not just a tidiness one.**
   [#97](https://github.com/hleserg/Attadipa/pull/97) cites its own `OD-16` by
   **deep anchor** from both `TASKS.md` and `STATUS.md`. Whichever branch
-  renumbers, those anchors go stale **silently**, because `check_docs.py`
-  resolves a link's path and never its `#…` fragment — which is item 2 of this
-  same task, met in advance. #97 is the likelier one to be asked to renumber,
+  renumbers, those anchors go stale **silently** on `main` as it stands, because
+  `check_docs.py` there resolves a link's path and never its `#…` fragment.
+  **#92's T-127 closes that half**, so the cost is priced by merge order rather
+  than by this task: renumber after #92 lands and the stale anchors are caught;
+  renumber before it and they are not. #97 is the likelier one to be asked to renumber,
   since its `OD-16` *answers* A10 while the one on `docs/bench-handling` records
   A10 as open. So the anchor check and the `OD-nn` check are the same incident
-  from two sides, and doing either alone leaves the other half live.
+  from two sides, and doing either alone leaves the other half live — which is
+  now an argument about **when #92 merges**, not about what this task builds.
 - **And item 1 has a cheaper answer than the one it proposes.**
   `tools/docs/check_docs.py`'s *"Nothing unexpected is tracked at the repository
   root"* was written for exactly this failure — `git add -A` sweeping in a stray

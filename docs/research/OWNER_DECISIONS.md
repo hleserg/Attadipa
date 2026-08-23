@@ -1112,11 +1112,13 @@ survives only here.)
    still in force**; it must say it reset the board and that the brightness is
    unconfirmed. `WAVESHARE_FLASH_LAYOUT` §2.2, under
    *"`nvs`, `otadata` and `phy_init` did not move either"*, is the precedent for
-   making it
-   `MEASURED`: the owner watched the panel through six download-mode cycles and
-   that is how the `nvs` result stopped being a guess — nobody wrote down what
-   brightness it came back at, which is the one observation that would settle
-   this.
+   the **method** and not a missed chance: the owner watched the unit through
+   six download-mode cycles on 2026-08-22, and that is how the `nvs` result
+   stopped being a guess. It could not have settled the brightness — the
+   brightness was set to minimum on **2026-08-23**, this decision's own date, so
+   what those cycles would have recorded is 100 %. What the precedent says is
+   that one pair of eyes on the panel through one reset turns this `UNKNOWN`
+   into a `MEASURED`, and that the next reset is the cheap opportunity.
 3. **The question in it was answered honestly and stays answered that way.**
    "They will not be ruined, right?" is `UNKNOWN`, not "safe" — no lifetime
    figure exists for this panel, D7 has not settled even its initialisation

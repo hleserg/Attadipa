@@ -129,8 +129,16 @@ paragraph is read as a blanket permission. **Hold-open has a bench result**:
 §2.2, inside a list of things that turned out *not* to be the cause, and on
 Linux `cdc_acm` raises DTR and RTS in the kernel when the tty is first
 activated — before any userspace code runs — so a pyserial-side pre-set cannot
-precede the assertion, only lower the lines again after it. That is also why
-`stty -hupcl` was no help. Proving it on the unit is T-116's third goal. So a
+precede the assertion, only lower the lines again after it.
+
+**`stty -hupcl` is a separate failure and fails for a separate reason.**
+`HUPCL` governs the lines being dropped on **close**, not raised on **open**, so
+clearing it could never have prevented an open-time assertion in the first
+place; and `WAVESHARE_RUNNING_OUR_CODE` §2.2 records why it did not survive
+either — *"esptool reopens the port, and pyserial restores termios on open"*.
+Two different mechanisms, and reading the `cdc_acm` fact as the explanation for
+`-hupcl` sends whoever picks up T-116 goal 3 after the wrong one. Proving the
+open-time assertion on the unit is that goal. So a
 session may open and hold the port — **having resolved it by USB serial first, which is the
 rule at the bottom of this file and not optional here**; this sentence sits in a
 section headed by what an agent must not do, and on its own it reads like
@@ -215,16 +223,19 @@ nobody here has mapped to cd/m², and no cd/m² figure for this panel exists in
 paragraph is a bound, not a number.
 
 **The cell, which nothing above weighs.** The unit has a battery fitted — a
-`402728` marked 400 mAh, honest expectation **250–310 mAh `ESTIMATED`, with
-300 mAh as the working figure** (`BATTERY_UPGRADE` §1.2 for the pair, §3 for
-the three independent lines that converge on it; nothing weighed). An earlier
-version of this parenthesis corroborated it with §2's *"expect 250–300 mAh"*,
-which is **a different cell** — the expected capacity of a *replacement* pack,
-whose very next sentence uses the fitted cell as its denominator. Two
-near-identical numbers about two different objects, reading as agreement
-([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — its plug visibly mated, and
-net `VBAT1` has **no protection FET, no fuel gauge, no load switch and no
-disconnect switch** ([BATTERY_UPGRADE](../research/BATTERY_UPGRADE.md) §1.1).
+`402728` marked 400 mAh, its plug visibly mated
+([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — and net `VBAT1` has **no
+protection FET, no fuel gauge, no load switch and no disconnect switch**
+([BATTERY_UPGRADE](../research/BATTERY_UPGRADE.md) §1.1). Honest expectation for
+what that cell actually holds: **250–310 mAh `ESTIMATED`, with 300 mAh as the
+working figure** (`BATTERY_UPGRADE` §1.2 for the pair, §3 for the three
+independent lines that converge on it; nothing weighed).
+
+An earlier version of that parenthesis corroborated the figure with §2's
+*"expect 250–300 mAh"*, which is **a different cell** — the expected capacity of
+a *replacement* pack, whose very next sentence uses the fitted cell as its
+denominator. Two near-identical numbers about two different objects, reading as
+agreement.
 Two consequences follow, both from facts this repository already holds at
 `VERIFIED`, and neither of them a conclusion about harm:
 
@@ -245,16 +256,38 @@ Two consequences follow, both from facts this repository already holds at
   With `0x63[4]` clear the charger holds CV indefinitely, float-charging a
   Li-ion — `BATTERY_UPGRADE` §6.
 
+  **`REG 0x61` (precharge) persists the same way and is live down a different
+  path** — row 3 of the table above, the one whose cost is the unit *"left
+  sitting at a low state of charge"*. Plug back in below 3.0 V and precharge
+  runs at whatever the factory image wrote; the POR figure is 125 mA, 0.42C on a
+  ~300 mAh cell, four times the convention for a cell in exactly that state
+  (`BATTERY_UPGRADE` §6). It is not live in the state OD-16 actually holds the
+  unit in — plugged and full, precharge does not run — which is why it is
+  written down here rather than raised as an alarm.
+
 **And that is where it stops.** Nothing here says the cell is being harmed:
 those registers have not been read, and reading them means running our code on
-the unit — **T-106**, whose register list now carries `0x63` and `0x64` for
-exactly this reason. An earlier version of this sentence handed it to `T-114`,
-which does not exist in `TASKS.md` on this branch: the only occurrence of that
-number in the repository was this citation. So the file's one cell-safety
-question read as *assigned* while having no owner anywhere, which is worse than
-reading as absent, because a reader who checks stops at the citation. That is
-T-117 item 2's blind spot — `check_docs.py` never finds a dangling task ID, so
-a green run says nothing about it. Nor does it say which
+the unit — **T-106**, whose register list now carries `0x63`, `0x64` and `0x61`
+for exactly this reason: three cell-safety registers, not one question and not a
+pair, and one burst reads all three. An earlier version of this sentence handed it to `T-114`,
+which has no heading in `TASKS.md` on `main` or on this branch — so at the time
+of writing the citation pointed at nothing. **It will not stay that way:**
+[#121](https://github.com/hleserg/Attadipa/pull/121) adds
+`### T-114 · The debug channel needs a firmware end` (issue
+[#117](https://github.com/hleserg/Attadipa/issues/117)), about the debug
+channel and not about a charger register. Once that merges the citation
+resolves — to the wrong task — and a reader following the retraction to check it
+cannot tell whether the registers moved there or this sentence went stale.
+Which is why the claim is scoped to the two branches it was checked against
+rather than to *the repository*: absent-everywhere is a claim about branches,
+and the sweep that found five `OD-16`s is the method that answers it.
+
+So the file's cell-safety questions read as *assigned* while having no owner
+anywhere, which is worse than reading as absent, because a reader who checks
+stops at the citation. That is T-117 item 2's surviving blind spot —
+`check_docs.py` never finds a **dangling** task ID, so a green run says nothing
+about it; its anchor half is built on
+[#92](https://github.com/hleserg/Attadipa/pull/92). Nor does it say which
 state is kinder — neither is established, which is precisely why this file must
 not recommend one on the cell's account. What it does say is that *"powered
 indefinitely"* has a **second consumable** in it, that the panel's risk was

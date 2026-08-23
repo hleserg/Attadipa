@@ -1338,11 +1338,11 @@ unit's behaviour gets attached to it: `otadata` is blank, so the bootloader
 falls through to `factory`, which holds `phone_s3_box_3`. This distinction was
 missed once and travelled — see the correction in
 [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1.1. **`xiaozhi-esp32`'s** audio-path dependencies were licence-checked in the same
-pass — naming it rather than saying "its", because the nearest noun above is now
-`phone_s3_box_3`, which is Waveshare's proprietary binary and cannot be
-licence-checked at all, because the audio path is the thing we came for: `espressif/esp-sr`,
+pass, because the audio path is the thing we came for: `espressif/esp-sr`,
 `espressif/esp_audio_codec`, `espressif/esp_audio_effects`,
-`espressif/esp_codec_dev`. Display dependencies `waveshare/esp_lcd_sh8601` and
+`espressif/esp_codec_dev`. (Named rather than left as *"its"*: the nearest noun
+above is now `phone_s3_box_3`, Waveshare's proprietary binary, which cannot be
+licence-checked at all.) Display dependencies `waveshare/esp_lcd_sh8601` and
 `espressif/esp_lcd_co5300` were checked incidentally. Already in this ledger and
 adjacent to the same problem: `waveshare-components`, the vendor BSP, which does
 drive audio per its declared capabilities but not the IMU, PMU or RTC.

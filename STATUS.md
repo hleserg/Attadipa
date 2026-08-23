@@ -619,11 +619,17 @@ whose CV and termination registers hold whatever the running image last wrote �
 been calling it; `xiaozhi 1.8.5` sits unselected in `ota_0` and `otadata` is
 blank.
 No register has been read either, so both states stay `UNKNOWN` and the file
-recommends neither on the cell's account — and those two registers now have an
-owner, which they did not: `0x64` and `0x63[4]` are on **T-106**'s read list.
-The file had handed them to `T-114`, a number with no heading anywhere in
-`TASKS.md`, so the one cell-safety question in the repository read as assigned
-while belonging to nobody. **Absent reads as weighed; assigned reads as
+recommends neither on the cell's account — and those registers now have an
+owner, which they did not: `0x64`, `0x63[4]` and `0x61` are on **T-106**'s read
+list — three of them rather than the pair an earlier draft called *the* question,
+because `0x61` (precharge) persists the same way and goes live down the unplug
+path the same file's table contemplates.
+The file had handed them to `T-114`, a number with no heading in `TASKS.md` on
+`main` or on that branch, so the repository's cell-safety questions read
+as assigned while belonging to nobody. **The number is not free either:**
+[#121](https://github.com/hleserg/Attadipa/pull/121) adds a `T-114` about the
+debug channel's firmware end, so after it merges the old citation would resolve
+to an unrelated task — worse than dangling, because it looks answered. **Absent reads as weighed; assigned reads as
 handled**, and the second is worse, because a reader who checks stops at the
 citation. **One cheap thing is still unlooked-at
 and the file now says so rather than ruling it out:** whether the factory
@@ -649,16 +655,27 @@ same thing as the rule. It says plainly that no tool implements it yet —
 **T-116**, whose first caller (`SerialTransport`, arriving with
 [#121](https://github.com/hleserg/Attadipa/pull/121)) is named there rather than
 left for whoever picks the task up. **T-117** records the blind spots that
-let the strays and a dangling task reference through a green run: nothing checks
-what a pull request adds in bytes, and `check_docs.py` never validates a link's
-anchor. A third was found while this branch was in review and is not
-hypothetical: **`OD-nn` has no allocator and no check**, and a sweep of every
-remote branch finds it already broken three ways. Five branches each introduce
-an `OD-16` (#92, #95, #97, #112 and this one); #94 and #112 carry the *same*
-decision — A5/A6, issue #56 — as `OD-17` and `OD-16`, so merging both duplicates
-one decision under two citable numbers; and #126 numbers itself `OD-21` with
-nothing between it and `OD-15`, leaving a five-number hole if it lands first.
-Nothing fails on any of them: `check_task_ids` knows about `T-nnn` alone.
+let the strays and a dangling task reference through a green run: `check_docs.py`
+never validates a link's anchor, and it finds duplicate task IDs while saying
+nothing about dangling ones. A third was found while this branch was in review
+and is not hypothetical: **`OD-nn` has no allocator and no check**, and a sweep
+of every remote branch finds it already broken three ways. Five branches each
+introduce an `OD-16` (#92, #95, #97, #112 and this one); #94 and #112 carry the
+*same* decision — A5/A6, issue #56 — as `OD-17` and `OD-16`, so merging both
+duplicates one decision under two citable numbers; and #126 numbers itself
+`OD-21` with nothing between it and `OD-15`, leaving a five-number hole if it
+lands first.
+
+**Two of those four are already built, on #92, and T-117 has been narrowed to
+what is left.** That branch carries `T-127` — an `#anchor` resolver against the
+target document's own headings, GitHub's slug rule included — and
+`check_decision_ids`, a sixth check over `OWNER_DECISIONS.md` whose docstring is
+this branch's own finding. So **merging #92 first turns the `OD-16` collision
+from silent into loud**, with file, line and instruction, and the deferred
+renumber costs 21 occurrences across six files, none of them a deep anchor. What
+T-117 still owns: the dangling task-ID check, the root-**directory** case in
+`check_root_files`, and the two `OD-nn` failures a duplicate-number check cannot
+see — a repeated *heading* under two numbers, and a gap.
 
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing

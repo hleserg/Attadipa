@@ -101,8 +101,8 @@ closed from a document.
   current source on), `0x58` (JEITA enable), `0x12` bit 3 (BATFET when powered
   off on battery), `0x69` bits 2:1 (CHGLED mode — moot, that net goes nowhere,
   but read it anyway). One I²C burst at `0x34` settles all five — and the
-  same burst should carry `0x64` and `0x63` too, which are **not** of this class
-  and are listed separately in §4.
+  same burst should carry `0x64`, `0x63` and `0x61` too, which are **not** of
+  this class and are listed separately in §4.
 - **The board's peak current draw.** Needed to state a PCM over-current
   acceptance criterion (§8) and never measured.
 - **Stock availability of every geometry named in §5.** Datasheet existence was
@@ -376,14 +376,28 @@ housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
 - **One I²C read burst at `0x34`** covering `0x62`, `0x50`, `0x58`, `0x12`,
   `0x69` — the five eFuse-defaulted registers of §1.3. Until then every
   "default" claimed for them is `UNKNOWN`.
-- **And two more in the same burst, added 2026-08-23: `0x64` (CV target) and
-  `0x63` (bit 4, termination enable).** A *different* class from the five above
-  and named separately for that reason: these are not eFuse-defaulted, they hold
-  whatever the running image last wrote and the PMU never sees a POR while the
-  cell is connected (§6). With `0x63[4]` clear the part holds CV indefinitely on
-  a cell with no protection FET, and OD-16 keeps the unit on the charger — so
-  this pair is the only cell-safety question the repository has, and this burst
-  is the only route from `UNKNOWN` to read. **Do not close T-106 with five.**
+- **And three more in the same burst, added 2026-08-23: `0x64` (CV target),
+  `0x63` (bit 4, termination enable) and `0x61` (precharge current).** A
+  *different* class from the five above and named separately for that reason:
+  none is eFuse-defaulted, all three hold whatever the running image last wrote,
+  and the PMU never sees a POR while the cell is connected (§6). They are the
+  repository's cell-safety questions, and this burst is the only route from
+  `UNKNOWN` to read. **Do not close T-106 with five, and do not close it with
+  seven.**
+
+  The three are not equally urgent, and the difference is worth writing down
+  rather than flattening. **`0x64` and `0x63[4]` are the pair OD-16 makes live**
+  — the unit is on a charger indefinitely by decision, and with `0x63[4]` clear
+  the part holds CV on a cell with no protection FET for as long as that lasts.
+  **`0x61` is the one that waits for a different state.** Precharge does not run
+  on a plugged and full cell, and §6 has already decided what *our* firmware
+  writes there — but row 3 of `BENCH_HANDLING`'s own table contemplates
+  unplugging, which leaves the unit *"sitting at a low state of charge"*, and
+  plugging it back in below 3.0 V runs precharge at whatever `phone_s3_box_3`
+  last wrote. The POR figure is 125 mA, 0.42C on a ~300 mAh cell, four times the
+  ≤ 0.1C convention for exactly that state. One more byte in a burst already
+  being taken, against a second hardware trip — and the bullet below is what
+  prices that trip.
 - **One thing this visit cannot also do.** Reading those registers means running
   our code on the unit, which resets it, and OD-16 item 2 says a reset leaves
   the panel's brightness mitigation unconfirmed. The two `UNKNOWN`s want the
@@ -908,13 +922,14 @@ cell is `ESTIMATED`; every hardware test named here is
    motor is on pads `P1`/`P2`, not `J1`; its rail is `ALDO3`, not `BLDO2`; and
    `R13` (47 kΩ pulldown on `Q1`) is missing from the drive circuit. Evidence in
    §1.1 and §1.4. Documentation only.
-4. **Read seven AXP2101 registers on the powered board, in one I²C burst at
+4. **Read eight AXP2101 registers on the powered board, in one I²C burst at
    `0x34`.** Five eFuse-defaulted ones — `0x62`, `0x50`, `0x58`, `0x12`, `0x69`
    — where until then every "default" claimed for them is `UNKNOWN`; **and
-   `0x64` (CV target) with `0x63` bit 4 (termination enable)**, which are a
-   different class, hold whatever the running image last wrote, and are the
-   cell-safety pair of §4. Reading five answers the defaults question and leaves
-   the safety one open, so this item is not done at five. `needs-hardware`.
+   `0x64` (CV target), `0x63` bit 4 (termination enable) and `0x61` (precharge
+   current)**, which are a different class, hold whatever the running image last
+   wrote, and are the cell-safety registers of §4. Reading five answers the
+   defaults question and leaves the safety ones open, so this item is not done
+   at five and not at seven. `needs-hardware`.
 5. **Settle which AXP2101 variant is fitted.** Scope the `LP2`/`SW` node while
    charging: the SWcharge part switches there, the linear part should be quiet.
    Never probe it by writing high `REG 0x62` codes. Decides whether 1.5 A is
