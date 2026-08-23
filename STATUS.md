@@ -713,6 +713,17 @@ four more things at no cost:
   copy in a way that can be *run* rather than claimed:
   `ATTADIPA_REASON_SH=/tmp/old.sh bash .github/tests/failure-reason-test.sh`
   reports 32 failures on `5fd2738`'s script and 0 on this one.
+  **One piece is written and could not be pushed.** The review also noted that
+  both callers' comments still describe the pre-#106 model —
+  `claude-agent.yml`'s *Work out why the run died* step says the script "reads
+  it there and emits one line matching a whitelist", and
+  `claude-pr-review.yml`'s *Reason* block says the same. Comments only, no
+  behaviour, and the wording is drafted; the agent's GitHub App token has no
+  `workflows` permission, so a push carrying either file is refused outright
+  (*"refusing to allow a GitHub App to create or update workflow"*). It needs a
+  credential that has it — an orchestrator session or the owner — and until
+  then the two comments describe a script that no longer exists. Nothing reads
+  those comments at run time.
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same
