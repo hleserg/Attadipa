@@ -683,9 +683,12 @@ four more things at no cost:
   rather than satisfied, and `Resume` stays the only way back — an `Attach`
   honoured there would let a lifecycle owner that had not noticed the suspend
   route around it in silence. A phase added to `TransportPhase` later falls to
-  `Ignored` rather than `Redundant`, which is the safe default of the two, and a
-  `static_assert` against `kTransportPhaseCount` in the test makes adding one
-  without deciding its `Attach` outcome a build failure rather than a gap.
+  `Ignored` rather than `Redundant` in `link_state.cpp` — the safe default of
+  the two, and deliberately not compile-time guarded, so a new phase compiles
+  and behaves sanely. The guard is in **the test**: a `constexpr` coverage check
+  over `kTransportPhaseCount` refuses to build unless the phase table names
+  every phase by value, so the suite stops until somebody has decided what
+  `Attach` should do about it.
   `Fault`, the epoch and session accounting, and `reset()` are untouched, and
   the `Detach`-hardcodes-`PeerClosed` bullet from the same audit was left alone
   so that one finding stays one change. Three tests in `tests/test_link.cpp`: a

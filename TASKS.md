@@ -296,8 +296,12 @@ stale silently. The protocol is
   link carries nothing, so an attach is refused rather than satisfied and the
   way back stays `Resume` — otherwise a lifecycle owner that had not noticed
   the suspend could route around it silently. A phase added to the enum later
-  falls to `Ignored` rather than `Redundant`, and a `static_assert` on
-  `kTransportPhaseCount` makes adding one without deciding a build failure.
+  falls to `Ignored` rather than `Redundant` in `link_state.cpp`, which is the
+  safe half of the two and is deliberately not compile-time guarded; the guard
+  is in **the test**, where a `constexpr` coverage check over
+  `kTransportPhaseCount` fails to build if the phase table does not name every
+  phase. So a new phase compiles and behaves safely, and the suite refuses to
+  build until somebody has decided what it *should* do.
   Mutation-verified: restoring the old guard turns 13 checks red across the
   three new tests, and leaves the `Attached`/`Connecting`/`Ready` rows green,
   which is the evidence that only the two intended phases moved.

@@ -644,6 +644,30 @@ void test_a_fault_is_not_cleared_by_trying_again()
     CHECK(link.last_disconnect() == DisconnectReason::SubsystemRestart);
 }
 
+struct AttachCase {
+    TransportPhase phase;
+    EventOutcome   expected;
+};
+
+// Every phase appears in the table, and the check is by value rather than by
+// row count: a table of the right length with one phase written twice would
+// leave another untested and still look complete.
+constexpr bool covers_every_phase(const AttachCase (&cases)[core::kTransportPhaseCount])
+{
+    for (std::uint8_t p = 0; p < core::kTransportPhaseCount; ++p) {
+        bool found = false;
+        for (const AttachCase& c : cases) {
+            if (static_cast<std::uint8_t>(c.phase) == p) {
+                found = true;
+            }
+        }
+        if (!found) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Drive a fresh link into `phase` using only public events, and assert it got
 // there. A table that silently tested the wrong state would prove nothing.
 void place_in(LinkState& link, TransportPhase phase, int line)
@@ -687,12 +711,7 @@ void place_in(LinkState& link, TransportPhase phase, int line)
 // hardware is, and for a suspended one, which we quiesced on purpose.
 void test_attach_is_classified_per_phase()
 {
-    struct Case {
-        TransportPhase phase;
-        EventOutcome   expected;
-    };
-
-    const Case cases[] = {
+    constexpr AttachCase cases[] = {
         // Absent is the only one where there is work to do.
         {TransportPhase::Absent,     EventOutcome::Applied},
         // Attached is the state Attach asks for, and Connecting and Ready are
@@ -710,13 +729,16 @@ void test_attach_is_classified_per_phase()
         {TransportPhase::Faulted,    EventOutcome::Ignored},
     };
 
-    // Adding a phase to the enum without deciding what Attach does about it is
-    // a build failure rather than a gap nobody notices.
-    static_assert(sizeof cases / sizeof cases[0] ==
-                      static_cast<std::size_t>(core::kTransportPhaseCount),
+    // Adding a phase to the enum without deciding what Attach does about it
+    // fails to compile *here*. The production switch in link_state.cpp has no
+    // such guard on purpose — a phase nobody has reasoned about falls to
+    // Ignored, which is the safe half — so this table is the thing that says
+    // somebody reasoned about it. The parameter type pins the length; the body
+    // pins the coverage.
+    static_assert(covers_every_phase(cases),
                   "every TransportPhase needs a decided Attach outcome");
 
-    for (const Case& c : cases) {
+    for (const AttachCase& c : cases) {
         LinkState link(LinkState::Config{TransportKind::Usb, Millis{5000}, true});
         place_in(link, c.phase, __LINE__);
 
@@ -742,7 +764,11 @@ void test_attach_is_classified_per_phase()
                                                : c.phase));
 
         // And it never touches the session accounting. Attaching is not a
-        // session, so even the applied case leaves all three alone.
+        // session, so even the applied case leaves all three alone — though for
+        // last_disconnect() the Absent row proves little, since a fresh link's
+        // reason is None whatever enter() does with it. The case with teeth is
+        // an Absent reached *by* a restart, and it is asserted in
+        // test_attach_while_faulted_is_refused_and_counted_every_time.
         CHECK_IN(c.phase, link.epoch() == epoch_before);
         CHECK_IN(c.phase, link.sessions() == sessions_before);
         CHECK_IN(c.phase, link.last_disconnect() == reason_before);
@@ -792,6 +818,14 @@ void test_attach_while_faulted_is_refused_and_counted_every_time()
     // refusals are still there to be read.
     CHECK(link.ignored_events() == ignored_faulted + 5);
     CHECK(link.sessions() == 1);
+
+    // And the *applied* attach did not overwrite why the link went down. This
+    // is the one place that can be asserted: the table's Absent row starts from
+    // a fresh link whose reason is already None, so it would hold whatever
+    // enter() did with it. Here Absent was reached by a restart, so a reason
+    // assigned unconditionally would erase SubsystemRestart on the way back up
+    // — the recovery deleting the record of what it recovered from.
+    CHECK(link.last_disconnect() == DisconnectReason::SubsystemRestart);
 }
 
 // Suspended is a state we asked for, and an attach must not undo it by accident.
