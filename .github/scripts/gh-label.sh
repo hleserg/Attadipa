@@ -36,12 +36,17 @@
 # TARGET_KIND is "pr" or "issue". Anything else is treated as "issue", because
 # that is what an unreadable lookup most likely is and because the issue path is
 # the one every scheduled trigger uses.
+# The third parameter is `slug` rather than `repo` on purpose: a local named
+# `repo` in a sourced file makes shellcheck read every `$REPO` in the sourcing
+# script as a misspelling of it (SC2153), which failed CI on the commit that
+# introduced this file. Renaming the parameter is the fix; a disable comment
+# would only move the warning.
 attadipa_label_edit() {
-  local kind="$1" number="$2" repo="$3"
+  local kind="$1" number="$2" slug="$3"
   shift 3
   case "$kind" in
-    pr) gh pr edit "$number" --repo "$repo" "$@" ;;
-    *)  gh issue edit "$number" --repo "$repo" "$@" ;;
+    pr) gh pr edit "$number" --repo "$slug" "$@" ;;
+    *)  gh issue edit "$number" --repo "$slug" "$@" ;;
   esac
 }
 
@@ -52,10 +57,10 @@ attadipa_label_edit() {
 # same accident `gh issue edit` does NOT share, which is the whole reason this
 # file exists.
 attadipa_label_comment() {
-  local kind="$1" number="$2" repo="$3"
+  local kind="$1" number="$2" slug="$3"
   shift 3
   case "$kind" in
-    pr) gh pr comment "$number" --repo "$repo" "$@" ;;
-    *)  gh issue comment "$number" --repo "$repo" "$@" ;;
+    pr) gh pr comment "$number" --repo "$slug" "$@" ;;
+    *)  gh issue comment "$number" --repo "$slug" "$@" ;;
   esac
 }
