@@ -1085,9 +1085,13 @@ And then the decision, after the options were laid out:
 > не проебутся да? Не хочу выключать, хочу чтобы у тебя была возможность
 > прогнать код на железе когда понадобится»
 
-**In English:** found the brightness setting and turned it to minimum — at low
-brightness they will not be ruined, right? I do not want to switch it off; I want
-you to be able to run code on the hardware whenever it is needed.
+**In English:** found the screen brightness **in the settings** and turned it to
+minimum — at low brightness they will not be ruined, right? I do not want to
+switch it off; I want you to be able to run code on the hardware whenever it is
+needed. («в настройках» is kept in the gloss deliberately: it is the one word
+saying the factory launcher has a menu somebody has been inside, and English is
+this repository's working language, so for every reader but the owner the clue
+survives only here.)
 
 **What it obliges:**
 
@@ -1115,7 +1119,10 @@ you to be able to run code on the hardware whenever it is needed.
 **What it invalidates:** the preference table in `BENCH_HANDLING.md` ranks a
 screen timeout first and unplugging last. That ranking stands as the general
 case; for **this** unit the owner has chosen the second row, and this decision
-outranks the table.
+outranks the table. It does **not** settle row 1: whether the factory launcher
+offers a display timeout is `UNKNOWN` and unobserved — the menu the owner opened
+to find the brightness has never been enumerated, and nothing here should be
+read as saying there is nothing in it.
 
 **What it does not decide:** nothing about the product. Whether the firmware
 ships an idle dim, a screen timeout, pixel shift or an always-on face is

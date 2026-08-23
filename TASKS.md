@@ -1695,6 +1695,14 @@ stale silently. The protocol is
   `serial.Serial`, `esptool`, a literal `/dev/tty…`).
   [`tools/docs/check_docs.py`](tools/docs/check_docs.py) is the model for a
   repository check with an exemption list that has to state its reason.
+  **What this lint does not reach, said here rather than discovered later:** it
+  is scoped to `tools/`, and the route the bench rule currently blesses does not
+  go through `tools/`. #110's guard was a session script in a `/tmp` scratch
+  directory that `WAVESHARE_RUNNING_OUR_CODE` §2.3 itself calls *"not a durable
+  home"*, and `.github/scripts/`, `debug/` and `sim/` are outside the scope too.
+  So every criterion above can be met while the expected route stays open.
+  Widening the scan is cheap and narrowing the exemption is not; whichever is
+  chosen, it is a decision recorded once.
   The pattern list is `import serial`, `serial.Serial`, `esptool`, a literal
   `/dev/tty…`, **`idf.py flash`/`monitor` and `ESPPORT`** — the last two because
   that is how an ESP-IDF project actually writes to a board, and a wrapper under

@@ -30,15 +30,30 @@ leaves a mark here is the differential one — but not to the exclusion of the
 other, because the only lifetime figure this repository has is a *uniform*-ageing
 number, and the bound further down leans on it for want of anything closer.
 
-Waveshare's own examples implement **none** of the mitigations: no idle dim, no
-screen timeout, no pixel shift. So the default state of a powered unit is the
-worst one.
+Waveshare's **example sources** implement none of the mitigations —
+[WAVESHARE_ARRIVAL](../research/WAVESHARE_ARRIVAL.md) §3.5, *"Waveshare's own
+examples do none of it"*, written against a Rust firmware for this same board
+that steps brightness at 8 s and 15 s and blanks at 180 s idle. **One of those
+three is not an omission but a limit of the part**, and the distinction matters
+because no firmware can fix it: the CO5300 has **no pixel-shift and no scroll
+command at all**, so shifting is software or it does not happen. An idle dim and
+a screen timeout are ordinary software and genuinely absent. **A fourth thing
+the part does offer was missing from this list altogether** — Auto Current Limit
+(`55h`), which defaults to disabled and which no driver in the ecosystem writes
+([OPEN_QUESTIONS](../research/OPEN_QUESTIONS.md) A10); its cost and saving here
+are both unmeasured. The BSP also leaves the panel at `0x51 = 0xFF`, 100 %
+brightness, with the hardware dimming ramp turned off.
+
+**That is about example code, and the unit on the desk is not running it.** It
+boots the factory launcher, which is a different program and the same opaque one
+this file declines to reason from about the charger. What that image does when
+left idle — dim, blank, sleep, or nothing — is `UNKNOWN`, unobserved.
 
 ### What to do, in order of preference
 
 | | Effect | Cost to development |
 |---|---|---|
-| **Screen timeout, shortest available** | removes the static image entirely | **none** — see below. **Not available on the received unit**: the vendor firmware ships no timeout, as two paragraphs above says, so this row is what a *firmware* should offer, not something anyone can select today |
+| **Screen timeout, shortest available** | removes the static image entirely | **none** — and whether the received unit offers one is `UNKNOWN`, unobserved, **not** absent. The launcher it boots carries a **`Settings`** app ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.9) and OD-16 is the owner having already been inside it — «нашел **в настройках** яркость экрана». Nobody has enumerated the rest of that menu. This is the cheapest open question in the file: thirty seconds, and unlike the one below it needs no cable out |
 | **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | **not none** — it is the *plugged-in* state, and what that costs the cell is `UNKNOWN` rather than nothing: see **the cell** under *"What is not established"* |
 | **Unplug** | **cannot be assumed to stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so removing USB does not remove power; what the factory image does on battery is `UNKNOWN`, unobserved | the unit is not reachable, *and* the cell carries the load instead of USB. Direction only: **how fast, and therefore whether it is left sitting at a low state of charge, depends on the same unread image behaviour the effect cell declines to lean on** |
 
@@ -99,11 +114,14 @@ Both are solved, which is why the RAM-load route above stands: a session may
 open and hold the port. What does not follow is that an agent may reboot the
 owner's device to save its screen — that is a trade to be asked for, not made.
 
-So the action is the owner's — and under OD-16 there may be no action left to
+So the action is the owner's — and under OD-16 there is very little left to
 recommend: minimum brightness is already set, nothing of ours can blank the
 panel, and item 1 of that decision rules out offering "unplug it" as the
-recommendation. What remains is a fact worth stating, not a request dressed as
-one.
+recommendation. **One thing does remain, and it stays on the list until somebody
+looks:** row 1 of the table — whether that `Settings` menu holds a display
+timeout. It is unobserved rather than unavailable, and it is the only row whose
+effect is to remove the static image at no cost to development. Beyond that,
+what remains is a fact worth stating, not a request dressed as one.
 
 **The trigger, so this is neither guesswork nor boilerplate:** say it when the
 unit has been powered and unused since the last time it was said, *and* either
@@ -163,7 +181,10 @@ Two consequences follow, both from facts this repository already holds at
 - **Leaving it plugged sits on a charge path nobody here has read.** The
   AXP2101 `TS` pin goes through `RP2` to `GND` and never reaches `J1`, so **the
   charger never sees cell temperature**; Waveshare's BSP configures the charger
-  not at all and the factory image now running is opaque; and **the PMU never
+  not at all — though its **demo** does, and that is the nearest evidence anyone
+  has: 400 mA CC, 4.2 V, precharge 50 mA, **termination 25 mA**, `TS` disabled
+  (`BATTERY_UPGRADE` §1.1, `VERIFIED`), which points *away* from the float-charge
+  case rather than toward it — and the factory image now running is opaque; and **the PMU never
   sees a POR while the cell is connected**, so `REG 0x64` (CV target) and
   `REG 0x63[4]` (termination enable) persist as whatever that image last wrote.
   With `0x63[4]` clear the charger holds CV indefinitely, float-charging a
@@ -185,19 +206,24 @@ More than one ESP32-S3 is attached to the development host, and they enumerate
 identically as `303a:1001` — the watch and a MeshCore node. `/dev/ttyACM0` is
 not a stable name for either.
 
-**Every tool that writes to a device must resolve the port from the unit's USB
-serial and exit non-zero rather than guess — and none does yet.** What exists is
+**Every tool that opens a port on a device must resolve it from the unit's USB
+serial and exit non-zero rather than guess — and none does yet.** *Opens*, not
+*writes*: the casualty forty lines above wrote nothing. pyserial asserts DTR and
+RTS inside `Serial(...)`, and here those are GPIO0 and EN, so the reset is done
+by the time a tool has decided whether it has anything to say. What exists is
 the ad-hoc guard every write in the [#110](https://github.com/hleserg/Attadipa/pull/110)
 session went through, which was that session's own script and did not survive it.
 The shared one is **T-116** in [`TASKS.md`](../../TASKS.md), together with the
 lint that stops a fourth ad-hoc guard from being written in the meantime; it is
 named here because this is the newer and more discoverable of the two files that
-state this rule, and it was the one without the pointer. Until it lands, a
-flashing task writes its own or does not write.
+state this rule, and it was the one without the pointer. Until it lands, **any
+task that opens a port** brings its own resolver or does not open one — which
+covers a screenshot, a log tail and `idf.py monitor` as squarely as a flash.
 
 `--port /dev/ttyACM0` is the failure this rule exists to prevent: both devices
-answer to that name and the write lands on whichever enumerated first, which may
-be the owner's MeshCore node rather than the watch.
+answer to that name and the **open** lands on whichever enumerated first, which
+may be the owner's MeshCore node rather than the watch. Nothing needs to be
+written for that node to reboot in service.
 
 On an ESP32-S3 the USB serial string **is the base MAC**, which is the owner's
 and does not belong in this repository — so it is resolved at runtime and never
