@@ -78,13 +78,19 @@ is **2.8 MB off the first page view**, which on a mobile connection is the
 difference between a Largest Contentful Paint a search engine counts as good and
 one it counts as poor.
 
-Three `width`/`height` pairs were also wrong, which is a layout-shift source
-rather than a cosmetic error — the browser reserves the declared box and then
-reflows when the real image arrives:
+Three `width`/`height` pairs were also wrong — the banner, the design board and
+the mascot were each declared at a size their file never had. That is a
+layout-shift source rather than a cosmetic error: the browser reserves the
+declared box and then reflows when the real image arrives.
 
-- banner declared 1788 × 894, is 1774 × 887;
-- design board declared 1440 × 1086, is 1448 × 1086;
-- mascot declared 720 × 708, is 1270 × 1239.
+What each image actually is, is deliberately not restated here.
+`tools/site/check_site_facts.py` reads the dimensions out of the PNG, JPEG and
+WebP headers themselves and compares them with the `width`/`height` in
+`docs/index.html` on every CI run, so the numbers are asserted where a browser
+uses them rather than copied into a document that cannot notice when they drift.
+It compares proportion rather than scale: `favicon.png` is 64 × 64 and the page
+draws it at 34 and again at 28, which reserves exactly the right box and is not
+a defect.
 
 Loading hints added: `fetchpriority="high"` on the hero banner (it *is* the LCP
 element), `loading="lazy"` on everything below the fold, `decoding="async"`
@@ -147,7 +153,7 @@ now carries a table of *which `copy` field must be assigned into which tag*, and
 asserts `setLanguage()` against it, including which DOM element each variable
 selects. Found in review, in the artifact built to prevent exactly this.
 
-Its own mutation tests (`tools/site/test_check_head_sync.py`, **29 cases**) run
+Its own mutation tests (`tools/site/test_check_head_sync.py`, **32 cases**) run
 first. Seven of them fail against the check as it was, which is what makes them
 tests rather than description. A checker that passes everything is worse than
 none — it is what the next agent trusts instead of re-checking, which is exactly
@@ -156,16 +162,28 @@ how this section came to be wrong.
 ### `docs/index.html` — a `<noscript>` fallback for `.reveal`
 
 Not an SEO fix, found while tracing what the script does to the head. Every
-section below the hero carries `.reveal`, which ships at `opacity:0`
-(`site.css:8`); `site.js` adds `.visible` through an `IntersectionObserver` as
-each scrolls into view. With scripting off nothing ever adds it, so a document
-that contains the whole page renders as a hero and empty space. Googlebot runs
-scripts and never saw this; a reader with scripting off, or one whose script
-request simply failed, saw a blank page.
+section below the hero carries `.reveal`, which shipped at `opacity:0` in the
+stylesheet; `site.js` adds `.visible` through an `IntersectionObserver` as each
+scrolls into view. With scripting off nothing ever added it, so a document that
+contains the whole page rendered as a hero and empty space. Googlebot runs
+scripts and never saw it.
 
-A `<noscript>` block now restores `opacity:1` and clears the transform. It
-changes nothing for anyone running the script, and the reduced-motion media
-query already did the same thing for people who ask for it.
+The first fix here was a `<noscript>` block restoring `opacity:1`, and review
+was right that it did not cover the case this section had claimed for it. A
+reader *whose script request failed* has scripting **enabled**, so `<noscript>`
+does not apply to them; they get the stylesheet's `opacity:0` and no observer,
+which is the blank page again. Nor does `<noscript>` help if the script loads
+and throws before reaching the observer — which had already happened once on
+this page.
+
+**So hiding is now opt-in, and the script is what opts in.** `.reveal` ships
+visible; `.js-reveal` on `<html>` is what makes it `opacity:0`, and `site.js`
+adds that class inside the same branch that creates the observer. Every way the
+animation can fail to run — scripting off, a failed request, a throw before
+that line, no `IntersectionObserver`, reduced motion — now leaves the page
+visible, because the thing that hides the content and the thing that reveals it
+are the same statement. The `<noscript>` block is kept as a belt-and-braces
+override for the scripting-off case and is no longer what the argument rests on.
 
 ### `docs/manifest.webmanifest`
 
@@ -231,13 +249,28 @@ Worth recording so nobody "fixes" it:
 - **Semantic structure.** Exactly one `<h1>`, a real `<main>`, `<header>`,
   `<footer>`, `<nav aria-label="Primary">`, sectioned content, and a working
   skip-link. This is the part most hand-built project pages get wrong.
-- **`docs/robots.txt`** — allows everything and points at the sitemap. Correct
-  as written.
+- **`docs/robots.txt`** — allows everything and points at the sitemap, and is
+  **read by nobody.** `robots.txt` is fetched from the origin root and nowhere
+  else. This is a GitHub Pages *project* site with no custom domain — there is
+  no `CNAME` in the repository root or in `docs/` — so the file publishes at
+  `hleserg.github.io/Attadipa/robots.txt`, while the URL a crawler reads as
+  policy is `hleserg.github.io/robots.txt`, which belongs to a user-pages
+  repository that does not exist. Every line in it is inert, *including* the
+  `Sitemap:` line, so this file is not what makes the sitemap discoverable.
+  A `<link rel="sitemap">` in the head is (several crawlers read it), and §5
+  asks the owner for the console submission that makes it certain. The file is
+  kept rather than deleted because it becomes live, unchanged, on the day a
+  custom domain is added; the header inside it says all of this so the next
+  reader does not "fix" the directives when the location is the problem.
+
+  The first version of this section called it *"correct as written"*, which was
+  true of the directives and false of the file. Where a file sits is part of
+  whether it works.
 - **Canonical URL** present and absolute.
 - **Mobile.** A real viewport meta, `img{max-width:100%;height:auto}` in the
   reset, and grid/flex layout throughout — no fixed-width containers to cause a
   horizontal scroll.
-- **Performance, otherwise.** One 17 KB stylesheet and one 6 KB script, both
+- **Performance, otherwise.** One 17 KB stylesheet and one 8 KB script, both
   local, the script `defer`red. No web fonts are loaded at all — the type stack
   is `"Nunito Sans", "Avenir Next", system-ui, …`, so there is no render-blocking
   font fetch and no CLS from a swap. No third-party scripts, no analytics, no
@@ -250,8 +283,13 @@ Worth recording so nobody "fixes" it:
 term, and an `<h1>` is a strong signal. It stays because the brief was explicit
 that the design is not to be broken, and this line *is* the design — it is the
 product's whole argument in four words. The terms were added to the `<title>`,
-the lead paragraph and the `<h2>`s instead, which is most of the benefit at none
-of the cost. Putting keywords in hidden text near the `<h1>` would recover the
+the lead paragraph and two of the `<h2>`s instead, which is most of the benefit
+at none of the cost — the architecture section now opens *"ESP32-S3 boards that
+share almost nothing: built to survive the differences"* and the status section
+*"The foundation is real. The LoRa, GNSS and LVGL firmware on the watch is still
+early"*, both in each language. The first version of this section claimed the
+`<h2>`s already carried the terms; they did not, and review counted. Naming the
+two here is so the next reader can check the claim rather than trust it. Putting keywords in hidden text near the `<h1>` would recover the
 rest and is exactly the kind of thing that gets a site penalised; it was not
 considered seriously.
 
@@ -323,7 +361,7 @@ None of these are blockers, and none were registered, per the brief.
 |---|---|---|
 | Verify the site in **Google Search Console** | <https://search.google.com/search-console> — DNS or the HTML-file method; the file drops in `docs/` | the only way to see real queries, impressions and Core Web Vitals field data; also where a sitemap is submitted |
 | Verify in **Bing Webmaster Tools** | <https://www.bing.com/webmasters> — can import from Search Console in one click | Bing, DuckDuckGo and ChatGPT search all read this index |
-| Submit `sitemap.xml` | both consoles | first-crawl latency, hours instead of weeks |
+| Submit `sitemap.xml` | both consoles | **the only certain way the sitemap is found.** `docs/robots.txt` publishes below the origin root and no crawler reads it (§3), so discovery otherwise rests on the `<link rel="sitemap">` in the head, which not every crawler honours. Also first-crawl latency: hours instead of weeks |
 | Check the **Open Graph card** renders | <https://cards-dev.twitter.com/validator> and Facebook's sharing debugger | the OG tags are new and unproven against a real scraper |
 | Run **PageSpeed Insights** | <https://pagespeed.web.dev> | confirms the 2.8 MB image saving as a field number rather than an arithmetic one |
 
@@ -359,6 +397,19 @@ searches for and which no current topic covers.
   describes.
 - The JSON-LD is plain JSON inside one `<script>` element: it parses, or it does
   not. Worth a paste into <https://validator.schema.org> after any edit.
-- If an image is swapped, its `width`/`height` must be re-read from the file.
-  Three of the five were wrong before this pass, which is what happens when the
-  numbers are typed rather than measured.
+- `python3 tools/site/check_site_facts.py .` — the numbers in *this document*
+  and in `index.html`, against the files they describe. In CI, in the same
+  *Documentation consistency* job. Three of the five `width`/`height` pairs were
+  wrong before this pass and the first draft of §"Images" guarded the rest with
+  a sentence saying they must be re-read; a sentence is what had just failed, so
+  this reads them instead. It measures PNG, JPEG and WebP from their own
+  headers and covers the dimension pairs, the byte sizes, both statements of the
+  2.8 MB total, the stylesheet and the script, and the case count quoted above.
+  It compares an `<img>` box by proportion, not by scale, so drawing a 64 × 64
+  mark at 34 is not reported — a check that cried about that would teach the
+  reader to skip it.
+
+  Writing it found two numbers already stale: the script had grown past the
+  6 KB stated for it, and the case count above said 29 for a suite of 32. Both
+  were changed by commits that had no reason to look at this file, which is the
+  argument for the check rather than for more care.

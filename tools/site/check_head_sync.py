@@ -147,9 +147,58 @@ def js_block(js, lang):
     return None
 
 
+def strip_line_comments(block):
+    """Drop `//` line comments, leaving everything else at its own offsets.
+
+    A COMMENT IS NOT A FIELD, and until this existed one could be. `js_field`
+    takes the FIRST regex match in the block, so a line reading
+
+        // title: 'something else entirely'
+
+    placed above the real `title:` inside `copy.en` was returned as the title --
+    and the checker then reported the rendered head as diverging from
+    `index.html` when nothing had diverged. Loud rather than silent, so it is a
+    nuisance rather than a hole, but it is a false FAILURE on a check whose whole
+    value is that a failure means something.
+
+    A test named "a comment naming a field is not a field" was meant to cover
+    this and did not: it inserted the comment BEFORE `const copy = {`, outside
+    the span `js_block` reads, so it could not have failed for its stated
+    reason. Moving it inside proved the defect. Found in review.
+
+    `//` inside a string literal is not a comment. None of the copy strings
+    contains one today -- they are prose for a search result and a social card --
+    but a URL would, so the scan tracks whether it is inside a quote rather than
+    assuming.
+    """
+    out = []
+    for line in block.split("\n"):
+        quote = None
+        cut = None
+        index = 0
+        while index < len(line):
+            char = line[index]
+            if quote:
+                if char == "\\":
+                    index += 2
+                    continue
+                if char == quote:
+                    quote = None
+            elif char in "'\"`":
+                quote = char
+            elif char == "/" and line[index + 1 : index + 2] == "/":
+                cut = index
+                break
+            index += 1
+        out.append(line if cut is None else line[:cut])
+    return "\n".join(out)
+
+
 def js_field(block, field):
     # Single-quoted string literals, which is what this file uses throughout.
-    found = re.search(r"\b%s:\s*'((?:[^'\\]|\\.)*)'" % re.escape(field), block)
+    found = re.search(
+        r"\b%s:\s*'((?:[^'\\]|\\.)*)'" % re.escape(field), strip_line_comments(block)
+    )
     return found.group(1) if found else None
 
 
@@ -176,6 +225,24 @@ def set_language_body(js):
             if depth == 0:
                 return js[start.end() : index]
     return None
+
+
+def assigned_targets(body):
+    """Every local name `setLanguage()` writes a `copy[lang].X` into.
+
+    The mirror of `assigned_field`: that one asks "what does this target get?",
+    this one asks "what gets anything?", so the two together can say whether
+    ASSIGNMENTS covers the function or merely intersects it.
+
+    `document.title` is spelled as itself rather than as a bare identifier, so
+    it is matched separately and reported under the same name the table uses.
+    """
+    found = set()
+    if re.search(r"\bdocument\.title\s*=\s*copy\[\s*lang\s*\]\.\w+", body):
+        found.add("document.title")
+    for match in re.finditer(r"\b(\w+)\.content\s*=\s*copy\[\s*lang\s*\]\.\w+", body):
+        found.add(match.group(1))
+    return sorted(found)
 
 
 def assigned_field(body, target):
@@ -232,6 +299,22 @@ def check_wiring(js, problems):
                 "    assigns: copy[lang].%s\n    should:  copy[lang].%s\n"
                 "    Both strings stay identical to index.html, so the comparison above "
                 "cannot see this." % (name, got, field)
+            )
+
+    # THE TABLE MUST BE COMPLETE, and until now nothing said so. Every check
+    # above iterates ASSIGNMENTS, so a localised field added to setLanguage()
+    # and forgotten here falls outside BOTH halves: the data comparison does not
+    # know the tag is localised, and the wiring check never looks at it. It
+    # would stay unchecked for as long as the file lives, silently -- which is
+    # exactly the substitution this artefact exists to stop, applied to itself.
+    # og:image:alt is the next likely one. Found in review.
+    for name in assigned_targets(body):
+        if name not in ASSIGNMENTS:
+            problems.append(
+                "setLanguage() assigns `%s`, which is not in ASSIGNMENTS in this file.\n"
+                "    Nothing checks it: neither that it selects the right tag, nor that it\n"
+                "    is given the right copy field. Add a row -- the table is the contract."
+                % name
             )
 
 

@@ -36,10 +36,12 @@ import check_head_sync  # noqa: E402
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 FAILURES: list[str] = []
+RAN: list[str] = []
 
 
 def case(name: str, condition: bool) -> None:
     print(("  ok   " if condition else "  FAIL ") + name)
+    RAN.append(name)
     if not condition:
         FAILURES.append(name)
 
@@ -321,12 +323,49 @@ def main() -> int:
         lambda html, js: edit(js, "title: 'Attadipa — открытая", "title: 'Attadipa — свободная"),
         expect_fail=False,
     )
+    # THIS CASE USED TO BE DECORATIVE. It inserted the comment before
+    # `const copy = {` -- outside the span js_block() reads -- so it never
+    # entered the text the checker looks at and could not have failed for its
+    # stated reason. Moved inside the `en:` block, it failed immediately:
+    # js_field() took the first regex match with no comment awareness and
+    # returned the decoy, reporting a divergence that did not exist. The fix is
+    # strip_line_comments(); these four cases are what hold it.
     scenario(
-        "a comment naming a field is not a field",
+        "a comment above the real field is not the field",
         lambda html, js: edit(
             js,
-            "  const copy = {",
-            "  // title: 'something else entirely'\n  const copy = {",
+            "    en: {\n      title:",
+            "    en: {\n      // title: 'something else entirely'\n      title:",
+        ),
+        expect_fail=False,
+    )
+    scenario(
+        "a comment below the real field is not the field either",
+        lambda html, js: edit(
+            js,
+            "      ogTitle: 'Attadipa",
+            "      // title: 'decoy'\n      ogTitle: 'Attadipa",
+        ),
+        expect_fail=False,
+    )
+    scenario(
+        "a trailing comment on the field's own line does not eat the field",
+        lambda html, js: edit(
+            js,
+            "',\n      ogTitle:",
+            "',  // the rendered <title>\n      ogTitle:",
+        ),
+        expect_fail=False,
+    )
+    # The other direction: stripping comments must not strip a `//` that is
+    # inside a string. No copy string holds one today, but a URL would, and a
+    # naive strip would truncate the value and report a divergence.
+    scenario(
+        "a // inside a copy string is not a comment",
+        lambda html, js: edit(
+            js,
+            "      locale: 'en_US',",
+            "      locale: 'en_US',\n      note: 'see https://example.invalid/x',",
         ),
         expect_fail=False,
     )
@@ -371,7 +410,10 @@ def main() -> int:
         for name in FAILURES:
             print("  - " + name)
         return 1
-    print("all cases passed")
+    # The count is printed rather than left to be counted by hand: the number
+    # of cases here is quoted in docs/site/SEO.md, it has been wrong twice, and
+    # check_site_facts.py reads this line to hold the document to it.
+    print("all %d cases passed" % len(RAN))
     return 0
 
 

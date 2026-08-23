@@ -614,7 +614,7 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   and they do match"* while two of eight fields did not.
 
   So it is a check rather than a claim: `tools/site/check_head_sync.py`, in CI
-  in the *Documentation consistency* job, with 29 mutation tests
+  in the *Documentation consistency* job, with 32 mutation tests
   (`tools/site/test_check_head_sync.py`) ahead of it. The existing rot check
   never covered this: `tools/docs/check_docs.py` filters on `.md` and was green
   while the second defect was in the tree.
@@ -630,16 +630,55 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   `og:locale:alternate`, which is the state this branch fixed. The check now
   carries a table of which `copy` field must be assigned into which tag, and
   which DOM element each variable selects, and asserts `setLanguage()` against
-  it. Seven of the 29 cases fail against the check as it was.
+  it. Seven of the 32 cases fail against the check as it was.
 
   Three claims were removed rather than fixed, because they were not true of the
   files: three of the six JSON-LD `featureList` entries described work that is
   designed and not built; the manifest's `maskable` icon purpose, on an icon
   whose four corner pixels are `(0, 0, 0, 0)` and which a launcher mask would
   therefore hole; and `og:image:alt` saying the mark sits *over* the wordmark
-  when it sits to its left. A `<noscript>` fallback was also added — every
-  section below the hero ships at `opacity:0` and waited on a script to reveal
-  it, so a reader without JavaScript got a hero and empty space.
+  when it sits to its left.
+
+  **Every section below the hero shipped at `opacity:0`, waiting on a script to
+  reveal it,** so a reader without JavaScript got a hero and empty space. The
+  first fix was a `<noscript>` block, and review was right that it did not cover
+  the case the document claimed for it: a reader whose *script request failed*
+  has scripting enabled, so `<noscript>` never applies to them — nor if the
+  script loads and throws before reaching the observer, which had already
+  happened once on this page. Hiding is therefore opt-in now. `.reveal` ships
+  visible; `.js-reveal` on `<html>` is what makes it `opacity:0`, and `site.js`
+  adds that class inside the same branch that creates the `IntersectionObserver`.
+  The thing that hides the content and the thing that reveals it are one
+  statement, so every way the animation can fail leaves the page readable. The
+  `<noscript>` block stays as a belt-and-braces override and is no longer what
+  the argument rests on.
+
+  **A fourth round of review found that the numbers in `SEO.md` were still
+  guarded by a sentence** — *"if an image is swapped, its `width`/`height` must
+  be re-read from the file"* — two files away from the head, which had a check
+  precisely because a sentence had failed there. So they are a check too:
+  `tools/site/check_site_facts.py`, in the same CI job, with 15 mutation tests.
+  It measures PNG, JPEG and WebP from their own headers and holds the document
+  to the dimension pairs, the byte sizes, the saving column, both statements of
+  the 2.8 MB total, the stylesheet, the script, and the head-sync case count
+  (which the suite now prints, so nothing has to type it).
+
+  Writing it found two numbers already wrong — the script had grown past the
+  6 KB claimed for it, and the case count said 29 for a suite of 32 — and its
+  own *first draft* found nothing at all: it required exactly one filename per
+  line to attribute a number, every row of the table names two, so it skipped
+  every claim in the document and printed *"9 images measured"*. That is the
+  failure mode this branch has now hit four times in four different artifacts,
+  and it is why an unattributable number is reported rather than skipped and the
+  summary line states how many facts were actually compared.
+
+  `docs/robots.txt` was also demoted from *"correct as written"*: the directives
+  are right and the file is unreachable. `robots.txt` is read from the origin
+  root only, this is a project-pages site with no `CNAME`, so the file publishes
+  at `/Attadipa/robots.txt` and every line in it — including `Sitemap:` — is
+  inert. Sitemap discovery now rests on a `<link rel="sitemap">` in the head and
+  on S2's console submission; the file is kept, with a header explaining why, so
+  it is already correct the day a custom domain is added.
 
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the

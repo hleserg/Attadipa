@@ -355,14 +355,44 @@ jobs:
       # either file: it filters on `.md`.
       #
       # Its own mutation tests run first, for the same reason check_docs.py's
-      # do. Twenty cases, including one per historical defect and four that
+      # do. THIRTY-TWO cases, including one per historical defect and seven that
       # assert it does *not* fire where firing would be wrong -- the Russian
-      # strings differ from the English by design.
+      # strings differ from the English by design, and a `//` inside a copy
+      # string is not a comment.
+      #
+      # This number has now been wrong twice in the same comment block, both
+      # times because a count four lines up was corrected and this one was not.
+      # The suite now prints its own count, and check_site_facts.py below reads
+      # that line back and holds docs/site/SEO.md to it -- so the copy that
+      # reaches a reader is enforced. This comment and STATUS.md still are not,
+      # because a checker for a comment is a checker for a comment. If the count
+      # moves, fix it here and in STATUS.md; CI will tell you about SEO.md.
       - name: The head-sync check actually checks
         run: python3 tools/site/test_check_head_sync.py
 
       - name: The rendered head and index.html say the same thing
         run: python3 tools/site/check_head_sync.py .
+
+      # SEO.md states the pixel dimensions and byte size of every image the site
+      # and the social card use. Three of five were wrong on the first pass, and
+      # they were wrong for one reason: they were TYPED. The head is guarded by
+      # a check next door while the numbers beside it were guarded by a sentence
+      # saying they must be re-read from the file -- the substitution this whole
+      # job exists to refuse, since a sentence is exactly what had just failed.
+      # Reading them out of the PNG, JPEG and WebP headers costs one step.
+      # Found in review.
+      #
+      # Its own mutation tests run first, and they are not ceremony: the first
+      # draft of the check attributed a number to a file by requiring exactly
+      # one filename on the line, every row of the table names two, so it
+      # skipped every claim in the document and printed "9 images measured".
+      # Fifteen cases, two of which assert it does *not* fire -- a 64 x 64 mark
+      # drawn at 34 reserves the right box, and a rounder number is allowed.
+      - name: The site-facts check actually checks
+        run: python3 tools/site/test_check_site_facts.py
+
+      - name: The numbers in SEO.md are the repository's own
+        run: python3 tools/site/check_site_facts.py .
 
   simulator:
     name: Simulator build and headless run

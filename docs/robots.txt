@@ -1,3 +1,31 @@
+# THIS FILE IS NOT READ BY ANY CRAWLER, AND THAT IS NOT A BUG TO FIX HERE.
+#
+# robots.txt is fetched from the ORIGIN ROOT and nowhere else. This is a GitHub
+# Pages *project* site with no custom domain -- there is no CNAME in the
+# repository root or in docs/ -- so the site is published under
+# https://hleserg.github.io/Attadipa/ and this file lands at
+# https://hleserg.github.io/Attadipa/robots.txt . The URL a crawler reads as
+# policy is https://hleserg.github.io/robots.txt , which belongs to the
+# hleserg.github.io user-pages repository and not to this one.
+#
+# So every line below is inert, INCLUDING the Sitemap: line. Do not "fix" it by
+# rewording the directives; the file's location is the problem, and the two ways
+# out are both outside this repository:
+#
+#   1. a custom domain (adding a CNAME makes the site's origin its own root,
+#      and this file becomes live at that root unchanged); or
+#   2. publishing a root robots.txt from a hleserg.github.io repository.
+#
+# Sitemap discovery therefore does NOT come from here. It comes from the
+# <link rel="sitemap"> in index.html, which several crawlers read, and from a
+# Search Console / Bing Webmaster submission -- listed in docs/site/SEO.md §5,
+# an owner action because it needs an account this project will not register on
+# the owner's behalf.
+#
+# Nothing here is load-bearing for indexing: <meta name="robots"> in index.html
+# does that work, at a URL crawlers do read. The file is kept, rather than
+# deleted, so that it is already correct on the day a custom domain is added.
+
 User-agent: *
 Allow: /
 Sitemap: https://hleserg.github.io/Attadipa/sitemap.xml

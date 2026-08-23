@@ -32,6 +32,12 @@
   <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
+  <!-- The only sitemap discovery path this site actually has. robots.txt
+       is host-rooted and this is a project site, so the Sitemap: line in
+       docs/robots.txt is never fetched -- see that file. Several crawlers
+       read this link; the rest need the Search Console submission recorded
+       as S2 in docs/site/SEO.md. Found in review. -->
+  <link rel="sitemap" type="application/xml" href="sitemap.xml">
   <script>
     (() => {
       try {
@@ -104,14 +110,19 @@
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/site.js" defer></script>
 
-  <!-- .reveal ships at opacity:0 and site.js adds .visible when the section
-       scrolls into view. With scripting off, nothing ever adds it, so every
-       section below the hero stays invisible on a page whose HTML contains all
-       of it. Googlebot runs scripts and is unaffected; a reader with scripting
-       off, or one whose script request failed, got a blank page. This undoes
-       the starting state for them and leaves the animation alone for everyone
-       else. -->
-  <noscript><style>.reveal{opacity:1;transform:none}</style></noscript>
+  <!-- The scroll animation is opt-in, and site.js is what opts in: `.reveal`
+       ships VISIBLE, and `.js-reveal` on <html> -- added one statement before
+       the IntersectionObserver that undoes it -- is what hides it. So every way
+       the script fails to run lands on the readable page.
+
+       This <noscript> is now a belt-and-braces override for the scripting-off
+       case alone. It used to be the ONLY protection, described as covering "a
+       reader whose script request simply failed" -- which it cannot: <noscript>
+       does not render when scripting is enabled, so a 404 on site.js, cached
+       HTML opened offline, a blocking extension or a throw inside the file all
+       left a hero and empty space. That was the case being claimed as fixed.
+       Found in review; the class inversion is the actual fix. -->
+  <noscript><style>.reveal,.js-reveal .reveal{opacity:1;transform:none}</style></noscript>
 </head>
 <body>
   <a class="skip-link" href="#main">
@@ -265,7 +276,7 @@
     <section class="section shell" id="hardware">
       <div class="section-heading reveal">
         <span class="kicker lang-en">Targets</span><span class="kicker lang-ru">Целевые устройства</span>
-        <h2><span class="lang-en">Built to survive hardware differences.</span><span class="lang-ru">Архитектура, которая переживает различия плат.</span></h2>
+        <h2><span class="lang-en">ESP32-S3 boards that share almost nothing: built to survive the differences.</span><span class="lang-ru">Платы на ESP32-S3, у которых почти нет ничего общего: архитектура переживает различия.</span></h2>
         <p class="lang-en">The same product model is intended to span watches with very different displays, radios, GNSS and haptics — without pretending every board has everything.</p>
         <p class="lang-ru">Одна модель продукта должна работать на часах с очень разными дисплеями, радио, GNSS и вибрацией — без притворства, будто на каждой плате есть всё.</p>
       </div>
@@ -326,7 +337,7 @@
       <div class="status-card reveal">
         <div class="status-copy">
           <div class="status-label"><span class="pulse-dot"></span><span class="lang-en">Current milestone: M1</span><span class="lang-ru">Текущий этап: M1</span></div>
-          <h2><span class="lang-en">The foundation is real. The watch firmware is still early.</span><span class="lang-ru">Фундамент уже работает. Сама прошивка часов пока на раннем этапе.</span></h2>
+          <h2><span class="lang-en">The foundation is real. The LoRa, GNSS and LVGL firmware on the watch is still early.</span><span class="lang-ru">Фундамент уже работает. Прошивка часов — LoRa, GNSS, LVGL — пока на раннем этапе.</span></h2>
           <p class="lang-en">The repository builds six libraries, the two-geometry desktop simulator and 24 host tests; screens draw through the design tokens in day and night themes, and CI raises the simulator from a clean machine. The first target board is now on the desk and has been read over its own USB port — the first evidence here that came from silicon rather than a document. Device firmware and every hardware measurement are still ahead.</p>
           <p class="lang-ru">В репозитории собираются шесть библиотек, desktop-симулятор двух геометрий и 24 хостовых теста; экраны рисуются через дизайн-токены в дневной и ночной темах, а CI поднимает симулятор с чистой машины. Первая целевая плата уже на столе и прочитана через собственный USB-порт — это первое свидетельство здесь, пришедшее с кремния, а не из документа. Прошивка для устройства и все аппаратные измерения ещё впереди.</p>
           <div class="status-actions">
