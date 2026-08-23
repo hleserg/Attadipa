@@ -156,7 +156,14 @@ and `agent:ready` where one is genuinely needed.
           nothing;
         * `ai-review:pass` is present — the independent reviewer put it there,
           and its absence means no verdict, not a silent yes;
-        * `ai-review:blocking`, `agent:blocked` and `needs-owner` are absent;
+        * `ai-review:blocking`, `agent:blocked` and `needs-owner` are absent.
+
+          `agent:blocked` on a pull request is usually `claude-ci-repair.yml`
+          giving up after two attempts, and it stays until a person clears it
+          deliberately — `/ci-repair reset` on a line of its own, from an
+          account with write access. Do not clear it yourself and do not treat
+          a later green run as having cleared it; the condition is the label,
+          not your reading of the branch;
         * no unresolved review threads AND no unanswered comment from
           `chatgpt-codex-connector[bot]` anywhere on the pull request, review
           thread or not.

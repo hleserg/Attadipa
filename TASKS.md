@@ -163,6 +163,37 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-127 · The two-attempt repair bound appears to reset itself
+- **Priority:** P1 — it is a *cost* bound, and a cost bound that does not hold
+  is the failure mode the whole retry budget exists to prevent.
+- **Dependencies:** none. Found while fixing #129 and deliberately left there.
+- **Goal:** `claude-ci-repair.yml`'s gate counts repair attempts from marker
+  comments *since the last comment containing the reset command*, matched with a
+  plain `grep`. Its own give-up comment ends by telling the reader to use that
+  command, and quotes it — so the escalation comment itself looks like a reset
+  to the counter that raised it. On the reading of the code as it stands, every
+  further CI failure on an escalated pull request starts attempt 1 of 2 again,
+  which is exactly the unbounded `CI failed → change something → rerun` the
+  two-attempt limit was written against.
+- **Why it is a separate task:** issue #129 said in as many words not to change
+  the retry budget, and this is the retry budget. The finding is recorded rather
+  than acted on so that the change is made deliberately and reviewed as what it
+  is. `.github/scripts/ci-repair-reset.sh`, added by #129, already refuses the
+  same collision on the label side and can be reused for the wording rule.
+- **Acceptance:** **first, evidence.** The reading above is from the source and
+  has not been reproduced on a run — find an escalated pull request in the
+  history and count the `attadipa-ci-repair` markers after its give-up comment,
+  or dispatch the shape deliberately. If it holds, move the counter to the same
+  whole-line rule the label reset uses, with a fixture that puts a real give-up
+  comment through it, and say in `RECOVERY.md` which of the two the reader is
+  looking at. If it does not hold, close this with the evidence.
+- **Watch for:** the reset comment a person writes with an explanation under it
+  must keep working, and so must the documentation quoting the command without
+  invoking it. Both directions are already asserted for the label path in
+  `.github/tests/ci-repair-reset-test.sh`.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-034a · The mascot, at a size somebody drew

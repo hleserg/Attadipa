@@ -124,12 +124,50 @@ labelled `agent:claude`, and never on `main` or a fork.
 It is given the actual failing log (`gh run view --log-failed`, trimmed) and
 told to find the root cause before changing anything. Two attempts per problem
 chain; then `ci:failed`, `agent:blocked` and a comment saying what it could not
-work out. `/ci-repair reset` clears the counter.
+work out.
 
 The failure mode being designed against is *`CI failed → change something →
 rerun`*, which is a random walk with a budget attached. The attempt marker is
 written **before** the attempt for the same reason: a counter that only
 increments on success counts to two forever.
+
+### And the way back out of it
+
+Giving up raises `ci:failed` + `agent:blocked`, and **`agent:blocked` is a
+named hold** in [`merge-candidate.sh`](../../.github/scripts/merge-candidate.sh)
+and one of the labels the unattended backstop requires absent. Until #129 the
+reset command cleared only the attempt *counter* — which the gate reads on the
+**next** CI failure and nothing reads at the moment somebody types it — so a
+pull request whose cause had been found, whose fix had been pushed, whose CI was
+green and whose review had passed carried the escalation for ever, and nothing
+said why.
+
+So the command now clears the labels too, and it is deliberately a command
+rather than any comment:
+
+| | |
+|---|---|
+| **who** | a non-bot actor with `write`, `maintain` or `admin` |
+| **where** | on the pull request, as a comment |
+| **what** | `/ci-repair reset` **as a whole line**, on its own or above an explanation |
+| **does** | removes `agent:blocked` and `ci:failed`, and says on the pull request what it removed |
+| **does not** | touch `needs-owner`, touch the attempt counter, or merge anything |
+
+The whole-line rule is not fussiness. The give-up comment above *names* the
+command while telling you to use it, so the command's own spelling sits in a bot
+comment on every escalated pull request — and in this file, and in any human
+comment explaining the loop. That is the same collision
+[`intake-decision.sh`](../../.github/scripts/intake-decision.sh) describes being
+sprung twice in one day on `@claude`.
+
+**A plain `@claude` still clears nothing on a pull request**, and that is the
+other half of the same rule: `claude-agent.yml`'s claim step deliberately does
+not strip `agent:blocked` from one, so that commenting cannot dissolve an
+escalation raised for a person and hand the branch to the unattended backstop.
+Both directions are asserted in
+[`blocked-restart-test.sh`](../../.github/tests/blocked-restart-test.sh), which
+runs the reset step itself and then asks `merge-candidate.sh` whether the pull
+request it left behind would merge.
 
 ## Smoke tests
 

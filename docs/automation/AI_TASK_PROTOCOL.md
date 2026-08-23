@@ -325,6 +325,34 @@ How to resume:
 
 and the issue gets `agent:blocked` plus `needs-hardware` or `needs-owner`.
 
+### What the pipeline does with that label, and why it is three cases
+
+`agent:blocked` has to carry two different things at once — *this cannot
+proceed*, which is state, and *the agent said so during this run*, which is
+provenance — and the hand-over needs the second, because talking over an
+agent's own `BLOCKED:` comment with a generated one is exactly the noise the
+reporting rules above forbid. Provenance is established by comparing the labels
+at the end of the run against
+[`ATTADIPA_BLOCKED_AT_CLAIM`](../../.github/workflows/claude-agent.yml), which
+the claim step writes by **re-reading after its own edits** — not before them,
+which is the defect #129 reported and which turned a real blocker into "Done"
+plus `agent:review` on the one restart route the watchdog recommends.
+
+[`blocked-outcome.sh`](../../.github/scripts/blocked-outcome.sh) decides:
+
+| It is | The hand-over |
+|---|---|
+| not set | reports the outcome and labels as usual |
+| set, and this run set it | says nothing — the agent's own comment is the report — and releases the claim |
+| set, and this run did not, or the read failed | **reports** the outcome in words, and changes **no** state label |
+
+The third row is the one worth reading twice. Reporting and relabelling are
+separate acts: silence is the older defect so the comment is still written, and
+an object carrying `agent:blocked` is by definition not finished work, so it
+never comes out labelled `agent:review` — and a draft pull request carrying it
+is never taken out of draft, since undrafting is the step that makes a branch
+eligible for an unattended merge.
+
 **When to stop and ask**, and only these:
 
 1. an unknown product requirement;
@@ -411,7 +439,17 @@ recommendation. "What should I do?" is not a question, it is an absence of one.
   the three-label state is refused, and that the escalation comment says so.
 - **CI failures**: repaired automatically at most twice per problem chain, from
   the actual failing log. After that the pull request gets `ci:failed` and
-  `agent:blocked` and a human is asked. `/ci-repair reset` clears the counter.
+  `agent:blocked` and a human is asked. **The way back out is a command, not a
+  comment**: `/ci-repair reset` written as a whole line by a non-bot actor with
+  write access removes `agent:blocked` and `ci:failed` and says on the pull
+  request that it did. A plain `@claude` removes neither, deliberately — the
+  claim step does not strip `agent:blocked` from a pull request, because
+  `merge-candidate.sh` holds on that label by name and the backstop requires it
+  absent, so a comment must not be able to hand an escalated branch to an
+  unattended merge. Until #129 nothing removed it at all and a fixed, green,
+  reviewed pull request was ineligible for ever;
+  [CI_AND_REVIEW_PIPELINE.md](CI_AND_REVIEW_PIPELINE.md#and-the-way-back-out-of-it)
+  has the table.
 - **Cost**: every workflow checks the `CLAUDE_AUTOMATION_ENABLED` repository
   variable before anything billable, the queue watchdog costs nothing when the
   queue is empty, and one writer runs at a time.

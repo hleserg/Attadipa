@@ -663,6 +663,37 @@ four more things at no cost:
 
 ## Recently completed
 
+- **A blocked run came back out of the pipeline as a success, and a repaired
+  pull request could never come back out at all.** Two halves of one state
+  contract, issue #129. `agent:blocked` has to say both *this cannot proceed*
+  and *the agent said so during this run*, and the hand-over needs the second —
+  which it got from a snapshot the claim step took **before** it stripped the
+  very label it had just recorded. On the exact restart route the watchdog's own
+  escalation comment recommends (escalate → a person comments `@claude` → the
+  claim clears the label → the agent re-confirms the blocker and says why), the
+  hand-over read a stale `true`, concluded the label was somebody else's, posted
+  *"Done"* over the agent's `BLOCKED:` comment and added `agent:review`. The
+  claim step now re-reads after its own edits and exports
+  `ATTADIPA_BLOCKED_AT_CLAIM`; the three-way decision is
+  `.github/scripts/blocked-outcome.sh`, and an object carrying `agent:blocked`
+  is never labelled `agent:review` and never taken out of draft whoever set it.
+  On the pull-request side `claude-ci-repair.yml` raised `ci:failed` +
+  `agent:blocked` when it gave up and **nothing removed them**: the reset
+  command cleared only the attempt counter, which is read on the next CI
+  failure, so a diagnosed, fixed, green, reviewed pull request was ineligible
+  for an unattended merge for ever. It now clears the labels too, from a non-bot
+  actor with write access writing the command as a whole line — deliberately a
+  command and not any `@claude`, because the claim step refuses to strip that
+  label from a pull request precisely so a comment cannot hand an escalated
+  branch to the backstop. `.github/tests/blocked-restart-test.sh` no longer
+  asserts that the pieces exist: it lifts the claim step's own shell out of the
+  workflow and **runs** `blocked-before → cleared → blocked-again` against a
+  stub `gh`, then runs the reset step and asks `merge-candidate.sh` whether what
+  it left behind would merge. Verified red on `7558728` and on two deliberate
+  re-introductions of the defect. **T-127 records one thing found and not
+  fixed**: the give-up comment quotes the reset command, and the counter matches
+  it with a plain substring, so the two-attempt bound appears to reset itself.
+
 - **The unattended merge sweep failed before it looked at a single pull
   request.** `pr-merge-sweep.yml` merged green on 2026-08-23 and its cron had
   not yet registered, so it was dispatched by hand to get the evidence its own

@@ -68,6 +68,39 @@ It cannot be: two attempts per problem chain, and the marker is written before
 each attempt. If you are seeing more, somebody has been commenting
 `/ci-repair reset`. Check the pull request's comments.
 
+**And check the give-up comment itself**, which quotes that command in its own
+last sentence. The counter in `claude-ci-repair.yml`'s gate looks for the
+command with a plain substring match, so the bot's own escalation comment
+appears to satisfy it — the two-attempt bound looks like it resets itself once
+the escalation is raised. Found while fixing #129 and **not fixed there**,
+because that issue said explicitly not to change the retry budget; filed as
+T-127 in [`TASKS.md`](../../TASKS.md).
+
+### A pull request is green, reviewed, and never merges
+
+Read its labels before anything else. `agent:blocked`, `needs-owner` and
+`ai-review:blocking` are each a named hold in
+[`merge-candidate.sh`](../../.github/scripts/merge-candidate.sh), and the first
+of them is left behind by an automatic CI repair that gave up:
+
+```bash
+gh pr view <N> --json labels --jq '[.labels[].name]'
+```
+
+If it carries `agent:blocked` + `ci:failed` and the cause has since been fixed,
+comment `/ci-repair reset` **on its own line** on the pull request. Both labels
+come off and the workflow says on the pull request what it removed. Commenting
+`@claude` does *not* clear them, on purpose.
+
+If the labels are clean and it still sits there, the hold is one of the other
+conditions — six hours since the last commit, `ai-review:pass` set *after* the
+head commit, no unresolved threads, and a path on the unattended-merge
+allowlist. `.github/workflows/pr-merge-sweep.yml`'s log prints the reason for
+every candidate it declines. A green pull request touching `core/` or
+`.github/` is on none of those lists and is waiting for an orchestrator
+session, which is a real gap and is named in `CLAUDE.md` rather than left to be
+discovered.
+
 ### Claude is not reacting to an issue
 
 In order of likelihood:
