@@ -251,6 +251,21 @@ jobs:
       - name: Watchdog queue scan
         run: bash .github/tests/watchdog-filter-test.sh
 
+      # agent:failed with no agent:ready beside it meant invisible to the
+      # watchdog forever, with nothing on the issue explaining that. #82 found
+      # #27 and #28 in exactly that state; this is the filter that finds them.
+      - name: Stranded failures
+        run: bash .github/tests/stranded-failures-test.sh
+
+      # The count behind the bounded retry: how many times agent:failed has
+      # been labelled since a HUMAN, not the hand-over itself, last put the
+      # issue back in the queue. A first version counted an issue's whole
+      # history instead, which meant a genuinely fixed task could never earn
+      # back a retry -- found in review on #82's own pull request, against
+      # #27, #28 and #69's real timelines.
+      - name: Bounded retry count
+        run: bash .github/tests/failure-count-test.sh
+
       # What the pipeline says out loud. A silent pipeline and a dead one look
       # the same from an issue, which cost this project a morning of somebody
       # asking whether anything was happening. The receipt and the outcome
@@ -266,6 +281,16 @@ jobs:
       # pushed nothing. The decision is a file now, so it can be run.
       - name: What the agent decides it did
         run: bash .github/tests/handover-decision-test.sh
+
+      # And what may be merged with nobody looking. This is the only rule in the
+      # repository that can put a commit in `main` unattended, so it gets the
+      # heaviest test: every one of the six conditions asserted in both
+      # directions, plus the ORDER, because a rule that reads mergeStateStatus
+      # before the draft flag declines every candidate it was written for -- a
+      # draft reads `draft` there, never `clean`. Proven to fail against two
+      # distinct real defects.
+      - name: What may be merged unattended
+        run: bash .github/tests/merge-candidate-test.sh
 
       # And whether it says WHY, when the answer is in a log nobody may read.
       # `show_full_output: false` empties the published run log of exactly the
@@ -293,6 +318,31 @@ jobs:
       # reviewer's died GREEN, because its step carries continue-on-error.
       - name: A workflow that admits a bot names it in allowed_bots
         run: bash .github/tests/bot-actor-test.sh
+
+      # A task the bounded retry escalated carries agent:blocked, and the one
+      # restart route that needs no label surgery -- a `@claude` comment -- ran
+      # to completion and then reported NOTHING, because Hand over reads
+      # agent:blocked as "the agent blocked itself this run" and exits. Each
+      # half correct alone, in two different files, which is why it survived
+      # both files' own tests and was found in review.
+      - name: Restarting a blocked task produces an outcome
+        run: bash .github/tests/blocked-restart-test.sh
+
+      # Taking a pull request out of draft is not a sentence in a comment: a
+      # draft can never read `mergeable_state: clean`, so undrafting is the step
+      # that makes a branch eligible for an unattended merge. The number it is
+      # given for done_pr comes from whichever open pull request says
+      # `Fixes #N`, which an abandoned branch also says. This is the evidence
+      # test between the two.
+      - name: What may be taken out of draft
+        run: bash .github/tests/promote-decision-test.sh
+
+      # `gh issue edit` resolves repository.issue(number:), which does not
+      # resolve pull requests -- three of claude-agent.yml's five triggers fire
+      # on one, and every call is `|| true`, so neither outcome was reported.
+      # Run against a stub `gh` on PATH: no network, no token.
+      - name: A label edit reaches the object it names
+        run: bash .github/tests/gh-label-test.sh
 
       # The staleness line is the only thing telling an agent that the finding
       # it is about to implement was made against code that has since moved.

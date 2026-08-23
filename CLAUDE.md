@@ -123,11 +123,18 @@ If you are working from an issue:
   carries `Fixes #<issue>` and says what was tested and what was not.
 
   That is the *orchestrator* — a live session, over every path in the
-  repository. The unattended **backstop routine** merges far less: `docs/`
-  only, never `docs/automation/`, three per run, under six conditions it checks
-  rather than infers. So a green pull request touching `core/` is not waiting
-  for the owner, and the backstop will not sweep it up either — it is waiting
-  for an orchestrator session to look at it.
+  repository. Two unattended things merge far less, and both stay inside the
+  same allowlist: the daily **backstop routine**, and the half-hourly
+  [`pr-merge-sweep.yml`](.github/workflows/pr-merge-sweep.yml), which exists so
+  that a finished documentation pull request does not wait on somebody
+  remembering. `docs/` only — never `docs/automation/`, never `docs/adr/`,
+  never `OWNER_DECISIONS.md`, never the live Pages files — three per run, under
+  conditions each checks rather than infers, and only where the reviewer's
+  `ai-review:pass` was set **on the head commit**. So a green pull request
+  touching `core/` or `.github/` is not waiting for the owner, and neither of
+  those will sweep it up — it is waiting for an orchestrator session to look at
+  it. Widening that list is the owner's decision, not an agent's and not a
+  reviewer's.
 - **Hardware facts are verified or they are `UNKNOWN`.** Never a `PASS` for a
   test that did not run on a board — the rule above, and it does not relax
   because a workflow is watching.
