@@ -166,8 +166,24 @@ A screen with the right elements on it is not done. Design is part of Done.
 
 ## Conventions
 
-- Code, comments, and documentation in English. The two specification documents
-  are the author's own and stay in Russian.
+- **Two audiences, two languages, and the split is not negotiable.**
+  - **The repository is English.** Code, comments, documentation, commit
+    messages, pull request titles and bodies, GitHub issue and review comments,
+    branch names. The two specification documents are the author's own and stay
+    in Russian.
+  - **The conversation with the owner is Russian.** Every chat reply, question,
+    status report, explanation and apology. Including the one-word ones —
+    *"готово"*, not *"done"*. Including thinking that is shown to him.
+
+  The owner asked for this repeatedly and had to ask again in anger, which is
+  the failure this line exists to stop. Drifting back into English mid-session
+  is the common way it happens: an agent writes an English commit message, then
+  keeps going in English into the chat. Repository text and conversation are
+  different artefacts with different readers; the language follows the reader,
+  not the paragraph before it.
+
+  The only exception is the owner writing in English and asking for an English
+  answer.
 - **The README exists twice, and the two are one document.** `README.md` is the
   English original and [`README.ru.md`](README.ru.md) is its Russian version.
   Any change to one is made in the other **in the same commit** — not "later",
