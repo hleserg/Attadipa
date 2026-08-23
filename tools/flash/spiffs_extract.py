@@ -28,6 +28,30 @@ size from the `u32` immediately preceding it — then checks the result against
 the number of data-page bytes the object actually has. A file whose declared
 size exceeds its recovered bytes is reported and not written, rather than
 written short.
+
+**A name off the device is not a path.** SPIFFS has no directories:
+`/image/image1.bin` is one 17-character name that happens to contain slashes,
+and nothing on the device stops a second name from being `/image_image1.bin`.
+The first version of this script flattened slashes to underscores and opened the
+result `"wb"`, so those two names were one file on disk, the second silently
+replaced the first, and the summary reported both as extracted — data loss in a
+tool whose entire output is evidence. So destinations are now worked out and
+checked *as a set* before a single byte is written:
+
+- the on-device hierarchy is kept rather than flattened, which is also the
+  closest the output can get to what the device had;
+- two names may never land on one path, and `/a` may not be a file when `/a/b`
+  needs `a` to be a directory;
+- nothing is written outside the canonical `outdir` — checked through
+  `realpath`, so a symlinked directory in the way is caught rather than followed;
+- nothing already there is overwritten. `--force` allows replacing a regular
+  file and still refuses a symlink;
+- a run that cannot give every name a safe destination of its own writes nothing
+  at all, and a write that fails part-way removes what it created.
+
+Exit codes: `0` everything written; `1` at least one file was incomplete in the
+image; `2` nothing was written, because a destination was unsafe, claimed twice
+or already occupied.
 """
 
 from __future__ import annotations
@@ -37,8 +61,35 @@ import os
 import re
 import struct
 import sys
+from typing import Callable, NamedTuple
 
 NAME_IN_PAGE = re.compile(rb"/[\x20-\x7e]{1,63}\x00")
+
+# A component has to mean "one directory entry with this name" on every host we
+# might run on, not just on this one. `..` climbs out of outdir; a backslash is
+# a separator on Windows and an ordinary character here; a colon there is a
+# drive marker and an alternate-data-stream separator. Refusing all of them
+# everywhere keeps one image extracting to one tree on every machine, which
+# matters because this output is evidence rather than convenience.
+FORBIDDEN_IN_COMPONENT = ("\\", ":", "\x00")
+
+# POSIX refuses to open a symlink with this; Windows has no equivalent, so the
+# checks in plan() are what stand there.
+NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+# Windows only, and a no-op everywhere else.
+BINARY = getattr(os, "O_BINARY", 0)
+
+
+class UnsafeName(ValueError):
+    """A SPIFFS name that cannot become a path inside outdir at all."""
+
+
+class Write(NamedTuple):
+    """One planned write: the file, where it goes, and what is already there."""
+
+    entry: dict
+    dest: str
+    replaces: bool  # a regular file --force is allowed to overwrite
 
 
 def extract(image: bytes, page: int, block: int) -> tuple[list[dict], list[str]]:
@@ -84,30 +135,218 @@ def extract(image: bytes, page: int, block: int) -> tuple[list[dict], list[str]]
     return files, problems
 
 
+def components(name: str) -> list[str]:
+    """Split an on-device name into path components, or refuse it.
+
+    A leading slash and repeated slashes are dropped rather than refused —
+    `/a//b` is the same file on the device as `/a/b` and the two collapsing onto
+    one destination is caught by plan(), which is where a collision belongs.
+    """
+    parts = [part for part in name.split("/") if part]
+    if not parts:
+        raise UnsafeName("the name is nothing but separators")
+    for part in parts:
+        if part in (".", ".."):
+            raise UnsafeName(f"component {part!r} would move the destination")
+        for character in FORBIDDEN_IN_COMPONENT:
+            if character in part:
+                raise UnsafeName(
+                    f"component {part!r} contains {character!r}, which is a "
+                    f"separator or a drive marker on some host")
+    return parts
+
+
+def inside(root: str, path: str) -> bool:
+    """Is `path` strictly inside the canonical `root`, symlinks resolved?
+
+    realpath resolves the symlinks in the part of `path` that exists, which is
+    the whole point: `outdir/image` being a link to `/etc` has to be caught
+    here, because the open() that followed it would look perfectly ordinary.
+    """
+    resolved = os.path.realpath(path)
+    try:
+        return resolved != root and os.path.commonpath([root, resolved]) == root
+    except ValueError:  # different drives on Windows; not inside by definition
+        return False
+
+
+def plan(files: list[dict], outdir: str, force: bool = False) -> tuple[list[Write], list[str]]:
+    """Give every file a destination inside outdir, or say why it cannot have one.
+
+    Changes nothing on disk. Every refusal below is a way two names could have
+    become one file, or one name could have become a file somewhere it was never
+    meant to be, and all of them are found before the first byte is written.
+    """
+    root = os.path.realpath(outdir)
+    resolved: list[tuple[dict, str]] = []
+    refusals: list[str] = []
+    claimed: dict[str, str] = {}
+
+    for entry in files:
+        name = entry["name"]
+        try:
+            parts = components(name)
+        except UnsafeName as why:
+            refusals.append(f"{name}: {why}")
+            continue
+        relative = os.path.join(*parts)
+        if relative in claimed:
+            refusals.append(
+                f"{name}: would be written to the same path as {claimed[relative]} "
+                f"({relative})")
+            continue
+        if not inside(root, os.path.join(outdir, relative)):
+            refusals.append(f"{name}: {relative} resolves outside {root}")
+            continue
+        claimed[relative] = name
+        resolved.append((entry, relative))
+
+    # `/a` and `/a/b` are both ordinary SPIFFS names and only one of them can be
+    # a file called `a`. No ordering makes that work, so it is a property of the
+    # set rather than of either name, and is checked once the set is known.
+    directories: dict[str, str] = {}
+    for entry, relative in resolved:
+        parent = os.path.dirname(relative)
+        while parent:
+            directories.setdefault(parent, entry["name"])
+            parent = os.path.dirname(parent)
+
+    for relative, wanted_by in sorted(directories.items()):
+        path = os.path.join(outdir, relative)
+        if os.path.islink(path):
+            refusals.append(
+                f"{wanted_by}: {relative} is a symlink, and nothing is written "
+                f"through one — where it points is not this tool's decision")
+        elif os.path.exists(path) and not os.path.isdir(path):
+            refusals.append(f"{wanted_by}: {relative} is already a file, not a directory")
+
+    writes: list[Write] = []
+    for entry, relative in resolved:
+        name = entry["name"]
+        if relative in directories:
+            refusals.append(
+                f"{name}: {directories[relative]} needs {relative} to be a directory")
+            continue
+        dest = os.path.join(outdir, relative)
+        # islink first, and not exists: a dangling symlink is a link and is not
+        # something that exists, and following it would create the file it
+        # points at — outside outdir, if that is where it points.
+        if os.path.islink(dest):
+            refusals.append(f"{name}: {relative} is a symlink; it will not be written through")
+            continue
+        replaces = False
+        if os.path.exists(dest):
+            if os.path.isdir(dest):
+                refusals.append(f"{name}: {relative} is a directory")
+                continue
+            if not force:
+                refusals.append(
+                    f"{name}: {relative} already exists — pass --force to replace it")
+                continue
+            replaces = True
+        writes.append(Write(entry, dest, replaces))
+
+    return writes, refusals
+
+
+def _ensure_directory(path: str, made: list[str]) -> None:
+    """makedirs, remembering what it actually created so a failure can undo it."""
+    if not path or os.path.isdir(path):
+        return
+    parent = os.path.dirname(path)
+    if parent and parent != path:
+        _ensure_directory(parent, made)
+    os.mkdir(path)
+    made.append(path)
+
+
+def _undo(action: Callable[[str], None], path: str) -> None:
+    """Best effort. A rollback that raises on the way out reports the wrong fault."""
+    try:
+        action(path)
+    except OSError:
+        pass
+
+
+def write_all(writes: list[Write]) -> tuple[list[Write], str | None]:
+    """Write every planned file, or undo what this run created and say why not.
+
+    plan() has already refused everything that can be refused by looking. What
+    is left is the filesystem saying no while the writing is under way — a full
+    disk, a permission, or two names that are one name on a case-insensitive
+    filesystem, which no check on this side can tell apart from two names.
+    """
+    made_files: list[str] = []
+    made_dirs: list[str] = []
+    done: list[Write] = []
+
+    for item in writes:
+        try:
+            _ensure_directory(os.path.dirname(item.dest), made_dirs)
+            flags = os.O_WRONLY | os.O_CREAT | NOFOLLOW | BINARY
+            flags |= os.O_TRUNC if item.replaces else os.O_EXCL
+            with os.fdopen(os.open(item.dest, flags, 0o644), "wb") as handle:
+                handle.write(item.entry["data"])
+        except OSError as why:
+            # Undo only what this run made. A file --force replaced belonged to
+            # somebody else before this run and its old bytes are gone either
+            # way; deleting it as well would turn a failed extraction into a
+            # deletion. rmdir removes empty directories only, by definition.
+            for path in reversed(made_files):
+                _undo(os.unlink, path)
+            for path in reversed(made_dirs):
+                _undo(os.rmdir, path)
+            replaced = sum(1 for earlier in done if earlier.replaces)
+            note = ", and the files this run created were removed"
+            if replaced:
+                note += (f" — but {replaced} file(s) already replaced under --force "
+                         f"cannot be put back")
+            return [], f"{item.entry['name']} -> {item.dest}: {why}{note}"
+        if not item.replaces:
+            made_files.append(item.dest)
+        done.append(item)
+
+    return done, None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("image")
     parser.add_argument("outdir")
     parser.add_argument("--page", type=int, default=256)
     parser.add_argument("--block", type=int, default=4096)
+    parser.add_argument("--force", action="store_true",
+                        help="replace a regular file already at a destination; a "
+                             "symlink or a directory is still refused")
     args = parser.parse_args()
 
     with open(args.image, "rb") as handle:
         image = handle.read()
     files, problems = extract(image, args.page, args.block)
 
-    os.makedirs(args.outdir, exist_ok=True)
-    for entry in files:
-        # Flatten: SPIFFS has no directories, only names that contain slashes.
-        path = os.path.join(args.outdir, entry["name"].lstrip("/").replace("/", "_"))
-        with open(path, "wb") as handle:
-            handle.write(entry["data"])
-        print(f"{entry['name']:<28} {entry['size']:>9} bytes  "
-              f"{entry['pages']:>5} pages  -> {path}")
-
     for problem in problems:
         print(f"INCOMPLETE  {problem}", file=sys.stderr)
-    print(f"\n{len(files)} extracted, {len(problems)} incomplete")
+
+    writes, refusals = plan(files, args.outdir, args.force)
+    if refusals:
+        for refusal in refusals:
+            print(f"REFUSED  {refusal}", file=sys.stderr)
+        print(f"\nnothing written — {len(refusals)} of {len(files)} names could not be "
+              f"given a safe destination of their own", file=sys.stderr)
+        return 2
+
+    written, failure = write_all(writes)
+    for item in written:
+        entry = item.entry
+        print(f"{entry['name']:<28} {entry['size']:>9} bytes  "
+              f"{entry['pages']:>5} pages  -> {item.dest}"
+              f"{'  (replaced)' if item.replaces else ''}")
+    if failure is not None:
+        print(f"FAILED  {failure}", file=sys.stderr)
+        print("\nnothing written", file=sys.stderr)
+        return 2
+
+    print(f"\n{len(written)} extracted, {len(problems)} incomplete")
     return 1 if problems else 0
 
 

@@ -135,6 +135,20 @@ if(Python3_Interpreter_FOUND)
                          ui_fonts_are_current ui_images_are_current
                          PROPERTIES LABELS design)
 
+    # The SPIFFS extractor reads a vendor image on a workstation and nothing in
+    # the firmware links against it, so this is not a test of the product — it
+    # is a test of a tool whose entire output is evidence. A name off the device
+    # is not a path: `/a/b` and `/a_b` are two unrelated SPIFFS names, and the
+    # first version mapped both onto one file, reported both as extracted, and
+    # would follow a symlink at the destination straight out of the output
+    # directory. The self-test builds its own images, because the only real one
+    # we have is the Waveshare factory dump and that cannot be committed.
+    add_test(NAME flash_spiffs_extract_refuses_mistakes
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/selftest.py)
+    set_tests_properties(flash_spiffs_extract_refuses_mistakes
+                         PROPERTIES LABELS tools)
+
     # The other two asset checks have to *draw* something to know whether the
     # drawing changed, so they need Pillow — which the digest check above
     # deliberately does not, so that the primary staleness gate never depends on
@@ -175,6 +189,9 @@ else()
     add_test(NAME ui_checks_unavailable
              COMMAND ${CMAKE_COMMAND} -E false)
     set_tests_properties(ui_checks_unavailable PROPERTIES LABELS design)
+    add_test(NAME flash_checks_unavailable
+             COMMAND ${CMAKE_COMMAND} -E false)
+    set_tests_properties(flash_checks_unavailable PROPERTIES LABELS tools)
     message(WARNING
         "Python 3.11+ was not found, so the three localization checks "
         "(ADR-0010 section 3) cannot run. A deliberately failing test is "

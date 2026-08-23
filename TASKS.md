@@ -1951,6 +1951,21 @@ Recommended next action:
   goes near this repository.
 - Extracted files and rendered PNGs are **not committed**. The extractor and the
   measurements are.
+- **The extractor's destinations were not unique, and now they are** —
+  [#107](https://github.com/hleserg/Attadipa/issues/107), fixed 2026-08-23. A
+  SPIFFS name is not a path: the device has no directories, so `/a/b` and `/a_b`
+  are two unrelated names, and flattening slashes to underscores mapped both onto
+  one file — the second silently replacing the first, with the summary reporting
+  two files extracted. `/../escape` walked out of the output directory the same
+  way, and a symlink at a destination was written straight through. Destinations
+  are now resolved and checked as a set before the first byte is written, the
+  device's hierarchy is kept rather than flattened, and a run that cannot give
+  every name a safe destination of its own writes nothing at all. The extractor
+  has automated tests for the first time — `tools/flash/selftest.py`, which
+  builds its own SPIFFS images, because the only real one we have is the
+  Waveshare factory dump and that cannot be committed. That closes the *"Tests
+  required: none automated"* gap the
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md) entry recorded against itself.
 
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22

@@ -1311,12 +1311,23 @@ script for reading a vendor image on a workstation. Nothing in `core/`,
 if it ever needs an on-device filesystem that is a separate decision with its
 own record.
 
-**Tests required:** none automated, and that is a real gap rather than a
-judgement. It has been run against exactly one image — the Waveshare factory
-dump — which cannot be committed (Waveshare's own copyright, plus
-all-rights-reserved third-party audio found inside it), so there is no fixture
-to test against. A synthetic image built by `spiffsgen.py` would be one, and
-that is worth doing if this script is ever needed twice.
+**Tests required:** ~~none automated, and that is a real gap rather than a
+judgement.~~ **Closed 2026-08-23**, and the gap cost something first —
+[#107](https://github.com/hleserg/Attadipa/issues/107) found that two on-device
+names could be written to one file with both reported as extracted, in a tool
+whose entire output is evidence. `tools/flash/selftest.py`, registered in ctest
+as `flash_spiffs_extract_refuses_mistakes`, builds its own images rather than
+committing one: the Waveshare factory dump cannot go in the repository
+(Waveshare's own copyright, plus all-rights-reserved third-party audio found
+inside it), and `spiffsgen.py` — Apache-2.0, and the reason it is in the table
+above is that it generates — would have been the other way to get a fixture. It
+was not used: it needs the file laid out on disk first, imports ESP-IDF
+tooling, and the extractor reads four fields out of a page, so the fixture that
+exercises those four fields is thirty lines and no dependency. It is a
+**fixture and not a SPIFFS implementation**, and its docstring says so, because
+a round trip through a writer that shares the reader's assumptions proves
+nothing about SPIFFS — what it proves is what the tests are for: which names
+this tool refuses, and that it writes nothing when it refuses one.
 
 ### This board's audio path — the I2S wiring, the ES8311 bring-up, and what the two microphones are for
 

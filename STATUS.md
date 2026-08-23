@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -15,7 +15,7 @@ items closed plus one the review did not list
 ## Current implementation
 
 **Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
-simulator and twenty-four tests, and has a font pipeline whose output has been
+simulator and twenty-five tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -376,7 +376,9 @@ came off the unit the same day —
   reason the dump never goes near this repository.
 - **`tools/flash/spiffs_extract.py`** does SPIFFS extraction without `mkspiffs`
   and without an ESP-IDF build. `strings` recovers a SPIFFS image's file names
-  and none of its file bodies.
+  and none of its file bodies. Since **2026-08-23** it keeps the device's
+  hierarchy instead of flattening slashes to underscores, and refuses the whole
+  run rather than let two names land on one file — see *Recently completed*.
 - **One claim had to be withdrawn.** A parallel reading of the same unit concluded
   the PSRAM is *quad*, on the reasoning that "octal PSRAM would be 1.8 V". It is
   not: Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` at
@@ -510,9 +512,11 @@ hysteresis and dwell — are to be computed and shown, not chosen.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **twenty-five tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
-of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+of screen code, plus one that is not about the product at all: the SPIFFS
+extractor's self-test, which holds a `tools/` script whose output is evidence to
+the rule that two on-device names may never become one file. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
@@ -663,6 +667,44 @@ four more things at no cost:
 
 ## Recently completed
 
+- **The SPIFFS extractor's destinations were not unique, and one file could eat
+  another.** [#107](https://github.com/hleserg/Attadipa/issues/107), fixed
+  2026-08-23. `tools/flash/spiffs_extract.py` mapped an on-device name to a path
+  with `.lstrip("/").replace("/", "_")` and opened the result `"wb"` with nothing
+  in between. SPIFFS has no directories, so `/image/image1.bin` is a name that
+  merely contains slashes and nothing stops a second name from being
+  `/image_image1.bin`: both became `out/image_image1.bin`, the second silently
+  replaced the first, and the summary reported two files extracted. The finding
+  was reproduced against current `main` — `git diff 5fd2738..HEAD` touches no
+  line of that file — so the staleness check said implement rather than close.
+  **A second way out came with the test rather than with the issue**: a symlink
+  sitting at a destination was followed and the file it pointed at, outside the
+  output directory, was overwritten — proven by running the new self-test against
+  the pre-fix extractor, where *"a symlink out of outdir is not written
+  through"* fails and the file outside changes. `/../escape` did **not** escape
+  there, and the reason is worth writing down: replacing every separator with an
+  underscore turned it into a file called `.._escape` inside the output
+  directory. Confinement was never checked — it was an accident of the
+  flattening, which means keeping the hierarchy, the fix for the collision, would
+  have removed the accident. The fix is one shape: **resolve every
+  destination and check the whole set before the first byte is written.** The
+  device's hierarchy is kept rather than flattened, two names may never claim one
+  path, `/a` may not be a file while `/a/b` needs `a` to be a directory, every
+  destination is confirmed inside the canonical output directory through
+  `realpath`, and writes go through `O_CREAT|O_EXCL|O_NOFOLLOW`, so nothing
+  already there is replaced and no symlink is followed — `--force` allows
+  replacing a regular file and still refuses a symlink. A run that cannot give
+  every name a safe destination of its own writes **nothing**, and a write that
+  fails part-way removes what it created. **The tool had no automated test at
+  all** — the reuse ledger's entry said so about itself, because the only image
+  we have is the Waveshare factory dump and that cannot be committed. So
+  `tools/flash/selftest.py` builds its own images from the layout the extractor
+  documents, and is registered in ctest as
+  `flash_spiffs_extract_refuses_mistakes`. Seventy-three assertions, and they are
+  known to bite: pointed at the extractor as it was, the end-to-end half fails
+  **thirty-five** ways — starting with the finding, where one file exists where
+  two names did — before reaching the unit checks of functions that version does
+  not have.
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same
