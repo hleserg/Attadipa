@@ -1127,6 +1127,16 @@ content on the AMOLED?"*, asked as
 of whether the day theme keeps its near-white page. All four items above are
 A10's; none is A9's. This is about a board on a desk, and decides neither.
 
+**A known asymmetry, recorded rather than worked around.** This decision lives in
+this register, which
+[`merge-candidate.sh`](../../.github/scripts/merge-candidate.sh) denies to the
+unattended sweep — so changing it takes an orchestrator. The rules that *act* on
+it are in `docs/hardware/`, which the same script allows, so a later edit
+softening the `UNKNOWN` to "safe", or relaxing the must-not-reboot-the-owner's-
+device rule, needs only an `ai-review:pass`. Widening or narrowing that allowlist
+is the owner's decision, not an agent's and not a reviewer's, so this is written
+down as a thing to watch rather than quietly routed around.
+
 ---
 
 ## Still with the owner

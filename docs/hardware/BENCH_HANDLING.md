@@ -16,8 +16,10 @@ OLED emitters age with the current through them, and current tracks luminance.
 A static image with bright elements on a dark ground ages *those elements* and
 leaves their shape behind — which is the thing people mean by burn-in, and the
 thing a uniformly bright page does **not** do (it dims the whole panel evenly
-instead). The two failure modes pull in opposite directions and only one of them
-is relevant here.
+instead). The two failure modes pull in opposite directions, and the one that
+leaves a mark here is the differential one — but not to the exclusion of the
+other, because the only lifetime figure this repository has is a *uniform*-ageing
+number, and the bound further down leans on it for want of anything closer.
 
 Waveshare's own examples implement **none** of the mitigations: no idle dim, no
 screen timeout, no pixel shift. So the default state of a powered unit is the

@@ -1645,12 +1645,25 @@ stale silently. The protocol is
 ### T-116 · Nothing resolves a board by its USB serial, and two boards answer to `ttyACM0`
 
 - **Priority:** P1 — cheap, and the failure it prevents writes to the wrong
-  device. It is P1 **now, with no caller**, because the rule is already written
-  down in two places as though it were satisfied, which is worse than its being
-  absent.
-- **Dependencies:** none, and it must not acquire any. The point is that the
-  resolver exists **before** the first thing that would need it, so no writer
-  ever has to choose between shipping and building a rail.
+  device. P1 **before the first caller runs**, not before one exists: the rule
+  is already written down in two places as though it were satisfied, which is
+  worse than its being absent.
+- **Dependencies:** none to start — but **the first caller is already written**,
+  and this task is not the empty set it would like to be. `SerialTransport` in
+  `tools/watch/client.py` arrives with
+  [#121](https://github.com/hleserg/Attadipa/pull/121), which merges before this
+  branch. So *"nothing under `tools/` opens a serial port"* is true of `main` at
+  the moment these words were written and false shortly afterwards. That caller
+  is `NOT EXECUTED — HARDWARE REQUIRED` and has never spoken to a device, so
+  nothing is broken today; what would break is **this task**, picked up by
+  somebody who believed it had nothing to convert.
+
+  It is not a rename either. `SerialTransport.__init__` calls
+  `serial.Serial(port, baud, timeout=0)`, and pyserial opens the port **inside
+  the constructor** when a port is passed — so DTR and RTS cannot be lowered
+  first, which is goal 3 below and the exact mechanism that cost two RAM images.
+  The conversion is `serial.Serial()` with no port, set `dtr` and `rts`, then
+  `open()`.
 - **Why now:** two ESP32-S3 devices are attached to the development host and
   **both enumerate as `303a:1001`** — the Waveshare and a V4 MeshCore node that
   is the owner's. `/dev/ttyACM0` names whichever enumerated first.
@@ -1677,13 +1690,45 @@ stale silently. The protocol is
   `serial.Serial`, `esptool`, a literal `/dev/tty…`).
   [`tools/docs/check_docs.py`](tools/docs/check_docs.py) is the model for a
   repository check with an exemption list that has to state its reason.
-  **The lint is not optional**, because today **nothing under `tools/` opens a
-  serial port at all** — every other criterion here is satisfied by the empty
-  set, and a task that can be marked done without a caller documents a rail that
-  connects to nothing. The lint is the part that still means something when the
-  first caller arrives.
+  The pattern list is `import serial`, `serial.Serial`, `esptool`, a literal
+  `/dev/tty…`, **`idf.py flash`/`monitor` and `ESPPORT`** — the last two because
+  that is how an ESP-IDF project actually writes to a board, and a wrapper under
+  `tools/` would walk straight past a list that only knows pyserial.
+  **The lint is not optional**, because every *other* criterion here can be
+  satisfied without a caller, and a task marked done that way documents a rail
+  connecting to nothing. And **`SerialTransport` is converted, not exempted** —
+  in the same change as the lint. An exemption would excuse the one caller that
+  needs the resolver, which is precisely what the lint exists to prevent;
+  landing the lint by itself would take `main` red on a file nobody here was
+  reviewing.
 - **Definitely not:** guessing. A resolver that picks a device when it cannot
   identify one is the bug with extra steps.
+
+### T-117 · Neither of the two things that got past the checks was something the checks look for
+- **Priority:** P3 — nothing is broken; two known blind spots, written down
+  before the next thing walks through one of them.
+- **Dependencies:** none.
+- **What got through:**
+  1. **29 stray files** reached a branch because `git add -A` was run at the
+     repository root. [#134](https://github.com/hleserg/Attadipa/pull/134)
+     untracked them and added two `.gitignore` entries, which is
+     prefix-specific — the failure mode is generic, so a fourth recurrence is a
+     fourth prefix. Nothing in `.github/workflows/` looks at what a pull request
+     adds in *bytes*: a documentation-only change that carries a new binary, or
+     grows by megabytes, passes every check there is. **"Fixed" and "cannot
+     recur" are different claims** and only the first is true today.
+  2. **Anchors are never validated.**
+     [`tools/docs/check_docs.py`](tools/docs/check_docs.py) captures the `#…`
+     part of a link into `LINK` group 2 (`:55`) and `check_links` (`:99`) reads
+     only group 1 — so `FILE.md#a-heading-that-was-reworded` is *"clean"*. The
+     same file finds **duplicate** task IDs and never dangling ones, which is
+     how a reference to a task on an unmerged branch survived a green run.
+- **Goal:** a size/binary gate on pull requests, and an anchor check that
+  resolves `#…` against the target file's headings using the same slug rule
+  GitHub applies. Both are host checks with no hardware in them.
+- **Definitely not:** raising these to blocking on existing content before
+  running them once and reading the output. A check that goes red across the
+  repository on its first run gets disabled rather than obeyed.
 
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do

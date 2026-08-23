@@ -597,7 +597,12 @@ to blank the panel, is
 [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md). The residual risk at minimum
 brightness is `UNKNOWN`, not "safe". That file also states the
 resolve-by-USB-serial rule and says plainly that no tool implements it yet —
-**T-116**.
+**T-116**, whose first caller (`SerialTransport`, arriving with
+[#121](https://github.com/hleserg/Attadipa/pull/121)) is named there rather than
+left for whoever picks the task up. **T-117** records the two blind spots that
+let the strays and a dangling task reference through a green run: nothing checks
+what a pull request adds in bytes, and `check_docs.py` never validates a link's
+anchor.
 
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing
