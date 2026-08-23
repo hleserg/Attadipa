@@ -663,6 +663,27 @@ four more things at no cost:
 
 ## Recently completed
 
+- **The unattended merge sweep failed before it looked at a single pull
+  request.** `pr-merge-sweep.yml` merged green on 2026-08-23 and its cron had
+  not yet registered, so it was dispatched by hand to get the evidence its own
+  merge commit recorded as `NOT EXECUTED`. It exited 1 in eleven seconds:
+  `gh` refuses `--slurp` together with `--jq` — *"the `--slurp` option is not
+  supported with `--jq` or `--template`"* — and returns before making a request.
+  The workflow carried the combination three times. The first is the fatal one;
+  the other two are worse, because both are `|| CODEX_*=""` and the rejection
+  therefore landed as *"could not read its comments, leaving it alone"* on every
+  candidate — a sweep that decides nothing and reads as a sweep with nothing to
+  decide, 48 times a day. Nothing in the repository could have caught it:
+  shellcheck saw a well-formed command, actionlint saw valid YAML, and the
+  workflow only runs on a schedule. Fixed by piping into a separate `jq`, which
+  is what `agent-queue-watchdog.yml` already did and is why the watchdog was
+  unaffected, plus `.github/tests/gh-api-usage-test.sh` — a scan over every
+  workflow, with seven fixtures proving the scan itself catches the shape and
+  leaves the recommended one alone, verified to flag all three lines on the tree
+  as it was. The general lesson is the one that produced this: **dispatch a new
+  scheduled workflow once by hand instead of waiting for its cron**, because
+  reading it had already passed it.
+
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the
   built-in `GITHUB_TOKEN`, so the actor is `github-actions[bot]`;
