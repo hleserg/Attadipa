@@ -47,11 +47,17 @@ checked *as a set* before a single byte is written:
 - nothing already there is overwritten. `--force` allows replacing a regular
   file and still refuses a symlink;
 - a run that cannot give every name a safe destination of its own writes nothing
-  at all, and a write that fails part-way removes what it created.
+  at all, and a write that fails part-way removes what it created. `--allow-partial`
+  writes the names that *were* safe instead — it still lists every refusal and
+  still exits non-zero, because an image with one unusable name in it should not
+  have to be all or nothing, and must never read as a clean run either.
 
-Exit codes: `0` everything written; `1` at least one file was incomplete in the
-image; `2` nothing was written, because a destination was unsafe, claimed twice
-or already occupied.
+Exit codes: `0` everything the image held was written; `1` at least one file was
+incomplete in the image and the rest was written; `2` something stopped it — a
+destination was refused, a write failed, or the image holds nothing this parser
+recognises. **`2` does not on its own mean the output directory is untouched**:
+a `--force` replacement that fails has already emptied the file it replaced, and
+the `FAILED` line says so when it happens.
 """
 
 from __future__ import annotations
@@ -73,8 +79,12 @@ NAME_IN_PAGE = re.compile(rb"/[\x20-\x7e]{1,63}\x00")
 # matters because this output is evidence rather than convenience.
 FORBIDDEN_IN_COMPONENT = ("\\", ":", "\x00")
 
-# POSIX refuses to open a symlink with this; Windows has no equivalent, so the
-# checks in plan() are what stand there.
+# POSIX refuses to open a symlink with this; Windows has no equivalent, so there
+# the islink() checks in plan() stand alone. Neither guards an *intermediate*
+# directory swapped for a symlink between plan() and the write — O_NOFOLLOW is
+# about the final component, and _ensure_directory follows a link like anything
+# else. This reads a vendor image on a workstation; it does not defend against
+# somebody editing its output directory while it runs.
 NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows only, and a no-op everywhere else.
 BINARY = getattr(os, "O_BINARY", 0)
@@ -279,31 +289,50 @@ def write_all(writes: list[Write]) -> tuple[list[Write], str | None]:
     made_files: list[str] = []
     made_dirs: list[str] = []
     done: list[Write] = []
+    replaced = 0
+
+    def undone(item: Write, why: OSError) -> str:
+        # Undo only what this run made. A file --force replaced belonged to
+        # somebody else before this run and its old bytes are gone either way;
+        # deleting it as well would turn a failed extraction into a deletion.
+        # rmdir removes empty directories only, by definition.
+        for path in reversed(made_files):
+            _undo(os.unlink, path)
+        for path in reversed(made_dirs):
+            _undo(os.rmdir, path)
+        note = ", and the files this run created were removed"
+        if replaced:
+            note += (f" — but {replaced} file(s) already replaced under --force "
+                     f"cannot be put back")
+        return f"{item.entry['name']} -> {item.dest}: {why}{note}"
 
     for item in writes:
         try:
             _ensure_directory(os.path.dirname(item.dest), made_dirs)
             flags = os.O_WRONLY | os.O_CREAT | NOFOLLOW | BINARY
             flags |= os.O_TRUNC if item.replaces else os.O_EXCL
-            with os.fdopen(os.open(item.dest, flags, 0o644), "wb") as handle:
+            descriptor = os.open(item.dest, flags, 0o644)
+        except OSError as why:
+            return [], undone(item, why)
+
+        # The destination exists from this line on — O_CREAT made it, and under
+        # --force O_TRUNC has already emptied whatever was there. So it is
+        # recorded *before* anything is written to it: a write that fails at the
+        # flush inside close() (a full disk, a quota, a file-size limit) would
+        # otherwise leave a truncated file behind while the message below said
+        # every file this run created had been removed. That is the same shape as
+        # the defect this whole file was rewritten for — an output that asserts
+        # the opposite of what is on disk — and it was caught in review.
+        if item.replaces:
+            replaced += 1
+        else:
+            made_files.append(item.dest)
+
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
                 handle.write(item.entry["data"])
         except OSError as why:
-            # Undo only what this run made. A file --force replaced belonged to
-            # somebody else before this run and its old bytes are gone either
-            # way; deleting it as well would turn a failed extraction into a
-            # deletion. rmdir removes empty directories only, by definition.
-            for path in reversed(made_files):
-                _undo(os.unlink, path)
-            for path in reversed(made_dirs):
-                _undo(os.rmdir, path)
-            replaced = sum(1 for earlier in done if earlier.replaces)
-            note = ", and the files this run created were removed"
-            if replaced:
-                note += (f" — but {replaced} file(s) already replaced under --force "
-                         f"cannot be put back")
-            return [], f"{item.entry['name']} -> {item.dest}: {why}{note}"
-        if not item.replaces:
-            made_files.append(item.dest)
+            return [], undone(item, why)
         done.append(item)
 
     return done, None
@@ -318,6 +347,12 @@ def main() -> int:
     parser.add_argument("--force", action="store_true",
                         help="replace a regular file already at a destination; a "
                              "symlink or a directory is still refused")
+    parser.add_argument("--allow-partial", action="store_true",
+                        help="write the names that were not refused instead of "
+                             "nothing. The refusals are still listed and the exit "
+                             "code stays non-zero, so this can never read as a "
+                             "clean run — it is for an image that holds one "
+                             "unusable name and five good ones")
     args = parser.parse_args()
 
     with open(args.image, "rb") as handle:
@@ -327,12 +362,23 @@ def main() -> int:
     for problem in problems:
         print(f"INCOMPLETE  {problem}", file=sys.stderr)
 
+    # Nothing recognised is not the same as nothing there, and neither is a
+    # success. Reporting `0 extracted` and exit 0 for an image this parser did
+    # not understand at all — the wrong partition, a littlefs image, a geometry
+    # that does not match --page/--block — is the failure mode this whole file
+    # is being rewritten to avoid: an output that reads like a result.
+    if not files and not problems:
+        print("NOTHING RECOGNISED  no SPIFFS object index header was found: an "
+              "empty partition, the wrong --page/--block geometry, or not a "
+              "SPIFFS image at all", file=sys.stderr)
+        print("\n0 extracted, 0 incomplete")
+        return 2
+
     writes, refusals = plan(files, args.outdir, args.force)
-    if refusals:
-        for refusal in refusals:
-            print(f"REFUSED  {refusal}", file=sys.stderr)
-        print(f"\n0 extracted, {len(refusals)} refused, {len(problems)} incomplete",
-              file=sys.stderr)
+    for refusal in refusals:
+        print(f"REFUSED  {refusal}", file=sys.stderr)
+    if refusals and not args.allow_partial:
+        print(f"\n0 extracted, {len(refusals)} refused, {len(problems)} incomplete")
         return 2
 
     written, failure = write_all(writes)
@@ -343,10 +389,13 @@ def main() -> int:
               f"{'  (replaced)' if item.replaces else ''}")
     if failure is not None:
         print(f"FAILED  {failure}", file=sys.stderr)
-        print(f"\n0 extracted, {len(problems)} incomplete", file=sys.stderr)
+        print(f"\n0 extracted, {len(problems)} incomplete")
         return 2
 
-    print(f"\n{len(written)} extracted, {len(problems)} incomplete")
+    refused = f", {len(refusals)} refused" if refusals else ""
+    print(f"\n{len(written)} extracted{refused}, {len(problems)} incomplete")
+    if refusals:
+        return 2
     return 1 if problems else 0
 
 

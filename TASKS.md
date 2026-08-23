@@ -1960,7 +1960,11 @@ Recommended next action:
   way, and a symlink at a destination was written straight through. Destinations
   are now resolved and checked as a set before the first byte is written, the
   device's hierarchy is kept rather than flattened, and a run that cannot give
-  every name a safe destination of its own writes nothing at all. The extractor
+  every name a safe destination of its own writes nothing at all —
+  `--allow-partial` writes the ones that were safe, still lists every refusal and
+  still exits non-zero. One limitation stays open and is named in `STATUS.md`: a
+  used image can hold two object ids carrying one name, and that pair is refused
+  rather than merged. The extractor
   has automated tests for the first time — `tools/flash/selftest.py`, which
   builds its own SPIFFS images, because the only real one we have is the
   Waveshare factory dump and that cannot be committed. That closes the *"Tests

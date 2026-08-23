@@ -194,8 +194,9 @@ else()
     set_tests_properties(flash_checks_unavailable PROPERTIES LABELS tools)
     message(WARNING
         "Python 3.11+ was not found, so the three localization checks "
-        "(ADR-0010 section 3) cannot run. A deliberately failing test is "
-        "registered in their place — install Python 3.11 or newer.")
+        "(ADR-0010 section 3), the design-system checks and the SPIFFS "
+        "extractor's self-test cannot run. A deliberately failing test is "
+        "registered in place of each — install Python 3.11 or newer.")
 endif()
 
 # ---------------------------------------------------------------------------

@@ -694,17 +694,33 @@ four more things at no cost:
   `realpath`, and writes go through `O_CREAT|O_EXCL|O_NOFOLLOW`, so nothing
   already there is replaced and no symlink is followed — `--force` allows
   replacing a regular file and still refuses a symlink. A run that cannot give
-  every name a safe destination of its own writes **nothing**, and a write that
-  fails part-way removes what it created. **The tool had no automated test at
-  all** — the reuse ledger's entry said so about itself, because the only image
-  we have is the Waveshare factory dump and that cannot be committed. So
-  `tools/flash/selftest.py` builds its own images from the layout the extractor
-  documents, and is registered in ctest as
-  `flash_spiffs_extract_refuses_mistakes`. Eighty-four assertions, and they are
+  every name a safe destination of its own writes **nothing** — `--allow-partial`
+  writes the ones that were safe, still lists every refusal and still exits
+  non-zero — and a write that fails part-way removes what it created. **The
+  independent review caught that last clause being false in the first version of
+  the fix**, which is worth recording because it is the same defect one layer
+  down: `os.open` creates the file and `--force` truncates it, and the
+  destination was only recorded for rollback *after* the write returned, so a
+  failure at the flush inside `close()` — a full disk, a quota, a size limit —
+  left a truncated file behind under a message saying every file this run created
+  had been removed. Recording it between the open and the write is the fix, and
+  the two cases that prove it drive a real `RLIMIT_FSIZE` rather than a read-only
+  directory, which fails at `open()` where the rollback was already correct.
+  **The tool had no automated test at all** — the reuse ledger's entry said so
+  about itself, because the only image we have is the Waveshare factory dump and
+  that cannot be committed. So `tools/flash/selftest.py` builds its own images
+  from the layout the extractor documents, and is registered in ctest as
+  `flash_spiffs_extract_refuses_mistakes`. Ninety-eight assertions, and they are
   known to bite: pointed at the extractor as it was, the end-to-end half fails
   **forty-seven** ways — starting with the finding, where one file exists where
   two names did — before reaching the unit checks of functions that version does
-  not have.
+  not have. **One limitation is known and left open**: a used image can hold two
+  object ids carrying one name, because a file deleted and recreated on the
+  device keeps its name, and this parser reads the stale object index header as
+  well as the live one — `extract()` discards the page `flags` and consults no
+  lookup table. That pair is refused rather than merged, which is right, and
+  `--allow-partial` is the way past it. Reading the delete flag would be better
+  and is a SPIFFS fact nobody here has traced to the sources yet.
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same

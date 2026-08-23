@@ -52,9 +52,16 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         FAILURES.append(name)
 
 
-def build(files: dict[str, bytes], declared: dict[str, int] | None = None,
+def build(files, declared: dict[str, int] | None = None,
           page: int = 256, block: int = 4096, blocks: int = 8) -> bytes:
     """A SPIFFS image holding `files`, keyed by their on-device names.
+
+    `files` is a name → bytes mapping, or a list of (name, bytes) pairs when the
+    case needs **two object ids carrying one name** — which a real image taken
+    off a used unit can hold, because a file deleted and recreated on the device
+    keeps its name and gets a new id, and this parser reads the stale header too.
+    A dict cannot express that, and a fixture that cannot express a case is why
+    the case is missing.
 
     `declared` overrides the size written into an object index header, which is
     how the "declares more bytes than it has" case is built: no correct writer
@@ -62,6 +69,7 @@ def build(files: dict[str, bytes], declared: dict[str, int] | None = None,
     one of the things worth keeping.
     """
     declared = declared or {}
+    entries = list(files.items()) if isinstance(files, dict) else list(files)
     pages_per_block = block // page
     lookup_pages = -(-pages_per_block * 2 // page)  # ceil, as in the extractor
     payload_size = page - 5
@@ -75,7 +83,7 @@ def build(files: dict[str, bytes], declared: dict[str, int] | None = None,
         at = index * page
         image[at:at + len(blob)] = blob
 
-    for number, (name, data) in enumerate(files.items(), start=1):
+    for number, (name, data) in enumerate(entries, start=1):
         obj_id = number  # never 0x0000 or 0xFFFF, which the extractor skips
         encoded = name.encode("ascii") + b"\x00"
 
@@ -103,7 +111,7 @@ def build(files: dict[str, bytes], declared: dict[str, int] | None = None,
 
 
 @contextlib.contextmanager
-def workspace(files: dict[str, bytes], declared: dict[str, int] | None = None):
+def workspace(files, declared: dict[str, int] | None = None):
     """A temporary image and an `out/` path the tool has not created yet."""
     with tempfile.TemporaryDirectory() as root:
         base = Path(root)
@@ -115,6 +123,28 @@ def workspace(files: dict[str, bytes], declared: dict[str, int] | None = None):
 def run(image: Path, out: Path, *extra: str) -> tuple[int, str]:
     result = subprocess.run(
         [sys.executable, str(TOOL), str(image), str(out), *extra],
+        capture_output=True, text=True, check=False)
+    return result.returncode, result.stdout + result.stderr
+
+
+# The only portable way to make a write fail *after* the file exists, which is
+# the case that matters: a full disk, a quota, a file-size limit. A read-only
+# directory does not do it — that fails at open(), before there is anything to
+# clean up, and it does nothing at all as root, which is what ctest inside a
+# container runs as. SIGXFSZ is ignored so the limit arrives as EFBIG from
+# write() instead of killing the process.
+UNDER_A_SIZE_LIMIT = """
+import resource, runpy, signal, sys
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+resource.setrlimit(resource.RLIMIT_FSIZE, (int(sys.argv.pop(1)), resource.RLIM_INFINITY))
+runpy.run_path(sys.argv.pop(1), run_name="__main__")
+"""
+
+
+def run_limited(limit: int, image: Path, out: Path, *extra: str) -> tuple[int, str]:
+    result = subprocess.run(
+        [sys.executable, "-c", UNDER_A_SIZE_LIMIT, str(limit), str(TOOL),
+         str(image), str(out), *extra],
         capture_output=True, text=True, check=False)
     return result.returncode, result.stdout + result.stderr
 
@@ -159,7 +189,7 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         check("neither overwrote the other", tree(out) == {os.path.join("a", "b"), "a_b"},
               f"— {sorted(tree(out))}")
         check("the summary counts files that exist, not names that were seen",
-              "2 extracted" in output and len(tree(out)) == 2, f"— {output}")
+              "\n2 extracted, 0 incomplete" in output and len(tree(out)) == 2, f"— {output}")
 
     print("\nordinary extraction")
     with workspace({"/image/image1.bin": b"\x19\x12\x00\x00pixels",
@@ -206,7 +236,7 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
             check(label, code == 2, f"— exit {code}\n{output}")
             check(f"  and says why: {fragment!r}", fragment in output, f"— {output}")
             check("  and writes nothing", tree(out) == set(), f"— {sorted(tree(out))}")
-            check("  and the summary claims nothing", "0 extracted" in output, f"— {output}")
+            check("  and the summary claims nothing", "\n0 extracted" in output, f"— {output}")
             check("  and leaves nothing beside outdir",
                   set(os.listdir(base)) <= {"storage.spiffs", "out"},
                   f"— {sorted(os.listdir(base))}")
@@ -276,29 +306,65 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         check("a directory at the destination is refused even with --force", code == 2,
               f"— exit {code}\n{output}")
 
-    print("\na write that fails part-way keeps nothing")
-    # The one failure plan() cannot see coming: the filesystem refusing a write
-    # that was already under way. A read-only directory is the portable way to
-    # produce one — except as root, where the permission bits are advice.
-    if hasattr(os, "geteuid") and os.geteuid() == 0:
-        print("  skip  running as root, where a read-only directory is not read-only")
-    else:
-        with workspace({"/a.bin": b"written first",
-                        "/sub/b.bin": b"never gets there"}) as (image, base):
-            out = base / "out"
-            (out / "sub").mkdir(parents=True)
-            os.chmod(out / "sub", 0o500)
-            try:
-                code, output = run(image, out)
-                check("the run fails", code == 2, f"— exit {code}\n{output}")
-                check("  and says which file stopped it",
-                      "FAILED" in output and "/sub/b.bin" in output, f"— {output}")
-                check("  and the file it had already written is gone",
-                      not (out / "a.bin").exists(), f"— {sorted(tree(out))}")
-                check("  and the directory it did not create is still there",
-                      (out / "sub").is_dir())
-            finally:
-                os.chmod(out / "sub", 0o700)
+    print("\na write that fails after the file exists keeps nothing either")
+    # The failure plan() cannot see coming, and the one this file got wrong on
+    # its first pass: open() succeeds, so the destination exists, and then the
+    # write fails. Nothing may be left behind and nothing may claim there was.
+    with workspace([("/a.bin", b"a" * 100), ("/big.bin", b"b" * 4096)]) as (image, base):
+        out = base / "out"
+        code, output = run_limited(1024, image, out)
+        check("the run fails", code == 2, f"— exit {code}\n{output}")
+        check("  and says which file stopped it",
+              "FAILED" in output and "/big.bin" in output, f"— {output}")
+        check("  and the file already written is gone",
+              not (out / "a.bin").exists(), f"— {sorted(tree(out))}")
+        check("  and the half-written file is gone with it",
+              not (out / "big.bin").exists(), f"— {sorted(tree(out))}")
+        check("  and the summary claims nothing", "\n0 extracted" in output, f"— {output}")
+
+    with workspace([("/big.bin", b"b" * 4096)]) as (image, base):
+        out = base / "out"
+        out.mkdir()
+        (out / "big.bin").write_bytes(b"the file this replaced")
+        code, output = run_limited(1024, image, out, "--force")
+        check("a --force replacement that fails is reported, not papered over",
+              code == 2, f"— exit {code}\n{output}")
+        check("  and says the old bytes cannot be put back",
+              "cannot be put back" in output, f"— {output}")
+        check("  and does not delete the file it replaced",
+              (out / "big.bin").exists(), f"— {sorted(tree(out))}")
+        check("  which is no longer what it was, exactly as the message says",
+              content(out / "big.bin") != b"the file this replaced")
+
+    print("\ntwo object ids can carry one name, and a used image will")
+    # A file deleted and recreated on the device keeps its name and gets a new
+    # object id, and this parser reads the stale header as well as the live one.
+    # Refusing the run is the right default; --allow-partial is the way through.
+    with workspace([("/x.bin", b"first copy"), ("/x.bin", b"second copy")]) as (image, base):
+        out = base / "out"
+        code, output = run(image, out)
+        check("one name from two ids is refused, not silently merged", code == 2,
+              f"— exit {code}\n{output}")
+        check("  and nothing is written", tree(out) == set(), f"— {sorted(tree(out))}")
+        code, output = run(image, out, "--allow-partial")
+        check("--allow-partial writes the one that was unambiguous",
+              content(out / "x.bin") == b"first copy", f"— {sorted(tree(out))}")
+        check("  and still fails", code == 2, f"— exit {code}\n{output}")
+        check("  and still lists what it skipped", "REFUSED" in output, f"— {output}")
+        check("  and counts both in the summary", "\n1 extracted, 1 refused" in output,
+              f"— {output}")
+
+    print("\nan image this parser does not understand is not a success")
+    with tempfile.TemporaryDirectory() as root:
+        base = Path(root)
+        image = base / "not-a-spiffs.bin"
+        image.write_bytes(b"\x00" * 8192)
+        code, output = run(image, base / "out")
+        check("nothing recognised is reported and is not exit 0", code == 2,
+              f"— exit {code}\n{output}")
+        check("  and names what it could be",
+              "geometry" in output and "empty partition" in output, f"— {output}")
+        check("  and creates no output directory", not (base / "out").exists())
 
     print("\nwhat the image itself got wrong")
     with workspace({"/good.bin": b"all here", "/short.bin": b"truncated"},
@@ -310,7 +376,7 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         check("  and is not written short", not (out / "short.bin").exists())
         check("  while the rest is extracted", content(out / "good.bin") == b"all here")
         check("  and the exit code says something was wrong", code == 1, f"— exit {code}")
-        check("  and the summary counts one, not two", "1 extracted, 1 incomplete" in output,
+        check("  and the summary counts one, not two", "\n1 extracted, 1 incomplete" in output,
               f"— {output}")
 
     print("\nthe rules themselves")
