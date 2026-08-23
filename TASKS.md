@@ -227,7 +227,8 @@ stale silently. The protocol is
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
   evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
   (the movement/altitude baseline, below) — and the rule from the research
-  prompt applies: **do not stop after the first fix.**
+  prompt applies: **do not stop after the first fix.** Issue #151 (recovery
+  completing on silence alone, below) has since been closed the same way.
 
 - **A state that cannot say "nobody has checked".** `GnssCapabilities`
   (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
@@ -290,10 +291,27 @@ stale silently. The protocol is
   recorded as one the peer initiated. That is the field-report evidence for the
   most common question about a node link — who let go first.
 
-- **Recovery can complete with no observation at all.** The clean-hold window
-  can elapse while nothing whatever has been reported, so silence promotes the
-  state. OD-5's rule is that silence is not an all-clear; this is the one place
-  the code still treats it as one.
+- **Recovery could complete with no observation at all — fixed, issue #151.**
+  The clean-hold window could elapse while nothing whatever had been reported,
+  so silence promoted the state. With the default policy the whole path was
+  deterministic: `report(ReceiverSpoofing, t=0)` reached `Untrusted`, the TTL
+  took the alarm out of the score at 15 s, `evaluate()` read the resulting zero
+  as a detector's all-clear and started the clean hold on it, and twenty-five
+  seconds after the alarm the device announced `Trusted` again — no observation,
+  no `clear()`, no evidence of any kind in between. OD-5's rule is that silence
+  is not an all-clear, and this was the one place the code still treated it as
+  one. `TrustEngine` now remembers, per reason, whether an allegation left
+  `live_` by `clear()` or by the TTL, and refuses to start or advance the
+  recovery hold while any of them stands unretracted
+  (`TrustEngine::unconfirmed_reasons()`); when a retraction does arrive the hold
+  is measured from it rather than from the silence in front of it. Descent,
+  hysteresis and one-step-per-hold are unchanged. Six regression tests in
+  `tests/test_trust.cpp` and replay trace
+  `16-silence-does-not-restore-trust.trace`; removing the gate alone turns
+  sixteen checks and four trace expectations red. The rule is now written down
+  as [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, including what it costs:
+  a device that never hears another positive word does not climb back on its
+  own, and the ways out are a detector saying so or `reset()` — never a timer.
 
 - **`FixLost` and `StalePosition` both weigh 20 against a `degrade_at` of 30.**
   So neither, alone, moves trust. That may be the intended two-axis design —
@@ -311,7 +329,9 @@ stale silently. The protocol is
   — mutation-verified, as the four already closed were — or declined in writing
   with the reason. A silent decline is not one.
 - **Research status:** n/a
-- **Implementation status:** not started
+- **Implementation status:** in progress — the items marked *fixed* above are
+  closed, each with a mutation-verified test; the rest are open and this task
+  stays open with them.
 - **Tests:** host, per item
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.

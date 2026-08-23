@@ -510,7 +510,7 @@ hysteresis and dwell — are to be computed and shown, not chosen.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
@@ -662,6 +662,60 @@ four more things at no cost:
   names no address; the bus scan above settles `0x6B` by measurement instead.
 
 ## Recently completed
+
+- **Silence after a GNSS alarm restored `Trusted` on its own.**
+  [#151](https://github.com/hleserg/Attadipa/issues/151), the T-062 finding
+  *"recovery can complete with no observation at all"*, reproduced on
+  `f2b6853` — the tip of `main` when it was filed and still the tip when it was
+  implemented. `TrustEngine::update()` (`core/src/trust.cpp`) drops evidence
+  that has passed its time-to-live, and `evaluate()` then read the resulting
+  `score_ == 0` as a clean bill of health and started the recovery hold on it.
+  Nothing recorded *how* the score had become clean, so a detector saying "the
+  condition is over" and a detector saying nothing at all were the same input.
+  With the default policy the whole path is deterministic and needs no
+  attacker: a spoofing alarm at `t=0` reaches `Untrusted`, the TTL takes it out
+  of the score at 15 s, the hold starts on that zero, and at 20 s and 25 s the
+  state climbs to `Degraded` and then `Trusted` — twenty-five seconds of
+  complete silence, with no observation, no `clear()` and no evidence of any
+  kind, and the device announces the position is fit to navigate by. Jamming
+  reaches the same place in twenty. That is the failure mode
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) exists to prevent, arrived at
+  through the one door left open, and it fires precisely when the receiver has
+  stopped talking — which is when it is least true.
+  **Fixed by making a retraction different from a lapse.** `TrustEngine` now
+  keeps a second per-reason mask beside `live_`: reasons that left it by the
+  TTL rather than by `clear()`. `report()` and `clear()` both take a reason out
+  of it, only the expiry loop puts one in, and `evaluate()` refuses to start or
+  advance the clean hold while any bit is set — so the score still decays, and
+  the *state* does not move on a decay. When a retraction does arrive the hold
+  is anchored to it, so time spent hearing nothing buys no part of the five
+  seconds. Per reason rather than one flag, so a diagnostic screen can name
+  which detector is being waited on (`unconfirmed_reasons()`,
+  `awaiting_confirmation()`); `reset()` clears it, because an allegation from a
+  provider that has detached must not pin the next one. Descent, hysteresis,
+  one-step-per-hold and every policy weight are untouched. **What it costs is
+  stated rather than discovered later:** a device that never hears another
+  positive word does not climb back on its own, and the ways out are a detector
+  saying the condition is over or `reset()` — never a timer. In the
+  `TrustEvaluator` path only `ReceiverSpoofing`, `ReceiverJamming` and
+  `ProviderDisagreement` can reach the mask at all, because every other reason
+  is `set()` on each `observe()` and is therefore always retracted explicitly —
+  which is the OD-5 set exactly. Six regression tests in `tests/test_trust.cpp`
+  and a new replay trace, `16-silence-does-not-restore-trust.trace`, which runs
+  trace 05's rule past the TTL on a receiver reporting `unknown` — the LS550G's
+  actual state, not a hypothetical part — with good fixes throughout, so the
+  score is a genuine zero and nothing but the alarm is holding the state down.
+  Mutation-checked: removing the new gate and nothing else turns sixteen checks
+  and four trace expectations red. Twenty-four host tests pass under GCC and
+  Clang, under `-Werror -Wshadow -Wconversion -Wsign-conversion
+  -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`;
+  both documentation checks pass. Simulator `NOT EXECUTED` — no SDL2 here and
+  the change touches no UI code. Hardware `NOT EXECUTED — HARDWARE REQUIRED`,
+  and every duration in the policy remains `ESTIMATED`: nobody has walked
+  anywhere with one of these boards, and no receiver has been powered on.
+  The rule is now written down where the next reader will find it —
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, with the rejected
+  alternative beside it.
 
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).

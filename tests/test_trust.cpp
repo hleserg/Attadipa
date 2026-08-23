@@ -808,6 +808,200 @@ void test_silence_expires_but_only_after_the_ttl()
     CHECK_REASON(insistent, TrustReason::ReceiverJamming);
 }
 
+// THE REGRESSION TEST FOR THE OTHER HALF OF THAT SENTENCE.
+//
+// Expiry and an all-clear were different facts in `holds()` and the same fact
+// in `evaluate()`. Twenty-five seconds of complete silence after a spoofing
+// alarm therefore ended with the device asserting `Trusted` again: the TTL took
+// the alarm out of the score at 15 s, the zero that was left started the clean
+// hold, and the two holds ran on it. No observation, no clear(), nothing.
+//
+// The sequence is the one from the report, and the two assertions that matter
+// are at 20 000 and 25 000 — before the fix they read Degraded and Trusted.
+void test_silence_after_a_spoofing_alarm_never_restores_trust()
+{
+    TrustEngine engine;
+    engine.report(TrustReason::ReceiverSpoofing, at(0));
+    engine.update(at(0));
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    // The TTL. The allegation stops counting towards the score...
+    engine.update(at(15000));
+    CHECK(engine.score() == 0);
+    CHECK_NO_REASON(engine, TrustReason::ReceiverSpoofing);
+
+    // ...and does not thereby become an all-clear. It is an allegation nobody
+    // withdrew, and it says which one it is.
+    CHECK(engine.awaiting_confirmation(TrustReason::ReceiverSpoofing));
+    CHECK(engine.unconfirmed_reasons() == trust_reason_bit(TrustReason::ReceiverSpoofing));
+
+    engine.update(at(20000));
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+    engine.update(at(25000));
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    // Five minutes of polling, which is what a service that keeps ticking looks
+    // like. Calling update() is not evidence of anything.
+    for (std::uint64_t ms = 26000; ms <= 300000; ms += 1000) {
+        engine.update(at(ms));
+    }
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+    CHECK(engine.awaiting_confirmation(TrustReason::ReceiverSpoofing));
+    CHECK(engine.transitions_recorded() == 1);  // the descent, and nothing since
+}
+
+// The same door, one weight lower: jamming reaches Degraded, and silence used
+// to carry it back to Trusted in twenty seconds.
+void test_silence_after_a_jamming_alarm_never_restores_trust()
+{
+    TrustEngine engine;
+    engine.report(TrustReason::ReceiverJamming, at(0));
+    engine.update(at(0));
+    CHECK_STATE(engine.state(), TrustState::Degraded);
+
+    engine.update(at(15000));
+    CHECK(engine.score() == 0);
+    CHECK(engine.awaiting_confirmation(TrustReason::ReceiverJamming));
+
+    engine.update(at(20000));
+    CHECK_STATE(engine.state(), TrustState::Degraded);
+
+    for (std::uint64_t ms = 21000; ms <= 120000; ms += 1000) {
+        engine.update(at(ms));
+    }
+    CHECK_STATE(engine.state(), TrustState::Degraded);
+    CHECK(engine.transitions_recorded() == 1);
+}
+
+// What silence costs is the hold, not the recovery. When a detector does
+// eventually say the condition is over, the state climbs — and the hold is
+// measured from the retraction rather than from the quiet in front of it, so a
+// minute of hearing nothing buys no part of the five seconds.
+void test_a_retraction_after_the_silence_is_where_the_hold_starts()
+{
+    TrustEngine engine;
+    engine.report(TrustReason::ReceiverSpoofing, at(0));
+    engine.update(at(0));
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    for (std::uint64_t ms = 1000; ms <= 60000; ms += 1000) {
+        engine.update(at(ms));
+    }
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    engine.clear(TrustReason::ReceiverSpoofing);
+    engine.update(at(60000));
+    CHECK(engine.unconfirmed_reasons() == 0);
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    // One step per hold, exactly as before — the retraction bought a recovery,
+    // not a shortcut through Degraded.
+    engine.update(at(64999));
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+    engine.update(at(65000));
+    CHECK_STATE(engine.state(), TrustState::Degraded);
+    engine.update(at(69999));
+    CHECK_STATE(engine.state(), TrustState::Degraded);
+    engine.update(at(70000));
+    CHECK_STATE(engine.state(), TrustState::Trusted);
+}
+
+// A hold is discarded by new evidence, not paused by it. Three seconds of quiet
+// followed by the alarm returning does not leave two seconds owing.
+void test_new_evidence_during_a_hold_starts_it_over()
+{
+    TrustEngine engine;
+    engine.report(TrustReason::ReceiverSpoofing, at(0));
+    engine.update(at(0));
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    engine.clear(TrustReason::ReceiverSpoofing);
+    engine.update(at(1000));  // the hold starts here
+    engine.update(at(4000));
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    engine.report(TrustReason::ReceiverSpoofing, at(4500));
+    engine.update(at(4500));
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    engine.clear(TrustReason::ReceiverSpoofing);
+    engine.update(at(5000));  // and starts again here
+    engine.update(at(6001));  // past the first hold, and it counts for nothing
+    CHECK_STATE(engine.state(), TrustState::Untrusted);
+
+    engine.update(at(10000));
+    CHECK_STATE(engine.state(), TrustState::Degraded);
+}
+
+// The case this actually costs on a device, rather than in an engine driven by
+// hand: a receiver that keeps producing perfectly good fixes and stops
+// asserting anything about spoofing.
+//
+// `Unknown` and `Unsupported` are left alone rather than cleared, so the alarm
+// stays live until the TTL and then lapses. Every fix here is a good one, so no
+// other reason weighs anything and the score is a genuine zero from 15 s
+// onwards — which is exactly the zero the old code promoted on. On the LS550G
+// anti-spoofing is `UNKNOWN` (OD-5 §2), so this is not a hypothetical receiver.
+void test_a_receiver_that_stops_asserting_does_not_recover_by_the_clock()
+{
+    TrustEvaluator evaluator;
+
+    GnssObservation alarming = good_fix(0);
+    alarming.spoofing        = ReceiverIndication::Critical;
+    evaluator.observe(alarming, PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    CHECK_STATE(evaluator.state(), TrustState::Untrusted);
+
+    // A minute of them, one a second, drifting a few centimetres so that this
+    // is a receiver at work rather than a frozen sample.
+    for (std::uint64_t ms = 1000; ms <= 60000; ms += 1000) {
+        GnssObservation quiet =
+            good_fix(ms, kLat + static_cast<std::int32_t>(ms / 1000), kLon);
+        quiet.spoofing = (ms % 2000 == 0) ? ReceiverIndication::Unknown
+                                          : ReceiverIndication::Unsupported;
+        evaluator.observe(quiet, PositionValidity::Valid, MotionEvidence{}, {}, at(ms));
+    }
+    CHECK(evaluator.engine().score() == 0);
+    CHECK_STATE(evaluator.state(), TrustState::Untrusted);
+    CHECK(evaluator.engine().awaiting_confirmation(TrustReason::ReceiverSpoofing));
+
+    // And the positive all-clear, which is information rather than silence.
+    GnssObservation all_clear = good_fix(61000, kLat + 61, kLon);
+    all_clear.spoofing        = ReceiverIndication::None;
+    evaluator.observe(all_clear, PositionValidity::Valid, MotionEvidence{}, {}, at(61000));
+    CHECK(evaluator.engine().unconfirmed_reasons() == 0);
+    CHECK_STATE(evaluator.state(), TrustState::Untrusted);
+
+    evaluator.engine().update(at(66000));
+    CHECK_STATE(evaluator.state(), TrustState::Degraded);
+    evaluator.engine().update(at(71000));
+    CHECK_STATE(evaluator.state(), TrustState::Trusted);
+}
+
+// The surrounding call site, checked rather than assumed: a location service's
+// own tick cannot manufacture a confirmation.
+//
+// refresh() reaches exactly two reasons — FixLost and StalePosition — and says
+// nothing whatever about the receiver's spoofing alarm. It is handed `Valid`
+// here, the most favourable answer classify() could give, so that nothing but
+// the tick itself is under test: no other reason is holding the state down and
+// the score is zero the whole way.
+void test_the_polling_tick_is_not_a_confirmation()
+{
+    TrustEvaluator evaluator;
+
+    GnssObservation alarming = good_fix(0);
+    alarming.spoofing        = ReceiverIndication::Critical;
+    evaluator.observe(alarming, PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    CHECK_STATE(evaluator.state(), TrustState::Untrusted);
+
+    for (std::uint64_t ms = 1000; ms <= 120000; ms += 1000) {
+        evaluator.refresh(PositionValidity::Valid, at(ms));
+    }
+    CHECK(evaluator.engine().score() == 0);
+    CHECK_STATE(evaluator.state(), TrustState::Untrusted);
+    CHECK(evaluator.engine().awaiting_confirmation(TrustReason::ReceiverSpoofing));
+}
+
 // ADR-0011 §7: a diagnostic that fills the flash it was diagnosing is not a
 // diagnostic. The log is bounded — and it says so, which is the part that
 // matters, because "sixteen transitions" and "sixteen of forty" are different
@@ -985,9 +1179,17 @@ void test_reset_leaves_nothing_behind()
     evaluator.observe(o, PositionValidity::Valid, MotionEvidence{}, {}, at(0));
     CHECK_STATE(evaluator.state(), TrustState::Untrusted);
 
+    // Past the TTL, so there is an allegation nobody withdrew for the reset to
+    // leave behind as well. It is the one piece of state that would otherwise
+    // outlive a detach and pin the next provider's position to Untrusted for
+    // something the previous one reported.
+    evaluator.engine().update(at(16000));
+    CHECK(evaluator.engine().awaiting_confirmation(TrustReason::ReceiverSpoofing));
+
     evaluator.reset();
     CHECK_STATE(evaluator.state(), TrustState::Trusted);
     CHECK(evaluator.engine().reasons() == 0);
+    CHECK(evaluator.engine().unconfirmed_reasons() == 0);
     CHECK(evaluator.engine().score() == 0);
     CHECK(!evaluator.engine().has_last_trusted());
     CHECK(evaluator.engine().transitions_recorded() == 0);
@@ -996,8 +1198,8 @@ void test_reset_leaves_nothing_behind()
     // And the rate detectors start again rather than comparing against a fix
     // from before the reset: a first observation after a detach cannot be a
     // jump, because there is nothing to have jumped from.
-    evaluator.observe(good_fix(1000, kLat + 100000), PositionValidity::Valid, MotionEvidence{}, {},
-                      at(1000));
+    evaluator.observe(good_fix(17000, kLat + 100000), PositionValidity::Valid, MotionEvidence{},
+                      {}, at(17000));
     CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
 }
 
@@ -1044,6 +1246,12 @@ int main()
     test_untrusted_climbs_through_degraded();
     test_the_band_between_the_thresholds_does_not_move();
     test_silence_expires_but_only_after_the_ttl();
+    test_silence_after_a_spoofing_alarm_never_restores_trust();
+    test_silence_after_a_jamming_alarm_never_restores_trust();
+    test_a_retraction_after_the_silence_is_where_the_hold_starts();
+    test_new_evidence_during_a_hold_starts_it_over();
+    test_a_receiver_that_stops_asserting_does_not_recover_by_the_clock();
+    test_the_polling_tick_is_not_a_confirmation();
     test_the_log_is_bounded_and_admits_it();
     test_the_last_trusted_position_becomes_a_circle();
     test_an_unstated_accuracy_is_not_a_perfect_one();

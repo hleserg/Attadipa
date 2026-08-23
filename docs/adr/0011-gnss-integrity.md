@@ -166,6 +166,7 @@ with all of:
 - **weighted evidence from several sources**, not one flag;
 - **hysteresis**, so a single bad epoch does not flip the state and a single
   good one does not clear it;
+- **recovery earned from a retraction, never from the clock** — §5.1 below;
 - **reason codes** — *which* evidence moved it, kept, not just the verdict;
 - **timestamps** on both the state and each piece of evidence;
 - **the last trusted position**, retained;
@@ -180,6 +181,46 @@ first, because it looks like it considered something.
 **Keep the reasons.** A user-facing string, an app's decision to hide the
 compass, and a diagnostic screen are three different consumers of the same
 evidence, and a collapsed boolean serves none of them.
+
+### 5.1 An allegation is retracted, not merely dropped
+
+> **Added 2026-08-23**, after the implementation was found to be doing the
+> opposite. OD-5 §2 already said this about a receiver's `Unknown`; what was
+> missing was that the *same* rule governs the passage of time.
+
+Evidence has to decay, or a device that walks out of an interference source
+stays suspect for ever. So a piece of evidence stops counting after a time-to-
+live — and **that is a statement about the score, not about the world.** Two
+different facts can leave the score at zero:
+
+| The score fell because | and that is |
+|---|---|
+| a detector said the condition is over | information |
+| a detector stopped saying anything | silence |
+
+**Only the first may move the state upwards.** The state machine therefore
+remembers, per reason, which of the two doors an allegation left by, and while
+any allegation stands unretracted the recovery hold does not run — the score is
+low, and it is not low *for a reason anybody gave*. When a retraction does
+arrive, the hold is measured from it, so time spent hearing nothing buys no part
+of the recovery.
+
+This is the same sentence as §6's *"a receiver that cannot detect spoofing is
+not a receiver reporting that there is none"*, applied to a clock instead of to
+an enumeration, and it is worth stating separately because the code got the
+enumeration right and the clock wrong. `TrustEngine` expired a spoofing alarm
+after fifteen seconds of silence, read the resulting zero as an all-clear,
+started the clean hold on it and announced `Trusted` again twenty-five seconds
+after the alarm — with no observation, no all-clear and no evidence of any kind
+in between. The device asserted a position was fit to navigate by at exactly the
+moment its receiver had stopped talking, which is the failure mode this whole
+ADR exists to prevent, reached by the one door still open.
+
+**What this costs, stated rather than discovered later.** A device that never
+hears another positive word does not climb back on its own. That is deliberate:
+the alternative is the behaviour above. The ways out are a detector saying the
+condition is over, or `reset()` when the provider goes away (ADR-0004 §3) — and
+never a timer.
 
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 
@@ -247,6 +288,16 @@ recording a track, and a boolean has already decided for both.
 
 **RTCM on the `GnssDriver` interface.** §4. It makes every receiver that cannot
 accept corrections implement a lie.
+
+**Letting the time-to-live start the recovery hold** — i.e. treating a score
+that has decayed to nothing as a clean bill of health. It is what the first
+implementation did, and it is attractive because it needs no extra state and
+guarantees the device always recovers eventually. Rejected on what "eventually"
+means: the case where nothing is being reported is *exactly* the case where
+nothing is known, and a watch that returns to `Trusted` because its receiver
+went quiet has inverted the evidence. Guaranteeing recovery is not a property
+worth having if the guarantee is unconditional — an unconditional recovery is a
+timer wearing a state machine's clothes. §5.1.
 
 **Trusting the receiver's spoofing flag alone.** It is the strongest single
 input and it is absent on at least one of our two variants — and possibly on

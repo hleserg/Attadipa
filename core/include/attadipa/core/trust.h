@@ -19,6 +19,11 @@
 //     because it looks like it considered something;
 //   * hysteresis, so one bad epoch does not flip the state and one good one
 //     does not clear it;
+//   * and the other half of that same rule: recovery is earned from a
+//     *retraction*, never from the clock. A score that fell to nothing because
+//     a detector said the condition was over and a score that fell to nothing
+//     because a detector stopped talking are not the same fact, and only the
+//     first may move the state upwards (OD-5 §2, and `clear()` below);
 //   * reason codes, kept. A user-facing sentence, an application's decision to
 //     hide the compass, and a diagnostic screen are three consumers of the same
 //     evidence, and a collapsed verdict serves none of them;
@@ -176,10 +181,19 @@ public:
 
     // A detector says the condition is over. Distinct from letting it expire:
     // this is positive evidence of absence, the TTL is merely silence.
+    //
+    // That distinction is load-bearing and not only documentation. This is the
+    // only call that *retracts* an allegation, and only a retracted allegation
+    // lets the state climb again — see `unconfirmed_reasons()`.
     void clear(TrustReason reason);
 
     // Expire stale evidence and re-evaluate. Safe and cheap to call often; the
     // state only moves when the score crosses a threshold or a hold completes.
+    //
+    // Calling it is not itself evidence of anything. A poll that carries no new
+    // detector output can lower the score, by expiry, and can never raise the
+    // state: a service ticking once a second while its receiver says nothing
+    // must not be able to talk the device back into `Trusted`.
     void update(MonotonicTime now);
 
     // Record this observation as the last position worth remembering. The
@@ -190,6 +204,28 @@ public:
     std::uint32_t reasons() const { return live_; }
     std::uint16_t score() const { return score_; }
     bool          holds(TrustReason reason) const;
+
+    // The allegations that lapsed without anybody withdrawing them.
+    //
+    // A reason that expires stops counting towards the score — evidence has to
+    // decay, or a device that walks out of an interference source stays suspect
+    // for ever. What it does not become is an all-clear: the detector did not
+    // say the condition was over, it stopped saying anything, and those are
+    // different inputs. While any bit is set here the state cannot climb, and
+    // the bit says *which* detector is being waited on, so a diagnostic screen
+    // can name it rather than showing a device stuck for no visible reason.
+    //
+    // Per reason rather than one flag, deliberately: "recovery is blocked" is
+    // not an answer anybody can act on, and a single boolean would lose both
+    // the source and — because the hold restarts from the retraction — the
+    // instant that mattered.
+    //
+    // Like `holds()` and `reasons()`, this reads state that only `update()`
+    // advances, so a reader that has not called `update(now)` is looking at the
+    // answer as of the last one. That is a property of the whole class and it
+    // is a separate open finding in T-062, not a new one here.
+    std::uint32_t unconfirmed_reasons() const { return unconfirmed_; }
+    bool          awaiting_confirmation(TrustReason reason) const;
 
     bool                    has_last_trusted() const { return has_last_trusted_; }
     std::optional<Position> last_trusted_position() const;
@@ -216,6 +252,12 @@ private:
     TrustPolicy   policy_;
     TrustState    state_ = TrustState::Trusted;
     std::uint32_t live_  = 0;
+
+    // Reasons that left `live_` by the TTL rather than by clear(). Four bytes,
+    // and they are the difference between "nothing is wrong" and "nobody has
+    // said anything for a while" — see unconfirmed_reasons().
+    std::uint32_t unconfirmed_ = 0;
+
     std::uint16_t score_ = 0;
 
     MonotonicTime evidence_at_[kTrustReasonCount] = {};

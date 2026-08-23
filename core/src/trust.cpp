@@ -86,16 +86,29 @@ void TrustEngine::report(TrustReason reason, MonotonicTime at)
 {
     evidence_at_[index_of(reason)] = at;
     live_ |= trust_reason_bit(reason);
+    // The allegation is standing again, so it is no longer one that lapsed
+    // unanswered. Which of the two doors it leaves by is decided when it
+    // leaves, not now.
+    unconfirmed_ &= ~trust_reason_bit(reason);
 }
 
 void TrustEngine::clear(TrustReason reason)
 {
     live_ &= ~trust_reason_bit(reason);
+    // The retraction, and the only one there is. Everything that separates an
+    // all-clear from silence in this class comes down to which of these two
+    // lines cleared the bit.
+    unconfirmed_ &= ~trust_reason_bit(reason);
 }
 
 bool TrustEngine::holds(TrustReason reason) const
 {
     return (live_ & trust_reason_bit(reason)) != 0;
+}
+
+bool TrustEngine::awaiting_confirmation(TrustReason reason) const
+{
+    return (unconfirmed_ & trust_reason_bit(reason)) != 0;
 }
 
 void TrustEngine::update(MonotonicTime now)
@@ -104,10 +117,15 @@ void TrustEngine::update(MonotonicTime now)
     // suspect" either — a device that walks out of an interference source would
     // never recover. Evidence therefore decays, and a detector that wants a
     // condition to persist has to keep saying so.
+    //
+    // What decays is the *score*. The allegation itself is remembered as one
+    // nobody withdrew, because those two are exactly what the first sentence
+    // above distinguishes and the code used to collapse them one line later.
     for (std::uint8_t i = 0; i < kTrustReasonCount; ++i) {
         const std::uint32_t bit = 1u << i;
         if ((live_ & bit) != 0 && elapsed(evidence_at_[i], now) >= policy_.evidence_ttl) {
             live_ &= ~bit;
+            unconfirmed_ |= bit;
         }
     }
 
@@ -145,6 +163,30 @@ void TrustEngine::evaluate(MonotonicTime now)
     // band between recover_below and degrade_at is the hysteresis, and a state
     // sitting inside it does not move in either direction.
     if (score_ > policy_.recover_below) {
+        clean_since_valid_ = false;
+        return;
+    }
+
+    // And a clean score has to be clean for a reason.
+    //
+    // This is the other half of "up is earned", and it was missing in the
+    // direction that costs. The TTL above takes an allegation out of the score
+    // without anybody having withdrawn it, so fifteen seconds of a spoofing
+    // alarm followed by nothing at all left `score_` at zero — and this code
+    // read that zero as a detector's all-clear, started the hold on it, and
+    // walked Untrusted → Degraded → Trusted over the next ten seconds. No
+    // observation, no clear(), no evidence of any kind arrived in that window:
+    // the device announced the position was fit to navigate by at precisely the
+    // moment its receiver had stopped talking. OD-5 §2 is the rule, `clear()`
+    // is the contract, and this line is where both were being lost.
+    //
+    // The anchor is dropped rather than frozen, so when a retraction does
+    // arrive the hold is measured from *it* and not from the silence in front
+    // of it. And the consequence is stated rather than discovered later: a
+    // device that never hears another positive word does not climb on the clock
+    // alone. The way out is a detector saying so, or reset() when the provider
+    // goes away — never a timer.
+    if (unconfirmed_ != 0) {
         clean_since_valid_ = false;
         return;
     }
@@ -239,6 +281,7 @@ void TrustEngine::reset()
 {
     state_             = TrustState::Trusted;
     live_              = 0;
+    unconfirmed_       = 0;
     score_             = 0;
     clean_since_valid_ = false;
     has_last_trusted_  = false;
