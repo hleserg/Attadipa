@@ -2,7 +2,12 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://hleserg.github.io/Attadipa/</loc>
-    <lastmod>2026-08-23</lastmod>
+    <!-- No `lastmod`. It was added here as a hard-coded date with nothing in
+         the repository to move it, which makes it wrong from the next commit
+         onwards; Google honours `lastmod` only where it stays accurate and
+         discounts a feed that does not, so a stale one is worse than none.
+         Do not add it back without something that updates it - a build step or
+         a CI check - and then say here what that thing is. -->
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>

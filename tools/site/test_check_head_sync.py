@@ -8,9 +8,14 @@ not hold was trusted instead of re-checked. So each case below takes the real
 asserts the checker notices; the cases that assert it does *not* fire are the
 half that would otherwise land a job failing on `main`.
 
-Both defects this checker was written for get a case of their own: a `<title>`
-changed on one side only, and `og:description` overwritten with the meta
-description.
+Both defects this checker was written for get a case of their own, and they are
+different kinds: a `<title>` changed on one side only is a DATA divergence, and
+`og:description` overwritten with the meta description is a WIRING defect that
+leaves every string byte-identical. The second case used to join both edits
+with `and`, so its verdict came from the string and the named defect
+contributed nothing -- a case passing for a reason other than its name, inside
+the artifact built to stop that. It is now the assignment alone, and it fails
+against the checker as it was.
 
 Run: python3 tools/site/test_check_head_sync.py
 """
@@ -102,19 +107,107 @@ def main() -> int:
         needle="title differs",
     )
 
-    # Defect two, as it actually happened: the fix for defect one assigned the
-    # meta description to og:description as well, so the search-result string
-    # went onto the social card for renderer-based crawlers only.
+    # DEFECT TWO, AS IT ACTUALLY HAPPENED, and it is a different kind from
+    # defect one. The fix for defect one assigned the meta description to
+    # og:description as well, so the search-result string went onto the social
+    # card for renderer-based crawlers only -- while every string in both files
+    # stayed byte-identical. That is a WIRING defect, and the string comparison
+    # cannot see it.
+    #
+    # This case used to join two edits with `and`: the assignment, then the
+    # string. Since nothing in the checker parsed an assignment, the verdict
+    # came entirely from the second edit and the named defect contributed
+    # nothing -- the case passed for a reason other than its name, inside the
+    # artifact built to stop exactly that. Found in review. It is now the
+    # assignment alone, and it fails against the checker as it was.
     scenario(
-        "og:description overwritten with the meta description",
+        "og:description overwritten with the meta description — the assignment alone",
         lambda html, js: edit(
             js,
             "if (ogDescription) ogDescription.content = copy[lang].cardDescription;",
             "if (ogDescription) ogDescription.content = copy[lang].description;",
-        )
-        and edit(js, "cardDescription: 'LoRa MeshCore", "cardDescription: 'Open-source ESP32-S3"),
+        ),
+        expect_fail=True,
+        needle="wires the wrong copy field into ogDescription",
+    )
+
+    # The string half of the same historical defect, kept as its own case so
+    # that losing either half shows up as a case that stopped firing.
+    scenario(
+        "og:description's string diverging is caught by the comparison",
+        lambda html, js: edit(
+            js, "cardDescription: 'LoRa MeshCore", "cardDescription: 'Open-source ESP32-S3"
+        ),
         expect_fail=True,
         needle="cardDescription differs",
+    )
+
+    # THE OTHER THREE ONE-TOKEN REVERSIONS. Each reproduces a real defect or a
+    # state this branch fixed, each leaves copy.en byte-identical to the HTML,
+    # and each exited 0 before the wiring table existed.
+    scenario(
+        "twitter:description wired to the search-result string",
+        lambda html, js: edit(
+            js,
+            "if (twitterDescription) twitterDescription.content = copy[lang].cardDescription;",
+            "if (twitterDescription) twitterDescription.content = copy[lang].description;",
+        ),
+        expect_fail=True,
+        needle="wires the wrong copy field into twitterDescription",
+    )
+    scenario(
+        "og:title wired to the <title> string",
+        lambda html, js: edit(
+            js,
+            "if (ogTitle) ogTitle.content = copy[lang].ogTitle;",
+            "if (ogTitle) ogTitle.content = copy[lang].title;",
+        ),
+        expect_fail=True,
+        needle="wires the wrong copy field into ogTitle",
+    )
+    scenario(
+        "og:locale:alternate wired to og:locale — the state fixed at a6abab4",
+        lambda html, js: edit(
+            js,
+            "if (ogLocaleAlternate) ogLocaleAlternate.content = copy[lang].localeAlternate;",
+            "if (ogLocaleAlternate) ogLocaleAlternate.content = copy[lang].locale;",
+        ),
+        expect_fail=True,
+        needle="wires the wrong copy field into ogLocaleAlternate",
+    )
+
+    # A field dropped from setLanguage() entirely leaves it showing the other
+    # language's text after a switch, which is the defect og:locale:alternate
+    # had before this branch in its milder form.
+    scenario(
+        "a field setLanguage() stops assigning at all",
+        lambda html, js: edit(
+            js, "if (twitterTitle) twitterTitle.content = copy[lang].ogTitle;", ""
+        ),
+        expect_fail=True,
+        needle="never assigns twitterTitle",
+    )
+
+    # And the selector half: renaming the tag site.js reaches for would leave
+    # every assignment correct and every string identical, and write nothing.
+    scenario(
+        "site.js selecting a tag that is not the one the table names",
+        lambda html, js: edit(
+            js,
+            "document.querySelector('meta[property=\"og:description\"]')",
+            "document.querySelector('meta[name=\"description\"]')",
+        ),
+        expect_fail=True,
+        needle="selects the wrong tag for ogDescription",
+    )
+
+    # setLanguage() moving or being renamed must not pass silently: without the
+    # body, none of the wiring above was checked, and saying so is the point.
+    scenario(
+        "setLanguage() renamed, so nothing below it was checked",
+        lambda html, js: edit(js, "function setLanguage(", "function applyLanguage("),
+        expect_fail=True,
+        needle="could not find setLanguage()",
     )
 
     # Each remaining field, one at a time, so a field dropped from HTML_SOURCES
@@ -237,10 +330,39 @@ def main() -> int:
         ),
         expect_fail=False,
     )
+    # This case was called "whitespace around the <title> body" and mutated
+    # site.js without touching a title -- and the behaviour it named is absent
+    # anyway, since html_field() does not strip, so an indented <title> WOULD
+    # diverge. Found in review. It is now what it always actually tested, under
+    # its real name, and a second case covers the indentation claim honestly by
+    # asserting the checker DOES fire on it.
     scenario(
-        "whitespace around the <title> body is not a divergence",
+        "a blank line in site.js is not a divergence",
         lambda html, js: edit(js, "\n  const copy", "\n\n  const copy"),
         expect_fail=False,
+    )
+    # A duplicated tag used to be invisible: html_meta took the first match, so
+    # the copy the checker read could agree while a second one said otherwise.
+    scenario(
+        "a duplicated og:description in index.html",
+        lambda html, js: edit(
+            html,
+            '<meta property="og:locale" ',
+            '<meta property="og:description" content="Something else entirely">\n  '
+            '<meta property="og:locale" ',
+        ),
+        expect_fail=True,
+        needle="only one can be the live one",
+    )
+    scenario(
+        "an indented <title> body IS a divergence — the checker does not strip",
+        lambda html, js: edit(
+            html,
+            "<title>Attadipa —",
+            "<title>\n    Attadipa —",
+        ),
+        expect_fail=True,
+        needle="title differs",
     )
 
     print()

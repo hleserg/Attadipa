@@ -124,14 +124,32 @@ from the HTML. One URL, two card texts, and a sentence in this document saying
 it had been checked.
 
 So it is a check now, not a claim: `tools/site/check_head_sync.py`, run by CI in
-the *Documentation consistency* job. It extracts the English `<title>` and six
-`<meta>` contents from `index.html`, the same six fields from `site.js`'s
-`copy.en`, and fails naming the field and both values on any divergence; the two
+the *Documentation consistency* job. It has **two halves, and neither can see
+the other's defect.**
+
+The **data** half extracts the English `<title>` and seven `<meta>` contents from
+`index.html` — eight fields — and the same fields from `site.js`'s `copy.en`, and
+reports every divergence it finds, naming the field and both values. The two
 `twitter:` tags are checked against the `og:` strings they mirror, and `copy.ru`
 is checked for presence, since the Russian strings have no counterpart in the
-HTML by construction. Its own mutation tests
-(`tools/site/test_check_head_sync.py`, twenty cases) run first and include one
-per historical defect, because a checker that passes everything is worse than
+HTML by construction.
+
+The **wiring** half reads `setLanguage()` itself. It exists because the two
+historical defects are not the same kind, which the first version of this
+section did not notice either. The stale title is a *data* divergence and a
+string comparison finds it. The `og:description` overwrite is a *wiring* defect:
+it leaves every string in both files byte-identical, so the comparison exits 0
+on it. Reverting `site.js:75` from `.cardDescription` to `.description`
+reproduces that defect exactly, and four more one-token reversions do the same
+for `twitter:description`, `og:title`, `twitter:title` and
+`og:locale:alternate` — the last being the state this branch fixed. So the check
+now carries a table of *which `copy` field must be assigned into which tag*, and
+asserts `setLanguage()` against it, including which DOM element each variable
+selects. Found in review, in the artifact built to prevent exactly this.
+
+Its own mutation tests (`tools/site/test_check_head_sync.py`, **29 cases**) run
+first. Seven of them fail against the check as it was, which is what makes them
+tests rather than description. A checker that passes everything is worse than
 none — it is what the next agent trusts instead of re-checking, which is exactly
 how this section came to be wrong.
 
@@ -167,8 +185,18 @@ a design change, not a manifest one, and not this pull request's subject.
 
 ### `docs/sitemap.xml`
 
-One URL, now with `lastmod`, `changefreq` and `priority`. It is a one-page site;
-a larger sitemap would be padding.
+One URL with `changefreq` and `priority`, both of which Google documents as
+ignored — kept because other crawlers read them and they cost nothing.
+
+**No `lastmod`, and that is a correction rather than an omission.** An earlier
+draft of this pass wrote today's date into it with nothing in the repository to
+move it, so it would have been wrong from the next commit onwards. Google
+honours `lastmod` only where it stays accurate and discounts a feed that does
+not — a date nothing maintains is worse than no date. Adding it back means
+adding something that updates it first. Found in review; the sitemap says the
+same thing in a comment, where the next person will actually be standing.
+
+It is a one-page site; a larger sitemap would be padding.
 
 ### `docs/404.html`
 
@@ -252,6 +280,25 @@ default and a visible toggle switching them. Consequences:
   cloaking — the same markup is served to everyone and the toggle is a real
   button — but it does mean the project cannot rank for a Russian query today.
 
+**And `/` itself now varies by `Accept-Language`, which is new in this pass and
+is worth stating plainly.** Before it, `copy.en.title` equalled `copy.ru.title`,
+so the rendered head was language-invariant and the canonical URL had one
+identity. Now `site.js` runs `setLanguage(initialLanguage())` on every load, and
+`browserLanguage()` returns `ru` for any `navigator.languages` entry beginning
+`ru-` *or* whose `Intl` region resolves to `RU` — so `en-RU` flips it too. A
+Russian-locale renderer on the canonical URL therefore gets a Russian `<title>`,
+`description`, `og:title`, `og:description` and `og:locale`, against a canonical
+(`index.html:11`) and a lone `x-default` (`:12`) that both say "one version
+here".
+
+This is **not cloaking**: the same bytes are served to everyone, the difference
+is produced by a script every visitor runs, and the toggle is a visible control.
+The exposure is also low — Googlebot crawls from a small set of locales and does
+not vary `Accept-Language` per query. But it is a real consequence of making the
+head bilingual, it was absent from the first draft of this audit, and it is the
+strongest argument for the `/ru/` page below: a separate URL is the only way to
+give each language a stable identity that a crawler can attribute.
+
 The fix is a genuinely separate `/ru/` page with its own `<title>`,
 `description`, canonical and reciprocal `hreflang`. It was not done here because
 it means a second 35 KB HTML document to keep in sync by hand, which is the
@@ -303,7 +350,7 @@ searches for and which no current topic covers.
 - `python3 tools/site/check_head_sync.py .` — the one check here that covers the
   files this audit actually changed. In CI, in the *Documentation consistency*
   job, with its own mutation tests ahead of it. It is the answer to the two
-  head-drift defects in §3 recurring.
+  head-drift defects in §2 (*"The head lives in two files"*) recurring.
 - `python3 tools/docs/check_docs.py .` — link and structure checks, already in
   CI, and worth knowing the limit of: it filters on `.md`
   (`tools/docs/check_docs.py:89-96`) and never opens `index.html`, `site.js`,

@@ -614,11 +614,23 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   and they do match"* while two of eight fields did not.
 
   So it is a check rather than a claim: `tools/site/check_head_sync.py`, in CI
-  in the *Documentation consistency* job, with twenty mutation tests
-  (`tools/site/test_check_head_sync.py`) ahead of it — one per historical
-  defect, four asserting it does *not* fire where firing would be wrong. The
-  existing rot check never covered this: `tools/docs/check_docs.py` filters on
-  `.md` and was green while the second defect was in the tree.
+  in the *Documentation consistency* job, with 29 mutation tests
+  (`tools/site/test_check_head_sync.py`) ahead of it. The existing rot check
+  never covered this: `tools/docs/check_docs.py` filters on `.md` and was green
+  while the second defect was in the tree.
+
+  **And the first version of the check caught one of the two defects it was
+  named for.** Review found it, which is the third time on this branch that a
+  claim about verification was the thing that was wrong. The two defects are
+  different kinds: a stale `<title>` is a *data* divergence, and a string
+  comparison finds it; assigning the meta description to `og:description` is a
+  *wiring* defect that leaves every string in both files byte-identical, so the
+  comparison exits 0 on it. Four more one-token reversions in `setLanguage()`
+  do the same — `twitter:description`, `og:title`, `twitter:title`, and
+  `og:locale:alternate`, which is the state this branch fixed. The check now
+  carries a table of which `copy` field must be assigned into which tag, and
+  which DOM element each variable selects, and asserts `setLanguage()` against
+  it. Seven of the 29 cases fail against the check as it was.
 
   Three claims were removed rather than fixed, because they were not true of the
   files: three of the six JSON-LD `featureList` entries described work that is
