@@ -154,8 +154,10 @@ void Bridge::handle_capabilities(std::uint16_t req_id, Emit emit, void* ctx)
     caps.max_hold_ms      = limits_.max_hold_ms;
     caps.max_events_per_s = limits_.max_events_per_s;
 
-    const std::uint8_t count = source_.button_count();
-    caps.button_count        = count > 4 ? 4 : count;
+    constexpr std::uint8_t kWireButtons =
+        static_cast<std::uint8_t>(sizeof(caps.buttons) / sizeof(caps.buttons[0]));
+    const std::uint8_t count = source_.buttons() == nullptr ? 0 : source_.button_count();
+    caps.button_count        = count > kWireButtons ? kWireButtons : count;
     const ButtonDescriptor* src = source_.buttons();
     for (std::uint8_t i = 0; i < caps.button_count && src != nullptr; ++i) {
         caps.buttons[i] = src[i];
@@ -194,6 +196,21 @@ void Bridge::handle_screen(std::uint16_t req_id, std::uint32_t now_ms, Emit emit
     Orientation   o = Orientation::Deg0;
     std::size_t   n = 0;
 
+    // Ask the shape first, so "this build's buffer is too small for this panel"
+    // is answerable as itself. Rolled into NoScreen it read as "nothing has
+    // been rendered yet", which sends the reader to look at the interface when
+    // the fault is a number in the composition root.
+    (void)source_.capture(nullptr, 0, w, h, f, o, n);
+    if (n > frame_capacity_) {
+        send_error(req_id, ErrorCode::Unsupported, emit, ctx);
+        return;
+    }
+
+    w = 0;
+    h = 0;
+    f = PixelFormat::Unknown;
+    o = Orientation::Deg0;
+    n = 0;
     if (!source_.capture(frame_buffer_, frame_capacity_, w, h, f, o, n) || n == 0) {
         send_error(req_id, ErrorCode::NoScreen, emit, ctx);
         return;
@@ -313,6 +330,50 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
         send_error(req_id, ErrorCode::TooManyTouches, emit, ctx);
         return;
     }
+    // A button the board marks as not injectable is refused **here**, not by
+    // the host tool. The T-Watch's BOOT is a boot-mode strap read at reset: it
+    // produces no software event on real hardware, so simulating one would
+    // manufacture an input the interface can never actually receive. The
+    // header two files up argues that a limit only the well-behaved client
+    // enforces is not a limit; this is that limit.
+    //
+    // Only a button that **exists** and is not injectable is refused here. An
+    // index past the profile falls through to the state machine below and
+    // comes back as `BadInput`, because "there is no button 2" and "button 1
+    // is a service key" are different facts -- the same distinction `Busy` was
+    // failing to make, and it would be a poor joke to fix that one and break
+    // this one in the same commit.
+    if (event.type == core::InputEventType::ButtonDown ||
+        event.type == core::InputEventType::ButtonUp) {
+        const ButtonDescriptor* descriptors = source_.buttons();
+        if (descriptors != nullptr && event.button < source_.button_count() &&
+            (descriptors[event.button].flags & kButtonInjectable) == 0) {
+            ++stats_.events_refused;
+            send_error(req_id, ErrorCode::Unsupported, emit, ctx);
+            return;
+        }
+    }
+
+    // The remote may only lift what the remote is holding. `InputOrigin` is
+    // the mechanism the disconnect story rests on -- "never lifts a finger a
+    // person is holding" -- and it was enforced on disconnect but not here, so
+    // a stray injected release could still take a physical hold with it.
+    // `core::InputState::apply` is deliberately origin-agnostic (it serves the
+    // physical path too), so the ownership rule belongs on this side of it.
+    if (event.type == core::InputEventType::ButtonUp && state_.button_down(event.button) &&
+        state_.button_origin(event.button) != core::InputOrigin::Remote) {
+        ++stats_.events_refused;
+        send_error(req_id, ErrorCode::BadInput, emit, ctx);
+        return;
+    }
+    if ((event.type == core::InputEventType::PointerUp ||
+         event.type == core::InputEventType::PointerMove) &&
+        state_.pointer_down() && state_.pointer_origin() != core::InputOrigin::Remote) {
+        ++stats_.events_refused;
+        send_error(req_id, ErrorCode::BadInput, emit, ctx);
+        return;
+    }
+
     if (!state_.apply(event, source_.button_count())) {
         ++stats_.events_refused;
         send_error(req_id, ErrorCode::BadInput, emit, ctx);
@@ -322,29 +383,52 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
         // The queue overran. The state machine has already recorded the press,
         // so it is rolled back rather than left claiming something is held that
         // the interface will never see go down.
+        // Every transition is rolled back, releases included. An un-rolled-back
+        // ButtonUp left the state machine believing a held button was free
+        // while the widget under it was still pressed -- and with the hold
+        // forgotten, the expiry that exists to rescue exactly that case had
+        // nothing left to fire on.
         core::InputEvent undo = event;
         switch (event.type) {
         case core::InputEventType::ButtonDown:
             undo.type = core::InputEventType::ButtonUp;
             (void)state_.apply(undo, source_.button_count());
             break;
+        case core::InputEventType::ButtonUp:
+            undo.type = core::InputEventType::ButtonDown;
+            (void)state_.apply(undo, source_.button_count());
+            break;
         case core::InputEventType::PointerDown:
             undo.type = core::InputEventType::PointerUp;
+            (void)state_.apply(undo, source_.button_count());
+            break;
+        case core::InputEventType::PointerUp:
+            undo.type = core::InputEventType::PointerDown;
             (void)state_.apply(undo, source_.button_count());
             break;
         default:
             break;
         }
         ++stats_.events_refused;
-        send_error(req_id, ErrorCode::Busy, emit, ctx);
+        // Its own code. `Busy` means a screen transfer is already running; a
+        // dropped swipe point answering with it sent the reader to the wrong
+        // subsystem entirely.
+        send_error(req_id, ErrorCode::QueueFull, emit, ctx);
         return;
     }
 
+    // Deliberately `now_ms`, not `event.at_ms`, and the two disagree on
+    // purpose. The queued event keeps the client's timestamp because a gesture
+    // recogniser needs the finger's own intervals. This is the safety timer
+    // that guarantees a crashed client cannot leave a button held, and keying
+    // it on a number the client chose means a client replaying a recording
+    // from another epoch expires its own hold on the very next tick -- or,
+    // with a timestamp in the future, never.
     if (event.type == core::InputEventType::ButtonDown && event.button < core::kMaxButtons) {
-        button_down_at_[event.button] = event.at_ms;
+        button_down_at_[event.button] = now_ms;
     }
     if (event.type == core::InputEventType::PointerDown) {
-        pointer_down_at_ = event.at_ms;
+        pointer_down_at_ = now_ms;
     }
 
     ++stats_.events_injected;
@@ -370,6 +454,18 @@ void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
     (void)emit;
     (void)ctx;
 
+    // Push first, mutate second -- the order `core::InputState::release_all`
+    // establishes and argues for at length. `apply()` runs first in an `&&`,
+    // so the obvious spelling clears the hold and *then* discovers the queue
+    // was full: the release never reaches LVGL, the widget stays pressed, and
+    // because the state now says nothing is held, no later tick, no
+    // `input reset` and no disconnect will ever try again. The 30-second
+    // escape hatch would have fired exactly once and done nothing.
+    //
+    // Discarding `apply()`'s result is safe here: the guards above have
+    // already established the input is held, by Remote, at an index below
+    // `kMaxButtons`, so it cannot fail.
+
     for (std::uint8_t i = 0; i < core::kMaxButtons; ++i) {
         if (state_.button_down(i) && state_.button_origin(i) == core::InputOrigin::Remote &&
             now_ms - button_down_at_[i] > limits_.max_hold_ms) {
@@ -378,7 +474,8 @@ void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
             up.origin = core::InputOrigin::Remote;
             up.button = i;
             up.at_ms  = now_ms;
-            if (state_.apply(up, core::kMaxButtons) && queue_.push(up)) {
+            if (queue_.push(up)) {
+                (void)state_.apply(up, core::kMaxButtons);
                 ++stats_.holds_expired;
             }
         }
@@ -392,7 +489,8 @@ void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
         up.x      = state_.pointer_x();
         up.y      = state_.pointer_y();
         up.at_ms  = now_ms;
-        if (state_.apply(up, core::kMaxButtons) && queue_.push(up)) {
+        if (queue_.push(up)) {
+            (void)state_.apply(up, core::kMaxButtons);
             ++stats_.holds_expired;
         }
     }

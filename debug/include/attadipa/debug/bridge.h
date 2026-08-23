@@ -17,15 +17,25 @@
 //
 // ### Where input goes
 //
-// Into `core::InputQueue`, which is the same queue the simulator's own SDL
-// driver and, later, a touch controller push into. Nothing here reaches a
+// Into `core::InputQueue`, which is where a touch controller and the board's
+// buttons will push once T-114 gives them a driver. Nothing here reaches a
 // widget, a screen or an event handler. A test that drove the interface through
 // a private door would pass against code no finger can reach.
+//
+// The bridge is that queue's **only producer today**. The simulator's own
+// finger is `lv_sdl_mouse_create()`, which reaches LVGL as its own indev and
+// never enters the queue; the two coexist because LVGL runs each indev
+// independently, not because they meet here. Said plainly because an earlier
+// draft of this comment claimed they met, and a false invariant in a core
+// header is what the next agent builds on.
 //
 // ### The frame buffer is the caller's
 //
 // A screenshot needs a consistent copy of one frame, and on a device that is
-// tens of kilobytes that production must not spend. So the bridge does not own
+// **617 kB** on the Waveshare's 410x502 panel at RGB888, or 173 kB on the
+// T-Watch's 240x240 -- half of each at RGB565. That is memory production must
+// not spend, and it is the whole argument of this section, so the number
+// belongs in it. So the bridge does not own
 // one: the composition root passes a buffer in, and a build that does not want
 // the feature does not allocate it. RESOURCE_BUDGET section 4's rule -- size
 // the pool to the maximum and declare the bound -- is satisfied by the caller
@@ -55,6 +65,18 @@ public:
     // when the renderer is not partway through the next one. Returns false if
     // nothing has been rendered yet or the buffer is too small -- never a
     // partial image reported as success.
+    //
+    // **Two modes, and both are part of the contract.** Called with
+    // `out == nullptr` or `capacity == 0` this is a *shape query*: fill
+    // `width_out`, `height_out`, `format_out`, `orientation_out` and
+    // `bytes_out`, copy nothing, and return false. An implementation that
+    // returns early on a null buffer without filling them reports a 0x0 screen
+    // in `Capabilities`, and every later command then fails with a coordinate
+    // error that names nothing. `Bridge::handle_capabilities` uses this mode;
+    // both shipped implementations honoured it by coincidence of authorship
+    // until it was written down here.
+    //
+    // On every path the geometry outputs are filled before returning.
     virtual bool capture(std::uint8_t* out, std::size_t capacity, std::uint16_t& width_out,
                          std::uint16_t& height_out, PixelFormat& format_out,
                          Orientation& orientation_out, std::size_t& bytes_out) = 0;
@@ -62,12 +84,19 @@ public:
     // Board and build identity for Hello, and the button list for Capabilities.
     virtual const char* board_id() const  = 0;
     virtual const char* build_id() const  = 0;
+    // `buttons()` points at `button_count()` descriptors and never fewer.
+    // A source may return nullptr, in which case the count is treated as zero.
     virtual std::uint8_t button_count() const = 0;
     virtual const ButtonDescriptor* buttons() const = 0;
 
-    // True once the interface has been idle long enough to be worth
-    // photographing. A source that cannot tell returns true immediately and
-    // says so in `WaitStable`'s reply, rather than sleeping and pretending.
+    // True once the interface has been idle for at least `ms`.
+    //
+    // A source with no idle tracking answers true unconditionally, and the
+    // reply carries one bit, so it **cannot** say which of the two it meant.
+    // The host must therefore not read `StableOk` as evidence that the
+    // interface settled -- only as evidence that the device was asked. This
+    // sentence replaces one claiming the reply says so; it does not, and a
+    // scenario step resting on it would have been vacuous.
     virtual bool stable_since(std::uint32_t ms) const { (void)ms; return true; }
 };
 
@@ -82,7 +111,10 @@ struct BridgeLimits {
     // until someone notices.
     std::uint32_t max_hold_ms = 30000;
 
-    // Events per second, counted over a sliding second. Injection is cheap,
+    // Events per second, counted over a fixed one-second window that restarts
+    // on the first event after the previous one expired -- so a burst
+    // straddling the boundary can briefly reach twice this, which is accepted
+    // and named rather than smoothed. Injection is cheap,
     // but a client in a loop can outrun the interface's ability to drain the
     // queue, and the failure mode is a UI that looks hung.
     std::uint16_t max_events_per_s = 500;

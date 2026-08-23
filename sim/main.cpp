@@ -269,10 +269,12 @@ int main(int argc, char** argv)
         }
     }
 
-    // `remote_input_pump` before `lv_timer_handler`, always. LVGL reads its
-    // input devices inside the handler, so an event delivered after it waits a
-    // whole frame -- which turns a 30-point swipe into a 30-frame one and makes
-    // every timing measurement wrong by a frame.
+    // `remote_input_pump` before `lv_timer_handler`, always. LVGL's read timer
+    // fires inside the handler, so an event delivered after it waits for the
+    // next one -- and that is 33 ms (`LV_DEF_REFR_PERIOD`), not one iteration
+    // of this loop. The pump therefore hands LVGL a *queue* of transitions
+    // rather than a single state; see the long note in `sim/remote_input.cpp`
+    // for why a single one silently merged two taps into one click.
     //
     // The debug server is polled after, so that a screenshot taken this frame
     // is of what was just drawn rather than of the frame before.

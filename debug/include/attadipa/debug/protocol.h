@@ -101,7 +101,18 @@ enum class ErrorCode : std::uint16_t {
     Busy             = 7,   // a screen transfer is already in progress
     RateLimited      = 8,
     VersionMismatch  = 9,
+    QueueFull        = 10,  // the input queue overran; the event was dropped
 };
+
+// Appended, never renumbered. A value on this wire is a fact somebody's log
+// already contains, and the Python side mirrors these by hand
+// (`tools/watch/protocol.py`) rather than generating them, so a moved number
+// is a silently mistranslated error message rather than a build failure.
+//
+// `QueueFull` exists because `Busy` was answering for two unrelated things: a
+// second screenshot arriving mid-transfer, and a swipe point that found the
+// input queue full. A dropped gesture reporting itself as a screenshot
+// collision sends the reader to the wrong subsystem.
 
 struct Envelope {
     std::uint8_t  version  = kDebugProtocolVersion;

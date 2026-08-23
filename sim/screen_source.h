@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "attadipa/core/input.h"
 #include "attadipa/debug/bridge.h"
 #include "attadipa/platform/board_profile.h"
 
@@ -24,6 +25,16 @@ namespace attadipa::sim {
 // changed LVGL's colour depth; naming the real layout on the wire means the
 // host converter is the only place that has to know, and it is tested against
 // both orders.
+
+// The three button maxima live in three libraries that do not include one
+// another -- `platform` does not link `core`, `debug` does not link
+// `platform` -- so nothing could assert their relationship until here. This is
+// the one translation unit that sees all three, which makes it the only place
+// a raised bound can be made to fail at compile time instead of at runtime.
+// `core/input.h` points at these.
+static_assert(platform::kMaxBoardButtons <= core::kMaxButtons,
+              "a board may not declare more buttons than the input layer can hold");
+
 class LvglScreenSource : public debug::ScreenSource {
 public:
     explicit LvglScreenSource(const platform::BoardProfile& board);
@@ -37,6 +48,14 @@ public:
     std::uint8_t                   button_count() const override { return button_count_; }
     const debug::ButtonDescriptor* buttons() const override { return buttons_; }
 
+    // The interface has been idle for at least `ms`.
+    //
+    // Real, not a constant: LVGL tracks the last input activity per display,
+    // so the simulator can answer the question `WaitStable` actually asks. A
+    // source that returned true unconditionally made the scenario step
+    // vacuous, and a vacuous step in a test harness reads as a passing one.
+    bool stable_since(std::uint32_t ms) const override;
+
     // The frame buffer the bridge needs, sized for this board's panel.
     std::size_t frame_bytes() const;
 
@@ -44,6 +63,9 @@ private:
     platform::BoardProfile  board_;
     debug::ButtonDescriptor buttons_[4]  = {};
     std::uint8_t            button_count_ = 0;
+
+    static_assert(platform::kMaxBoardButtons <= sizeof(buttons_) / sizeof(buttons_[0]),
+                  "the wire struct's button array is smaller than a board may declare");
 };
 
 }  // namespace attadipa::sim

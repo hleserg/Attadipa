@@ -6,6 +6,8 @@
 
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -60,8 +62,29 @@ bool DebugServer::listen(const std::string& path)
     address.sun_family = AF_UNIX;
     std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
 
-    if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
-        std::fprintf(stderr, "debug: bind(%s): %s\n", path.c_str(), std::strerror(errno));
+    // The permissions are set here, not left to whatever umask the process
+    // inherited. On Linux connect() needs write permission on the socket
+    // inode, so the mode is the access control -- and a umask of 000, which
+    // containers, CI runners and daemons routinely have, would otherwise
+    // publish a 0777 socket that any local user can drive the interface
+    // through. The header two files up rests its whole security argument on
+    // filesystem permissions; this is that argument being true.
+    const mode_t previous_umask = ::umask(0177);
+    const int    bind_result =
+        ::bind(listen_fd_, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+    const int bind_errno = errno;
+    ::umask(previous_umask);
+
+    if (bind_result != 0) {
+        std::fprintf(stderr, "debug: bind(%s): %s\n", path.c_str(), std::strerror(bind_errno));
+        close();
+        return false;
+    }
+    // Belt and braces: POSIX does not require a socket file's mode to be
+    // honoured at all, and some filesystems ignore the umask. Failing loudly
+    // beats listening on something more open than advertised.
+    if (::chmod(path.c_str(), S_IRUSR | S_IWUSR) != 0) {
+        std::fprintf(stderr, "debug: chmod(%s, 0600): %s\n", path.c_str(), std::strerror(errno));
         close();
         return false;
     }
@@ -168,6 +191,24 @@ void DebugServer::drop_client(std::uint32_t now_ms, debug::Bridge& bridge, const
     std::fflush(stdout);
 }
 
+// Dispatches every complete frame the decoder currently holds. Returns true if
+// it dispatched at least one, which is how the read loop above tells "the
+// decoder is full and stuck" from "the decoder is full and about to empty".
+bool DebugServer::dispatch_ready(std::uint32_t now_ms, debug::Bridge& bridge)
+{
+    bool any = false;
+    std::uint8_t payload[link::kMaxPayload];
+    for (;;) {
+        const std::size_t length = decoder_.next(payload, sizeof(payload));
+        if (length == 0) {
+            break;
+        }
+        bridge.handle(payload, length, now_ms, &DebugServer::emit, this);
+        any = true;
+    }
+    return any;
+}
+
 void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
 {
     if (listen_fd_ < 0) {
@@ -197,13 +238,33 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
         return;
     }
 
-    // Read whatever is there, bounded. The decoder is fragment-agnostic by
-    // construction, so it does not matter where the reads happen to split.
+    // Read whatever is there, bounded -- and **drain as we feed**. The decoder
+    // holds a couple of hundred bytes; this loop can read 8 x 4096 = 32 KiB in
+    // one poll. Pushing all of that before dispatching anything meant a client
+    // that pipelined its commands had them silently refused by a full decoder,
+    // which is the one thing this transport is not allowed to do quietly. The
+    // inner drain always makes progress: the buffer either holds a complete
+    // frame, which `next` consumes, or a bad header, which it resynchronises
+    // past one byte at a time.
     std::uint8_t chunk[4096];
     for (int reads = 0; reads < 8; ++reads) {
         const ssize_t got = ::recv(client_fd_, chunk, sizeof(chunk), 0);
         if (got > 0) {
-            decoder_.push(chunk, static_cast<std::size_t>(got));
+            const std::size_t total = static_cast<std::size_t>(got);
+            std::size_t       at    = 0;
+            while (at < total) {
+                const std::size_t taken = decoder_.push(chunk + at, total - at);
+                if (taken == 0 && at < total) {
+                    // The decoder took nothing and the buffer is not empty:
+                    // drain it and try again rather than spinning.
+                    if (!dispatch_ready(now_ms, bridge)) {
+                        break;
+                    }
+                    continue;
+                }
+                at += taken;
+                (void)dispatch_ready(now_ms, bridge);
+            }
             continue;
         }
         if (got == 0) {
@@ -217,15 +278,8 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
         return;
     }
 
-    // Dispatch every complete frame. One push may complete several.
-    std::uint8_t payload[link::kMaxPayload];
-    for (;;) {
-        const std::size_t length = decoder_.next(payload, sizeof(payload));
-        if (length == 0) {
-            break;
-        }
-        bridge.handle(payload, length, now_ms, &DebugServer::emit, this);
-    }
+    // Anything left over from an earlier poll.
+    (void)dispatch_ready(now_ms, bridge);
 
     // Pump the screenshot while there is room. The watermark is what keeps a
     // 600 kB transfer from stopping the interface: the socket sets the pace.

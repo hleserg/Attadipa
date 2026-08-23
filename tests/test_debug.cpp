@@ -92,6 +92,22 @@ public:
     const std::vector<std::uint8_t>& image() const { return image_; }
     void fail_capture(bool on) { fail_capture_ = on; }
 
+    // Every button was injectable until now, which is exactly why the refusal
+    // path had never existed: the board profile that motivates the flag
+    // (T-Watch BOOT) was not represented anywhere a test could see it.
+    void set_injectable(std::uint8_t index, bool on)
+    {
+        if (index >= 2) {
+            return;
+        }
+        if (on) {
+            buttons_[index].flags |= kButtonInjectable;
+        } else {
+            buttons_[index].flags = static_cast<std::uint8_t>(buttons_[index].flags &
+                                                              ~kButtonInjectable);
+        }
+    }
+
 private:
     std::uint16_t             w_;
     std::uint16_t             h_;
@@ -784,6 +800,219 @@ void a_physical_press_survives_a_remote_disconnect()
 
 }  // namespace
 
+
+// --- what the independent review of #121 found, each closed and pinned ------
+
+void a_button_the_board_will_not_simulate_is_refused_by_the_device()
+{
+    Rig rig;
+    rig.screen.set_injectable(1, false);
+
+    rig.send(input_request(core::InputEventType::ButtonDown, 1, 0, 0, /*button=*/1));
+
+    // Unsupported, not BadInput: the press is possible, the board declines it.
+    CHECK(rig.sink.last_error() == ErrorCode::Unsupported);
+    CHECK(!rig.state.button_down(1));
+    CHECK(rig.queue.empty());
+    CHECK(rig.bridge.stats().events_refused == 1);
+
+    // And the refusal is the device's, not the host tool's -- nothing about
+    // this test goes near tools/watch.
+    rig.sink.clear();
+    rig.send(input_request(core::InputEventType::ButtonDown, 2, 0, 0, /*button=*/0));
+    CHECK(rig.sink.last_is(Opcode::InputOk));
+}
+
+void an_out_of_range_button_is_still_a_different_error_from_a_refused_one()
+{
+    Rig rig;
+    rig.screen.set_injectable(1, false);
+
+    rig.send(input_request(core::InputEventType::ButtonDown, 1, 0, 0, /*button=*/5));
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+
+    rig.sink.clear();
+    rig.send(input_request(core::InputEventType::ButtonDown, 2, 0, 0, /*button=*/1));
+    CHECK(rig.sink.last_error() == ErrorCode::Unsupported);
+}
+
+// Fills the queue to capacity so the next push must fail, and says so: a test
+// that meant to exercise the full-queue branch and quietly did not is worse
+// than no test, because it reads as coverage of exactly the case it missed.
+void fill_queue(core::InputQueue& queue)
+{
+    core::InputEvent filler;
+    filler.type   = core::InputEventType::ButtonDown;
+    filler.origin = core::InputOrigin::Physical;
+    while (queue.push(filler)) {
+    }
+    CHECK(queue.size() == core::InputQueue::kCapacity);
+    CHECK(!queue.push(filler));
+}
+
+void a_hold_that_cannot_be_released_stays_held_for_the_next_tick()
+{
+    Rig rig;
+    rig.send(input_request(core::InputEventType::ButtonDown, 1, 0, 0, /*button=*/0), 100);
+    CHECK(rig.state.button_down(0));
+
+    // The interface has stalled: nothing is draining, and the queue is full.
+    fill_queue(rig.queue);
+
+    rig.bridge.tick(100 + 60000, &Collector::emit, &rig.sink);
+
+    // The release could not be delivered, so the button is **still held**.
+    // Clearing the flag here would have stranded a pressed widget with nothing
+    // left in the system able to lift it -- the 30-second escape hatch firing
+    // once and doing nothing.
+    CHECK(rig.state.button_down(0));
+    CHECK(rig.bridge.stats().holds_expired == 0);
+
+    // Drained, the very next tick delivers it.
+    core::InputEvent scratch;
+    while (rig.queue.pop(scratch)) {
+    }
+    rig.bridge.tick(100 + 60001, &Collector::emit, &rig.sink);
+    CHECK(!rig.state.button_down(0));
+    CHECK(rig.bridge.stats().holds_expired == 1);
+}
+
+void a_pointer_hold_that_cannot_be_released_also_stays_held()
+{
+    Rig rig;
+    rig.send(input_request(core::InputEventType::PointerDown, 1, 10, 20), 100);
+    CHECK(rig.state.pointer_down());
+
+    fill_queue(rig.queue);
+    rig.bridge.tick(100 + 60000, &Collector::emit, &rig.sink);
+    CHECK(rig.state.pointer_down());
+    CHECK(rig.bridge.stats().holds_expired == 0);
+}
+
+void a_release_that_could_not_be_queued_leaves_the_input_held()
+{
+    Rig rig;
+    rig.send(input_request(core::InputEventType::ButtonDown, 1, 0, 0, /*button=*/0));
+    CHECK(rig.state.button_down(0));
+
+    fill_queue(rig.queue);
+    rig.sink.clear();
+    rig.send(input_request(core::InputEventType::ButtonUp, 2, 0, 0, /*button=*/0));
+
+    // Rolled back: the state must not claim the button came up when the event
+    // that says so never reached the interface.
+    CHECK(rig.sink.last_error() == ErrorCode::QueueFull);
+    CHECK(rig.state.button_down(0));
+}
+
+void an_overrun_is_not_reported_as_a_screenshot_collision()
+{
+    Rig rig;
+    fill_queue(rig.queue);
+    rig.send(input_request(core::InputEventType::PointerDown, 1, 5, 5));
+
+    // QueueFull, not Busy. A dropped swipe point answering "a screen transfer
+    // is already in progress" sends the reader to the wrong subsystem.
+    CHECK(rig.sink.last_error() == ErrorCode::QueueFull);
+    CHECK(rig.sink.last_error() != ErrorCode::Busy);
+}
+
+void the_remote_may_not_lift_a_hold_a_person_owns()
+{
+    Rig rig;
+
+    core::InputEvent physical;
+    physical.type   = core::InputEventType::ButtonDown;
+    physical.origin = core::InputOrigin::Physical;
+    physical.button = 0;
+    CHECK(rig.state.apply(physical, 2));
+    CHECK(rig.state.button_down(0));
+
+    rig.send(input_request(core::InputEventType::ButtonUp, 1, 0, 0, /*button=*/0));
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+    CHECK(rig.state.button_down(0));
+
+    // The same for a finger.
+    core::InputEvent finger;
+    finger.type   = core::InputEventType::PointerDown;
+    finger.origin = core::InputOrigin::Physical;
+    finger.x      = 7;
+    finger.y      = 9;
+    CHECK(rig.state.apply(finger, 2));
+
+    rig.sink.clear();
+    rig.send(input_request(core::InputEventType::PointerUp, 2, 7, 9));
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+    CHECK(rig.state.pointer_down());
+}
+
+void the_hold_watchdog_ignores_the_clients_clock()
+{
+    Rig rig;
+
+    // A client replaying a recording sends timestamps from its own epoch. The
+    // queued event keeps them -- a gesture recogniser needs the intervals --
+    // but the safety timer must not, or a recording from a large clock expires
+    // its own hold on the very next tick, and one from the future never does.
+    rig.send(input_request(core::InputEventType::ButtonDown, 1, 0, 0, /*button=*/0,
+                           /*touch_id=*/0, /*at_ms=*/900000),
+             /*now=*/100);
+    CHECK(rig.state.button_down(0));
+
+    rig.bridge.tick(200, &Collector::emit, &rig.sink);
+    CHECK(rig.state.button_down(0));
+    CHECK(rig.bridge.stats().holds_expired == 0);
+
+    // And it does still expire, on the device's own clock.
+    rig.bridge.tick(100 + 30001, &Collector::emit, &rig.sink);
+    CHECK(!rig.state.button_down(0));
+}
+
+void a_frame_too_large_for_the_buffer_says_so_as_itself()
+{
+    // A build whose buffer is smaller than the panel. Not "nothing has been
+    // rendered yet" -- the screen is fine and a number in the composition root
+    // is wrong, which is a different place to go looking.
+    Rig rig(40, 30, PixelFormat::Rgb888);
+    std::vector<std::uint8_t> tiny(16);
+    Bridge                    small(rig.queue, rig.state, rig.screen, tiny.data(), tiny.size());
+    Collector                 sink;
+    const auto                message = request(Opcode::ScreenRequest, 1);
+    small.handle(message.data(), message.size(), 0, &Collector::emit, &sink);
+    CHECK(sink.last_error() == ErrorCode::Unsupported);
+    CHECK(sink.last_error() != ErrorCode::NoScreen);
+}
+
+void a_decoded_capabilities_body_can_never_claim_more_buttons_than_it_holds()
+{
+    CapabilitiesBody in;
+    in.button_count = 2;
+    std::uint8_t raw[kCapabilitiesBodyBytes] = {};
+    const std::size_t written = encode_capabilities(in, raw, sizeof(raw));
+    CHECK(written == kCapabilitiesBodyBytes);
+
+    // A device claiming five buttons; the struct holds four.
+    raw[7] = 5;
+    CapabilitiesBody out;
+    CHECK(decode_capabilities(raw, written, out));
+    CHECK(out.button_count == 4);
+}
+
+void a_flush_is_counted_like_an_overrun()
+{
+    core::InputQueue queue;
+    core::InputEvent event;
+    event.type = core::InputEventType::ButtonDown;
+    CHECK(queue.push(event));
+    CHECK(queue.push(event));
+    queue.clear();
+
+    // pushed == popped + dropped + flushed + size, at every moment.
+    const auto& s = queue.stats();
+    CHECK(s.flushed == 2);
+    CHECK(s.pushed == s.popped + s.dropped + s.flushed + queue.size());
+}
+
 int main()
 {
     an_envelope_survives_a_round_trip();
@@ -822,6 +1051,18 @@ int main()
     a_disconnect_lifts_what_the_remote_was_holding();
     input_reset_is_available_as_a_command();
     a_physical_press_survives_a_remote_disconnect();
+
+    a_button_the_board_will_not_simulate_is_refused_by_the_device();
+    an_out_of_range_button_is_still_a_different_error_from_a_refused_one();
+    a_hold_that_cannot_be_released_stays_held_for_the_next_tick();
+    a_pointer_hold_that_cannot_be_released_also_stays_held();
+    a_release_that_could_not_be_queued_leaves_the_input_held();
+    an_overrun_is_not_reported_as_a_screenshot_collision();
+    the_remote_may_not_lift_a_hold_a_person_owns();
+    the_hold_watchdog_ignores_the_clients_clock();
+    a_frame_too_large_for_the_buffer_says_so_as_itself();
+    a_decoded_capabilities_body_can_never_claim_more_buttons_than_it_holds();
+    a_flush_is_counted_like_an_overrun();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d debug-channel check(s) failed\n", failures);

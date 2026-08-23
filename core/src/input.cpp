@@ -28,6 +28,10 @@ bool InputQueue::pop(InputEvent& out)
 
 void InputQueue::clear()
 {
+    // Counted, not silent: the header's identity
+    // `pushed == popped + dropped + flushed + size()` is only true if a
+    // deliberate discard is as visible as an overrun.
+    stats_.flushed += static_cast<std::uint32_t>(count_);
     head_  = 0;
     count_ = 0;
 }

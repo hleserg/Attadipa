@@ -11,8 +11,14 @@ namespace attadipa::sim {
 
 LvglScreenSource::LvglScreenSource(const platform::BoardProfile& board) : board_(board)
 {
-    const std::uint8_t count =
-        board.button_count > 4 ? 4 : board.button_count;
+    // Clamped against the **source** array, not against the wire struct's four
+    // slots. `board.buttons` holds `kMaxBoardButtons` (three); clamping to four
+    // and then indexing it read one past the end for any profile that claimed
+    // four. The static_assert in the header now makes the mistake impossible
+    // to reintroduce, but the clamp still has to be the smaller of the two.
+    const std::uint8_t count = board.button_count > platform::kMaxBoardButtons
+                                   ? platform::kMaxBoardButtons
+                                   : board.button_count;
     for (std::uint8_t i = 0; i < count; ++i) {
         std::strncpy(buttons_[i].id, board.buttons[i].id, sizeof(buttons_[i].id) - 1);
         buttons_[i].flags = 0;
@@ -27,6 +33,16 @@ LvglScreenSource::LvglScreenSource(const platform::BoardProfile& board) : board_
         }
     }
     button_count_ = count;
+}
+
+bool LvglScreenSource::stable_since(std::uint32_t ms) const
+{
+    // LVGL stamps `last_activity_time` on every input event it processes, so
+    // this is the same clock the interface itself reacts to -- including the
+    // events the debug bridge injected, because they arrive through a real
+    // indev. `lv_display_get_inactive_time(nullptr)` reports the default
+    // display, which is the only one the simulator has.
+    return lv_display_get_inactive_time(nullptr) >= ms;
 }
 
 const char* LvglScreenSource::build_id() const

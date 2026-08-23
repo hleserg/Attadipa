@@ -13,12 +13,22 @@
 // a second source appears — a debug bridge injecting a swipe, and later a real
 // touch controller and a real button.
 //
-// The rule that shapes this file: **there is exactly one path into the
-// interface, and every source pushes into it.** A remote tap and a finger tap
-// arrive as the same event, in the same queue, and the interface cannot tell
-// them apart. The alternative — a debug path that calls screen handlers
+// The rule that shapes this file: **every source this project writes a driver
+// for pushes into one queue**, and the interface cannot tell them apart. A
+// remote tap and a finger tap arrive as the same event, in the same order, in
+// the same space. The alternative — a debug path that calls screen handlers
 // directly — produces tests that pass against code a user's finger would never
 // reach, which is worse than no tests because it reads as coverage.
+//
+// **Today that is one producer: the debug bridge.** The simulator's finger is
+// LVGL's own `lv_sdl_mouse_create()`, which reads SDL and reaches the
+// interface as its own indev without passing through here — an explicit
+// exception, not an oversight, and the reason `InputOrigin::Physical` has no
+// producer outside the tests yet. The touch controller and the buttons are
+// T-114's, and they are what this side of the enum is for. Until then, do not
+// read this file as saying the simulator's mouse is in the queue: it is not,
+// and a claim that outruns the code is the thing this repository's review gate
+// exists to catch.
 //
 // Two properties this queue guarantees, both because the far end is an MCU:
 //
@@ -53,8 +63,11 @@ enum class InputEventType : std::uint8_t {
 // Three, because the T-Watch's three named inputs (PWR through the PMU, and
 // BOOT and RST on the GNSS daughterboard) is the largest set either board is
 // known to have, and the Waveshare's count is two. A profile that needs more
-// changes this constant and the assertion that guards it, rather than growing
-// silently.
+// changes this constant **and** `platform::kMaxBoardButtons` **and** the wire
+// struct's `buttons[]` bound, which are three numbers in three libraries that
+// do not include one another. `sim/screen_source.h` is the one translation
+// unit that sees all three, and it carries the `static_assert` that ties them
+// together — that is where a raised bound fails to compile, on purpose.
 inline constexpr std::uint8_t kMaxButtons = 3;
 
 // One touch point.
@@ -98,7 +111,13 @@ struct InputQueueStats {
     std::uint32_t pushed  = 0;
     std::uint32_t popped  = 0;
     std::uint32_t dropped = 0;  // queue was full. Never silent.
+    std::uint32_t flushed = 0;  // discarded by clear(). Also never silent.
 };
+
+// `pushed == popped + dropped + flushed + size()` holds at every moment. That
+// identity is the whole point of the counters: a number that does not add up
+// is a lost event, and a lost input event is a UI bug that reproduces once a
+// week and cannot be explained.
 
 // A fixed-capacity single-producer-friendly ring of input events.
 //
@@ -115,6 +134,11 @@ public:
     // Takes the oldest event. Returns false when empty.
     bool pop(InputEvent& out);
 
+    // Discards everything, counting what it discarded. Used by the tests and
+    // available to a caller that has decided the queued past is meaningless;
+    // note that `input reset` does **not** use it — that path lifts what is
+    // held through `InputState::release_all`, because a wedged widget needs
+    // the release *delivered*, not the release *forgotten*.
     void clear();
 
     bool        empty() const { return count_ == 0; }

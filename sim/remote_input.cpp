@@ -2,6 +2,8 @@
 
 #include "lvgl.h"
 
+#include <cstddef>
+
 namespace attadipa::sim {
 namespace {
 
@@ -9,40 +11,102 @@ core::InputQueue* g_queue = nullptr;
 InputListener     g_button_listener  = nullptr;
 InputListener     g_pointer_listener = nullptr;
 
-// What LVGL should see on its next read. LVGL polls; the queue pushes. The gap
-// between the two is this pair of variables, and it exists because a tap whose
-// down and up both landed between two polls would otherwise never be seen at
-// all -- the press would be set and cleared before anything looked.
-bool          g_pointer_pressed = false;
-std::int16_t  g_pointer_x       = 0;
-std::int16_t  g_pointer_y       = 0;
+// What LVGL should see, one transition at a time.
+//
+// **LVGL reads an input device every `LV_DEF_REFR_PERIOD`, which this build
+// sets to 33 ms** (`sim/lv_conf_simulator.h`, and `lv_indev.c:132` creates the
+// read timer with it) -- *not* once per `lv_timer_handler` call. The simulator
+// loop runs at 5 ms while a client is connected, so roughly six or seven pumps
+// happen between two reads. An earlier version of this file kept a single
+// `press_pending`/`release_pending` pair across that gap, which silently
+// coalesced: two taps arriving inside one 33 ms window produced **one** click,
+// at the second tap's coordinates. Worse, the diagnostic screen draws its trail
+// from the queue drain rather than from LVGL, so the screenshot showed all four
+// points landing while the interface had received one click -- the tool
+// manufacturing the exact defect it exists to rule out, and timing-dependent
+// enough to read as a flaky UI bug rather than a tool bug.
+//
+// The fix is LVGL's own idiom: a FIFO of transitions, one reported per read
+// callback, with `data->continue_reading` set while more remain. LVGL's
+// `do { indev_read_core(); ... indev_pointer_proc(); } while (continue_reading)`
+// (`lv_indev.c:253-287`) then processes every one of them inside the same
+// 33 ms tick, in order, with each press and release actually dispatched.
+struct PointerTransition {
+    std::int16_t x       = 0;
+    std::int16_t y       = 0;
+    bool         pressed = false;
+};
 
-// Set when a press arrived and was not yet reported. Held for one read so that
-// a zero-duration tap still produces a press LVGL can see.
-bool g_press_pending  = false;
-bool g_release_pending = false;
+// Sized to the input queue: one pump can produce at most one transition per
+// queued event, and the bridge's own rate cap (500/s) keeps a 33 ms window far
+// below this. When it is full the pump stops draining rather than overwriting,
+// so backpressure lands in the queue -- which counts -- instead of silently
+// eating a swipe point here.
+constexpr std::size_t     kTransitionCapacity = core::InputQueue::kCapacity;
+PointerTransition         g_transitions[kTransitionCapacity];
+std::size_t               g_transition_head  = 0;
+std::size_t               g_transition_count = 0;
+
+// The state LVGL last saw, held between transitions so that a read with an
+// empty FIFO repeats the current truth rather than inventing a release.
+bool         g_pointer_pressed = false;
+std::int16_t g_pointer_x       = 0;
+std::int16_t g_pointer_y       = 0;
+
+bool transitions_full()
+{
+    return g_transition_count == kTransitionCapacity;
+}
+
+// The press state *after* everything already in the FIFO -- the state a move
+// arriving now should carry. Reading `g_pointer_pressed` instead would use the
+// state LVGL has reached, which lags whatever is still queued.
+bool pending_pressed()
+{
+    if (g_transition_count == 0) {
+        return g_pointer_pressed;
+    }
+    const std::size_t last = (g_transition_head + g_transition_count - 1) % kTransitionCapacity;
+    return g_transitions[last].pressed;
+}
+
+void push_transition(std::int16_t x, std::int16_t y, bool pressed)
+{
+    if (transitions_full()) {
+        return;
+    }
+    const std::size_t at = (g_transition_head + g_transition_count) % kTransitionCapacity;
+    g_transitions[at]    = PointerTransition{x, y, pressed};
+    ++g_transition_count;
+}
 
 void read_pointer(lv_indev_t* indev, lv_indev_data_t* data)
 {
     (void)indev;
+
+    if (g_transition_count > 0) {
+        const PointerTransition& next = g_transitions[g_transition_head];
+        g_pointer_x                   = next.x;
+        g_pointer_y                   = next.y;
+        g_pointer_pressed             = next.pressed;
+        g_transition_head             = (g_transition_head + 1) % kTransitionCapacity;
+        --g_transition_count;
+
+        // Come straight back for the next one. Without this each transition
+        // would wait 33 ms for its own tick, and a 24-point swipe would take
+        // most of a second to reach the interface.
+        //
+        // `data->timestamp` is deliberately left to LVGL. A client replaying a
+        // recorded gesture sends its own `at_ms`, which the queued event keeps
+        // for a gesture recogniser -- but LVGL uses this field for
+        // `last_activity_time`, and a timestamp from another epoch would break
+        // the inactivity clock the screen dimming will later rest on.
+        data->continue_reading = g_transition_count > 0;
+    }
+
     data->point.x = g_pointer_x;
     data->point.y = g_pointer_y;
-
-    if (g_press_pending) {
-        data->state      = LV_INDEV_STATE_PRESSED;
-        g_press_pending  = false;
-        // If the release arrived in the same batch, it waits for the next read
-        // rather than being dropped. LVGL needs to observe the pressed state at
-        // least once for a click to exist.
-        return;
-    }
-    if (g_release_pending) {
-        data->state       = LV_INDEV_STATE_RELEASED;
-        g_release_pending = false;
-        g_pointer_pressed = false;
-        return;
-    }
-    data->state = g_pointer_pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    data->state   = g_pointer_pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 
 }  // namespace
@@ -72,29 +136,32 @@ void remote_input_pump()
         return;
     }
 
+    // Drains everything the queue holds. The one-event-per-pump break this
+    // loop used to carry was there to stop a swipe collapsing into a jump; the
+    // transition FIFO above does that job properly now, and does it where LVGL
+    // can actually see each step. Buttons never went through LVGL and still do
+    // not -- the project has not decided what its buttons mean (D5), so they
+    // reach listeners rather than an `lv_group`.
     core::InputEvent event;
-    while (g_queue->pop(event)) {
+    while (!transitions_full() && g_queue->pop(event)) {
         switch (event.type) {
         case core::InputEventType::PointerDown:
-            g_pointer_x       = event.x;
-            g_pointer_y       = event.y;
-            g_pointer_pressed = true;
-            g_press_pending   = true;
+            push_transition(event.x, event.y, true);
             if (g_pointer_listener != nullptr) {
                 g_pointer_listener(event);
             }
             break;
         case core::InputEventType::PointerMove:
-            g_pointer_x = event.x;
-            g_pointer_y = event.y;
+            // A move carries the press state forward: LVGL learns a drag from
+            // a sequence of pressed points at moving coordinates, so reporting
+            // a move as released would end the gesture mid-swipe.
+            push_transition(event.x, event.y, pending_pressed());
             if (g_pointer_listener != nullptr) {
                 g_pointer_listener(event);
             }
             break;
         case core::InputEventType::PointerUp:
-            g_pointer_x       = event.x;
-            g_pointer_y       = event.y;
-            g_release_pending = true;
+            push_transition(event.x, event.y, false);
             if (g_pointer_listener != nullptr) {
                 g_pointer_listener(event);
             }
@@ -104,22 +171,6 @@ void remote_input_pump()
             if (g_button_listener != nullptr) {
                 g_button_listener(event);
             }
-            break;
-        }
-
-        // **One pointer event per pump, and this is the load-bearing line.**
-        //
-        // LVGL reads its input devices once per `lv_timer_handler`. Draining a
-        // whole swipe in one go would leave only the last coordinate for LVGL
-        // to see, collapsing thirty points into a single jump from the first to
-        // the last -- which is exactly the artificial high-level swipe the
-        // request says not to produce, arriving through the back door of an
-        // over-eager drain. Buttons are not polled, so they cost nothing to
-        // drain in a batch and do not stop it.
-        const bool is_pointer = event.type == core::InputEventType::PointerDown ||
-                                event.type == core::InputEventType::PointerMove ||
-                                event.type == core::InputEventType::PointerUp;
-        if (is_pointer) {
             break;
         }
     }

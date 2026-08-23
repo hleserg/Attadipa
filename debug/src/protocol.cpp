@@ -187,7 +187,12 @@ bool decode_capabilities(const std::uint8_t* body, std::size_t len, Capabilities
     out.format           = static_cast<PixelFormat>(body[4]);
     out.orientation      = static_cast<Orientation>(body[5]);
     out.max_touch_points = body[6];
-    out.button_count     = body[7];
+    // Clamped to what the struct holds. `button_count` arrives off the wire
+    // and every consumer uses it as the loop bound over a fixed 4-slot array;
+    // a device claiming five would walk past the end of a struct on the host.
+    constexpr std::uint8_t kWireButtons =
+        static_cast<std::uint8_t>(sizeof(out.buttons) / sizeof(out.buttons[0]));
+    out.button_count     = body[7] > kWireButtons ? kWireButtons : body[7];
 
     std::size_t at = 8;
     for (std::size_t i = 0; i < 4; ++i) {
@@ -271,9 +276,16 @@ bool decode_input_event(const std::uint8_t* body, std::size_t len, InputEventBod
 // --- CRC-32 ---------------------------------------------------------------
 
 // Bitwise rather than table-driven. A 1 KiB table would be the largest constant
-// in the debug subsystem, and this runs once per screenshot over a buffer that
-// is already being copied -- the table would buy microseconds and cost a
-// kilobyte of flash on a part where RESOURCE_BUDGET counts both.
+// in the debug subsystem, and this runs once per screenshot on a part where
+// RESOURCE_BUDGET counts every kilobyte of flash.
+//
+// The cost is **not** microseconds, and an earlier version of this comment said
+// it was. Eight iterations per byte over a 617 kB frame is 4.94 million inner
+// loops: milliseconds on a desktop, and on an ESP32-S3 the dominant term in a
+// capture that already blocks the interface. Recorded here rather than fixed
+// because moving the CRC or the capture off the interface thread is a design
+// change T-114 owns, and because a wrong number in a comment is how the next
+// person decides not to measure.
 std::uint32_t crc32(const std::uint8_t* data, std::size_t length, std::uint32_t seed)
 {
     std::uint32_t crc = ~seed;
