@@ -233,6 +233,59 @@ stale silently. The protocol is
   moved.
 - **Hardware required:** no.
 
+### T-130 · The retrofit magnetometer's own bus question, which T-096 does not ask
+- **Priority:** P2, and it gates every magnetometer interference measurement on
+  the Waveshare unit.
+- **Dependencies:** none to ask it. T-096 answers a **neighbouring** question and
+  is not a prerequisite; if T-096 lands on *node over I2C* the two answers have
+  to be taken together, and that is the only coupling.
+- **Why this exists:** fifteen citations across five files gated the retrofit
+  magnetometer's bus hazard on **T-096**, and T-096 is scoped to something else.
+  Its goal is *"how an Attadipa **node** attaches to this board — UART, or I2C as
+  a seventh device, or USB"*, and its source
+  ([WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.5)
+  files the hazard of *"a **detachable peripheral** on the bus … [that] takes the
+  watch's power management with it."* A soldered magnetometer shares the
+  stuck-slave failure and **not** the detachability. So T-096 can close in full —
+  "node on UART" meets every acceptance criterion it has — while nothing has ever
+  asked what a seventh soldered device does to the bus the AXP2101 sits on. An
+  agent reading G-09's blocker list would then see placement done, a rail chosen
+  and T-096 done, and run the speaker interference test on an unexamined bus.
+  That produces a `MEASURED` number nobody can retract. Found in review.
+- **Goal:** answer, for the **fitted** magnetometer specifically, what happens to
+  the Waveshare main I2C bus when it is added.
+- **Acceptance:** four things written down, each with its evidence or an explicit
+  `UNKNOWN`.
+  1. **Stuck-slave blast radius.** The bus carries the AXP2101, the RTC and four
+     others; a seventh device holding `SDA` low takes the PMU with it. State what
+     the watch does about it — recovery, timeout, or an accepted risk named as
+     one.
+  2. **The pull-ups, as a *module* question and not a die question.** The
+     AK09911C datasheet saying *"open-drain, external pull-ups required"*
+     ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §I2C
+     electrical) is true of nearly every I2C slave and settles nothing: the bus
+     already runs six devices. The real unknown is that CJMCU-9911 and GY-271 are
+     **breakout modules**, which commonly populate their own pull-ups. Fitting
+     one — or both, which that document contemplates — puts them in **parallel**
+     on this bus. Whether either board is populated is `UNKNOWN`; the retrofit's
+     own source table calls its evidence *"about **labels**, not about **nets**"*.
+     Measure the resistance or read the module schematic; do not infer it.
+  3. **Bus speed and total capacitance** with a seventh device and whatever
+     wiring reaches it.
+  4. **Whether T-096 has landed on I2C**, because that makes it eight and the
+     arithmetic in
+     [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md) G-15 changes.
+- **What must not be assumed:** that six working devices prove a seventh works;
+  that a breakout module has no pull-ups because the die needs them; that the
+  address being clear ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)
+  §4.3) says anything about the electrical question.
+- **Hardware required:** partly. The module pull-up question is a meter on the
+  board or a vendor schematic; the blast-radius decision is a design decision and
+  needs neither.
+- **ID note:** allocated as **T-130**, clear of `T-126` on `main` and of every
+  number visible on an open branch, because four branches have already collided
+  on `T-111`–`T-113`.
+
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
 - **Dependencies:** T-034 (**done**)
@@ -1080,7 +1133,10 @@ stale silently. The protocol is
 
 ### T-026 · Implement the honest heading model
 - **Priority:** P1
-- **Dependencies:** [ADR-0009](docs/adr/0009-heading.md) (**done**), A5/A6
+- **Dependencies:** [ADR-0009](docs/adr/0009-heading.md) (**done**). A5/A6 are
+  **answered** — 2026-08-22,
+  [OD-17](docs/research/OWNER_DECISIONS.md) — and are no longer a gate; what they
+  settled is written into ADR-0009 §3a, which this task now implements.
 - **Goal:** the *decision* is made — three quantities, explicit reference frames,
   no `UserBody`, a node's compass is the node's. What remains is building it and
   designing the states this hardware is actually in.
@@ -1088,6 +1144,22 @@ stale silently. The protocol is
   state table from ADR-0009 §5 rendered, including *standing still* as a
   designed screen rather than a blank dial; **no configuration of inputs draws a
   wrist-relative arrow from a `NodeBody` or `CourseOverGround` source.**
+  From ADR-0009 §3a: **co-location carried in a field of its own beside
+  `PositionSource`**, defaulting to `Unknown`, and never in `PositionValidity`,
+  `TrustState` or a `TrustReason` bit — an eleventh axis under
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §2. A node-supplied fix whose
+  co-location is `Unknown` reaches the screen labelled as the node's, and costs
+  nothing in `TrustState`: replaying the same fix with the state set and unset
+  must give an identical verdict and identical reason bits. Without this the
+  Waveshare board, which has no receiver of its own, loses the only navigation
+  story it has. And **`TrustEvaluator::compare_provider` must consult the
+  state**: it raises `ProviderDisagreement` past 250 m within a 5 s window with
+  no notion of which body either fix came from, and §3a makes two bodies 300 m
+  apart the ordinary case rather than evidence of a fault. Two fixes whose
+  co-location is `Unknown` are neither disagreement nor agreement — the same
+  silence-not-an-all-clear rule the comparison window already applies on the time
+  axis. Host test: replay `LocalGnss` and `NodeGnss` 300 m apart inside the
+  window and assert no `ProviderDisagreement` bit is set.
 - **Research status:** done
 - **Implementation status:** not started
 - **Tests:** host tests over recorded NMEA including stationary traces; a
@@ -1829,8 +1901,8 @@ Recommended next action:
   disturbing source on the unit — the speaker is `VERIFIED` at
   `WAVESHARE_BOARD_RECEIVED` §1.8 — but it is **not gated on placement alone**,
   which an earlier version of this bullet said. It also needs a **rail** (G-14,
-  still open in the same table), external pull-ups, and the seventh-device I2C
-  hazard **T-096** settled: a sensor with no rail measures nothing, and one
+  still open in the same table), the module pull-ups, and the seventh-device I2C
+  hazard **T-130** settled: a sensor with no rail measures nothing, and one
   sharing a rail with the subsystem it is measuring returns a confounded number
   that comes out labelled `MEASURED`.
   The haptic one (G-08) is gated on placement **and** on a vibration motor the
@@ -1848,8 +1920,10 @@ Recommended next action:
   bullet corrected four files and left the two `CLAUDE.md` sends an agent to
   first, then claimed one of them was already right. `STATUS.md` T-011 is
   corrected now, in the same round and after a second review said so, and it
-  names all four gates: the placement (T-109), the rail (G-14), the external
-  pull-ups and T-096.
+  names all four gates: the placement (T-109), the rail (G-14), the module
+  pull-ups and **T-130**. It said T-096 until a third review pointed out that
+  T-096 asks how a *node* attaches, not what a soldered seventh device does to
+  the bus — so it could have closed with the hazard never examined.
 
   The distinction the
   other files are careful about holds here too: a **stock** board still has no

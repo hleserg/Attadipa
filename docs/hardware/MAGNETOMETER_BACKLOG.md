@@ -83,8 +83,8 @@ fake-green result the project forbids.
 | G-06 | Hard-iron calibration | BLOCKED | needs a sensor |
 | G-07 | Soft-iron calibration | BLOCKED | needs a sensor |
 | G-08 | Haptic interference test | BLOCKED | placement (T-109) **and a vibration motor that is not fitted** — the pads on this unit are bare, T-097. Placing the sensor does not unblock it |
-| G-09 | Speaker interference test | BLOCKED | placement (T-109), **a rail** (G-14) and the bus hazard T-096. The speaker is on the unit and `VERIFIED`; nothing else about this row is settled |
-| G-10 | Charging interference test | BLOCKED | placement (T-109), **a rail** (G-14) and T-096. The charge path exists but is **not characterised** — this test establishes its own disturbing current |
+| G-09 | Speaker interference test | BLOCKED | placement (T-109), **a rail** (G-14), the module pull-ups, and the bus hazard **T-130** (*not* T-096, which asks how a **node** attaches, not what a soldered seventh device does to this bus). The speaker is on the unit and `VERIFIED`; nothing else about this row is settled |
+| G-10 | Charging interference test | BLOCKED | placement (T-109), **a rail** (G-14), the module pull-ups, and **T-130**. The charge path exists but is **not characterised** — this test establishes its own disturbing current |
 | G-11 | Quiet-window scheduling | DESIGN | **Yes** — and it is worth doing, because the mechanism is not magnetometer-specific |
 | G-12 | Heading confidence | DESIGN | **done in principle** — [ADR-0009](../adr/0009-heading.md) carries source, frame, confidence and validity; the *rendering* of low confidence is still UI work |
 | G-13 | Sensor fusion evaluation | RESEARCH | reading and evaluation only; no data to fuse |
@@ -124,8 +124,8 @@ the arbiter is being built for the contention that actually exists here.
 |---|---|---|
 | ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch, hardware ordered** — [OWNER_DECISIONS OD-17](../research/OWNER_DECISIONS.md) |
 | ~~A6~~ | ~~Does the Attadipa node carry one?~~ | **RESOLVED — no, deliberately** — [OWNER_DECISIONS OD-17](../research/OWNER_DECISIONS.md). The node compass path this row used to gate is closed, not merely unavailable |
-| G-14 | Which part, on which bus, at what address, on which rail? | answered for the part: CJMCU-9911 (AK09911C, `0x0C`) and GY-271 (QMC5883L, `0x0D`), both on the Waveshare main I2C bus. **The `CAD` strap belongs to the AK09911C alone** — it is what puts that part at `0x0C` rather than `0x0D`; the QMC5883L has no address-select pin at all, so its address is not a choice ([MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md):208-210, :116-118). Rail is still open |
-| G-15 | Is it on the same I2C bus as the PMU and RTC? | **yes — and that is a hazard as much as an answer.** The Waveshare main I2C bus carries every fitted device, so the retrofit is the seventh on it, and a seventh that holds `SDA` low takes the AXP2101 with it — [WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.5, filed as **T-096**. [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md) §4.3 clears the *address* conflict and not this one. What this settles is that no second bus has to be found; what it leaves open is the rail, the pull-ups and T-096 |
+| G-14 | Which part, on which bus, at what address, on which rail? | answered for the part: CJMCU-9911 (AK09911C, `0x0C`) and GY-271 (QMC5883L, `0x0D`), both on the Waveshare main I2C bus. **The `CAD` strap belongs to the AK09911C alone** — it is what puts that part at `0x0C` rather than `0x0D`; the QMC5883L has no address-select pin at all, so its address is not a choice ([MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md) §3.3 for the QMC5883L's fixed address, §2.4 for the AK09911C's `CAD` strap table). Rail is still open |
+| G-15 | Is it on the same I2C bus as the PMU and RTC? | **yes — and that is a hazard as much as an answer.** The Waveshare main I2C bus carries every fitted device, so the retrofit is the seventh on it, and a seventh that holds `SDA` low takes the AXP2101 with it — [WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.5, filed as **T-130**. T-096 was cited here and answers a different question — it scopes a *detachable node*, and a soldered sensor shares the stuck-slave failure but not the detachability, so T-096 can close in full without this ever being asked. [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md) §4.3 clears the *address* conflict and not this one. What this settles is that no second bus has to be found; what it leaves open is the rail, the module pull-ups and **T-130**. The *“seventh”* count assumes T-096 does **not** land on I2C; if it does, it is eight |
 
 The honest state of this backlog, now that A5 and A6 are answered rather than
 open: of the thirteen epics above, seven are `DESIGN` kind (one, G-03, only
@@ -159,11 +159,27 @@ this paragraph said they were.
      and a sensor sharing a rail with the subsystem it is measuring returns a
      confounded number that comes out labelled `MEASURED` and cannot be
      retracted.
-  2. **Pull-ups** — [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md)
-     records *"external pull-ups required"*.
+  2. **Pull-ups — and the gate is not the one this list used to name.**
+     [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md) records
+     *"open-drain, external pull-ups required"* from the AK09911C's I2C
+     electrical specification. That is a **datasheet fact about the die**, true
+     of nearly every I2C slave, and it is already satisfied: the Waveshare main
+     bus runs six working devices, so pull-ups exist on it. It settles nothing
+     and it is not an open question.
+
+     The real risk points the other way and was stated nowhere until review said
+     so. **CJMCU-9911 and GY-271 are breakout modules, and breakout modules
+     commonly populate their own pull-ups.** Fitting one — or both, which
+     `MAGNETOMETER_RETROFIT` §4.3 contemplates — puts those in **parallel** with
+     the bus resistors already there, lowering the effective pull-up and raising
+     the sink current on a bus the AXP2101 shares. Whether either module is
+     populated is **`UNKNOWN`**: the retrofit's own source table calls its
+     module evidence *"about **labels**, not about **nets**"*. Measure it or read
+     the module schematic; the die's requirement does not answer it. Part of
+     **T-130**.
   3. **The bus** — the sensor is the **seventh** device on the Waveshare main
      I2C bus. `WAVESHARE_BOARD_RECEIVED` §1.5 lists six and warns that a seventh
-     holding `SDA` low takes the AXP2101 with it: **T-096**. Fitting both
+     holding `SDA` low takes the AXP2101 with it: **T-130**. Fitting both
      candidate modules at once, which `MAGNETOMETER_RETROFIT` plans, makes
      eight.
 - **One — G-08, the haptic test — is blocked on placement *and* on a vibration

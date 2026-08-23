@@ -472,8 +472,12 @@ available on this board.
   rather than merely delaying it: the placement (T-109), the **rail** the sensor
   sits on (`MAGNETOMETER_BACKLOG` G-14 — a sensor sharing a rail with the
   disturbing subsystem measures a confounded circuit and the number still comes
-  out `MEASURED`), the **external pull-ups** the retrofit requires, and
-  **T-096**, the sensor being the seventh device on the Waveshare main I2C bus.
+  out `MEASURED`), the **module pull-ups** — a breakout board question, not the
+  die's, and `UNKNOWN` on both candidate modules — and **T-130**, the sensor
+  being the seventh device on the Waveshare main I2C bus. This gate read T-096
+  until review pointed out that T-096 is scoped to how a *detachable node*
+  attaches: it could close in full as "node on UART" while nothing had ever
+  asked what a soldered seventh device does to the bus the AXP2101 sits on.
   On that same Waveshare unit the haptic pair stays doubly blocked for a second,
   unrelated reason: it has no vibration motor fitted at all, so there is nothing
   to interfere.
@@ -499,8 +503,8 @@ what makes two of the four `BLOCKED` interference rows unopenable by any
 retrofit. The owner has ordered a **CJMCU-9911 (AK09911C)** and a **GY-271
 (QMC5883L)**, and one of them is going inside. The five magnetometer epics are
 dormant, not dead. Which of the two parts, where it physically sits (T-109),
-which rail it sits on (G-14), the external pull-ups it needs, and T-096 for its
-place on the main I2C bus are all open —
+which rail it sits on (G-14), the module pull-ups it may or may not already
+carry, and T-130 for its place on the main I2C bus are all open —
 [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) has the
 datasheet comparison and the one measurement that decides the part. The **Attadipa**
 node will never carry one — the scope is the answer's own, since OD-7 makes the
@@ -509,6 +513,44 @@ companion *any* node and a third party's is `UNKNOWN`, which is why
 probably a gyroscope instead, for GNSS power optimisation — filed as its own
 capability question, [#93](https://github.com/hleserg/Attadipa/issues/93)
 (T-111).
+
+**Two corrections from the third review of #94, both recorded here because they
+change what the next agent must do rather than only what a document says.**
+
+*ADR-0009 §3a named the wrong types.* Its operative sentence said co-location was
+*"carried on `PositionValidity` / `TrustState`"*. Neither can hold it:
+`PositionValidity` is `NoFix < Stale < Degraded < Valid` with the ordering a
+stated contract and `kPositionValidityCount` assuming `Valid` is last, and
+`TrustState` is a three-value fused verdict. The third reading — a
+`TrustReason::NotColocated` bit — is the dangerous one, because reason bits carry
+weight *toward* `Untrusted`, so every node-supplied fix on a board with no
+receiver of its own would take a permanent trust penalty. That is the product
+§3a exists to protect. Co-location now has a field of its own beside
+`PositionSource`, named as an **eleventh axis** under
+[ADR-0011](docs/adr/0011-gnss-integrity.md) §2, and it is in the ADR's
+**Committed to**, its **Testable** list and T-026's acceptance — it was in none
+of them, so nothing would have noticed it was never built.
+
+*§3a also breaks a detector already in the tree.* `TrustEvaluator::compare_provider`
+raises `ProviderDisagreement` past 250 m inside a 5 s window with no notion of
+which body either fix came from. §3a makes two bodies 300 m apart the ordinary
+case — a node in a bag by the door, the configuration OD-8 asks for by name — so
+a good node fix would degrade trust in a good local fix. The same failure was
+already closed on the **time** axis by the comparison window; the **space** axis
+now has the state that closes it, and consulting it is in T-026's acceptance with
+a host test.
+
+**T-130 is new, and it exists because a gate pointed at the wrong task.** Fifteen
+citations across five files blocked the retrofit magnetometer's bus hazard on
+**T-096** — which is scoped to how a *detachable node* attaches, and can close in
+full as "node on UART" while nothing has ever asked what a soldered seventh
+device does to the bus the AXP2101 shares. All fifteen now point at T-130. The
+pull-up gate was mis-stated in the same places: *"external pull-ups required"* is
+the AK09911C die's requirement, true of nearly every I2C slave and already
+satisfied by six working devices on that bus. The real unknown is the opposite —
+CJMCU-9911 and GY-271 are **breakout modules** and commonly populate their own
+pull-ups, which would sit in *parallel*; whether either does is `UNKNOWN`, since
+the retrofit's evidence is *about labels, not about nets*.
 
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as

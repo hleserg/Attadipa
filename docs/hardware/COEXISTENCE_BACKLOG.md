@@ -33,7 +33,7 @@ ordered a CJMCU-9911 and a GY-271 and is soldering one into the Waveshare unit
 ([OD-17](../research/OWNER_DECISIONS.md)). So the magnetometer arrives — but the
 *haptic* pair still cannot be measured on it, because that unit has no vibration
 motor fitted (`OBSERVED`, T-097). The audio pair can be, once the sensor is
-placed, a rail is chosen and the seventh-device bus hazard T-096 is settled. Two
+placed, a rail is chosen and the seventh-device bus hazard **T-130** is settled — T-096 is the *node* link and does not ask this. Two
 epics, two different blockers; see
 [MAGNETOMETER_BACKLOG](MAGNETOMETER_BACKLOG.md), which is the authority.
 
@@ -53,7 +53,7 @@ blocked, and saying so is more useful than quietly substituting a different test
 | C-06 | GNSS coexistence tests | BLOCKED | hardware (A1) |
 | C-07 | LoRa coexistence tests | BLOCKED | hardware (A1) |
 | C-08 | Haptic / magnetometer tests | **BLOCKED** | placement (T-109) **and a vibration motor**: the unit the sensor is going into has none fitted, `OBSERVED` — T-097 |
-| C-09 | Audio / magnetometer tests | **BLOCKED** | placement (T-109), a rail (G-14) and the bus hazard T-096. The speaker is on the unit and `VERIFIED` |
+| C-09 | Audio / magnetometer tests | **BLOCKED** | placement (T-109), a rail (G-14), the module pull-ups, and the bus hazard **T-130**. The speaker is on the unit and `VERIFIED` |
 | C-10 | Display / GNSS tests | BLOCKED | hardware (A1) |
 | C-11 | Charging / GNSS tests | BLOCKED | hardware (A1) |
 | C-12 | Diagnostic trace | DESIGN + BUILD | **Yes** — and it must come *before* the tests that need it |
@@ -77,10 +77,16 @@ buses. Anything that could delay an SOS or a critical alert loses, unconditional
 
 ## Current state of the interference matrix
 
-[INTERFERENCE_MATRIX.md](INTERFERENCE_MATRIX.md) lists 14 candidate pairs. Every
-one is marked `THEORETICAL RISK` and the results table is empty, because no
-measurement has been made. Four of those pairs name the magnetometer and are
-marked **`BLOCKED`** there rather than left looking like pending work — with the
-blocker named per row, because they do not share one. An earlier version of this
-paragraph said two of them, and said `NOT MEASURABLE ON THESE BOARDS`; both were
-overtaken by A5 being answered.
+[INTERFERENCE_MATRIX.md](INTERFERENCE_MATRIX.md) lists **16** candidate pairs
+across its two tables — eleven in the first, five in the second — and the
+results table is empty, because no measurement has been made. **Twelve** are
+marked `THEORETICAL RISK`; the other **four** name the magnetometer and are
+marked **`BLOCKED`**, rather than left looking like pending work, with the
+blocker named per row because they do not share one.
+
+Two corrections have landed in this paragraph. An earlier version said two rows
+and `NOT MEASURABLE ON THESE BOARDS`; both were overtaken by A5 being answered.
+A later one kept *"every one is marked `THEORETICAL RISK`"* while changing the
+next sentence from a recommendation into the present tense, so the paragraph
+contradicted itself in three sentences — review caught it. The count of 14 was
+wrong throughout and predates the second table.

@@ -7,6 +7,11 @@ Amended: 2026-08-22 — **§3a added** by
 general rule the node-compass refusal in §3 is a special case of, so it holds
 whichever way A6 had come back. §3's own text is unchanged in force; what changed
 is that the condition it was written against is now settled.
+Amended: 2026-08-23 — §3a's operative sentence rewritten. It named
+`PositionValidity` / `TrustState` as the state's home; neither can hold it, and
+one of the three readings would have penalised every node-supplied fix on a
+board that has no receiver of its own. Co-location now has a field of its own.
+Found in review.
 
 ## Context
 
@@ -179,11 +184,46 @@ resting on an unobservable quantity, which is the failure §3 above exists to
 refuse, moved from heading to position. §3 gates orientation with four
 conditions and refuses otherwise. Cross-body position gets the same shape:
 
-> **Co-location is a required state carried on `PositionValidity` /
-> `TrustState`, never an assumption. It defaults to `Unknown`, and `Unknown` is
-> the ordinary case rather than a failure. What it withholds is the *claim*: a
-> position whose co-location is `Unknown` may be shown, and must be shown as the
-> node's fix rather than as the wearer's.**
+> **Co-location is a required state, carried in a field of its own beside
+> [`PositionSource`](../../core/include/attadipa/core/position.h) — never an
+> assumption. It defaults to `Unknown`, and `Unknown` is the ordinary case
+> rather than a failure. What it withholds is the *claim*: a position whose
+> co-location is `Unknown` may be shown, and must be shown as the node's fix
+> rather than as the wearer's.**
+
+**A field of its own, and the emphasis is load-bearing.** An earlier version of
+this section said the state was *"carried on `PositionValidity` / `TrustState`"*.
+Both are wrong, and review caught all three readings an implementer could take:
+
+- [`PositionValidity`](../../core/include/attadipa/core/position.h) is
+  `NoFix < Stale < Degraded < Valid`, and the file makes the order a contract —
+  *"ordered worst to best so that 'at least Degraded' is a comparison rather than
+  a switch"*, with `kPositionValidityCount` assuming `Valid` is last. `Unknown`
+  has nowhere to sit: this section calls it *ordinary, not a failure*, so it
+  cannot sort below `NoFix`, and it is not a degree of position quality, so it
+  sorts nowhere at all. Appending it makes every fold-the-best comparison prefer
+  it to `Valid`.
+- [`TrustState`](../../core/include/attadipa/core/trust.h) is
+  `Untrusted | Degraded | Trusted`, the output of a weighted score. A fourth
+  value that is neither better nor worse is not a verdict.
+- **A `TrustReason::NotColocated` bit is the worst of the three**, because it
+  looks right. Reason bits carry weight *toward* `Untrusted`, and this section
+  says `Unknown` withholds the claim and not the position. As a reason bit,
+  every node-supplied fix on a Waveshare board — a board with no receiver of its
+  own, whose entire navigation story is the node's fix — takes a permanent trust
+  penalty. That is the product this section was rewritten to protect, broken by
+  the sentence protecting it.
+
+[ADR-0011](0011-gnss-integrity.md) §2 forbids all three by name: *"These are
+separate, and no two of them may be stored in the same field."* Co-location is
+an **eleventh axis** and not one of that table's ten — it is a *provenance
+geometry* question, "is this fix's body the wearer's body", answered by neither
+`PositionSource` (which body produced it) nor `Origin` (which side of the link
+served it), and it belongs beside them rather than inside either. Note also that
+`PositionValidity` is **not**
+[`Validity`](../../core/include/attadipa/core/availability.h), which *does* carry
+`Unknown` and is the freshness axis — an implementer who reaches for the name
+lands on the wrong one.
 
 That is what lets the Waveshare board — which has no GNSS of its own — have a
 navigation story at all ([OD-1](../research/OWNER_DECISIONS.md),
@@ -196,6 +236,28 @@ exactly one of them is about the wearer. The user-facing consequence is that the
 screen says which, in words."* So a node-supplied *position* reaches the wearer's
 screen, labelled as the node's; a node-supplied *heading* does not reach the
 arrow at all.
+
+**One detector already in the tree will fire on this, and §3a is what makes it
+wrong.** `TrustEvaluator::compare_provider`
+([`core/src/trust.cpp`](../../core/src/trust.cpp)) raises
+`TrustReason::ProviderDisagreement` when two positions inside the 5 s comparison
+window are more than `provider_disagreement_mm` apart — 250 m by default
+([`trust.h`](../../core/include/attadipa/core/trust.h)) — and it has **no notion
+of which body either fix came from**. Before §3a, two positions that far apart
+were evidence that something was wrong. After it, they are the ordinary case:
+OD-8 asks by name for a watch with its own receiver *and* an attached node, and
+a node in a bag by the door while the wearer sits at a desk is exactly the
+configuration this section legitimises. A node 300 m away with a perfectly good
+fix would degrade trust in the wearer's own perfectly good fix.
+
+The same failure was already closed on the **time** axis — the comparison window
+exists because *"a node's position arriving after the watch's own fix went stale
+is measured against wherever the wearer was standing several minutes ago"*. §3a
+introduces the state that closes it on the **space** axis, and the comparison has
+to consult it: two fixes whose co-location is `Unknown` are not evidence of
+disagreement, and must not be recorded as such — nor as agreement, by the same
+silence-not-an-all-clear rule the window already follows. Carried into T-026's
+acceptance. Found in review.
 
 [OD-7](../research/OWNER_DECISIONS.md) item 3's *"never presented as the wearer's
 own fix"* says the same thing, and an earlier version of this section rested on it
@@ -324,13 +386,28 @@ time the user stops walking.
 chosen. A calibration record that carries sensor identity, provider identity,
 axis mapping, version, timestamp and quality (final §27), and that is invalidated
 when the provider changes. A Navigator that is designed for the states it will
-actually be in.
+actually be in. **Co-location as a field of its own beside `PositionSource`**
+(§3a), defaulting to `Unknown`, never folded into `PositionValidity`,
+`TrustState` or a `TrustReason` bit — an eleventh axis under ADR-0011 §2 and
+subject to that section's rule.
 
 **Testable.** In the simulator: scripted heading and scripted GNSS, including
 zero speed, a speed ramp across the gate, a node attaching with a `NodeBody`
 heading, and a stale heading. The assertion that matters: **no configuration of
 inputs causes a wrist-relative arrow to be drawn from a `NodeBody` or
-`CourseOverGround` source.** On hardware: `NOT EXECUTED — HARDWARE REQUIRED`.
+`CourseOverGround` source.**
+
+For §3a, three more, none of which need hardware. **One:** a node-supplied
+position with co-location `Unknown` reaches the screen and is labelled as the
+node's fix, not the wearer's — the Waveshare configuration, where refusing it
+would leave the board with no navigation at all. **Two:** co-location `Unknown`
+costs the fix nothing in `TrustState` — replay the same fix with the state set
+and unset and assert the verdict and the reason bits are identical, which is the
+assertion that fails if somebody re-implements it as a `TrustReason` bit.
+**Three:** the field is not `PositionValidity` and not `TrustState` — a
+compile-time assertion that both enumerations still hold exactly their documented
+values, so appending `Unknown` to either is a build failure rather than a silent
+reordering. On hardware: `NOT EXECUTED — HARDWARE REQUIRED`.
 
 **Open.** **H10** — the speed gate, per GNSS module. **A5 and A6 are answered**
 (2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-17): a

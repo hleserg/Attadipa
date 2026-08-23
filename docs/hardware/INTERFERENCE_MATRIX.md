@@ -45,9 +45,9 @@ is known to exist.
 | LoRa TX | Magnetometer | supply current transient | **BLOCKED** — the retrofit board has no LoRa at all, so no placement or rail decision opens this one | — | — | — | T-Watch only, and not owned | — |
 | Display DMA | GNSS | broadband EMI | THEORETICAL RISK | — | — | — | — | — |
 | High brightness | Battery / GNSS | supply droop | THEORETICAL RISK | — | — | — | — | — |
-| Audio amplifier | Magnetometer | speaker magnet and coil current | **BLOCKED** — sensor not placed (T-109), rail open (G-14), external pull-ups, T-096 | — | — | — | Waveshare | — |
+| Audio amplifier | Magnetometer | speaker magnet and coil current | **BLOCKED** — sensor not placed (T-109), rail open (G-14), module pull-ups unknown, bus hazard T-130 | — | — | — | Waveshare | — |
 | Battery charging | GNSS | switching noise | THEORETICAL RISK | — | — | — | — | — |
-| Battery charging | Magnetometer | charge current field | **BLOCKED** — sensor not placed (T-109), rail open (G-14), external pull-ups, T-096 | — | — | — | Waveshare | — |
+| Battery charging | Magnetometer | charge current field | **BLOCKED** — sensor not placed (T-109), rail open (G-14), module pull-ups unknown, bus hazard T-130 | — | — | — | Waveshare | — |
 
 **On the four `BLOCKED` rows.** No magnetometer pair in this matrix can be
 measured on either board **as shipped** — and three of the four have a route
@@ -94,10 +94,12 @@ closed list of two that was true of one row:
      bus — [WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md)
      §1.5 lists six (AXP2101 PMU, RTC, touch, IMU, two codecs) and warns that a
      seventh holding `SDA` low *"takes the watch's power management with it"*,
-     filed as **T-096**. `MAGNETOMETER_RETROFIT` §4.3 clears the *address*
+     filed as **T-130** — T-096 scopes a *detachable node* and can close without
+     this being asked. `MAGNETOMETER_RETROFIT` §4.3 clears the *address*
      conflict only, and its plan to fit both candidates at once would make eight.
 
-  So: placement plus a rail decision plus T-096 makes these two measurable.
+  So: placement plus a rail decision plus the module pull-ups plus T-130 makes
+  these two measurable.
   Placement alone makes them *attemptable*, which is not the same sentence and is
   the one that produces a bad number.
 
@@ -215,7 +217,8 @@ measurable once both devices exist, and nothing else stands in the way.
 The magnetometer rows are `BLOCKED`, and **not all for the same reason** — an
 earlier version of this paragraph said they *"cannot be measured on any targeted
 hardware at all"*, which was true before A5 was answered and is not true now.
-Two need a placed sensor, a rail and T-096; one needs a motor that is not fitted;
+Two need a placed sensor, a rail, the module pull-ups and T-130; one needs a
+motor that is not fitted;
 one needs a T-Watch that is not owned. Keeping that distinction visible is the
 whole point of this file: "not yet measured", "blocked on a thing we can do" and
 "cannot be measured here at all" must never look alike, and collapsing the last

@@ -1062,6 +1062,25 @@ the two that actually conflicted.
 
 ---
 
+> ### The gap between OD-15 and OD-17 is deliberate
+>
+> **There is no OD-16 in this file, and that is not an omission to fix.** Three
+> open pull requests each wrote an entry numbered OD-16 against the same `main`,
+> so the number belongs to whichever lands first and the rest renumber. Writing a
+> forward reference here would be a prediction about merge order — it would point
+> at the wrong record or at a permanent hole, depending on an ordering nobody
+> controls.
+>
+> `check_docs.py` catches the *duplicate* (a second OD-16 heading fails the
+> merge) but not this: a bare number carries no anchor for even a fixed checker
+> to follow (T-122). So the marker is prose in a quote block rather than a
+> heading — a heading here would itself be the duplicate the moment the real
+> OD-16 lands. It sits at the hole rather than only in the note further down this
+> file, because a reader arriving at OD-15 → OD-17 has no way to know the gap is
+> intentional without scrolling 185 lines past it. Found in review.
+
+---
+
 ## OD-17 — A5 and A6: an external magnetometer is coming for the watch; the node will never carry one
 
 **Decided:** 2026-08-22, on [#56](https://github.com/hleserg/Attadipa/issues/56),
@@ -1096,7 +1115,10 @@ devices on the bus). Two modules are ordered and which one goes in is a decision
 `MAGNETOMETER_RETROFIT` sets up and does not make. Placement gates because #83
 is explicit that nothing gets soldered until a survey of the case's magnetic
 environment (speaker magnet, motor pads, battery leads) says where, tracked as
-**T-109** — and the rail, the pull-ups and T-096 gate alongside it. So `Capability::Heading` has a *watch-side*
+**T-109** — and the rail, the module pull-ups and **T-130** gate alongside it
+(T-130, not T-096: T-096 decides how a *detachable node* attaches, and a
+soldered sensor shares that hazard's stuck-slave half and not its detachability,
+so T-096 can close without the sensor's own bus question ever being asked). So `Capability::Heading` has a *watch-side*
 external-magnetometer path in prospect, and every compass feature stays behind
 that survey rather than behind the parcel.
 
@@ -1219,8 +1241,9 @@ thing:
    tested"*.
 
 The word is now **`BLOCKED`** in all of them, with the blocker named per row,
-because the four rows do not share one: two need placement plus a rail plus
-T-096, one needs a motor that is not fitted, one needs a T-Watch that is not
+because the four rows do not share one: two need placement plus a rail plus the
+module pull-ups plus **T-130**, one needs a motor that is not fitted, one needs
+a T-Watch that is not
 owned. `NOT POSSIBLE` and `NOT MEASURABLE` both said "never" about states this
 project can leave.
 

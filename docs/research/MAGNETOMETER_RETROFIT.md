@@ -106,6 +106,16 @@ in M1 note 3 are both true and **cannot be had together** — a driver author wh
 reads them as one sentence will set 2.5 MHz on a shared watch bus that is
 nowhere near 100 pF. Open-drain, external pull-ups required.
 
+**That last sentence is the die's requirement and not an open question**, and it
+was read as one in four other files until review corrected them. It is true of
+nearly every I2C slave, and the Waveshare main bus already carries six working
+devices, so the pull-ups exist. What is genuinely `UNKNOWN` is the opposite
+case: **CJMCU-9911 and GY-271 are breakout modules and commonly populate pull-ups
+of their own**, which would sit in *parallel* with the bus resistors — two of
+them if §4.3's plan of fitting both is carried out. The evidence in §1's source
+table is *about labels, not about nets*, so this is not inferable from what we
+have. Filed as part of **T-130**.
+
 Address is strapped by the `CAD` pin, which the module breaks out:
 
 | `CAD` | 7-bit address |

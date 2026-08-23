@@ -164,6 +164,15 @@ a node that browns out or holds `SDA` low takes the watch's power management
 with it. Recorded here so the question is decided on purpose rather than by
 whoever solders first. Filed as **T-096**.
 
+That filing is about **the node** — a peripheral that can be unplugged — and it
+is scoped to the node deliberately. A *soldered* seventh device, which is what
+the magnetometer retrofit would be, shares the stuck-slave half of this hazard
+and has none of the detachability, so T-096 can be answered in full — "node on
+UART" — without anything having examined what the retrofit does to this bus.
+That question is **T-130**, filed separately after review found fifteen
+citations across five files gating the sensor's bus hazard on a task that does
+not ask about it.
+
 ### 1.6 The IMU has its axes printed on the board. `VERIFIED`, and it is half of H15
 
 Immediately beside the IMU there is a silkscreened axis triad with an origin
