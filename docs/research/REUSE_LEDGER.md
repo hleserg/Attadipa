@@ -1612,3 +1612,65 @@ mutation-checked three ways: disabling the comment/string blanking, loosening
 the colour rule back to where it would read `Rgb make_colour()\n{...}` as a
 colour literal, and dropping the zero exemption each turn it red. No hardware —
 this is a source-tree checker and touches no board.
+
+---
+
+### Probing the Waveshare SD slot to find out which bus mode it is wired for
+
+**Problem:** D14 asks whether the micro-SD connector on the
+`ESP32-S3-Touch-AMOLED-2.06` is wired for SDMMC 1-bit or SPI. Answering it means
+enumerating a card on the bench in a named mode on named pins, without writing to
+the card, to the board's flash, or to anything else. What is needed is a probe,
+not a driver — Attadipa has no `StorageService` implementation yet and this work
+must not become one.
+
+**Projects investigated:**
+
+| Candidate | What it is | Verdict |
+|---|---|---|
+| `espressif/esp-idf` `examples/storage/sd_card/sdmmc` | Espressif's own SDMMC example: host init, slot init, `esp_vfs_fat_sdmmc_mount`, `sdmmc_card_print_info`, then write/read/rename files | **The right shape, with two things that have to come out.** It writes files unconditionally, and it offers `CONFIG_EXAMPLE_FORMAT_IF_MOUNT_FAILED`, which partitions and formats the card when a mount fails — precisely the outcome a diagnostic must not be able to cause |
+| `espressif/esp-idf` `examples/storage/sd_card/sdspi` | the same example over the SD SPI host | Needed only for the fallback branch, and only if SDMMC fails |
+| The Waveshare BSP's own SD bring-up (S7) | vendor code for this exact board | **It is the claim under test.** Running the BSP to check the BSP is what produced the reading being corrected here |
+| `sdmmc_card_init()` + `sdmmc_card_print_info()` alone | ESP-IDF's public protocol-layer entry points, `components/sdmmc/include/sdmmc_cmd.h:31,39` | **This is the useful half.** Enumeration reads CID and CSD and never mounts a filesystem, so the destructive surface is not merely unused, it is absent |
+
+**Useful implementation:** the example's host/slot configuration and its
+`sdmmc_card_print_info()` call, reduced to enumeration.
+
+**License:** *"This example code is in the Public Domain (or CC0 licensed, at
+your option.)"* — read from the header of
+`examples/storage/sd_card/sdmmc/main/sd_card_example_main.c` itself, not from the
+repository's top-level `LICENSE`. Compatible with anything.
+
+**Decision:** `ADAPT` — take the configuration and the enumeration call, drop the
+write path and the format option.
+
+**Reason:** the example is Espressif's own and is the least surprising thing to
+put in front of a bench operator, but its defaults are tuned for a demo that
+wants to show a working filesystem. A probe wants the opposite: the smallest
+number of operations that can answer the question, and no operation that can
+destroy the evidence. Writing our own host configuration from the header would
+be four hundred lines of re-deriving what the example already states correctly.
+
+**Source revision:** ESP-IDF tag **v5.4**, commit
+`8e27ea72c6688b79348b123ff40d556cfe16c8c3`. The ESP-IDF source read to correct
+D14 in the first place is pinned at the same commit —
+`components/sdmmc/sdmmc_common.c`, `components/sdmmc/sdmmc_init.c`,
+`components/sdmmc/sdmmc_cmd.c`, `components/sdmmc/sdmmc_sd.c`,
+`components/sdmmc/sdmmc_io.c`, `components/fatfs/vfs/vfs_fat_sdmmc.c`,
+`components/esp_driver_sdspi/src/sdspi_transaction.c` and
+`components/esp_driver_sdmmc/src/sdmmc_host.c`.
+
+**Attadipa integration:** none, and deliberately. This is bench apparatus, not
+firmware: it is described in
+[`../hardware/SD_CARD_MODE_TEST.md`](../hardware/SD_CARD_MODE_TEST.md) as a
+`PURE_RAM_APP` probe to be loaded with `esptool load_ram`, so nothing is written
+to the board's flash and nothing enters the shipped tree. No entry is added to
+[DEPENDENCIES](DEPENDENCIES.md), because nothing here is linked into a firmware
+image. When a real `StorageService` is written it gets its own record; this one
+answers a question and stops.
+
+**Tests required:** none that can run on a host — the whole artefact is a
+hardware procedure. `NOT EXECUTED — HARDWARE REQUIRED`. What it must produce is
+the verbatim log of each step, pasted into
+[WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md), including the
+failures: a card that does not enumerate is a result, and an unnamed card is not.

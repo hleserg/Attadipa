@@ -1663,6 +1663,49 @@ stale silently. The protocol is
   BSP's touch bring-up with a comment saying why a level will not do.
 - **Hardware required:** no for (1), yes to re-verify (2).
 
+### T-127 · The SD slot needs a card in it, because an empty one answers nothing
+- **Filed from [#131](https://github.com/hleserg/Attadipa/issues/131)**, which
+  found D14 closed on evidence that could not close it.
+- **Priority:** P2 — nothing depends on the SD card today. It is here because a
+  wrong hardware fact sitting in the matrix is cheapest to correct before code
+  reads it, and the board layer will read this one.
+- **Dependencies:** none technical. It needs **one expendable micro-SD card** and
+  a person to put it in the slot.
+- **Why it is open again:** D14 asked which bus mode the connector is wired for.
+  It was marked `RESOLVED — SDMMC` on 2026-08-23 from the factory firmware's boot
+  log, which ends `sdmmc_common: sdmmc_init_ocr: send_op_cond (1) returned 0x107`
+  into an **empty slot**. That timeout is what *every* wiring produces when
+  nothing is in the socket to answer, so it carries no information about copper
+  at all. What the log does establish — the vendor's *software* selecting the
+  SDMMC host driver — is a fact about the vendor's build, and even that rested on
+  a wrong reading until it was re-derived: `sdmmc_common` and `vfs_fat_sdmmc` are
+  the shared protocol layer, not the SDMMC host, and an SD-over-SPI mount prints
+  under both.
+  [WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md) §4.3.
+- **Goal:** enumerate a card, and find out whether GPIO 17 is needed.
+- **What is already prepared:** the procedure, written non-destructive by
+  default — [SD_CARD_MODE_TEST](docs/hardware/SD_CARD_MODE_TEST.md). Steps 1–5
+  write nothing to the card, `format_if_mount_failed` is `false` throughout and
+  `esp_vfs_fat_sdcard_format()` is never called; the probe is a `PURE_RAM_APP`
+  image so nothing is written to the board's flash either. The one write step has
+  its own preconditions and does not run without a separate decision. The reuse
+  decision and licence are in
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
+- **Acceptance:** either a card enumerates — `sdmmc_card_print_info` output
+  recorded verbatim, with the mode, the pins, the clock and whether GPIO 17 was
+  touched — or it does not, recorded just as fully with the card named. A
+  negative on an unnamed card is not a result. D14 then moves to `RESOLVED` or
+  stays `PARTIAL` with the next step named.
+- **What must not be assumed:** that the BSP's pin map is a wiring fact. On the
+  ESP32-S3 the SDMMC slots route through the GPIO matrix — *"any GPIO may be
+  used for each of the SD card signals"* — and SPI mode uses a subset of the same
+  card contacts, so the schematic's `MOSI` and the BSP's `CMD` may be one net.
+  Neither document can be read as the answer; only a card can.
+- **What it will not settle either way:** whether `DAT1`–`DAT3` are routed
+  (4-bit), and card detect — no card-detect pin appears in either source.
+- **Hardware required:** yes — the owner's Waveshare unit, and one card whose
+  contents are expendable. `NOT EXECUTED — HARDWARE REQUIRED`.
+
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do
   when they land is decided now, while there is time to be wrong about it

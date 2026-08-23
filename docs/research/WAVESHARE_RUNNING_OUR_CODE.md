@@ -442,7 +442,7 @@ successfully on this unit**, which is the practically important half: whatever
 the die is called, `esp_lcd_sh8601` is a working starting point and the
 mismatch is not going to bite at bring-up.
 
-### 4.3 D14: the SD card is SDMMC, not SPI
+### 4.3 D14: the vendor's firmware *chose* SDMMC — which is not the same as the slot being *wired* for it
 
 ```
 W (2472) ESP32-S3-Touch-AMOLED-2.06: Warning: Long filenames on SD card are disabled in menuconfig!
@@ -453,13 +453,89 @@ E (2500) BS:VideoPlayer: Failed to mount SD card
 
 D14 asked whether the board is wired for SDMMC 1-bit or SPI, because the BSP
 says SDMMC on GPIO 1/2/3 while the schematic labels those nets `MOSI`/`SCK`/`MISO`.
-The vendor's shipping firmware calls into **`sdmmc_common` and `vfs_fat_sdmmc`** —
-the SDMMC host driver, not `sdspi`. The error is `send_op_cond` timing out, which
-is what an **empty slot** looks like; no card was inserted.
 
-So: **the vendor drives it as SDMMC**, and the schematic's SPI-style net names are
-labels rather than a mode. `RESOLVED` for what the vendor does. Whether SPI would
-*also* work is untested and nobody needs it to be.
+**An earlier revision of this section closed D14 on these four lines, and was
+wrong twice.** Both corrections are recorded, because the second is the one that
+matters and the first is why nobody caught the second.
+
+**Correction 1 — the reason given did not hold.** It read: the firmware *"calls
+into `sdmmc_common` and `vfs_fat_sdmmc` — the SDMMC host driver, not `sdspi`"*.
+Neither of those is the SDMMC host driver. Both are the **shared** layers above
+it, used identically by the SD-over-SPI host:
+
+- `sdmmc_init_ocr()` is in `components/sdmmc/sdmmc_common.c`, whose log tag is
+  `"sdmmc_common"` (`:23`), and it branches on `host_is_spi(card)` at `:39`,
+  `:61`, `:71` and `:93` rather than being SD-mode-only;
+- `esp_vfs_fat_sdspi_mount()` is in `components/fatfs/vfs/vfs_fat_sdmmc.c`
+  (`:332`) — the *same file* as `esp_vfs_fat_sdmmc_mount()` (`:247`), tagged
+  `"vfs_fat_sdmmc"` (`:25`), and both raise the same `"sdmmc_card_init failed"`
+  string (`:280`, `:378`).
+
+An SD-over-SPI mount that fails therefore prints under exactly those two tags
+too. The tags name the protocol layer, not the host.
+
+**There is a discriminator in that log — a different one.** On the SPI path an
+empty slot never reaches `sdmmc_init_ocr` at all, so the middle line above cannot
+be produced by `sdspi`. `sdmmc_card_init()` runs one step order for both hosts
+(`components/sdmmc/sdmmc_init.c:72,75,90`), and the step before OCR is CMD0:
+
+- in **SD mode** CMD0 is sent with `SCF_RSP_R0` — *no response expected* — so it
+  succeeds into an empty slot. CMD8 and CMD5 then time out and are both swallowed
+  deliberately (`sdmmc_sd.c:37` *"CMD8 timeout; not an SD v2.00 card"*,
+  `sdmmc_io.c:70` *"Non-IO cards are allowed to time out"*), leaving
+  `sdmmc_init_ocr` as the **first step that logs at error level**;
+- in **SPI mode** CMD0 is sent twice and the second carries `SCF_RSP_R1`
+  (`sdmmc_cmd.c:68-78`). With no card the MISO byte is `0xff`, bit 7 is
+  `SD_SPI_R1_NO_RESPONSE` (`sd_protocol_defs.h:136`), and
+  `r1_response_to_err()` turns it into `ESP_ERR_TIMEOUT`
+  (`sdspi_transaction.c:43-47`). `sdmmc_card_init` returns there, logging only at
+  `ESP_LOGD` (`sdmmc_init.c:29`) — invisible at this build's log level.
+
+Corroborating it: on the SPI path the CMD52 that runs *before* CMD0 would print
+`I (…) sdspi_transaction: cmd=52, R1 response not found` at **info** level
+(`sdspi_transaction.c:71-75` — the SDIO variant uses `ESP_LOGI`, not `ESP_LOGD`).
+This build prints info lines (`I (2004) sh8601: …`), and that line is absent.
+
+So the conclusion survives its reasoning: **the vendor's shipping firmware drives
+this slot through the SDMMC host driver.** Read at ESP-IDF **v5.4**, tag commit
+`8e27ea72c6688b79348b123ff40d556cfe16c8c3`; the vendor's own IDF version is not
+known, and `sdmmc_init_ocr` sits in `sdmmc_common.c` under that tag in v5.1, v5.3,
+v5.4 and v5.5 alike, so the reading does not hinge on guessing it.
+
+**Correction 2, and this is the one that reopens D14 — none of it is evidence
+about the connector.** The slot was **empty**. With no card in the socket nothing
+drives the bus, and `send_op_cond` times out identically whether the three nets
+reach the card's `CLK`/`CMD`/`DAT0` pins, reach something else, or reach nothing
+at all. A timeout into an empty slot is the one measurement that is guaranteed to
+carry no information about wiring.
+
+Two further reasons the pin numbers cannot stand in for it:
+
+- **On the ESP32-S3 the pins prove nothing about the mode.** Espressif's own
+  documentation: *"The slots are connected to ESP32-S3 GPIOs using the GPIO
+  matrix. This means that any GPIO may be used for each of the SD card
+  signals."* GPIO 1/2/3 carrying `CMD`/`CLK`/`D0` is a software assignment, not a
+  constraint the silicon imposed and not a fact the board revealed.
+- **Espressif's own default treats the two modes' pins as the same pins.** Of
+  `SDSPI_DEVICE_CONFIG_DEFAULT()` the ESP-IDF documentation says it *"will also
+  fill in the default pin mappings, which are the same as the pin mappings of the
+  SDMMC host driver"*. So a net named `MOSI` on a schematic and a net named `CMD`
+  in a BSP can be the same copper, and the pair of names is not a contradiction
+  waiting to be resolved by picking one.
+
+**What actually moved.** D14 began as *"the BSP says one thing and the schematic
+says another"*. It is now *"the BSP says one thing, the schematic says another,
+and the vendor's running firmware sides with the BSP"* — which is real progress
+and is not a resolution. The schematic's chip-select near GPIO 17, which the pin
+map never had, is still unexplained by either reading, and no card has ever
+enumerated on this board.
+
+**D14 goes back to `PARTIAL`.** What closes it is one of two things and neither
+has happened: a known-good card **enumerating and reading** in a named mode on
+named pins, or the connector traced on the schematic sheet visually. The
+procedure for the first is
+[`../hardware/SD_CARD_MODE_TEST.md`](../hardware/SD_CARD_MODE_TEST.md), written
+non-destructive by default. `NOT EXECUTED — HARDWARE REQUIRED`.
 
 ### 4.4 Smaller things the same log settled
 

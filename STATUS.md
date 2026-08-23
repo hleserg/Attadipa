@@ -650,9 +650,22 @@ four more things at no cost:
   A quad part would not have loaded that driver. This is step 4 of
   `WAVESHARE_ARRIVAL` §5, executed — and the latency and burst figures are the
   real numbers to redo §3.3's bandwidth arithmetic against.
-- **D14 closes: the SD card is SDMMC.** The vendor's firmware calls
-  `sdmmc_common`/`vfs_fat_sdmmc`, not `sdspi`. The schematic's `MOSI`/`SCK`/`MISO`
-  net names are labels, not a mode.
+- **D14 half closes: the vendor's *software* drives the slot as SDMMC.**
+  Recorded here for one day as *"D14 closes: the SD card is SDMMC"*, and
+  **withdrawn 2026-08-23** ([#131](https://github.com/hleserg/Attadipa/issues/131)).
+  The slot was **empty**: `send_op_cond` times out identically for every possible
+  wiring when nothing is in the socket to answer, so the log says which host
+  driver the vendor picked and nothing about the connector. The first reason
+  given for even that much was wrong — `sdmmc_common` and `vfs_fat_sdmmc` are the
+  *shared* protocol layer and an SD-over-SPI mount prints under the same two
+  tags; the discriminator that does hold is that on the SPI path CMD0 expects an
+  R1 and fails before `sdmmc_init_ocr` runs. The S6-vs-S7 conflict and the
+  chip-select near GPIO 17 are all still live, and on the ESP32-S3 the pin
+  numbers settle nothing because the SDMMC slots route through the GPIO matrix.
+  **No card has ever enumerated on this board.** D14 is `PARTIAL`; the
+  non-destructive bench procedure is
+  [SD_CARD_MODE_TEST](docs/hardware/SD_CARD_MODE_TEST.md) — **T-127**,
+  `NOT EXECUTED — HARDWARE REQUIRED`.
 - **`esp_lcd_sh8601` initialises this panel** — `LCD panel create success,
   version: 1.0.2`, then `Backlight on`. That is evidence about the driver, not
   about the die, so the CO5300 row stands; what it settles is that the

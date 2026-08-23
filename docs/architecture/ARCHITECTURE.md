@@ -407,7 +407,7 @@ The tables below therefore say who is responsible, not who calls `init()`.
 | Buttons | `InputService` | at least two tactile keys exist; **the vendor BSP declares none** |
 | Expansion header J3 | `BoardService` | ≥ 29 pins; pinout unresolved (D3). Owned so nothing else claims those pins by accident |
 | 1.8 V rail (ALDO4) | `PowerService` | something on this board is 1.8 V; identify it before assuming any level |
-| SD card | `StorageService` | SDMMC 1-bit |
+| SD card | `StorageService` | the BSP says SDMMC 1-bit and the vendor's firmware drives it that way; **the connector has never had a card in it** and the mode is not settled (D14). The service owns the slot either way — the bus mode is the board layer's problem, which is the point |
 | Wi-Fi / BLE | `ConnectivityService` | the only radio *on this board* — and, once a node is attached, the path by which a second one's traffic arrives |
 | LoRa | `MeshService` via the provider registry | **not on this board.** With an Attadipa node attached the device has it; the service exists either way and reports which |
 | GNSS | `LocationService` via the provider registry | **not on this board.** An Attadipa node supplies it; the service exists either way and reports which |
@@ -461,7 +461,7 @@ fine is leaving them unowned.
 | PDM microphone | T-Watch | clock stopped, not sampling |
 | ES7210 dual mics | Waveshare | codec in standby |
 | Gyroscope (QMI8658) | Waveshare | disabled at the sensor, not just ignored |
-| SD card | Waveshare | unmounted, card detect observed |
+| SD card | Waveshare | unmounted. **Not "card detect observed"** — no card-detect pin appears in the BSP pin map or in the schematic reading, so presence is currently answerable only by attempting to enumerate (D14) |
 | Wi-Fi | both | radio off, not merely disconnected |
 
 The IR transmitter deserves its own sentence. It is an infrared diode that can

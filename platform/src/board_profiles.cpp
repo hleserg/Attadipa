@@ -56,7 +56,9 @@ constexpr std::uint32_t kWaveshareFeatures =
     feature_bit(HF::HapticActuator) |   // bare motor on GPIO 18 — no driver IC
     feature_bit(HF::AudioOutDevice) |   // ES8311 codec
     feature_bit(HF::AudioInDevice) |    // ES7210, two microphones
-    feature_bit(HF::SdCard) |           // SDMMC, 1-bit
+    feature_bit(HF::SdCard) |           // the slot is on the board; which bus
+                                        // mode it is wired for is not settled —
+                                        // D14, and no card has enumerated yet
     feature_bit(HF::Wifi) |
     feature_bit(HF::Ble) |
     feature_bit(HF::Usb);
