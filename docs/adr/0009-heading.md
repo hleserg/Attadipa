@@ -107,24 +107,53 @@ None of those holds today, and there is no mechanism that would establish them.
 So the answer is: **a node's heading is displayed as node orientation in
 diagnostics, and is not used for the user-facing arrow.**
 
-**A6 is answered, 2026-08-22: no.** The Attadipa node will never carry a
-magnetometer — owner decision, *"в нодах магнитометр реально лишний"*
-([OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-16). So `NodeBody`
-heading has no source and never will; this paragraph is retained anyway,
+**A6 is answered, 2026-08-22: no — for the Attadipa node.** It will not carry a
+magnetometer: owner decision, *"в нодах магнитометр реально лишний"*
+([OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-17). That is the whole of
+what A6 asked, and it is narrower than *"`NodeBody` heading has no source and
+never will"* — which an earlier draft of this line claimed.
+[OD-7](../research/OWNER_DECISIONS.md) makes the companion **any** node the
+watch has a client for, not only ours, and what a third-party companion carries
+is `UNKNOWN`. So `HeadingSource::RemoteSensor` and the four-condition gate at
+§2 stay exactly where they are — §7 below still surfaces remote heading *"on the
+day some other remote device is capable of one"*, and deleting the gate would
+leave that day's device with nowhere safe to report to but the arrow, which is
+the thing this ADR exists to prevent. This paragraph is retained anyway,
 because the rule it states is not really about a magnetometer. It is a special
 case of a rule general enough to survive the answer coming back either way —
 see §3a.
 
 ### 3a. The rule that made both answers correct at once
 
-The same owner decision that closed A6 also ordered a 6-axis IMU —
-accelerometer plus gyroscope — for the node, for GNSS power optimisation. Read
+The same owner decision that closed A6 also *planned* an accelerometer, and
+probably a gyroscope, for the node, for GNSS power optimisation — planned, not
+ordered, and the gyroscope only probably; see OD-17 for the quote. Read
 carelessly, that looks like a contradiction of §3: sensors on the node, used to
 improve a reading, again. It is not, and the reason is worth stating as its own
 rule rather than left to be re-derived the next time a node sensor is proposed:
 
-> **A sensor may correct another reading taken on the same body, and may not be
-> presented as a reading from a different one.**
+> **An *orientation* may not be carried across bodies. A sensor may correct
+> another reading taken on the same body; when it corrects a reading taken on a
+> different one, what it may correct is bounded by how far apart the two bodies
+> can be.**
+
+The qualifier is the whole rule and an earlier draft of this paragraph dropped
+it, which made the rule forbid the product. Orientation does not survive a
+change of body **at all**: a node lying in a bag and a wrist held out in front
+share no transform, and the error is unbounded — the node can be pointing any
+way. Position survives, to within the separation of the two bodies: a node in
+the same bag as the wearer is a metre away, which is inside the error of the fix
+itself. That is why [ADR-0004](0004-capability-sources.md):288-291 can say an
+application asks `LocationService` for a position and never learns where it came
+from, and why the Waveshare board — which has no GNSS of its own — has a
+navigation story at all ([OD-1](../research/OWNER_DECISIONS.md),
+[OD-8](../research/OWNER_DECISIONS.md)). A node-supplied *position* reaches the
+wearer as the position; a node-supplied *heading* does not reach the arrow.
+
+What the separation bound does **not** license is presenting a node's fix as the
+wearer's own: [OD-7](../research/OWNER_DECISIONS.md) item 3 already has the
+careful version — carried, but never presented as the wearer's own fix, and
+carried with `PositionValidity` and `TrustState` saying so.
 
 Two worked examples, because they land on opposite sides of the same line:
 
@@ -136,12 +165,21 @@ Two worked examples, because they land on opposite sides of the same line:
   needs no transform at all. The IMU and the GNSS receiver sit on the same
   body, so "the node is still" or "the node moved" composes directly with the
   node's own position estimate — that was always what the node's position
-  meant. This is [OD-10](../research/OWNER_DECISIONS.md#od-10--a-standing-person-does-not-need-a-new-fix)'s
-  logic, applied to the node instead of the watch, and it is why the node's IMU
-  is filed as its own capability question
+  meant. It is why the node's IMU is filed as its own capability question
   ([#93](https://github.com/hleserg/Attadipa/issues/93)) rather than treated as
   a small addition to this ADR: it is a same-body correction, not a heading
   source, and does not belong in the `HeadingSource` enum at all.
+
+**And [OD-10](../research/OWNER_DECISIONS.md#od-10--a-standing-person-does-not-need-a-new-fix)
+is the cross-body case, not the same-body one.** An earlier draft cited it here
+in support, which was wrong and worth correcting rather than quietly dropping:
+OD-10 gates a receiver on **the wearer's** stillness, read from **the watch's**
+accelerometer (OD-10 sources it to OD-6's always-on watch IMU) — and on
+Waveshare that receiver sits on the *node*. Two bodies. It is allowed under the
+bound above, not under the same-body clause, and `TASKS.md`'s own wording for
+T-080 says why the distinction has to survive: **the node standing still is not
+the wearer standing still.** A wearer sitting at a desk with the node in a bag
+by the door is still, and the node is stiller.
 
 ### 4. Course over ground needs motion, and standing still is a designed state
 
@@ -245,7 +283,7 @@ inputs causes a wrist-relative arrow to be drawn from a `NodeBody` or
 `CourseOverGround` source.** On hardware: `NOT EXECUTED — HARDWARE REQUIRED`.
 
 **Open.** **H10** — the speed gate, per GNSS module. **A5 and A6 are answered**
-(2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-16): a
+(2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-17): a
 magnetometer is intended, external, on the watch, placement not yet chosen
 (T-109); the node will never carry one. What remains open is whether
 `RemoteSensor` heading is worth surfacing in Diagnostics even with no live

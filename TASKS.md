@@ -143,6 +143,36 @@ stale silently. The protocol is
 
 ## NEXT
 
+### T-122 · `check_docs.py` checks that a link's file exists, never that its anchor does
+- **Priority:** P2. Cheap, and it closes a class of silent rot rather than an
+  instance.
+- **Dependencies:** none
+- **Goal:** make the documentation check validate the `#fragment` half of a
+  relative link, not just the path.
+- **The gap:** `tools/docs/check_docs.py:53-55` captures the fragment and
+  `check_links()` at `:99-118` then only calls `os.path.exists()` on the path.
+  So a link to `OWNER_DECISIONS.md#od-16--…` passes whether or not any heading
+  generates that anchor. **Two live consequences, both found by review rather
+  than by CI:**
+  - three pull requests open at once each recorded a decision numbered
+    **OD-16** — #92 (A1–A3), #94 (A5/A6, renumbered to OD-17 to end the
+    collision) and #97 (A10). Renumbering one silently breaks every hard-coded
+    anchor pointing at it, and six of them were in `STATUS.md` and `TASKS.md`
+    alone;
+  - one is broken on `main` already. `STATUS.md` records **A7** as answered by
+    **OD-13**, with OD-13's anchor; `OPEN_QUESTIONS.md` records A7 as answered
+    by **OD-15**, and OD-13's own header also claims to answer A7. One of the
+    three is wrong, the checker cannot see it, and it is not clear from here
+    which — **so this task fixes the checker and reports the discrepancy, it
+    does not guess which document is right.**
+- **Acceptance:** the checker resolves a fragment against the target file's
+  headings using the same slug rule GitHub applies, fails on one that resolves
+  to nothing, and has a mutation test per direction — including one asserting it
+  does **not** fire on a bare `#L12-L20` line reference, which is a different
+  thing. `main` green afterwards, which means the OD-13/OD-15 discrepancy is
+  resolved with the owner or by evidence first.
+- **Hardware required:** no. **Owner required:** possibly, for the A7 question.
+
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
 - **Dependencies:** T-034 (**done**)
@@ -1662,7 +1692,7 @@ Recommended next action:
                 Option 1 — the tooling is host-testable, and it is what turns a
                 theory into a measurement. Note that no stock board has a
                 magnetometer, and the one being retrofitted onto a Waveshare
-                unit ([OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one))
+                unit ([OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one))
                 is not yet placed (T-109), so the haptics-versus-compass case
                 still cannot be measured on any hardware in hand today.
 ```
@@ -1695,14 +1725,14 @@ Recommended next action:
   transmit-closed-while-`Unknown` gate needs no such research to keep working.
   **A5 and A6 are also no longer on this list** — answered 2026-08-22 on
   [#56](https://github.com/hleserg/Attadipa/issues/56):
-  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one).
+  [OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one).
 - **Impact:** A1–A2 gate all hardware work, and A2 got sharper: of the five
   candidate radios, two cannot do LoRa at all and only one is supported by the
   pinned MeshCore ([ADR-0003](docs/adr/0003-radio-not-lora.md)), so the answer
   decides whether the watch has a local mesh path at all. A5 and A6 are
   answered and no longer gate anything: an external magnetometer is coming for
   the watch and the node will never carry one
-  ([OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)),
+  ([OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)),
   which moves the five magnetometer epics from *possibly dead* to *dormant with
   a delivery date* and hands [ADR-0009](docs/adr/0009-heading.md) a second
   possible provider for heading — see
@@ -1719,13 +1749,17 @@ Recommended next action:
   [MAGNETOMETER_BACKLOG](docs/hardware/MAGNETOMETER_BACKLOG.md),
   [COEXISTENCE_BACKLOG](docs/hardware/COEXISTENCE_BACKLOG.md).
 - **What the exercise surfaced:** two coexistence epics — haptic/magnetometer and
-  audio/magnetometer interference — **cannot currently be run on either target
-  board**, because neither stock board has a magnetometer. They are marked NOT
-  POSSIBLE rather than left looking pending.
+  audio/magnetometer interference — could not be run on either target board,
+  because neither stock board has a magnetometer. They **were marked** `NOT
+  POSSIBLE` rather than left looking pending. Past tense on purpose: the next
+  bullet supersedes the status word, and `NOT POSSIBLE` against `BLOCKED` is
+  precisely the distinction
+  [INTERFERENCE_MATRIX](docs/hardware/INTERFERENCE_MATRIX.md):52-53 says must
+  never be allowed to look alike.
 - **Superseded 2026-08-22, and the status word has to change with it.** A5 and
   A6 are answered: the owner ordered a CJMCU-9911 and a GY-271 and is soldering
   one in ([#83](https://github.com/hleserg/Attadipa/issues/83),
-  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)).
+  [OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)).
   Those seven epics are **blocked pending a part in the post and a placement
   that is not chosen yet (T-109)**, not `NOT POSSIBLE`. The distinction the
   other files are careful about holds here too: a **stock** board still has no
@@ -1742,8 +1776,9 @@ Recommended next action:
 - **Priority:** P2
 - **State:** filed, not started.
 - **Issue:** [#93](https://github.com/hleserg/Attadipa/issues/93).
-- **What:** [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)
-  ordered a 6-axis IMU (accelerometer + gyroscope) for the node, for GNSS power
+- **What:** [OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)
+  plans an accelerometer, and probably a gyroscope, for the node — planned, not
+  ordered, and the gyroscope only probably (OD-17 quotes the words). For GNSS power
   optimisation — motion-gating, not heading. Explicitly not resolved inside
   #56: whether it needs a seat in the application-facing capability enum at all
   or is purely internal to the node's own `LocationService`

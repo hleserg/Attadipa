@@ -484,7 +484,7 @@ None of these blocks M1. All of them block hardware work.
 
 **A5 and A6 are answered** — [#56](https://github.com/hleserg/Attadipa/issues/56),
 on 2026-08-22, recorded as
-[OD-16](docs/research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one).
+[OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one).
 An external magnetometer is intended for the watch: the owner has ordered a
 **CJMCU-9911 (AK09911C)** and a **GY-271 (QMC5883L)**, and one of them is going
 inside. The five magnetometer epics are dormant, not dead. Which of the two

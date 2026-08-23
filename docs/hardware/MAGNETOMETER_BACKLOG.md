@@ -35,7 +35,7 @@ it is therefore a designed UI state rather than an absence. It never renders as
 **A6 is answered, and the node path is closed rather than merely unavailable:**
 the Attadipa node will never carry a magnetometer — owner decision, 2026-08-22,
 *"в нодах магнитометр реально лишний"*
-([OWNER_DECISIONS.md](../research/OWNER_DECISIONS.md) OD-16). It gets an
+([OWNER_DECISIONS.md](../research/OWNER_DECISIONS.md) OD-17). It gets an
 accelerometer and probably a gyroscope instead, for GNSS power optimisation, not
 for heading — filed as its own capability question,
 [#93](https://github.com/hleserg/Attadipa/issues/93), not resolved here. So the
@@ -49,8 +49,8 @@ transform), because the rule generalises beyond this one dead path.
 **A5 is answered, and the compass path is a retrofit, not a board fact.** An
 external module is ordered for the Waveshare unit — a CJMCU-9911 (AK09911C) and
 a GY-271 (QMC5883L), [#83](https://github.com/hleserg/Attadipa/issues/83),
-researched in `docs/research/MAGNETOMETER_RETROFIT.md` in
-[PR #87](https://github.com/hleserg/Attadipa/pull/87), not yet merged — but **placement is undecided**, tracked as **T-109**, and nothing
+researched in [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md)
+([#87](https://github.com/hleserg/Attadipa/pull/87), merged) — but **placement is undecided**, tracked as **T-109**, and nothing
 below gets built from a part that has not been placed. This is a fact about one
 physical unit, not about the `ESP32-S3-Touch-AMOLED-2.06` board type: a stock
 board still has no magnetometer, and the firmware must run correctly on a stock
@@ -69,7 +69,7 @@ fake-green result the project forbids.
 | # | Epic | Kind | Can start now? |
 |---|---|---|---|
 | G-01 | Magnetometer capability API | DESIGN | **Yes** — ADR-0001 covers presence and degree; this is the sensor-facing side |
-| G-02 | External sensor BSP | DESIGN | **Yes** — how an off-board sensor attaches at all. A5 is answered (OD-16); this no longer waits on the owner, only on placement (T-109) before the mapping half of G-03 can follow |
+| G-02 | External sensor BSP | DESIGN | **Yes** — how an off-board sensor attaches at all. A5 is answered (OD-17); this no longer waits on the owner, only on placement (T-109) before the mapping half of G-03 can follow |
 | G-03 | Axis mapping | DESIGN | Partly — the representation can be designed; the actual mapping needs a physical sensor in a physical case |
 | G-04 | Calibration storage | DESIGN | **Yes** — format, versioning, where it lives, what invalidates it |
 | G-05 | Calibration wizard | DESIGN | UI flow can be designed; it cannot be validated |
@@ -103,14 +103,31 @@ the arbiter is being built for the contention that actually exists here.
 
 | # | Question | Status |
 |---|---|---|
-| ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch, hardware ordered** — [OWNER_DECISIONS OD-16](../research/OWNER_DECISIONS.md) |
-| ~~A6~~ | ~~Does the Attadipa node carry one?~~ | **RESOLVED — no, deliberately** — [OWNER_DECISIONS OD-16](../research/OWNER_DECISIONS.md). The node compass path this row used to gate is closed, not merely unavailable |
-| G-14 | Which part, on which bus, at what address, on which rail? | answered for the part: CJMCU-9911 (AK09911C, `0x0C`) and GY-271 (QMC5883L, `0x0D`), both on the Waveshare main I2C bus with `CAD` tied to ground — `docs/research/MAGNETOMETER_RETROFIT.md` in [PR #87](https://github.com/hleserg/Attadipa/pull/87), not yet merged. Rail is still open |
+| ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch, hardware ordered** — [OWNER_DECISIONS OD-17](../research/OWNER_DECISIONS.md) |
+| ~~A6~~ | ~~Does the Attadipa node carry one?~~ | **RESOLVED — no, deliberately** — [OWNER_DECISIONS OD-17](../research/OWNER_DECISIONS.md). The node compass path this row used to gate is closed, not merely unavailable |
+| G-14 | Which part, on which bus, at what address, on which rail? | answered for the part: CJMCU-9911 (AK09911C, `0x0C`) and GY-271 (QMC5883L, `0x0D`), both on the Waveshare main I2C bus. **The `CAD` strap belongs to the AK09911C alone** — it is what puts that part at `0x0C` rather than `0x0D`; the QMC5883L has no address-select pin at all, so its address is not a choice ([MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md):208-210, :116-118). Rail is still open |
 | G-15 | Is it on the same I2C bus as the PMU and RTC? | **yes** — the Waveshare main I2C bus carries all fitted devices; this decides G-08–G-10 are measurable in principle once T-109 places the sensor |
 
 The honest state of this backlog, now that A5 and A6 are answered rather than
 open: of the thirteen epics above, seven are `DESIGN` kind (one, G-03, only
 partly — the mapping itself needs a placed sensor), one is `RESEARCH`, and five
-are `BLOCKED`, all five on a sensor that is ordered but not yet placed (T-109)
-rather than on an owner decision. Recorded as such rather than left to look
-like a plan in progress.
+are `BLOCKED` — but **not all five on the same thing**, and an earlier version of
+this paragraph said they were.
+
+- Two are blocked on placement alone (T-109): a sensor that is ordered and not
+  yet in the unit.
+- **Three — G-08, G-09 and G-10, the interference tests — are blocked on
+  placement *and* on a vibration motor that is not there.** The sensor is going
+  into the Waveshare unit (OD-17), and
+  [WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.7
+  records `OBSERVED`: *"There is no vibration motor on this unit."* The pads are
+  bare. So placing the magnetometer does **not** unblock them — it leaves them
+  with a compass and still nothing to disturb it, which is exactly the state
+  §"What this backlog is not" twenty lines above describes.
+
+The distinction is the point of writing it down. An agent who believes placement
+was the last gate runs G-08 on a unit with no motor, sees no interference, and
+writes `PASS` — a fake green reached through the file that exists to prevent
+it. Fitting a motor to `P1`/`P2` is T-097 and is a separate physical change.
+
+Recorded as such rather than left to look like a plan in progress.

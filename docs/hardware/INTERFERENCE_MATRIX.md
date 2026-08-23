@@ -46,8 +46,16 @@ untestable on the boards this project targets, because **neither board has a
 magnetometer** — the T-Watch carries only a BMA423 accelerometer and the
 Waveshare board only a QMI8658 six-axis IMU
 ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)). They are kept in the table
-rather than deleted, because the day an external sensor is added
-(OPEN_QUESTIONS A5) they become the first four tests to run. They are marked
+rather than deleted, because the day an external sensor is fitted they become
+the first four tests to run. **A5 is no longer what gates them**: it is answered
+(OD-17, 2026-08-22 — an external magnetometer is intended, and two candidate
+parts are ordered for one Waveshare unit). What gates them now is two physical
+facts, and both are `UNKNOWN` rather than merely pending: the part is not placed
+(T-109), and the unit it is going into
+[has no vibration motor fitted](../research/WAVESHARE_BOARD_RECEIVED.md) (§1.7,
+`OBSERVED`; the pads are bare, T-097). Placing the sensor alone does not make
+these measurable — see
+[MAGNETOMETER_BACKLOG](MAGNETOMETER_BACKLOG.md). They are marked
 distinctly so that "not yet measured" and "cannot be measured here" never look
 like the same state.
 

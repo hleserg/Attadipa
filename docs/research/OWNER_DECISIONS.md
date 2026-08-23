@@ -1062,7 +1062,7 @@ the two that actually conflicted.
 
 ---
 
-## OD-16 — A5 and A6: an external magnetometer is coming for the watch; the node will never carry one
+## OD-17 — A5 and A6: an external magnetometer is coming for the watch; the node will never carry one
 
 **Decided:** 2026-08-22, on [#56](https://github.com/hleserg/Attadipa/issues/56),
 sharpened on [#83](https://github.com/hleserg/Attadipa/issues/83).
@@ -1108,9 +1108,17 @@ calibrated, still-valid transform, and noted no such transform exists for a
 device loose in a bag. That refusal now costs nothing, because there is no node
 heading to be tempted by.
 
-### What was ordered for the node instead, and what it does not buy
+### What is *planned* for the node instead, and what it would not buy
 
-A 6-axis IMU — accelerometer plus gyroscope — for **GNSS optimisation**, not for
+**Nothing has been ordered for the node.** The quote above says *планирую только
+акселерометр и вероятно гироскоп* — an accelerometer is **planned**, a gyroscope
+is **probable**, and neither is bought. The two parts that have been ordered are
+watch magnetometers. An earlier version of this section wrote "ordered" and "a
+6-axis IMU", which would brief the node-IMU task against a part nobody has:
+accelerometer-only is the safe assumption, and it is enough for the one thing
+this is for.
+
+An accelerometer, possibly with a gyroscope, for **GNSS optimisation**, not for
 heading. Six axes give orientation relative to gravity and relative to wherever
 motion started; they give **no absolute heading** (a gyroscope integrates rate
 of turn, with an unknown constant and unbounded drift; an accelerometer finds
@@ -1118,8 +1126,9 @@ of turn, with an unknown constant and unbounded drift; an accelerometer finds
 supplies the absolute reference) and **no standalone position** (unaided
 inertial dead reckoning at this price is useful for seconds, not minutes). What
 it genuinely buys is knowing the node is still — so a stationary node does not
-need a GNSS fix recomputed and can let the receiver sleep — knowing the node
-moved, and tilt. This is the same finding as
+need a GNSS fix recomputed and can let the receiver sleep — and knowing the node
+moved. **Tilt needs the gyroscope**, which is the "probably" half, so it is not
+something to design against yet. This is the same finding as
 [#87](https://github.com/hleserg/Attadipa/pull/87) reached about the watch's own
 QMI8658, from the other end: a power feature wearing a positioning name.
 
@@ -1160,9 +1169,18 @@ not resolved here).
 
 ## Still with the owner
 
-Nothing here answers A1–A3 or the display/theme questions (A9, A10, D16).
+Nothing here answers A1–A3, the display/theme questions (A9, A10, D16), or
+**the compass product question** — which is not A5 and is easy to lose, because
+A5 reads as if it settled the subject. A5 asked whether an external magnetometer
+is intended; it is, for one unit. **Q2's second half asks something else**: is
+heading GNSS-only on a *stock* board for good
+([OPEN_QUESTIONS](OPEN_QUESTIONS.md) Q2, still open in bold there). Every stock
+board has no compass and always will, so this decides whether the compass is a
+feature of the product or of one modified device. **Unlike A1–A3, A9, A10 and
+D16, Q2 has no issue number** — this list is the only place it is visible to the
+owner at all.
 Those remain in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). A5 and A6 are answered
-above; A1–A3 have their own record in OD-16's neighbours as they land.
+above; A1–A3 have their own record in OD-16 as it lands.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
 answered from a datasheet: whether Meshtastic's protocol definitions are licensed
