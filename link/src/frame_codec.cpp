@@ -115,9 +115,12 @@ FrameResult Decoder::next(std::uint8_t* out, std::size_t out_capacity)
     // emitted.
     for (;;) {
         if (size_ < kHeaderBytes) {
-            // Not enough to judge; wait for more. An empty buffer and a header
-            // part-way in are reported apart, because they are different facts
-            // about the link and a caller can act on the difference.
+            // Not enough to judge; wait for more. Holding nothing and holding
+            // less than a header are reported apart because they are different
+            // facts about this decoder — not, as an earlier draft of this
+            // comment claimed, about the link. Neither can see the transport's
+            // FIFO, and the residue case is not a promise that anything is
+            // coming: see `FrameStatus`.
             return {size_ == 0 ? FrameStatus::NoFrame : FrameStatus::Incomplete, 0};
         }
 
@@ -166,9 +169,20 @@ FrameResult Decoder::next(std::uint8_t* out, std::size_t out_capacity)
 
         // A caller whose buffer is too small gets nothing and the frame stays
         // queued, rather than a partial copy it might mistake for the whole. It
-        // is told how much room the frame needs, which is the difference
-        // between an error it can act on and a stall it cannot explain.
-        if (out == nullptr || out_capacity < declared) {
+        // is told how big the frame is, which is the difference between an
+        // error it can act on and a stall it cannot explain.
+        //
+        // The capacity is judged before the pointer, and `declared != 0` guards
+        // both. A frame with no payload has nothing to copy, so *any* output
+        // satisfies it — including a null one. Testing the pointer first would
+        // answer `OutputTooSmall` with a length of 0, which is a request for
+        // room that no caller can grant and no retry can change: the frame is
+        // never consumed and everything behind it is stranded. That is #146's
+        // own defect wearing #146's own fix, and the reviewer of PR #148 caught
+        // it here. It also made the outcome for one frame turn on whether a
+        // pointer happened to be null while `out_capacity` said the same thing
+        // either way.
+        if (declared != 0 && (out == nullptr || out_capacity < declared)) {
             return {FrameStatus::OutputTooSmall, declared};
         }
 

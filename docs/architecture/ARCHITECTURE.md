@@ -530,6 +530,19 @@ The rules:
   size, because the smallest frame it can write is seven bytes, so `0` is
   outside its valid range and nothing there is ambiguous. Applying the rule
   where there is no collision is churn, not rigour.
+
+  **And the first attempt at that fix broke this rule again**, which is worth
+  more than the rule itself. The new `OutputTooSmall` carried the size the
+  caller had to come back with — but both readers judged the output *pointer* in
+  the same condition as the capacity, so an empty frame with a null `out` came
+  back as "too small, bring room for **0** bytes": a demand nothing can satisfy,
+  on a frame that was never consumed, stranding everything behind it. The same
+  defect, one status further down, inside the type built to remove it. The
+  independent review caught it, not the seven regression tests, because it lived
+  exactly where none of them looked. So the rule is not only about the value a
+  reader returns — **it is about every field it returns, including the one that
+  says how to recover**, and a status that means *act* is not a status that ends
+  a loop. That is why `FrameResult::exhausted()` exists beside `operator bool`.
 - The simulator can present a device with no radio and no GNSS, one with a node
   attached, and one that **loses the node while an application is open** —
   because all three are real configurations, the third is the one that exercises

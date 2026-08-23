@@ -924,6 +924,160 @@ void test_a_zero_length_entry_does_not_strand_the_queue()
     CHECK(queue.malformed() == 1);
 }
 
+// Finding 1 of PR #148's independent review, and it is #146 again wearing
+// #146's own fix: both readers judged the output *pointer* in the same
+// condition as the capacity, so a zero-length frame handed to a caller with a
+// null `out` came back as `OutputTooSmall` with a length of 0 — come back with
+// room for nothing. The frame was never consumed, the answer never changed, and
+// everything behind it was stranded. Seven bytes from a peer to trigger.
+//
+// A frame with no payload has nothing to copy, so every output satisfies it.
+void test_an_empty_frame_needs_no_output_buffer_at_all()
+{
+    std::uint8_t wire[kMaxFrame];
+    const std::size_t encoded = encode(nullptr, 0, wire, sizeof wire);
+
+    // The decoder, through the door the review named: null pointer, no room.
+    {
+        Decoder decoder;
+        CHECK(decoder.push(wire, encoded) == encoded);
+        const FrameResult r = decoder.next(nullptr, 0);
+        CHECK(delivered(r, 0));
+        CHECK(decoder.buffered() == 0);          // consumed, not left forever
+        CHECK(decoder.stats().frames == 1);
+    }
+
+    // And the same frame through a non-null pointer with a capacity of zero,
+    // which must not be a different answer — the header says the two are the
+    // same request, and for a while they were not.
+    {
+        Decoder decoder;
+        decoder.push(wire, encoded);
+        std::uint8_t scratch[1];
+        CHECK(delivered(decoder.next(scratch, 0), 0));
+        CHECK(decoder.buffered() == 0);
+    }
+
+    // The queue's half. `push(nullptr, 0)` is accepted by the boundary
+    // agreement, so `pop(nullptr, 0)` of that same entry has to come out.
+    {
+        FrameQueue<> queue;
+        CHECK(queue.push(nullptr, 0));
+        CHECK(delivered(queue.pop(nullptr, 0), 0));
+        CHECK(queue.empty());
+    }
+
+    // A frame that does have a payload is still refused by a null output, and
+    // is still there afterwards. The rule is about what a frame contains, not
+    // about being lenient with pointers.
+    {
+        std::uint8_t payload[12];
+        fill(payload, sizeof payload, 6);
+        std::uint8_t full[kMaxFrame];
+        const std::size_t n = encode(payload, sizeof payload, full, sizeof full);
+
+        Decoder decoder;
+        decoder.push(full, n);
+        const FrameResult refused = decoder.next(nullptr, 0);
+        CHECK(refused.status == FrameStatus::OutputTooSmall);
+        CHECK(refused.length == sizeof payload);
+        CHECK(decoder.stats().frames == 0);
+
+        FrameQueue<> queue;
+        CHECK(queue.push(payload, sizeof payload));
+        const FrameResult queue_refused = queue.pop(nullptr, 0);
+        CHECK(queue_refused.status == FrameStatus::OutputTooSmall);
+        CHECK(queue_refused.length == sizeof payload);
+        CHECK(queue.size() == 1);
+    }
+}
+
+// Finding 2 of the same review. `OutputTooSmall` is falsy, so a drain written
+// as `while (result)` exits with a complete CRC-verified frame still inside —
+// and the decoder holds exactly one maximum frame plus a byte, so the next
+// push is refused down to one byte and every frame after that is torn. The
+// exit condition is `exhausted()`, and this pins the difference.
+void test_a_frame_too_big_for_the_caller_does_not_end_the_drain()
+{
+    std::uint8_t payload[kMaxPayload];
+    fill(payload, sizeof payload, 8);
+    std::uint8_t wire[kMaxFrame];
+    const std::size_t encoded = encode(payload, sizeof payload, wire, sizeof wire);
+
+    Decoder decoder;
+    CHECK(decoder.push(wire, encoded) == encoded);
+
+    std::uint8_t cramped[16];
+    const FrameResult refused = decoder.next(cramped, sizeof cramped);
+    CHECK(!refused);                  // not a delivery...
+    CHECK(!refused.exhausted());      // ...and not the end of the drain either
+    CHECK(refused.length == kMaxPayload);
+
+    // Left there, it does exactly what the review said: the buffer is one byte
+    // short of holding anything more, so the transport starts being refused.
+    CHECK(decoder.buffered() == encoded);
+    std::uint8_t more[64];
+    fill(more, sizeof more);
+    CHECK(decoder.push(more, sizeof more) == Decoder::kCapacity - encoded);
+    CHECK(decoder.stats().input_dropped > 0);
+
+    // Handled rather than treated as an exit, the frame comes out intact.
+    std::uint8_t out[kMaxPayload];
+    CHECK(delivered(decoder.next(out, sizeof out), kMaxPayload));
+    CHECK(same(out, payload, kMaxPayload));
+
+    // The two ends of a drain, told apart. Only these two mean stop.
+    CHECK(decoder.next(out, sizeof out).exhausted());
+    Decoder fresh;
+    CHECK(fresh.next(out, sizeof out).exhausted());
+    const std::uint8_t stub[] = {kSync0, kSync1};
+    fresh.push(stub, sizeof stub);
+    CHECK(fresh.next(out, sizeof out).exhausted());
+    FrameQueue<> queue;
+    CHECK(queue.pop(out, sizeof out).exhausted());
+
+    // And a delivery never means stop, whatever its length.
+    Decoder empty_frames;
+    std::uint8_t nothing_wire[kMaxFrame];
+    empty_frames.push(nothing_wire, encode(nullptr, 0, nothing_wire, sizeof nothing_wire));
+    CHECK(!empty_frames.next(out, sizeof out).exhausted());
+}
+
+// Finding 3: the two non-delivery statuses must not claim more than the decoder
+// can see. `Incomplete` is "fewer bytes than a whole frame needs", NOT "a frame
+// is on its way" — four bytes of line noise sit below the header threshold
+// forever, and the resynchroniser cannot judge them either way.
+void test_incomplete_does_not_promise_that_anything_is_coming()
+{
+    std::uint8_t out[kMaxPayload];
+
+    // Four bytes that are not a header and never will be. Nothing is arriving;
+    // the decoder simply cannot say so, and must not pretend otherwise.
+    Decoder decoder;
+    const std::uint8_t noise[] = {0x11, 0x22, 0x33, 0x44};
+    CHECK(decoder.push(noise, sizeof noise) == sizeof noise);
+    CHECK(decoder.next(out, sizeof out).status == FrameStatus::Incomplete);
+    CHECK(decoder.next(out, sizeof out).status == FrameStatus::Incomplete);
+    CHECK(decoder.buffered() == sizeof noise);   // and it stays, indefinitely
+
+    // Residue and emptiness stay distinguishable, which is the only claim
+    // either status is entitled to make.
+    decoder.reset();
+    CHECK(decoder.next(out, sizeof out).status == FrameStatus::NoFrame);
+
+    // A genuinely partial frame reports the same thing, and that is the point:
+    // this decoder cannot tell the two apart, so neither status may be read as
+    // evidence about the transport beneath it.
+    std::uint8_t payload[6];
+    fill(payload, sizeof payload, 2);
+    std::uint8_t wire[kMaxFrame];
+    const std::size_t encoded = encode(payload, sizeof payload, wire, sizeof wire);
+    decoder.push(wire, 3);
+    CHECK(decoder.next(out, sizeof out).status == FrameStatus::Incomplete);
+    decoder.push(wire + 3, encoded - 3);
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof payload));
+}
+
 // The counters have to agree with what a caller could actually observe. That is
 // the property the defect broke without breaking any single counter: `frames`
 // and `accepted()` were right about what had been consumed and wrong about what
@@ -1022,6 +1176,9 @@ int main()
     test_an_empty_frame_between_two_frames_changes_no_order();
     test_a_corrupt_empty_frame_is_a_crc_error_and_blocks_nothing();
     test_a_zero_length_entry_does_not_strand_the_queue();
+    test_an_empty_frame_needs_no_output_buffer_at_all();
+    test_a_frame_too_big_for_the_caller_does_not_end_the_drain();
+    test_incomplete_does_not_promise_that_anything_is_coming();
     test_the_counters_agree_with_what_was_observable();
 
     if (failures != 0) {

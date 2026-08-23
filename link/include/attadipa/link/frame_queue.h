@@ -94,14 +94,22 @@ public:
     //
     // `Incomplete` never comes out of here: a queue holds whole frames or
     // nothing, which is the rule at the top of this file. A frame the caller's
-    // buffer cannot hold stays put and is reported with the room it needs.
+    // buffer cannot hold stays put and is reported with its own size, and
+    // `OutputTooSmall` is not an end-of-drain condition — `FrameResult` has
+    // `exhausted()` for that, and the reason is written there.
+    //
+    // `out` may be null only for an entry with no payload, matching the
+    // decoder: there is nothing to copy, so any output satisfies it. Judging
+    // the pointer before the length would answer `OutputTooSmall` with a length
+    // of 0 — a demand for room nobody can supply, on an entry `push(nullptr, 0)`
+    // had just accepted through the boundary agreement two comments up.
     FrameResult pop(std::uint8_t* out, std::size_t out_capacity)
     {
         if (count_ == 0) {
             return {FrameStatus::NoFrame, 0};
         }
         const std::size_t length = length_[head_];
-        if (out == nullptr || out_capacity < length) {
+        if (length != 0 && (out == nullptr || out_capacity < length)) {
             return {FrameStatus::OutputTooSmall, length};
         }
         if (length != 0) {

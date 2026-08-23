@@ -223,7 +223,7 @@ stale silently. The protocol is
 - **Dependencies:** none
 - **Goal:** close, or consciously decline with reasons, each finding below.
   Every one of them was read in the source before being written here; none is a
-  report taken on trust. Six from the same audit are already fixed —
+  report taken on trust. Seven from the same audit are already fixed —
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
   evaluator), `7e4c4f9` (the replay rig could not produce Stale), issue #26
   (the movement/altitude baseline, below) and issue #146 (zero meant two things

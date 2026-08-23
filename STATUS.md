@@ -695,6 +695,26 @@ four more things at no cost:
   same — rather than asserted to be a regression test. Release, `-Werror`
   strict, Clang and ASan/UBSan all 24/24.
 
+  **And the independent review found the same defect inside the fix, which is
+  the part worth keeping.** `OutputTooSmall` carries the size to come back
+  with — but both readers judged the output *pointer* in the same condition as
+  the capacity, so an empty frame with a null `out` answered *too small, bring
+  room for 0 bytes*: a demand nothing can satisfy, on a frame never consumed,
+  stranding everything behind it. Seven bytes from a peer, no corruption, and
+  `push(nullptr, 0)` had just been widened to accept the very entry the queue
+  then refused to hand back — so the "same at all three boundaries" claim was
+  not yet true. The capacity is now judged before the pointer and `length != 0`
+  guards both, because a frame with no payload has nothing to copy and any
+  output satisfies it. The review's second finding was the drain instruction
+  rather than the code: *call until the result is false* exits on
+  `OutputTooSmall` too, leaving a verified frame in a decoder that holds one
+  maximum frame plus a byte — so the next push is refused down to one byte and
+  everything behind it tears. `FrameResult::exhausted()` is now the exit
+  condition and `OutputTooSmall` is deliberately not one of its values. Three
+  more mutations, three more red runs. None of the seven original tests looked
+  where either defect lived, which is the argument for the second reader rather
+  than for more tests by the same author.
+
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same

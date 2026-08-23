@@ -108,31 +108,61 @@ enum class FrameStatus : std::uint8_t {
     // A whole frame was copied out. `length` is its payload length, and 0 is a
     // legitimate value for it: an empty frame that really arrived.
     Delivered,
-    // There is nothing to hand over and nothing part-way there.
+    // This reader holds nothing at all.
+    //
+    // It is a fact about *this object*, and the comment says so because the
+    // tempting reading is wider and wrong: an empty decoder buffer says nothing
+    // about what is sitting in the USB or UART FIFO underneath it. Do not gate
+    // a sleep decision or arm a link timeout on this alone.
     NoFrame,
-    // Bytes are held but do not yet make a whole frame. More input will help,
-    // which is the difference from `NoFrame` and the reason both exist: one
-    // means the link is idle, the other means something is in flight. Decoders
-    // only — a queue holds whole frames or nothing.
+    // Fewer bytes are held than any whole frame needs, so nothing can be judged
+    // yet. Decoders only — a queue holds whole frames or nothing.
+    //
+    // Not a promise that a frame is on its way. The resynchroniser discards a
+    // byte at a time and stops once fewer than `kHeaderBytes` remain, so up to
+    // four bytes of pure line noise sit here permanently and report this
+    // forever. "More bytes are needed before anything can be said" is the whole
+    // claim; who will send them, and whether they exist, is not knowable here.
     Incomplete,
     // A whole frame is ready and the caller's buffer cannot hold it. `length`
-    // is how much room it needs, and the frame stays exactly where it was —
-    // this is a request to come back with a bigger buffer, not a loss.
+    // is that frame's payload length — what the caller has to come back with —
+    // and the frame stays exactly where it was.
+    //
+    // **Not an end-of-drain condition.** The frame is still queued and will
+    // block this reader until somebody takes it; in the decoder, whose buffer
+    // holds exactly one maximum frame plus a byte, it also starts tearing
+    // everything that arrives behind it. See the drain loop on `next()`.
+    //
+    // Unreachable from the decoder for any caller whose buffer is `kMaxPayload`
+    // bytes, which is why that bound is a public constant.
     OutputTooSmall,
 };
 
 // A frame handed over, or the reason there is none.
 //
 // Two words wide and trivially copyable, so it costs what returning the length
-// cost. `operator bool` is the drain condition and it reads the *status*: it is
-// true for a delivery and for nothing else, so `while (result)` cannot stop on
-// a frame that was consumed, and cannot be quietly turned back into the old
-// behaviour by anybody testing the length instead.
+// cost. `operator bool` reads the *status*: it is true for a delivery and for
+// nothing else, so a caller cannot stop on a frame that was consumed, and
+// cannot quietly restore the old behaviour by testing the length instead.
 struct FrameResult {
     FrameStatus status = FrameStatus::NoFrame;
     std::size_t length = 0;
 
+    // A frame was handed over. `length` may be 0 and that is still a delivery.
     explicit operator bool() const { return status == FrameStatus::Delivered; }
+
+    // Nothing more can be had from this reader until more bytes arrive. This,
+    // not `!result`, is the end of a drain.
+    //
+    // `OutputTooSmall` is deliberately excluded. It is falsy — it is not a
+    // delivery — but it is a caller error with a frame behind it, and a loop
+    // that exits on it leaves that frame stranded. That is the defect this
+    // whole type exists to remove, and writing the exit condition as `!result`
+    // would reintroduce it one layer up.
+    bool exhausted() const
+    {
+        return status == FrameStatus::NoFrame || status == FrameStatus::Incomplete;
+    }
 };
 
 // What went wrong, counted rather than logged. A count that only ever rises is
@@ -164,14 +194,27 @@ public:
 
     // Take the next complete frame, if there is one.
     //
-    // Copies into `out` and reports what happened. Call until the result is
-    // false — one push may complete several frames. A `Delivered` result whose
-    // `length` is 0 is an empty frame that really arrived: it is a reason to
-    // keep draining, not to stop, and that distinction is what the return type
-    // exists for.
+    // Copies into `out` and reports what happened. One push may complete
+    // several frames, so this is called in a loop — and the loop has exactly
+    // one correct exit, which is `exhausted()` and not `!result`:
     //
-    // A null `out` is treated as a buffer of no capacity rather than as an
-    // error, so the frame is kept and reported as `OutputTooSmall`.
+    //     for (;;) {
+    //         const FrameResult r = decoder.next(out, sizeof out);
+    //         if (r) { deliver(out, r.length); continue; }  // r.length may be 0
+    //         if (r.exhausted()) { break; }                 // NoFrame/Incomplete
+    //         // OutputTooSmall: the frame is still queued, `r.length` says how
+    //         // big it is, and leaving it there blocks this decoder.
+    //     }
+    //
+    // A `Delivered` result whose `length` is 0 is an empty frame that really
+    // arrived: a reason to keep draining, not to stop. Making that sayable is
+    // what the return type is for. Give `out` `kMaxPayload` bytes and the third
+    // case cannot occur at all.
+    //
+    // `out` may be null only for a frame with no payload, where there is
+    // nothing to copy and the caller has therefore received all of it. For any
+    // other frame a null `out` is a buffer that cannot hold it, reported as
+    // `OutputTooSmall` with the frame kept.
     FrameResult next(std::uint8_t* out, std::size_t out_capacity);
 
     void reset();
