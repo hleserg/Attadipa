@@ -104,6 +104,23 @@ starts "an unresolved review thread refuses" "HOLD 1 unresolved review thread" \
 starts "an unanswered Codex comment refuses, review thread or not" \
                                 "HOLD 2 unanswered comment" \
                                  "success" "ai-review:pass" 0 2 clean false "$OLD"
+# "Could not tell" is not a count, and it used to arrive as one. The caller's
+# failure path was `|| CODEX=1`, so a read that never happened printed "1
+# unanswered comment(s) from the other reviewer" -- an invented fact, in a log
+# 48 runs a day long. An empty string was the other direction and worse:
+# `${codex:-0}` turned it into a zero and the pull request MERGED. Issue #130.
+ok "an unreadable answer refuses, and does not report itself as one comment" \
+                                "HOLD could not establish whether the other reviewer's findings were answered" \
+                                 "success" "ai-review:pass" 0 unknown clean false "$OLD"
+ok "an empty answer is unknown, never a silent zero" \
+                                "HOLD could not establish whether the other reviewer's findings were answered" \
+                                 "success" "ai-review:pass" 0 "" clean false "$OLD"
+ok "and neither is a stray word a count" \
+                                "HOLD could not establish whether the other reviewer's findings were answered" \
+                                 "success" "ai-review:pass" 0 none clean false "$OLD"
+ok "a draft whose Codex state is unknown is not undrafted either" \
+                                "HOLD could not establish whether the other reviewer's findings were answered" \
+                                 "success" "ai-review:pass" 0 unknown draft true "$OLD"
 
 echo
 echo "How old the code is"
@@ -275,6 +292,30 @@ if grep -qE 'MIN_HEAD_AGE_SECONDS=[0-9]+' "$SCRIPT_UNDER_TEST" \
   printf '  ok    the settling window is still six hours\n'; pass=$((pass + 1))
 else
   printf '  FAIL  the settling window is no longer six hours\n'; fail=$((fail + 1))
+fi
+
+echo
+echo "The caller asks the rule that exists, and something runs the rule's own test"
+# Two halves of one thing, and both are load-bearing. CODEX_UNANSWERED is a
+# number this file cannot check the provenance of -- the caller computes it --
+# so the guard is that the caller computes it with the rule that has a test,
+# .github/scripts/codex-answered.sh, rather than with four lines of `jq` in a
+# YAML block where nothing can execute them. That is how the defect in #130
+# lived through two rounds of narrowing.
+#
+# And a suite nothing runs is a suite that drifts, so the second half asserts
+# that CI names it. Assertions about a workflow, in the suite CI already runs,
+# because a test that is not run cannot report its own absence.
+SWEEP=.github/workflows/pr-merge-sweep.yml
+if grep -q 'codex-answered.sh' "$SWEEP"; then
+  printf '  ok    the sweep computes the Codex count with the tested rule\n'; pass=$((pass + 1))
+else
+  printf '  FAIL  the sweep does not call .github/scripts/codex-answered.sh\n'; fail=$((fail + 1))
+fi
+if grep -q 'codex-answered-test.sh' .github/workflows/ci.yml; then
+  printf '  ok    and CI runs that rule test\n'; pass=$((pass + 1))
+else
+  printf '  FAIL  CI does not run .github/tests/codex-answered-test.sh\n'; fail=$((fail + 1))
 fi
 
 echo

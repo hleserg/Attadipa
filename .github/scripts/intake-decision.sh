@@ -33,7 +33,13 @@
 # inline spans are removed first, and what is left is what somebody actually
 # said. Markdown-aware enough for the shapes that occur here and no more: this
 # is a gate, not a parser, and it fails towards not starting an agent.
-attadipa_asks_for_agent() {
+#
+# THE STRIPPING IS ITS OWN FUNCTION because a second caller now needs exactly
+# it: .github/scripts/codex-answered.sh looks for an acknowledgement token in a
+# comment, and quoting that token in a code span is somebody writing ABOUT an
+# acknowledgement rather than making one -- the same distinction, one trap, and
+# it is not going to be learned twice. A copy would drift; this does not.
+attadipa_strip_code() {
   local text="$1" line out="" fenced=no
 
   # 1. Fenced blocks, ``` or ~~~. Everything between the markers goes.
@@ -61,6 +67,12 @@ EOF
     out="$pre$post"
   done
 
+  printf '%s' "$out"
+}
+
+attadipa_asks_for_agent() {
+  local out
+  out="$(attadipa_strip_code "${1-}")"
   case "${out,,}" in
     *"@claude"*) return 0 ;;
   esac

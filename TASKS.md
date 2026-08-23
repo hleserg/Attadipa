@@ -155,11 +155,65 @@ stale silently. The protocol is
   was held. Then a run that actually merges one, on a pull request that was
   going to be merged anyway. Both run IDs recorded here. Until that second run
   exists, the orchestrator merges by hand and does not treat the sweep as cover.
-- **Watch for:** the two conditions that can only fail on a real repository and
-  not in a unit test — `mergeStateStatus` values GitHub returns that
-  `merge-candidate.sh` does not enumerate, and a `gh pr merge` refused by branch
+- **Watch for:** the three conditions that can only fail on a real repository
+  and not in a unit test — `mergeStateStatus` values GitHub returns that
+  `merge-candidate.sh` does not enumerate; a `gh pr merge` refused by branch
   protection, which the workflow deliberately turns into one loud failure rather
-  than 48 quiet warnings a day.
+  than 48 quiet warnings a day; and, since
+  [#130](https://github.com/hleserg/Attadipa/issues/130), the permission lookup
+  behind the Codex condition. That call is
+  `repos/{repo}/collaborators/{login}/permission` — the same one the intake gate
+  makes and therefore known to work with this token — but the sweep makes it
+  once per distinct non-bot commenter rather than once per run, and every login
+  it cannot resolve reports `unknown`, which holds. A first sweep that prints
+  *"could not establish whether the other reviewer's findings were answered"*
+  across the board is that call failing, not a repository full of unanswered
+  findings; the per-candidate line distinguishes them, and the run log names the
+  logins it looked up.
+- **Also expect, and it is not a defect:** a pull request carrying a Codex
+  finding now holds until somebody with write access answers it *in a way the
+  rule can see* — a reply in the finding's own review thread, or
+  `attadipa: codex-reviewed` in a comment. See
+  [CLAUDE_AUTOMATION](docs/automation/CLAUDE_AUTOMATION.md).
+- **Hardware required:** no.
+
+
+### T-127 · An agent cannot land a change to `.github/workflows/`, and nothing said so
+- **Priority:** P1
+- **Dependencies:** none. **Owner required:** yes — it is a credential.
+- **Goal:** agents here run as `claude[bot]` through the Claude GitHub App,
+  because `ATTADIPA_AGENT_TOKEN` is deliberately unset
+  ([CLAUDE_AUTOMATION](docs/automation/CLAUDE_AUTOMATION.md#authentication)).
+  That installation token holds no `workflows` permission, so GitHub refuses
+  the push before any review sees it:
+
+  ```
+  ! [remote rejected] claude/codex-answer-provenance-130
+    (refusing to allow a GitHub App to create or update workflow
+     `.github/workflows/ci.yml` without `workflows` permission)
+  ```
+
+  Observed on 2026-08-23 on [#130](https://github.com/hleserg/Attadipa/issues/130),
+  whose fix is half a rule in `.github/scripts/` and half a caller in
+  `.github/workflows/`. It is not a permission on the *repository* and not
+  something a workflow file can grant itself; the only commit touching
+  `.github/workflows/` in recent history, `359b02f`, was authored by the owner.
+  Most of this repository's open automation work — #75, #122, #129, #133 —
+  changes a workflow, so this is not one task's problem.
+- **The options, and the middle one is the recommendation:**
+  1. leave it, and hand every workflow change to the owner as a patch. Works,
+     costs a round trip per task, and the patch goes stale while it waits;
+  2. **add a fine-grained PAT as `ATTADIPA_AGENT_TOKEN` with `Workflows: write`
+     alongside its existing scopes.** One secret; the documented supported
+     configuration already; note the trade-off CLAUDE_AUTOMATION.md records —
+     a PAT's pushes *do* start workflow runs, which is what the automation
+     wants here and is also why the loop guards exist;
+  3. narrow it: a separate token used only for workflow pushes, held by a
+     `workflows`-only route. More moving parts than the problem has.
+- **Acceptance:** an agent branch that changes a workflow file pushes and gets
+  CI, or this task is closed as "option 1, deliberately" and the patch handoff
+  is written into [AI_TASK_PROTOCOL](docs/automation/AI_TASK_PROTOCOL.md) so the
+  next agent does not discover it at push time.
 - **Hardware required:** no.
 
 

@@ -63,8 +63,23 @@ set -uo pipefail
 #                      called `x ai-review:pass` satisfied the space-separated
 #                      test. Found in review.
 # UNRESOLVED           count of unresolved review threads.
-# CODEX_UNANSWERED     count of comments from chatgpt-codex-connector[bot] with
-#                      no reply after them, review thread or not.
+# CODEX_UNANSWERED     count of findings from the other reviewer that nobody
+#                      entitled to answer them has answered -- or `unknown`
+#                      when that could not be established either way, which
+#                      holds.
+#
+#                      "ANSWERED" IS NOT "SOMEBODY COMMENTED AFTERWARDS", and
+#                      until issue #130 it was. The caller's rule was
+#                      `select(.bot | not)`: a non-bot comment later than the
+#                      last Codex one cleared this condition. On a public
+#                      repository that is not an authorisation -- anybody with
+#                      an account can comment -- and the answer had no
+#                      connection to the finding beyond being after it. The
+#                      count now comes from .github/scripts/codex-answered.sh,
+#                      which requires a `write|maintain|admin` actor, a binding
+#                      to the finding (a reply in its review thread, or a
+#                      written acknowledgement), and a date at or after the
+#                      head commit.
 # MERGEABLE_STATE      GitHub's mergeStateStatus, lowercased.
 # IS_DRAFT             `true` or `false`.
 # HEAD_AGE_SECONDS     now minus the head commit's committedDate, in seconds.
@@ -234,10 +249,20 @@ EOF
     echo "HOLD $unresolved unresolved review thread(s)"
     return 0
   fi
-  if [ "${codex:-0}" != "0" ]; then
-    echo "HOLD $codex unanswered comment(s) from the other reviewer"
-    return 0
-  fi
+  # `unknown` is its own answer and its own line. The caller's failure path used
+  # to be `|| CODEX=1`, so a read that never happened arrived here as the
+  # literal 1 and reported itself as "1 unanswered comment(s) from the other
+  # reviewer" -- a fact, invented, in a log 48 runs a day long. An empty string
+  # was worse: `${codex:-0}` made it a zero and it MERGED. Neither is a count.
+  case "${codex:-}" in
+    0) : ;;
+    ''|unknown|*[!0-9]*)
+      echo "HOLD could not establish whether the other reviewer's findings were answered"
+      return 0 ;;
+    *)
+      echo "HOLD $codex unanswered comment(s) from the other reviewer"
+      return 0 ;;
+  esac
 
   # -- how old is the code -----------------------------------------------------
   # `committedDate` on the head, never the pull request's `updatedAt`. This

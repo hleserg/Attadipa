@@ -287,7 +287,8 @@ as much as the first.
 | **It always answers, and says why** — an 👀 reaction within seconds, a receipt saying what was understood, and an outcome comment on every exit path. A failure carries the reason, extracted on the runner from a log that is not published | `acknowledge` job, `Hand over` step, `agent-say.sh`, `failure-reason.sh` |
 | **Turn limits** — 200 for implementation, 100 for review, 40 for repair. The writer's was 60 until 2026-08-22, when six runs died at turn 61 with an accurate plan posted and nothing on the branch | `claude_args: --max-turns` |
 | **Model and effort are pinned, not defaulted** — `claude-opus-5` at `--effort max` in all three. The action has **no `model:` input**, so the model is a string inside `claude_args` and its absence is not an error: it silently falls back to whatever the CLI defaults to. This loop ran that way from the day it was built until 2026-08-22, so no past run can be attributed to a model and no two runs can be compared. Flags read off `claude --help`: `--model` takes an alias or a full name, `--effort` takes one of `low, medium, high, xhigh, max`. The full name is pinned rather than the `opus` alias so a new Opus cannot silently change what this loop is — somebody has to come and move it, which is the intended cost. Owner decision, 2026-08-22 | `claude_args: --model`, `--effort`, `.github/tests/bot-actor-test.sh` |
-| **Nothing merges itself on a green tick alone** — the sweep reads `ai-review:pass` as a *condition*, so a pull request the reviewer never looked at is never merged, and one it blocked never is either. GitHub's own auto-merge cannot do this: it reads required checks, and `ai-review:blocking` is a label on purpose, because the reviewer's verdict is a judgement while a red tick is a fact. Arming native auto-merge would merge precisely the pull requests the reviewer stopped | `merge-candidate.sh`, 80 assertions |
+| **Nothing merges itself on a green tick alone** — the sweep reads `ai-review:pass` as a *condition*, so a pull request the reviewer never looked at is never merged, and one it blocked never is either. GitHub's own auto-merge cannot do this: it reads required checks, and `ai-review:blocking` is a label on purpose, because the reviewer's verdict is a judgement while a red tick is a fact. Arming native auto-merge would merge precisely the pull requests the reviewer stopped | `merge-candidate.sh`, 84 assertions |
+| **A stranger cannot close the other reviewer's finding** — Codex is configured on ChatGPT's side and sets no label, so a finding of its reaches the sweep as a comment, and the sweep has to decide whether anybody dealt with it. The test for that was `user.type != "Bot"`: a **classification** standing in for an **authorisation**, on a public repository, where the "answer" needed no relation to the finding beyond a later timestamp. Anybody with a GitHub account typing "ok" cleared it. An answer now needs all three of — a `write`, `maintain` or `admin` actor, looked up through the collaborators API and never inferred from `author_association`, which grants `COLLABORATOR` to read-only invitees; a **binding to the finding**, either a reply in its own review thread (GitHub's `in_reply_to_id`, not a guess from timing) or the token `attadipa: codex-reviewed` in the body, outside code; and a date at or after the head commit, so an answer given to commit A does not carry to commit B. Anything unestablished prints `unknown` and holds | `codex-answered.sh`, 59 assertions in `.github/tests/codex-answered-test.sh` |
 | **The verdict has to cover the head commit** — `ai-review:pass` records that a verdict was reached, not *which commit* it was reached on. A review that reaches no verdict at all — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, and nothing removes it. So the sweep dates the most recent `labeled ai-review:pass` event against the head commit and refuses when it is older, or when it cannot tell | `merge-candidate.sh` |
 | **The path allowlist above applies unchanged** — the sweep merges exactly what the backstop routine already may, on a schedule instead of on somebody remembering. Every `no` row is asserted in the test. Widening it reverses an owner decision of 2026-08-21 and is not the sweep's, or a reviewer's, to grant; a green pull request touching `core/` or `.github/` still waits for an orchestrator session | `merge-candidate.sh`, and CLAUDE_AUTOMATION.md's table above |
 | **Three merges per run** — the backstop's cap, for its reason: *"a backstop that empties the queue in one go is indistinguishable from one that has gone wrong"*. It also bounds the base-moved problem — a green tick is `refs/pull/N/merge` against `main` **as it was when the checks ran**, and a base move raises no `synchronize` | `pr-merge-sweep.yml` |
@@ -465,7 +466,29 @@ The backstop does not form an opinion about a change. It merges only where the
 independent reviewer has already published `ai-review:pass`, every check is
 green, no review thread or Codex comment is outstanding, and the **head commit**
 is over six hours old — each of which is a decision taken by something other
-than the backstop. The head commit and not the pull request's `updatedAt`: that
+than the backstop.
+
+**"No Codex comment outstanding" is a sentence about who answered, not about
+whether anybody spoke.** Codex sets no label, so its findings arrive as
+comments, and until issue #130 the sweep counted a finding as dealt with when
+*any* non-bot account commented after it. On a public repository that is not a
+decision taken by something other than the sweep — it is a decision taken by
+whoever happened to be passing. To clear a Codex finding now:
+
+- **inside its own review thread**, reply to it. GitHub records
+  `in_reply_to_id`, so the reply is bound to the finding structurally and
+  nothing else is needed;
+- **anywhere else** — an issue comment, a review body, a finding with no thread
+  to reply into — write `attadipa: codex-reviewed` in the comment, outside code
+  spans and fenced blocks, followed by whatever the reader should know. There is
+  nothing to link, so the binding has to be written down.
+
+Either way it has to come from an account holding `write`, `maintain` or
+`admin`, and it has to be **at or after the head commit** — an answer given to
+commit A does not carry to commit B, the same argument `ai-review:pass` already
+carries a row above. Push again after acknowledging and the acknowledgement has
+to be repeated, which is friction on purpose: the finding may have been about
+the code that just changed. The head commit and not the pull request's `updatedAt`: that
 condition exists to show no session is still pushing, and a label or a bot
 comment bumps `updatedAt` without a line of code arriving. Three per run, and a comment on each naming
 what was checked.
