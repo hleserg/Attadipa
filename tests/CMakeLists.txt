@@ -252,6 +252,29 @@ add_test(NAME link COMMAND test_link)
 set_tests_properties(link PROPERTIES LABELS transport)
 
 # ---------------------------------------------------------------------------
+# The input layer, and the debug channel above it.
+#
+# Split into two executables because they fail for different reasons and a
+# reader should be able to tell which. test_input is the queue and the state
+# machine every source pushes into -- a finger, the simulator's SDL driver, and
+# the debug bridge alike. test_debug is the wire format and the bridge, and it
+# runs with no LVGL, no socket and no device, which is the whole reason the
+# bridge takes its transport and its frame source as seams.
+#
+# In both, the tests that matter are the refusals. A state machine that accepts
+# a move with nothing down, or a protocol that answers an unknown opcode with
+# silence, passes every legal-sequence test ever written.
+add_executable(test_input test_input.cpp)
+target_link_libraries(test_input PRIVATE attadipa_core)
+add_test(NAME input COMMAND test_input)
+set_tests_properties(input PROPERTIES LABELS input)
+
+add_executable(test_debug test_debug.cpp)
+target_link_libraries(test_debug PRIVATE attadipa_debug)
+add_test(NAME debug_channel COMMAND test_debug)
+set_tests_properties(debug_channel PROPERTIES LABELS input)
+
+# ---------------------------------------------------------------------------
 # Device power states and the GNSS receiver's own.
 #
 # Both tables are exhaustive over every (from, to) pair, because a suite that
