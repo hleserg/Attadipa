@@ -700,11 +700,11 @@ four more things at no cost:
   we have is the Waveshare factory dump and that cannot be committed. So
   `tools/flash/selftest.py` builds its own images from the layout the extractor
   documents, and is registered in ctest as
-  `flash_spiffs_extract_refuses_mistakes`. Seventy-three assertions, and they are
-  known to bite: pointed at the extractor as it was, the end-to-end half fails
-  **thirty-five** ways — starting with the finding, where one file exists where
-  two names did — before reaching the unit checks of functions that version does
-  not have.
+  `flash_spiffs_extract_refuses_mistakes`. Eighty assertions, and they are known
+  to bite: pointed at the extractor as it was, the end-to-end half fails
+  **forty-two** ways — starting with the finding, where one file exists where two
+  names did — before reaching the unit checks of functions that version does not
+  have.
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same

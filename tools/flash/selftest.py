@@ -204,6 +204,7 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
             check(label, code == 2, f"— exit {code}\n{output}")
             check(f"  and says why: {fragment!r}", fragment in output, f"— {output}")
             check("  and writes nothing", tree(out) == set(), f"— {sorted(tree(out))}")
+            check("  and the summary claims nothing", "0 extracted" in output, f"— {output}")
             check("  and leaves nothing beside outdir",
                   set(os.listdir(base)) <= {"storage.spiffs", "out"},
                   f"— {sorted(os.listdir(base))}")

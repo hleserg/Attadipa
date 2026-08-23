@@ -331,8 +331,8 @@ def main() -> int:
     if refusals:
         for refusal in refusals:
             print(f"REFUSED  {refusal}", file=sys.stderr)
-        print(f"\nnothing written — {len(refusals)} of {len(files)} names could not be "
-              f"given a safe destination of their own", file=sys.stderr)
+        print(f"\n0 extracted, {len(refusals)} refused, {len(problems)} incomplete",
+              file=sys.stderr)
         return 2
 
     written, failure = write_all(writes)
@@ -343,7 +343,7 @@ def main() -> int:
               f"{'  (replaced)' if item.replaces else ''}")
     if failure is not None:
         print(f"FAILED  {failure}", file=sys.stderr)
-        print("\nnothing written", file=sys.stderr)
+        print(f"\n0 extracted, {len(problems)} incomplete", file=sys.stderr)
         return 2
 
     print(f"\n{len(written)} extracted, {len(problems)} incomplete")
