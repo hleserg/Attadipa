@@ -1182,10 +1182,32 @@ QMI8658, from the other end: a power feature wearing a positioning name.
    into [OD-10](#od-10--a-standing-person-does-not-need-a-new-fix), which it
    will eventually feed.
 
-**What it invalidates:** the framing in
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) that A5 and A6 are still awaiting the
-owner, and the conditional "if the node has a magnetometer" language in
-`MAGNETOMETER_BACKLOG.md` and ADR-0009 §3.
+**What it invalidates — five files, and the list is the point.** The first
+version of this paragraph named three, and the two it missed are exactly the ones
+that carry the state as a **table row** rather than as prose, which is how a
+correction lands in a document and leaves the document still saying the old
+thing:
+
+1. [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — the framing that A5 and A6 are
+   still awaiting the owner.
+2. `docs/hardware/MAGNETOMETER_BACKLOG.md` — the conditional *"if the node has a
+   magnetometer"*, **and** the G-08/G-09/G-10 rows of its backlog table, **and**
+   the section saying the three interference tests cannot be run on any hardware
+   in any configuration. The prose and the table are separate edits.
+3. `docs/adr/0009-heading.md` §3 — same conditional. §3a is added by this
+   decision.
+4. `docs/hardware/INTERFERENCE_MATRIX.md` — the four magnetometer rows, whose
+   Evidence column read `NOT MEASURABLE`, and the closing paragraph saying they
+   *"cannot be measured on any targeted hardware at all"*.
+5. `docs/hardware/COEXISTENCE_BACKLOG.md` — C-08 and C-09, marked `NOT
+   POSSIBLE`, and the section headed *"The example from the plan that cannot be
+   tested"*.
+
+The word is now **`BLOCKED`** in all of them, with the blocker named per row,
+because the four rows do not share one: two need placement plus a rail plus
+T-096, one needs a motor that is not fitted, one needs a T-Watch that is not
+owned. `NOT POSSIBLE` and `NOT MEASURABLE` both said "never" about states this
+project can leave.
 
 **What it does not do:** it does not choose where on the watch the magnetometer
 sits (T-109), and it does not design the node-IMU capability (filed separately,

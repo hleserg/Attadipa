@@ -25,9 +25,17 @@ Established from the vendor documents and both schematics
 ## The example from the plan that cannot be tested
 
 The master plan motivates coexistence with a vibration motor disturbing a
-magnetometer. **Neither board has a magnetometer**, so that specific pair is not
-measurable here in any configuration — see
-[MAGNETOMETER_BACKLOG](MAGNETOMETER_BACKLOG.md).
+magnetometer. **Neither board has a magnetometer as shipped**, and until
+2026-08-22 that made the pair unmeasurable here in any configuration.
+
+**A5 is answered and this section is narrower than it was.** The owner has
+ordered a CJMCU-9911 and a GY-271 and is soldering one into the Waveshare unit
+([OD-17](../research/OWNER_DECISIONS.md)). So the magnetometer arrives — but the
+*haptic* pair still cannot be measured on it, because that unit has no vibration
+motor fitted (`OBSERVED`, T-097). The audio pair can be, once the sensor is
+placed, a rail is chosen and the seventh-device bus hazard T-096 is settled. Two
+epics, two different blockers; see
+[MAGNETOMETER_BACKLOG](MAGNETOMETER_BACKLOG.md), which is the authority.
 
 The architecture survives the loss of its example because the contention above is
 real and independently sufficient. But the epics that name the magnetometer are
@@ -44,8 +52,8 @@ blocked, and saying so is more useful than quietly substituting a different test
 | C-05 | Priority model | DESIGN | **Yes** — must state plainly that SOS and CRITICAL outrank everything |
 | C-06 | GNSS coexistence tests | BLOCKED | hardware (A1) |
 | C-07 | LoRa coexistence tests | BLOCKED | hardware (A1) |
-| C-08 | Haptic / magnetometer tests | **NOT POSSIBLE** | no magnetometer on either board |
-| C-09 | Audio / magnetometer tests | **NOT POSSIBLE** | same |
+| C-08 | Haptic / magnetometer tests | **BLOCKED** | placement (T-109) **and a vibration motor**: the unit the sensor is going into has none fitted, `OBSERVED` — T-097 |
+| C-09 | Audio / magnetometer tests | **BLOCKED** | placement (T-109), a rail (G-14) and the bus hazard T-096. The speaker is on the unit and `VERIFIED` |
 | C-10 | Display / GNSS tests | BLOCKED | hardware (A1) |
 | C-11 | Charging / GNSS tests | BLOCKED | hardware (A1) |
 | C-12 | Diagnostic trace | DESIGN + BUILD | **Yes** — and it must come *before* the tests that need it |
@@ -71,6 +79,8 @@ buses. Anything that could delay an SOS or a critical alert loses, unconditional
 
 [INTERFERENCE_MATRIX.md](INTERFERENCE_MATRIX.md) lists 14 candidate pairs. Every
 one is marked `THEORETICAL RISK` and the results table is empty, because no
-measurement has been made. Two of those pairs (haptic/magnetometer,
-audio/magnetometer) should be reclassified as **NOT MEASURABLE ON THESE BOARDS**
-rather than left looking like pending work.
+measurement has been made. Four of those pairs name the magnetometer and are
+marked **`BLOCKED`** there rather than left looking like pending work — with the
+blocker named per row, because they do not share one. An earlier version of this
+paragraph said two of them, and said `NOT MEASURABLE ON THESE BOARDS`; both were
+overtaken by A5 being answered.

@@ -160,21 +160,31 @@ stale silently. The protocol is
     anchor pointing at it, and six of them were in `STATUS.md` and `TASKS.md`
     alone;
   - a **second** kind of silent rot this checker still would not see, kept here
-    because it was found looking for the first. `STATUS.md:501` records **A7**
-    as the tag-emulation question ([#33](https://github.com/hleserg/Attadipa/issues/33),
-    OD-13); `OPEN_QUESTIONS.md:40` records A7 as the palette question
-    ([#57](https://github.com/hleserg/Attadipa/issues/57), OD-15); and
-    `REUSE_LEDGER.md:1196` uses A7 for a third thing.
-    `STATUS.md:578` says out loud that the palette conflict was *"once recorded
-    here as A7"*. **So A7 is a reused question ID, not a mislinked anchor**, and
-    the fix is renumbering rather than anything a link checker can do — an
-    earlier version of this task called it a broken link and coupled its
-    acceptance to resolving it, which would have held a cheap tooling fix behind
-    an owner decision it does not depend on. Both anchors involved resolve, or
-    carry no anchor at all, so the proposed checker stays green over the whole
-    discrepancy. Found in review. **Recorded, not guessed at**: which question
-    keeps A7 is a documentation decision, and it is filed as T-125 below rather
-    than settled here.
+    because it was found looking for the first. **`A7` names two different
+    questions.** `STATUS.md` (*"A7 is answered"*) records it as the
+    **tag-emulation** question — should the watch be findable through a
+    crowd-sourced finding network —
+    [#33](https://github.com/hleserg/Attadipa/issues/33), answered by OD-13;
+    `OPEN_QUESTIONS.md`'s A-table records A7 as the **palette** question, which
+    orange and which olive, [#57](https://github.com/hleserg/Attadipa/issues/57),
+    answered by OD-15. `STATUS.md`'s brand-art paragraph says the reuse out loud
+    — *"once recorded here as A7"* — which is how it was found.
+
+    **Two, not three.** An earlier version of this bullet counted
+    `REUSE_LEDGER.md` as a third use. It is not: that A7 sits under the heading
+    *"Crowd-sourced tag emulation — the ecosystems, and why none of them was
+    reached"* and asks the same question as the `STATUS.md` one. The count came
+    from a previous review and went in unchecked; corrected here rather than
+    carried into a task somebody would have to hunt a missing question for.
+
+    **So A7 is a reused question ID, not a mislinked anchor**, and the fix is
+    renumbering rather than anything a link checker can do — an earlier version
+    of this task called it a broken link and coupled its acceptance to resolving
+    it, which would have held a cheap tooling fix behind an owner decision it
+    does not depend on. Both anchors involved resolve, or carry no anchor at
+    all, so the proposed checker stays green over the whole discrepancy.
+    **Recorded, not guessed at**: which question keeps A7 is a documentation
+    decision, filed as T-125 below rather than settled here.
 - **Acceptance:** the checker resolves a fragment against the target file's
   headings using the same slug rule GitHub applies, fails on one that resolves
   to nothing, and has a mutation test per direction — including one asserting it
@@ -184,29 +194,43 @@ stale silently. The protocol is
   above.
 - **Hardware required:** no. **Owner required:** no.
 
-### T-125 · `A7` names three different questions
+### T-125 · `A7` names two different questions
 - **Priority:** P3. Nothing is blocked by it; it is a trap for the next reader.
 - **Dependencies:** none. **Not** a dependency of T-122 either way, which is the
   correction that produced this task.
-- **Goal:** give each of the three questions currently called A7 its own
+- **Goal:** give each of the two questions currently called A7 its own
   identifier, and leave a line saying which was which.
-- **The three:** the **tag-emulation** question — should the watch be findable
-  by an external tracker — `STATUS.md:501`,
-  [#33](https://github.com/hleserg/Attadipa/issues/33), answered by OD-13; the
-  **palette** question — which orange, which olive —
-  `docs/research/OPEN_QUESTIONS.md:40`,
-  [#57](https://github.com/hleserg/Attadipa/issues/57), answered by OD-15; and a
-  third use at `docs/research/REUSE_LEDGER.md:1196`. `STATUS.md:578` records the
-  reuse in passing — *"once recorded here as A7"* — which is how it was found.
+- **The two:**
+  1. the **tag-emulation** question — should the watch be findable by an
+     external tracker — `STATUS.md`'s *"A7 is answered"* paragraph and
+     `docs/research/REUSE_LEDGER.md` §*Crowd-sourced tag emulation*, which are
+     the **same** question in two files, not two questions;
+     [#33](https://github.com/hleserg/Attadipa/issues/33), answered by OD-13;
+  2. the **palette** question — which orange, which olive —
+     `docs/research/OPEN_QUESTIONS.md`'s A-table,
+     [#57](https://github.com/hleserg/Attadipa/issues/57), answered by OD-15.
+
+  `STATUS.md`'s brand-art paragraph records the reuse in passing — *"once
+  recorded here as A7"* — which is how it was found. An earlier version of this
+  task said three, counting the REUSE_LEDGER occurrence as its own question;
+  corrected 2026-08-23, so nobody picks this up and hunts for a third.
+
+  **Cited by section rather than by line on purpose.** The earlier version gave
+  `STATUS.md:501`, `:578`, `OPEN_QUESTIONS.md:40` and `REUSE_LEDGER.md:1196`;
+  three of the four were already off by three lines on the merge ref, in the
+  same push that explains elsewhere in this file why line citations were
+  abandoned.
 - **Why it is not just tidiness:** all three are answered, so nothing is waiting
   on it. But `OPEN_QUESTIONS.md` is the register `CLAUDE.md` sends every agent
   to, and an `A`-number that resolves to three different questions makes every
   citation of it ambiguous — including the ones in `REUSE_LEDGER.md`, which is
   the file the reuse rule points at.
-- **Acceptance:** one question keeps `A7`, the others take fresh numbers clear of
-  every open branch, and a line in `OPEN_QUESTIONS.md` records the renumbering
-  so an old citation can still be resolved. No link may be left pointing at a
-  number that has moved.
+- **Acceptance:** one question keeps `A7`, the other takes a fresh number clear
+  of every open branch, and a line in `OPEN_QUESTIONS.md` records the renumbering
+  so an old citation can still be resolved. Both files carrying the
+  tag-emulation question move together — they are one question and must not be
+  split by the renumbering. No link may be left pointing at a number that has
+  moved.
 - **Hardware required:** no.
 
 ### T-034a · The mascot, at a size somebody drew
@@ -1791,17 +1815,24 @@ Recommended next action:
   bullet supersedes the status word, and `NOT POSSIBLE` against `BLOCKED` is
   precisely the distinction
   [INTERFERENCE_MATRIX](docs/hardware/INTERFERENCE_MATRIX.md) says must never be
-  allowed to look alike — §"On the four `NOT MEASURABLE` rows", quoted rather
-  than cited by line, because the last line citation here was written in the
-  same patch that moved the line it pointed at.
+  allowed to look alike — §*On the four `BLOCKED` rows*, quoted rather than
+  cited by line, because the last line citation here was written in the same
+  patch that moved the line it pointed at. (That section was itself headed *"On
+  the four `NOT MEASURABLE` rows"* until 2026-08-23; the rows now read `BLOCKED`
+  and the legend defines the word.)
 - **Superseded 2026-08-22, and the status word has to change with it.** A5 and
   A6 are answered: the owner ordered a CJMCU-9911 and a GY-271 and is soldering
   one in ([#83](https://github.com/hleserg/Attadipa/issues/83),
   [OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)).
   **Those two epics are `BLOCKED`, not `NOT POSSIBLE` — and they are not blocked
-  on the same thing.** The audio/magnetometer one (G-09) is gated on **placement
-  alone** (T-109): the speaker is on the unit, `VERIFIED` at
-  `WAVESHARE_BOARD_RECEIVED` §1.8, so placing the sensor makes it measurable.
+  on the same thing.** The audio/magnetometer one (G-09) has its
+  disturbing source on the unit — the speaker is `VERIFIED` at
+  `WAVESHARE_BOARD_RECEIVED` §1.8 — but it is **not gated on placement alone**,
+  which an earlier version of this bullet said. It also needs a **rail** (G-14,
+  still open in the same table), external pull-ups, and the seventh-device I2C
+  hazard **T-096** settled: a sensor with no rail measures nothing, and one
+  sharing a rail with the subsystem it is measuring returns a confounded number
+  that comes out labelled `MEASURED`.
   The haptic one (G-08) is gated on placement **and** on a vibration motor the
   unit does not have (§1.7, `OBSERVED`; the pads are bare, T-097). An earlier
   version of this bullet said "those seven epics" — which matches nothing: the

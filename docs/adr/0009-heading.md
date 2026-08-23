@@ -2,6 +2,11 @@
 
 Status: **accepted**
 Date: 2026-08-21
+Amended: 2026-08-22 — **§3a added** by
+[OD-17](../research/OWNER_DECISIONS.md), which answered A5 and A6. §3a states the
+general rule the node-compass refusal in §3 is a special case of, so it holds
+whichever way A6 had come back. §3's own text is unchanged in force; what changed
+is that the condition it was written against is now settled.
 
 ## Context
 
@@ -114,11 +119,19 @@ what A6 asked, and it is narrower than *"`NodeBody` heading has no source and
 never will"* — which an earlier draft of this line claimed.
 [OD-7](../research/OWNER_DECISIONS.md) makes the companion **any** node the
 watch has a client for, not only ours, and what a third-party companion carries
-is `UNKNOWN`. So `HeadingSource::RemoteSensor` and the four-condition gate at
-§2 stay exactly where they are — §7 below still surfaces remote heading *"on the
-day some other remote device is capable of one"*, and deleting the gate would
-leave that day's device with nowhere safe to report to but the arrow, which is
-the thing this ADR exists to prevent. This paragraph is retained anyway,
+is `UNKNOWN`. So `HeadingSource::RemoteSensor` and the four-condition gate stay exactly where
+they are. The gate is in **§3** (*"A node's compass is the node's compass"*), not
+§2, and the reason to keep it is **OD-7** in the sentence above: a third-party
+companion may carry a magnetometer, and deleting the gate would leave that day's
+device with nowhere safe to report to but the arrow, which is the thing this ADR
+exists to prevent.
+
+An earlier version of this paragraph cited *"§2"* for the gate and *"§7 below"*
+for the reason. There is no §7; the phrase it quoted is in **Consequences →
+Open**, and that entry says surfacing `RemoteSensor` heading in Diagnostics is
+*"probably yes"* — a decision this ADR records as **unmade**. Resting §3's
+survival on it would have made the strongest argument here the weakest, one
+`git blame` away from the deletion this paragraph exists to prevent. This paragraph is retained anyway,
 because the rule it states is not really about a magnetometer. It is a special
 case of a rule general enough to survive the answer coming back either way —
 see §3a.

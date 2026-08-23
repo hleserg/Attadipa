@@ -82,9 +82,9 @@ fake-green result the project forbids.
 | G-05 | Calibration wizard | DESIGN | UI flow can be designed; it cannot be validated |
 | G-06 | Hard-iron calibration | BLOCKED | needs a sensor |
 | G-07 | Soft-iron calibration | BLOCKED | needs a sensor |
-| G-08 | Haptic interference test | BLOCKED | needs a sensor **and** a board that has both — see below |
-| G-09 | Speaker interference test | BLOCKED | same |
-| G-10 | Charging interference test | BLOCKED | same |
+| G-08 | Haptic interference test | BLOCKED | placement (T-109) **and a vibration motor that is not fitted** — the pads on this unit are bare, T-097. Placing the sensor does not unblock it |
+| G-09 | Speaker interference test | BLOCKED | placement (T-109), **a rail** (G-14) and the bus hazard T-096. The speaker is on the unit and `VERIFIED`; nothing else about this row is settled |
+| G-10 | Charging interference test | BLOCKED | placement (T-109), **a rail** (G-14) and T-096. The charge path exists but is **not characterised** — this test establishes its own disturbing current |
 | G-11 | Quiet-window scheduling | DESIGN | **Yes** — and it is worth doing, because the mechanism is not magnetometer-specific |
 | G-12 | Heading confidence | DESIGN | **done in principle** — [ADR-0009](../adr/0009-heading.md) carries source, frame, confidence and validity; the *rendering* of low confidence is still UI work |
 | G-13 | Sensor fusion evaluation | RESEARCH | reading and evaluation only; no data to fuse |
@@ -93,12 +93,24 @@ fake-green result the project forbids.
 
 The master plan's motivating example for the whole coexistence architecture is
 **a vibration motor disturbing a compass**. On the T-Watch there is a vibration
-motor and no compass. On the Waveshare board there is *also* a vibration motor —
-a bare one on GPIO 18 through an NPN, with no driver IC
-([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — and also no compass. Both
-boards have the buzz; neither has the thing it would disturb. So G-08, G-09 and
-G-10 — the three interference tests — cannot be run on any hardware this project
-currently targets, in any configuration.
+motor and no compass. On the Waveshare board there is a vibration motor **as a
+circuit and not as a part**: a bare footprint on GPIO 18 through an NPN, with no
+driver IC ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — and the received
+unit has **no motor fitted at all**, `OBSERVED` at
+[WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.7. That
+is the schematic-against-unit distinction this document draws everywhere else,
+and an earlier version of this paragraph dropped it.
+
+**The sentence that followed is superseded in part, and is kept rather than
+deleted.** It read *"G-08, G-09 and G-10 — the three interference tests — cannot
+be run on any hardware this project currently targets, in any configuration"*,
+which was true while neither board had a magnetometer and none was on order. A5
+is now answered and a sensor is going into the Waveshare unit (OD-17). What
+survives is **G-08 alone**: the haptic pair still has no motor to disturb
+anything, on the one unit the sensor is going into. G-09 and G-10 have their
+disturbing source on the unit and are blocked on things this project can do.
+[*What would unblock this*](#what-would-unblock-this) below is the authority
+wherever it and this paragraph disagree.
 
 That is not a reason to drop the coexistence architecture. Bus contention, rail
 sharing and interrupt storms are all real on these boards and are covered in
@@ -113,7 +125,7 @@ the arbiter is being built for the contention that actually exists here.
 | ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch, hardware ordered** — [OWNER_DECISIONS OD-17](../research/OWNER_DECISIONS.md) |
 | ~~A6~~ | ~~Does the Attadipa node carry one?~~ | **RESOLVED — no, deliberately** — [OWNER_DECISIONS OD-17](../research/OWNER_DECISIONS.md). The node compass path this row used to gate is closed, not merely unavailable |
 | G-14 | Which part, on which bus, at what address, on which rail? | answered for the part: CJMCU-9911 (AK09911C, `0x0C`) and GY-271 (QMC5883L, `0x0D`), both on the Waveshare main I2C bus. **The `CAD` strap belongs to the AK09911C alone** — it is what puts that part at `0x0C` rather than `0x0D`; the QMC5883L has no address-select pin at all, so its address is not a choice ([MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md):208-210, :116-118). Rail is still open |
-| G-15 | Is it on the same I2C bus as the PMU and RTC? | **yes** — the Waveshare main I2C bus carries all fitted devices; this decides G-08–G-10 are measurable in principle once T-109 places the sensor |
+| G-15 | Is it on the same I2C bus as the PMU and RTC? | **yes — and that is a hazard as much as an answer.** The Waveshare main I2C bus carries every fitted device, so the retrofit is the seventh on it, and a seventh that holds `SDA` low takes the AXP2101 with it — [WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.5, filed as **T-096**. [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md) §4.3 clears the *address* conflict and not this one. What this settles is that no second bus has to be found; what it leaves open is the rail, the pull-ups and T-096 |
 
 The honest state of this backlog, now that A5 and A6 are answered rather than
 open: of the thirteen epics above, seven are `DESIGN` kind (one, G-03, only
@@ -121,24 +133,48 @@ partly — the mapping itself needs a placed sensor), one is `RESEARCH`, and fiv
 are `BLOCKED` — but **not all five on the same thing**, and an earlier version of
 this paragraph said they were.
 
-- **Four are blocked on placement alone (T-109)** — a sensor that is ordered and
-  not yet in the unit: G-06 and G-07, the two calibration epics, and **G-09 and
-  G-10**. G-09 is the *speaker* test and G-10 the *charging* test
+- **Two are blocked on placement alone (T-109)** — a sensor that is ordered and
+  not yet in the unit: G-06 and G-07, the two calibration epics. They are
+  sensor-only: a magnetometer held still and turned, with nothing else on the
+  board needing to be decided first.
+- **Two more — G-09 and G-10 — need placement AND a rail AND the bus.** An
+  earlier version of this bullet folded them in with the calibration epics as
+  blocked on placement alone, three lines under a G-14 row that says **"rail is
+  still open"**. G-09 is the *speaker* test and G-10 the *charging* test
   ([the table above](#backlog)), mapping to *Audio amplifier × Magnetometer* and
   *Battery charging × Magnetometer* in
   [INTERFERENCE_MATRIX](INTERFERENCE_MATRIX.md). Neither disturbing source is
   the vibration motor and both are on the unit: the speaker is `VERIFIED` —
   `AAC210602A1`, a metal-can micro-speaker in the back cover
   ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.8) —
-  and the AXP2101 charge path is characterised at §1.3. So placement alone
-  unblocks them.
+  and the AXP2101 charge path exists, §1.2 recording where the battery connects.
+  **It is not characterised**, and an earlier version of this bullet cited
+  *"§1.3"* for a characterisation; §1.3 is the flash section, and §1.2 explicitly
+  declines to give a current figure. G-10 therefore establishes its own
+  disturbing current as part of its method rather than citing one.
+
+  What placement does **not** settle for these two:
+
+  1. **The rail** — G-14 below, still open. An unpowered sensor measures nothing,
+     and a sensor sharing a rail with the subsystem it is measuring returns a
+     confounded number that comes out labelled `MEASURED` and cannot be
+     retracted.
+  2. **Pull-ups** — [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md)
+     records *"external pull-ups required"*.
+  3. **The bus** — the sensor is the **seventh** device on the Waveshare main
+     I2C bus. `WAVESHARE_BOARD_RECEIVED` §1.5 lists six and warns that a seventh
+     holding `SDA` low takes the AXP2101 with it: **T-096**. Fitting both
+     candidate modules at once, which `MAGNETOMETER_RETROFIT` plans, makes
+     eight.
 - **One — G-08, the haptic test — is blocked on placement *and* on a vibration
   motor that is not there.** The sensor is going into the Waveshare unit
   (OD-17), and `WAVESHARE_BOARD_RECEIVED` §1.7 records `OBSERVED`: *"There is no
   vibration motor on this unit."* The pads are bare. So placing the magnetometer
   does not unblock this one — it leaves it with a compass and still nothing to
-  disturb it, which is exactly the state §"What this backlog is not" twenty
-  lines above describes.
+  disturb it, which is exactly the state
+  [*The consequence nobody should skip past*](#the-consequence-nobody-should-skip-past)
+  above describes for G-08. (That reference read `§"What this backlog is not"`,
+  a heading which does not exist anywhere in `docs/`.)
 
 An earlier version of this paragraph said two and three, folding G-09 and G-10
 in with G-08 because all three are "the interference tests". Found in review,
