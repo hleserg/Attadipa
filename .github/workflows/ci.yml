@@ -282,6 +282,16 @@ jobs:
       - name: What the agent decides it did
         run: bash .github/tests/handover-decision-test.sh
 
+      # And what may be merged with nobody looking. This is the only rule in the
+      # repository that can put a commit in `main` unattended, so it gets the
+      # heaviest test: every one of the six conditions asserted in both
+      # directions, plus the ORDER, because a rule that reads mergeStateStatus
+      # before the draft flag declines every candidate it was written for -- a
+      # draft reads `draft` there, never `clean`. Proven to fail against two
+      # distinct real defects.
+      - name: What may be merged unattended
+        run: bash .github/tests/merge-candidate-test.sh
+
       # And whether it says WHY, when the answer is in a log nobody may read.
       # `show_full_output: false` empties the published run log of exactly the
       # cause -- deliberately, because tool results carry file contents -- so a

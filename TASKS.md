@@ -62,9 +62,10 @@ stale silently. The protocol is
   must live in `claude-agent.yml` and cannot be a routine — and a routine's API
   trigger carries a bearer token but no actor, which is the wrong shape for a
   gate whose entire security model is the actor's write access.
-- **Implementation status:** live. Six workflows, an hourly watchdog, and a
+- **Implementation status:** live. Seven workflows, an hourly watchdog, a
+  half-hourly merge sweep applying the backstop's own path allowlist, and a
   daily backstop routine scoped to what a workflow cannot detect about itself.
-- **Tests:** `actionlint` over six workflows with shellcheck integration —
+- **Tests:** `actionlint` over seven workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
   cases — 16/16; host build 10/10; simulator 12/12, both geometries. Production:
   smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
