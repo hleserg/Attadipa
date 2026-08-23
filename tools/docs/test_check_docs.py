@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 import tempfile
 
@@ -32,6 +33,37 @@ def write(root: str, name: str, text: str) -> None:
 
 FAILURES: list[str] = []
 RAN: list[str] = []
+
+# EVERY CHECK MUST HAVE AT LEAST ONE CASE, and until this existed the count
+# said nothing about that: `check_root_files` had zero, so six of seven checks
+# were covered while three documents quoted the suite size as the evidence that
+# "a checker that passes everything is worse than no checker". The number was
+# load-bearing and the coverage behind it was not. Found in review.
+#
+# Recorded by wrapping the check functions rather than by annotating each case,
+# because an annotation is a second thing to keep in step and this file exists
+# because those go stale. A check nothing calls cannot hide.
+CALLED: set[str] = set()
+
+
+def instrument() -> None:
+    for _title, function in check_docs.CHECKS:
+        original = getattr(check_docs, function)
+
+        def wrapper(root, _original=original, _name=function):
+            CALLED.add(_name)
+            return _original(root)
+
+        setattr(check_docs, function, wrapper)
+
+
+def checks_with_no_case() -> list[str]:
+    return [
+        "%s (%s) is in CHECKS and no case in this file calls it, so nothing "
+        "here says it works" % (function, title)
+        for title, function in check_docs.CHECKS
+        if function not in CALLED
+    ]
 
 
 # Where the size of this suite, and the number of checks it covers, are quoted.
@@ -137,6 +169,7 @@ def case(name: str, condition: bool) -> None:
 
 
 def main() -> int:
+    instrument()
     with tempfile.TemporaryDirectory() as root:
         write(root, "docs/real.md", "# Real\n")
 
@@ -360,14 +393,27 @@ def main() -> int:
         )
 
         # A DESCENDING range used to raise ValueError out of max([]), killing
-        # the job with a traceback instead of naming the document; prose gets
-        # here, because the separator allows spaces around it.
+        # the job with a traceback instead of naming the document.
         write(root, "docs/research/TARGET.md", "one\ntwo\nthree\nfour\n")
-        write(root, "docs/research/CITER.md", "See `TARGET.md:4 - 2` lines up.\n")
+        write(root, "docs/research/CITER.md", "See `TARGET.md:4-2`.\n")
         problems = check_docs.check_citation_lines(root)
         case(
             "a descending range is reported, not raised",
             len(problems) == 1 and "not a line range" in problems[0],
+        )
+
+        # And the sentence that made that rule fire on ordinary English: a
+        # correct citation, a dash, and a correct number. It was read as the
+        # range 843-26 and reported, so a true statement reddened CI. The
+        # separator no longer takes whitespace. Found in review.
+        write(
+            root,
+            "docs/research/CITER.md",
+            "See `TARGET.md:4` - 2 lines up from the end.\n",
+        )
+        case(
+            "a citation followed by prose and a number is not a range",
+            not check_docs.check_citation_lines(root),
         )
 
         write(root, "docs/research/CITER.md", "See `TARGET.md:0`.\n")
@@ -413,6 +459,31 @@ def main() -> int:
             "a fingerprint after a Markdown link tail is read",
             len(check_docs.check_citation_lines(root)) == 1,
         )
+
+        # THE ESCAPE HATCH, and the reservation that keeps it one. STATUS.md
+        # and TASKS.md illustrate this syntax, and an illustration written with
+        # a real path is an assertion about a document neither of them is
+        # about: inserting a line above the cited row reddens CI naming the two
+        # files the next agent is told to read first. Found in review.
+        write(
+            root,
+            "docs/research/CITER.md",
+            'Write it as `EXAMPLE.md:357 "Display FPC"` — a live one names a '
+            "real file.\n",
+        )
+        case(
+            "an illustration written with the placeholder path asserts nothing",
+            not check_docs.check_citation_lines(root),
+        )
+
+        write(root, "docs/research/EXAMPLE.md", "one\ntwo\n")
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a real EXAMPLE.md is reported, because it would make every "
+            "illustration live",
+            any("reserved placeholder" in problem for problem in problems),
+        )
+        os.remove(os.path.join(root, "docs/research/EXAMPLE.md"))
 
         os.remove(os.path.join(root, "docs/adr/0003.md"))
         os.remove(os.path.join(root, "docs/research/TARGET.md"))
@@ -505,6 +576,38 @@ def main() -> int:
             len(problems) == 1 and "T-084" in problems[0],
         )
 
+    # check_root_files needs a git checkout rather than a directory of
+    # Markdown, so it gets its own fixture. It had no case at all until the
+    # coverage guard above went looking.
+    with tempfile.TemporaryDirectory() as root:
+        case(
+            "a tree that is not a git checkout is not judged",
+            not check_docs.check_root_files(root),
+        )
+        subprocess.run(["git", "init", "-q", root], check=True)
+        write(root, "README.md", "# Attadipa\n")
+        write(root, "docs/research/NOTES.md", "notes\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        case(
+            "an allow-listed root file and a file in a subdirectory are fine",
+            not check_docs.check_root_files(root),
+        )
+
+        write(root, "vendor-datasheet.pdf.md", "swept in by git add -A\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        problems = check_docs.check_root_files(root)
+        case(
+            "a stray tracked at the root is reported",
+            len(problems) == 1 and "vendor-datasheet.pdf.md" in problems[0],
+        )
+
+        write(root, "untracked.md", "never added\n")
+        problems = check_docs.check_root_files(root)
+        case(
+            "an untracked stray is not reported -- the rule is about the index",
+            len(problems) == 1 and "untracked.md" not in problems[0],
+        )
+
     if FAILURES:
         print(f"\n{len(FAILURES)} failed", file=sys.stderr)
         return 1
@@ -513,6 +616,14 @@ def main() -> int:
     # time cases were added -- the drift this file exists to catch, in the
     # file that catches it.
     print("\nall %d cases passed" % len(RAN))
+
+    uncovered = checks_with_no_case()
+    if uncovered:
+        print()
+        print("but %d check(s) have no case here:" % len(uncovered))
+        for problem in uncovered:
+            print("  " + problem)
+        return 1
 
     stale = quoted_counts_that_disagree(len(RAN), len(check_docs.CHECKS))
     if stale:

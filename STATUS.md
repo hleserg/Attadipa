@@ -846,9 +846,13 @@ four more things at no cost:
   *wrong* line is invisible to that, which is what happened to two citations
   into `HARDWARE_MATRIX.md`: both were thirteen lines out, both pointed at a
   real row, and nothing went red for weeks. So a citation may now carry a
-  **fingerprint** — `HARDWARE_MATRIX.md:357 "Display FPC"` — and where one is
+  **fingerprint** — `EXAMPLE.md:357 "Display FPC"` — and where one is
   written the check reads the cited line and reports where the text actually
-  went. It is opt-in: adding a fingerprint is a promise the check then keeps,
+  went. That example uses `EXAMPLE.md` deliberately: a fingerprint is an
+  assertion, so an illustration written with a real path is one too, and this
+  paragraph would otherwise be asserting a line number in a document it is not
+  about. `EXAMPLE.md` is the reserved spelling that resolves to nothing, and
+  the check reports the day a file by that name appears. It is opt-in: adding a fingerprint is a promise the check then keeps,
   and the citations this repository has been burned by are the ones to add it
   to first. The count said Six on the commit that added the seventh, so
   it is no longer typed: `check_docs.py` holds its checks as a list, the suite
@@ -880,12 +884,28 @@ four more things at no cost:
   the #48 review established for T-064 and T-073; all four are now under
   `## DONE`. Under `## BLOCKED` the body is the `BLOCKED:` block CLAUDE.md
   specifies rather than a priority, so T-010 and T-011 are correct and not
-  flagged. **45 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
+  flagged. **52 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
   sub-heading is not a second decision, a range straddling a blank line is
   how a table is cited, and a line number in somebody else's tree is not
   ours to verify. The
   suite prints its own count, because the three documents quoting it were all
   stale within a day of the last time cases were added.
+
+  **A re-review found the count load-bearing and the coverage behind it
+  missing**: `check_root_files` had no case at all, so six of seven checks were
+  covered while three documents quoted the number as the evidence that a
+  checker which passes everything is worse than none. The suite now wraps every
+  function in `CHECKS` and reports any that no case calls — coverage recorded
+  rather than annotated, because an annotation is a second thing to keep in
+  step. Four cases for that check followed. The same round found the mechanism
+  reddening CI for true sentences twice over: the citation separator accepted
+  whitespace, so *"`STATUS.md:843` - 26 lines below"* parsed as a descending
+  range, and a fingerprint written to **illustrate** the syntax was a live
+  assertion about a third document — the two files CLAUDE.md tells the next
+  agent to read first were both making one. The separator is closed up now, and
+  `EXAMPLE.md` is the reserved placeholder an illustration is written with; a
+  file by that name appearing is itself reported, because it would turn every
+  illustration in the repository live.
 
 - **T-070 research — the watch as a tracker detector, and the honest limit is
   now sourced rather than deferred.**

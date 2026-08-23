@@ -155,7 +155,14 @@ CITATION = re.compile(
     r"\.(?:md|cpp|h|hpp|py|sh|yml|yaml|json|jq|txt))"
     # The `)` is a Markdown link closing before the line number:
     # `[ADR-0003](../adr/0003-radio-not-lora.md):109-111`. Not captured.
-    r"\)?:(\d+)(?:\s*[-\u2013]\s*(\d+))?\b"
+    #
+    # NO WHITESPACE AROUND THE SEPARATOR, and that is the whole of the rule.
+    # Allowing it turned "STATUS.md:843 - 26 lines below" -- ordinary English,
+    # a correct citation followed by a correct number -- into the range 843-26,
+    # which then failed as a descending range and reddened CI for a true
+    # sentence. Every real range in this repository is written closed up.
+    # Found in review.
+    r"\)?:(\d+)(?:[-\u2013](\d+))?\b"
 )
 
 # An optional FINGERPRINT after a citation: `HARDWARE_MATRIX.md:357 "Display
@@ -174,11 +181,28 @@ FINGERPRINT = re.compile(
     r'\A`?(?:\]\([^)]*\))?`?\s*[\u2014-]?\s*"([^"]{3,80})"'
 )
 
+# HOW TO WRITE AN EXAMPLE THAT IS NOT A CITATION. A fingerprint is an
+# assertion, and prose that merely ILLUSTRATES the syntax makes it by accident:
+# STATUS.md and TASKS.md both showed the new form with a real path and a real
+# line number, so the two documents CLAUDE.md tells the next agent to read
+# first were quietly asserting a line number in a third document that neither
+# of them is about. Inserting one line above that row reddens CI naming them.
+# Found in review, and there was no way to write the example inertly -- fences
+# are deliberately not stripped here, and backticks exempt nothing.
+#
+# The escape is a path that resolves to nothing, since an unresolvable citation
+# is already skipped as somebody else's tree. Naming one reserved spelling
+# makes that deliberate rather than folklore, and the check then keeps the
+# reservation: if a file called EXAMPLE.md is ever added, every illustration in
+# the repository silently becomes a live assertion, so the placeholder existing
+# is itself reported.
+PLACEHOLDER = "EXAMPLE.md"
+
 # These documents also cite a sibling by its bare SHOUTING name --
 # `HARDWARE_MATRIX:144`, no extension -- and that spelling is where the defect
 # this check was written for actually lived. Resolved against the tree rather
 # than a hardcoded list, and only when exactly one file answers to the name.
-BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,}):(\d+)(?:\s*[-\u2013]\s*(\d+))?\b")
+BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,}):(\d+)(?:[-\u2013](\d+))?\b")
 
 
 def bare_document_index(root: str) -> dict[str, str]:
@@ -213,6 +237,15 @@ def check_citation_lines(root: str) -> list[str]:
         return cache[target]
 
     bare_index = bare_document_index(root)
+    for path in markdown_files(root):
+        if os.path.basename(path) == PLACEHOLDER:
+            problems.append(
+                "%s: %s is the reserved placeholder this repository writes "
+                "citation EXAMPLES with, so it must not exist -- every "
+                "illustration of the syntax would become a live assertion "
+                "about this file. Rename it."
+                % (os.path.relpath(path, root), PLACEHOLDER)
+            )
     for path in markdown_files(root):
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
@@ -297,6 +330,8 @@ def _report(problems, rel_self, lineno, cited, match, body, line="") -> None:
     if elsewhere:
         problems.append(
             '%s:%d: cites %s:%s for "%s", which is now at %s'
+            "\n    (illustrating the syntax rather than citing? write it with "
+            "the placeholder path %s, which resolves to nothing)"
             % (
                 rel_self,
                 lineno,
@@ -304,13 +339,16 @@ def _report(problems, rel_self, lineno, cited, match, body, line="") -> None:
                 span,
                 snippet,
                 ", ".join(":%d" % n for n in elsewhere[:3]),
+                PLACEHOLDER,
             )
         )
     else:
         problems.append(
             '%s:%d: cites %s:%s for "%s", which is not on those lines and is '
             "not anywhere in that file"
-            % (rel_self, lineno, cited, span, snippet)
+            "\n    (illustrating the syntax rather than citing? write it with "
+            "the placeholder path %s, which resolves to nothing)"
+            % (rel_self, lineno, cited, span, snippet, PLACEHOLDER)
         )
 
 

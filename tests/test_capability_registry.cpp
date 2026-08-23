@@ -113,6 +113,39 @@ void test_board_profiles()
     CHECK(!twatch(platform::RadioChip::Sx1262).present(platform::HardwareFeature::MagnetometerSensor));
 }
 
+// THE SHIPPED PROFILE, which every case above overrides before looking at it.
+//
+// `twatch()` replaces `.radio` on its way out, so nothing else in this file
+// reads what `make_twatch()` actually built -- and that field is the one an
+// owner answer puts pressure on. A2 is now ANSWERED and struck through in the
+// register, reading "SX1262 (868 MHz)" from an order listing; the enum must not
+// move on that, because a listing is a seller's claim and this value is what
+// the firmware bets a radio on (ADR-0003). Until this test existed, setting
+// `board_profiles.cpp:95` to `RadioChip::Sx1262` left the suite green at 24/24
+// and the device advertised MeshMessaging as Ready on a watch nobody has held.
+// The comment saying not to was the only thing in the way, and a comment is not
+// a check. Found in review.
+void test_shipped_twatch_radio_is_unread()
+{
+    const platform::BoardProfile* shipped = platform::find_board_profile("t-watch-s3-plus");
+    CHECK(shipped != nullptr);
+    if (shipped == nullptr) {
+        return;
+    }
+
+    // Not "some chip we are unsure about" -- the marking has not been read.
+    CHECK(shipped->radio.chip == platform::RadioChip::Unknown);
+    CHECK(shipped->radio.meshcore != platform::MeshCoreSupport::Supported);
+
+    // And the consequence, which is the sentence that reaches a user: the
+    // launcher may offer mesh through an Attadipa node, never through this
+    // watch's own radio.
+    platform::ProfileInventory inventory(*shipped);
+    bring_up(inventory);
+    core::CapabilityRegistry caps(inventory);
+    CHECK_AVAIL(caps, core::Capability::MeshMessaging, core::Availability::Unprovisioned);
+}
+
 // Owning a part is not initialising it. A part that has not been brought up
 // must read as Off — something the user can act on — and never as Failed.
 void test_untouched_is_not_failed()
@@ -406,6 +439,7 @@ void test_launcher_gating()
 int main()
 {
     test_board_profiles();
+    test_shipped_twatch_radio_is_unread();
     test_untouched_is_not_failed();
     test_radio_is_not_lora();
     test_waveshare_position_comes_from_a_node();

@@ -389,7 +389,7 @@ jobs:
 
       # The checker's own mutation tests, run before the checker. A checker that
       # passes everything is worse than no checker, because it reads as
-      # evidence. tools/docs/test_check_docs.py holds 45 cases; several assert
+      # evidence. tools/docs/test_check_docs.py holds 52 cases; several assert
       # it does *not* fire where firing would be wrong (a `###` sub-heading is not a second decision, a range
       # straddling a blank line is how a table is cited, a line number in
       # somebody else's tree is not ours to verify), and two reproduce the

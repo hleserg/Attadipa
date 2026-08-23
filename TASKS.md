@@ -170,14 +170,21 @@ stale silently. The protocol is
 - **Dependencies:** none — the mechanism exists; this is the sweep.
 - **Goal:** `check_docs.py` check 7 can now hold a citation to the *text* it was
   written for, where the citation carries a fingerprint:
-  `HARDWARE_MATRIX.md:357 "Display FPC"`. Two citations in
-  `WAVESHARE_ARRIVAL.md` were thirteen lines out and landed on a real, wrong
-  row — one on Flash where it meant the display FPC, one on the tail of the
-  GNSS-rail trap bullet where it meant PSRAM — and both were repaired with
-  fingerprints. **The other fifteen were not.** `WAVESHARE_ARRIVAL.md` cites
-  `HARDWARE_MATRIX.md` at fourteen more places and `TASKS.md` at one, and
-  `OPEN_QUESTIONS.md` carries five more; every one of them is a bare line
-  number into a file that grows from the middle, so every one of them is a
+  `EXAMPLE.md:357 "Display FPC"` — the reserved placeholder path, because an
+  illustration written with a real one is a live assertion about a document
+  this task is not about. Three citations in `WAVESHARE_ARRIVAL.md` were out by
+  thirteen lines or more and landed on a real, wrong row — one on Flash where it
+  meant the display FPC, one on the tail of the GNSS-rail trap bullet where it
+  meant PSRAM, and one into `VERIFIED_FACTS.md` that had drifted onto the AXP2101
+  `PWRON` entry — and all three were repaired with fingerprints.
+  **Twenty-three bare ones remain**, counted rather than remembered: eleven from
+  `WAVESHARE_ARRIVAL.md` into `HARDWARE_MATRIX.md`, five into `OPEN_QUESTIONS.md`,
+  two into `VERIFIED_FACTS.md`, one into `TASKS.md`, and four more in
+  `RECONCILIATION_2026-08-21.md` that no earlier version of this task had noticed
+  at all. An earlier count here said fifteen and was a remembered subtotal of one
+  file; the number now comes from a scan for `FILE.md:N` not followed by a quoted
+  snippet, which is the same shape the checker reads. Every one of them is a bare
+  line number into a file that grows from the middle, so every one of them is a
   silent wrongness waiting. Repairing them without a fingerprint would only
   reset the clock.
 - **Acceptance:** each of those citations resolves to the row or paragraph its
@@ -2117,7 +2124,7 @@ A1's schematic-revision
   this is the one place in the checker that reads fenced lines — everywhere else
   a `**Priority:**` inside a fence is an example and does not count as a body.
 - **Mutation-tested**, and CI runs those tests before it runs the checker:
-  **45 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  **52 cases** in `tools/docs/test_check_docs.py`, several of which assert the
   checker does *not* fire where firing would be wrong — a `###` sub-heading is
   not a second decision, a range straddling a blank line is how a table is
   cited, and a line number in somebody else's tree is not ours to verify. The
