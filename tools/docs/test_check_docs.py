@@ -12,12 +12,15 @@ Run: python3 tools/docs/test_check_docs.py
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import check_docs  # noqa: E402
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def write(root: str, name: str, text: str) -> None:
@@ -29,6 +32,101 @@ def write(root: str, name: str, text: str) -> None:
 
 FAILURES: list[str] = []
 RAN: list[str] = []
+
+
+# Where the size of this suite, and the number of checks it covers, are quoted.
+# Both were wrong at the same time: STATUS.md said "Six checks" on the commit
+# that added the seventh, and "38 cases" stood in three documents whose own
+# paragraph observed that "the three documents quoting it were all stale within
+# a day of the last time cases were added". An instruction to fix them by hand
+# is what had just failed, so they are read back instead. Found in review.
+CLAIM_FILES = ("STATUS.md", "TASKS.md", os.path.join(".github", "workflows", "ci.yml"))
+ANCHORS = ("check_docs.py", "test_check_docs.py")
+WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+}
+CUES = (
+    ("cases", re.compile(r"\**([A-Za-z0-9]+)\**\s+(?:cases|mutation tests)\b")),
+    # The colon is required, and it is the convention rather than an accident
+    # of parsing: the number of checks is claimed where the list of them is
+    # introduced. Prose says "the two checks this pull request added" and means
+    # something else entirely; a claim about the whole checker enumerates.
+    ("checks", re.compile(r"\**([A-Za-z0-9]+)\**\s+checks:")),
+)
+
+
+def spelled(token: str):
+    """A number written either way, or None for a word that is not one."""
+    if token.isdigit():
+        return int(token)
+    return WORDS.get(token.lower())
+
+
+def paragraphs(text: str):
+    """Blocks separated by blank lines, with `#` comment markers stripped.
+
+    One implementation for Markdown and for the workflow file: a CI comment
+    block is a paragraph whose lines happen to start with `#`, and the numbers
+    inside it go stale exactly like prose.
+    """
+    out, current, start = [], [], 1
+    for lineno, line in enumerate(text.split("\n") + [""], 1):
+        bare = re.sub(r"^#\s?", "", line.strip())
+        if not bare:
+            if current:
+                out.append((start, " ".join(current)))
+                current = []
+            continue
+        if not current:
+            start = lineno
+        current.append(bare)
+    return out
+
+
+def quoted_counts_that_disagree(cases: int, checks: int) -> list[str]:
+    expected = {"cases": cases, "checks": checks}
+    problems = []
+    for relative in CLAIM_FILES:
+        path = os.path.join(REPO, relative)
+        if not os.path.isfile(path):
+            problems.append(
+                "%s is missing, and it is one of the files that quotes these "
+                "numbers" % relative
+            )
+            continue
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        anchored = quoted = 0
+        for lineno, block in paragraphs(text):
+            if not any(name in block for name in ANCHORS):
+                continue
+            anchored += 1
+            for kind, cue in CUES:
+                for token in cue.findall(block):
+                    stated = spelled(token)
+                    if stated is None:
+                        continue
+                    quoted += 1
+                    if stated != expected[kind]:
+                        problems.append(
+                            "%s:%d states %s %s, and this tree has %d"
+                            % (relative, lineno, token, kind, expected[kind])
+                        )
+        if anchored and not quoted:
+            problems.append(
+                "%s names the checker and quotes no number this reads. Either "
+                "the claim went away -- say so -- or it is phrased in a way "
+                "nothing checks, which is how all three went stale before."
+                % relative
+            )
+        if not anchored:
+            problems.append(
+                "%s no longer mentions the checker at all; drop it from "
+                "CLAIM_FILES deliberately rather than passing by default"
+                % relative
+            )
+    return problems
 
 
 def case(name: str, condition: bool) -> None:
@@ -249,6 +347,74 @@ def main() -> int:
             not check_docs.check_citation_lines(root),
         )
 
+        # A RELATIVE path is inside the repository, and the first version of
+        # the pattern could not open with a `.`, so `../adr/0003.md:109-111`
+        # was captured from the `a` of `adr/`, resolved from nowhere, and
+        # skipped as somebody else's tree -- while three documents said
+        # citations were checked. Found in review.
+        write(root, "docs/adr/0003.md", "one\ntwo\n\nfour\n")
+        write(root, "docs/research/CITER.md", "See [ADR](../adr/0003.md):3.\n")
+        case(
+            "a citation by relative path is resolved, not skipped as external",
+            len(check_docs.check_citation_lines(root)) == 1,
+        )
+
+        # A DESCENDING range used to raise ValueError out of max([]), killing
+        # the job with a traceback instead of naming the document; prose gets
+        # here, because the separator allows spaces around it.
+        write(root, "docs/research/TARGET.md", "one\ntwo\nthree\nfour\n")
+        write(root, "docs/research/CITER.md", "See `TARGET.md:4 - 2` lines up.\n")
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a descending range is reported, not raised",
+            len(problems) == 1 and "not a line range" in problems[0],
+        )
+
+        write(root, "docs/research/CITER.md", "See `TARGET.md:0`.\n")
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "line zero is reported, not resolved to the last line",
+            len(problems) == 1 and "not a line range" in problems[0],
+        )
+
+        # The FINGERPRINT: the half a blank-line test cannot see. Two citations
+        # in this repository were thirteen lines out and landed on a real,
+        # wrong row -- non-blank, inside the file, invisible to every check.
+        write(root, "docs/research/CITER.md", 'A row at `TARGET.md:2` "three".\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a fingerprint that has moved is reported, with where it moved to",
+            len(problems) == 1 and 'which is now at :3' in problems[0],
+        )
+
+        write(root, "docs/research/CITER.md", 'A row at `TARGET.md:2` "nine".\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a fingerprint that is nowhere in the file is reported",
+            len(problems) == 1 and "not anywhere in that file" in problems[0],
+        )
+
+        write(root, "docs/research/CITER.md", 'A row at `TARGET.md:3` "three".\n')
+        case(
+            "a fingerprint that still matches is not reported",
+            not check_docs.check_citation_lines(root),
+        )
+
+        # Through a Markdown link, which is how these documents write most
+        # citations -- the citation match ends inside `](...)`, so a
+        # fingerprint after the link had to be reachable or it would be a
+        # promise nothing kept.
+        write(
+            root,
+            "docs/research/CITER.md",
+            'A row at [TARGET.md:2](TARGET.md) "three".\n',
+        )
+        case(
+            "a fingerprint after a Markdown link tail is read",
+            len(check_docs.check_citation_lines(root)) == 1,
+        )
+
+        os.remove(os.path.join(root, "docs/adr/0003.md"))
         os.remove(os.path.join(root, "docs/research/TARGET.md"))
         os.remove(os.path.join(root, "docs/research/CITER.md"))
 
@@ -347,6 +513,14 @@ def main() -> int:
     # time cases were added -- the drift this file exists to catch, in the
     # file that catches it.
     print("\nall %d cases passed" % len(RAN))
+
+    stale = quoted_counts_that_disagree(len(RAN), len(check_docs.CHECKS))
+    if stale:
+        print()
+        print("but %d quoted number(s) disagree with this tree:" % len(stale))
+        for problem in stale:
+            print("  " + problem)
+        return 1
     return 0
 
 

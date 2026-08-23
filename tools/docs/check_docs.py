@@ -144,9 +144,34 @@ def check_links(root: str) -> list[str]:
 # repository writes them: inside backticks, in a link, or bare in prose. The
 # suffix list is the file kinds actually cited here; widening it would start
 # matching version strings and times.
+# The leading class allows `.` because a relative path starts with one:
+# `[ADR-0003](../adr/0003-radio-not-lora.md):109-111` was captured from the `a`
+# of `adr/`, resolved from nowhere, and silently skipped as "not a file in this
+# repository" -- while three documents said citations were now checked. Found in
+# review. `\b` cannot open the pattern once `.` may lead it, so the boundary is
+# a look-behind for a character that could continue a path.
 CITATION = re.compile(
-    r"\b([A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:md|cpp|h|hpp|py|sh|yml|yaml|json|jq|txt))"
-    r":(\d+)(?:\s*[-\u2013]\s*(\d+))?\b"
+    r"(?<![A-Za-z0-9_./-])((?:\.{1,2}/)*[A-Za-z0-9_][A-Za-z0-9_./-]*"
+    r"\.(?:md|cpp|h|hpp|py|sh|yml|yaml|json|jq|txt))"
+    # The `)` is a Markdown link closing before the line number:
+    # `[ADR-0003](../adr/0003-radio-not-lora.md):109-111`. Not captured.
+    r"\)?:(\d+)(?:\s*[-\u2013]\s*(\d+))?\b"
+)
+
+# An optional FINGERPRINT after a citation: `HARDWARE_MATRIX.md:357 "Display
+# FPC"`. A bare line number rots every time anybody inserts a paragraph above
+# it, and it rots SILENTLY -- the line it lands on is real and non-blank, so
+# nothing here could see it. Two citations in this repository were thirteen
+# lines out and pointed at a real, wrong row for weeks. With a fingerprint the
+# check reads the cited line and says where the text actually went, which turns
+# drift from an undetectable defect into a one-line fix. Opt-in by design:
+# adding one is a promise this check then keeps.
+# The optional `](...)` is the tail of a Markdown link: these documents write
+# `[HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md)`, and the citation match ends
+# inside it, so a fingerprint written after the link would otherwise be seen by
+# nothing -- a promise silently not kept, which is worse than no promise.
+FINGERPRINT = re.compile(
+    r'\A`?(?:\]\([^)]*\))?`?\s*[\u2014-]?\s*"([^"]{3,80})"'
 )
 
 # These documents also cite a sibling by its bare SHOUTING name --
@@ -165,7 +190,9 @@ def bare_document_index(root: str) -> dict[str, str]:
 
 
 def check_citation_lines(root: str) -> list[str]:
-    """A `file:line` citation points at a line that exists and is not blank."""
+    """A `file:line` citation points at a line that exists, is not blank, and --
+    where the citation carries a fingerprint -- still says what it was cited
+    for."""
     problems = []
     cache: dict[str, list[str] | None] = {}
 
@@ -204,7 +231,9 @@ def check_citation_lines(root: str) -> list[str]:
                     resolved = bare_index[cited]
                     body = lines_of(resolved)
                     if body is not None:
-                        _report(problems, rel_self, lineno, cited, match, body)
+                        _report(
+                            problems, rel_self, lineno, cited, match, body, line
+                        )
                     continue
                 # Resolve beside the citing file first, then from the root. A
                 # bare basename -- `TEST_FLEET.md:21` -- is how these documents
@@ -222,14 +251,27 @@ def check_citation_lines(root: str) -> list[str]:
                 body = lines_of(resolved)
                 if body is None:
                     continue
-                _report(problems, rel_self, lineno, cited, match, body)
+                _report(problems, rel_self, lineno, cited, match, body, line)
     return problems
 
 
-def _report(problems, rel_self, lineno, cited, match, body) -> None:
+def _report(problems, rel_self, lineno, cited, match, body, line="") -> None:
     first = int(match.group(2))
     last = match.group(3)
     span = match.group(0).split(":", 1)[1]
+    # A DESCENDING or ZERO range. `range(30, 12)` is empty and `max()` of it
+    # raises, so the job died on a traceback instead of naming the document --
+    # and `:0` indexed `body[-1]`, quietly approving a citation to the last
+    # line of the file. Prose reaches here: the separator allows spaces, so
+    # "STATUS.md:843 - 26 lines below" parses as the range 843-26. Found in
+    # review; both are now reported rather than crashed on or waved through.
+    if first < 1 or (last is not None and int(last) < first):
+        problems.append(
+            "%s:%d: cites %s:%s, which is not a line range -- a citation reads "
+            "first-last, and lines start at 1"
+            % (rel_self, lineno, cited, span)
+        )
+        return
     wanted = [first] if last is None else list(range(first, int(last) + 1))
     if max(wanted) > len(body):
         problems.append(
@@ -241,6 +283,34 @@ def _report(problems, rel_self, lineno, cited, match, body) -> None:
         problems.append(
             "%s:%d: cites %s:%s, which is blank -- the lines it named have moved"
             % (rel_self, lineno, cited, span)
+        )
+        return
+    # And the half a blank-line test cannot see: the cited lines are real, and
+    # about something else entirely.
+    stamp = FINGERPRINT.match(line[match.end() :])
+    if not stamp:
+        return
+    snippet = stamp.group(1)
+    if any(snippet in body[n - 1] for n in wanted):
+        return
+    elsewhere = [n for n, text in enumerate(body, 1) if snippet in text]
+    if elsewhere:
+        problems.append(
+            '%s:%d: cites %s:%s for "%s", which is now at %s'
+            % (
+                rel_self,
+                lineno,
+                cited,
+                span,
+                snippet,
+                ", ".join(":%d" % n for n in elsewhere[:3]),
+            )
+        )
+    else:
+        problems.append(
+            '%s:%d: cites %s:%s for "%s", which is not on those lines and is '
+            "not anywhere in that file"
+            % (rel_self, lineno, cited, span, snippet)
         )
 
 
@@ -514,18 +584,29 @@ def check_root_files(root: str) -> list[str]:
     return sorted(problems)
 
 
+# The checks this file runs, as data. How many there are is quoted in STATUS.md,
+# TASKS.md and the CI comment, and the copy in STATUS.md said Six on the very
+# commit that added the seventh -- so the number now has one source, and
+# test_check_docs.py holds the quotes to it. Found in review.
+CHECKS = (
+    ("Broken relative links", "check_links"),
+    ("Unclosed inline code spans", "check_code_spans"),
+    ("Duplicate task IDs", "check_task_ids"),
+    ("Duplicate owner-decision numbers", "check_decision_ids"),
+    ("Tasks with no body, or finished work outside DONE", "check_task_bodies"),
+    ("Unexpected files tracked at the repository root", "check_root_files"),
+    (
+        "Citations pointing at a blank line or past the end of a file",
+        "check_citation_lines",
+    ),
+)
+
+
 def main() -> int:
     root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
     failed = False
-    for title, problems in (
-        ("Broken relative links", check_links(root)),
-        ("Unclosed inline code spans", check_code_spans(root)),
-        ("Duplicate task IDs", check_task_ids(root)),
-        ("Duplicate owner-decision numbers", check_decision_ids(root)),
-        ("Tasks with no body, or finished work outside DONE", check_task_bodies(root)),
-        ("Unexpected files tracked at the repository root", check_root_files(root)),
-        ("Citations pointing at a blank line or past the end of a file", check_citation_lines(root)),
-    ):
+    for title, function in CHECKS:
+        problems = globals()[function](root)
         if problems:
             failed = True
             print(f"{title}: {len(problems)}", file=sys.stderr)

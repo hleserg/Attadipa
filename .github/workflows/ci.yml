@@ -389,8 +389,8 @@ jobs:
 
       # The checker's own mutation tests, run before the checker. A checker that
       # passes everything is worse than no checker, because it reads as
-      # evidence. 38 cases; several assert it does *not* fire where firing would
-      # be wrong (a `###` sub-heading is not a second decision, a range
+      # evidence. tools/docs/test_check_docs.py holds 45 cases; several assert
+      # it does *not* fire where firing would be wrong (a `###` sub-heading is not a second decision, a range
       # straddling a blank line is how a table is cited, a line number in
       # somebody else's tree is not ours to verify), and two reproduce the
       # splice defect this pull request's first revision shipped — one from each
@@ -403,6 +403,13 @@ jobs:
       - name: The checker actually checks
         run: python3 tools/docs/test_check_docs.py
 
+      # What the citation check can and cannot see, because three documents
+      # billed it as the answer to citation drift and it is not: it catches a
+      # line past the end of a file, a blank line, and a range that is not one.
+      # A citation that lands on a real, WRONG line is invisible to it unless
+      # the citation carries a fingerprint -- `HARDWARE_MATRIX.md:357 "Display
+      # FPC"` -- in which case the check reads the line and says where the text
+      # actually went. Two citations here were thirteen lines out for weeks.
       - name: Links, spans, task IDs, OD numbers, task bodies, root files, citations
         run: python3 tools/docs/check_docs.py .
 

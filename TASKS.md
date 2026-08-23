@@ -165,6 +165,34 @@ stale silently. The protocol is
   run green.
 - **Hardware required:** no.
 
+### T-140 · Fingerprint the citations into `HARDWARE_MATRIX.md`, which are all about thirteen lines out
+- **Priority:** P2
+- **Dependencies:** none — the mechanism exists; this is the sweep.
+- **Goal:** `check_docs.py` check 7 can now hold a citation to the *text* it was
+  written for, where the citation carries a fingerprint:
+  `HARDWARE_MATRIX.md:357 "Display FPC"`. Two citations in
+  `WAVESHARE_ARRIVAL.md` were thirteen lines out and landed on a real, wrong
+  row — one on Flash where it meant the display FPC, one on the tail of the
+  GNSS-rail trap bullet where it meant PSRAM — and both were repaired with
+  fingerprints. **The other fifteen were not.** `WAVESHARE_ARRIVAL.md` cites
+  `HARDWARE_MATRIX.md` at fourteen more places and `TASKS.md` at one, and
+  `OPEN_QUESTIONS.md` carries five more; every one of them is a bare line
+  number into a file that grows from the middle, so every one of them is a
+  silent wrongness waiting. Repairing them without a fingerprint would only
+  reset the clock.
+- **Acceptance:** each of those citations resolves to the row or paragraph its
+  sentence describes, carries a fingerprint that the checker reads, and
+  `check_docs.py` is green. Where a citation cannot be given a fingerprint
+  because the sentence does not name anything stable on the line, say so in the
+  document rather than leaving a bare number — a section reference is better
+  than a line number nobody can verify.
+- **Watch for:** the numbering. This task is **T-140** rather than T-128
+  deliberately: four open branches were each holding an unmerged `T-1xx` in the
+  130s at the time it was filed, and taking the next free number on this branch
+  is exactly how T-111 was claimed three times. Renumber at merge time if it
+  still collides.
+- **Hardware required:** no.
+
 ### T-126 · The merge sweep has still never merged anything
 - **Priority:** P1
 - **Dependencies:** the `--slurp`/`--jq` fix, which is what this checks.
@@ -2036,10 +2064,14 @@ A1's schematic-revision
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
 - `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
-  Four checks, each of a failure that had already happened here. **A fifth was
+  Seven checks: relative links, inline code spans, task IDs, owner-decision
+  numbers, task bodies, root files, and `file:line` citations. Four at first,
+  each of a failure that had already happened here. **A fifth was
   added 2026-08-23** — nothing unexpected is tracked at the repository root —
   after `git add -A` swept a scraped vendor page into `main` through
-  [#98](https://github.com/hleserg/Attadipa/pull/98).
+  [#98](https://github.com/hleserg/Attadipa/pull/98); a sixth and a seventh
+  followed on the same day, for the four pull requests that each claimed OD-16
+  and for citations that land on a real, wrong line.
 - **Relative links resolve.** These documents cite each other constantly and a
   link that 404s reads exactly like one that works until somebody clicks it. The
   repository was clean at the time this landed; the point is that it stays that
@@ -2085,7 +2117,7 @@ A1's schematic-revision
   this is the one place in the checker that reads fenced lines — everywhere else
   a `**Priority:**` inside a fence is an example and does not count as a body.
 - **Mutation-tested**, and CI runs those tests before it runs the checker:
-  **38 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  **45 cases** in `tools/docs/test_check_docs.py`, several of which assert the
   checker does *not* fire where firing would be wrong — a `###` sub-heading is
   not a second decision, a range straddling a blank line is how a table is
   cited, and a line number in somebody else's tree is not ours to verify. The

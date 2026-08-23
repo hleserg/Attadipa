@@ -672,8 +672,9 @@ twice. **Two are still live.**
 1. HARDWARE_MATRIX called J3 an "Expansion connector … at least 29 pins", and D3
    asked for its pinout. J3 is the 34-pin AMOLED display FPC and there is no
    expansion header. Now a Display FPC row at
-   [HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md), with D3 struck as mis-stated
-   rather than answered at [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md).
+   [HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md) "Display FPC", with D3 struck
+   as mis-stated rather than answered at
+   [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md).
 2. REUSE_LEDGER recorded the Waveshare BSP as coming from
    `github.com/espressif/esp-bsp`. It does not: `esp-bsp/bsp` holds 26 board
    entries and none is a Waveshare AMOLED board. The confusion was understandable
@@ -691,7 +692,7 @@ twice. **Two are still live.**
    read `—` until it is answered.
 
 5. **Splitting D12 left three places behind, and all three are now closed.**
-   `HARDWARE_MATRIX.md:303` reads VERIFIED/octal;
+   `HARDWARE_MATRIX.md:331` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
    open-question row at `STATUS.md:266` is struck and split the same way.

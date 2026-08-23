@@ -75,7 +75,8 @@ dated Friday 8 January 2021 — a 2020-era title block the vendor never updated.
 The contents are unambiguously S3-class (`ESP32-S3-R8`, `W25Q128JW`), so the
 drawing is the right board with the wrong nameplate. **Cite the filename for
 provenance, never the title block for revision.** Board revision of a *physical*
-unit is still unknown — see OPEN_QUESTIONS A1.
+unit is still unknown — see OPEN_QUESTIONS **D20**. (Not A1: A1 is struck and
+marked ANSWERED, and the revision half of it was carved out into D20.)
 
 ### Core
 
@@ -315,7 +316,8 @@ own revision is unread: its silkscreen carries the product name, whose `2.06` is
 the panel diagonal, and a V1.1 unit would carry the same string. This section's
 own rule above — *cite the filename for provenance, never the title block for
 revision* — is written under the T-Watch and applies here identically. See
-OPEN_QUESTIONS A1.
+OPEN_QUESTIONS **D20**, which is the revision question itself; A1 is struck and
+answered, and sends a reader nowhere.
 Where the two differ, the schematic wins on *what exists* and the BSP wins on
 *which pin firmware should use* — the BSP was demonstrably written to a subset
 of the board.

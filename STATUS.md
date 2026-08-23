@@ -837,10 +837,23 @@ four more things at no cost:
 
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
-  job. **Six** checks: relative links resolve, inline code spans close, task
+  job. **Seven** checks: relative links resolve, inline code spans close, task
   IDs are unique, **one OD number names one owner decision**, a live task has a
-  body while finished work is filed under `## DONE`, and nothing unexpected is
-  tracked at the repository root. The decision check was added 2026-08-23 for a
+  body while finished work is filed under `## DONE`, nothing unexpected is
+  tracked at the repository root, and **a `file:line` citation lands where it
+  says it does** — meaning it is inside the file, on a line that is not blank,
+  over a range that reads first-to-last. A citation that lands on a real but
+  *wrong* line is invisible to that, which is what happened to two citations
+  into `HARDWARE_MATRIX.md`: both were thirteen lines out, both pointed at a
+  real row, and nothing went red for weeks. So a citation may now carry a
+  **fingerprint** — `HARDWARE_MATRIX.md:357 "Display FPC"` — and where one is
+  written the check reads the cited line and reports where the text actually
+  went. It is opt-in: adding a fingerprint is a promise the check then keeps,
+  and the citations this repository has been burned by are the ones to add it
+  to first. The count said Six on the commit that added the seventh, so
+  it is no longer typed: `check_docs.py` holds its checks as a list, the suite
+  holds this sentence to `len(CHECKS)`, and the same guard holds the case count
+  in this file, in `TASKS.md` and in the CI comment. The decision check was added 2026-08-23 for a
   failure that was in flight rather than shipped: four open pull requests each
   inserted `## OD-16` into `OWNER_DECISIONS.md` at the same line, for four
   different decisions. Git conflicts on that, and a person resolves it — which is
@@ -867,7 +880,7 @@ four more things at no cost:
   the #48 review established for T-064 and T-073; all four are now under
   `## DONE`. Under `## BLOCKED` the body is the `BLOCKED:` block CLAUDE.md
   specifies rather than a priority, so T-010 and T-011 are correct and not
-  flagged. **38 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
+  flagged. **45 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
   sub-heading is not a second decision, a range straddling a blank line is
   how a table is cited, and a line number in somebody else's tree is not
   ours to verify. The
