@@ -92,6 +92,12 @@ void queue_counts_an_overrun_instead_of_hiding_it()
     CHECK(!q.push(pointer(InputEventType::PointerMove, 2, 2)));
     CHECK(q.stats().dropped == 1);
     CHECK(q.stats().pushed == InputQueue::kCapacity);
+    // The identity, evaluated where `dropped` is non-zero -- which is the only
+    // place it can be falsified and the one place nothing was checking it.
+    // `test_debug.cpp` asserts the same sum in a case where `dropped` is 0, so
+    // it read as coverage of this invariant and was not.
+    const auto& s = q.stats();
+    CHECK(s.pushed == s.popped + s.flushed + q.size());
 }
 
 void peek_shows_the_head_without_taking_it()

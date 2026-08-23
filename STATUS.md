@@ -544,7 +544,15 @@ What was built:
   carries an [ADR-0005](docs/adr/0005-node-protocol.md) §4 envelope with a new
   `class` value. `kMaxPayload` stays 192 and screenshots are chunked to fit,
   because RESOURCE_BUDGET §4 requires the bound be declared rather than widened
-  for convenience.
+  for convenience. **Waiting on the owner, and deliberately not fixed here:**
+  ADR-0005 §4 lists six fields — `ver`, `class`, `req_id`, `op`, `body_len`,
+  `crc16` — which is ten bytes, and draws **twelve** column positions above
+  them. `debug/protocol.h:54-59` implements ten and argues why (a field list is
+  a specification; a column count is a picture), but that correction lives in a
+  comment in another module while the ADR still shows the diagram. ADRs are
+  outside the sweep allowlist and outside an agent's remit to amend, so this is
+  recorded rather than changed: **the diagram needs one edit or the field list
+  needs two more fields**, and only the owner can say which.
 - **A diagnostic test pattern** whose every element answers one way a screenshot
   can be wrong while still looking like a picture — lettered corner markers for
   rotation and mirror, an asymmetric F, pure primaries for a swapped channel, a

@@ -20,7 +20,6 @@ fails and the hex string says where.
 from __future__ import annotations
 
 import io
-import json
 import os
 import struct
 import sys
@@ -351,11 +350,6 @@ class _FakeScreen:
         return self._size
 
 
-def _raw_points(path) -> list:
-    with open(path, "r", encoding="utf-8") as handle:
-        return json.load(handle)["points"]
-
-
 def scenarios_load() -> None:
     from watch import scenario  # noqa: PLC0415
     from watch.client import WatchError  # noqa: PLC0415
@@ -402,6 +396,29 @@ def scenarios_load() -> None:
         check_raises(
             WatchError, "and a fraction with no device to resolve it says so",
             lambda: scenario.load_gesture(str(gesture)))
+
+    # The endpoints of the convention. `0.0 < value < 1.0` was exclusive, so
+    # `1.0` and `"100%"` -- the two spellings that read as "the far edge" --
+    # fell through to `int(1.0)` and landed on pixel 1. A full-span swipe
+    # became a two-pixel twitch, and nothing downstream could tell: the screen
+    # changed, so every check passed.
+    screen = _FakeScreen(240, 320)
+    check(scenario.resolve_point([1.0, 1.0], screen) == (239, 319),
+          "1.0 is the far edge, not pixel 1")
+    check(scenario.resolve_point("100%,100%", screen) == (239, 319),
+          "and so is 100%")
+    check(scenario.resolve_point([0.0, 0.0], screen) == (0, 0),
+          "0.0 is the near edge")
+    check(scenario.resolve_point([0.5, 0.5], screen) == (120, 160),
+          "and a half is still a half")
+    check(scenario.resolve_point([1, 1], screen) == (1, 1),
+          "a whole number is a pixel, including 1")
+    # Past the edge resolves out of bounds on purpose rather than clamping, so
+    # the refusal names the coordinate instead of silently moving it.
+    check(scenario.resolve_point("120%,0", screen)[0] == 288,
+          "and a percentage past 100 resolves out of bounds rather than clamping")
+    check_raises(WatchError, "a coordinate that is not a number says so",
+                 lambda: scenario.resolve_point(["a", "b"], screen))
 
     with tempfile.TemporaryDirectory() as directory:
         path = os.path.join(directory, "steps.json")

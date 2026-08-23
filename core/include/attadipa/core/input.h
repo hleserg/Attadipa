@@ -114,10 +114,18 @@ struct InputQueueStats {
     std::uint32_t flushed = 0;  // discarded by clear(). Also never silent.
 };
 
-// `pushed == popped + dropped + flushed + size()` holds at every moment. That
-// identity is the whole point of the counters: a number that does not add up
-// is a lost event, and a lost input event is a UI bug that reproduces once a
-// week and cannot be explained.
+// `pushed == popped + flushed + size()` holds at every moment. That identity is
+// the whole point of the counters: a number that does not add up is a lost
+// event, and a lost input event is a UI bug that reproduces once a week and
+// cannot be explained.
+//
+// `dropped` is **not** a term in it, and an earlier version of this comment put
+// it there. A refused push increments `dropped` and nothing else -- it never
+// entered the ring, so it cannot come out of one. Adding it over-counts by
+// exactly the number of overruns, so the rule "a number that does not add up is
+// a lost event" would report one phantom loss per genuine overrun, which is the
+// condition the counters exist to make legible. `dropped` is its own statement:
+// events the queue refused, never silent.
 
 // A fixed-capacity single-producer-friendly ring of input events.
 //

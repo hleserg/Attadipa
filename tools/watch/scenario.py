@@ -112,7 +112,13 @@ def load_gesture(path: str, watch: Watch | None = None):
             raise WatchError(
                 f"{path} has no 'points' list; its top-level keys are: "
                 f"{', '.join(sorted(map(str, data))) or '(none)'}")
-        points, duration = data["points"], float(data.get("duration", 0.5))
+        points = data["points"]
+        try:
+            duration = float(data.get("duration", 0.5))
+        except (TypeError, ValueError) as exc:
+            raise WatchError(
+                f"{path} has a duration that is not a number: "
+                f"{data.get('duration')!r}") from exc
     else:
         points, duration = data, 0.5
     if not isinstance(points, list) or not points:
@@ -154,13 +160,36 @@ def _point(step: dict, key: str, watch: Watch | None = None) -> tuple[int, int]:
 
 
 def _axis(value, watch: Watch | None, axis: str) -> int:
+    percent = False
     if isinstance(value, str):
         value = value.strip()
         if value.endswith("%"):
-            value = float(value[:-1]) / 100.0
+            try:
+                value = float(value[:-1]) / 100.0
+            except ValueError as exc:
+                raise WatchError(f"'{value}' is not a percentage") from exc
+            # A `%` string says "fraction" in its own syntax, so it takes the
+            # fraction path whatever its value -- `"120%"` then resolves past
+            # the edge and is refused by name, which is the useful outcome.
+            percent = True
         else:
-            value = float(value) if "." in value else int(value)
-    if isinstance(value, float) and 0.0 < value < 1.0:
+            try:
+                value = float(value) if "." in value else int(value)
+            except ValueError as exc:
+                raise WatchError(
+                    f"'{value}' is not a coordinate: whole numbers are pixels, "
+                    f"a number between 0 and 1 or a string ending in '%' is a "
+                    f"fraction of the panel") from exc
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise WatchError(f"{value!r} is not a coordinate")
+    # Inclusive at both ends. It used to be `0.0 < value < 1.0`, which made the
+    # two spellings that read as "the far edge" -- `1.0` and `"100%"` -- fall
+    # through to `int(1.0)` and land on **pixel 1**. A full-span swipe
+    # `to: 1.0,0.5` became a two-pixel twitch at the left edge, the screen
+    # changed, and every check downstream passed. The type keeps the two
+    # meanings apart on its own: YAML `1` is an `int` and stays a pixel, `1.0`
+    # is a `float` and is the edge.
+    if percent or (isinstance(value, float) and 0.0 <= value <= 1.0):
         if watch is None:
             raise WatchError(
                 f"a fractional coordinate ({value}) needs the device's screen size, "
@@ -171,6 +200,11 @@ def _axis(value, watch: Watch | None, axis: str) -> int:
         # is the divergence `Watch.screen_size` exists to close.
         width, height = watch.screen_size()
         span = width if axis == "width" else height
+        if value == 1.0:
+            # `span` is one past the last pixel; the far edge is `span - 1`.
+            # Only the exact endpoint is mapped -- anything above 1.0 resolves
+            # out of bounds on purpose and is refused rather than clamped.
+            return span - 1
         return int(round(value * span))
     return int(value)
 

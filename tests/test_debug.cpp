@@ -1152,10 +1152,14 @@ void a_flush_is_counted_like_an_overrun()
     CHECK(queue.push(event));
     queue.clear();
 
-    // pushed == popped + dropped + flushed + size, at every moment.
+    // pushed == popped + flushed + size, at every moment. `dropped` is not a
+    // term -- a refused push never entered the ring. This case has `dropped`
+    // at 0, so it cannot tell the two spellings apart; the overrun test in
+    // `test_input.cpp` is where the sum is evaluated with `dropped` non-zero.
     const auto& s = queue.stats();
     CHECK(s.flushed == 2);
-    CHECK(s.pushed == s.popped + s.dropped + s.flushed + queue.size());
+    CHECK(s.dropped == 0);
+    CHECK(s.pushed == s.popped + s.flushed + queue.size());
 }
 
 // --- wait_stable: the duration has to travel, and be the one measured ------
