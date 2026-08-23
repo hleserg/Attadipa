@@ -351,6 +351,17 @@ jobs:
       - name: The staleness summary
         run: bash .github/tests/compare-summary-test.sh
 
+      # Whether a review that was paid for reached the pull request at all.
+      # Every other guard in claude-pr-review.yml asks whether the model was
+      # reached; this one asks what it published, and both observed instances of
+      # the gap went green -- a 41-second run that "posted no comment and set no
+      # label", and #39's kill at turn 50 with the same result. The heaviest
+      # case here is a review published by EDITING an older comment, which is
+      # what the prompt instructs and which the first version of the rule
+      # reported as silence.
+      - name: The review reached the pull request
+        run: bash .github/tests/review-published-test.sh
+
   docs:
     name: Documentation consistency
     runs-on: ubuntu-latest

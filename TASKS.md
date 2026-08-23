@@ -141,6 +141,46 @@ stale silently. The protocol is
   log beside a real error, asserting only the error comes out.
 - **Hardware required:** no.
 
+### T-123 · 27 permission denials in a review that cost $8.47, and nothing names the tool
+- **Priority:** P2
+- **Dependencies:** none. The publication guard
+  (`.github/scripts/review-published.sh`) is **done** and is a different
+  question — it asks whether a verdict reached the pull request, not what the
+  session was refused on the way there.
+- **Goal:** find out what `claude-pr-review.yml` keeps denying its own reviewer.
+  Run 32608091395 on #85 ended `is_error: false` with
+  `permission_denials_count: 27` — twenty-seven refusals inside one 83-turn
+  session, each one a turn bought and wasted, and the review still published
+  only because it had turns to spare. #39 did not: it was killed at turn 50 with
+  the whole bill and no verdict.
+- **What is already known, and why it is not enough.** `--allowedTools` is a
+  list of *prefixes*: `Bash(gh pr comment:*)` admits a command line that starts
+  with those words and nothing else. A command substitution, a heredoc, a pipe
+  into `gh`, `gh api` instead of `gh pr`, `python3`, `wc` on a path with a
+  redirect — all refused, all silent. Agent mode sets no `--permission-mode` and
+  the headless SDK has no prompt handler, so a tool that would fall through to
+  "ask" is DENIED without an error and without a line in the log. That is the
+  mechanism; which twenty-seven calls hit it is not established.
+- **And the obvious way to find out is refused on purpose.** The denied tool
+  name would appear in a tool result, and `show_full_output: false` keeps tool
+  results out of a world-readable log because they carry file contents and can
+  carry tokens. Do not turn it on. The counter in the execution log is a number
+  without a subject by design, so the answer has to come from somewhere else:
+  reading the action's source for where it emits the count, or reproducing the
+  session's shape locally against a stub.
+- **Acceptance:** either the denied verbs are named and added to
+  `--allowedTools` — read-only, and each one justified in a comment the way
+  every entry there already is — or it is established that the denials are
+  harmless retries, written down with the evidence, and the count stops being
+  read as a fault. Not "raise the ceiling and hope": a ceiling that stops work
+  after it has been paid for does not save money, and this file already says so
+  about the last one.
+- **Tests:** whatever changes `--allowedTools` states in its own comment what
+  the widening admits and what it still refuses; `contents: read` on the job
+  stays the outer guarantee and no `gh` verb that writes outside the two that
+  publish the review may be added.
+- **Hardware required:** no.
+
 
 ## NEXT
 

@@ -67,6 +67,17 @@ jobs:
       vars.CLAUDE_AUTOMATION_ENABLED != 'false' &&
       (!endsWith(github.actor, '[bot]') || github.actor == 'claude[bot]')
     steps:
+      # WHEN THIS RUN STARTED, recorded before any step that could publish.
+      # .github/scripts/review-published.sh needs it to tell a review written
+      # now from one written three pushes ago, and the reviewer is told to
+      # publish by EDITING its previous comment -- so "is there a comment from
+      # the reviewer" cannot answer the question and a clock is the only thing
+      # that can. Unconditional and first: a value captured after the credential
+      # check would already be later than a fast failure.
+      - name: Record when this run started
+        id: started
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Check that an Anthropic credential exists
         id: auth
         env:
@@ -346,6 +357,137 @@ jobs:
           if [ "$ran" = "no" ] && [ "${OUTCOME}" = "success" ]; then
             echo "::warning::The review step reported success and never reached the model — see the note on the pull request."
           fi
+
+      # AND THE QUESTION `happened` DOES NOT ASK. That step establishes the
+      # model was *reached*; it says nothing about whether the pull request ever
+      # heard from it. The action does not publish the review -- it leaves it in
+      # the run log -- so publication depends on the model running `gh pr
+      # comment`, and a request made of a model is not a guarantee. Twice
+      # observed, both recorded in the comments above: the 41-second run of
+      # 2026-08-21 that "posted no comment and set no label", and #39's kill at
+      # turn 50 "having posted nothing and set no label". Both green.
+      #
+      # The rule lives in .github/scripts/review-published.sh, tested by
+      # .github/tests/review-published-test.sh, because a rule embedded in a
+      # workflow cannot be executed and so cannot be tested. Its header records
+      # the mistake that produced it: reading `created_at` alone reports
+      # `silent` for a review published by editing, which is what the prompt
+      # above tells the reviewer to do.
+      - name: Did the review reach the pull request
+        id: published
+        if: always() && steps.auth.outputs.ok == 'true' && steps.happened.outputs.ran == 'yes' && steps.review.outcome != 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          STARTED: ${{ steps.started.outputs.at }}
+          # Through the environment rather than `${{ }}` inside the script,
+          # which is this file's rule everywhere else and also the only way
+          # shellcheck can read the block.
+          OUTCOME: ${{ steps.review.outcome }}
+        run: |
+          set -uo pipefail
+          # An unreadable fact must reach the rule as an unreadable fact, so it
+          # can hold. `|| true` rather than `set -e`: a failed fetch that killed
+          # the step would leave no verdict at all, which is the shape this
+          # whole guard exists to stop.
+          comments="$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" \
+                        --paginate --slurp 2>/dev/null | jq -c 'flatten(1)' 2>/dev/null || true)"
+          labels="$(gh pr view "$PR" --repo "$REPO" --json labels \
+                      --jq '.labels[].name' 2>/dev/null || true)"
+          answer="$(bash .github/scripts/review-published.sh \
+                      "yes" "$OUTCOME" "$comments" "$labels" "$STARTED")"
+          echo "answer: $answer"
+          echo "state=$(printf '%s' "$answer" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          {
+            echo "reason<<ATTADIPA_EOF"
+            printf '%s\n' "$answer" | cut -d' ' -f2-
+            echo "ATTADIPA_EOF"
+          } >> "$GITHUB_OUTPUT"
+          case "$answer" in
+            unknown*) echo "::warning::Could not establish whether the review published; leaving the verdict alone." ;;
+          esac
+
+      - name: Say that the review published nothing
+        if: always() && steps.published.outputs.state == 'silent'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REASON: ${{ steps.published.outputs.reason }}
+        run: |
+          set -euo pipefail
+          # Only the numeric and boolean fields, for the reason the `why` step
+          # gives: the free-text `result` is model output and this comment is
+          # one we author.
+          cost="the execution log could not be read"
+          if [ -n "${EXEC_FILE:-}" ] && [ -f "${EXEC_FILE}" ]; then
+            cost="$(jq -rs '
+              flatten(1)
+              | [.[] | select(type == "object" and .type == "result")] | last
+              | if . == null then "the log has no result record"
+                else "\(.num_turns // 0) turns, $\(.total_cost_usd // 0), \(.permission_denials_count // 0) permission denial(s), is_error=\(.is_error)"
+                end' "${EXEC_FILE}" 2>/dev/null || echo "the execution log could not be parsed")"
+          fi
+          {
+            echo "<!-- attadipa-review-not-published:${SHA} -->"
+            echo "**The independent review ran on \`${SHA:0:8}\` and published no verdict.**"
+            echo
+            echo "This says nothing about the diff. The model was reached and did the work —"
+            echo "${cost} — and then nothing reached this pull request."
+            echo
+            echo "What the guard saw: ${REASON}"
+            echo
+            echo "The action does not publish the review; it leaves it in the run log. The"
+            echo "prompt asks the model to post it with \`gh pr comment\` and to set exactly one"
+            echo "of \`ai-review:pass\` / \`ai-review:blocking\`. So the two causes worth checking,"
+            echo "in order:"
+            echo
+            echo "1. **A turn or time ceiling cut it off before it published.** \`is_error: false\`"
+            echo "   with a turn count at or near \`--max-turns\`, or a run near"
+            echo "   \`timeout-minutes\`, means the whole bill and none of the verdict. Raise the"
+            echo "   ceiling; re-running into it costs the same again."
+            echo "2. **A \`gh\` verb it needed is not in \`--allowedTools\`.** A non-zero permission"
+            echo "   denial count above is the signal. The prefix allowlist covers"
+            echo "   \`gh pr comment\` and \`gh pr edit\` and nothing else — no \`gh api\`, no"
+            echo "   command substitution, no heredoc — and a denied tool is silent in the log"
+            echo "   because \`show_full_output\` is off, which is not something to change:"
+            echo "   tool results can carry tokens into a world-readable log."
+            echo
+            echo "Read the review in the run's step summary — \`display_report\` is on, so the"
+            echo "findings exist there even though they never reached this page. **Do not merge"
+            echo "on the strength of the green tick.**"
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "\`ai-review:pass\` and \`ai-review:blocking\` have both been removed: a verdict"
+            echo "label records that a verdict was reached, never which commit it was reached"
+            echo "on, so whichever was there belonged to an earlier one."
+          } > /tmp/not-published.md
+
+          # One note per head commit, for the reason the marker on the other
+          # notice carries a SHA: matching on the marker alone posts once per
+          # pull request ever, leaving a stale note pointing at an old run while
+          # every push after it fails silently.
+          if gh api "repos/$REPO/issues/$PR/comments" --paginate \
+               --jq '.[].body' | grep -q "attadipa-review-not-published:${SHA}"; then
+            echo "::notice::already said so for ${SHA:0:8} on #$PR"
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/not-published.md
+          fi
+          # Both, not just the pass. A stale `ai-review:blocking` blocks a branch
+          # and names nothing to fix, and merge-candidate.sh holds on the absence
+          # of `ai-review:pass` regardless, so removing it opens nothing.
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:blocking || true
+          # The check stays GREEN, and deliberately. This file already argues it
+          # for the other half of the same problem: a check that is red for a
+          # reason outside the code is a check people learn to ignore. The gate
+          # is the label, which is now absent.
+          echo "::warning::The review ran on ${SHA:0:8} and published nothing; both verdict labels removed."
 
       - name: Work out why the review did not happen
         id: why

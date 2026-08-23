@@ -585,6 +585,46 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 ## Recently completed
 
+- **The review can be reached, paid for, and never publish — and the job goes
+  green.** `claude-pr-review.yml` had three guards and all three ask the same
+  question. `steps.happened` keys off the existence of an execution log, which
+  the action writes only once the model has been invoked, so it separates *the
+  model was reached* from *it was not*. Nothing asked what a reached model
+  **published**. That is a separate question because the action does not publish
+  the review — it leaves it in the run log — so the verdict depends on the model
+  running `gh pr comment` and `gh pr edit --add-label`, and a request made of a
+  model is not a guarantee. Two runs already prove the shape, both recorded in
+  that workflow's own comments: the 41-second run of 2026-08-21 that "posted no
+  comment and set no label", and #39's kill at turn 50 "having posted nothing
+  and set no label". Both green. And the residue is worse than silence — a
+  verdict label records that a verdict was reached, never *which commit* it was
+  reached on, so a run that publishes nothing leaves the previous commit's
+  verdict wearing this one's clothes. `merge-candidate.sh` already refuses to
+  merge on that (`PASS_AFTER_HEAD`), but the unattended sweep is not the only
+  reader: a person sees a green tick and a label with nothing to tell them the
+  label is four commits old. `.github/scripts/review-published.sh` now answers
+  `published` / `silent` / `not-run` / `unknown` from the comment authors, the
+  clock and the labels; on `silent` the workflow posts a notice naming the turn
+  count, cost and permission-denial count from the execution log, and removes
+  **both** verdict labels. 28 assertions in
+  `.github/tests/review-published-test.sh`, run in CI, verified to fail against
+  three distinct regressions.
+
+  **The diagnosis that produced it was itself wrong first, and that is the
+  interesting part.** Run 32608091395 on #85 — 22 minutes, 83 turns, $8.47, 27
+  permission denials — was read as exactly this failure because no *new* comment
+  appeared on the pull request. It had published: by editing comment 5382540003
+  in place at 00:53:32Z, inside the run's 00:31:47–00:54:10 window, which is
+  precisely what the prompt tells the reviewer to do ("edit it rather than
+  adding another"). So a review published on the fourth push can carry a
+  `created_at` from before the first, and a guard reading `created_at` alone
+  would have deleted a real blocking verdict and posted a comment contradicting
+  a review anybody could scroll to. The rule reads `updated_at` too, that case
+  is the heaviest assertion in the suite, and the two directions of error are
+  written down as asymmetric: a missed silence leaves a stale label the merge
+  rule already refuses, an invented one destroys a review. Every fact it cannot
+  read therefore comes out `unknown` and changes nothing.
+
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the
   built-in `GITHUB_TOKEN`, so the actor is `github-actions[bot]`;
