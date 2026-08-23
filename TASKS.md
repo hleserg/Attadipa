@@ -223,11 +223,12 @@ stale silently. The protocol is
 - **Dependencies:** none
 - **Goal:** close, or consciously decline with reasons, each finding below.
   Every one of them was read in the source before being written here; none is a
-  report taken on trust. Five from the same audit are already fixed —
+  report taken on trust. Six from the same audit are already fixed —
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
-  evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
-  (the movement/altitude baseline, below) — and the rule from the research
-  prompt applies: **do not stop after the first fix.**
+  evaluator), `7e4c4f9` (the replay rig could not produce Stale), issue #26
+  (the movement/altitude baseline, below) and issue #164 (the snapshot that
+  claimed to be trusted, below) — and the rule from the research prompt
+  applies: **do not stop after the first fix.**
 
 - **A state that cannot say "nobody has checked".** `GnssCapabilities`
   (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
@@ -238,12 +239,29 @@ stale silently. The protocol is
   with `Unknown` and `Unsupported` as distinct values, and OD-5, which is the
   decision saying they must be.
 
-- **A default-constructed snapshot claims to be trusted.** `GnssStatus::trust`
-  (`core/include/attadipa/core/diagnostics.h:116`) defaults to
-  `TrustState::Trusted`. A snapshot nobody filled in therefore reports the most
-  reassuring answer available. `validity` on the line above defaults to `NoFix`,
-  which is the right instinct; `trust` should be `Untrusted` for the same
-  reason, or the field should be optional so that "not evaluated" is sayable.
+- **A default-constructed snapshot claimed to be trusted — fixed, issue #164.**
+  `GnssStatus::trust` (`core/include/attadipa/core/diagnostics.h`) defaulted to
+  `TrustState::Trusted`, so a snapshot nobody filled in reported the most
+  reassuring answer available — at boot, in a panic handler, and on a board that
+  has no receiver at all. `validity` on the line above defaults to `NoFix`,
+  which was the right instinct. The field is now
+  `std::optional<TrustState>`, empty by default, which is the idiom the rest of
+  that header already uses for facts nobody has produced; the two candidate
+  answers in the original finding were both weighed and **`Untrusted` was
+  rejected**, because it asserts that a verdict was reached and was bad, which
+  is a different claim from "no verdict" and one that anything counting
+  integrity alarms would believe. Not a fourth `TrustState` either: that enum is
+  ordered and compared against thresholds throughout `trust.cpp`.
+  `trust_reasons` moves with the verdict through `record_trust()` /
+  `forget_trust()`, so a mask cannot outlive the evaluation that produced it,
+  and `to_string(std::optional<TrustState>)` gives the renderer that does not
+  exist yet the word `NotEvaluated` rather than a blank or an enum zero. Seven
+  regression tests in `tests/test_diagnostics.cpp`, including the round trip
+  through the panic-handler `memcpy` for all three real verdicts; restoring
+  either candidate default turns them red. Recorded as an amendment to
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5. The snapshot did not grow:
+  the extra byte fits existing padding, so `GnssStatus` is 40 bytes and
+  `DiagnosticsSnapshot` 384 before and after.
 
 - **Rates for a relayed fix were divided by the wrong interval — fixed,
   issue #26.** `TrustEvaluator::observe` used to set `previous_position_at_

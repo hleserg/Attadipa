@@ -82,6 +82,17 @@ constexpr std::uint32_t trust_reason_bit(TrustReason reason)
 const char* to_string(TrustState state);
 const char* to_string(TrustReason reason);
 
+// And the name for "no verdict has been reached", which is a state a stored
+// verdict can be in even though it is not a `TrustState`
+// (`GnssStatus::trust`, diagnostics.h).
+//
+// It lives here rather than in each renderer because a renderer meeting an
+// empty optional has to invent an answer, and the three it would reach for —
+// an empty string, a zero, or the first value of the enum — each print a
+// confidence nobody has. `to_string(status.trust)` should be the easy call and
+// the honest one at the same time.
+const char* to_string(std::optional<TrustState> state);
+
 // The numbers that turn evidence into a verdict.
 //
 // Policy, deliberately: none of this is physics, and a wrist in a forest and a

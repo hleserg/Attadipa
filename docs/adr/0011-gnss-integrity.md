@@ -181,6 +181,27 @@ first, because it looks like it considered something.
 compass, and a diagnostic screen are three different consumers of the same
 evidence, and a collapsed boolean serves none of them.
 
+> **Amended, 2026-08-23 — issue #164.** The state machine has exactly these
+> three states and gains no fourth. But every one of them is a *verdict*, and a
+> field that stores a verdict has a reading none of them covers: **nobody has
+> evaluated anything yet.** `GnssStatus::trust`
+> ([`core/include/attadipa/core/diagnostics.h`](../../core/include/attadipa/core/diagnostics.h))
+> defaulted to `Trusted`, so a snapshot taken at boot, in a panic handler, or on
+> a board with no receiver at all asserted the most reassuring answer in the set
+> about a position that did not exist.
+>
+> The decision: **a stored verdict is `std::optional<TrustState>`, and empty
+> means not evaluated** — the same idiom the snapshot already uses for every
+> number nobody measured, and the same three-state instinct as
+> `ReceiverIndication::Unknown` ([OD-5](../research/OWNER_DECISIONS.md#od-5--gnss-integrity-and-the-receivers-own-protection-comes-first)).
+> Not a fourth enumerator: this enum is *ordered*, and thresholds, recovery and
+> the transition log all compare its values, so a member with no place in the
+> order would need one invented at every comparison site. Not `Untrusted` as a
+> safe default either: that says a verdict was reached and it was bad, which
+> anything counting integrity alarms across a fleet of support bundles would
+> believe. `to_string(std::optional<TrustState>)` renders the empty case as
+> `NotEvaluated`, so a renderer cannot spell absence as a blank or a zero.
+
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 
 Priority order, as OD-5 gives it: **receiver-native mechanisms → Attadipa's own

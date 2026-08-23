@@ -113,8 +113,37 @@ struct GnssStatus {
     GnssState                     state   = GnssState::Off;
     StartKind                     last_start = StartKind::Cold;
     PositionValidity              validity   = PositionValidity::NoFix;
-    TrustState                    trust      = TrustState::Trusted;
-    std::uint32_t                 trust_reasons = 0;   // the TrustReason bitmask
+
+    // Empty means no verdict has been reached, and that is the default.
+    //
+    // `TrustState` is the *output* of an evaluation: `Untrusted`, `Degraded`
+    // and `Trusted` are three conclusions somebody drew after weighing evidence
+    // (ADR-0011 §5). None of them can say "the evaluator has not run" — so
+    // while this defaulted to `TrustState::Trusted`, a snapshot taken at boot,
+    // in a panic handler, or on a board with no receiver at all made the most
+    // reassuring claim in the set about a position that does not exist. That is
+    // rule 1 at the top of this header broken by an enum rather than by a zero;
+    // `validity` on the line above defaults to `NoFix` for exactly this reason.
+    //
+    // Not `Untrusted` instead, safe though that would have been: `Untrusted`
+    // says a verdict *was* reached and it was bad, and anything counting
+    // integrity alarms across a fleet of support bundles would believe it.
+    // The fact is that there is no verdict, and `std::optional` is how the rest
+    // of this header states one.
+    //
+    // Not a fourth `TrustState` either. That enum is ordered — thresholds,
+    // recovery and the transition log in trust.cpp all compare its values — and
+    // a member with no place in that order would need one invented at every
+    // comparison site.
+    std::optional<TrustState>     trust;
+
+    // The `TrustReason` bitmask behind that verdict, and zero while there is
+    // none: reasons are what an evaluation produced, so evidence without an
+    // evaluation is nobody's conclusion. Kept beside the verdict rather than
+    // collapsed into it, because "jamming *and* a jump while stationary" is a
+    // different situation from either alone (ADR-0011 §5).
+    std::uint32_t                 trust_reasons = 0;
+
     PositionSource                source     = PositionSource::Unknown;
     std::optional<std::uint8_t>   satellites_used;
     std::optional<std::uint8_t>   satellites_in_view;
@@ -123,6 +152,27 @@ struct GnssStatus {
     std::optional<Millis>         fix_age;
     ReceiverIndication            jamming  = ReceiverIndication::Unknown;
     ReceiverIndication            spoofing = ReceiverIndication::Unknown;
+
+    // The verdict and its reasons are one fact, so they move together. A
+    // producer that assigns the two fields separately can leave them out of
+    // step in both directions — a mask with no verdict is evidence nobody
+    // weighed, and a verdict with an empty mask is the collapsed answer
+    // ADR-0011 §5 exists to refuse — and neither is visible at the call site.
+    void record_trust(TrustState verdict, std::uint32_t reasons)
+    {
+        trust         = verdict;
+        trust_reasons = reasons;
+    }
+
+    // And the way back to "nothing has been evaluated". This is the state a
+    // provider walking away leaves behind: a verdict about a receiver that is
+    // no longer attached is about nothing, and no state survives implicitly
+    // (ADR-0004 §3).
+    void forget_trust()
+    {
+        trust.reset();
+        trust_reasons = 0;
+    }
 };
 
 struct DiagnosticsSnapshot {

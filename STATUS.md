@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -662,6 +662,48 @@ four more things at no cost:
   names no address; the bus scan above settles `0x6B` by measurement instead.
 
 ## Recently completed
+
+- **A snapshot nobody had filled in reported the most confident verdict there
+  is.** [#164](https://github.com/hleserg/Attadipa/issues/164), a T-062 finding.
+  `GnssStatus::trust` (`core/include/attadipa/core/diagnostics.h`) defaulted to
+  `TrustState::Trusted`, one line below a `validity` that correctly defaults to
+  `NoFix`. So `DiagnosticsSnapshot{}` — which is what exists at boot, in a panic
+  handler before anything has run, and on the Waveshare board, which has no GNSS
+  receiver at all — simultaneously said *no receiver*, *off*, *no fix*, *source
+  unknown* and *trusted*. The cause is a type doing a job it cannot do:
+  `TrustState`'s three values are all verdicts somebody reached after weighing
+  evidence, and none of them can say the evaluator has not run. `Trusted` is the
+  right initial state for a live `TrustEngine`, where it has a lifecycle around
+  it; carried into a detached aggregate it became an assertion about nothing.
+  The field is now `std::optional<TrustState>` — the idiom that header already
+  uses for every fact nobody produced, and the same instinct as
+  `ReceiverIndication::Unknown` under OD-5. **`Untrusted` was weighed and
+  rejected** rather than not considered: it is the safe default and the wrong
+  sentence, because it says a verdict was reached and it was bad, which anything
+  counting integrity alarms across support bundles would believe. A fourth
+  `TrustState` was rejected too — the enum is ordered, and thresholds, recovery
+  and the transition log all compare its values. `trust_reasons` now moves with
+  the verdict through `record_trust()` / `forget_trust()`, so evidence cannot
+  outlive the evaluation that weighed it, and `to_string(std::optional<
+  TrustState>)` hands the renderer that does not exist yet the word
+  `NotEvaluated` instead of leaving it to invent a blank or an enum zero. There
+  is no renderer, serializer or other producer of this field anywhere in the
+  tree — `DiagnosticsSnapshot` appears only in its own header and in
+  `tests/test_diagnostics.cpp` — so nothing downstream needed changing and no
+  persisted format could break. Seven regression tests, including all three real
+  verdicts round-tripping through the panic-handler `memcpy` with their reason
+  masks, and a disengaged one arriving still disengaged. Both candidate defaults
+  were re-applied as mutants and turn the suite red — nine failures for
+  `Trusted`, eight for `Untrusted`; the pre-existing
+  `test_nothing_defaults_to_a_confident_answer` did **not** move under either,
+  which is why it had stayed green while contradicting its own name. The
+  structure did not grow: the extra byte fits existing padding, so `GnssStatus`
+  is 40 bytes and `DiagnosticsSnapshot` 384 both before and after, against a
+  1 KiB budget. Host suite clean under GCC, under GCC with `-Werror -Wshadow
+  -Wconversion -Wsign-conversion -Wcast-qual -Wold-style-cast`, under Clang and
+  under ASan+UBSan with `-fno-sanitize-recover=all`. Recorded as an amendment to
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5, which is where a future reader
+  of "three states" needs to meet the fourth reading.
 
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
