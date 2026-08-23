@@ -1112,10 +1112,13 @@ not** — say so rather than implying a symmetry the code does not have.
 `GnssModule` enum anywhere in the tree, so nothing but this sentence holds the
 GNSS half. If that is not strong enough, the fix is to add the type, not to name
 one the next agent will grep for and not find. That gate carries more than the radio's, because
-MIA-M10Q against LS550G decides a second PMU rail (DC4 at 850 mV,
-[HARDWARE_MATRIX](HARDWARE_MATRIX.md):102, :145), the assistance mechanism
-([VERIFIED_FACTS](VERIFIED_FACTS.md):141-143), and which of T-051 and T-052 is
-the live task. Checked
+MIA-M10Q against LS550G decides a second PMU rail — the `DC4` row of the
+T-Watch rail table in [HARDWARE_MATRIX](HARDWARE_MATRIX.md) reads *"LS550G GNSS
+variant only, 850 mV"*, beside a `DC3` row that is unused on that variant — the
+assistance mechanism ([VERIFIED_FACTS](VERIFIED_FACTS.md), the A-GNSS entries),
+and which of T-051 and T-052 is the live task. Cited by row rather than by line:
+this branch's own seven-line insertion into that table moved both rails, and the
+citations left behind pointed at a blank line until review caught them. Checked
 against [ADR-0003](../adr/0003-radio-not-lora.md)'s table: SX1262 is one of
 the three genuinely-LoRa parts (CC1101 and Si4432 are FSK, not LoRa, and
 CC1101 is additionally compiled out of this project's MeshCore build via
@@ -1155,7 +1158,8 @@ duplicate — because a copy that drifts is worse than a pointer:
   (`:33-36`). This repository is public and a pairing PIN is a device access
   credential. The owner holds it; ask in the session that needs it.
 
-The V4 reaches a host over BLE and USB, as both T114s do — `TEST_FLEET.md:21-25`.
+The V4 reaches a host over BLE and USB, as both T114s do — the **T114** and
+**V4** rows of the fleet table in [TEST_FLEET](TEST_FLEET.md) §1.
 An earlier version of this table recorded the V4's links as `—`, which was
 wrong. A second side drivable from a laptop is a test fixture, not just another
 radio in the room.

@@ -1675,8 +1675,10 @@ Evidence:       OPEN_QUESTIONS A1 (OD-16, issue #54, 2026-08-22). A2 (which
                 vs DC3), and **no part marking distinguishes them** — the
                 discriminator is a feature of the case: a unit with rear
                 BOOT/RST buttons is the DC3-unused revision. See
-                OPEN_QUESTIONS D6, HARDWARE_MATRIX:144 and VERIFIED_FACTS
-                :135-139, which all say the same thing. Reading SX1262 off
+                OPEN_QUESTIONS D6, the T-Watch rail table in
+                HARDWARE_MATRIX (the DC3 row: "unused (was GNSS on earlier
+                revisions without rear BOOT/RST buttons)") and VERIFIED_FACTS
+                on the GNSS rail, which all say the same thing. Reading SX1262 off
                 the radio settles the radio and settles nothing about the
                 rail; choosing wrong means GNSS silently never starts, and
                 presents as a receiver or antenna fault.
@@ -1753,11 +1755,15 @@ Recommended next action:
   list** — answered 2026-08-22 on
   [#54](https://github.com/hleserg/Attadipa/issues/54), recorded as
   [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
-  A1's schematic-revision sub-question is **closed** — the silkscreen reads
-  `ESP32-S3-Touch-AMOLED-2.06`, which is the revision V1.0 describes
-  (`WAVESHARE_BOARD_RECEIVED` §1.1). A2's marking-read-off-the-part
-  confirmation remains, and it is a hardware-in-hand task now, not an owner
-  question. **A11 is new and IS on this list** — one T114 with GNSS or two,
+A1's schematic-revision
+  sub-question is **not closed and is not owed by the owner** — the silkscreen
+  reads `ESP32-S3-Touch-AMOLED-2.06`, which is the **product name** schematic
+  V1.0 describes, not a revision field: `2.06` is the panel diagonal, so a V1.1
+  unit carries it unchanged (`WAVESHARE_BOARD_RECEIVED` §1.1, and
+  `OPEN_QUESTIONS` D20, where it is now filed). An earlier version of this
+  bullet called it closed, which was the same mistake the rest of this branch
+  exists to correct. A2's marking-read-off-the-part confirmation likewise
+  remains, and is a hardware-in-hand task now, not an owner question. **A11 is new and IS on this list** — one T114 with GNSS or two,
   [#124](https://github.com/hleserg/Attadipa/issues/124). **A5 is no longer on it either** — 2026-08-22, the owner has
   ordered a CJMCU-9911 (AK09911C) and a GY-271 (QMC5883L) and is soldering one
   in ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
@@ -1998,8 +2004,11 @@ Recommended next action:
   this is the one place in the checker that reads fenced lines — everywhere else
   a `**Priority:**` inside a fence is an example and does not count as a body.
 - **Mutation-tested**, and CI runs those tests before it runs the checker:
-  twenty-five cases in `tools/docs/test_check_docs.py`, thirteen of which assert
-  the checker does *not* fire where firing would be wrong. One reproduces the
+  **38 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  checker does *not* fire where firing would be wrong — a `###` sub-heading is
+  not a second decision, a range straddling a blank line is how a table is
+  cited, and a line number in somebody else's tree is not ours to verify. The
+  suite prints its own count, so this number has one source. One reproduces the
   splice defect above verbatim and asserts the span check catches what the
   uniqueness check cannot; another asserts the body check catches the same splice
   from the other side.

@@ -331,15 +331,21 @@ jobs:
 
       # The checker's own mutation tests, run before the checker. A checker that
       # passes everything is worse than no checker, because it reads as
-      # evidence. Twenty-five cases, thirteen of which assert it does *not* fire
-      # where firing would be wrong, and two that reproduce the splice defect
-      # this pull request's first revision shipped — one from each side, because
-      # a stray backtick both strips the task above of its fields and hands the
-      # task below a DONE mark in a live section.
+      # evidence. 38 cases; several assert it does *not* fire where firing would
+      # be wrong (a `###` sub-heading is not a second decision, a range
+      # straddling a blank line is how a table is cited, a line number in
+      # somebody else's tree is not ours to verify), and two reproduce the
+      # splice defect this pull request's first revision shipped — one from each
+      # side, because a stray backtick both strips the task above of its fields
+      # and hands the task below a DONE mark in a live section.
+      #
+      # The suite prints its own count. Three documents quoted this number and
+      # all three were stale within a day of cases being added, which is the
+      # T-102 drift shape inside the tool built to catch it.
       - name: The checker actually checks
         run: python3 tools/docs/test_check_docs.py
 
-      - name: Links resolve, spans close, IDs are unique, tasks have bodies
+      - name: Links, spans, task IDs, OD numbers, task bodies, root files, citations
         run: python3 tools/docs/check_docs.py .
 
   simulator:

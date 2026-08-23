@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Six checks on the documentation, each of a failure that already happened here.
+"""Seven checks on the documentation, each of a failure that already happened here.
 
 1. Relative links resolve. This repository's documents cite each other
    constantly, and a link that 404s reads exactly like one that works until
@@ -43,6 +43,21 @@
    the second one reached `main` before anyone noticed. .gitignore now covers
    the two shapes that have occurred; the allow-list here covers the shape that
    has not occurred yet, because the failure is the sweep and not the extension.
+
+7. A `file.md:123` citation lands on a line that exists and is not blank. These
+   documents cite each other by line number constantly, and a line number is a
+   fact about a file at one moment. A branch that inserted seven lines into
+   HARDWARE_MATRIX.md moved two PMU-rail rows from :144 and :145 to :151 and
+   :152, and left two citations behind -- one of them pointing at a blank line,
+   inside a `BLOCKED:` block whose whole subject is that guessing the GNSS rail
+   means GNSS silently never starts. A citation with nothing at the end of it
+   reads as a claim with no source.
+
+   This cannot check that the line still *says* the right thing; it checks that
+   there is something there. That is the difference between the two failures it
+   has seen, and it is the cheap half. Citations to paths outside the repository
+   -- upstream MeshCore sources and the like -- are skipped, because their line
+   numbers are facts about somebody else's tree.
 
 Run: python3 tools/docs/check_docs.py [root]
 Exits non-zero on the first category that has findings, after printing all of
@@ -125,6 +140,110 @@ def check_links(root: str) -> list[str]:
     return problems
 
 
+# A citation of the form `path/to/file.md:123` or `file.h:12-34`, as this
+# repository writes them: inside backticks, in a link, or bare in prose. The
+# suffix list is the file kinds actually cited here; widening it would start
+# matching version strings and times.
+CITATION = re.compile(
+    r"\b([A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:md|cpp|h|hpp|py|sh|yml|yaml|json|jq|txt))"
+    r":(\d+)(?:\s*[-\u2013]\s*(\d+))?\b"
+)
+
+# These documents also cite a sibling by its bare SHOUTING name --
+# `HARDWARE_MATRIX:144`, no extension -- and that spelling is where the defect
+# this check was written for actually lived. Resolved against the tree rather
+# than a hardcoded list, and only when exactly one file answers to the name.
+BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,}):(\d+)(?:\s*[-\u2013]\s*(\d+))?\b")
+
+
+def bare_document_index(root: str) -> dict[str, str]:
+    index: dict[str, list[str]] = {}
+    for path in markdown_files(root):
+        stem = os.path.basename(path)[: -len(".md")]
+        index.setdefault(stem, []).append(path)
+    return {name: paths[0] for name, paths in index.items() if len(paths) == 1}
+
+
+def check_citation_lines(root: str) -> list[str]:
+    """A `file:line` citation points at a line that exists and is not blank."""
+    problems = []
+    cache: dict[str, list[str] | None] = {}
+
+    def lines_of(target: str):
+        if target not in cache:
+            try:
+                with open(target, encoding="utf-8") as handle:
+                    body = handle.read().split("\n")
+                # A file ending in a newline splits to a trailing empty string
+                # that is not a line. Left in, it makes the last line number a
+                # file has look like a valid one, which is the off-by-one this
+                # check exists to catch.
+                if body and body[-1] == "":
+                    body.pop()
+                cache[target] = body
+            except (OSError, UnicodeDecodeError):
+                cache[target] = None
+        return cache[target]
+
+    bare_index = bare_document_index(root)
+    for path in markdown_files(root):
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        here = os.path.dirname(path)
+        rel_self = os.path.relpath(path, root)
+        # Fences are NOT stripped here, unlike every other check in this file.
+        # TASKS.md keeps its `BLOCKED:` records in fenced blocks, and the
+        # citation that sent a reader to a blank line -- on the GNSS rail, the
+        # fact CLAUDE.md holds up as the cost of guessing -- was inside one.
+        for lineno, line, _fenced in scan_lines(text):
+            for match in list(CITATION.finditer(line)) + list(
+                BARE_CITATION.finditer(line)
+            ):
+                cited, first, last = match.group(1), int(match.group(2)), match.group(3)
+                if cited in bare_index:
+                    resolved = bare_index[cited]
+                    body = lines_of(resolved)
+                    if body is not None:
+                        _report(problems, rel_self, lineno, cited, match, body)
+                    continue
+                # Resolve beside the citing file first, then from the root. A
+                # bare basename -- `TEST_FLEET.md:21` -- is how these documents
+                # cite a sibling, and both spellings appear.
+                for base in (here, root):
+                    resolved = os.path.normpath(os.path.join(base, cited.lstrip("/")))
+                    if os.path.isfile(resolved):
+                        break
+                else:
+                    # Not a file in this repository: an upstream source, a
+                    # renamed path, or a false positive. check_links covers the
+                    # ones written as links; a line number in somebody else's
+                    # tree is not ours to verify.
+                    continue
+                body = lines_of(resolved)
+                if body is None:
+                    continue
+                _report(problems, rel_self, lineno, cited, match, body)
+    return problems
+
+
+def _report(problems, rel_self, lineno, cited, match, body) -> None:
+    first = int(match.group(2))
+    last = match.group(3)
+    span = match.group(0).split(":", 1)[1]
+    wanted = [first] if last is None else list(range(first, int(last) + 1))
+    if max(wanted) > len(body):
+        problems.append(
+            "%s:%d: cites %s:%s, but that file has %d lines"
+            % (rel_self, lineno, cited, span, len(body))
+        )
+        return
+    if all(not body[n - 1].strip() for n in wanted):
+        problems.append(
+            "%s:%d: cites %s:%s, which is blank -- the lines it named have moved"
+            % (rel_self, lineno, cited, span)
+        )
+
+
 # `## OD-16 — ...` in OWNER_DECISIONS.md. Level two only: a `### OD-16` under a
 # decision is part of that decision, not a second one.
 DECISION_HEADING = re.compile(r"^##\s+(OD-\d+)\b")
@@ -134,12 +253,15 @@ def check_decision_ids(root: str) -> list[str]:
     """One OD number, one decision.
 
     Four open pull requests each inserted `## OD-16` at the same line of
-    OWNER_DECISIONS.md, for four different owner decisions. They touch no file
-    in common, so git merges them clean and no conflict marker forces anybody to
-    choose; resolve one of them as "keep both" and the register carries two
-    OD-16 headings with two ambiguous anchors, CI green. Nothing here looked:
-    check 3 is TASKS.md-only, and check 1 captures a link's `#anchor` and then
-    never uses it.
+    OWNER_DECISIONS.md, for four different owner decisions. Git does conflict on
+    that -- an earlier version of this docstring claimed the branches shared no
+    file and merged clean, and review refuted it with one counterexample: two of
+    them share five files and both insert at the same line. The conflict is real
+    and a person resolves it, which is exactly the problem. "Keep both" is the
+    obvious resolution and the correct one for the prose; it leaves two `## OD-16`
+    headings and two ambiguous anchors, with CI green. Nothing here looked: check
+    3 is TASKS.md-only, and check 1 captures a link's `#anchor` and then never
+    uses it.
 
     The register is the file people read to find out what the owner decided. Two
     answers under one number is the same failure as two tasks under one ID, in
@@ -402,6 +524,7 @@ def main() -> int:
         ("Duplicate owner-decision numbers", check_decision_ids(root)),
         ("Tasks with no body, or finished work outside DONE", check_task_bodies(root)),
         ("Unexpected files tracked at the repository root", check_root_files(root)),
+        ("Citations pointing at a blank line or past the end of a file", check_citation_lines(root)),
     ):
         if problems:
             failed = True

@@ -484,9 +484,11 @@ available on this board.
 
 None of these blocks M1. All of them block hardware work.
 
-**A1 is partly answered, A2 and A3 are answered** — and A1 is off the table
-above because what is left of it is the post arriving, not an answer somebody
-owes us —
+**A1, A2 and A3 are answered as owner questions** — and A1 is off the table
+above because what is left of it is not an answer somebody owes us: the T-Watch
+half is the post arriving, and the Waveshare half is a loupe on a board already
+on the desk, now filed as `OPEN_QUESTIONS` **D20** rather than left live in a
+table whose rule is that every `A`-question is an open `needs-owner` issue —
 [#54](https://github.com/hleserg/Attadipa/issues/54), on 2026-08-22, recorded
 as
 [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
@@ -494,8 +496,8 @@ Waveshare is received and its **identity** is `VERIFIED` from the silkscreen —
 the board is the one schematic V1.0 describes. Its **revision** is not: the
 silkscreen carries the product name, whose `2.06` is the panel diagonal, and no
 revision field has been read off the unit, so V1.0-derived rows are confirmed
-against a document rather than against the board. What else remains unread there
-is the display-FPC part marking, D19 — U2 and U3 were
+against a document rather than against the board. What remains unread there
+is that revision (D20) and the display-FPC part marking (D19) — U2 and U3 were
 answered off the die itself, `WAVESHARE_EFUSE_READ` §1.2–1.3; T-Watch
 S3 Plus is `ORDERED`, not `PRESENT` — the T-010 blocker above is unchanged
 until it arrives and its radio marking is read off the physical part. A2:
@@ -742,10 +744,14 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   tracked at the repository root. The decision check was added 2026-08-23 for a
   failure that was in flight rather than shipped: four open pull requests each
   inserted `## OD-16` into `OWNER_DECISIONS.md` at the same line, for four
-  different decisions. They share no other file, so git merges them clean and no
-  conflict marker forces a choice; resolve one as *keep both* and the register
-  people read to find out what the owner decided carries two OD-16 headings with
-  two ambiguous anchors, CI green. The task-ID check is TASKS.md-only and could
+  different decisions. Git conflicts on that, and a person resolves it — which is
+  the problem, not the safeguard. *Keep both* is the obvious resolution and is
+  right for the prose; it leaves the register people read to find out what the
+  owner decided carrying two OD-16 headings with two ambiguous anchors, CI green.
+  A first version of this entry said the branches shared no file and merged
+  silently; review refuted it with one counterexample, and the corrected model is
+  worse rather than better — a conflict a human resolves is a decision point
+  nothing checks. The task-ID check is TASKS.md-only and could
   not see it. The other half — that a link's `#anchor` is captured and then
   never verified, so a citation survives its heading being renumbered — is
   **T-127**, deliberately not folded in here because its first run will find
@@ -762,8 +768,12 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   the #48 review established for T-064 and T-073; all four are now under
   `## DONE`. Under `## BLOCKED` the body is the `BLOCKED:` block CLAUDE.md
   specifies rather than a priority, so T-010 and T-011 are correct and not
-  flagged. Twenty-five mutation tests, thirteen of which assert the checker does
-  *not* fire.
+  flagged. **38 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
+  sub-heading is not a second decision, a range straddling a blank line is
+  how a table is cited, and a line number in somebody else's tree is not
+  ours to verify. The
+  suite prints its own count, because the three documents quoting it were all
+  stale within a day of the last time cases were added.
 
 - **T-070 research — the watch as a tracker detector, and the honest limit is
   now sourced rather than deferred.**

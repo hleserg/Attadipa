@@ -28,10 +28,12 @@ def write(root: str, name: str, text: str) -> None:
 
 
 FAILURES: list[str] = []
+RAN: list[str] = []
 
 
 def case(name: str, condition: bool) -> None:
     print(("  ok   " if condition else "  FAIL ") + name)
+    RAN.append(name)
     if not condition:
         FAILURES.append(name)
 
@@ -178,8 +180,77 @@ def main() -> int:
         os.remove(os.path.join(root, "docs/research/OWNER_DECISIONS.md"))
         case(
             "no register is not a finding",
-            not check_docs.check_decision_ids(root),
+            not check_docs.check_citation_lines(root)
+            and not check_docs.check_decision_ids(root),
         )
+
+        # Check 7. A branch inserted seven lines into HARDWARE_MATRIX.md, moved
+        # two PMU-rail rows past the lines two other documents cited, and left
+        # one citation pointing at a blank line -- inside the `BLOCKED:` block
+        # about the GNSS rail, the fact CLAUDE.md holds up as the cost of
+        # guessing.
+        write(root, "docs/research/TARGET.md", "one\ntwo\n\nfour\n")
+        write(root, "docs/research/CITER.md", "See `TARGET.md:1` for it.\n")
+        case(
+            "a citation landing on a real line is not reported",
+            not check_docs.check_citation_lines(root),
+        )
+
+        write(root, "docs/research/CITER.md", "See `TARGET.md:3` for it.\n")
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a citation landing on a blank line is reported",
+            len(problems) == 1 and "blank" in problems[0],
+        )
+
+        write(root, "docs/research/CITER.md", "See `TARGET.md:99` for it.\n")
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a citation past the end of the file is reported",
+            len(problems) == 1 and "4 lines" in problems[0],
+        )
+
+        # The spelling the defect actually used: a bare SHOUTING basename with
+        # no extension, which is how these documents cite a sibling.
+        write(root, "docs/research/CITER.md", "See TARGET:3 and nothing else.\n")
+        case(
+            "a bare NAME:line citation is resolved and reported",
+            len(check_docs.check_citation_lines(root)) == 1,
+        )
+
+        # A range is a finding only when the whole of it is blank; a range that
+        # merely straddles a blank line is how a table is cited.
+        write(root, "docs/research/CITER.md", "See `TARGET.md:1-4` for it.\n")
+        case(
+            "a range straddling a blank line is not reported",
+            not check_docs.check_citation_lines(root),
+        )
+
+        write(root, "docs/research/TARGET.md", "one\n\n\nfour\n")
+        write(root, "docs/research/CITER.md", "See `TARGET.md:2-3` for it.\n")
+        case(
+            "a range that is entirely blank is reported",
+            len(check_docs.check_citation_lines(root)) == 1,
+        )
+
+        # Fences are deliberately NOT stripped for this check: TASKS.md keeps
+        # its BLOCKED records in one, and that is where the defect lived.
+        write(root, "docs/research/TARGET.md", "one\ntwo\n\nfour\n")
+        write(root, "docs/research/CITER.md", "```\nBLOCKED: see TARGET.md:3\n```\n")
+        case(
+            "a citation inside a fenced block is still checked",
+            len(check_docs.check_citation_lines(root)) == 1,
+        )
+
+        # A line number in somebody else's tree is not ours to verify.
+        write(root, "docs/research/CITER.md", "Upstream `src/Utils.cpp:127-145`.\n")
+        case(
+            "a citation to a path outside the repository is skipped",
+            not check_docs.check_citation_lines(root),
+        )
+
+        os.remove(os.path.join(root, "docs/research/TARGET.md"))
+        os.remove(os.path.join(root, "docs/research/CITER.md"))
 
         write(root, "TASKS.md", "## NEXT\n\n### T-001 · One\n- **Priority:** P1.\n- **Goal:** a thing.\n")
         case(
@@ -271,7 +342,11 @@ def main() -> int:
     if FAILURES:
         print(f"\n{len(FAILURES)} failed", file=sys.stderr)
         return 1
-    print("\nall passed")
+    # The count is printed rather than left to be counted by hand. Three
+    # documents quote it, and all three were stale within a day of the last
+    # time cases were added -- the drift this file exists to catch, in the
+    # file that catches it.
+    print("\nall %d cases passed" % len(RAN))
     return 0
 
 

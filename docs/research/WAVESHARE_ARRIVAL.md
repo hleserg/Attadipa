@@ -118,7 +118,7 @@ the AXP2101 or the PCF85063 that are on the board — which
 Whatever is decided, wrapping the BSP does not cover the board.
 
 **The ESP-IDF mechanics were already constrained by an undecided version.** T1 is
-"narrowed" ([OPEN_QUESTIONS.md:174](OPEN_QUESTIONS.md)), T-004 is open
+"narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
 ([TASKS.md:1023](../../TASKS.md)), and CI prints
 `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
 ([`.github/workflows/ci.yml:281`](../../.github/workflows/ci.yml)). What exists
@@ -290,7 +290,8 @@ and D3 is struck as mis-stated at
 [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md). This retires the hot-unplug and
 bus-capacitance worry that D3 inherited from the T-Watch, where main-I2C `SDA`
 genuinely does reach a detachable GNSS connector
-([HARDWARE_MATRIX.md:208](HARDWARE_MATRIX.md)) — but it confirms that the touch
+([HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), *"The GNSS daughterboard is not only
+GNSS"*) — but it confirms that the touch
 half of the main I2C bus leaves the mainboard over a flex cable, which is a
 mechanical reliability fact rather than a design one.
 
