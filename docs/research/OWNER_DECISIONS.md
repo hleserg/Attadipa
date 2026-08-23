@@ -1109,8 +1109,11 @@ is not needed there.
 
 Two modules are ordered for the Waveshare unit: a **CJMCU-9911** (AK09911C) and
 a **GY-271** (QMC5883L) — traced in [#83](https://github.com/hleserg/Attadipa/issues/83)
-and researched in full in PR #87 (`docs/research/MAGNETOMETER_RETROFIT.md`,
-not yet merged at the time of this record). **Both the part and the placement are
+and researched in full in [#87](https://github.com/hleserg/Attadipa/pull/87)
+(`docs/research/MAGNETOMETER_RETROFIT.md`, **merged 2026-08-22**; this entry
+said "not yet merged at the time of this record" in a commit written after it
+landed, which left the file CLAUDE.md ranks highest disagreeing with
+`MAGNETOMETER_BACKLOG.md:60`. Found in review). **Both the part and the placement are
 open, and placement is the one that gates.** An earlier version of this entry
 read *"placement is the open part, not the part number"*, which put the
 authoritative file at odds with the three documents that treat the part as
@@ -1120,7 +1123,12 @@ devices on the bus). Two modules are ordered and which one goes in is a decision
 `MAGNETOMETER_RETROFIT` sets up and does not make. Placement gates because #83
 is explicit that nothing gets soldered until a survey of the case's magnetic
 environment (speaker magnet, motor pads, battery leads) says where, tracked as
-**T-109** — and the rail, the module pull-ups and **T-130** gate alongside it
+**T-109** — which is itself gated, because the survey that chooses the part
+reads the field with the motor *driven* and this unit has no motor fitted
+(T-097, or T-105 if the `CONFLICTING` `AAC210602A1` turns out to be an
+actuator). A motor-idle-only survey would meet T-109's acceptance as it was
+written and choose the part on a number that answers a different question, so
+T-109 now says so. Found in review. The rail, the module pull-ups and **T-130** gate alongside it
 (T-130, not T-096: T-096 decides how a *detachable node* attaches, and a
 soldered sensor shares that hazard's stuck-slave half and not its detachability,
 so T-096 can close without the sensor's own bus question ever being asked). So `Capability::Heading` has a *watch-side*
@@ -1270,9 +1278,11 @@ is intended; it is, for one unit. **Q2's second half asks something else**: is
 heading GNSS-only on a *stock* board for good
 ([OPEN_QUESTIONS](OPEN_QUESTIONS.md) Q2, still open in bold there). Every stock
 board has no compass and always will, so this decides whether the compass is a
-feature of the product or of one modified device. **Unlike A1–A3, A9, A10 and
-D16, Q2 has no issue number** — this list is the only place it is visible to the
-owner at all.
+feature of the product or of one modified device. Every other question on this
+list has an issue and Q2 had none, so this list was the only place it was
+visible to the owner at all; it is now
+[#138](https://github.com/hleserg/Attadipa/issues/138), and it is in the owner
+table in [STATUS.md](../../STATUS.md) beside the rest. Found in review.
 Those remain in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). A5 and A6 are answered
 above; A1–A3 have their own record in this file as it lands. **Deliberately
 not a number**: three open pull requests each wrote OD-16, and a hard-coded

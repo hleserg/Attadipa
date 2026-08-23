@@ -275,6 +275,39 @@ stale silently. The protocol is
 - **Tests:** host tests in `tests/test_trust.cpp`, both directions
 - **Hardware required:** no
 
+### T-142 · The remembered position loses its provenance, on the display side
+- **Priority:** P2
+- **Dependencies:** [ADR-0009](docs/adr/0009-heading.md) §3a (**done**), which
+  says a position must be shown with the source it actually has. This is the one
+  place that cannot obey it.
+- **Goal:** `TrustEngine::remember()` stores a bare `Position` in
+  `last_trusted_`, and `last_trusted_position()` hands back
+  `std::optional<Position>` — so the fix that survives into ADR-0011 §5's
+  growing-uncertainty fallback arrives at the interface with **nothing left to
+  label it**. This is not T-141: that one is the *comparison* side
+  (`TrustEvaluator::latest_position_`) and asks whether co-location should scope
+  a trust signal. This is the *display* side, and the user-facing sentence is
+  already specified.
+- **The configuration that reaches it is the one OD-8 names**, and no reset
+  covers it: a watch with a local receiver **and** an attached node — the node's
+  fix is `Trusted` and remembered, the node stays attached, the local receiver
+  never gets a fix, trust degrades on staleness, and the screen draws "last
+  known position" from a node's fix with no source to name. `reset()`
+  (`trust.h`) covers walk-away; nothing detaches here and nothing resets.
+- **Acceptance:** the remembered fix carries its `PositionSource` and its
+  co-location to whatever draws it, and a host test asserts the drawn label for
+  a remembered **node** fix differs from the label for a remembered local one.
+  A test that only checks the coordinate pair passes today and would pass after
+  a regression, so it does not count.
+- **Watch for:** widening the stored type is the obvious fix and is not free —
+  `TrustEngine` is held by value in the evaluator and the struct is on a
+  memory-constrained device; whatever is stored is what an implementer of §3a
+  will assume is available everywhere else. Decide the shape once.
+- **Research status:** the gap is located; the shape is not decided
+- **Implementation status:** not started
+- **Tests:** host tests in `tests/test_trust.cpp`
+- **Hardware required:** no
+
 ### T-130 · The retrofit magnetometer's own bus question, which T-096 does not ask
 - **Priority:** P2, and it gates every magnetometer interference measurement on
   the Waveshare unit.
@@ -304,8 +337,8 @@ stale silently. The protocol is
      one.
   2. **The pull-ups, as a *module* question and not a die question.** The
      AK09911C datasheet saying *"open-drain, external pull-ups required"*
-     ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §I2C
-     electrical) is true of nearly every I2C slave and settles nothing: the bus
+     ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §2.4
+     `I2C`) is true of nearly every I2C slave and settles nothing: the bus
      already runs six devices. The real unknown is that CJMCU-9911 and GY-271 are
      **breakout modules**, which commonly populate their own pull-ups. Fitting
      one — or both, which that document contemplates — puts them in **parallel**
@@ -1197,9 +1230,15 @@ stale silently. The protocol is
   [ADR-0011](docs/adr/0011-gnss-integrity.md) §2. `SameBody` is produced by one
   thing only — this board's own receiver, for its own fixes; everything over the
   node link is `Unknown` and nothing promotes it. A node-supplied fix whose
-  co-location is `Unknown` reaches the screen labelled as the node's, and the
-  label is `LocationService`'s rather than an application's, per
-  [ADR-0002](docs/adr/0002-companion-is-optional.md) §2. Without this the
+  co-location is `Unknown` reaches the screen labelled with the source it
+  actually has, and the label is `LocationService`'s rather than an
+  application's, per
+  [ADR-0002](docs/adr/0002-companion-is-optional.md) rule 4. **A second case
+  with a `Manual` fix on a board with no node attached**, because `Unknown`
+  co-location is not a synonym for *the node's*: `Companion`, `Manual` and
+  `Simulated` all carry it, and a screen that credits a node for a position the
+  user typed is a false provenance claim — worse in the simulator, where every
+  scripted fix is `Simulated`. Found in review. Without this the
   Waveshare board, which has no receiver of its own, loses the only navigation
   story it has. **Co-location costs a fix nothing in `TrustState`**: take one
   fix, replay it with the state `SameBody` and with it `Unknown`, and assert an
@@ -1831,9 +1870,29 @@ stale silently. The protocol is
   millimetres away is exactly the thing that closes a six-fold range advantage.
   If the QMC sits near overflow wherever it physically fits, the AKM part is not
   a fallback, it is the answer.
+- **AND THAT MEASUREMENT CANNOT BE TAKEN ON THE UNIT THE SENSOR IS GOING INTO.**
+  The Waveshare board received has **no vibration motor fitted** — pads bare,
+  `OBSERVED` in
+  [WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §1.7 and
+  the reason T-097 exists. So the motor-driven half of the deciding measurement
+  has no source on this assembly, and the failure mode is not "the work waits":
+  it is that a motor-idle-only survey finds the QMC nowhere near overflow, the
+  acceptance below reads met, and the part is chosen on a number that is real,
+  labelled `MEASURED`, and answers a question nobody asked. That is the
+  confounded-measurement harm this file names three times, arriving through the
+  task written to prevent it, and it is *likelier* here than elsewhere because
+  the standing recommendation already points at the QMC. Found in review.
+- **Gate, therefore, before any part is chosen:** a magnetic source at the
+  mounting position that can be driven and stopped. **T-097** (fit a motor) or
+  **T-105** (the actuator work, which gives this unit a driven magnetic source)
+  closes it. Until one of them lands, the survey may be *taken* and recorded —
+  motor-idle numbers are still worth having — but the part **is not chosen from
+  it**, and the record says `NOT MEASURABLE ON CURRENT HARDWARE` for the driven
+  half rather than leaving a blank that reads as zero.
 - **Acceptance:** both module footprints recorded as `MEASURED` with the caliper
   named; the field at the chosen position recorded with the motor in both
-  states; the rotation between module frame and board frame written down for
+  states, **on a unit that has one** — a survey with no motor fitted does not
+  meet this, however carefully it is taken; the rotation between module frame and board frame written down for
   *this assembly* rather than inferred; overflow surfaced by the driver as a
   state an application can see, never as a clipped number passed upward.
 - **What must not be assumed:** that a module which fits on the bench fits under

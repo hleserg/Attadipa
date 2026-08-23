@@ -468,8 +468,12 @@ available on this board.
   [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)), which turns
   this from impossible into blocked on things this project can actually do.
   **Placement is not the last gate, and an earlier version of this bullet
-  implied it was.** Four things are open, and each corrupts the measurement
-  rather than merely delaying it: the placement (T-109), the **rail** the sensor
+  implied it was.** Five things are open, and each corrupts the measurement
+  rather than merely delaying it: the placement (T-109) — whose own
+  part-choosing measurement needs the field with the motor driven, on a unit
+  with **no motor fitted** (T-097, or T-105), so a motor-idle survey would meet
+  the acceptance as written and choose a part on a number that answers a
+  different question — the **rail** the sensor
   sits on (`MAGNETOMETER_BACKLOG` G-14 — a sensor sharing a rail with the
   disturbing subsystem measures a confounded circuit and the number still comes
   out `MEASURED`), the **module pull-ups** — a breakout board question, not the
@@ -489,7 +493,10 @@ available on this board.
 | A1 | Is either board physically available, and which revision? | everything hardware |
 | A2 | If a T-Watch: which radio chip and which GNSS module? | decides whether the watch can join a MeshCore network at all — two of the five candidate radios cannot ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 | A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
+| A9 | Display and theme, the first half ([#52](https://github.com/hleserg/Attadipa/issues/52)) | `UNKNOWN` at [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md); it was missing from this table while its issue was open |
+| A10 | Display and theme, the second half ([#53](https://github.com/hleserg/Attadipa/issues/53)) | same, and #97 records an answer to it that is not yet merged |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
+| Q2 | **Is the compass a feature of the product, or of one modified device?** ([#138](https://github.com/hleserg/Attadipa/issues/138)) | not A5, which asked only whether a sensor is intended. No stock board has a magnetometer or ever will, so this decides whether the retrofit is a bench instrument or a product path — and how much of `MAGNETOMETER_BACKLOG` is product work |
 
 None of these blocks M1. All of them block hardware work.
 
@@ -547,6 +554,23 @@ by this board's own receiver for its own fixes, co-location is never an input to
 `TrustState`, and the pair comparison keeps the behaviour its tests describe.
 Whether that behaviour should change is **T-141**, an ADR of its own — because
 an amendment that switches off a trust signal is a decision, not a description.
+
+*And the fourth pass found the rewritten sentence still wrong in one word.* It
+said a position whose co-location is `Unknown` *"must be shown as the node's
+fix"* — but `PositionSource` has six enumerators, and `Companion`, `Manual` and
+`Simulated` carry `Unknown` too. On a Waveshare with no node attached and a
+position typed in Settings, the screen would have credited a node that is not
+there; in the simulator, where every scripted fix is `Simulated`, every fix
+would have been the node's. The rule is now *shown with its actual source, never
+as this body's own instrument's*, and T-026's acceptance gained the `Manual`
+case, which is the one where crediting a node is impossible. The same pass
+found the eleventh axis declared in ADR-0009 and never entered in ADR-0011 §2's
+table — the register an implementer actually consults, which still said ten over
+a rule that no two states share a field — and a second place the provenance
+label stops: `TrustEngine::last_trusted_` stores a bare `Position`, so ADR-0011
+§5's growing-uncertainty fallback draws a remembered node fix with nothing left
+to label it. That is **T-142**; it is the display side, where T-141 is the
+comparison side.
 
 **T-130 is new, and it exists because a gate pointed at the wrong task.** Fifteen
 citations across five files blocked the retrofit magnetometer's bus hazard on

@@ -188,8 +188,8 @@ conditions and refuses otherwise. Cross-body position gets the same shape:
 > [`PositionSource`](../../core/include/attadipa/core/position.h) — never an
 > assumption. It defaults to `Unknown`, and `Unknown` is the ordinary case
 > rather than a failure. What it withholds is the *claim*: a position whose
-> co-location is `Unknown` may be shown, and must be shown as the node's fix
-> rather than as the wearer's.**
+> co-location is `Unknown` may be shown, and must be shown with its actual
+> source — never as the wearer's own instrument's fix.**
 
 **A field of its own, and the emphasis is load-bearing.** An earlier version of
 this section said the state was *"carried on `PositionValidity` / `TrustState`"*.
@@ -260,7 +260,7 @@ two fixes whose co-location is `Unknown` are neither disagreement nor agreement.
 
 **That was wrong three ways, and review proved each of them against the tree
 rather than against the argument.** It contradicted itself on its own fixture —
-with the state consulted, 300 m still exceeds the 250 mm-per-metre threshold, so
+with the state consulted, 300 m still exceeds the 250 m threshold (`provider_disagreement_mm = 250000`), so
 the two replays it demanded be identical are not. It contradicted two tests that
 pass today: [`tests/test_trust.cpp`](../../tests/test_trust.cpp) asserts that a
 `PositionSource::NodeGnss` fix ~550 m from the local one **raises**
@@ -281,11 +281,25 @@ two fixtures above.
 **Who produces the value, because a state nothing can set is a constant.** A fix
 from this board's own receiver is co-located *by construction* — the receiver is
 strapped to the wrist the position is about — so a `LocalGnss` fix carries
-`SameBody`. Everything arriving over the node link carries `Unknown`, because
-nothing on either board measures node-to-wearer separation, which is this
-section's own premise. There is deliberately no third producer and no way to
-promote `Unknown` to `SameBody` by inference: the promotion would be the
+`SameBody`. Everything else carries `Unknown`, because nothing on either board
+measures the separation between the wearer and whatever produced the fix, which
+is this section's own premise. There is deliberately no third producer and no
+way to promote `Unknown` to `SameBody` by inference: the promotion would be the
 confident number on an unobservable quantity that §3 exists to refuse.
+
+**`Unknown` is not a synonym for "the node's".** An earlier draft of the quoted
+rule said such a position *"must be shown as the node's fix"*, and
+[`PositionSource`](../../core/include/attadipa/core/position.h) has six
+enumerators rather than two: `Companion` (a phone — ADR-0002's subject),
+`Manual` (the user typed it) and `Simulated` all carry `Unknown` as well. On a
+Waveshare with no node attached and a position typed in Settings, that sentence
+made the screen credit a node that is not there — a false provenance claim on a
+navigation screen, and worse in the simulator, where every scripted fix is
+`Simulated` and every fix would therefore be labelled the node's. It also
+contradicted OD-8 item 2, quoted verbatim in this same section, which names
+**three** claims rather than two. The rule is therefore about *the actual
+source*, whatever it is; what it forbids is passing an `Unknown`-co-location fix
+off as this body's own instrument reading. Found in review.
 
 **And the tension is real, so it is filed rather than legislated.** A node in a
 bag by the door with a perfectly good fix 300 m from the wearer's perfectly good
@@ -447,10 +461,16 @@ For §3a, four more, none of which need hardware. **One:** a node-supplied
 position with co-location `Unknown` reaches the screen and is labelled as the
 node's fix, not the wearer's — the Waveshare configuration, where refusing it
 would leave the board with no navigation at all. The label is
-`LocationService`'s: under [ADR-0002](0002-companion-is-optional.md) §2 an
+`LocationService`'s: under [ADR-0002](0002-companion-is-optional.md) rule 4 an
 application asks the owning service and provenance is that service's business,
 so the distinction is drawn where the position is handed out and **not** by an
-application reading `PositionSource`, which ADR-0004 forbids. **Two:**
+application reading `PositionSource`, which ADR-0004 forbids. **And the same
+case again with a `Manual` fix on a board with no node attached**, because
+`Unknown` co-location is not a synonym for *the node's*: the label must read
+back the source the fix actually has, and the case that catches the wrong
+reading is the one where crediting a node is impossible. `Simulated` is the
+same assertion in the simulator, where every scripted fix has that source.
+**Two:**
 co-location costs a fix nothing in `TrustState` — take **one** fix, replay it
 with its co-location `SameBody` and with it `Unknown`, and assert the verdict
 and the reason bits are identical. Scoped to the fix's own weight on purpose:

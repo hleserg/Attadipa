@@ -76,7 +76,7 @@ fake-green result the project forbids.
 | # | Epic | Kind | Can start now? |
 |---|---|---|---|
 | G-01 | Magnetometer capability API | DESIGN | **Yes** — ADR-0001 covers presence and degree; this is the sensor-facing side |
-| G-02 | External sensor BSP | DESIGN | **Yes** — how an off-board sensor attaches at all. A5 is answered (OD-17); this no longer waits on the owner, only on placement (T-109) before the mapping half of G-03 can follow |
+| G-02 | External sensor BSP | DESIGN | **Yes** — how an off-board sensor attaches at all. A5 is answered (OD-17); this no longer waits on the owner, only on placement (T-109) before the mapping half of G-03 can follow — and T-109's own part-choosing measurement waits on a driven magnetic source this unit does not have (T-097, or T-105) |
 | G-03 | Axis mapping | DESIGN | Partly — the representation can be designed; the actual mapping needs a physical sensor in a physical case |
 | G-04 | Calibration storage | DESIGN | **Yes** — format, versioning, where it lives, what invalidates it |
 | G-05 | Calibration wizard | DESIGN | UI flow can be designed; it cannot be validated |
@@ -136,7 +136,13 @@ this paragraph said they were.
 - **Two are blocked on placement alone (T-109)** — a sensor that is ordered and
   not yet in the unit: G-06 and G-07, the two calibration epics. They are
   sensor-only: a magnetometer held still and turned, with nothing else on the
-  board needing to be decided first.
+  board needing to be decided first. **Placement itself is not the floor**,
+  though: T-109 chooses *which part* from the field at the mounting position
+  with the motor driven, and this unit has no motor fitted (T-097). Until T-097
+  or T-105 lands, a motor-idle survey can be recorded but cannot choose the
+  part — the QMC's ±800 µT ceiling is exactly what a driven motor magnet
+  threatens, so a survey without one finds nothing and reads as if it had
+  looked. Found in review.
 - **Two more — G-09 and G-10 — need placement AND a rail AND the bus.** An
   earlier version of this bullet folded them in with the calibration epics as
   blocked on placement alone, three lines under a G-14 row that says **"rail is

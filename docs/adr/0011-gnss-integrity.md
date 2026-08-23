@@ -2,6 +2,10 @@
 
 Status: accepted
 Date: 2026-08-21
+Amended: 2026-08-23 — **an eleventh axis, co-location**, added to §2's table by
+[ADR-0009](0009-heading.md) §3a. The rule §2 states is unchanged; the register
+of axes was incomplete, and a reader consulting this table alone would reach for
+exactly the three homes §3a rules out. Found in review.
 
 ## Context
 
@@ -83,6 +87,17 @@ These are separate, and no two of them may be stored in the same field:
 | interference | is the band jammed, and is the receiver mitigating |
 | spoofing suspicion | does anything believe these signals are fabricated |
 | trust | the fused verdict, §5 below |
+| co-location | is this position about the body wearing this device, or about a different one — [ADR-0009](0009-heading.md) §3a, a field of its own beside [`PositionSource`](../../core/include/attadipa/core/position.h), defaulting to `Unknown` |
+
+**Eleven, and the last one arrived from the other side.** A position can be
+fresh, accurate, high-integrity and unspoofed and still be about a node in a bag
+by the door rather than about the wearer — a quantity none of the ten above can
+express, and one that no receiver reports because it is not a property of the
+receiver. [ADR-0009](0009-heading.md) §3a decides where it lives and what it
+withholds; it is recorded here because this table is the register an
+implementer consults, and the three wrong homes §3a rules out — `Availability`,
+`PositionValidity`, a `TrustReason` bit — are precisely what a reader of this
+section alone would reach for. Found in review.
 
 The case that forces this: **a provider can be `Ready`, with a numerically valid,
 fresh, accurate-looking fix, and still be unusable for navigation** — because the
