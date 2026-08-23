@@ -20,11 +20,10 @@ chips and one of two GNSS modules, and the product name tells you which of
 neither — and **two of those five are not LoRa transceivers at all**, so "it has
 a radio" and "it can join the mesh" are different sentences
 ([ADR-0003](docs/adr/0003-radio-not-lora.md)). The Waveshare board has no LoRa
-and no GNSS whatsoever. So an application
-here asks *what the device can do*, never *which device it is*: board
-differences live behind a capability registry, and a capability that arrives
-over the air from an attached node is answered by the same registry as one
-soldered to the board.
+and no GNSS whatsoever. So an application here asks *what the device can do*,
+never *which device it is*: board differences live behind a capability registry,
+and a capability that arrives over the air from an attached node is answered by
+the same registry as one soldered to the board.
 
 > **Status: early implementation.** The host-testable layers exist and are
 > tested — the hardware inventory, the capability registry, the transport, the

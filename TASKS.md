@@ -143,6 +143,46 @@ stale silently. The protocol is
 
 ## NEXT
 
+### T-111 · The Russian half of the site is not indexed, and the fix is a second document
+- **Priority:** P3, and it is **an owner decision before it is work.**
+- **Dependencies:** none
+- **Goal:** decide whether <https://hleserg.github.io/Attadipa/> gets a genuinely
+  separate `/ru/` page, or accepts that it cannot rank for a Russian query.
+- **The state, from the audit** ([`docs/site/SEO.md`](docs/site/SEO.md) §4): the
+  page is bilingual *inside one document*. Both languages live in the HTML as
+  `.lang-en` / `.lang-ru` spans with `.lang-ru { display: none }` by default and
+  a visible toggle. So there is no separate URL for `hreflang` to point at, and
+  the Russian text — present in the DOM, hidden by CSS — is not weighed. This is
+  a legitimate i18n pattern with a real control, not cloaking; it is also
+  unindexable Russian.
+- **Why an agent should not simply do it:** the fix is a second ~35 KB HTML
+  document with its own `<title>`, `description`, canonical and reciprocal
+  `hreflang`, kept in sync by hand — which is the exact failure mode `CLAUDE.md`
+  already warns about for the README pair, one document current and the other
+  stale with no way for a reader to tell which. If it is built, it needs a check
+  in CI the way the head pair now has one, not a promise.
+- **Acceptance:** either a `/ru/` page with a sync check beside it, or a written
+  decision in `docs/research/OWNER_DECISIONS.md` that the Russian half stays
+  unindexed and why.
+- **Hardware required:** no. **Owner required:** yes.
+
+### T-112 · A maskable app icon, which the current one is not
+- **Priority:** P4. Cosmetic, and only for someone who installs the page.
+- **Dependencies:** none
+- **Goal:** an opaque, edge-to-edge 512 × 512 icon variant so
+  `manifest.webmanifest` can carry a `maskable` purpose truthfully.
+- **The state:** a `maskable` purpose was added during the SEO pass and then
+  removed, because it was a false claim about the file. `docs/assets/icon-512.png`
+  is a rounded square on a transparent ground — all four corner pixels read
+  `(0, 0, 0, 0)` — and a launcher applies its own mask, so declaring it maskable
+  makes the installed icon worse than the `any` purpose it already has. The
+  artwork does sit inside the 80 % safe circle, so this is a re-export against an
+  opaque background, not a redraw.
+- **Acceptance:** a second icon file, the manifest entry restored beside it, and
+  a note saying which of the two purposes each file serves. Not the purpose
+  re-added to the existing file.
+- **Hardware required:** no. **Owner required:** no, but it is a design asset.
+
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
 - **Dependencies:** T-034 (**done**)

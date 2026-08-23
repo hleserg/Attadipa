@@ -17,7 +17,8 @@ rather than the fifth.
 Concretely, that ruled out: "the best smartwatch OS", any superlative, any
 feature described as working that has only been designed, any benchmark, and any
 metric — stars, downloads, users — dressed up as adoption. The `description`
-meta tag ends *"Early implementation, not yet run on hardware"* on purpose. It
+meta tag ends *"Early stage — not yet run on hardware."* on purpose, and
+`og:description` ends *"Early implementation — no board has run it yet."* It
 costs click-through and it is the correct trade.
 
 ## 1. The search niche, as it actually is
@@ -53,7 +54,7 @@ making.
 | Before | After |
 |---|---|
 | `<title>Attadipa — Independent by design</title>` — carried no term anybody searches for | `Attadipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS`, with the terms front-loaded so they survive truncation at ~60 characters |
-| `description` 178 chars, ended on "product-grade UI" | 151 chars, names LoRa MeshCore / GNSS / LVGL / FreeRTOS and closes on the early-implementation caveat |
+| `description` 154 chars, ended on "product-grade UI" | 151 chars, names LoRa MeshCore / GNSS / LVGL / FreeRTOS and closes on the early-implementation caveat |
 | no `robots` directive | `index, follow, max-image-preview:large, max-snippet:-1` — the image directive is what allows a large thumbnail in results |
 | `og:` had type, title, description, image, url | added `og:site_name`, `og:locale`, `og:locale:alternate`, `og:image:type`, `og:image:width`, `og:image:height`, `og:image:alt` |
 | `twitter:card` alone | added `twitter:title`, `twitter:description`, `twitter:image`, `twitter:image:alt`. Without an image URL the `summary_large_image` card had nothing to render and silently degraded |
@@ -113,15 +114,56 @@ switch that updates four of eight head fields leaves the page in a state neither
 language describes.
 
 **The rule this leaves behind:** `index.html`'s head and `site.js`'s `copy`
-object are one thing in two files. A CI check asserting the English pair match
-byte for byte would be worth having and does not exist; today they are verified
-by hand, and they do match.
+object are one thing in two files, and hand-verification is not enough to keep
+them that way. The first version of this section said they had been verified by
+hand *and did match*; review found that two of the eight fields did not — the
+fix for the title defect had assigned the meta description to `og:description`
+as well, putting the search-result string on the social card for every crawler
+that runs JavaScript while the non-rendering ones read the purpose-written one
+from the HTML. One URL, two card texts, and a sentence in this document saying
+it had been checked.
+
+So it is a check now, not a claim: `tools/site/check_head_sync.py`, run by CI in
+the *Documentation consistency* job. It extracts the English `<title>` and six
+`<meta>` contents from `index.html`, the same six fields from `site.js`'s
+`copy.en`, and fails naming the field and both values on any divergence; the two
+`twitter:` tags are checked against the `og:` strings they mirror, and `copy.ru`
+is checked for presence, since the Russian strings have no counterpart in the
+HTML by construction. Its own mutation tests
+(`tools/site/test_check_head_sync.py`, twenty cases) run first and include one
+per historical defect, because a checker that passes everything is worse than
+none — it is what the next agent trusts instead of re-checking, which is exactly
+how this section came to be wrong.
+
+### `docs/index.html` — a `<noscript>` fallback for `.reveal`
+
+Not an SEO fix, found while tracing what the script does to the head. Every
+section below the hero carries `.reveal`, which ships at `opacity:0`
+(`site.css:8`); `site.js` adds `.visible` through an `IntersectionObserver` as
+each scrolls into view. With scripting off nothing ever adds it, so a document
+that contains the whole page renders as a hero and empty space. Googlebot runs
+scripts and never saw this; a reader with scripting off, or one whose script
+request simply failed, saw a blank page.
+
+A `<noscript>` block now restores `opacity:1` and clears the transform. It
+changes nothing for anyone running the script, and the reduced-motion media
+query already did the same thing for people who ask for it.
 
 ### `docs/manifest.webmanifest`
 
 Was four keys and a one-line description. Now carries `id`, `scope`, `lang`,
-`dir`, `categories`, a full description, and a `maskable` icon purpose so an
-installed icon is not letterboxed on Android.
+`dir`, `categories` and a full description.
+
+A `maskable` icon purpose was added in the first version of this pass and then
+removed, because the claim was not true of the file. A maskable icon has to be
+opaque across the whole canvas — the launcher applies its own mask and anything
+transparent is a hole. `assets/icon-512.png` is a rounded square on a fully
+transparent ground: all four corner pixels read `(0, 0, 0, 0)`. Declaring it
+maskable would have had Android inset that rounded square inside its own shape,
+which is a worse installed icon than the `any` purpose it already had, not a
+better one. The artwork does sit inside the 80 % safe circle, so a genuinely
+maskable variant is a matter of adding an opaque background and re-exporting —
+a design change, not a manifest one, and not this pull request's subject.
 
 ### `docs/sitemap.xml`
 
@@ -167,7 +209,7 @@ Worth recording so nobody "fixes" it:
 - **Mobile.** A real viewport meta, `img{max-width:100%;height:auto}` in the
   reset, and grid/flex layout throughout — no fixed-width containers to cause a
   horizontal scroll.
-- **Performance, otherwise.** One 17 KB stylesheet and one 3 KB script, both
+- **Performance, otherwise.** One 17 KB stylesheet and one 6 KB script, both
   local, the script `defer`red. No web fonts are loaded at all — the type stack
   is `"Nunito Sans", "Avenir Next", system-ui, …`, so there is no render-blocking
   font fetch and no CLS from a swap. No third-party scripts, no analytics, no
@@ -185,7 +227,10 @@ of the cost. Putting keywords in hidden text near the `<h1>` would recover the
 rest and is exactly the kind of thing that gets a site penalised; it was not
 considered seriously.
 
-**No `hreflang` alternates, and this is the site's real SEO limitation.** The
+**No `hreflang` pair, and this is the site's real SEO limitation.** The head
+carries a single `hreflang="x-default"` alternate pointing at the canonical URL
+(`index.html:12`) — which says "this URL serves every language" and is honest,
+because it does. What it does not carry, and cannot, is an `en`/`ru` pair. The
 page is bilingual *inside one document* — English and Russian both live in the
 HTML as `.lang-en` / `.lang-ru` spans, with `.lang-ru { display: none }` by
 default and a visible toggle switching them. Consequences:
@@ -255,8 +300,16 @@ searches for and which no current topic covers.
 
 ## 7. How to check this did not rot
 
-- `python3 tools/docs/check_docs.py .` — link and structure checks over the docs
-  tree, already in CI.
+- `python3 tools/site/check_head_sync.py .` — the one check here that covers the
+  files this audit actually changed. In CI, in the *Documentation consistency*
+  job, with its own mutation tests ahead of it. It is the answer to the two
+  head-drift defects in §3 recurring.
+- `python3 tools/docs/check_docs.py .` — link and structure checks, already in
+  CI, and worth knowing the limit of: it filters on `.md`
+  (`tools/docs/check_docs.py:89-96`) and never opens `index.html`, `site.js`,
+  the manifest or the sitemap. It passed green while the `og:description` defect
+  above was in the tree. It guards the prose in this document, not the head it
+  describes.
 - The JSON-LD is plain JSON inside one `<script>` element: it parses, or it does
   not. Worth a paste into <https://validator.schema.org> after any edit.
 - If an image is swapped, its `width`/`height` must be re-read from the file.

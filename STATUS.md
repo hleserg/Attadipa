@@ -479,6 +479,9 @@ available on this board.
 | A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
+| S1 | **`esp32s3` and `esp32-s3` are both repository topics.** GitHub does not alias them; `esp32-s3` is the one with the repositories behind it. Topics are capped at 20 and the list is full | one of the 20 slots is doing nothing. `t-watch`, `lilygo` or `waveshare` would be found by exactly the people who own these boards. No API available to an agent here edits topics ([SEO §6](docs/site/SEO.md)) |
+| S2 | **Search Console, Bing Webmaster, and the two card validators need accounts.** Not registered, by instruction | nothing on the site can be confirmed as *indexed* rather than *indexable* until one of them is connected, and the Open Graph tags are unproven against a real scraper ([SEO §5](docs/site/SEO.md)) |
+| S3 | **A separate `/ru/` page, or no Russian indexing.** The page is bilingual inside one document, with the Russian half hidden by CSS | the Russian content is effectively unindexed today. The fix is a second HTML document to keep in sync by hand — the failure mode `CLAUDE.md` already warns about for the README pair, so it is the owner's call, not an agent's ([SEO §4](docs/site/SEO.md)) |
 
 None of these blocks M1. All of them block hardware work.
 
@@ -584,6 +587,36 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   not VERIFIED.
 
 ## Recently completed
+
+- **The site's head was written twice, in two files, and only one of them was
+  being edited.** The SEO pass — [`docs/site/SEO.md`](docs/site/SEO.md) is the
+  full record — rewrote `docs/index.html`'s `<title>` and `<meta>` tags, and
+  `docs/assets/site.js` reassigns all eight of them on every load from a
+  hardcoded `copy` object, so the strings a rendering crawler indexes are the
+  script's, not the HTML's. That object still held the pre-audit strings, which
+  would have put the old title straight back into the indexed DOM. The fix for
+  *that* then assigned the meta description to `og:description` as well, so the
+  search-result string went onto the social card for every crawler that runs
+  JavaScript while Facebook, X, Slack and Discord read the purpose-written one
+  from the HTML: one URL, two card texts. Both were found by review reading two
+  files side by side, and `SEO.md` recorded the second as *"verified by hand,
+  and they do match"* while two of eight fields did not.
+
+  So it is a check rather than a claim: `tools/site/check_head_sync.py`, in CI
+  in the *Documentation consistency* job, with twenty mutation tests
+  (`tools/site/test_check_head_sync.py`) ahead of it — one per historical
+  defect, four asserting it does *not* fire where firing would be wrong. The
+  existing rot check never covered this: `tools/docs/check_docs.py` filters on
+  `.md` and was green while the second defect was in the tree.
+
+  Three claims were removed rather than fixed, because they were not true of the
+  files: three of the six JSON-LD `featureList` entries described work that is
+  designed and not built; the manifest's `maskable` icon purpose, on an icon
+  whose four corner pixels are `(0, 0, 0, 0)` and which a launcher mask would
+  therefore hole; and `og:image:alt` saying the mark sits *over* the wordmark
+  when it sits to its left. A `<noscript>` fallback was also added — every
+  section below the hero ships at `opacity:0` and waited on a script to reveal
+  it, so a reader without JavaScript got a hero and empty space.
 
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the

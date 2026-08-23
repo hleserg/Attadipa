@@ -22,13 +22,13 @@
   <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1734">
   <meta property="og:image:height" content="907">
-  <meta property="og:image:alt" content="The Attadipa firefly mark over the wordmark Attadipa and the line Independent by design.">
+  <meta property="og:image:alt" content="The Attadipa firefly mark to the left of the wordmark Attadipa, with the line Independent by design beneath it.">
 
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Attadipa — open-source ESP32-S3 smartwatch firmware">
   <meta name="twitter:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, for two ESP32-S3 wearables. Early implementation — no board has run it yet.">
   <meta name="twitter:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
-  <meta name="twitter:image:alt" content="The Attadipa firefly mark over the wordmark Attadipa and the line Independent by design.">
+  <meta name="twitter:image:alt" content="The Attadipa firefly mark to the left of the wordmark Attadipa, with the line Independent by design beneath it.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -86,12 +86,9 @@
           "applicationCategory": "Smartwatch firmware",
           "operatingSystem": "FreeRTOS (ESP-IDF) on ESP32-S3",
           "featureList": [
-            "LoRa mesh messaging over MeshCore",
-            "Offline GNSS navigation without a phone",
             "LVGL user interface at two screen geometries",
             "Hardware capability registry shared across boards",
-            "Day and night themes",
-            "Child Mode"
+            "Day and night themes"
           ]
         },
         "license": "https://opensource.org/licenses/MIT",
@@ -106,6 +103,15 @@
   </script>
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/site.js" defer></script>
+
+  <!-- .reveal ships at opacity:0 and site.js adds .visible when the section
+       scrolls into view. With scripting off, nothing ever adds it, so every
+       section below the hero stays invisible on a page whose HTML contains all
+       of it. Googlebot runs scripts and is unaffected; a reader with scripting
+       off, or one whose script request failed, got a blank page. This undoes
+       the starting state for them and leaves the animation alone for everyone
+       else. -->
+  <noscript><style>.reveal{opacity:1;transform:none}</style></noscript>
 </head>
 <body>
   <a class="skip-link" href="#main">

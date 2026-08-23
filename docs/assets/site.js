@@ -5,6 +5,7 @@
   const ogDescription = document.querySelector('meta[property="og:description"]');
   const ogTitle = document.querySelector('meta[property="og:title"]');
   const ogLocale = document.querySelector('meta[property="og:locale"]');
+  const ogLocaleAlternate = document.querySelector('meta[property="og:locale:alternate"]');
   const twitterTitle = document.querySelector('meta[name="twitter:title"]');
   const twitterDescription = document.querySelector('meta[name="twitter:description"]');
 
@@ -14,18 +15,32 @@
   // index.html says. So when the head changes, this changes with it -- an
   // earlier SEO pass rewrote the <title> and left these behind, which would
   // have put the old strings straight back into the rendered DOM.
+  //
+  // AND `description` IS NOT `cardDescription`. index.html carries two strings
+  // on purpose: the meta description is written for a search result and ends
+  // "Early stage — not yet run on hardware.", while og:description and
+  // twitter:description are written for a social card and end "Early
+  // implementation — no board has run it yet." Assigning one to all three put
+  // the search-result string on the card for every renderer-based crawler
+  // while Facebook, X, Slack and Discord -- which do not run scripts -- read
+  // the other from the HTML. One URL, two card texts. Found in review, in the
+  // fix for the first version of this same defect.
   const copy = {
     en: {
       title: 'Attadipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS',
       ogTitle: 'Attadipa — open-source ESP32-S3 smartwatch firmware',
       locale: 'en_US',
-      description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — not yet run on hardware.'
+      localeAlternate: 'ru_RU',
+      description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — not yet run on hardware.',
+      cardDescription: 'LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, for two ESP32-S3 wearables. Early implementation — no board has run it yet.'
     },
     ru: {
       title: 'Attadipa — открытая прошивка для умных часов на ESP32-S3, LoRa mesh, GNSS офлайн',
       ogTitle: 'Attadipa — открытая прошивка для умных часов на ESP32-S3',
       locale: 'ru_RU',
-      description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — на плате ещё не запускалась.'
+      localeAlternate: 'en_US',
+      description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — на плате ещё не запускалась.',
+      cardDescription: 'LoRa-переписка через MeshCore, офлайн-навигация по GNSS и интерфейс LVGL на FreeRTOS для двух носимых устройств на ESP32-S3. Ранняя стадия — ни на одной плате ещё не запускалась.'
     }
   };
 
@@ -57,11 +72,15 @@
     html.lang = lang;
     document.title = copy[lang].title;
     if (metaDescription) metaDescription.content = copy[lang].description;
-    if (ogDescription) ogDescription.content = copy[lang].description;
+    if (ogDescription) ogDescription.content = copy[lang].cardDescription;
     if (ogTitle) ogTitle.content = copy[lang].ogTitle;
     if (ogLocale) ogLocale.content = copy[lang].locale;
+    // og:locale:alternate names the OTHER language. Leaving it fixed made both
+    // it and og:locale read ru_RU in Russian, which says the page has no other
+    // language while sitting on the one that does.
+    if (ogLocaleAlternate) ogLocaleAlternate.content = copy[lang].localeAlternate;
     if (twitterTitle) twitterTitle.content = copy[lang].ogTitle;
-    if (twitterDescription) twitterDescription.content = copy[lang].description;
+    if (twitterDescription) twitterDescription.content = copy[lang].cardDescription;
     buttons.forEach(btn => btn.setAttribute('aria-pressed', btn.dataset.setLang === lang ? 'true' : 'false'));
     if (persist) localStorage.setItem('attadipa-site-lang', lang);
     if (updateUrl) {

@@ -13,7 +13,6 @@
   "theme_color": "#FFF6E8",
   "icons": [
     {"src":"assets/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
-    {"src":"assets/icon-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"},
     {"src":"assets/apple-touch-icon.png","sizes":"180x180","type":"image/png","purpose":"any"}
   ]
 }

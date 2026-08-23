@@ -342,6 +342,26 @@ jobs:
       - name: Links resolve, spans close, IDs are unique, tasks have bodies
         run: python3 tools/docs/check_docs.py .
 
+      # The site head lives in two files. `docs/index.html` carries the <title>
+      # and six <meta> tags; `docs/assets/site.js` reassigns all seven on every
+      # load from a hardcoded object, so a crawler that runs JavaScript indexes
+      # what the script says and one that does not reads what the HTML says.
+      # They have already drifted twice -- a rewritten <title> left behind in
+      # the script, and the social-card description overwritten with the
+      # search-result one -- and both times the only thing that caught it was a
+      # reviewer reading two files side by side. The rot check above never opens
+      # either file: it filters on `.md`.
+      #
+      # Its own mutation tests run first, for the same reason check_docs.py's
+      # do. Twenty cases, including one per historical defect and four that
+      # assert it does *not* fire where firing would be wrong -- the Russian
+      # strings differ from the English by design.
+      - name: The head-sync check actually checks
+        run: python3 tools/site/test_check_head_sync.py
+
+      - name: The rendered head and index.html say the same thing
+        run: python3 tools/site/check_head_sync.py .
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest
