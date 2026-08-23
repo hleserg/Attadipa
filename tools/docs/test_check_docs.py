@@ -78,8 +78,20 @@ WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
     "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
 }
+# A CUE IS A CLAIM ABOUT THE SUITE'S SIZE, NOT ANY NUMBER NEAR THE WORD.
+# `\**N\**\s+cases` matched "Four cases for that check followed" -- a true
+# sentence about one round's additions, in a STATUS.md paragraph entirely about
+# this checker. It passed only because that block happens not to contain the
+# literal filename, so adding the filename to a paragraph about the file would
+# have reddened CI on a true sentence. That is the third instance of the
+# failure mode this suite has already fixed twice, so the fix is the same one:
+# the size is written in a form nothing else uses -- `holds N cases`, or bold
+# `**N cases**` -- and a bare count in prose is prose. Found in review.
 CUES = (
-    ("cases", re.compile(r"\**([A-Za-z0-9]+)\**\s+(?:cases|mutation tests)\b")),
+    ("cases", re.compile(
+        r"holds\s+\**([A-Za-z0-9]+)\**\s+(?:cases|mutation tests)\b"
+        r"|\*\*([A-Za-z0-9]+)\s+(?:cases|mutation tests)\*\*"
+    )),
     # The colon is required, and it is the convention rather than an accident
     # of parsing: the number of checks is claimed where the list of them is
     # introduced. Prose says "the two checks this pull request added" and means
@@ -135,7 +147,8 @@ def quoted_counts_that_disagree(cases: int, checks: int) -> list[str]:
                 continue
             anchored += 1
             for kind, cue in CUES:
-                for token in cue.findall(block):
+                for match in cue.finditer(block):
+                    token = next(g for g in match.groups() if g is not None)
                     stated = spelled(token)
                     if stated is None:
                         continue
@@ -168,13 +181,111 @@ def case(name: str, condition: bool) -> None:
         FAILURES.append(name)
 
 
+def counted(text: str) -> list[str]:
+    """Every size token the `cases` cue reads out of one block."""
+    cue = dict(CUES)["cases"]
+    return [next(g for g in m.groups() if g is not None) for m in cue.finditer(text)]
+
+
 def main() -> int:
     instrument()
+
+    # THE CUE READS A SIZE CLAIM, NOT ANY NUMBER NEAR THE WORD "cases". The
+    # first version matched "Four cases for that check followed" -- a true
+    # sentence about one round's additions -- and passed only because that
+    # STATUS.md paragraph happens not to name the file it is entirely about.
+    # Adding the filename would have reddened CI on a true sentence, which is
+    # the third instance of the failure mode this suite has fixed twice.
+    case(
+        "a bare count in prose is prose, not a claim about the suite's size",
+        counted("Four cases for that check followed.") == [],
+    )
+    case(
+        "both forms the size is actually written in are read",
+        counted("test_check_docs.py holds 63 cases; several assert") == ["63"]
+        and counted("**63 cases** in `tools/docs/test_check_docs.py`") == ["63"]
+        and counted("**52 mutation tests**, several of which") == ["52"],
+    )
     with tempfile.TemporaryDirectory() as root:
         write(root, "docs/real.md", "# Real\n")
 
-        write(root, "a.md", "See [it](docs/real.md) and [again](docs/real.md#anchor).\n")
+        write(root, "a.md", "See [it](docs/real.md) and [again](docs/real.md#real).\n")
         case("a link that resolves is not reported", not check_docs.check_links(root))
+
+        # THE ANCHOR HALF, which check 1 captured and never looked at. Recorded
+        # as T-127 and closed here, because it is what makes an OD-number
+        # collision survive a merge: renumber one of two `## OD-16` headings and
+        # every `#od-16` link lands at the top of the file with CI green.
+        write(root, "a.md", "See [it](docs/real.md#imaginary).\n")
+        problems = check_docs.check_links(root)
+        case(
+            "an anchor no heading answers to is reported",
+            len(problems) == 1 and "#imaginary" in problems[0],
+        )
+
+        write(root, "a.md", "# Top\n\nSee [up](#top) and [nowhere](#bottom).\n")
+        problems = check_docs.check_links(root)
+        case(
+            "a same-document anchor is resolved against this document",
+            len(problems) == 1 and "#bottom" in problems[0]
+            and "this document" in problems[0],
+        )
+
+        write(root, "docs/twice.md", "## Same\n\n## Same\n")
+        write(root, "a.md", "[1](docs/twice.md#same) [2](docs/twice.md#same-1) [3](docs/twice.md#same-2)\n")
+        problems = check_docs.check_links(root)
+        case(
+            "a repeated heading answers to #slug and #slug-1, not #slug-2",
+            len(problems) == 1 and "#same-2" in problems[0],
+        )
+
+        # The em dash and the punctuation go; the spaces around them do not,
+        # which is the whole reason `#od-16--a1-a2-and-a3` has two hyphens.
+        write(root, "docs/dashed.md", "## OD-16 \u2014 A1, A2 and A3\n")
+        write(root, "a.md", "[od](docs/dashed.md#od-16--a1-a2-and-a3)\n")
+        case(
+            "GitHub's slug rules are followed, punctuation dropped and its spaces kept",
+            not check_docs.check_links(root),
+        )
+
+        write(root, "docs/fenced.md", "```\n## Not a heading\n```\n")
+        write(root, "a.md", "[x](docs/fenced.md#not-a-heading)\n")
+        problems = check_docs.check_links(root)
+        case(
+            "a heading inside a fence is not a heading, so its anchor is reported",
+            len(problems) == 1 and "#not-a-heading" in problems[0],
+        )
+
+        # A non-Markdown target has no headings to check against, and GitHub
+        # anchors a code file by line (`#L12`). Reporting those would be noise.
+        write(root, "docs/code.py", "print(1)\n")
+        write(root, "a.md", "[line](docs/code.py#L1)\n")
+        case(
+            "an anchor on a non-Markdown target is left alone",
+            not check_docs.check_links(root),
+        )
+
+        # AN ILLUSTRATION IS NOT A LINK, and this one found itself: the record
+        # closing T-127 describes the syntax as `](#same-document)`, in
+        # backticks, and the new anchor check read it as a link into a heading
+        # that does not exist. GitHub renders a code span as characters. Same
+        # defect class as the `EXAMPLE.md` reservation, one check over.
+        write(root, "a.md", "Write it `[x](docs/nope.md#imaginary)` like so.\n")
+        case(
+            "a link inside an inline code span is text, not a link",
+            not check_docs.check_links(root),
+        )
+
+        write(root, "a.md", "A `span` then [real](docs/nope.md).\n")
+        problems = check_docs.check_links(root)
+        case(
+            "and a real link after a code span is still read",
+            len(problems) == 1 and "docs/nope.md" in problems[0],
+        )
+        os.remove(os.path.join(root, "docs", "twice.md"))
+        os.remove(os.path.join(root, "docs", "dashed.md"))
+        os.remove(os.path.join(root, "docs", "fenced.md"))
+        os.remove(os.path.join(root, "docs", "code.py"))
 
         write(root, "a.md", "See [it](docs/gone.md).\n")
         problems = check_docs.check_links(root)
@@ -445,6 +556,57 @@ def main() -> int:
             "a fingerprint that still matches is not reported",
             not check_docs.check_citation_lines(root),
         )
+
+        # A DOT-DIRECTORY IS A PATH. `(?:\.{1,2}/)*` admits `./` and `../` and
+        # nothing else, so `.github/workflows/ci.yml:281` matched at no
+        # position: the pattern could not start at the `.`, and starting at the
+        # `g` is exactly what the look-behind refuses. Two citations to that
+        # file were 211 lines out while three documents billed this check as
+        # the answer to citation drift. Found in review.
+        write(root, ".github/workflows/ci.yml", "one\ntwo\n\nfour\n")
+        write(root, "docs/research/CITER.md", "See `.github/workflows/ci.yml:3`.\n")
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a citation into a dot-directory is seen, not skipped by the boundary",
+            len(problems) == 1 and "ci.yml:3" in problems[0],
+        )
+
+        write(root, "docs/research/CITER.md", "See `.github/workflows/ci.yml:2`.\n")
+        case(
+            "and a good one in a dot-directory stays quiet",
+            not check_docs.check_citation_lines(root),
+        )
+
+        # A basename with no path in front of it, cited from a document that is
+        # neither beside it nor at the root. Four of these were being skipped
+        # as "somebody else's tree", and one of them was wrong.
+        write(root, "docs/deep/DEEP.md", "one\ntwo\n\nfour\n")
+        write(root, "docs/research/CITER.md", "See `DEEP.md:3`.\n")
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a bare basename resolves anywhere in the tree, not only beside the citer",
+            len(problems) == 1 and "DEEP.md:3" in problems[0],
+        )
+
+        # AMBIGUITY IS STILL A SKIP. Two files answering to one basename cannot
+        # be told apart from the citation, and guessing between them would
+        # report a line number out of the wrong file.
+        write(root, "docs/other/DEEP.md", "only one line\n")
+        case(
+            "two files with one basename are not guessed between",
+            not check_docs.check_citation_lines(root),
+        )
+        os.remove(os.path.join(root, "docs", "other", "DEEP.md"))
+
+        # A citation that names a DIRECTORY means that path, not a basename
+        # match: `upstream/vendor/DEEP.md:3` is a fact about their tree.
+        write(root, "docs/research/CITER.md", "See `upstream/vendor/DEEP.md:3`.\n")
+        case(
+            "a pathed citation that resolves to nothing is not rescued by basename",
+            not check_docs.check_citation_lines(root),
+        )
+        os.remove(os.path.join(root, "docs", "deep", "DEEP.md"))
+        os.remove(os.path.join(root, ".github", "workflows", "ci.yml"))
 
         # Through a Markdown link, which is how these documents write most
         # citations -- the citation match ends inside `](...)`, so a

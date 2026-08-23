@@ -146,6 +146,47 @@ void test_shipped_twatch_radio_is_unread()
     CHECK_AVAIL(caps, core::Capability::MeshMessaging, core::Availability::Unprovisioned);
 }
 
+// THE BAND TRAP, pinned so it cannot stop being true quietly.
+//
+// Reading the marking off the part settles the CHIP and nothing else. Band is
+// set by the matching network and the antenna fitted, and is readable neither
+// over SPI nor off the package -- so A2's "SX1262 at 868 MHz" rests, for its
+// second half, on the same seller's listing the chip half refuses.
+//
+// What that costs if the checklist is done by halves is exactly this: set
+// `RadioChip::Sx1262` from the marking alone and `radio_info_for()` publishes
+// RadioLib's DRIVER limits as this unit's coverage, so `covers()` answers yes
+// for EU868, US915 and AS433 at once -- three mutually exclusive regional
+// networks -- and `MeshMessaging` goes Ready with nobody having looked at the
+// matching network. The code is not lying; the checklist would be incomplete.
+//
+// This test asserts the trap rather than closing it, because closing it needs
+// a band observation the data model has nowhere to put yet -- filed as T-143.
+// What it buys is that the sentence stops being prose: narrow those numbers to
+// a real unit's band, or add the observation, and this test says so.
+void test_sx1262_bands_are_the_drivers_not_this_units()
+{
+    const platform::RadioInfo info = platform::radio_info_for(platform::RadioChip::Sx1262);
+
+    // RadioLib's SX1262 driver range, verbatim. Not a regulatory band, not a
+    // measurement, and not a fact about any board in this project.
+    CHECK(info.band_count == 1);
+    CHECK(info.bands[0].lo_hz == 150'000'000u);
+    CHECK(info.bands[0].hi_hz == 960'000'000u);
+
+    // Three regions a single unit cannot all be built for, all answered yes.
+    const platform::BandRange eu868{863'000'000u, 870'000'000u};
+    const platform::BandRange us915{902'000'000u, 928'000'000u};
+    const platform::BandRange as433{433'050'000u, 434'790'000u};
+    CHECK(info.covers(eu868));
+    CHECK(info.covers(us915));
+    CHECK(info.covers(as433));
+
+    // And the reason the shipped profile is safe today is the enum, not the
+    // band: nothing consults these numbers while the chip is unread.
+    CHECK(platform::radio_info_for(platform::RadioChip::Unknown).band_count == 0);
+}
+
 // Owning a part is not initialising it. A part that has not been brought up
 // must read as Off — something the user can act on — and never as Failed.
 void test_untouched_is_not_failed()
@@ -440,6 +481,7 @@ int main()
 {
     test_board_profiles();
     test_shipped_twatch_radio_is_unread();
+    test_sx1262_bands_are_the_drivers_not_this_units();
     test_untouched_is_not_failed();
     test_radio_is_not_lora();
     test_waveshare_position_comes_from_a_node();

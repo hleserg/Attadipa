@@ -121,7 +121,8 @@ Whatever is decided, wrapping the BSP does not cover the board.
 "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
 ([TASKS.md:1023](../../TASKS.md)), and CI prints
 `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
-([`.github/workflows/ci.yml:281`](../../.github/workflows/ci.yml)). What exists
+([`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+What exists
 is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
 installed is not decided.
 
@@ -402,7 +403,7 @@ Recorded here because it is the part of §1 that has an architectural answer, an
 it is small.
 
 `platform::PanelTechnology` already exists and the Waveshare profile already sets
-`Amoled` ([`platform/src/board_profiles.cpp:102`](../../platform/src/board_profiles.cpp)).
+`Amoled` ([`platform/src/board_profiles.cpp:107`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
 **Nothing reads it.** A grep across `platform/`, `core/`, `ui/` and `apps/`
 returns the two assignments and no consumers, so no code in this project can
 behave differently on an emissive panel today, whatever is decided.
@@ -619,8 +620,9 @@ The advice was useful and most of it holds. What follows is only the part that
 does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
-   [HARDWARE_MATRIX.md:303](HARDWARE_MATRIX.md) and
-   [VERIFIED_FACTS.md:399-402](VERIFIED_FACTS.md). Only the build-configuration
+   [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md) "8 MB **octal**" and
+   [VERIFIED_FACTS.md:541-546](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
+   Only the build-configuration
    reading is true, and it is vacuous — no target has a build configuration here.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
    asked of it. `CONFIG_SPIRAM_MODE` defaults to QUAD, and a quad image on this
@@ -655,11 +657,16 @@ does not, kept because an uncorrected claim propagates.
     and the companion 150 h white-pattern lifetime line was omitted; the Wear OS
     15 % and 85 % rules govern ambient mode, not interactive themes; ACL-off is
     LIKELY, not VERIFIED, because the panel's MTP defaults are not public; the
-    I2C pins were cited to [HARDWARE_MATRIX.md:315-316](HARDWARE_MATRIX.md),
-    which are the display and touch rows, where the bus row is
-    [:326](HARDWARE_MATRIX.md); and the CI status line was cited at
-    `ci.yml:330`, where the file is 295 lines long and the line is
-    [`:281`](../../.github/workflows/ci.yml).
+    I2C pins were cited to lines 315-316 of `HARDWARE_MATRIX`, which were the
+    display and touch rows, where the bus row was line 326; and the CI status
+    line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
+    Both live citations are written above with fingerprints —
+    [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
+    [`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+    — and the numbers in this paragraph are
+    deliberately **not** citations: it is a record of where two claims used to
+    point, and writing that record in the live syntax would make it four more
+    assertions to keep in step, which is the defect it describes.
 
 And the defects that are ours. **Five** of them were repaired on this branch —
 four in `e5b7791`, the same commit that introduced this document, and the D12

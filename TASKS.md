@@ -142,28 +142,33 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
-### T-127 · A link's `#anchor` is captured and then never checked
-- **Priority:** P3
-- **Dependencies:** none.
-- **Goal:** `tools/docs/check_docs.py` check 1 matches a link with an anchor on
-  it, captures the anchor as a regex group, and then tests only
-  `os.path.exists(target)`. So every `#od-16--...` style deep link in this
-  repository is unverified, and a heading renamed or renumbered leaves a link
-  that resolves to the top of the right file — which reads as working. This is
-  the half of the OD-16 collision that the new duplicate-decision check does
-  **not** cover: that one catches two headings with one number, this one catches
-  a citation pointing at a number that has moved.
-- **Acceptance:** anchors resolve against the target file's own headings, using
-  GitHub's slug rule (lower-case, drop punctuation except hyphen and
-  underscore, spaces to hyphens, de-duplicate with `-1`, `-2`). Mutation tests
-  in `tools/docs/test_check_docs.py` for: a good anchor, a renamed heading, an
-  em dash, backticks and bold inside a heading, two headings that slug the same,
-  and an anchor into a file that has none.
-- **Watch for:** the first run will find pre-existing broken anchors. That is
-  the point, but it makes this a two-commit job — the check, then the fixes —
-  and the fixes are the larger half. Do not weaken the rule to make the first
-  run green.
-- **Hardware required:** no.
+### T-143 · A band is not readable off the part, and nothing says so but a comment
+- **Priority:** P2
+- **Dependencies:** the T-Watch arriving (T-106 bring-up). The data-model half
+  can be designed now.
+- **Goal:** `radio_info_for()` publishes RadioLib's **driver** limits as a
+  chip's coverage — `{150 MHz, 960 MHz}` for the SX1262 — and `RadioInfo` has
+  nowhere to record that this particular unit's matching network and antenna
+  were never looked at. So the moment somebody sets `RadioChip::Sx1262` from a
+  marking alone, `covers()` answers yes for EU868, US915 **and** AS433 at once —
+  three regional networks one unit cannot all be built for — and
+  `MeshMessaging` goes Ready. The code is not lying; the observation is missing.
+  A2's answer names 868 MHz, and only the chip half of it is readable off the
+  part: band is set by the matching network, and is readable neither over SPI
+  nor off the package, so the 868 rests on the same seller's listing this
+  project refuses for the chip (ADR-0003).
+- **Acceptance:** `RadioInfo` carries the band as an *observation* with its own
+  provenance, distinct from the driver's tuning range, and `covers()` answers
+  from the observation or says it cannot say. A capability derived from an
+  unobserved band never reaches `Ready`. Host tests for: driver range present
+  and band unobserved, band observed and narrower than the driver's, and the
+  three-regions-at-once case above asserted to be impossible once observed.
+- **Watch for:** this is the second half of the same lesson as
+  `test_shipped_twatch_radio_is_unread` — a comment is not a check.
+  `test_sx1262_bands_are_the_drivers_not_this_units` pins the trap today so the
+  sentence cannot quietly stop being true, but pinning a trap is not closing it.
+- **Hardware required:** for the observation itself, yes — the matching network
+  is read off the board. The data model is not.
 
 ### T-140 · Fingerprint the citations into `HARDWARE_MATRIX.md`, which are all about thirteen lines out
 - **Priority:** P2
@@ -177,16 +182,22 @@ stale silently. The protocol is
   meant the display FPC, one on the tail of the GNSS-rail trap bullet where it
   meant PSRAM, and one into `VERIFIED_FACTS.md` that had drifted onto the AXP2101
   `PWRON` entry — and all three were repaired with fingerprints.
-  **Twenty-three bare ones remain**, counted rather than remembered: eleven from
-  `WAVESHARE_ARRIVAL.md` into `HARDWARE_MATRIX.md`, five into `OPEN_QUESTIONS.md`,
-  two into `VERIFIED_FACTS.md`, one into `TASKS.md`, and four more in
-  `RECONCILIATION_2026-08-21.md` that no earlier version of this task had noticed
-  at all. An earlier count here said fifteen and was a remembered subtotal of one
-  file; the number now comes from a scan for `FILE.md:N` not followed by a quoted
-  snippet, which is the same shape the checker reads. Every one of them is a bare
-  line number into a file that grows from the middle, so every one of them is a
-  silent wrongness waiting. Repairing them without a fingerprint would only
-  reset the clock.
+  **Forty-nine bare ones remain**, counted rather than remembered, and the
+  number has now been wrong twice for the same reason. An early version said
+  fifteen — a remembered subtotal of one file. The next said twenty-three, from
+  a scan written to match *"the same shape the checker reads"* — and it did,
+  faithfully, including the checker's two blind spots: a citation into a
+  dot-directory matched at no position, and a bare basename resolved only beside
+  the citing document or at the repository root. Both are fixed, and the count
+  is now produced by importing `check_docs` and running its own resolution
+  rules rather than by a scan that imitates them, so the two cannot drift apart
+  again. The largest concentrations are still `WAVESHARE_ARRIVAL.md` — nine into
+  `HARDWARE_MATRIX.md`, five into `OPEN_QUESTIONS.md` — with the rest spread over
+  `TASKS.md`, `RECONCILIATION_2026-08-21.md`, `OWNER_DECISIONS.md` and six others,
+  and twelve of them are into `.h`, `.cpp` and `.md` files that the old scan
+  never looked at. Every one is a bare line number into a file that grows from
+  the middle, so every one is a silent wrongness waiting. Repairing them without
+  a fingerprint would only reset the clock.
 - **Acceptance:** each of those citations resolves to the row or paragraph its
   sentence describes, carries a fingerprint that the checker reads, and
   `check_docs.py` is green. Where a citation cannot be given a fingerprint
@@ -1933,6 +1944,50 @@ A1's schematic-revision
 
 ## DONE
 
+### T-127 · A link's `#anchor` is captured and then never checked — **DONE** 2026-08-23
+- **Priority:** P3
+- **Dependencies:** none.
+- **Goal:** `tools/docs/check_docs.py` check 1 matches a link with an anchor on
+  it, captures the anchor as a regex group, and then tests only
+  `os.path.exists(target)`. So every `#od-16--...` style deep link in this
+  repository is unverified, and a heading renamed or renumbered leaves a link
+  that resolves to the top of the right file — which reads as working. This is
+  the half of the OD-16 collision that the new duplicate-decision check does
+  **not** cover: that one catches two headings with one number, this one catches
+  a citation pointing at a number that has moved.
+- **Acceptance:** anchors resolve against the target file's own headings, using
+  GitHub's slug rule (lower-case, drop punctuation except hyphen and
+  underscore, spaces to hyphens, de-duplicate with `-1`, `-2`). Mutation tests
+  in `tools/docs/test_check_docs.py` for: a good anchor, a renamed heading, an
+  em dash, backticks and bold inside a heading, two headings that slug the same,
+  and an anchor into a file that has none.
+- **Watch for:** the first run will find pre-existing broken anchors. That is
+  the point, but it makes this a two-commit job — the check, then the fixes —
+  and the fixes are the larger half. Do not weaken the rule to make the first
+  run green.
+- **Hardware required:** no.
+- **What came of it:** `check_links` now resolves every `#anchor` against the
+  target document's own headings, including `](#same-document)` links, which the
+  link pattern had never captured at all. GitHub's slug rule is implemented as
+  described — and its awkward half is that punctuation is dropped while the
+  spaces around it are not, which is why `## OD-16 — A1, A2 and A3` answers to
+  `#od-16--a1-a2-and-a3` with two hyphens. Headings inside a fenced block are not
+  headings. Anchors on non-Markdown targets are left alone: GitHub anchors a code
+  file by line, and reporting `#L12` would be noise. Seven mutation cases.
+  **The first run found exactly one broken anchor in the whole repository** —
+  `PEDOMETER_PARTS.md:19` had dropped the trailing `` `SUPPORTED` `` from the
+  slug — so the two-commit worry did not materialise, and the fix is in this
+  commit. The OD-16 half is what this was for: renumber one of two colliding
+  headings now and every `#od-16` link says so.
+
+  **And it caught this record while it was being written.** The paragraph above
+  described the syntax of a same-document link, in backticks, and the new check
+  read the illustration as a live link into a heading that does not exist —
+  which is the `EXAMPLE.md` defect exactly, one check over. GitHub renders an
+  inline code span as characters, so `check_links` now blanks code spans before
+  looking for links. Two more cases: an illustration stays quiet, a real link
+  after a code span on the same line is still read.
+
 ### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
 - **The cause was not the model, the context or the turn ceiling.** It was
   `allowed_bots: ""` in `claude-agent.yml`. The hourly watchdog hands a task
@@ -2124,7 +2179,7 @@ A1's schematic-revision
   this is the one place in the checker that reads fenced lines — everywhere else
   a `**Priority:**` inside a fence is an example and does not count as a body.
 - **Mutation-tested**, and CI runs those tests before it runs the checker:
-  **52 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  **67 cases** in `tools/docs/test_check_docs.py`, several of which assert the
   checker does *not* fire where firing would be wrong — a `###` sub-heading is
   not a second decision, a range straddling a blank line is how a table is
   cited, and a line number in somebody else's tree is not ours to verify. The

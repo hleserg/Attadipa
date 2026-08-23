@@ -73,9 +73,20 @@ import re
 import subprocess
 import sys
 
-# ](target) and ](target#anchor). Excludes targets containing whitespace, which
-# in Markdown would carry a title string we do not want to parse.
-LINK = re.compile(r"\]\(\s*([^)\s#]+)(#[^)\s]*)?\s*\)")
+# ](target), ](target#anchor) and ](#anchor). Excludes targets containing
+# whitespace, which in Markdown would carry a title string we do not want to
+# parse. The target may be EMPTY -- `](#od-16)` is a link into the current
+# document, and until check 1 verified anchors there was no reason to capture
+# one.
+LINK = re.compile(r"\]\(\s*([^)\s#]*)(#[^)\s]*)?\s*\)")
+
+# GitHub builds a heading's anchor by lowercasing it, dropping everything that
+# is not a letter, a digit, a space, a hyphen or an underscore, and turning
+# spaces into hyphens. Markdown emphasis and inline code disappear with the
+# punctuation, which is why `## OD-16 — A1, A2 and A3` answers to
+# `#od-16--a1-a2-and-a3`: the em dash goes, its two spaces do not.
+HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+ANCHOR_STRIP = re.compile(r"[^\w\- ]", re.UNICODE)
 FENCE = re.compile(r"^\s*(```|~~~)")
 TASK_HEADING = re.compile(r"^###\s+(T-\d+[a-z]?)\b")
 # Runs of backticks delimit an inline code span, and a span does not survive a
@@ -109,6 +120,35 @@ def strip_fences(text: str) -> list[tuple[int, str]]:
     return [(n, line) for n, line, fenced in scan_lines(text) if not fenced]
 
 
+def without_code_spans(line: str) -> str:
+    """The line with every inline code span blanked, offsets preserved.
+
+    `](#some-anchor)` inside backticks is TEXT -- GitHub renders it as the
+    characters, not as a link -- so a document illustrating link syntax was
+    being read as making the link. That is the same defect the `EXAMPLE.md`
+    reservation exists for, one check over: an illustration became an
+    assertion, and the document reporting it was the one describing the fix.
+    Blanking rather than deleting keeps every column where it was, so a
+    reported line number still points at the right place. An unbalanced
+    backtick would swallow the rest of the line here; check 2 exists to report
+    exactly that, so it cannot pass unnoticed.
+    """
+    out = list(line)
+    spans = list(TICK_RUN.finditer(line))
+    i = 0
+    while i < len(spans):
+        opener = spans[i]
+        for j in range(i + 1, len(spans)):
+            if spans[j].group(0) == opener.group(0):
+                for k in range(opener.start(), spans[j].end()):
+                    out[k] = " "
+                i = j + 1
+                break
+        else:
+            break
+    return "".join(out)
+
+
 def markdown_files(root: str) -> list[str]:
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -119,24 +159,83 @@ def markdown_files(root: str) -> list[str]:
     return sorted(found)
 
 
+def heading_anchors(text: str) -> set[str]:
+    """Every anchor the headings of one document answer to.
+
+    A repeated heading gets `-1`, `-2` and so on, in document order, which is
+    how GitHub disambiguates and how `#od-16-1` would be written by hand.
+    Headings inside fenced blocks are not headings.
+    """
+    seen: dict[str, int] = {}
+    anchors: set[str] = set()
+    for _lineno, line, fenced in scan_lines(text):
+        if fenced:
+            continue
+        match = HEADING.match(line)
+        if not match:
+            continue
+        slug = ANCHOR_STRIP.sub("", match.group(2).lower()).replace(" ", "-")
+        if not slug:
+            continue
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        anchors.add(slug if count == 0 else "%s-%d" % (slug, count))
+    return anchors
+
+
 def check_links(root: str) -> list[str]:
     problems = []
+    anchor_cache: dict[str, set[str] | None] = {}
+
+    def anchors_of(target: str):
+        if target not in anchor_cache:
+            try:
+                with open(target, encoding="utf-8") as handle:
+                    anchor_cache[target] = heading_anchors(handle.read())
+            except (OSError, UnicodeDecodeError):
+                anchor_cache[target] = None
+        return anchor_cache[target]
+
     for path in markdown_files(root):
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
         here = os.path.dirname(path)
         for lineno, line in strip_fences(text):
-            for match in LINK.finditer(line):
-                target = match.group(1)
+            for match in LINK.finditer(without_code_spans(line)):
+                target, anchor = match.group(1), match.group(2)
                 if target.startswith(EXTERNAL) or target.startswith("<"):
+                    continue
+                if not target and not anchor:
                     continue
                 # A repository-root-absolute link is written /like/this; treat it
                 # as relative to the root rather than to the filesystem.
                 base = root if target.startswith("/") else here
-                resolved = os.path.normpath(os.path.join(base, target.lstrip("/")))
+                resolved = (
+                    path
+                    if not target
+                    else os.path.normpath(os.path.join(base, target.lstrip("/")))
+                )
+                rel = os.path.relpath(path, root)
                 if not os.path.exists(resolved):
-                    rel = os.path.relpath(path, root)
                     problems.append(f"{rel}:{lineno}: link target does not exist: {target}")
+                    continue
+                # AND THE `#anchor` IS HALF THE LINK. Check 1 captured it and
+                # then never looked at it, which is recorded as T-127 and is
+                # what makes an OD-number collision survive a merge: renumber
+                # one of two `## OD-16` headings and every `#od-16` link in the
+                # repository silently lands at the top of the file, CI green.
+                # A missing anchor is a 404 the reader only notices by ending
+                # up in the wrong place, which is worse than a 404 they see.
+                if not anchor or len(anchor) < 2 or not resolved.endswith(".md"):
+                    continue
+                known = anchors_of(resolved)
+                if known is None or anchor[1:] in known:
+                    continue
+                where = "this document" if resolved == path else target
+                problems.append(
+                    "%s:%d: no heading in %s answers to the anchor %s"
+                    % (rel, lineno, where, anchor)
+                )
     return problems
 
 
@@ -150,8 +249,15 @@ def check_links(root: str) -> list[str]:
 # repository" -- while three documents said citations were now checked. Found in
 # review. `\b` cannot open the pattern once `.` may lead it, so the boundary is
 # a look-behind for a character that could continue a path.
+#
+# AND A DOT-DIRECTORY IS A PATH TOO. `(?:\.{1,2}/)*` only admits `./` and `../`,
+# so `.github/workflows/ci.yml:281` matched nothing: the pattern cannot start at
+# the `.`, and starting at the `g` is what the look-behind exists to refuse. Two
+# citations to that file sat 211 lines out of date because the check that three
+# documents call the answer to citation drift could not see them at all. Found
+# in review; `\.?` before the first path character is the whole fix.
 CITATION = re.compile(
-    r"(?<![A-Za-z0-9_./-])((?:\.{1,2}/)*[A-Za-z0-9_][A-Za-z0-9_./-]*"
+    r"(?<![A-Za-z0-9_./-])((?:\.{1,2}/)*\.?[A-Za-z0-9_][A-Za-z0-9_./-]*"
     r"\.(?:md|cpp|h|hpp|py|sh|yml|yaml|json|jq|txt))"
     # The `)` is a Markdown link closing before the line number:
     # `[ADR-0003](../adr/0003-radio-not-lora.md):109-111`. Not captured.
@@ -213,6 +319,36 @@ def bare_document_index(root: str) -> dict[str, str]:
     return {name: paths[0] for name, paths in index.items() if len(paths) == 1}
 
 
+# CITED_SUFFIXES mirrors the suffix list inside CITATION: the same file kinds,
+# indexed by basename so a citation written without a path can still be
+# resolved.
+CITED_SUFFIXES = (
+    ".md", ".cpp", ".h", ".hpp", ".py", ".sh", ".yml", ".yaml", ".json",
+    ".jq", ".txt",
+)
+
+
+def basename_index(root: str) -> dict[str, str]:
+    """Every citable file, by basename, where exactly one file answers to it.
+
+    A citation is written with a path only when the writer thought of one.
+    `ARCHITECTURE.md:139` from `docs/research/` resolved neither beside the
+    citing document nor at the repository root, so it was skipped as "somebody
+    else's tree" -- and it was wrong: 139 is inside a `HardwareFeature` enum
+    fence, and the `has()` sites it claims to cite are at 215, 223 and 659.
+    Four citations were being skipped this way. Ambiguity is still a skip: two
+    files with one basename cannot be told apart from the citation alone, and
+    guessing between them would report a line number from the wrong file.
+    """
+    index: dict[str, list[str]] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in filenames:
+            if name.endswith(CITED_SUFFIXES):
+                index.setdefault(name, []).append(os.path.join(dirpath, name))
+    return {name: paths[0] for name, paths in index.items() if len(paths) == 1}
+
+
 def check_citation_lines(root: str) -> list[str]:
     """A `file:line` citation points at a line that exists, is not blank, and --
     where the citation carries a fingerprint -- still says what it was cited
@@ -237,6 +373,7 @@ def check_citation_lines(root: str) -> list[str]:
         return cache[target]
 
     bare_index = bare_document_index(root)
+    by_basename = basename_index(root)
     for path in markdown_files(root):
         if os.path.basename(path) == PLACEHOLDER:
             problems.append(
@@ -276,11 +413,17 @@ def check_citation_lines(root: str) -> list[str]:
                     if os.path.isfile(resolved):
                         break
                 else:
-                    # Not a file in this repository: an upstream source, a
-                    # renamed path, or a false positive. check_links covers the
-                    # ones written as links; a line number in somebody else's
-                    # tree is not ours to verify.
-                    continue
+                    # Then anywhere in the tree, if exactly one file carries
+                    # that basename -- see basename_index().
+                    resolved = by_basename.get(os.path.basename(cited), "")
+                    if not resolved or "/" in cited.strip("./"):
+                        # Not a file in this repository: an upstream source, a
+                        # renamed path, or a false positive. check_links covers
+                        # the ones written as links; a line number in somebody
+                        # else's tree is not ours to verify. A citation that
+                        # names a DIRECTORY is not resolved by basename either:
+                        # `upstream/foo/ci.yml:12` means their ci.yml, not ours.
+                        continue
                 body = lines_of(resolved)
                 if body is None:
                     continue
