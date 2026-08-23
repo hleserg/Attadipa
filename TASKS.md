@@ -1632,23 +1632,32 @@ stale silently. The protocol is
 ```
 BLOCKED:
 Reason:         The T-Watch S3 Plus is ORDERED, not PRESENT — no physical unit
-                to bring up yet. The Waveshare is on the desk but its schematic
-                revision (silkscreen vs V1.0) is still unread.
+                to bring up yet. The Waveshare is on the desk and its
+                revision is read — silkscreen `ESP32-S3-Touch-AMOLED-2.06`,
+                which is what schematic V1.0 describes.
 Evidence:       OPEN_QUESTIONS A1 (OD-16, issue #54, 2026-08-22). A2 (which
                 radio, which GNSS) is answered by the order listing — SX1262
                 868 MHz, MIA-M10Q — but a listing is a seller's claim, not a
                 marking read off the part, so RadioChip::Unknown does not
                 change until the watch arrives and the marking is read. The
                 GNSS power rail still differs between board revisions (BLDO1
-                vs DC3) and that revision is exactly what a marking read
-                would settle.
+                vs DC3), and **no part marking distinguishes them** — the
+                discriminator is a feature of the case: a unit with rear
+                BOOT/RST buttons is the DC3-unused revision. See
+                OPEN_QUESTIONS D6, HARDWARE_MATRIX:144 and VERIFIED_FACTS
+                :135-139, which all say the same thing. Reading SX1262 off
+                the radio settles the radio and settles nothing about the
+                rail; choosing wrong means GNSS silently never starts, and
+                presents as a receiver or antenna fault.
 Impact:         Blocks all T-Watch bring-up, every power measurement, the
                 whole interference matrix, and any claim that hardware works.
                 Does not block Waveshare bring-up, which is unblocked and
                 simply not yet done (see the M1 section above).
 Possible options:
                 1. Proceed on simulator and host tests only — no hardware claims.
-                2. Wait for the T-Watch to arrive and read the marking then.
+                2. Wait for the T-Watch to arrive, read the radio marking,
+                   and look at the back of the case for the BOOT/RST buttons
+                   that decide the GNSS rail. Two separate observations.
                 3. Write the bring-up checklist now so that day one with real
                    hardware is not spent improvising.
 Recommended next action:
