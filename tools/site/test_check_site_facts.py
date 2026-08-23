@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import io
 import os
+import pathlib
 import shutil
 import sys
 import tempfile
@@ -35,6 +36,12 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 FAILURES: list[str] = []
 RAN: list[str] = []
+# Split by polarity: the CI comment quotes both halves, and a case that changes
+# polarity moves them while leaving the total alone.
+MUST_REPORT: list[str] = []
+MUST_STAY_QUIET: list[str] = []
+
+SELF = "tools/site/test_check_site_facts.py"
 
 
 def case(name: str, condition: bool) -> None:
@@ -55,6 +62,16 @@ def fixture(root: str) -> tuple[str, str]:
     shutil.copytree(
         os.path.join(REPO, "tools", "site"), os.path.join(root, "tools", "site")
     )
+    # STATUS.md and the workflow come along because the check now holds their
+    # copies of the head-sync case count too, and reports a claim file that is
+    # missing rather than passing over it. A fixture without them would be
+    # testing a tree the check refuses to run against.
+    shutil.copy(os.path.join(REPO, "STATUS.md"), os.path.join(root, "STATUS.md"))
+    os.makedirs(os.path.join(root, ".github", "workflows"))
+    shutil.copy(
+        os.path.join(REPO, ".github", "workflows", "ci.yml"),
+        os.path.join(root, ".github", "workflows", "ci.yml"),
+    )
     return (
         os.path.join(root, "docs", "site", "SEO.md"),
         os.path.join(root, "docs", "index.html"),
@@ -72,6 +89,7 @@ def edit(path: str, old: str, new: str) -> bool:
 
 
 def scenario(name, break_it, expect_fail, needle=None):
+    (MUST_REPORT if expect_fail else MUST_STAY_QUIET).append(name)
     with tempfile.TemporaryDirectory() as root:
         seo, html = fixture(root)
         if break_it is not None and not break_it(seo, html, root):
@@ -128,22 +146,38 @@ def main() -> int:
         needle="3.4 MB image saving",
     )
     scenario(
-        "the stylesheet size",
-        lambda seo, html, root: edit(seo, "One 17 KB stylesheet", "One 21 KB stylesheet"),
+        "a bound the stylesheet does not meet",
+        lambda seo, html, root: edit(
+            seo, "One stylesheet under 20 KB", "One stylesheet under 8 KB"
+        ),
         expect_fail=True,
-        needle="states 21 KB for site.css",
+        needle="site.css is under 8 KB",
     )
     scenario(
-        "the script size — the number that was actually stale",
-        lambda seo, html, root: edit(seo, "one 9 KB script", "one 6 KB script"),
+        "a bound the script does not meet",
+        lambda seo, html, root: edit(
+            seo, "one script under\n  12 KB", "one script under\n  4 KB"
+        ),
         expect_fail=True,
-        needle="states 6 KB for site.js",
+        needle="site.js is under 4 KB",
+    )
+    scenario(
+        # The exact form is still supported -- the bound is what this section
+        # needs, not what every section needs -- so it is still tested, by
+        # ADDING a claim rather than breaking one. A path with no live instance
+        # and no case is a path nobody would notice rotting.
+        "an exact size claim, where prose states one instead of a bound",
+        lambda seo, html, root: edit(
+            seo, "both local, the script", "It is a 3 KB stylesheet. Both local, the script"
+        ),
+        expect_fail=True,
+        needle="states 3 KB for site.css",
     )
     scenario(
         "the head-sync case count — the other number that was actually stale",
         lambda seo, html, root: edit(seo, "**40 cases**", "**29 cases**"),
         expect_fail=True,
-        needle="states 29 cases",
+        needle="states 29 where",
     )
     scenario(
         "a declared box of the wrong shape in index.html",
@@ -189,6 +223,60 @@ def main() -> int:
         needle="og:image:width/height 1200 x 907",
     )
 
+    # The two attribution rules the sixth review added. Both close a hole where
+    # the checker had *nothing to compare* and said nothing about it -- the same
+    # silent-skip shape as the original bug this file was written for, surviving
+    # in two branches the first rewrite did not reach.
+    scenario(
+        "a dimension pair that names no file is reported, not skipped",
+        lambda seo, html, root: edit(
+            seo, "the 64 × 64 `favicon.png` drawn", "a 64 × 64 mark drawn"
+        ),
+        expect_fail=True,
+        needle="names no file in that clause",
+    )
+    scenario(
+        "a prose size attributed to the files named on the line above",
+        lambda seo, html, root: edit(seo, "weigh 3.0 MB", "weigh 4.4 MB"),
+        expect_fail=True,
+        needle="states 4.4 MB for attadipa-banner.png and attadipa-style-board.png",
+    )
+
+    # The three that cover the claim machinery: a suite size is quoted in three
+    # files, and until this round only the copy in SEO.md was read back. The
+    # workflow comment was found stale by review -- four lines under the
+    # paragraph warning that it had already been wrong twice.
+    scenario(
+        "a stale head-sync count in the CI comment, not just in SEO.md",
+        lambda seo, html, root: edit(
+            os.path.join(root, ".github", "workflows", "ci.yml"),
+            "holds 40 cases: 31 break the",
+            "holds 37 cases: 31 break the",
+        ),
+        expect_fail=True,
+        needle="ci.yml:",
+    )
+    scenario(
+        "a stale head-sync SPLIT, where the total is still right",
+        lambda seo, html, root: edit(
+            os.path.join(root, ".github", "workflows", "ci.yml"),
+            "40 cases: 31 break the",
+            "40 cases: 30 break the",
+        ),
+        expect_fail=True,
+        needle="(report)",
+    )
+    scenario(
+        "a claim file that stops quoting the count at all",
+        lambda seo, html, root: edit(
+            os.path.join(root, "STATUS.md"),
+            "with 40 mutation tests",
+            "with mutation tests",
+        ),
+        expect_fail=True,
+        needle="quotes no count this check recognises",
+    )
+
     # The two that must stay quiet. Both are the live page's real behaviour, and
     # a check that fired on either would be switched off within a week.
     scenario(
@@ -209,6 +297,25 @@ def main() -> int:
             print("  - " + name)
         return 1
     print("all %d cases passed" % len(RAN))
+    print(
+        "%s: %d cases, %d demand a report, %d demand silence"
+        % (SELF, len(RAN), len(MUST_REPORT), len(MUST_STAY_QUIET))
+    )
+
+    # And the places that quote those three numbers are held to them here,
+    # because nothing else can ask: check_site_facts.py runs the head-sync
+    # suite to learn its size, and running THIS suite from inside the checker
+    # it tests would recurse. The suite knows its own count; it does the
+    # holding. Not a case -- a case would change the number it is checking.
+    stale, _ = check_site_facts.verify_case_claims(
+        pathlib.Path(REPO), SELF, len(RAN), len(MUST_REPORT), len(MUST_STAY_QUIET)
+    )
+    if stale:
+        print()
+        print("but %d place(s) quote a size this suite does not have:" % len(stale))
+        for problem in stale:
+            print("  " + problem)
+        return 1
     return 0
 
 

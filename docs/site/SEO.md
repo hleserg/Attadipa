@@ -225,6 +225,17 @@ the readable page is not, and an animation that arrives after the content has
 been read buys nothing worth a visible flicker. Where the API is missing the
 entry list is empty and behaviour is exactly as before.
 
+**Say what that costs, because review did.** The script is `defer`red, and on a
+warm cache a browser frequently paints before a deferred script runs — so this
+does not only skip the reveal on slow loads, it skips it on **an unknown share
+of repeat visits**. The animation is off more often than the sentence above
+implies, and that share is not measured: it depends on the browser, the cache
+state and the machine, and nothing here samples it. The direction is the safe
+one — the failure is a page that appears without animating, never a page that
+stays blank — and this is the trade taken knowingly rather than an effect
+nobody looked at. Restoring the animation on those visits would mean animating
+content the visitor is already reading, which is the flicker this removed.
+
 ### `docs/manifest.webmanifest`
 
 Was four keys and a one-line description. Now carries `id`, `scope`, `lang`,
@@ -327,8 +338,15 @@ Worth recording so nobody "fixes" it:
 - **Mobile.** A real viewport meta, `img{max-width:100%;height:auto}` in the
   reset, and grid/flex layout throughout — no fixed-width containers to cause a
   horizontal scroll.
-- **Performance, otherwise.** One 17 KB stylesheet and one 9 KB script, both
-  local, the script `defer`red. No web fonts are loaded at all — the type stack
+- **Performance, otherwise.** One stylesheet under 20 KB and one script under
+  12 KB, both local, the script `defer`red. Bounds rather than today's byte
+  counts, and deliberately: an exact figure here is held to within half a
+  kilobyte, both files sat inside a hundred bytes of their stated size, and any
+  CSS rule anyone adds would then turn *Documentation consistency* red on a
+  pull request that never opened this file. A check that goes red for a true
+  statement gets edited until it stops. What this section claims is that the
+  page ships a small amount of first-party code; the bound is that claim, and
+  crossing it is a finding rather than a rounding. No web fonts are loaded at all — the type stack
   is `"Nunito Sans", "Avenir Next", system-ui, …`, so there is no render-blocking
   font fetch and no CLS from a swap. No third-party scripts, no analytics, no
   cookie banner.
@@ -462,10 +480,15 @@ searches for and which no current topic covers.
   a sentence saying they must be re-read; a sentence is what had just failed, so
   this reads them instead. It measures PNG, JPEG and WebP from their own
   headers and covers the dimension pairs, the byte sizes, both statements of the
-  2.8 MB total, the stylesheet and the script, and the case count quoted above.
-  It compares an `<img>` box by proportion, not by scale, so drawing a 64 × 64
-  mark at 34 is not reported — a check that cried about that would teach the
-  reader to skip it.
+  2.8 MB total, the bounds on the stylesheet and the script, and the case count
+  quoted above — in this document, in `STATUS.md` and in the CI comment, all
+  three read back against what the suite actually ran.
+  It compares by proportion, not by scale, so the 64 × 64 `favicon.png` drawn
+  at 34 in an `<img>` box is not reported — a check that cried about that would
+  teach the reader to skip it. A number it cannot attribute to a file is
+  reported, never dropped: a dimension pair naming no file, and a size whose
+  sentence names its files on the line above, were both invisible to it until
+  the sixth review said so.
 
   Writing it found two numbers already stale: the script had grown past the
   6 KB stated for it, and the case count above said 29 for a suite of 32. Both

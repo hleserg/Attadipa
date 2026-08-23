@@ -35,8 +35,22 @@ import check_head_sync  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# The name this suite is quoted by, so the line it prints identifies itself.
+SELF = "tools/site/test_check_head_sync.py"
+
+# `--count` registers every case and runs none, so a caller can ask how big
+# this suite is without executing it against whatever tree it happens to be
+# standing in.
+COUNT_ONLY = "--count" in sys.argv[1:]
+
 FAILURES: list[str] = []
 RAN: list[str] = []
+# Split by polarity, because the split is quoted too. docs/site/SEO.md states
+# "31 break the pair ... 9 leave it valid", and a case that changes polarity
+# moves both halves while leaving the total alone -- the one drift the total
+# cannot see. Counted here rather than by hand, and printed below.
+MUST_REPORT: list[str] = []
+MUST_STAY_QUIET: list[str] = []
 
 
 def case(name: str, condition: bool) -> None:
@@ -75,6 +89,16 @@ def run(root: str) -> tuple[int, str]:
 
 def scenario(name: str, mutate, expect_fail: bool, needle: str = "") -> None:
     """Copy the live pair, apply `mutate`, assert the checker's verdict."""
+    (MUST_REPORT if expect_fail else MUST_STAY_QUIET).append(name)
+    if COUNT_ONLY:
+        # Registered, not run. check_site_facts.py asks this suite how big it
+        # is once per invocation, and its own mutation tests invoke it inside
+        # a fixture whose index.html and site.js have been broken on purpose --
+        # so actually running the cases there would fail for a reason that has
+        # nothing to do with the case under test, and would report "the suite
+        # did not print a count" over a real finding. Asking for the count
+        # touches no file at all.
+        return
     with tempfile.TemporaryDirectory() as root:
         html, js = fixture(root)
         if mutate is not None and not mutate(html, js):
@@ -87,8 +111,30 @@ def scenario(name: str, mutate, expect_fail: bool, needle: str = "") -> None:
             case(name, status == 0)
 
 
+def summary() -> None:
+    """The two lines everything else reads: the size, and the split.
+
+    The size is the number of cases REGISTERED, not the number that reported a
+    verdict: under `--count` nothing runs, and in a full run a fixture that
+    fails to apply adds a case name of its own. The two agree on a green run,
+    which is the only run whose count anybody quotes.
+    """
+    if not COUNT_ONLY:
+        print("all %d cases passed" % len(RAN))
+    print(
+        "%s: %d cases, %d demand a report, %d demand silence"
+        % (
+            SELF,
+            len(MUST_REPORT) + len(MUST_STAY_QUIET),
+            len(MUST_REPORT),
+            len(MUST_STAY_QUIET),
+        )
+    )
+
+
 def main() -> int:
-    print("check_head_sync.py")
+    if not COUNT_ONLY:
+        print("check_head_sync.py")
 
     # The tree as it stands has to pass, or every case below is measuring the
     # fixture rather than the mutation.
@@ -506,6 +552,10 @@ def main() -> int:
         expect_fail=False,
     )
 
+    if COUNT_ONLY:
+        summary()
+        return 0
+
     print()
     if FAILURES:
         print("%d case(s) failed:" % len(FAILURES))
@@ -515,7 +565,10 @@ def main() -> int:
     # The count is printed rather than left to be counted by hand: the number
     # of cases here is quoted in docs/site/SEO.md, it has been wrong twice, and
     # check_site_facts.py reads this line to hold the document to it.
-    print("all %d cases passed" % len(RAN))
+    # The machine-readable line. check_site_facts.py reads both of these back
+    # and holds every place that quotes them -- SEO.md, STATUS.md and the CI
+    # comment -- to what the suite actually ran.
+    summary()
     return 0
 
 

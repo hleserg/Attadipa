@@ -744,11 +744,24 @@ four more things at no cost:
   guarded by a sentence** — *"if an image is swapped, its `width`/`height` must
   be re-read from the file"* — two files away from the head, which had a check
   precisely because a sentence had failed there. So they are a check too:
-  `tools/site/check_site_facts.py`, in the same CI job, with 16 mutation tests.
+  `tools/site/check_site_facts.py`, in the same CI job, with 22 mutation tests.
   It measures PNG, JPEG and WebP from their own headers and holds the document
   to the dimension pairs, the byte sizes, the saving column, both statements of
   the 2.8 MB total, the stylesheet, the script, and the head-sync case count
   (which the suite now prints, so nothing has to type it).
+
+  **A sixth round found the count in the CI comment stale** — four lines below
+  the paragraph warning that this number had already been wrong twice for
+  exactly this reason, with the fix recorded as *"if the count moves, fix it
+  here and in STATUS.md"*. An instruction to a future reader is the thing that
+  had just failed, so both suites now print their size **and their split**, and
+  every place quoting either — `SEO.md`, this file and the workflow comment —
+  is read back against what actually ran. A case that changes polarity moves
+  the split while leaving the total alone, which is why both are stated. The
+  same round closed two silent skips in the checker itself: a dimension pair
+  naming no file was dropped rather than reported, and a size whose sentence
+  named its files on the previous line (Markdown prose wraps) was invisible to
+  both halves of the attribution.
 
   Writing it found two numbers already wrong — the script had grown past the
   6 KB claimed for it, and the case count said 29 for a suite of 32 — and its

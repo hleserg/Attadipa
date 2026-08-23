@@ -24,10 +24,21 @@ What is checked:
 4. The stylesheet and script sizes claimed in the performance section, which are
    not images but are the same typed-number defect in the same document. This
    found the script stated at 6 KB when it had grown past 7.8; the numbers most
-   likely to go stale are the ones an unrelated commit changes.
-5. The size of the head-sync mutation suite, which SEO.md quotes. That number has
-   been wrong twice -- it is the kind a commit changes without looking at the
-   prose -- so the suite now prints its own count and this reads it back.
+   likely to go stale are the ones an unrelated commit changes. Where the prose
+   states a BOUND -- "a stylesheet under 20 KB" -- the bound is what is checked,
+   one-sidedly. An exact figure there was held to within half a kilobyte over a
+   file with 87 bytes of headroom, so any CSS rule would have failed a
+   documentation job on a pull request that never opened the document, and a
+   check that goes red for a true statement gets edited until it stops.
+5. The size of BOTH mutation suites, wherever it is quoted: SEO.md, STATUS.md
+   and the CI comment. Those numbers have now been wrong three times -- the
+   third found by review four lines below the paragraph explaining the hazard,
+   under an instruction to fix the remaining copies by hand. So each suite
+   prints its size and its split, and every copy is read back. The split is
+   held too: a case that changes polarity moves it while leaving the total
+   alone. This file does the reading for the head-sync suite, which it already
+   runs; the site-facts suite does its own on the way out, because running it
+   from inside the checker it tests would recurse.
 
 Attribution is by segment, and it is the part that had to be fixed before this
 was worth running. The first draft attributed by line and required exactly one
@@ -76,25 +87,161 @@ TEXT_ASSETS = (
     (re.compile(r"(\d+(?:\.\d+)?)\s*(MB|KB)\s+stylesheet"), "site.css"),
     (re.compile(r"(\d+(?:\.\d+)?)\s*(MB|KB)\s+script"), "site.js"),
 )
+# A BOUND, which is what that section should have claimed in the first place.
+# "17 KB stylesheet" is held to within half a kilobyte, and site.css is 17413
+# bytes -- 87 bytes of headroom, so one CSS rule fails a documentation job on a
+# pull request that never opened SEO.md. A checker that goes red for a true
+# statement teaches people to edit the number until it stops, which is the
+# habit this whole file was written against. "under 20 KB" is the claim the
+# prose is actually making and it fails only when it stops being true.
+BOUNDS = (
+    (re.compile(r"stylesheet under\s+(\d+(?:\.\d+)?)\s*(MB|KB)"), "site.css"),
+    (re.compile(r"script under\s+(\d+(?:\.\d+)?)\s*(MB|KB)"), "site.js"),
+)
 UNIT = {"KB": 1000, "MB": 1000 * 1000}
 
 
-CASES_STATED = re.compile(r"\*\*(\d+)\s+cases\*\*")
-CASES_RAN = re.compile(r"^all (\d+) cases passed$", re.M)
+# Note what is NOT here any more: a bare `**N cases**` pattern compared to the
+# head-sync suite whatever suite the sentence was about, so writing the second
+# suite's size into SEO.md the obvious way failed. Claims are anchored to a
+# suite by name below. Found in review.
+CASES_SPLIT = re.compile(
+    r"^(\S+): (\d+) cases, (\d+) demand a report, (\d+) demand silence$", re.M
+)
 SUITE = "tools/site/test_check_head_sync.py"
+
+# Where a suite size is quoted, and by what wording. SEO.md's copy was already
+# enforced; STATUS.md's and the CI comment's were not, and the CI one was found
+# stale by review four lines below the paragraph warning that this exact number
+# had already been wrong twice. A count nobody reads back is a count that rots,
+# and "fix it here by hand if it moves" is the instruction that had just failed.
+# A block is attributed to a suite by naming the suite OR the checker it guards;
+# prose reasonably says "check_head_sync.py, with 40 mutation tests" without
+# spelling out the second path. `files` is where that suite's size is quoted --
+# per suite, because SEO.md names check_site_facts.py twice without ever
+# quoting its size, and demanding a count there would be inventing a claim.
+SUITES = {
+    "tools/site/test_check_head_sync.py": {
+        "aliases": ("check_head_sync.py",),
+        "files": ("docs/site/SEO.md", "STATUS.md", ".github/workflows/ci.yml"),
+    },
+    "tools/site/test_check_site_facts.py": {
+        "aliases": ("check_site_facts.py",),
+        "files": ("STATUS.md", ".github/workflows/ci.yml"),
+    },
+}
+# The three numbers, by the cue that introduces each. Prose is allowed to vary
+# around them -- what is not allowed is a count with no cue, which is why a
+# block naming a suite and quoting no recognised number is reported below.
+CUES = (
+    ("total", re.compile(r"(\d+)\s*\**\s*(?:cases|mutation tests)\b")),
+    ("report", re.compile(r"(\d+) (?:break the pair|demand a report)")),
+    ("quiet", re.compile(r"(\d+) (?:leave it valid|demand silence)")),
+)
+
+
+def blocks(text):
+    """Paragraphs, with YAML comment markers stripped and whitespace collapsed.
+
+    One implementation for Markdown and for a workflow file: a CI comment block
+    is a paragraph that happens to start every line with `#`, and the numbers
+    inside it rot exactly like prose. Blank lines and bare `#` lines separate.
+    """
+    out, current, start = [], [], 1
+    for lineno, line in enumerate(text.split("\n") + [""], 1):
+        stripped = line.strip()
+        bare = re.sub(r"^#\s?", "", stripped)
+        if not bare:
+            if current:
+                out.append((start, " ".join(current)))
+                current = []
+            continue
+        if not current:
+            start = lineno
+        current.append(bare)
+    return out
+
+
+def verify_case_claims(root, suite, total, must_report, must_stay_quiet):
+    """Hold every quoted copy of a suite's size to what the suite actually ran.
+
+    Shared by check_site_facts.py (for the head-sync suite, which it already
+    runs) and by test_check_site_facts.py (for its own count, which it knows
+    and which nothing else can ask for without recursion).
+    """
+    problems, compared = [], 0
+    names = (suite,) + SUITES[suite]["aliases"]
+    other = [
+        name
+        for key, entry in SUITES.items()
+        if key != suite
+        for name in (key,) + entry["aliases"]
+    ]
+    expected = {"total": total, "report": must_report, "quiet": must_stay_quiet}
+    for relative in SUITES[suite]["files"]:
+        path = root / relative
+        if not path.exists():
+            problems.append(
+                "%s is missing, so the size of %s cannot be held to anything. "
+                "It is one of the files that quotes it." % (relative, suite)
+            )
+            continue
+        anchored = quoted = 0
+        for lineno, block in blocks(path.read_text(encoding="utf-8")):
+            if not any(name in block for name in names):
+                continue
+            anchored += 1
+            if any(name in block for name in other):
+                found = [c for _, cue in CUES for c in cue.findall(block)]
+                if found:
+                    problems.append(
+                        "%s:%d quotes a count in a paragraph naming two suites, "
+                        "so it cannot be attributed to one of them. Split the "
+                        "claim rather than leaving it unverifiable."
+                        % (relative, lineno)
+                    )
+                continue
+            for kind, cue in CUES:
+                for stated in cue.findall(block):
+                    quoted += 1
+                    compared += 1
+                    if int(stated) != expected[kind]:
+                        problems.append(
+                            "%s:%d states %s where %s runs %d (%s)"
+                            % (relative, lineno, stated, suite, expected[kind], kind)
+                        )
+        if anchored and not quoted:
+            problems.append(
+                "%s names %s and quotes no count this check recognises. Either "
+                "the number was removed -- say so -- or it is phrased in a way "
+                "nothing reads back, which is how the last three went stale."
+                % (relative, suite)
+            )
+        if not anchored:
+            problems.append(
+                "%s no longer mentions %s. It is listed as a place that quotes "
+                "the suite size; drop it from SUITES deliberately rather "
+                "than letting the check pass because the claim vanished."
+                % (relative, suite)
+            )
+    return problems, compared
 
 
 def suite_size(root):
-    """How many cases the head-sync suite actually runs, from the suite itself.
+    """How big the head-sync suite is, and how it splits, from the suite itself.
 
-    Running it is the only honest way to ask: counting `case(` calls in the
-    source would count the helper's own definition and miss any case a loop
-    generates. It is file copies and regexes, so the second run costs nothing
-    worth saving.
+    Asking it is the only honest way: counting `case(` calls in the source would
+    count the helper's own definition and miss any case a loop generates.
+    `--count` registers every scenario and runs none, which matters because
+    this checker's own mutation tests invoke it inside a fixture whose
+    index.html and site.js have been broken on purpose -- running the head-sync
+    cases there would fail for reasons unrelated to the case under test, and
+    the failure would be reported as "the suite printed no count". Found in
+    review.
     """
     try:
         done = subprocess.run(
-            [sys.executable, SUITE],
+            [sys.executable, SUITE, "--count"],
             cwd=str(root),
             capture_output=True,
             text=True,
@@ -102,13 +249,13 @@ def suite_size(root):
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return None, "could not run %s: %s" % (SUITE, exc)
-    found = CASES_RAN.search(done.stdout)
-    if not found:
+    found = CASES_SPLIT.search(done.stdout)
+    if not found or found.group(1) != SUITE:
         return None, (
-            "%s did not report a case count. It prints one on success; if it "
-            "failed, that is the finding." % SUITE
+            "%s did not report its case count and split. It prints them on "
+            "success; if it failed, that is the finding." % SUITE
         )
-    return int(found.group(1)), None
+    return (int(found.group(2)), int(found.group(3)), int(found.group(4))), None
 
 
 def png_size(data):
@@ -240,6 +387,26 @@ def main(root="."):
                 )
                 continue
             if not named:
+                # A DIMENSION PAIR ALWAYS DESCRIBES A FILE. If the segment does
+                # not name one, nothing can check it -- and the first version of
+                # this file silently dropped it here, which is the same "skipped
+                # rather than reported" bug the two-filenames branch above was
+                # rewritten to close, surviving in the branch the rewrite did
+                # not cover. Found in review.
+                for width, height in pairs:
+                    problems.append(
+                        "docs/site/SEO.md:%d states %s x %s and names no file in "
+                        "that clause, so nothing checks it. Name the file, or "
+                        "move the number beside one." % (lineno, width, height)
+                    )
+                # A SIZE is different: a table row's saving column names neither
+                # file by design (3a below pairs it with the row's two), and
+                # prose legitimately states sizes of things that do not exist
+                # yet. So a bare size is a candidate here rather than a problem,
+                # and section 3b below catches the prose case a sentence can
+                # attribute. What neither can see is a size naming no file on
+                # its line or the one above -- documented at the top of this
+                # file as the one hole that is deliberate.
                 if stated:
                     bare.append(stated[0])
                 continue
@@ -284,6 +451,38 @@ def main(root="."):
                     )
                 )
 
+    # 3b. A size in prose whose sentence names files on the LINE ABOVE. Markdown
+    # prose wraps, so "`a.png` and `b.png` are now unreferenced / and together
+    # weigh 3.0 MB" puts the files and the number on different lines and
+    # segment-based attribution sees neither half. Two files means the sum, one
+    # means itself. Found in review, which named the exact line this misses.
+    for lineno, line in enumerate(lines, 1):
+        if lineno < 2 or "|" in line:
+            continue
+        stated = SIZE.findall(line)
+        if not stated or [n for n in sizes if n in line]:
+            continue
+        above = lines[lineno - 2]
+        named = sorted({n for n in sizes if n in above})
+        if not named or "|" in above:
+            continue
+        actual = sum(bytes_on_disk[n] for n in named)
+        value, unit = stated[0]
+        claimed = float(value) * UNIT[unit]
+        compared += 1
+        if abs(actual - claimed) > tolerance(value, unit) * len(named):
+            problems.append(
+                "docs/site/SEO.md:%d states %s %s for %s, which %s %d bytes"
+                % (
+                    lineno,
+                    value,
+                    unit,
+                    " and ".join(named),
+                    "together are" if len(named) > 1 else "is",
+                    actual,
+                )
+            )
+
     # 4. The stylesheet and the script, named in the prose by what they are.
     for lineno, line in enumerate(lines, 1):
         for pattern, filename in TEXT_ASSETS:
@@ -305,6 +504,38 @@ def main(root="."):
                 problems.append(
                     "docs/site/SEO.md:%d states %s %s for %s, which is %d bytes"
                     % (lineno, value, unit, filename, actual)
+                )
+
+    # 4b. The same two files, where the prose states a bound instead. One-sided
+    # by design: a file that shrank has not falsified "under 20 KB". What it
+    # catches is the direction that matters -- the page growing a payload the
+    # section says it does not have.
+    # Searched across the line wrap, not line by line. The first draft of this
+    # was per-line, Markdown wrapped "one script under / 12 KB" between the
+    # noun and the number, and the bound was silently not checked -- the same
+    # shape as the prose-size hole 3b exists for, reintroduced by the fix for
+    # something else. A match that starts in the following line is left to that
+    # line's own turn, so nothing is reported twice.
+    for lineno, line in enumerate(lines, 1):
+        joined = line + " " + (lines[lineno] if lineno < len(lines) else "")
+        for pattern, filename in BOUNDS:
+            found = pattern.search(joined)
+            if not found or found.start() > len(line):
+                continue
+            path = root / ASSETS / filename
+            if not path.is_file():
+                problems.append(
+                    "docs/site/SEO.md:%d states a bound for %s/%s, which does "
+                    "not exist" % (lineno, ASSETS, filename)
+                )
+                continue
+            compared += 1
+            value, unit = found.group(1), found.group(2)
+            actual = path.stat().st_size
+            if actual >= float(value) * UNIT[unit]:
+                problems.append(
+                    "docs/site/SEO.md:%d says %s is under %s %s; it is %d bytes"
+                    % (lineno, filename, value, unit, actual)
                 )
 
     # 3b. The stated total, against the sum of the savings the table claims.
@@ -398,27 +629,25 @@ def main(root="."):
             "needs both or neither." % next(iter(og_dims))
         )
 
-    # 5. The size of the mutation suite, which the suite itself reports.
-    stated_cases = [
-        (lineno, int(found.group(1)))
-        for lineno, line in enumerate(lines, 1)
-        for found in [CASES_STATED.search(line)]
-        if found
-    ]
-    if stated_cases:
-        actual_cases, failure = suite_size(root)
-        if failure:
-            problems.append(failure)
-        else:
-            for lineno, stated in stated_cases:
-                compared += 1
-                if stated != actual_cases:
-                    problems.append(
-                        "docs/site/SEO.md:%d states %d cases in %s, which runs %d"
-                        % (lineno, stated, SUITE, actual_cases)
-                    )
+    # 5. The size of the head-sync mutation suite, which the suite itself
+    # reports -- in SEO.md, in STATUS.md and in the CI comment. The first was
+    # enforced from the start and has not drifted since; the other two were
+    # guarded by a sentence saying to fix them by hand, and review found the CI
+    # one stale. Both halves of the split are held too: a case that changes
+    # polarity moves 31 and 9 while leaving 40 alone.
+    claims = 0
+    counts, failure = suite_size(root)
+    if failure:
+        problems.append(failure)
+    else:
+        found, claims = verify_case_claims(root, SUITE, *counts)
+        problems.extend(found)
 
     # A check with nothing to check is the failure this file was rewritten for.
+    # Counted separately from the case claims above deliberately: those live in
+    # STATUS.md and the workflow, so counting them here would let a document
+    # that lost every number of its own still look like a document with facts
+    # in it -- which is the exact substitution this guard exists to refuse.
     if not compared:
         problems.append(
             "no fact in docs/site/SEO.md or docs/index.html could be "
@@ -433,7 +662,8 @@ def main(root="."):
         return 1
     print(
         "Site facts agree with the repository: %d claims compared, %d images "
-        "measured from their own headers" % (compared, len(sizes))
+        "measured from their own headers, %d quoted suite sizes held to what "
+        "the suite ran" % (compared, len(sizes), claims)
     )
     return 0
 

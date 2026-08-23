@@ -413,19 +413,21 @@ jobs:
       # either file: it filters on `.md`.
       #
       # Its own mutation tests run first, for the same reason check_docs.py's
-      # do. FORTY cases: thirty-one break the pair and demand a non-zero
-      # exit, nine leave it valid and demand silence -- the Russian strings
-      # differ from the English by design, a `//` inside a copy string is not a
-      # comment, and a tag setLanguage() writes a constant into is not a row in
-      # the wiring table.
+      # do. tools/site/test_check_head_sync.py holds 40 cases: 31 break the
+      # pair and demand a non-zero exit, 9 leave it valid and demand silence --
+      # the Russian strings differ from the English by design, a `//` inside a
+      # copy string is not a comment, and a tag setLanguage() writes a constant
+      # into is not a row in the wiring table.
       #
-      # This number has now been wrong twice in the same comment block, both
-      # times because a count four lines up was corrected and this one was not.
-      # The suite now prints its own count, and check_site_facts.py below reads
-      # that line back and holds docs/site/SEO.md to it -- so the copy that
-      # reaches a reader is enforced. This comment and STATUS.md still are not,
-      # because a checker for a comment is a checker for a comment. If the count
-      # moves, fix it here and in STATUS.md; CI will tell you about SEO.md.
+      # Those numbers had been wrong twice in this comment block, both times
+      # because a count four lines up was corrected and this one was not, and
+      # review then found a third stale count in the block below -- four lines
+      # under the paragraph explaining the hazard. So the comment is no longer
+      # trusted to be right: the suite prints its size and its split, and
+      # check_site_facts.py reads that line back and holds all three places
+      # that quote it -- SEO.md, STATUS.md and this comment -- to what actually
+      # ran. Change a case's polarity and the split moves while the total does
+      # not, which is why both halves are stated here rather than just the sum.
       - name: The head-sync check actually checks
         run: python3 tools/site/test_check_head_sync.py
 
@@ -445,8 +447,12 @@ jobs:
       # draft of the check attributed a number to a file by requiring exactly
       # one filename on the line, every row of the table names two, so it
       # skipped every claim in the document and printed "9 images measured".
-      # Fifteen cases, two of which assert it does *not* fire -- a 64 x 64 mark
+      # tools/site/test_check_site_facts.py holds 22 cases: 19 demand a report,
+      # 3 demand silence -- the tree as it stands must pass, a 64 x 64 mark
       # drawn at 34 reserves the right box, and a rounder number is allowed.
+      # The suite holds this comment and STATUS.md to those three numbers on
+      # its way out, the same way check_site_facts.py holds the three copies of
+      # the head-sync count: nothing here is a number a reader has to trust.
       - name: The site-facts check actually checks
         run: python3 tools/site/test_check_site_facts.py
 
