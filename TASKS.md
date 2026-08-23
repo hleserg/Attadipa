@@ -1700,7 +1700,12 @@ stale silently. The protocol is
   in the same change as the lint. An exemption would excuse the one caller that
   needs the resolver, which is precisely what the lint exists to prevent;
   landing the lint by itself would take `main` red on a file nobody here was
-  reviewing.
+  reviewing. **That clause names a file that lives on #121's branch, so it is
+  conditional on #121:** if #121 has landed, converting `SerialTransport` is part
+  of this task and the lint has a caller to prove itself against; if it has not,
+  the resolver and the lint ship alone, `tools/` has nothing to convert, and the
+  conversion arrives with #121 instead. Neither order leaves an exemption behind
+  — which is the part that is not conditional.
 - **Definitely not:** guessing. A resolver that picks a device when it cannot
   identify one is the bug with extra steps.
 

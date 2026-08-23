@@ -31,7 +31,13 @@ worst one.
 |---|---|---|
 | **Screen timeout, shortest available** | removes the static image entirely | **none** — see below. **Not available on the received unit**: the vendor firmware ships no timeout, as two paragraphs above says, so this row is what a *firmware* should offer, not something anyone can select today |
 | **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | none |
-| **Unplug** | stops it completely | the unit is not reachable |
+| **Unplug** | **does not stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so the AXP2101 keeps the system up and the same static desktop with it, until the cell is flat | the unit is not reachable, *and* the cell is being discharged and then sat at low state of charge |
+
+That third row used to read *"stops it completely"*, which is what pulling a
+cable does on a board with no battery. This is not one: see **the cell** under
+*"What is not established"*. Pulling the cable moves the same lit desktop onto a
+cell of perhaps 280 mAh; it changes which consumable is paying, not whether one
+is.
 
 That ranking is the general case. **For the unit on this desk the owner has
 chosen row 2**, and an owner decision outranks a preference table — see below.
@@ -69,14 +75,25 @@ Both are solved, which is why the RAM-load route above stands: a session may
 open and hold the port. What does not follow is that an agent may reboot the
 owner's device to save its screen — that is a trade to be asked for, not made.
 
-So the action is the owner's. The agent's job is to **say so** at the end of a
-bench session, or before a long stretch of work that does not need the unit,
-rather than leaving it lit because nothing being run is using it.
+So the action is the owner's — and under OD-16 there may be no action left to
+recommend: minimum brightness is already set, nothing of ours can blank the
+panel, and item 1 of that decision rules out offering "unplug it" as the
+recommendation. What remains is a fact worth stating, not a request dressed as
+one.
+
+**The trigger, so this is neither guesswork nor boilerplate:** say it when the
+unit has been powered and unused since the last time it was said, *and* either
+the session is ending or the next stretch of work does not need the unit — **at
+most once per session**. Say that it is sitting lit, name the mitigation in force
+as the brightness the owner themself set, and stop there rather than inventing an
+action to accompany it. Repeated in every report, an observation the owner acted
+on once becomes a line they learn to skip, which is the failure mode of a rule
+with no threshold.
 
 ### What is not established
 
-No lifetime figure for this specific panel. The controller is a **CO5300**,
-driven by an SH8601-family driver
+**The panel.** No lifetime figure for this specific panel. The controller is a
+**CO5300**, driven by an SH8601-family driver
 ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)), and
 [D7](../research/OPEN_QUESTIONS.md) has not settled even its initialisation
 sequence; no datasheet for the emitter has been obtained. Class figures for
@@ -90,10 +107,49 @@ and it is worth having because the owner's question was about a working session:
 *"one debugging afternoon of a static frame will not leave visible sticking …
 but twelve hours of full white is roughly 8 % of a rated white-pattern lifetime,
 so repeated sessions spend real life"*, and marks both *"it will burn in this
-afternoon"* and *"it is free"* unsupported. Those figures are at white and at
-maximum luminance, so against OD-16's minimum brightness they are a ceiling
-rather than an estimate — which is why the residual risk stays `UNKNOWN` and
-this paragraph is a bound, not a number.
+afternoon"* and *"it is free"* unsupported.
+
+Those conditions are **not one condition**, and this sentence used to combine
+them. On that page the maximum-luminance condition belongs to the *image-sticking*
+test, whose pattern is an 8×8 chessboard; the **150 hrs** white-pattern lifetime
+is quoted with no luminance at all; and the **≥ 200 hours** figure is at white
+light and 600 cd/m², which the source nowhere calls that module's maximum. §3.5
+closes by saying none of the three is this panel's. So against OD-16's minimum
+brightness they bound the risk **in direction, not in size** — sizing it would
+need two numbers this repository has not got: the luminance each figure was rated
+at, and this panel's luminance at minimum brightness. `51h WRDISBV` is a register
+nobody here has mapped to cd/m², and no cd/m² figure for this panel exists in
+`docs/research/` at all. Which is why the residual risk stays `UNKNOWN` and this
+paragraph is a bound, not a number.
+
+**The cell, which nothing above weighs.** The unit has a battery fitted — a
+`402728` marked 400 mAh, honest expectation **250–310 mAh**
+([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — its plug visibly mated, and
+net `VBAT1` has **no protection FET, no fuel gauge, no load switch and no
+disconnect switch** ([BATTERY_UPGRADE](../research/BATTERY_UPGRADE.md) §1.1).
+Two consequences follow, both from facts this repository already holds at
+`VERIFIED`, and neither of them a conclusion about harm:
+
+- **Unplugging does not stop the ageing above**, it hands the bill to the cell.
+  This is the correction to the third row of the table.
+- **Leaving it plugged sits on a charge path nobody here has read.** The
+  AXP2101 `TS` pin goes through `RP2` to `GND` and never reaches `J1`, so **the
+  charger never sees cell temperature**; Waveshare's BSP configures the charger
+  not at all and the factory image now running is opaque; and **the PMU never
+  sees a POR while the cell is connected**, so `REG 0x64` (CV target) and
+  `REG 0x63[4]` (termination enable) persist as whatever that image last wrote.
+  With `0x63[4]` clear the charger holds CV indefinitely, float-charging a
+  Li-ion — `BATTERY_UPGRADE` §6.
+
+**And that is where it stops.** Nothing here says the cell is being harmed:
+those registers have not been read, and reading them means running our code on
+the unit, which is T-114's problem and not this file's. Nor does it say which
+state is kinder — neither is established, which is precisely why this file must
+not recommend one on the cell's account. What it does say is that *"powered
+indefinitely"* has a **second consumable** in it, that the panel's risk was
+weighed across three sources while this one was not weighed at all, and that a
+reader had no way to tell the difference. **Absent is not `UNKNOWN`; absent
+reads as weighed.**
 
 ## Identify a board by its USB serial, never by its port
 
@@ -105,7 +161,11 @@ not a stable name for either.
 serial and exit non-zero rather than guess — and none does yet.** What exists is
 the ad-hoc guard every write in the [#110](https://github.com/hleserg/Attadipa/pull/110)
 session went through, which was that session's own script and did not survive it.
-Until a shared one exists, a flashing task writes its own or does not write.
+The shared one is **T-116** in [`TASKS.md`](../../TASKS.md), together with the
+lint that stops a fourth ad-hoc guard from being written in the meantime; it is
+named here because this is the newer and more discoverable of the two files that
+state this rule, and it was the one without the pointer. Until it lands, a
+flashing task writes its own or does not write.
 
 `--port /dev/ttyACM0` is the failure this rule exists to prevent: both devices
 answer to that name and the write lands on whichever enumerated first, which may

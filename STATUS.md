@@ -595,7 +595,14 @@ possible on demand — [OD-16](docs/research/OWNER_DECISIONS.md). What an agent 
 and may not do about that, including why it must not open the serial port to try
 to blank the panel, is
 [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md). The residual risk at minimum
-brightness is `UNKNOWN`, not "safe". That file also states the
+brightness is `UNKNOWN`, not "safe" — and so is the risk to the **cell**, which
+is the second consumable in *"powered indefinitely"* and which neither that file
+nor OD-16 had weighed: unplugging does not stop the static desktop, it moves it
+onto a ~280 mAh cell on a rail with no disconnect switch, and leaving it plugged
+sits on a charger whose CV and termination registers hold whatever the opaque
+factory image last wrote. No register has been read, so both states stay
+`UNKNOWN` and the file recommends neither on the cell's account. That file also
+states the
 resolve-by-USB-serial rule and says plainly that no tool implements it yet —
 **T-116**, whose first caller (`SerialTransport`, arriving with
 [#121](https://github.com/hleserg/Attadipa/pull/121)) is named there rather than

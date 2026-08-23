@@ -1127,6 +1127,19 @@ content on the AMOLED?"*, asked as
 of whether the day theme keeps its near-white page. All four items above are
 A10's; none is A9's. This is about a board on a desk, and decides neither.
 
+**What was not weighed when it was decided.** Every option put to the owner was
+about the panel, and so is every obligation above. The unit also has a **cell**
+fitted, on a rail with no disconnect switch and a charger this repository calls
+opaque — so *"stays powered and attached", indefinitely* has a second consumable
+in it that nobody costed, and the option that was ranked last, unplugging, does
+not even stop the first one. The facts are in
+[`../hardware/BENCH_HANDLING.md`](../hardware/BENCH_HANDLING.md) under *"What is
+not established"*, and they stay `UNKNOWN` there: no register on that charger has
+been read, and neither state is established as the kinder one. This is **not** a
+reason to reopen the decision — the owner chose availability knowingly and that
+choice stands. It is here so that the decision is not read as having weighed a
+question it was never asked.
+
 **A known asymmetry, recorded rather than worked around.** This decision lives in
 this register, which
 [`merge-candidate.sh`](../../.github/scripts/merge-candidate.sh) denies to the
