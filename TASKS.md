@@ -65,11 +65,21 @@ stale silently. The protocol is
 - **Implementation status:** live. Seven workflows, an hourly watchdog, a
   half-hourly merge sweep applying the backstop's own path allowlist, and a
   daily backstop routine scoped to what a workflow cannot detect about itself.
-  The watchdog gained an `approvals` scan for
+  A second watchdog scan is written, tested and **not deployed**:
   [#75](https://github.com/hleserg/Attadipa/issues/75) — a run that completes
   `action_required` with **zero jobs** put no check on the pull request at all,
   so the orchestrator's *merge once CI is green* has no verdict to read and the
-  agent's own "waiting on CI" is true forever.
+  agent's own "waiting on CI" is true forever. The `approvals` job comments once
+  per head commit and deliberately does not re-run anything.
+
+  **What blocks it is not the work**, and it is the same wall
+  [#74](https://github.com/hleserg/Attadipa/issues/74) hit: GitHub refuses to
+  let a GitHub App update anything under `.github/workflows/` without the
+  `workflows` permission, which `claude[bot]` does not hold. The job, the
+  `token:` line that is the actual fix, and the test's line in `ci.yml` all wait
+  as `docs/automation/pending/75-approval-stall.patch`; landing it is three
+  commands from a local session. Until then the stall is still silent **and
+  still happening**.
 - **One owner action is outstanding, and it is the fix rather than the guard.**
   The cause is the writer checkout leaving `actions/checkout`'s defaults, so the
   agent's own `git push` authenticates as `github-actions[bot]` and GitHub
@@ -89,10 +99,13 @@ stale silently. The protocol is
 - **Tests:** `actionlint` over seven workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
   cases — 16/16; the approval-stall rule, 38 cases including both of #71's real
-  runs with the values the API actually returned — 38/38, and the watchdog job
-  around it dry-run against the live repository (the jq, the pagination, the
-  marker written and read back, the rendered comment); host build 10/10;
-  simulator 12/12, both geometries. Production:
+  runs with the values the API actually returned — 38/38, **not yet wired into
+  CI** because that line is in `ci.yml` and rides the same blocked patch, and
+  the watchdog job around it dry-run against the live repository (the jq, the
+  pagination, the marker written and read back, the rendered comment) — which
+  does not prove it running on a schedule under its own permissions, and that
+  stays `NOT EXECUTED` until it is deployed; host build 10/10; simulator 12/12,
+  both geometries. Production:
   smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
   intake, marker-derived labels, the `@claude` dedup override and a green Claude
   run, and exposed the stuck-label defect now fixed.

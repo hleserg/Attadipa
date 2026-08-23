@@ -1,0 +1,228 @@
+diff --git a/.github/workflows/agent-queue-watchdog.yml b/.github/workflows/agent-queue-watchdog.yml
+index 69dea3d..3098445 100644
+--- a/.github/workflows/agent-queue-watchdog.yml
++++ b/.github/workflows/agent-queue-watchdog.yml
+@@ -289,6 +289,155 @@ jobs:
+             fi
+           done < /tmp/stranded
+ 
++  approvals:
++    name: Anything waiting on an approval
++    runs-on: ubuntu-latest
++    if: vars.CLAUDE_AUTOMATION_ENABLED != 'false'
++    # Bounded because this loops over every open pull request and asks the API
++    # about each. Nothing here should take minutes; the number is what stands
++    # between "should not" and a job that runs until the six-hour ceiling.
++    timeout-minutes: 10
++    permissions:
++      # pull-requests: write to comment. Deliberately NOT actions: write --
++      # this job says a run is stalled, it does not re-run it. Option E in
++      # docs/automation/APPROVAL_STALLS.md, and it stays unwritten until
++      # somebody has observed whether a GITHUB_TOKEN re-run clears an approval
++      # requirement that a GITHUB_TOKEN push created. A retry loop that does not
++      # clear it is an hourly bill for the same answer.
++      pull-requests: write
++      actions: read
++      contents: read
++    steps:
++      # Its own job for the same reason `stranded` is: a failure in here must
++      # not cost the tick its actual dispatch, which is the thing with a turn
++      # limit and a bill behind it.
++      - name: Fetch the decision from the default branch
++        uses: actions/checkout@v7
++        with:
++          ref: ${{ github.event.repository.default_branch }}
++          sparse-checkout: .github/scripts
++          sparse-checkout-cone-mode: false
++          persist-credentials: false
++
++      - name: Say so when a check is waiting for an approval nobody asked for
++        env:
++          GH_TOKEN: ${{ github.token }}
++          REPO: ${{ github.repository }}
++        run: |
++          set -euo pipefail
++
++          # A run that completed `action_required` with zero jobs put NO check
++          # on the pull request at all. Everything downstream reads that as "not
++          # failing": the orchestrator merges once CI is green, the merge
++          # sweep's conditions are checks on a verdict that does not exist, and
++          # `agent:review` says the work is with the reviewers. The agent's own
++          # last word is "waiting on CI", which is true and stays true forever.
++          #
++          # This job's whole contribution is that the last word is no longer
++          # that. It fixes nothing -- see APPROVAL_STALLS.md for what would.
++          gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp \
++            | jq 'if (length > 0 and (.[0] | type) == "array") then add else . end' > /tmp/pulls.json
++
++          jq -r '.[] | "\(.number) \(.head.sha) \(.head.repo.full_name // "")"' /tmp/pulls.json > /tmp/heads
++
++          while read -r PR SHA HEADREPO; do
++            if [ -z "$PR" ] || [ -z "$SHA" ]; then
++              continue
++            fi
++
++            # A fork's pull request genuinely CAN require approval by policy,
++            # and that approval is a decision somebody made on purpose. Saying
++            # "nobody is watching for this" about a deliberate gate is how a
++            # guard teaches people to stop reading it.
++            if [ -n "$HEADREPO" ] && [ "$HEADREPO" != "$REPO" ]; then
++              continue
++            fi
++
++            # The newest run of each workflow for this exact head. `max_by(.id)`
++            # rather than `.run_number`, because run_number is per workflow and
++            # comparing it across workflows is meaningless -- group_by makes
++            # that safe either way, and id is monotonic without depending on it.
++            #
++            # The API returns the LATEST ATTEMPT of each run, which is what
++            # makes this self-healing: once somebody re-runs a stalled run, the
++            # object here reports the re-run's conclusion and this job goes
++            # quiet on its own.
++            RUNS=""
++            if ! RUNS=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&per_page=100&exclude_pull_requests=true" \
++                          --paginate --slurp </dev/null 2>/dev/null \
++                        | jq -r 'if type == "array" then [.[].workflow_runs[]?] else [.workflow_runs[]?] end
++                                 | group_by(.workflow_id) | map(max_by(.id))
++                                 | .[] | [(.id|tostring), .status, (.conclusion // ""), .head_sha, .name] | @tsv' 2>/dev/null); then
++              echo "::warning::Could not read the runs for #$PR at $SHA; skipping it this tick rather than guessing in either direction."
++              continue
++            fi
++            [ -n "$RUNS" ] || continue
++
++            # What this pull request has already been told, and about which
++            # commit. Read once per pull request rather than once per run: the
++            # bound is per head, so several stalled runs on one head are one
++            # comment naming all of them, not one comment each.
++            SAID=""
++            SAID=$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp </dev/null 2>/dev/null \
++                     | jq -r 'if (length > 0 and (.[0] | type) == "array") then add else . end | .[].body' 2>/dev/null \
++                     | sed -n 's/.*<!-- attadipa-approval-stall \([0-9a-fA-F]\{7,40\}\) -->.*/\1/p' \
++                     | tail -1) || SAID=""
++
++            STALLED=""
++            GATED=""
++            while IFS=$'\t' read -r RUN_ID STATUS CONCLUSION RUN_SHA RUN_NAME; do
++              [ -n "$RUN_ID" ] || continue
++
++              # Asked for every run rather than only the suspicious ones, so
++              # that the shape test lives in ONE place. Re-deriving "is this the
++              # approval shape" in shell to save an API call would put half the
++              # decision back in a `run:` block where nothing can execute it --
++              # which is how every defect the hand-over step ever shipped got
++              # in.
++              JOBS=""
++              JOBS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=1" \
++                       --jq '.total_count' </dev/null 2>/dev/null) || JOBS=""
++
++              # Called ONCE and both lines read off the result. Calling it twice
++              # -- once for the decision, once for the reason -- would let the
++              # two disagree if the inputs ever changed between them, which is a
++              # bug that reads as correct code.
++              OUT=""
++              OUT=$(bash .github/scripts/approval-stall-decision.sh \
++                      "$STATUS" "$CONCLUSION" "$JOBS" "$RUN_SHA" "$SAID") || OUT=""
++              DECISION=$(printf '%s' "$OUT" | sed -n 1p)
++              REASON=$(printf '%s' "$OUT" | sed -n 2p)
++
++              [ "$DECISION" = "say" ] || continue
++              case "$REASON" in
++                stalled) STALLED="${STALLED}- **${RUN_NAME}** — run \`${RUN_ID}\`, \`conclusion: action_required\`, **0 jobs**"$'\n' ;;
++                gated)   GATED="${GATED}- **${RUN_NAME}** — run \`${RUN_ID}\`, \`action_required\` with jobs present"$'\n' ;;
++              esac
++            done <<< "$RUNS"
++
++            [ -n "$STALLED" ] || [ -n "$GATED" ] || continue
++
++            echo "::warning::#$PR at $SHA has a run waiting for an approval; saying so on the pull request."
++
++            {
++              printf '<!-- attadipa-approval-stall %s -->\n' "$SHA"
++              printf "### A check on \`%s\` is waiting for an approval, and nothing was going to ask for it\n\n" "${SHA:0:7}"
++              if [ -n "$STALLED" ]; then
++                printf '%s\n' "$STALLED"
++                printf "A run that finishes as \`action_required\` with **no jobs** put no check on this pull request at all. Nothing is red, so nothing looks wrong — but the orchestrator merges once CI is green, and there is no verdict here to be green.\n\n"
++                printf "The usual cause is that the last push was authenticated with the built-in \`GITHUB_TOKEN\`: GitHub creates the run in an approval-required state and waits. **A maintainer can start it from the Checks tab of this pull request.** The rule, the evidence and what it would cost to stop this happening are in [APPROVAL_STALLS.md](https://github.com/%s/blob/main/docs/automation/APPROVAL_STALLS.md).\n\n" "$REPO"
++              fi
++              if [ -n "$GATED" ]; then
++                printf '%s\n' "$GATED"
++                printf 'These have jobs, so they are visible above and are waiting on a deployment or environment approval — a different thing, and one somebody configured on purpose.\n\n'
++              fi
++              printf 'This is said once per head commit. Push again and it is re-checked against the new one; re-run the checks and this goes quiet by itself.\n'
++            } > /tmp/approval-stall.md
++
++            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/approval-stall.md </dev/null \
++              || echo "::warning::Could not comment on #$PR; leaving it for the next tick."
++          done < /tmp/heads
++
+   stuck:
+     name: Anything stuck
+     runs-on: ubuntu-latest
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index bdd6a27..d52d88a 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -282,6 +282,17 @@ jobs:
+       - name: What the agent decides it did
+         run: bash .github/tests/handover-decision-test.sh
+ 
++      # And whether a check that never ran is noticed at all. A run that
++      # completes `action_required` with zero jobs puts NO check on the pull
++      # request, so every downstream reader -- the orchestrator, the merge
++      # sweep, the agent's own "waiting on CI" -- sees "not failing" and waits
++      # forever. #75. The two runs on #71's head `488be1e` are cases here with
++      # the values the API actually returned, so an edit that stops recognising
++      # them fails rather than going quiet, which is the only failure mode that
++      # matters for a guard whose job is to break a silence.
++      - name: A check that is waiting for an approval nobody asked for
++        run: bash .github/tests/approval-stall-decision-test.sh
++
+       # And what may be merged with nobody looking. This is the only rule in the
+       # repository that can put a commit in `main` unattended, so it gets the
+       # heaviest test: every one of the six conditions asserted in both
+diff --git a/.github/workflows/claude-agent.yml b/.github/workflows/claude-agent.yml
+index 9a25754..d082ec0 100644
+--- a/.github/workflows/claude-agent.yml
++++ b/.github/workflows/claude-agent.yml
+@@ -732,10 +732,41 @@ jobs:
+               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true ;;
+           esac
+ 
++      # THE ONE CHECKOUT IN THIS FILE THAT PUSHES, AND THE `token:` IS WHY #75
++      # HAPPENED.
++      #
++      # `actions/checkout` defaults `token` to `${{ github.token }}` and
++      # `persist-credentials` to `true`, so leaving both alone leaves the remote
++      # authenticated as the built-in GITHUB_TOKEN -- and every `git push` the
++      # agent runs in a shell of its own then goes out as `github-actions[bot]`,
++      # whatever the commit's author says. GitHub's documented consequence:
++      # "When a pull request is created or updated by a workflow using
++      # GITHUB_TOKEN, pull_request events with the opened, synchronize, or
++      # reopened activity types create workflow runs that require approval."
++      #
++      # That is not a run that fails. It is a run record with zero jobs, no
++      # check on the pull request, and nothing red anywhere -- #71's head
++      # `488be1e` sat in exactly that state while the agent reported it was
++      # waiting on CI, which was true and would have stayed true forever.
++      # docs/automation/APPROVAL_STALLS.md has the sources and the evidence.
++      #
++      # The two other checkouts here (:114, :336) set persist-credentials:false
++      # because they read and never write. This one writes, so it needs a
++      # credential rather than the absence of one.
++      #
++      # `|| github.token` is not belt-and-braces, it is the whole point of
++      # writing it this way: ATTADIPA_AGENT_TOKEN is DELIBERATELY allowed to be
++      # empty (docs/automation/CLAUDE_AUTOMATION.md), an unset secret is a falsy
++      # empty string, and so this line changes nothing at all until the owner
++      # sets it. Setting the secret was already necessary and was never
++      # sufficient -- claude-code-action reads it (:804) and this checkout did
++      # not, so the action's push path was fixed years before the agent's own
++      # was even looked at.
+       - uses: actions/checkout@v7
+         if: steps.auth.outputs.ok == 'true'
+         with:
+           fetch-depth: 0
++          token: ${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}
+ 
+       # WHERE THE BRANCH WAS BEFORE THIS RUN TOUCHED IT.
+       #

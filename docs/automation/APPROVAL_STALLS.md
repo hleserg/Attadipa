@@ -194,8 +194,8 @@ set as the repository secret `ATTADIPA_AGENT_TOKEN`.
 It is the documented remedy, the secret it fills already exists and is already
 read by two workflows, and it needs no new App, no new action and no setting
 that protects the repository from anyone else. The one-line checkout change that
-makes the secret *sufficient* is
-[`pending/75-writer-checkout-token.patch`](pending/README.md) — written as
+makes the secret *sufficient* is in
+[`pending/75-approval-stall.patch`](pending/README.md) — written as
 `${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}`, so applying it while the
 secret is unset changes nothing at all and the two can land in either order.
 
@@ -203,7 +203,18 @@ The cost being accepted is the attribution one: agent commits will carry the
 PAT owner's name. If that is the wrong trade, **B** is the same fix without it,
 at the price of two more secrets.
 
-## What happens in the meantime
+## What happens in the meantime — written, tested, **not deployed**
+
+> [!IMPORTANT]
+> The rule below is on `main` and tested. The watchdog job that calls it is
+> **not**, and until somebody applies
+> [`pending/75-approval-stall.patch`](pending/README.md) this stall is still
+> silent.
+> GitHub refuses to let a GitHub App update a file under `.github/workflows/`
+> without the `workflows` permission, which the agent's `claude[bot]` token does
+> not have — the same wall [#74](https://github.com/hleserg/Attadipa/issues/74)
+> hit. That patch also carries the `token:` line that is the actual fix, so
+> applying it is one action and it does two things.
 
 The hourly watchdog's `approvals` job reads every open pull request's newest run
 per workflow, and `.github/scripts/approval-stall-decision.sh` decides what that
