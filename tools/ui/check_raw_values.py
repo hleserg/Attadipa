@@ -30,8 +30,22 @@ file is now read in three passes:
 
 That is a bounded tokenizer and deliberately not a C++ front end. It knows
 nothing about types, overloads or the preprocessor, and it does not need to:
-the question is whether an integer literal reached an LVGL length, and an
-integer literal is visible without semantics.
+the question is whether a numeric literal reached an LVGL length, and a numeric
+literal is visible without semantics.
+
+Two things were still curated by hand after that, and a follow-up review of the
+same issue found both. The *list of entry points* had never been held against
+LVGL's headers — `lv_obj_set_ext_click_area` was missing from a list whose own
+comment named the file that declares it — and the *test for a literal* was "an
+integer literal, or no letter anywhere", which is not what C++ calls a number:
+`1'2`, `12.0f` and `0x10 / 2` all went through. So the fourth and fifth passes
+are not passes at all, they are where the two answers come from:
+
+  4. the entry points live in lvgl_inventory.py and are held against the pinned
+     headers by check_inventory.py, which fails on anything unclassified;
+  5. an argument is tokenised with C++'s own preprocessing-number production, so
+     a hex prefix and a float suffix are inside the number rather than mistaken
+     for a name.
 
 Exit 0 when clean; 1 with one line per offence otherwise.
 """
