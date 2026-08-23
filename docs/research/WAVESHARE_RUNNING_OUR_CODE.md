@@ -566,9 +566,13 @@ writing a byte to the owner's flash.
   in this session went through a guard that resolves the tty from the unit's USB
   serial and exits non-zero rather than guessing — **that guard was this
   session's own script and did not survive it. No shared resolver exists: this
-  bullet is an obligation on the next writer, not a rail already in place, and
-  building one is [T-116](../../TASKS.md).** The rules for the unit between
-  sessions are [BENCH_HANDLING](../hardware/BENCH_HANDLING.md). The serial string is
+  bullet is an obligation on whoever next *opens* a port, not a rail already in
+  place, and building one is [T-116](../../TASKS.md).** *Opens*, not *writes*:
+  the very next bullet is that opening resets this board, and the two RAM images
+  lost here were destroyed by a tool that wrote nothing. A screenshot, a log
+  tail and `idf.py monitor` are all inside this rule — which is why T-116's lint
+  list names `monitor` beside `flash`. The rules for the unit, between sessions
+  **and during one**, are [BENCH_HANDLING](../hardware/BENCH_HANDLING.md). The serial string is
   deliberately not reproduced here: on an ESP32-S3 the USB serial *is* the base
   MAC, and that is the owner's, not the repository's — see
   [`WAVESHARE_EFUSE_READ.md`](WAVESHARE_EFUSE_READ.md) §0.

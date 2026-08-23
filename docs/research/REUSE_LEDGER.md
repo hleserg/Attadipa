@@ -1329,10 +1329,15 @@ those pins, what sample rates the board actually runs, and what the second
 microphone is for — one microphone is a microphone, two are a decision. The
 received unit shipped with a firmware in which all of that already works.
 
-**Projects investigated:** `78/xiaozhi-esp32` — identified as the stock firmware
-because the `model` partition of the received unit holds WakeNet9
+**Projects investigated:** `78/xiaozhi-esp32` — identified as **a** firmware
+shipped on the received unit, because the `model` partition holds WakeNet9
 `wn9_nihaoxiaozhi_tts` ([WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §3,
-source **S11**). Its audio-path dependencies were licence-checked in the same
+source **S11**) and `ota_0` holds an image naming itself `xiaozhi 1.8.5` (§2.1).
+**It is not the firmware that runs**, which matters wherever a claim about the
+unit's behaviour gets attached to it: `otadata` is blank, so the bootloader
+falls through to `factory`, which holds `phone_s3_box_3`. This distinction was
+missed once and travelled — see the correction in
+[BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1.1. Its audio-path dependencies were licence-checked in the same
 pass, because the audio path is the thing we came for: `espressif/esp-sr`,
 `espressif/esp_audio_codec`, `espressif/esp_audio_effects`,
 `espressif/esp_codec_dev`. Display dependencies `waveshare/esp_lcd_sh8601` and

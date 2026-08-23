@@ -601,22 +601,33 @@ nor OD-16 had weighed. The schematic gives the cell no way to be disconnected �
 `VBAT1` has no disconnect switch — so unplugging does not remove power; **what
 the factory image does on battery is `UNKNOWN`, because this unit has only ever
 been run on USB and nobody has looked.** And leaving it plugged sits on a charger
-whose CV and termination registers hold whatever that opaque image last wrote.
+whose CV and termination registers hold whatever the running image last wrote —
+**`phone_s3_box_3`**, named and versioned in this project's own flash dump
+(`WAVESHARE_FLASH_LAYOUT` §2.1) rather than the `xiaozhi` build a few files had
+been calling it; `xiaozhi 1.8.5` sits unselected in `ota_0` and `otadata` is
+blank.
 No register has been read either, so both states stay `UNKNOWN` and the file
 recommends neither on the cell's account. **One cheap thing is still unlooked-at
 and the file now says so rather than ruling it out:** whether the factory
 launcher offers a display timeout. It carries a `Settings` app — OD-16 is the
 owner having been inside it to find the brightness — and nobody has enumerated
-the rest of the menu, so that row is `UNKNOWN`, unobserved, not unavailable. The capacity figure, for what it is
+the rest of the menu, so that row is `UNKNOWN`, unobserved, not unavailable.
+The likeliest upstream **was** read rather than left as an ask: `esp-brookesia`
+at the revision this repository has cloned offers brightness and light/dark and
+no timeout at all, which makes "no" `LIKELY` and settles nothing — that clone is
+from 2026-08-10 and the unit's build is from 4 Nov 2025, and `phone_s3_box_3`
+has not been *identified* with it. The capacity figure, for what it is
 worth here, is **250–310 mAh `ESTIMATED`** with 300 mAh as the working number
-(`BATTERY_UPGRADE` §3) against 400 mAh printed on the label — three converging
+(`BATTERY_UPGRADE` §1.2 for the pair; §3 says *"expect 250–300"*) against
+400 mAh printed on the label — three converging
 lines of reasoning, not a weighing, and nobody has weighed it.
 
 **BENCH_HANDLING** — not the battery research the sentence before it cites —
 also states the resolve-by-USB-serial rule — scoped to every tool that **opens**
 a port rather than every tool that writes, because the two RAM images this
-project lost were destroyed by a tool that wrote nothing — and says plainly that
-no tool implements it yet —
+project lost were destroyed by a tool that wrote nothing. `WAVESHARE_RUNNING_OUR_CODE`
+§7, which is where the mechanics live, said *"the next writer"* and now says the
+same thing as the rule. It says plainly that no tool implements it yet —
 **T-116**, whose first caller (`SerialTransport`, arriving with
 [#121](https://github.com/hleserg/Attadipa/pull/121)) is named there rather than
 left for whoever picks the task up. **T-117** records the blind spots that

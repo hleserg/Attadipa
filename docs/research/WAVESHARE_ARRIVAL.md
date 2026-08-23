@@ -67,11 +67,16 @@ their shape behind. The two problems pull in opposite directions, and only one o
 them is what people mean by "burn-in".
 
 That is the *product* question — what Attadipa's own screens should do. The
-*bench* question is separate and simpler: the received unit boots the vendor
-firmware to a fixed desktop and stays there for as long as it has power, with
-none of the mitigations enabled, for as long as nobody is looking. Rules for
-that are in [BENCH_HANDLING](../hardware/BENCH_HANDLING.md), including why an
-agent must not try to blank the panel itself.
+*bench* question is separate: the received unit boots `phone_s3_box_3` from its
+`factory` slot (§2.1) to a fixed desktop, and **has only ever been observed on
+USB**. Two things this sentence used to assert are not established, and
+[BENCH_HANDLING](../hardware/BENCH_HANDLING.md) — the file in force — records
+both as `UNKNOWN`: whether it stays lit *on battery*, which nobody has run with
+the cable out, and whether its `Settings` menu offers a display timeout, which
+nobody has opened. What is established is that no mitigation has been enabled
+and that minimum brightness is the one in force, by the owner's own hand
+(OD-16). Rules for the unit are in that file, including why an agent must not
+try to blank the panel itself.
 
 ---
 

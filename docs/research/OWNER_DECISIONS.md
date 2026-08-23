@@ -1126,10 +1126,17 @@ read as saying there is nothing in it.
 
 **What it does not decide:** nothing about the product. Whether the firmware
 ships an idle dim, a screen timeout, pixel shift or an always-on face is
-[WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §3.5, and remains open as **A10** in
+[WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §3.5, and is **A10** in
 [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) — *"what does Attadipa do about static
 content on the AMOLED?"*, asked as
-[#53](https://github.com/hleserg/Attadipa/issues/53). Its neighbour **A9** (§1,
+[#53](https://github.com/hleserg/Attadipa/issues/53). **Whether A10 is still
+open is not this decision's to say, and the register is about to disagree with
+itself if it tries:** [#97](https://github.com/hleserg/Attadipa/pull/97) carries
+an `OD-16` that *answers* A10 — the display wakes on raise, button and touch —
+so landing both leaves one file calling A10 open beside one closing it. Whoever
+merges second renumbers and reconciles; this paragraph records what the owner
+decided **here**, which is about the unit on the desk and not about the
+product. Its neighbour **A9** (§1,
 [#52](https://github.com/hleserg/Attadipa/issues/52)) is the different question
 of whether the day theme keeps its near-white page. All four items above are
 A10's; none is A9's. This is about a board on a desk, and decides neither.

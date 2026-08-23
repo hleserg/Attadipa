@@ -45,15 +45,24 @@ are both unmeasured. The BSP also leaves the panel at `0x51 = 0xFF`, 100 %
 brightness, with the hardware dimming ramp turned off.
 
 **That is about example code, and the unit on the desk is not running it.** It
-boots the factory launcher, which is a different program and the same opaque one
-this file declines to reason from about the charger. What that image does when
-left idle — dim, blank, sleep, or nothing — is `UNKNOWN`, unobserved.
+runs **`phone_s3_box_3`**, `v0.4.2-92-g5c6be6c-dirty`, built 4 Nov 2025 against
+IDF `v5.5.1-dirty` — this project's own flash dump, `WAVESHARE_FLASH_LAYOUT` §2.1:
+`otadata` is blank end to end, so the bootloader falls through to `factory`, and
+the `xiaozhi 1.8.5` image in `ota_0` has never been selected. An earlier version
+of this paragraph called the running image *"the same opaque one"* this file
+refuses to reason from about the charger. **That opacity belongs to `xiaozhi`,
+which is not on screen** — a verdict borrowed from the wrong binary, which then
+made a question owner-only that a source read can reach.
+
+What the running image does when left idle is still `UNKNOWN`, unobserved. But
+it is not anonymous, and the nearest source has now been read rather than
+assumed — see row 1 and *"What was tried"* below.
 
 ### What to do, in order of preference
 
 | | Effect | Cost to development |
 |---|---|---|
-| **Screen timeout, shortest available** | removes the static image entirely | **none** — and whether the received unit offers one is `UNKNOWN`, unobserved, **not** absent. The launcher it boots carries a **`Settings`** app ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.9) and OD-16 is the owner having already been inside it — «нашел **в настройках** яркость экрана». Nobody has enumerated the rest of that menu. This is the cheapest open question in the file: thirty seconds, and unlike the one below it needs no cable out |
+| **Screen timeout, shortest available** | removes the static image entirely | **none** — and whether the received unit offers one is `UNKNOWN`, unobserved, **not** absent. The launcher it boots carries a **`Settings`** app ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.9) and OD-16 is the owner having already been inside it — «нашел **в настройках** яркость экрана». Nobody has enumerated the rest of that menu. This is the cheapest open question in the file: thirty seconds, and unlike the one below it needs no cable out. The likeliest upstream **has** been read — see *"What was tried"* — and its display page offers brightness and theme and no timeout, which makes "no" `LIKELY` and leaves the unit itself unobserved |
 | **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | **not none** — it is the *plugged-in* state, and what that costs the cell is `UNKNOWN` rather than nothing: see **the cell** under *"What is not established"* |
 | **Unplug** | **cannot be assumed to stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so removing USB does not remove power; what the factory image does on battery is `UNKNOWN`, unobserved | the unit is not reachable, *and* the cell carries the load instead of USB. Direction only: **how fast, and therefore whether it is left sitting at a low state of charge, depends on the same unread image behaviour the effect cell declines to lean on** |
 
@@ -111,7 +120,10 @@ And the obvious workaround — drive the port and hope something blanks it — h
   Defeated by never letting the port close — §2.3.
 
 Both are solved, which is why the RAM-load route above stands: a session may
-open and hold the port. What does not follow is that an agent may reboot the
+open and hold the port — **having resolved it by USB serial first, which is the
+rule at the bottom of this file and not optional here**; this sentence sits in a
+section headed by what an agent must not do, and on its own it reads like
+permission. What does not follow is that an agent may reboot the
 owner's device to save its screen — that is a trade to be asked for, not made.
 
 So the action is the owner's — and under OD-16 there is very little left to
@@ -120,13 +132,34 @@ panel, and item 1 of that decision rules out offering "unplug it" as the
 recommendation. **One thing does remain, and it stays on the list until somebody
 looks:** row 1 of the table — whether that `Settings` menu holds a display
 timeout. It is unobserved rather than unavailable, and it is the only row whose
-effect is to remove the static image at no cost to development. Beyond that,
-what remains is a fact worth stating, not a request dressed as one.
+effect is to remove the static image at no cost to development.
 
-**The trigger, so this is neither guesswork nor boilerplate:** say it when the
-unit has been powered and unused since the last time it was said, *and* either
-the session is ending or the next stretch of work does not need the unit — **at
-most once per session**. Say that it is sitting lit, name the mitigation in force
+**What was tried, so the next agent does not repeat it.** The running app is
+named, so the obvious move is to read its source instead of asking the owner.
+`REUSE_LEDGER` already has `espressif/esp-brookesia` cloned at `01939b5e`,
+Apache-2.0, and `WAVESHARE_ARRIVAL` §3.1 lists `03_esp-brookesia` among the vendor
+examples, so the framework is the likely upstream. At that revision the Settings
+app's display page holds a **brightness slider and light/dark theme modes and
+nothing else** — the only display actions in the whole app are
+`ACTION_DISPLAY_BRIGHTNESS` and the two theme modes; there is no timeout, sleep
+or auto-lock entry. Read 2026-08-23.
+
+That is `LIKELY` and **not** an answer, for two reasons that are worth writing
+down rather than glossing: the clone is at `01939b5e` (2026-08-10) while the
+unit runs a build from 4 Nov 2025, and `5c6be6c` is not an object in it; and
+`phone_s3_box_3` has not been *identified* with esp-brookesia — the name reads
+like an ESP32-S3-BOX-3 demo, and the app list matching §1.9 is a resemblance,
+not a provenance. So the source read narrows it and the owner's thirty seconds
+still settles it. Beyond that, what remains is a fact worth stating, not a
+request dressed as one.
+
+**The trigger, so this is neither guesswork nor boilerplate:** say it when
+either the session is ending or the next stretch of work does not need the unit,
+and **at most once per session**. An earlier version of this rule also said
+*"since the last time it was said"*, which is state nothing in this repository
+records — a fresh session cannot know, so it is true every time and the clause
+was decoration on a threshold that the once-per-session bound is already
+carrying alone. Say that it is sitting lit, name the mitigation in force
 as the brightness the owner themself set, and stop there rather than inventing an
 action to accompany it. Repeated in every report, an observation the owner acted
 on once becomes a line they learn to skip, which is the failure mode of a rule
@@ -166,8 +199,9 @@ paragraph is a bound, not a number.
 
 **The cell, which nothing above weighs.** The unit has a battery fitted — a
 `402728` marked 400 mAh, honest expectation **250–310 mAh `ESTIMATED`, with
-300 mAh as the working figure** (`BATTERY_UPGRADE` §3, three independent lines
-converging; nothing has been weighed)
+300 mAh as the working figure** (`BATTERY_UPGRADE` §1.2 for the pair; §3 is the
+reasoning, and states it as *"expect 250–300 mAh"* — three independent lines
+converging, nothing weighed)
 ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md)) — its plug visibly mated, and
 net `VBAT1` has **no protection FET, no fuel gauge, no load switch and no
 disconnect switch** ([BATTERY_UPGRADE](../research/BATTERY_UPGRADE.md) §1.1).
@@ -184,7 +218,8 @@ Two consequences follow, both from facts this repository already holds at
   not at all — though its **demo** does, and that is the nearest evidence anyone
   has: 400 mA CC, 4.2 V, precharge 50 mA, **termination 25 mA**, `TS` disabled
   (`BATTERY_UPGRADE` §1.1, `VERIFIED`), which points *away* from the float-charge
-  case rather than toward it — and the factory image now running is opaque; and **the PMU never
+  case rather than toward it — and what `phone_s3_box_3` does to those registers
+  has not been read either; and **the PMU never
   sees a POR while the cell is connected**, so `REG 0x64` (CV target) and
   `REG 0x63[4]` (termination enable) persist as whatever that image last wrote.
   With `0x63[4]` clear the charger holds CV indefinitely, float-charging a
