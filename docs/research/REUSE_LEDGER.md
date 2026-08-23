@@ -1008,7 +1008,7 @@ an algorithm where the answer is a decision about what the product may claim.
 **UNKNOWN, and filed rather than guessed:** whether any upstream wearable or
 tracker firmware labels a motion sample with the body it was measured on is
 **not established**. It was not researched in this run, and this record must not
-be read as evidence that nobody does it. `T-113` asks the question; the answer
+be read as evidence that nobody does it. `T-133` asks the question; the answer
 does not change ADR-0013's decision, because the rule it encodes comes from
 OD-16, but it could change how the two consumers are shaped.
 

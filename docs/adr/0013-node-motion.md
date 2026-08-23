@@ -280,7 +280,7 @@ that leaves them open:
   and `provider_disagreement_mm` is 250 m. This ADR **exposes that and does not
   fix it** — the remedy is a different one (a co-location precondition, not a
   body label), it needs its own argument, and pretending otherwise would be
-  scope creep in a document about motion. Filed as **T-112**.
+  scope creep in a document about motion. Filed as **T-132**.
 - **dead reckoning.** ADR-0011 §8 stands in full. A motion flag that gates a
   receiver is not an inertial navigation system and nothing here may quietly
   become one.
@@ -355,7 +355,7 @@ receiver in neither direction, and a watch's stillness does not sleep a node's
 receiver. On hardware: `NOT EXECUTED — HARDWARE REQUIRED`, and there is no node
 hardware to execute it on.
 
-**Open.** T-112, provider disagreement between two bodies. T-080, the OD-10
+**Open.** T-132, provider disagreement between two bodies. T-080, the OD-10
 ceiling and the wearer-side gate. Which IMU part the node carries (OD-16). Every
 power figure attached to any of this is `UNKNOWN`: nothing here has been
 measured, and the saving a motion gate buys is a claim about a receiver's
