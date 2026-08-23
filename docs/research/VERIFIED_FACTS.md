@@ -565,6 +565,43 @@ BSP already demonstrated to be an incomplete description of its own board.
   the same pattern as `BSP_CAPS_IMU 0` — the BSP describes what the BSP drives,
   never what the board carries. Which GPIO each key uses is not resolved from
   text extraction and remains D5.
+- **Updated 2026-08-23 from the physical unit (S13 — pressed, not
+  photographed): there are exactly two pressable buttons on the assembled
+  case.** The owner counted them
+  ([#99](https://github.com/hleserg/Attadipa/issues/99)). That is a count of
+  *protrusions under a hand*, which is why it is S13 and not S9: S9 is four
+  photographs and is defined as silkscreen and populated-or-not only.
+- **What the count does not settle.** The drawing names three candidate inputs —
+  `Key1`, `Key3` and `PWRON` — and two buttons does not mean two of those three.
+  A single key may sit on `PWRON` **and** a GPIO in parallel, which is ordinary
+  on AXP2101 designs; `PWRON` may reach **neither** button, as on the T-Watch,
+  where it wires to SW7 and never reaches a GPIO; and `Key1` is adjacent to
+  `BOOT`, so it may never be brought out to the case at all. The schematic list
+  is itself a floor rather than a census — S6 is a text extraction whose
+  pin-to-net adjacency is only partially recoverable, and the designators are
+  `Key1` and `Key3` with **no `Key2`**. So the residue is not *which two*: it is
+  **`UNKNOWN` whether `PWRON` is under a finger on this board at all**.
+- **Why that residue is a design constraint rather than a wiring detail.**
+  `PWRON` is an AXP2101 input, not an SoC GPIO, and it can bring the system up
+  from a state in which the SoC is not running at all. A key on a GPIO cannot
+  always do that. So whether either physical button reaches `PWRON` decides what
+  the wake story can be, and whether Child Mode can have a physical control that
+  works when the screen is off — a weaker claim than *when the SoC is not
+  running*, and the two are different failures. It also lands directly on
+  `core/include/attadipa/core/power_state.h:45`, where `Button` is a single wake
+  bit covering "a physical key, including the PMU's power key": if neither case
+  button reaches `PWRON`, a `PowerOff` plan arming `Button` is accepted by
+  `wake_plan_is_legal()` and nothing but USB brings the device back. Cross-refer
+  **H5**.
+- **The decisive test is a GPIO dump, not a long press.**
+  [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) step 9 — press each key and watch
+  which pin moves — with the AXP2101 `PWRON` and IRQ registers read alongside
+  it. A long-press-to-power-off trial is worth running but **answers nothing on
+  its own**: a positive is consistent with the factory demo implementing
+  long-press-off on a GPIO key, and a negative is consistent with `PWRON`
+  power-off being disabled in a register nobody has read on this board. It also
+  tests power-*down* to infer power-*up*, and waking from SoC-off is the
+  property that matters. `NOT EXECUTED — HARDWARE REQUIRED`.
 
 ### Waveshare AXP2101 rail map, and a 1.8 V rail
 
