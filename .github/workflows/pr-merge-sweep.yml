@@ -85,14 +85,24 @@ jobs:
           # One pass over the open pull requests. `--slurp` because `--paginate`
           # alone emits one JSON array per page, which `jq` reads as several
           # documents rather than one.
+          #
+          # THE FILTER IS A PIPE, NOT `--jq`. `gh` refuses the two together --
+          # "the `--slurp` option is not supported with `--jq` or `--template`"
+          # -- so the first version of this failed on its very first run,
+          # before it had looked at a single pull request. Caught by dispatching
+          # the workflow rather than by reading it, which is the argument for
+          # dispatching a new scheduled workflow once instead of waiting for its
+          # cron. `.github/tests/gh-api-usage-test.sh` now fails the build on
+          # the combination so it cannot come back.
+          #
           # An API failure and an empty repository must not print the same
           # line: "no open pull requests" on a rate limit, a 5xx or a `gh` too
           # old for `--slurp` reads as a healthy quiet sweep, and this workflow
           # runs 48 times a day. Found in review.
           if ! PRS="$(gh api --paginate --slurp \
-            "repos/$REPO/pulls?state=open&per_page=100" \
-            --jq 'if type=="array" and (.[0]|type)=="array" then add else . end
-                  | map(.number) | .[]' 2>/tmp/pulls-err)"; then
+            "repos/$REPO/pulls?state=open&per_page=100" 2>/tmp/pulls-err \
+            | jq -r 'if type=="array" and (.[0]|type)=="array" then add else . end
+                  | map(.number) | .[]' 2>>/tmp/pulls-err)"; then
             echo "::error::could not list open pull requests ($(head -c 400 /tmp/pulls-err 2>/dev/null)); this sweep decided nothing"
             exit 1
           fi
@@ -239,14 +249,21 @@ jobs:
             # A reply from a BOT is not somebody having read the finding. Only a
             # non-bot comment after the last Codex comment counts, which is the
             # reading "when in doubt do not merge" asks for.
+            #
+            # Piped rather than `--jq`, for the reason given at the head of this
+            # step: `gh` rejects `--slurp` together with `--jq`. Here it failed
+            # QUIETLY -- both reads are `|| CODEX_*=""`, so the rejection landed
+            # as "could not read its comments, leaving it alone" on every pull
+            # request, which is the safe direction and therefore the one nobody
+            # would have chased.
             CODEX_ISSUE="$(gh api --paginate --slurp \
-              "repos/$REPO/issues/$PR/comments?per_page=100" \
-              --jq 'if type=="array" and (.[0]|type)=="array" then add else . end
+              "repos/$REPO/issues/$PR/comments?per_page=100" 2>/dev/null \
+              | jq 'if type=="array" and (.[0]|type)=="array" then add else . end
                     | map({login: .user.login, at: .created_at, bot: (.user.type == "Bot")})' \
               2>/dev/null)" || CODEX_ISSUE=""
             CODEX_REVIEW="$(gh api --paginate --slurp \
-              "repos/$REPO/pulls/$PR/reviews?per_page=100" \
-              --jq 'if type=="array" and (.[0]|type)=="array" then add else . end
+              "repos/$REPO/pulls/$PR/reviews?per_page=100" 2>/dev/null \
+              | jq 'if type=="array" and (.[0]|type)=="array" then add else . end
                     | map(select(.body != "" and .body != null)
                           | {login: .user.login, at: .submitted_at, bot: (.user.type == "Bot")})' \
               2>/dev/null)" || CODEX_REVIEW=""

@@ -81,6 +81,28 @@
 # workflow for the reason handover-decision.sh and merge-candidate.sh are: a
 # rule embedded in a workflow cannot be executed, so it cannot be tested, so
 # every defect it has ships.
+#
+# OBSERVED ON THIS BRANCH'S OWN PULL REQUEST, which is the closest thing to a
+# field test available. Run 32609977184 on #123 at 01:17 on 2026-08-23: the
+# Independent review job finished in fifteen seconds, `conclusion: success`,
+# and published nothing. The sibling guard -- the one for a model that was
+# never reached -- fired correctly, posted
+# github.com/hleserg/Attadipa/pull/123#issuecomment-5383545987 and stripped
+# `ai-review:pass`. The cause is cause 4 in its own notice: this pull request
+# edits claude-pr-review.yml, and the action refuses to run a version of itself
+# that a pull request has modified.
+#
+# Two things follow, and the second is the one to act on:
+#
+#   1. This pull request cannot receive an AI review, ever, by design. It is
+#      merged on ordinary CI and a person reading the diff, which is what its
+#      own notice says happens to changes in these files.
+#   2. Merging any change to claude-*.yml silently skips the review on every
+#      open pull request whose merge ref predates it (cause 3), until each is
+#      updated from `main`. So this one merges AFTER the reviews in flight have
+#      published, not before, and the branches still open are updated from
+#      `main` immediately afterwards. Ordering is the mitigation; there is no
+#      code fix, because the action's refusal is correct.
 
 set -uo pipefail
 

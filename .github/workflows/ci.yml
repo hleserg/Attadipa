@@ -362,6 +362,14 @@ jobs:
       - name: The review reached the pull request
         run: bash .github/tests/review-published-test.sh
 
+      # `gh` refuses `--slurp` together with `--jq`, and exits 1 before making
+      # a request. pr-merge-sweep.yml shipped with three of them: one fatal on
+      # the first dispatched run, two swallowed by `|| VAR=""` into "could not
+      # read its comments, leaving it alone" on every candidate. shellcheck saw
+      # a well-formed command and actionlint saw valid YAML.
+      - name: The gh calls in the workflows are ones gh accepts
+        run: bash .github/tests/gh-api-usage-test.sh
+
   docs:
     name: Documentation consistency
     runs-on: ubuntu-latest

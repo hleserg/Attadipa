@@ -927,3 +927,140 @@ facts that change what may be written are here.
 - **Impact:** modest but real — a bench procedure on this unit can reset it
   repeatedly without the stock firmware quietly changing the bytes underneath.
   It says nothing about what the firmware writes when a user touches it.
+
+### Only the low 16 MB of this board's flash is bootable, and the vendor ships a partition above the line
+
+- **Claim:** the ESP32-S3 ROM and this board's second-stage bootloader address
+  flash with **24 bits**, so `0x1000000` aliases to `0x0`. The vendor's `ota_1`
+  partition sits at exactly `0x1000000` and **can never boot**.
+- **Source:** S13. A valid, verified app image was written into the erased
+  `ota_1` and selected via `otadata`. The bootloader reported
+  `segment 0: paddr=01000020 vaddr=3fce2820 size=01700h` and rejected it —
+  and `vaddr=0x3fce2820, size=0x1700` is byte-identical to the segment-0 header
+  of **the bootloader itself at flash `0x0`**. Independently, `esptool --no-stub`
+  refuses the address in words: *"Can't access flash regions larger than 16MB"*.
+  The stub flasher has 32-bit addressing, which is why the write verified and the
+  boot did not.
+- **Impact, and it is a design constraint rather than a curiosity.** **Every app
+  partition Attadipa places on this board must live below 16 MB.** On a 32 MB part
+  that leaves the upper half for data only, and even that depends on the
+  *application's* flash driver having 32-bit addressing — untested here. A
+  partition table is not self-validating: `ota_1` is well-formed, correctly sized,
+  correctly typed and dead, and no tool in the chain warns about it.
+
+### A PURE_RAM_APP runs on this board — but only if the serial port is never closed
+
+- **Claim:** `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y` images load over
+  USB-Serial/JTAG and **run**, writing nothing to flash. The four earlier runs
+  that reset within milliseconds were killed by `esptool` exiting: the kernel
+  drops DTR and RTS on the *last* close of a `ttyACM`, and on this board those
+  lines are GPIO0 and EN.
+- **Source:** S13. Decisive test — `esptool` used as a library in one process so
+  the port is never closed (`detect_chip` → `cmds.load_ram` → read `esp._port`
+  directly), run against the *same* minimal driverless image that had failed as
+  attempt 4. Fifteen seconds watched: no `rst:0x`, no `ESP-ROM:` banner, ESP-IDF's
+  own startup log instead. Four further images ran the same way — the bench probe
+  for 30 s, the pedometer probe for **two minutes**, the touch probe for 25 s and
+  the register restore for 8 s — each running to the end of its watch window.
+- **The reset cause was the evidence all along.** `rst:0x15
+  (USB_UART_CHIP_RESET)` is by definition a **host-driven** reset through the
+  USB-Serial/JTAG peripheral; no misbehaving image produces it. Two other
+  host-side causes were correctly eliminated first (`--after no-reset`; pyserial
+  asserting DTR/RTS on `open()`), and neither touched esptool's own close.
+- **A second, independent cause of silence** applied to attempt 4: it was built
+  with `CONFIG_ESP_CONSOLE_NONE=y` and
+  `CONFIG_ESP_CONSOLE_ROM_SERIAL_PORT_NUM=-1`, so its `esp_rom_printf` output had
+  nowhere to go. In RAM images on this board, use `ESP_LOGx` or `printf`.
+- **Impact:** **this retracts the earlier entry that recorded the RAM route as
+  dead, and the `BLOCKED` that rested on it.** No partition holding vendor
+  firmware needs overwriting; read-only bench work on this unit costs no flash
+  write at all.
+
+### The main I2C bus, scanned from a RAM app — five devices, and 0x6B settles a conflict
+
+- **Claim:** on SDA 15 / SCL 14 at 100 kHz, exactly five devices acknowledge:
+  `0x18` (ES8311), `0x34` (AXP2101, `IC_TYPE = 0x4A`), `0x40` (ES7210), `0x51`
+  (RTC) and `0x6B` (QMI8658). **`0x6A` does not answer**, and neither does
+  `0x38`.
+- **Source:** S13, the bench probe running from RAM under the vendor's own power
+  configuration. Read-only: every access is an I2C write-then-read whose write
+  phase carries a register address and never a value.
+- **Impact, in descending order:**
+  - The IMU address conflict is **RESOLVED at `0x6B`** by measurement. The
+    schematic and QMI8658 revisions 0.8/0.9/A are right; the Rev 0.6 document
+    Waveshare's own wiki links, which maps SA0-low to `0x6A`, does not describe
+    this board.
+  - **`0x0C`, `0x0D` and `0x1E` are free**, so a magnetometer retrofit (T-109)
+    has an address to live at.
+  - **The touch controller is not reachable** in the state a bare RAM app finds
+    the board in — see the next entry.
+
+### The QMI8658 reports REVISION_ID 0x7C, which is the datasheet with a pedometer in it
+
+- **Claim:** at `0x6B`, `WHO_AM_I = 0x05` and **`REVISION_ID = 0x7C`**. The
+  register-description sections of the two candidate documents give different
+  values for that byte: **`0x7C` in `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`**
+  (© 2022 QST), whose chapter 11 documents a complete hardware pedometer, and
+  `0x79` in the `QMI8658C` Rev 0.6 ADVANCE INFORMATION document, which marks
+  `CTRL8` *"Reserved: Not Used"* and has no step counter.
+- **Corroborated by writing, not only by reading.** With the accelerometer
+  configured per Rev A Table 22 — `CTRL2 = 0x26` (±8 g, 125 Hz), `CTRL7 = 0x01`
+  (`aEN`), `CTRL8 = 0x90` (`Pedo_EN` + `STATUSINT` handshake) — all three
+  registers acknowledged and **read back exactly as written, `CTRL8` included**.
+  The accelerometer then reported a stationary board at
+  `(-0.04, 0.26, -1.00) g`, magnitude **1.03 g**: Rev A's ±8 g / 4096 LSB-per-g
+  scaling produces gravity to within 3.4 %, so the full-scale encoding matches
+  the silicon too. The registers read `CTRL2 = 0x24, CTRL7 = 0x03, CTRL8 = 0x00`
+  beforehand — the vendor's firmware had the IMU configured and running.
+- **Source:** S13, `pedoram` probe from RAM. It writes those three IMU control
+  registers and nothing else on any device; the QMI8658 has no non-volatile
+  configuration, and the probe restores the defaults on exit.
+- **Impact:** **H14 resolves — both halves.** Rev A is the register map to
+  program against, and the part name on the schematic (`QMI8658C`, printed twice)
+  did not predict it. This is [ADR-0003](../adr/0003-radio-not-lora.md)'s lesson
+  in a second subsystem. OD-6's mandatory pedometer has a documented hardware
+  engine to use.
+- **NOT EXECUTED — HARDWARE REQUIRED:** that the pedometer *counts*. Step count
+  stayed 0 and `STATUS1` stayed `0x00` throughout, on a board lying on a desk —
+  which is the correct reading for a stationary board and no evidence either way.
+  Chapter 11's engine has to be walked. T-112.
+
+### The touch controller is held in reset until GPIO 9 is pulsed low then high
+
+- **Claim:** `0x38` does not acknowledge at all when a RAM app that initialises
+  nothing else scans the bus. Driving GPIO 9 **high** and holding it changes
+  nothing. **Pulsing GPIO 9 low for 10 ms and back high** makes it appear, and it
+  then reads chip ID (`0xA3`) `0x64`, firmware version (`0xA6`) `0x02` and vendor
+  ID (`0xA8`) `0x11`.
+- **Source:** S13, a RAM probe that scans, drives, pulses and rescans in one run —
+  five devices, five devices, then six.
+- **Impact:** **touch is not reachable just because the I2C bus is up.** The reset
+  *edge* is what brings the controller up, not the level, so a BSP that merely
+  configures GPIO 9 as a high output at init sees an empty bus and no error. This
+  belongs in the board layer. It also confirms the `0x38` address itself, which
+  [HARDWARE_MATRIX](HARDWARE_MATRIX.md) had as *"driver source only, no datasheet
+  states it"*.
+- **UNKNOWN, and not claimed:** which part number `0x64` denotes. `0x11` is
+  FocalTech's vendor byte and `0x64` is the chip ID the FT5x06/FT6x36-family
+  drivers expect — consistent with an FT3168 behind that driver, but no FT3168
+  datasheet has been obtained. T-113.
+
+### The vendor's own boot log, and four things it settled for free
+
+- **Claim, all read from the unit's own firmware booting unaided:** octal PSRAM
+  enumerated by the `octal_psram` driver at 80 MHz with 10-cycle fixed read
+  latency and 32-byte hybrid-wrap bursts (**D12a confirmed on silicon**); the SD
+  card driven through `sdmmc_common`/`vfs_fat_sdmmc` rather than `sdspi`
+  (**D14 resolved**); `sh8601: LCD panel create success, version: 1.0.2` followed
+  by `Backlight on`; flash booted **QIO at 80 MHz**, `detected chip: gd`, 32 MB;
+  `chip revision: v0.2`; `efuse block revision: v1.4`;
+  `QMI8658 initialized successfully`.
+- **Source:** S13 — the boot log captured from **62 ms** after reset, which took
+  resetting over the CDC control lines rather than with esptool; the ordinary
+  route reconnects at ~580 ms, by which time the bootloader has already chosen a
+  partition and moved on.
+- **Impact:** this is the vendor's firmware describing the vendor's board, which
+  is a better witness than any inference from a datasheet. Note what it does
+  **not** say: the QMI8658 line names no I2C address — the bus scan above
+  settles `0x6B` by measurement instead — and the `sh8601` line is evidence about
+  the driver rather than about the die.

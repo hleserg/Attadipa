@@ -440,18 +440,21 @@ available on this board.
 
 ## Blocked
 
-- **T-061 the pedometer** — partly, and less than before. T-060a settled the
-  BMA423 side: the power story is **13–14 µA at 50 Hz in low-power mode**, the
-  counter runs while the host sleeps, and the wrist preset is already the
-  default. What remains blocked is the **Waveshare** side — the board's IMU
-  variant is unknown, the QMI8658**C** documents a pedometer and the QMI8658A's
-  **current** datasheet revision has deleted one — and one board question that
-  is nobody's datasheet, and which is **already filed as [H8](docs/research/OPEN_QUESTIONS.md)**
-  rather than new: whether the AXP2101 keeps the IMU's rail up across an
-  SoC sleep. If it does not, the 6 kB blob is gone and the 150 ms is owed again
-  on every wake. **Both are now bench questions rather than reading questions** —
-  the Waveshare is on the desk, so `WHO_AM_I` settles the variant and a rail
-  measurement across a sleep settles H8. Neither has been done.
+- **T-061 the pedometer** — down to one question, and it is not a reading
+  question. T-060a settled the BMA423 side: **13–14 µA at 50 Hz in low-power
+  mode**, the counter runs while the host sleeps, and the wrist preset is already
+  the default. The Waveshare side was blocked on *which* QMI8658 document
+  describes the silicon, and **the silicon answered on 2026-08-23**:
+  `REVISION_ID = 0x7C`, the QMI8658A `13-52-25` Rev A value, against `0x79` for
+  the QMI8658C Rev 0.6 document that has no pedometer in it. `CTRL8 = 0x90` was
+  written and read back exactly — the register Rev 0.6 calls *"Reserved: Not
+  Used"*. So the hardware engine is documented and the register map is settled.
+  What is left is **T-112: someone has to walk with the watch.** Step count
+  stayed 0 on a board lying on a desk, which is the correct reading and no
+  evidence either way.
+  Still open beside it, and unchanged: **[H8](docs/research/OPEN_QUESTIONS.md)** —
+  whether the AXP2101 keeps the IMU's rail up across an SoC sleep. If it does
+  not, the 6 kB blob is gone and the 150 ms is owed again on every wake.
 - **T-010 board bring-up** — **half unblocked as of 2026-08-22.** A physical
   Waveshare `ESP32-S3-Touch-AMOLED-2.06` is on the desk; a T-Watch is not, and
   the T-Watch's variant question (which of five radios, which of two GNSS
@@ -583,6 +586,81 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   Labs datasheets, which refused automated retrieval. Recorded as **PARTIAL**,
   not VERIFIED.
 
+## The bench session of 2026-08-23
+
+The owner authorised flashing the unit
+([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing
+needed to be flashed** — the bench sequence ran out of RAM, wrote nothing, and
+the unit is byte-identical to the T-099 backup with `verify-flash` over all
+33 554 432 bytes to say so. Full write-up:
+[WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md).
+
+### Two routes tried; the second one works
+
+- **`ota_1` can never boot.** It sits at exactly `0x1000000`, and the ROM and
+  second-stage bootloader address flash with 24 bits, so the address **aliases to
+  `0x0`** — the bootloader read its own image and said so. Waveshare ships a
+  partition table containing an OTA slot their own bootloader cannot use. **For
+  Attadipa: every app partition on this board lives below 16 MB**, unless somebody
+  proves ESP-IDF's experimental `BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH` on it,
+  which nobody has.
+- **A `PURE_RAM_APP` runs fine — if the serial port is never closed.** Four
+  earlier attempts reset within milliseconds and were written up as proof the
+  board refuses RAM images. They were not: the kernel drops DTR and RTS on the
+  *last* close of a `ttyACM`, those lines are GPIO0 and EN here, and `esptool`
+  exiting was itself the reset. `rst:0x15 (USB_UART_CHIP_RESET)` says *the host
+  did it* and should have been read that way the first time. Driving `load-ram`
+  from a single process that never closes the port, the same driverless image
+  that "failed" ran to the end of every watch window — up to two minutes, across
+  five images. Nothing was watched for longer than that, so "runs indefinitely"
+  would be an estimate wearing a measurement's clothes.
+
+### What the probes then read off the board, without one flash write
+
+- **The IMU is at `0x6B`, measured** — `0x6A` does not answer. The address
+  conflict is resolved; the schematic and revisions 0.8/0.9/A were right.
+- **H14 resolves, and it matters for OD-6.** The QMI8658 reports
+  `REVISION_ID = 0x7C` — the value in `13-52-25 ∙ QMI8658A ∙ Rev A`, whose
+  chapter 11 documents a hardware pedometer. The QMI8658C Rev 0.6 document, which
+  has no pedometer and calls `CTRL8` *"Reserved: Not Used"*, gives `0x79`. **The
+  schematic prints `QMI8658C` twice and it does not describe this part.**
+  Corroborated by writing: `CTRL2`/`CTRL7`/`CTRL8` all read back exactly as
+  written, and the accelerometer reported gravity at 1.03 g under Rev A's ±8 g
+  scaling. What is left is T-112 — someone has to walk with it.
+- **Touch is held in reset until GPIO 9 is pulsed.** `0x38` is absent from the
+  bus scan; driving GPIO 9 high and holding it changes nothing; **a 10 ms low
+  pulse brings it up**, reading chip ID `0x64`, firmware `0x02`, vendor `0x11`.
+  A BSP that configures GPIO 9 as a high output at init would see an empty bus
+  and report no error. T-113.
+- **`0x0C`, `0x0D` and `0x1E` are free** for the magnetometer retrofit (T-109).
+- **The AXP2101's rail registers are recorded raw** — `IC_TYPE = 0x4A`,
+  `LDO_ON_OFF0 = 0xFF`, the DCDC and ALDO/BLDO voltage bytes — read from the
+  powered board without writing anything. That is the input D13 and H8 were
+  waiting for; decoding it into a rail map still needs the datasheet beside it.
+
+### And the vendor's own boot log, captured from 62 ms
+
+Which took resetting over the CDC control lines, because the ordinary route
+reconnects at ~580 ms and misses the bootloader's decision entirely. It settled
+four more things at no cost:
+
+- **D12a is now confirmed on silicon.** The `octal_psram` driver enumerates the
+  part: `vendor id 0x0d (AP)`, `density 0x03 (64 Mbit)`, `VCC 0x01 (3V)`,
+  `Readlatency 0x02 (10 cycles@Fixed)`, `Found 8MB PSRAM device`, `Speed: 80MHz`.
+  A quad part would not have loaded that driver. This is step 4 of
+  `WAVESHARE_ARRIVAL` §5, executed — and the latency and burst figures are the
+  real numbers to redo §3.3's bandwidth arithmetic against.
+- **D14 closes: the SD card is SDMMC.** The vendor's firmware calls
+  `sdmmc_common`/`vfs_fat_sdmmc`, not `sdspi`. The schematic's `MOSI`/`SCK`/`MISO`
+  net names are labels, not a mode.
+- **`esp_lcd_sh8601` initialises this panel** — `LCD panel create success,
+  version: 1.0.2`, then `Backlight on`. That is evidence about the driver, not
+  about the die, so the CO5300 row stands; what it settles is that the
+  documented mismatch will not bite at bring-up.
+- **Flash boots QIO at 80 MHz**, `detected chip: gd`, 32 MB; `chip revision
+  v0.2`; `efuse block revision v1.4`; `QMI8658 initialized successfully` — which
+  names no address; the bus scan above settles `0x6B` by measurement instead.
+
 ## Recently completed
 
 - **The review can be reached, paid for, and never publish — and the job goes
@@ -624,6 +702,45 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   written down as asymmetric: a missed silence leaves a stale label the merge
   rule already refuses, an invented one destroys a review. Every fact it cannot
   read therefore comes out `unknown` and changes nothing.
+
+  **The sibling guard then fired on this branch's own pull request**, which is
+  the closest thing to a field test on offer. Run 32609977184 on #123, 01:17 on
+  2026-08-23: the *Independent review* job finished in **fifteen seconds** with
+  `conclusion: success` and published nothing. The already-shipped guard — the
+  one for a model that was never reached — posted its notice and stripped
+  `ai-review:pass`, correctly. The cause is cause 4 in that notice's own list:
+  #123 edits `claude-pr-review.yml`, and the action refuses to run a version of
+  itself that a pull request has modified.
+
+  **The consequence is an ordering constraint, and it is the thing to remember
+  rather than the incident.** Cause 3 is the same refusal seen from the other
+  side: merging *any* change to `claude-*.yml` silently skips the review on
+  every open pull request whose merge ref predates the merge, until each is
+  updated from `main`. With reviews in flight on several branches at once, a
+  change to those files merges **last**, and every branch still open is updated
+  from `main` immediately afterwards. There is no code fix — the action's
+  refusal is correct and is what stops a pull request supplying the prompt that
+  reviews it — so the mitigation is sequencing, and it belongs written down.
+- **The unattended merge sweep failed before it looked at a single pull
+  request.** `pr-merge-sweep.yml` merged green on 2026-08-23 and its cron had
+  not yet registered, so it was dispatched by hand to get the evidence its own
+  merge commit recorded as `NOT EXECUTED`. It exited 1 in eleven seconds:
+  `gh` refuses `--slurp` together with `--jq` — *"the `--slurp` option is not
+  supported with `--jq` or `--template`"* — and returns before making a request.
+  The workflow carried the combination three times. The first is the fatal one;
+  the other two are worse, because both are `|| CODEX_*=""` and the rejection
+  therefore landed as *"could not read its comments, leaving it alone"* on every
+  candidate — a sweep that decides nothing and reads as a sweep with nothing to
+  decide, 48 times a day. Nothing in the repository could have caught it:
+  shellcheck saw a well-formed command, actionlint saw valid YAML, and the
+  workflow only runs on a schedule. Fixed by piping into a separate `jq`, which
+  is what `agent-queue-watchdog.yml` already did and is why the watchdog was
+  unaffected, plus `.github/tests/gh-api-usage-test.sh` — a scan over every
+  workflow, with seven fixtures proving the scan itself catches the shape and
+  leaves the recommended one alone, verified to flag all three lines on the tree
+  as it was. The general lesson is the one that produced this: **dispatch a new
+  scheduled workflow once by hand instead of waiting for its cron**, because
+  reading it had already passed it.
 
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the
