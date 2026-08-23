@@ -1073,3 +1073,69 @@ separately from its firmware, which cellular module the node will carry, and
 which tower database may lawfully be shipped in a product. The first is research
 and is filed; the last two are the owner's.
 
+
+---
+
+## OD-21 — The owner is addressed in Russian, and the split is by reader, not by surface
+
+**Decided:** 2026-08-22, in a working session, restated the same day after an
+agent had drifted back into English mid-conversation. Not on a GitHub issue,
+which is why there is no issue link here — recorded now because a rule this
+broad living only in a chat log is the failure `CLAUDE.md:17` names.
+
+**Numbering:** OD-16 through OD-20 are allocated to open pull requests (#92,
+#94, #97, #95, #112) that had not merged when this was written; OD-21 is the
+next free number after them. Whichever of those merges out of order,
+`tools/docs/check_docs.py` refuses a duplicate `## OD-` heading, so a collision
+is a failed CI run rather than two decisions under one name.
+
+**What was decided.** The owner speaks Russian and is to be addressed in
+Russian. This is not a preference to accommodate where convenient; the owner
+had asked before, and asked again with visible irritation because agents kept
+reverting. The instruction is recorded here in substance rather than quoted
+verbatim: it was given in a private session, in blunt terms, and this
+repository is public — the wording is the owner's to publish, not an agent's.
+
+**What it obliges.**
+
+1. **The split is by reader.** Anything the repository, CI or another agent
+   reads is English: code, comments, documentation, commit messages, branch
+   names, pull request titles and bodies, review findings. Anything addressed
+   to the owner is Russian.
+2. **A GitHub comment is not automatically "the repository".** The owner
+   comments on issues in Russian — OD-12, OD-13, OD-14 and OD-15 were each
+   decided that way, on #41, #33, #55 and #57, and
+   `.github/scripts/intake-decision.sh` lowercases multibyte-safely with the
+   comment *"frequently in Russian"* beside it. A reply to the owner on an
+   issue is conversation that happens to be hosted in a repository.
+3. **Owner-facing blocks on a public surface are bilingual**, English first and
+   Russian below, the shape `docs/automation/HANDOFF_LOCAL_CODER.md` already
+   uses. This covers the `BLOCKED` block, the `needs-owner` escalation, the
+   `OWNER DECISION REQUIRED` block, and the plan/progress/outcome narration
+   `claude-agent.yml` requires. Two things are true at once — the reader is one
+   person, and anybody can read it — and the bilingual form is the only shape
+   that serves both. For the unattended workflows, which run with
+   `show_full_output: false`, an issue comment is the *only* owner-facing
+   channel that exists.
+4. **Technical terms stay in English inside a Russian sentence**, which
+   `docs/automation/attadipa-backstop-routine.md` already specifies for its own
+   report and which is now the general rule rather than one routine's local
+   habit.
+
+**What it invalidates.**
+
+- `CLAUDE.md`'s Conventions bullet as first written on branch
+  `docs/conversation-language`, which enumerated "GitHub issue and review
+  comments" under *the repository is English* — routing the owner's own channel
+  to the language he had just asked agents to stop using. Corrected in the same
+  pull request, #126, after review.
+- The reading that the exception list is "the two specification documents".
+  Since #118 it is those two **and** everything under `docs/ideas/`, which
+  `docs/ideas/README.md` places on the same footing.
+- Any inference that a live session and an unattended workflow have different
+  obligations here. They do not; only the *surface* differs, and item 3 says
+  what that changes.
+
+**What it does not decide.** Nothing about product localisation. `l10n/` and
+ADR-0010 govern the strings a *user* sees on a device, and this decision does
+not reach the fallback chain, the plural rules or glyph coverage.

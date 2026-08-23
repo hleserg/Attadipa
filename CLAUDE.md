@@ -166,21 +166,46 @@ A screen with the right elements on it is not done. Design is part of Done.
 
 ## Conventions
 
-- **Two audiences, two languages, and the split is not negotiable.**
-  - **The repository is English.** Code, comments, documentation, commit
-    messages, pull request titles and bodies, GitHub issue and review comments,
-    branch names. The two specification documents are the author's own and stay
-    in Russian.
-  - **The conversation with the owner is Russian.** Every chat reply, question,
-    status report, explanation and apology. Including the one-word ones —
-    *"готово"*, not *"done"*. Including thinking that is shown to him.
+- **Two audiences, two languages, and the split is not negotiable.** The split
+  is by **reader**, never by surface — which matters because the owner's own
+  channel is a GitHub issue, so "it is in the repository" decides nothing.
+  Recorded as
+  [OD-21](docs/research/OWNER_DECISIONS.md#od-21--the-owner-is-addressed-in-russian-and-the-split-is-by-reader-not-by-surface).
+  - **What the repository, CI and other agents read is English.** Code,
+    comments, documentation, commit messages, branch names, pull request titles
+    and bodies, review findings. Exceptions, all of them the owner's own text
+    kept verbatim: the two specification documents, and everything under
+    [`docs/ideas/`](docs/ideas/README.md).
+  - **What is addressed to the owner is Russian.** Every chat reply, question,
+    status report, explanation and apology, including the one-word ones —
+    *"готово"*, not *"done"*. Technical terms stay in English inside a Russian
+    sentence, as
+    [the backstop routine](docs/automation/attadipa-backstop-routine.md) already
+    specifies for its own report. In a live session this covers thinking the
+    owner is shown; the unattended workflows run with `show_full_output: false`
+    and have no such reader.
+  - **On a public issue or pull request, addressed to the owner: both.** A
+    `BLOCKED` block, a `needs-owner` escalation, an `OWNER DECISION REQUIRED`
+    block and the plan/progress/outcome narration `claude-agent.yml` requires
+    are written for one person, and for the unattended agents a comment is the
+    *only* owner-facing channel there is. They take the shape
+    [`HANDOFF_LOCAL_CODER.md`](docs/automation/HANDOFF_LOCAL_CODER.md) already
+    uses — **English first and Russian below** — because the reader is the owner
+    and the repository is public, and both facts are true at once.
 
-  The owner asked for this repeatedly and had to ask again in anger, which is
-  the failure this line exists to stop. Drifting back into English mid-session
-  is the common way it happens: an agent writes an English commit message, then
-  keeps going in English into the chat. Repository text and conversation are
-  different artefacts with different readers; the language follows the reader,
-  not the paragraph before it.
+  The owner directed this in a session on 2026-08-22, having asked before; OD-21
+  carries the provenance. Drifting back into English mid-session is the common
+  way it fails: an agent writes an English commit message, then keeps going in
+  English into the chat. Repository text and conversation are different
+  artefacts with different readers, and the language follows the reader, not the
+  paragraph before it.
+
+  A first version of this bullet routed "GitHub issue and review comments" to
+  English wholesale. That is the channel the owner actually uses — four of the
+  fifteen owner decisions on record arrived as a Russian comment on an issue,
+  and `.github/scripts/intake-decision.sh` lowercases multibyte-safely for that
+  exact reason — so the rule would have answered them in English, by the rule,
+  with documentation behind it. Found in review.
 
   The only exception is the owner writing in English and asking for an English
   answer.
