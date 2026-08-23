@@ -138,7 +138,7 @@ execution path had already been flagged once in review of
 
 > **Not landed yet.** The change is entirely inside `.github/workflows/`, which
 > a GitHub App may not push without the `workflows` permission, so it is parked
-> as [`pending/133-orchestration-bundle.patch`](pending/133-orchestration-bundle.patch)
+> as `pending/133-orchestration-bundle.patch` ([how](pending/README.md))
 > for the owner to apply. Everything below describes the patched workflows; on
 > `main` the hand-over still reads its helpers from the workspace. Applying the
 > patch is what makes this section true.

@@ -242,7 +242,7 @@ and does not talk over it.
 
 **"On every exit path" includes the one where the step cannot read its own
 wording** — or it will, once
-[`pending/133-orchestration-bundle.patch`](pending/133-orchestration-bundle.patch)
+`pending/133-orchestration-bundle.patch` ([how](pending/README.md))
 is applied; the change is in `.github/workflows/`, which the agent's token may
 not push. Under that patch `agent-say.sh` and the three decision scripts beside
 it are staged from the default branch before the session starts, never read from
