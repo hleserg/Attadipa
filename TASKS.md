@@ -142,6 +142,27 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-126 · The merge sweep has still never merged anything
+- **Priority:** P1
+- **Dependencies:** the `--slurp`/`--jq` fix, which is what this checks.
+- **Goal:** `pr-merge-sweep.yml` has run exactly once, by hand, and exited 1 in
+  eleven seconds without reading a pull request. The fix is argued and unit
+  guarded, but the workflow's own claim — that it merges what is finished — is
+  still `NOT EXECUTED`. A workflow that has never completed its loop is not a
+  working workflow, however good the diff looks.
+- **Acceptance:** a dispatched run that reaches `sweep finished, N merged` and
+  prints a per-candidate line for every open pull request, with the reason each
+  was held. Then a run that actually merges one, on a pull request that was
+  going to be merged anyway. Both run IDs recorded here. Until that second run
+  exists, the orchestrator merges by hand and does not treat the sweep as cover.
+- **Watch for:** the two conditions that can only fail on a real repository and
+  not in a unit test — `mergeStateStatus` values GitHub returns that
+  `merge-candidate.sh` does not enumerate, and a `gh pr merge` refused by branch
+  protection, which the workflow deliberately turns into one loud failure rather
+  than 48 quiet warnings a day.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-131 · The unattended agent's owner-facing comments are English, and OD-21 says they must not be
