@@ -138,11 +138,19 @@ void DebugServer::queue(const std::uint8_t* payload, std::size_t length)
         return;
     }
     if (out_.size() - out_sent_ + n > kOutputMax) {
-        std::fprintf(stderr, "debug: the client stopped reading; dropping the connection\n");
-        if (client_fd_ >= 0) {
-            ::close(client_fd_);
-            client_fd_ = -1;
-        }
+        // Marked, not closed here. The old spelling called `::close()` behind
+        // `poll`'s back: `out_`, `out_sent_` and the decoder kept a dead
+        // connection's state, the bridge was never told, and the next loop
+        // iteration `recv`'d on `-1` -- so the disconnect was reported as
+        // `Bad file descriptor`. The cleanup was right and the diagnosis was a
+        // lie.
+        //
+        // `drop_client` is the one path that resets all of it, but calling it
+        // from here would re-enter `Bridge::on_disconnect` from inside the
+        // bridge's own `emit` callback, while it is mid-`handle`. That is a
+        // worse bug than the one being fixed, so the overflow is recorded and
+        // `poll` acts on it at a point where the bridge is not on the stack.
+        overflowed_ = true;
         return;
     }
     out_.insert(out_.end(), frame, frame + n);
@@ -182,7 +190,8 @@ void DebugServer::drop_client(std::uint32_t now_ms, debug::Bridge& bridge, const
     }
     decoder_.reset();
     out_.clear();
-    out_sent_ = 0;
+    out_sent_   = 0;
+    overflowed_ = false;
 
     // Everything that client was holding is lifted, and nothing a person is
     // holding is touched. This is the whole reason input events carry an origin.
@@ -250,6 +259,15 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
         // continues for as long as the hold does. No `flush` -- `tick` only
         // pushes into the input queue and ignores its `emit`.
         bridge.tick(now_ms, &DebugServer::emit, this);
+        return;
+    }
+
+    // A write that overflowed the watermark during the last frame's dispatch.
+    // Handled here, before any reading, because the client is not going to be
+    // read from again -- and handled *outside* the bridge's callback, which is
+    // the whole reason `queue` only set a flag.
+    if (overflowed_) {
+        drop_client(now_ms, bridge, "the client stopped reading");
         return;
     }
 

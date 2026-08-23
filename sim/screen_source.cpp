@@ -43,7 +43,17 @@ bool LvglScreenSource::stable_since(std::uint32_t ms) const
     // indev. `lv_display_get_inactive_time(nullptr)` reports the *smallest*
     // inactive time across all displays, not the default one's -- which is the
     // conservative answer, and identical here because the simulator has one.
-    return lv_display_get_inactive_time(nullptr) >= ms;
+    //
+    // Input idleness alone is **not** what the host is waiting for. LVGL stamps
+    // `last_activity_time` from input processing and from an explicit
+    // `lv_display_trigger_activity()` only: a running `lv_anim`, a pending
+    // refresh and a timer-driven redraw touch none of it. So a tap that starts
+    // an 800 ms transition would be "stable" 300 ms later and the screenshot
+    // after it would catch the transition halfway, under a step that reported
+    // success. `lv_anim_count_running()` closes that, and the two together are
+    // what "the interface has settled" has to mean for a screenshot to be
+    // evidence about a finished frame.
+    return lv_anim_count_running() == 0 && lv_display_get_inactive_time(nullptr) >= ms;
 }
 
 const char* LvglScreenSource::build_id() const

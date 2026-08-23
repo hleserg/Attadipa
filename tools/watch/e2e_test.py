@@ -149,6 +149,15 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
               f"and says it is a simulator, not hardware: '{hello.build}'")
         check(caps.width > 0 and caps.height > 0,
               f"it reports a panel: {caps.width}x{caps.height}")
+
+        # Everything injected below is in **logical** coordinates, which is what
+        # `screen_size()` reports and what `core/input.h` says an injected point
+        # already is. `caps.width/height` is the framebuffer, and the two differ
+        # by a transpose on DEG90 and DEG270. Both boards report DEG0 today, so
+        # the wrong one passed -- the same identity the PNG assertion below
+        # refuses to rely on, and there is no reason for this file to assert it
+        # in one direction and deny it in the other.
+        inject_w, inject_h = watch.screen_size()
         check(caps.max_touch_points == 1,
               "and one touch point -- single touch, asserted about LVGL's pointer device")
         check(len(caps.buttons) >= 1, f"and {len(caps.buttons)} button(s)")
@@ -193,7 +202,7 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         check(blue == (0, 0, 255), f"the blue swatch is pure blue: {blue}")
 
         print("\ninput")
-        watch.tap(caps.width // 2, caps.height // 2)
+        watch.tap(inject_w // 2, inject_h // 2)
         time.sleep(0.3)
         _, after_tap = watch.save_screenshot(os.path.join(workdir, "02.png"))
         check(after_tap.rgb != rgb, "a tap changes the screen")
@@ -201,8 +210,8 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         # The assertion that a swipe is a real sequence: the diagnostic screen
         # draws one dot per point it received, so a swipe delivered as a single
         # artificial jump leaves two dots and a real one leaves a line.
-        watch.swipe((int(caps.width * 0.85), int(caps.height * 0.25)),
-                    (int(caps.width * 0.15), int(caps.height * 0.80)), duration=0.5)
+        watch.swipe((int(inject_w * 0.85), int(inject_h * 0.25)),
+                    (int(inject_w * 0.15), int(inject_h * 0.80)), duration=0.5)
         time.sleep(0.3)
         swipe_path = os.path.join(workdir, "03.png")
         watch.save_screenshot(swipe_path)
@@ -234,8 +243,8 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         # coordinates. The diagnostic screen counts LVGL's own LV_EVENT_CLICKED,
         # so the interface's view is legible in a screenshot.
         before_clicks = lvgl_clicks(watch, workdir, "06-before.png")
-        watch.tap(int(caps.width * 0.30), int(caps.height * 0.45))
-        watch.tap(int(caps.width * 0.70), int(caps.height * 0.45))
+        watch.tap(int(inject_w * 0.30), int(inject_h * 0.45))
+        watch.tap(int(inject_w * 0.70), int(inject_h * 0.45))
         time.sleep(0.4)
         after_clicks = lvgl_clicks(watch, workdir, "06-after.png")
         check(after_clicks < CLICK_MARK_CAP,
@@ -268,7 +277,7 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         except WatchError as exc:
             check("no button called" in str(exc), f"an unknown button is refused: {exc}")
         try:
-            watch.tap(caps.width + 100, 0)
+            watch.tap(inject_w + 100, 0)
             check(False, "a coordinate off the screen was accepted")
         except WatchError as exc:
             check("outside the" in str(exc), f"a coordinate off the screen is refused: {exc}")

@@ -538,6 +538,49 @@ def an_abandoned_transfer_evicts_the_oldest_id() -> None:
           "and what it keeps is the newest, which is what the eviction claims")
 
 
+def an_error_code_this_build_does_not_know_is_still_a_sentence() -> None:
+    from watch.client import Watch  # noqa: PLC0415
+
+    # `ErrorCode` is documented appended, never renumbered, so a device one
+    # version ahead sends a value this checkout has no name for. The old code
+    # called `p.ErrorCode(raw)` on it, and the resulting bare `ValueError` is
+    # neither `WatchError` nor `ProtocolError`: it escaped `main()`'s handler
+    # and `scenario.py`'s, so `cmd_run` never reached its cleanup `input_reset`
+    # and the scenario left a finger down until the 30-second expiry.
+    ahead = Watch(ScriptedDevice(
+        lambda e: [_reply_to(e, p.Op.ERROR, struct.pack("<H", 11))]), timeout=1.0)
+    try:
+        ahead.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,))
+        check(False, "an unknown error code was not reported at all")
+    except p.ProtocolError as exc:
+        check("11" in str(exc), f"the unknown code is named: {exc}")
+        check("newer build" in str(exc), "and the reader is told what to suspect")
+    except Exception as exc:  # noqa: BLE001
+        check(False, f"an unknown error code raised {type(exc).__name__}: {exc}")
+
+    # A known one still reads as a sentence rather than an enum name.
+    known = Watch(ScriptedDevice(
+        lambda e: [_reply_to(e, p.Op.ERROR,
+                             struct.pack("<H", int(p.ErrorCode.BAD_INPUT)))]), timeout=1.0)
+    try:
+        known.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,))
+        check(False, "a known error code was not reported at all")
+    except p.ProtocolError as exc:
+        check("impossible from the current state" in str(exc),
+              f"a known code keeps its human sentence: {exc}")
+
+    # An ERROR with no code at all is the third case, and it used to become
+    # `ErrorCode.NONE` -- a code the device never sent.
+    silent = Watch(ScriptedDevice(
+        lambda e: [_reply_to(e, p.Op.ERROR, b"")]), timeout=1.0)
+    try:
+        silent.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,))
+        check(False, "an empty error body was not reported at all")
+    except p.ProtocolError as exc:
+        check("said nothing about why" in str(exc),
+              f"an error with no code says so: {exc}")
+
+
 CASES = (
     fixed_vectors,
     framing_round_trip,
@@ -566,6 +609,7 @@ CASES = (
     a_stability_wait_that_never_settles_says_so,
     a_finished_screenshot_blacklists_nothing,
     an_abandoned_transfer_evicts_the_oldest_id,
+    an_error_code_this_build_does_not_know_is_still_a_sentence,
 )
 
 

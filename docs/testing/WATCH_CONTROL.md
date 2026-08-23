@@ -26,7 +26,7 @@ real framebuffer and a real input path, on a desktop.
 | colour choice, contrast, both themes | refresh rate, tearing, ghosting |
 | navigation paths and what each one reaches | touch sensitivity, palm rejection, wet fingers |
 | touch-target geometry and reachability | readability in sunlight |
-| whether an animation finishes | power, thermals, timing under load |
+| whether an animation finishes — *after a `wait_stable`, which is what makes the frame a finished one* | power, thermals, timing under load |
 
 The tool prints the build it is connected to. The simulator says `sim 0.0.1`.
 **If it says `sim`, nothing you saw is a hardware result** — `CLAUDE.md` is
@@ -79,13 +79,17 @@ python3 tools/watch_control.py gesture --file tests/ui/gestures/example.json
 
 python3 tools/watch_control.py button button-1 click
 python3 tools/watch_control.py button button-1 hold --duration 1.5
-python3 tools/watch_control.py button button-1 press
-python3 tools/watch_control.py button button-1 release
-
 python3 tools/watch_control.py input-reset
 python3 tools/watch_control.py run tests/ui/scenarios/diagnostic_tour.yaml
 python3 tools/watch_control.py live --screenshot-after
 ```
+
+`press` and `release` are deliberately absent from that list. Each invocation
+of the tool ends by calling `input-reset`, and the connection dropping releases
+whatever the remote was holding, so a `release` in a second process is a release
+with nothing held and is refused. A hold that spans time belongs in one process:
+`hold --duration`, a `button` step in a scenario, or `press`/`release` inside
+`live`.
 
 `--json` on any of them for machine-readable output. Every command exits
 non-zero on failure. Every image's **absolute path** is printed, because the
@@ -143,8 +147,8 @@ steps:
 ```
 
 Actions: `screenshot` (named), `wait`, `wait_stable` (`quiet_ms`, `timeout` —
-polls until the interface has been idle that long, and **fails the step** if it
-never is), `tap`, `long_tap`,
+polls until the interface has been idle that long **and nothing is animating**,
+and **fails the step** if it never is), `tap`, `long_tap`,
 `double_tap`, `swipe`, `drag`, `gesture`, `button`, `input_reset`,
 `expect_screen_changed`, `expect_screen_same`.
 
@@ -191,7 +195,7 @@ the expectation would move together.
 | `could not connect to …` | the path is wrong, or the simulator died | check the path; `ls -l` the socket |
 | `the device did not answer within 10.0s` | the device is wedged | `--timeout` to wait longer. This is **not** what a second client sees — see the next row |
 | `the device closed the connection…` | the simulator exited, or it already had a client | only one is served at a time; close the other. The refusal is immediate, not a timeout |
-| `that input is impossible from the current state` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info` |
+| `that input is impossible from the current state` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info`. A `release` in its own invocation always lands here: the previous one released it on exit |
 | `this stack is single-touch` | a second finger was requested | there is no multitouch; use one-point gestures |
 | `a screenshot is already in progress` | two overlapping requests | let the first finish. This means **only** a screen transfer collision now |
 | `the device's input queue is full…` | the interface is not draining, so an event was dropped | its own code, because it used to answer with the row above and send you to the wrong subsystem. Look at why the interface stalled |

@@ -47,8 +47,25 @@ def parse_point(text: str) -> tuple[int, int]:
 
 
 def default_shot_path(prefix: str = "screen") -> str:
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    return os.path.join(DEFAULT_OUTPUT_DIR, f"{prefix}-{stamp}.png")
+    """A path that is not the one the last call returned.
+
+    Whole seconds are not enough. `after_action` and `cmd_live` both call this
+    with a fixed prefix, so two `--screenshot-after` actions inside one second
+    produced the same name twice: the tool printed both paths and left one
+    file, destroying the before/after pair it exists to produce while still
+    reporting it. Milliseconds make that unlikely and the loop makes it
+    impossible -- and impossible is the right bar for something whose whole
+    output is the picture.
+    """
+    now   = time.time()
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+    stamp = f"{stamp}-{int((now % 1) * 1000):03d}"
+    path  = os.path.join(DEFAULT_OUTPUT_DIR, f"{prefix}-{stamp}.png")
+    serial = 1
+    while os.path.exists(path):
+        path = os.path.join(DEFAULT_OUTPUT_DIR, f"{prefix}-{stamp}-{serial}.png")
+        serial += 1
+    return path
 
 
 def emit(args, payload: dict, text: str) -> None:

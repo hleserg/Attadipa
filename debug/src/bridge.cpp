@@ -497,12 +497,26 @@ void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
         core::InputEvent up;
         up.type   = core::InputEventType::PointerUp;
         up.origin = core::InputOrigin::Remote;
-        up.x      = state_.pointer_x();
-        up.y      = state_.pointer_y();
-        up.at_ms  = now_ms;
+        up.x        = state_.pointer_x();
+        up.y        = state_.pointer_y();
+        // Not 0. `apply` refuses a `PointerUp` whose id does not match the
+        // finger that is down (`core/src/input.cpp`), and a literal zero is
+        // right only while `kMaxTouchPoints == 1`. Raise that constant with a
+        // zero here and the expiry inverts: the push succeeds, LVGL is told a
+        // finger it does not know about was lifted, `apply` fails, the real
+        // pointer stays held, and this branch fires again every tick until the
+        // queue is full -- the failure that was fixed for buttons above.
+        // `release_all` has always done this correctly; this was the one site
+        // that did not.
+        up.touch_id = state_.pointer_touch_id();
+        up.at_ms    = now_ms;
         if (queue_.push(up)) {
-            (void)state_.apply(up, core::kMaxButtons);
-            ++stats_.holds_expired;
+            // Unlike the button loop, the result is *not* discarded. The
+            // argument that made discarding safe there is about `kMaxButtons`
+            // and does not carry to a pointer whose id has to match.
+            if (state_.apply(up, core::kMaxButtons)) {
+                ++stats_.holds_expired;
+            }
         }
     }
 }

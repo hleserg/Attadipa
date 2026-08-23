@@ -94,10 +94,18 @@ python3 tools/watch_control.py swipe --from 350,120 --to 60,420 --duration 0.5
 python3 tools/watch_control.py drag  --from 60,420  --to 350,420 --duration 1.2
 python3 tools/watch_control.py button button-1 click
 python3 tools/watch_control.py button button-1 hold --duration 1.5
-python3 tools/watch_control.py button button-1 press     # and release separately,
-python3 tools/watch_control.py button button-1 release   # to test real timing
 python3 tools/watch_control.py gesture --file tests/ui/gestures/example.json
 ```
+
+**`press` and `release` are not two commands.** Run as separate invocations
+they cannot work, and it is worth knowing why before the error looks like a
+device fault: each invocation ends by calling `input-reset`, and the socket
+closing releases everything the remote held anyway (section 8). So the second
+command asks the device to release a button nothing is holding, and gets
+`that input is impossible from the current state` — from `InputState`, working
+exactly as specified. Hold a button across time in **one process**: `hold
+--duration`, a `button` step in a scenario, or `press` then `release` inside
+`live` (section 7).
 
 `--screenshot-after` acts and photographs the result in **one connection**,
 which is what you want in a loop: two processes would mean a disconnect between
@@ -175,7 +183,7 @@ so a `press` and a much later `release` genuinely test a hold.
 |---|---|---|
 | `no watch found` | nothing is listening | start the simulator with `--debug-socket` |
 | `the device did not answer within 10.0s` | it is wedged, or something else is connected | check the simulator is alive; only one client is served at a time |
-| `the device refused: that input is impossible…` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info` |
+| `the device refused: that input is impossible…` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info`. **If you ran `press` in one command and `release` in the next, this is the expected answer, not a fault** — see section 4 |
 | `the device refused: this stack is single-touch` | you asked for a second finger | there is no multitouch; use one-point gestures |
 | `the device refused: a screenshot is already in progress` | two overlapping requests | let the first finish |
 | `the frame is incomplete` / `does not match its checksum` | a torn transfer | retry once; if it repeats, it is a bug — report it with the message |

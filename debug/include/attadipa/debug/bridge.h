@@ -89,10 +89,19 @@ public:
     virtual std::uint8_t button_count() const = 0;
     virtual const ButtonDescriptor* buttons() const = 0;
 
-    // True once the interface has been idle for at least `ms` -- a duration,
-    // not a point in time. The caller supplies it; `WaitStable` carries it in
-    // the body for exactly this reason, because a source cannot know how long
-    // "settled" is for the animation the host is waiting on.
+    // True once the interface has settled: no input for at least `ms` -- a
+    // duration, not a point in time -- **and** nothing animating. The caller
+    // supplies the duration; `WaitStable` carries it in the body for exactly
+    // this reason, because a source cannot know how long "settled" is for the
+    // transition the host is waiting on.
+    //
+    // Both halves are required and the second is the one that is easy to omit.
+    // An idle timer is stamped by input processing; an animation started by the
+    // tap 300 ms ago touches nothing, so idleness alone would report a settled
+    // interface with a transition still running under it, and the screenshot
+    // after it would catch that transition halfway under a step that said
+    // `ok`. A source that cannot see its own animations must answer `false`
+    // rather than answer for the half it can see.
     //
     // **No default.** A source with no idle tracking must say so by writing
     // `return false;` and meaning it, because the reply carries one bit and
@@ -147,6 +156,19 @@ public:
     // of two thousand chunks had gone out is a watchdog reset with extra steps.
     bool pump(Emit emit, void* ctx);
 
+    // ### Thread affinity, for all of the above and below
+    //
+    // **One thread owns a `Bridge`.** `handle`, `pump`, `tick` and
+    // `on_disconnect` all mutate `state_`, `out_`, `stats_` and the transfer
+    // cursor, and none of them locks anything. On the desktop that is the
+    // simulator's single loop and the question does not arise. On a device it
+    // is a constraint: the transport's task and the interface's task are not
+    // the same task, and a `Bridge` reached from both needs a queue in front of
+    // it rather than a mutex inside it -- a mutex would put the interface's
+    // task to sleep waiting on a transfer, which is the thing `pump` exists to
+    // prevent. T-114 owns making that choice; this comment exists so it is a
+    // choice rather than a discovery.
+    //
     // Periodic housekeeping: expires anything held past `max_hold_ms`.
     void tick(std::uint32_t now_ms, Emit emit, void* ctx);
 

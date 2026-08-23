@@ -48,6 +48,14 @@ struct Diagnostic {
     platform::BoardProfile board{};
     bool built = false;
 
+    // How many event handlers the screen object carried after the first build.
+    // A rebuild must not change it. `lv_obj_clean` deletes children, not the
+    // screen, so anything attached to the screen itself survives -- and
+    // `lv_obj_add_event_cb` appends without checking, which is how one tap came
+    // to be counted twice after a single locale toggle. Zero means "not yet
+    // measured"; the screen always has at least the key handler main() installs.
+    std::uint32_t screen_handlers = 0;
+
     // Last button event, so a rebuild does not lose it.
     int           last_button       = -1;
     bool          last_button_down  = false;
@@ -248,7 +256,23 @@ void build_diagnostic_screen(const platform::BoardProfile& board)
     const int height = board.display.height_px;
 
     lv_obj_t* screen = lv_screen_active();
+    // Before the clean, not after: everything below is about to be deleted and
+    // recreated, and the pointers in `g` refer to the old objects until they
+    // are. Nothing reads them during a rebuild today; this is one line so that
+    // nothing can start to.
+    g.built = false;
     lv_obj_clean(screen);
+    // `lv_obj_clean` deletes the screen's *children*, not the screen -- and the
+    // two handlers below are on the screen itself, where `lv_obj_add_event_cb`
+    // appends unconditionally. Without this removal every locale toggle added
+    // another pair, so one tap after pressing `L` once read `2 press, 2 click`
+    // and lit two markers. That counter is the only element on this screen
+    // reporting what the *interface* received rather than what the transport
+    // delivered, and a doubled count is exactly the shape of the merge defect
+    // this screen exists to rule out.
+    lv_obj_remove_event_cb(screen, on_lvgl_pressed);
+    lv_obj_remove_event_cb(screen, on_lvgl_clicked);
+    const std::uint32_t handlers_before = lv_obj_get_event_count(screen);
     // Deliberately NOT lv_obj_remove_style_all(): that resets the screen's font
     // to LVGL's built-in Montserrat, which is Latin-only, and the undrawable-
     // glyph check in main() reads the font off this screen. Wiping the style
@@ -353,6 +377,24 @@ void build_diagnostic_screen(const platform::BoardProfile& board)
         lv_obj_add_flag(g.click_marks[i], LV_OBJ_FLAG_HIDDEN);
     }
     g.trail_next = 0;
+    // The tripwire for the next handler somebody adds to the screen without a
+    // matching removal above. It cannot be a fixed number -- main() installs a
+    // key handler on the same object first -- so it calibrates on the first
+    // build and complains if a later one differs. CI cannot reach this: a
+    // rebuild is driven by the `L` key, and the headless run has no keyboard.
+    // So it lives at the site rather than in a test, where it fires the first
+    // time a person presses `L`.
+    const std::uint32_t handlers_after = lv_obj_get_event_count(screen);
+    if (g.screen_handlers == 0) {
+        g.screen_handlers = handlers_after;
+    } else if (handlers_after != g.screen_handlers) {
+        std::fprintf(stderr,
+                     "diagnostic: the screen gained handlers across a rebuild "
+                     "(%u before this build, %u after, %u the first time). A tap "
+                     "will now be counted more than once.\n",
+                     handlers_before, handlers_after, g.screen_handlers);
+    }
+
     g.built      = true;
 
     refresh_labels();

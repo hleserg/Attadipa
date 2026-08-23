@@ -21,12 +21,19 @@ import os
 import socket
 import stat
 import struct
+import sys
 import time
 from dataclasses import dataclass
 
 from . import protocol as p
 
 DEFAULT_TIMEOUT = 10.0
+
+# How many decoded replies may sit unclaimed before the oldest is dropped. A
+# screenshot of the Waveshare panel is ~3400 chunks, all of which are consumed
+# as they arrive, so the steady state is one or two; this is a ceiling on
+# replies nobody will ever ask for, not a queue depth.
+kMaxPending = 256
 
 # Where a simulator is likely to be listening if nobody said. Not a search of
 # the whole filesystem: two conventional places, in order.
@@ -187,6 +194,10 @@ class Watch:
         self._timeout = timeout
         self._next_req_id = 1
         self._pending: list[p.Envelope] = []
+        self._orphaned = 0
+        # The req_id `_await` is currently blocked on, so the eviction above can
+        # tell a reply that is still wanted from one that never will be.
+        self._awaiting: int | None = None
         # req_ids whose screen transfer we have given up on. Chunks still in
         # flight for them are dropped on arrival rather than queued. A dict
         # rather than a set because the eviction below argues from age, and a
@@ -220,6 +231,8 @@ class Watch:
                 if envelope.req_id in self._abandoned and envelope.op in (
                         p.Op.SCREEN_DATA, p.Op.SCREEN_END):
                     continue
+                if len(self._pending) >= kMaxPending:
+                    self._evict_orphan()
                 self._pending.append(envelope)
             except p.ProtocolError:
                 # A frame that framed correctly but did not decode is counted
@@ -230,16 +243,21 @@ class Watch:
     def _await(self, req_id: int, ops: tuple[p.Op, ...], timeout: float | None = None):
         waited = timeout if timeout is not None else self._timeout
         deadline = time.monotonic() + waited
+        previous, self._awaiting = self._awaiting, req_id
+        try:
+            return self._await_locked(req_id, ops, deadline, waited)
+        finally:
+            self._awaiting = previous
+
+    def _await_locked(self, req_id: int, ops: tuple[p.Op, ...], deadline: float,
+                      waited: float):
         while True:
             for index, envelope in enumerate(self._pending):
                 if envelope.req_id != req_id:
                     continue
                 if envelope.op is p.Op.ERROR:
                     del self._pending[index]
-                    code = p.ErrorCode(int.from_bytes(envelope.body[:2], "little")) \
-                        if len(envelope.body) >= 2 else p.ErrorCode.NONE
-                    raise p.ProtocolError(
-                        f"the device refused: {p.ERROR_TEXT.get(code, code.name)}", code)
+                    raise self._refusal(envelope)
                 if envelope.op in ops:
                     del self._pending[index]
                     return envelope
@@ -328,6 +346,59 @@ class Watch:
             self._abandon(req_id)
             raise
         return shot
+
+    def _evict_orphan(self) -> None:
+        """Drop the oldest reply nobody is waiting for.
+
+        `request()` allocates a fresh `req_id` per retry, so a late answer to
+        attempt 1 matches nothing, is never claimed and is never evicted -- and
+        `_await` rescans the whole list every 50 ms. Harmless over a socket,
+        where a timeout means the reply really is not coming; it is
+        `SerialTransport` at T-114, resynchronising after a noisy frame, that
+        makes this grow without bound.
+
+        **Only orphans.** The first spelling of this dropped the oldest entry
+        outright and cut the middle out of a screenshot: a 410x502 transfer is
+        thousands of chunks that share one `req_id`, `_pump` decodes a whole
+        `recv` buffer of them before the consumer takes any, and the cap is
+        reached with every one of them still wanted. So the id currently being
+        awaited is skipped, and if everything queued belongs to it nothing is
+        dropped -- the transfer's own bounds are what limit it then.
+        """
+        for index, envelope in enumerate(self._pending):
+            if envelope.req_id == self._awaiting:
+                continue
+            del self._pending[index]
+            self._orphaned += 1
+            if self._orphaned == 1:
+                print(f"warning: more than {kMaxPending} replies are unclaimed; "
+                      f"dropping the oldest. The device is answering something "
+                      f"this tool is no longer waiting for.", file=sys.stderr)
+            return
+
+    @staticmethod
+    def _refusal(envelope: "p.Envelope") -> "p.ProtocolError":
+        """Turn an ERROR reply into a human sentence, known code or not.
+
+        `ErrorCode` is documented *appended, never renumbered*, so a device one
+        version ahead sends a value this checkout has no name for. Calling
+        `p.ErrorCode(raw)` on it raises a bare `ValueError`, which is neither
+        `WatchError` nor `ProtocolError` -- so it escapes `main()`'s handler and
+        `scenario.py`'s, taking `cmd_run`'s cleanup `input_reset` with it and
+        leaving a finger down until the 30-second expiry. A refusal we do not
+        recognise is still a refusal, and reporting it is the whole job.
+        """
+        if len(envelope.body) < 2:
+            return p.ProtocolError("the device refused, and said nothing about why")
+        raw = int.from_bytes(envelope.body[:2], "little")
+        try:
+            code = p.ErrorCode(raw)
+        except ValueError:
+            return p.ProtocolError(
+                f"the device refused with error {raw}, which is not one this tool "
+                f"knows. Is it running a newer build than this checkout?")
+        return p.ProtocolError(
+            f"the device refused: {p.ERROR_TEXT.get(code, code.name)}", code)
 
     def _abandon(self, req_id: int) -> None:
         self._abandoned.pop(req_id, None)   # re-insert, so it is the newest

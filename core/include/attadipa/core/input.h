@@ -174,6 +174,13 @@ public:
     std::int16_t pointer_y() const { return pointer_y_; }
 
     InputOrigin pointer_origin() const { return pointer_origin_; }
+
+    // The id of the finger currently down. Needed because `apply` refuses a
+    // `PointerUp` whose `touch_id` does not match, so anything synthesising a
+    // release -- the hold expiry, a disconnect -- has to ask rather than assume
+    // zero. That assumption is true only while `kMaxTouchPoints == 1`, and the
+    // field exists precisely so it survives to a device where it is not.
+    std::uint8_t pointer_touch_id() const { return pointer_touch_id_; }
     InputOrigin button_origin(std::uint8_t index) const;
 
     // Writes the events needed to lift everything `origin` is holding into

@@ -67,6 +67,11 @@ private:
     int         client_fd_ = -1;
     std::string path_;
 
+    // Set by `queue` when the outgoing buffer passes its watermark, acted on by
+    // `poll`. Deferred rather than immediate so the bridge is never re-entered
+    // from inside its own `emit`.
+    bool                      overflowed_ = false;
+
     link::Decoder             decoder_;
     std::vector<std::uint8_t> out_;
     std::size_t               out_sent_ = 0;

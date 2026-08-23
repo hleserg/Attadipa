@@ -715,6 +715,38 @@ void the_event_rate_is_capped()
     CHECK(rig.sink.last_is(Opcode::InputOk));
 }
 
+void a_finger_held_past_the_cap_is_lifted_with_the_id_it_went_down_with()
+{
+    Rig rig;
+    rig.send(input_request(core::InputEventType::PointerDown, 0, 10, 20, 0), 1000);
+    CHECK(rig.state.pointer_down());
+    CHECK(rig.state.pointer_touch_id() == 0);
+    rig.queue.clear();
+
+    rig.bridge.tick(1000 + 30001, &Collector::emit, &rig.sink);
+    CHECK(!rig.state.pointer_down());
+    CHECK(rig.bridge.stats().holds_expired == 1);
+
+    core::InputEvent up;
+    CHECK(rig.queue.pop(up));
+    CHECK(up.type == core::InputEventType::PointerUp);
+    // The point of the test: the release carries the id of the finger that is
+    // down, read from the state rather than assumed to be zero. `apply` refuses
+    // a `PointerUp` whose id does not match, so a literal zero is correct only
+    // while `kMaxTouchPoints == 1` -- and `core/input.h` says the field exists
+    // so it survives to a device where it is not. This asserts the value is
+    // *sourced*. The mismatching case cannot be built through the public API
+    // today: `apply` refuses any id at or above the constant before the
+    // comparison is reached.
+    CHECK(up.touch_id == rig.state.pointer_touch_id());
+
+    // And it expires exactly once. The failure guarded against is the opposite
+    // one: `apply` fails, the pointer stays held, and this branch fires again
+    // on every tick until the queue is full.
+    rig.bridge.tick(1000 + 60000, &Collector::emit, &rig.sink);
+    CHECK(rig.bridge.stats().holds_expired == 1);
+}
+
 void a_button_held_past_the_cap_is_released_by_the_device()
 {
     Rig rig;
@@ -1145,6 +1177,7 @@ int main()
     the_event_rate_is_capped();
 
     a_button_held_past_the_cap_is_released_by_the_device();
+    a_finger_held_past_the_cap_is_lifted_with_the_id_it_went_down_with();
     a_disconnect_lifts_what_the_remote_was_holding();
     input_reset_is_available_as_a_command();
     a_physical_press_survives_a_remote_disconnect();
