@@ -65,9 +65,34 @@ stale silently. The protocol is
 - **Implementation status:** live. Seven workflows, an hourly watchdog, a
   half-hourly merge sweep applying the backstop's own path allowlist, and a
   daily backstop routine scoped to what a workflow cannot detect about itself.
+  The watchdog gained an `approvals` scan for
+  [#75](https://github.com/hleserg/Attadipa/issues/75) — a run that completes
+  `action_required` with **zero jobs** put no check on the pull request at all,
+  so the orchestrator's *merge once CI is green* has no verdict to read and the
+  agent's own "waiting on CI" is true forever.
+- **One owner action is outstanding, and it is the fix rather than the guard.**
+  The cause is the writer checkout leaving `actions/checkout`'s defaults, so the
+  agent's own `git push` authenticates as `github-actions[bot]` and GitHub
+  creates the resulting `pull_request` run in an approval-required state — a
+  documented rule about the *token*, not a setting, and **no repository setting
+  disables it**. The checkout now reads
+  `${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}`, which changes nothing
+  until that secret exists. **Create a fine-grained PAT scoped to this
+  repository — *Contents: Read and write*, *Pull requests: Read and write*, and
+  `Workflows` deliberately NOT granted — and set it as `ATTADIPA_AGENT_TOKEN`.**
+  The cost being accepted is attribution: agent commits will then carry the PAT
+  owner's name rather than `claude[bot]`. Granting `Workflows` too would retire
+  `docs/automation/pending/`, which is convenient and is exactly the widening
+  that lets an agent rewrite the gate governing it. The alternative without the
+  attribution cost is a separate GitHub App; both are priced in
+  [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md).
 - **Tests:** `actionlint` over seven workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
-  cases — 16/16; host build 10/10; simulator 12/12, both geometries. Production:
+  cases — 16/16; the approval-stall rule, 38 cases including both of #71's real
+  runs with the values the API actually returned — 38/38, and the watchdog job
+  around it dry-run against the live repository (the jq, the pagination, the
+  marker written and read back, the rendered comment); host build 10/10;
+  simulator 12/12, both geometries. Production:
   smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
   intake, marker-derived labels, the `@claude` dedup override and a green Claude
   run, and exposed the stuck-label defect now fixed.
