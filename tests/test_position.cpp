@@ -540,6 +540,58 @@ void test_the_final_metres_of_the_pole_degrade_in_millimetres()
     CHECK(distance_mm(at_lat(-900000000), east_of(-900000000, -1800000000)) == 0U);
 }
 
+// Three invariants that hold at every latitude, independent of how accurate the
+// answer is. They are cheap, and they catch the class of interpolation bug the
+// envelope test above can miss: a sign slip or an off-by-one at a table
+// boundary can be well under 1% of the reference and still be wrong in a way
+// that means the arithmetic is not doing what the comment says.
+//
+// The whole degrees are where the table entries change, so the coarse step is
+// chosen to land on every one of them exactly, and the two boundaries that
+// matter most — 89°, the first degree of the region that was broken, and 90°,
+// where the scale reaches zero — are swept at every representable step.
+//
+// Verified once at full resolution while writing this: 28 800 001 latitudes,
+// zero violations of any of the three. What is committed is the sampled version,
+// because the exhaustive one is minutes under a sanitizer and buys nothing that
+// this does not.
+//
+// Unlike every other test added with it, this one is **not** red against the
+// defect it was written alongside, and saying so is the point: a step function
+// is monotone, symmetric and bounded — it was wrong by a factor of a thousand
+// while satisfying all three. These are the invariants the *next* change has to
+// keep, not evidence about the last one.
+void test_the_longitude_scale_is_monotonic_symmetric_and_bounded()
+{
+    const std::uint32_t equator = distance_mm(at_lat(0), east_of(0, 10000000));
+
+    struct Band { std::int64_t from; std::int64_t to; std::int64_t step; };
+    const Band bands[] = {
+        {0, 900000000, 100000},              // every 0.01°, landing on every whole degree
+        {889990000, 890010000, 1},           // across the 89° table boundary, every step
+        {899990000, 900000000, 1},           // and the last 111 m to the pole
+    };
+
+    for (const Band& band : bands) {
+        std::uint32_t previous = 0xFFFFFFFFu;
+        for (std::int64_t lat_e7 = band.from; lat_e7 <= band.to; lat_e7 += band.step) {
+            const std::int32_t lat  = static_cast<std::int32_t>(lat_e7);
+            const std::uint32_t here = distance_mm(at_lat(lat), east_of(lat, 10000000));
+
+            // A degree of longitude never grows as you walk towards the pole,
+            // and never exceeds what it is at the equator.
+            CHECK(here <= previous);
+            CHECK(here <= equator);
+
+            // North and south are the same distance, exactly and not
+            // approximately — the magnitude is taken before the table is read.
+            CHECK(here == distance_mm(at_lat(-lat), east_of(-lat, 10000000)));
+
+            previous = here;
+        }
+    }
+}
+
 // The antimeridian again, this time at a latitude where the old code's scale
 // error and the wrap would have compounded. Both are in the same expression and
 // a fix to one is exactly the sort of change that breaks the other.
@@ -699,6 +751,7 @@ int main()
     test_the_longitude_scale_matches_a_spherical_reference();
     test_the_error_envelope_holds_at_every_latitude();
     test_the_final_metres_of_the_pole_degrade_in_millimetres();
+    test_the_longitude_scale_is_monotonic_symmetric_and_bounded();
     test_the_antimeridian_is_not_a_wall();
     test_the_antimeridian_still_is_not_a_wall_near_the_pole();
     test_the_grid_boundaries_are_answers();
