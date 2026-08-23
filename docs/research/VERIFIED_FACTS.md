@@ -832,7 +832,13 @@ facts that change what may be written are here.
   three, meaning `UNKNOWN`), `u16` width `410`, `u16` height `502`, `u32` stride
   `820` = width × 2. `12 + width × height × 2` equals the file length exactly.
 - **Source:** S11 — the `storage` partition of the received unit, extracted with
-  `tools/flash/spiffs_extract.py`.
+  `tools/flash/spiffs_extract.py`. That extraction was made with a version of the
+  tool that could not tell a live SPIFFS page from one the filesystem had
+  released ([#108](https://github.com/hleserg/Attadipa/issues/108), fixed
+  2026-08-23), so the *extraction* is not by itself evidence any more —
+  [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §4 has the re-run and what
+  it would settle. This claim does not rest on it: the byte order was settled by
+  rendering, below, and a file assembled out of released pages does not render.
 - **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
 - **Was:** `LIKELY` RGB565 — an inference from "raw binary on a QSPI AMOLED".
 - **How the byte order was settled, because it is the part an argument cannot

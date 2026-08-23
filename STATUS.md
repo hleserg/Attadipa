@@ -377,8 +377,11 @@ came off the unit the same day —
 - **`tools/flash/spiffs_extract.py`** does SPIFFS extraction without `mkspiffs`
   and without an ESP-IDF build. `strings` recovers a SPIFFS image's file names
   and none of its file bodies. Since **2026-08-23** it keeps the device's
-  hierarchy instead of flattening slashes to underscores, and refuses the whole
-  run rather than let two names land on one file — see *Recently completed*.
+  hierarchy instead of flattening slashes to underscores, refuses the whole run
+  rather than let two names land on one file, and reads the **object lookup
+  table** rather than trusting a page header — so a page the filesystem has
+  released cannot get into a file however intact its header looks. See
+  *Recently completed*.
 - **One claim had to be withdrawn.** A parallel reading of the same unit concluded
   the PSRAM is *quad*, on the reasoning that "octal PSRAM would be 1.8 V". It is
   not: Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` at
@@ -717,18 +720,40 @@ four more things at no cost:
   about itself, because the only image we have is the Waveshare factory dump and
   that cannot be committed. So `tools/flash/selftest.py` builds its own images
   from the layout the extractor documents, and is registered in ctest as
-  `flash_spiffs_extract_refuses_mistakes`. **110 assertions**, and they are known
-  to bite: pointed at the extractor as it was, **67** fail — starting with the
-  finding, where one file exists where two names did. **One limitation is known
-  and left open**: a used image can hold two object ids carrying one name,
-  because a file deleted and recreated on the device keeps its name, and this
-  parser reads the stale object index header as well as the live one —
-  `extract()` discards the page `flags` and consults no lookup table. Which of
-  the two is live is `UNKNOWN`, so **neither** is written, under both flags:
-  picking by object id would be picking by an ordering that is not a recency,
-  and writing a deleted copy into evidence is worse than writing nothing.
-  Reading the delete flag would settle it and is a SPIFFS fact nobody here has
-  traced to the sources yet.
+  `flash_spiffs_extract_refuses_mistakes`. **178 assertions**, and they are known
+  to bite: pointed at the extractor as it was at `5fd2738`, **137** fail —
+  starting with the finding, where one file exists where two names did.
+- **A page that exists is not a page that counts, and the extractor could not
+  tell.** [#108](https://github.com/hleserg/Attadipa/issues/108), fixed
+  2026-08-23; the limitation the entry above left open, and it was wider than
+  "two ids, one name". SPIFFS is log-structured, so nothing is overwritten in
+  place: a file edited or deleted on the device leaves its old pages in flash
+  with their `obj_id` and `span_ix` intact until the block is erased.
+  `spiffs_page_delete()` writes the *object lookup* entry to
+  `SPIFFS_OBJ_ID_DELETED` and then clears two bits of the page header — it never
+  touches the id or the span. `extract()` read the page header alone, skipped the
+  lookup pages by position without ever reading one, and kept whichever copy of
+  an `obj_id/span_ix` came last physically. Physical order is not a recency.
+  **The corruption is exact and now has a test**: a two-page file whose second
+  span has a released twin came out 254 bytes long, exit `0`, ending
+  `…LLLLLsta` — the right length, the wrong bytes, three of them from a page the
+  filesystem had already let go. The fixed run gives `…LLLLLIVE`.
+  A page is now used only when SPIFFS's own test says so —
+  `spiffs_obj_lu_find_id_and_span_v()`, reproduced as `is_live()`: the block's
+  lookup entry must still name the page, the header's `obj_id` must agree with
+  it, and the `flags` byte — every bit active *low* — must read used, not
+  deleted and finalised, with `SPIFFS_PH_FLAG_IXDELE` as one further condition on
+  an object index header. Two live pages claiming one span, two live index
+  headers for one object, a gap in the spans and a live header whose name this
+  parser cannot find are each a refusal rather than a guess, and the geometry is
+  checked against the per-block `SPIFFS_MAGIC` before any of it. Every constant
+  is traced to `pellepl/spiffs` at `ad902ca`, which is the commit ESP-IDF's
+  `components/spiffs/spiffs` submodule pins — not to a recollection of SPIFFS.
+  **The one number that is not yet re-established** is in
+  [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4: the six
+  files were measured with the old parser, the dump is not in this repository
+  and cannot be, so re-running the corrected tool over it is one command on the
+  owner's machine and `NOT EXECUTED` here.
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same

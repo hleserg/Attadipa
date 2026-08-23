@@ -1271,8 +1271,34 @@ the `spiffs_page_header` (`obj_id` u16, `span_ix` u16, `flags` u8), the
 `SPIFFS_OBJ_ID_IX_FLAG` high bit distinguishing index pages from data pages, and
 the object index header at `span_ix == 0` carrying size and name.
 
+**And the part of that layout the first pass did not read at all, added
+2026-08-23 for [#108](https://github.com/hleserg/Attadipa/issues/108).** Reading
+the page header is enough to find a file and not enough to know it is *the*
+file: SPIFFS is log-structured, and a page stays legible after the filesystem
+has released it. What settles it, each traced to a line rather than recalled:
+
+| Fact | Where |
+|---|---|
+| `SPIFFS_PH_FLAG_USED/FINAL/INDEX/IXDELE/DELET` = `1<<0/1/2/6/7`, every one active **low** | `spiffs_nucleus.h` — the comments there say *"if 0, this page is written to, else clean"* and *"if 0, page is deleted, else valid"* |
+| the liveness test itself: lookup entry `==` header `obj_id`, `flags & (FINAL\|DELET\|USED) == DELET`, plus `IXDELE` on an index header at span 0 | `spiffs_obj_lu_find_id_and_span_v()`, `spiffs_nucleus.c` — the visitor every lookup-driven search in SPIFFS runs, so it is the *definition* of live |
+| a delete writes the lookup entry to `SPIFFS_OBJ_ID_DELETED` **and then** clears two bits, leaving the id and span untouched | `spiffs_page_delete()`, same file. This asymmetry is the whole defect |
+| lookup entries run back to back across a block's lookup pages, entry `e` at page `e / (page_size/2)`, offset `(e % …) * 2` | `spiffs_obj_lu_find_entry_visitor()`, same file |
+| `SPIFFS_OBJ_LOOKUP_PAGES` is `MAX(1, floor(pages_per_block * 2 / page))` | `spiffs_nucleus.h`. **`spiffsgen.py` uses `ceil` instead** — identical for every power-of-two geometry either supports, and the extractor refuses the image rather than choose if they ever differ |
+| `SPIFFS_MAGIC` = `(u16)(0x20140529 ^ page_size ^ (block_count - bix))`, in the second-to-last object-id slot of a block's lookup area, written to **every** block including empty ones | `spiffs_nucleus.h` for the value, `spiffsgen.py`'s `magicfy()` and `SpiffsFS.to_binary()` for "every block" |
+| `spiffs_obj_id`, `spiffs_span_ix`, `spiffs_page_ix` are all `u16_t`, and the flag bytes a writer produces are `0xF8` (index) and `0xFC` (data) | ESP-IDF `components/spiffs/include/spiffs_config.h`; `spiffsgen.py`'s `SPIFFS_PH_FLAG_USED_FINAL_INDEX` / `_USED_FINAL` |
+
+**Which revision that is, and why it is the right one.** ESP-IDF's
+`.gitmodules` points `components/spiffs/spiffs` at `pellepl/spiffs` pinned to
+`ad902cadceb39d0825a97e25ecb5867641f606ba` (`0.2-265-gad902ca`), so that commit
+is what wrote any image this project will be handed. Read 2026-08-23 through the
+GitHub contents API at that exact SHA, not at a branch tip.
+
 **License:** `spiffsgen.py` Apache-2.0, `mkspiffs` MIT, `spiffs-dumper`
-**unstated**. Nothing is copied from any of them, so no licence is inherited.
+**unstated**, `pellepl/spiffs` **MIT** (checked at the pinned commit, 2026-08-23).
+Nothing is copied from any of them, so no licence is inherited — the layout table
+above is a set of numbers and predicates read out of the sources and
+reimplemented in Python, which is what an on-disk format is for; no SPIFFS
+parser was vendored, and the MIT terms would have permitted it either way.
 
 **Strengths (of the rejected options):** `mkspiffs -u` is the reference
 implementation and would be right for anyone who already has the toolchain.
@@ -1328,6 +1354,19 @@ exercises those four fields is thirty lines and no dependency. It is a
 a round trip through a writer that shares the reader's assumptions proves
 nothing about SPIFFS — what it proves is what the tests are for: which names
 this tool refuses, and that it writes nothing when it refuses one.
+
+**Then #108 made the fixture do the other half.** It now writes the object
+lookup table, the flag byte and the per-block magic, because the images that
+matter are the ones a *used* device produces and those were exactly the ones it
+could not express: a page released by the lookup table and still wearing its
+object id, a fully deleted file, two live pages claiming one span, an index
+header marked for deletion, a lookup entry naming a different object than the
+page header does. **178 assertions.** Pointed at the extractor as it was at
+`5fd2738`, **137** fail; pointed at it with #107 fixed and #108 not, **52** do,
+and all 52 are the liveness family. That second number is the one worth keeping:
+a test that goes red against the specific defect it was written for, rather than
+against everything at once, is the one that will still mean something in a
+year.
 
 ### This board's audio path — the I2S wiring, the ES8311 bring-up, and what the two microphones are for
 

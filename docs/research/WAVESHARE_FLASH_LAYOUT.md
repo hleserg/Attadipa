@@ -340,6 +340,38 @@ directory, and what is in it changes an argument elsewhere in this repository.
 | `/music/BGM_2.mp3` | 199 664 | MPEG-1 Layer III, 112 kbps, 44.1 kHz, **stereo** |
 | `/music/BGM_3.mp3` | 380 917 | MPEG-1 Layer III, 128 kbps, 44.1 kHz, stereo; ID3v2.4 tag of 139 756 bytes, so most of it is embedded artwork |
 
+**These six rows were measured with a parser that has since been found wrong,
+and how much that costs them differs by row.**
+[#108](https://github.com/hleserg/Attadipa/issues/108), 2026-08-23: the version
+of `spiffs_extract.py` that produced this table read page headers alone and
+never looked at the object lookup table, so a page the filesystem had released —
+which is what an edited or deleted file leaves behind in a log-structured
+filesystem — could be taken for live data and assembled into a file that still
+passed the length check. That is a real way for a row here to be wrong, and it
+is not a hypothetical one.
+
+What it does **not** touch: the *names* and the *declared sizes* come from
+object index headers, and a stale one would have had to carry the same name and
+the same size to go unnoticed. Nor the **contents** of §4.1 and §4.3, because
+those were not read off the extractor's output — the images were *rendered* and
+the MP3s *decoded*, and corrupt bytes from a released page do not render as
+coherent artwork or parse as a frame stream. Independent evidence, and it is why
+this section is annotated rather than demoted.
+
+What is genuinely open is whether the partition held any stale pages at all. One
+command answers it, on the machine that has the dump — this repository does not
+and cannot:
+
+```
+python3 tools/flash/spiffs_extract.py storage.spiffs out/
+```
+
+The fixed tool now prints a `pages` line. `0 stale, 0 unusable` means this table
+was never at risk and every row is confirmed as it stands. Anything else means
+the run says which object was affected, and the rows are re-measured from the
+new output. **NOT EXECUTED — the image is not in this environment**; this is an
+owner action, not a hardware measurement.
+
 ### 4.1 The image format, decoded rather than guessed
 
 Every one of the three images is **exactly 411 652 bytes**, which is
@@ -472,3 +504,10 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
   agrees. The five stub-failure addresses are **not** marginal sectors: the same
   stub computed a correct MD5 over every one of them, so the fault is in the
   transfer path, not the flash. T-099 is `DONE`.
+- **Re-run `spiffs_extract.py` over `storage` and read its `pages` line**, which
+  is the only thing that can confirm §4's six rows were not measured over stale
+  pages — the extractor that produced them could not tell a live page from a
+  released one ([#108](https://github.com/hleserg/Attadipa/issues/108), fixed
+  2026-08-23). One command, on the machine that holds the dump, because the dump
+  is not here and §4.4 is why it never will be. **NOT EXECUTED — the image is
+  not in this environment.**

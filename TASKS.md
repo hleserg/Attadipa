@@ -1962,14 +1962,34 @@ Recommended next action:
   device's hierarchy is kept rather than flattened, and a run that cannot give
   every name a safe destination of its own writes nothing at all —
   `--allow-partial` writes the ones that were safe, still lists every refusal and
-  still exits non-zero. One limitation stays open and is named in `STATUS.md`: a
-  used image can hold two object ids carrying one name, and that pair is refused
-  rather than merged. The extractor
+  still exits non-zero. The extractor
   has automated tests for the first time — `tools/flash/selftest.py`, which
   builds its own SPIFFS images, because the only real one we have is the
   Waveshare factory dump and that cannot be committed. That closes the *"Tests
   required: none automated"* gap the
   [REUSE_LEDGER](docs/research/REUSE_LEDGER.md) entry recorded against itself.
+- **And it read pages the filesystem had already released** —
+  [#108](https://github.com/hleserg/Attadipa/issues/108), fixed 2026-08-23.
+  SPIFFS never overwrites in place, so an edited or deleted file leaves its old
+  pages in flash with their `obj_id` and `span_ix` untouched;
+  `spiffs_page_delete()` clears the *object lookup* entry and two bits of the
+  page header and nothing else. The extractor read the header alone and kept
+  whichever copy came last physically, which is not a recency — a two-page file
+  with a released twin for its second span came out the right length, exit `0`,
+  and wrong from byte 251. It now uses SPIFFS's own liveness test, refuses
+  ambiguity instead of resolving it by physical order, and checks the geometry
+  against the per-block `SPIFFS_MAGIC` before reading anything. Every constant
+  is traced to `pellepl/spiffs` at `ad902ca`, the commit ESP-IDF pins.
+- **One thing this leaves for the owner and nobody else can do here.** The six
+  files below were measured with the old parser. The dump is not in this
+  repository and cannot be, so the re-run is one command on the machine that
+  holds it —
+  `python3 tools/flash/spiffs_extract.py storage.spiffs out/` — and a `pages`
+  line reading `… 0 stale, 0 unusable …` is what confirms the table. Until then
+  the sizes stand on the old parser and the *contents* stand on having been
+  rendered and decoded, which is independent of it —
+  [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §4.
+  **NOT EXECUTED — the image is not here.**
 
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
