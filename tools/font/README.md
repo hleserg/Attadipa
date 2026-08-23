@@ -1,8 +1,8 @@
 # Font tooling
 
-Four scripts, in the order they run. Nothing here runs in CI yet — that arrives
-with T-033, whose third check is "a catalogue entry the generated font cannot
-draw".
+Scripts, roughly in the order they run. Nothing here runs in CI yet — that
+arrives with T-033, whose third check is "a catalogue entry the generated font
+cannot draw".
 
 | | What it is for |
 |---|---|
@@ -11,8 +11,45 @@ draw".
 | [`instantiate.py`](instantiate.py) | pin a variable font to one weight — and refuse to rewrite it when it is already at that weight |
 | [`measure.py`](measure.py) | generate, compile for ESP32-S3, and report `.rodata`. The flash cost, measured |
 | [`contact_sheet.py`](contact_sheet.py) | render the glyphs LVGL will actually draw, at the size it will draw them, with the advance, side bearings and kerning it will use, in both themes |
+| [`generate_ui_fonts.py`](generate_ui_fonts.py) | produce the checked-in subsets under `assets/fonts/generated/`, and `--check` that they are current |
+| [`measure_strings.py`](measure_strings.py) | **will this string fit?** — the other question, answered against the *checked-in* fonts rather than a candidate TTF |
 
-Results: [FONT_MEASUREMENTS](../../docs/research/FONT_MEASUREMENTS.md).
+Results: [FONT_MEASUREMENTS](../../docs/research/FONT_MEASUREMENTS.md) for the
+flash cost; [CLOCK_STATE_AND_CADENCE](../../docs/research/CLOCK_STATE_AND_CADENCE.md)
+§7 for the string widths.
+
+## `measure.py` and `measure_strings.py` are different questions
+
+`measure.py` asks what a *candidate* face costs in flash, so it needs the TTF,
+`lv_font_conv` and an xtensa compiler. `measure_strings.py` asks how wide a
+string will be drawn in the font that is **already committed**, so it needs
+none of those — no Node, no toolchain, no font files, not even Pillow. It reads
+`assets/fonts/generated/attadipa_montserrat_*.c` and applies LVGL v9.5.0's own
+integer arithmetic to them: `lv_font_fmt_txt.c:245-253` for the kerned,
+per-glyph-rounded advance and `lv_text.c`'s `lv_text_get_width()` for the sum.
+Each transcribed line is cited in the module docstring beside the code that
+mirrors it.
+
+```bash
+python3 tools/font/measure_strings.py --self-test   # check the parse first
+python3 tools/font/measure_strings.py --digits      # are the figures tabular?
+python3 tools/font/measure_strings.py --time-span   # how far a centred clock moves
+python3 tools/font/measure_strings.py --dates       # widest date, per language
+python3 tools/font/measure_strings.py --clock       # the Clock string set
+python3 tools/font/measure_strings.py --size 28 --string '30 сентября 2026'
+```
+
+`--self-test` is the one to run after touching it: it re-derives the parse
+against what the generated files say about themselves — every codepoint
+`charset.py` asks for resolves to a glyph, every cmap lands inside `glyph_dsc[]`,
+`kern_scale` is still the 16 the arithmetic assumes, and the kerning table is
+reachable. It asserts no hand-typed numbers, so it does not go stale when the
+fonts are regenerated.
+
+**It measures the scaffold, not the product.** The committed fonts are
+Montserrat Medium, which is there because LVGL ships it and it covers the
+charset — D16 is open and no typeface is chosen. Every width it reports has to
+be re-taken after that decision.
 
 ## What has to be installed
 

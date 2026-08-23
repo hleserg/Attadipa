@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -84,6 +84,38 @@ in both cases.
 - **T-009 — design tokens in code**, resumed. The M1 slice continues in the
   order final §58 gives: tokens, then the image asset pipeline (T-034 —
   **done**), the first Clock (T-037) and the first Settings (T-038).
+- **T-037 — the first Clock: research done, 2026-08-23**, implementation not
+  started. [CLOCK_STATE_AND_CADENCE](docs/research/CLOCK_STATE_AND_CADENCE.md),
+  issue [#144](https://github.com/hleserg/Attadipa/issues/144). The state
+  contract turned out to be almost entirely built already — `Capability::Time`,
+  the seven-state `Availability`, `Validity`, `Timed<T>`, `PowerState` — so the
+  Clock extends those rather than inventing a view model. What it found instead
+  is that T-037 has **five prerequisites**, all of them small, all of them
+  outside the task as written: no font above 28 px exists and `TypeRole::Display`
+  currently resolves to **16 px on the T-Watch**; nothing turns a `WallTime` into
+  a date; the catalogue has no month, weekday or clock string; the simulator has
+  no Adult/Child flag, no time injection and screenshots frame one only; and
+  `AppManifest` has no tick period, which is T-018's and T-024's to add.
+
+  **Three things were measured rather than argued.** Montserrat's figures are
+  proportional, so at 28 px `HH:MM` swings 36 px over a day — 15 % of the 240 px
+  face, once a minute, on the screen the product is most identified by. The rule
+  of thumb that Russian runs longer **does not hold for dates and flips
+  direction**: with the weekday present RU is wider, without it EN is, because
+  Russian weekday names are longer and Russian genitive month names are shorter.
+  And at 28 px no long date form fits the T-Watch at all — the two panels do not
+  take the same layout. `tools/font/measure_strings.py` produced all of it from
+  the shipped font artefacts and is re-runnable.
+
+  Three mature watch firmwares were re-read at pinned commits — InfiniTime,
+  ZSWatch and wasp-os — and **all three poll and filter** rather than waking on
+  the datum they display. That is rejected here with a reason
+  ([REUSE_LEDGER](docs/research/REUSE_LEDGER.md)), not adopted. Two LVGL v9.5.0
+  behaviours were read at the pin and matter: both scroll modes run an infinite
+  animation and silently rewrite centred alignment to left, and
+  `lv_label_set_text_static()` plus `LV_LABEL_LONG_MODE_DOTS` turns the ellipsis
+  off with nothing but an `LV_LOG_WARN` — which is the combination `tr()`
+  invites, since it returns a pointer into a static catalogue.
 - **T-034 — image asset pipeline — done.** `ui/assets/source/` →
   `tools/assets/` → `ui/assets/generated/`, with LVGL v9.5.0's `LVGLImage.py`
   vendored unmodified and pinned by hash. Deterministic, verified by

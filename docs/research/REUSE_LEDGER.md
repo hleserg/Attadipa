@@ -71,6 +71,8 @@ want to inherit the experience, not only the code.
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
 | `lv_i18n` | github.com/lvgl/lv_i18n | `08944ec6dc2faed83121c53e9cf9ba05013a6686` | 2026-03-30 | LVGL's own localization generator — the closest existing answer to T-033 |
 | `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
+| `ZSWatch` | github.com/ZSWatch/ZSWatch | `466a5ae5f3c1cc3dd53da6da2f1c7f50cfae0394` | 2026-08-23 | Zephyr smartwatch with an explicit watchface work-scheduling model; T-037 |
+| `wasp-os` | github.com/wasp-os/wasp-os | `5625c1df433d43b078dd511f30204f10d9c28f6c` | 2026-08-23 | MicroPython watch firmware whose Clock names its full and incremental draw paths; T-037 |
 
 ### Licences, checked before anything was depended on
 
@@ -92,6 +94,8 @@ badge or a recollection.
 | `lv_i18n` | **MIT** | `LICENSE` in the clone | anything |
 | `cldr-core` (plural rules data) | **Unicode-DFS-2016** | npm registry metadata — **not** the file, because it is not vendored | permissive and MIT-compatible; read the file itself before vendoring any of it |
 | **Gadgetbridge** | **AGPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
+| **ZSWatch** | **GPL-3.0** | **`LICENCE`** — British spelling, and `LICENSE` 404s at that commit, which is exactly how a licence gets recorded from a badge instead of a file | **read it, learn from it, copy nothing** |
+| **wasp-os** | **GPL-3.0** at the tree; **LGPL-3.0-or-later** on the Clock | two files, because the tree is **not uniformly licensed**: `COPYING` is GPLv3, and `watch_faces/clock.py` line 1 is `SPDX-License-Identifier: LGPL-3.0-or-later` | **read it, learn from it, copy nothing.** LGPL's linking relief is not usable here — this is a statically linked firmware image — and the file is MicroPython regardless |
 
 The bottom three matter more than the top six, because they are the projects
 that have already solved Attadipa's hardest problems. Meshtastic ships worldwide
@@ -1612,3 +1616,88 @@ mutation-checked three ways: disabling the comment/string blanking, loosening
 the colour rule back to where it would read `Rgb make_colour()\n{...}` as a
 colour literal, and dropping the zero exemption each turn it red. No hardware —
 this is a source-tree checker and touches no board.
+
+---
+
+### The first watchface: state, cadence and overflow
+
+**Problem:** T-037 draws time, date and battery on the one screen that is on
+most, in two geometries, two themes, two locales and two modes (final §53, §88).
+Three questions have to be answered before a pixel is placed: what the screen's
+state actually *is*, how often each part of it is allowed to be redrawn, and
+what happens when a string is longer than its box. Getting the second one wrong
+is not a cosmetic mistake — it is a battery complaint that arrives months later.
+
+**Projects investigated:** InfiniTime · ZSWatch · wasp-os · Wear OS watch-face
+guidance (documentation) · LVGL v9.5.0 (the pinned dependency, for the overflow
+half).
+
+**Useful implementation:**
+
+| Where | What is worth taking |
+|---|---|
+| `InfiniTime/src/displayapp/screens/WatchFaceDigital.cpp:106-108` | truncate the datum to the *displayed* granularity, then compare — the dirty check is on the semantic value, not the raw one |
+| the same file, `:130-131` | a slower datum nested as a derived dirty value of a faster one: the date cannot change unless the minute did |
+| the same file, `:61` | the time is drawn in a **monospaced** face, and §7.1 of [CLOCK_STATE_AND_CADENCE](CLOCK_STATE_AND_CADENCE.md) measures why that is not decoration |
+| `ZSWatch/app/src/applications/watchface/watchface_app.c:486` | an externally *set* time is an event that forces a refresh, not something a tick eventually notices |
+| the same file, `:280-283` and `:582-584` | close and suspend cancel **different** lists of scheduled work, and conflating them leaks a wake |
+| `wasp-os/watch_faces/clock.py:36`, `:54`, `:73` | full render and incremental render as two named entry points, with the caller choosing |
+
+**License:** InfiniTime **GPL-3.0**; ZSWatch **GPL-3.0** (`LICENCE`, British
+spelling); wasp-os **GPL-3.0** at the tree (`COPYING`) with
+**LGPL-3.0-or-later** on `watch_faces/clock.py` itself. LVGL **MIT**, already a
+dependency.
+
+**Strengths:** all three are shipping firmware on real wrists, and all three have
+had to answer the resume-from-sleep question that a desktop mock-up never asks.
+
+**Weaknesses, and the one that changed the decision:** **none of the three
+schedules on the datum it displays.** InfiniTime polls at the display refresh
+period and filters; ZSWatch reschedules a fixed 1000 ms (or 50 ms) period;
+wasp-os ticks at 1 s and filters on the minute. Every one of them is affordable
+in its own project because a display or scheduler loop is already running.
+Attadipa models `PowerState::Idle` as distinct from `Active` precisely so that
+an unwatched screen costs nothing, and final §61 forbids polling because it is
+easy — so the shape all three converged on is a consequence of their
+constraints, not a lesson from their judgement. Also rejected: wasp-os's
+hard-coded `MONTH = 'JanFeb…'` table (`clock.py:23`) and its sentence built from
+`format()` fragments (`:71`), both of which ADR-0010 and DESIGN_SYSTEM §8
+already forbid.
+
+**Decision:** `INSPIRE ARCHITECTURE` for the dirty-value and full-vs-incremental
+shapes. `REJECT` all three cadence models. `USE AS DEPENDENCY` for LVGL's label
+overflow, with `LV_LABEL_LONG_MODE_SCROLL` and `SCROLL_CIRCULAR` **rejected on
+source evidence** rather than on taste.
+
+**Reason:** the copyleft licences foreclose every verb with copy semantics, as
+the licence table above already records for InfiniTime — so the only lawful
+outcome for the three firmwares was ever going to be `INSPIRE ARCHITECTURE`, and
+saying so is not a concession. The cadence rejection is a genuine engineering
+disagreement and is argued from Attadipa's own `core/power_state.h` rather than
+from preference. The LVGL rejections are argued from lines: both scroll modes
+set `LV_ANIM_REPEAT_INFINITE` (`lv_label.c:1123`, `:1238`), which is a permanent
+redraw source on the always-on screen, and `:904-916` silently rewrites `CENTER`
+and `RIGHT` alignment to `LEFT` when the text overflows — so a centred date
+would change its own alignment the moment a longer string arrived.
+
+**Source revision:** InfiniTime `825056574f47a8187b410b860f326050566553e2` ·
+ZSWatch `466a5ae5f3c1cc3dd53da6da2f1c7f50cfae0394` · wasp-os
+`5625c1df433d43b078dd511f30204f10d9c28f6c` · LVGL
+`85aa60d18b3d5e5588d7b247abf90198f07c8a63`. All four read on 2026-08-23; the
+LVGL tree is the one `cmake/AttadipaLvgl.cmake` fetched and verified.
+
+**Attadipa integration:** none yet — this is research ahead of T-037 and no
+Clock exists. The findings live in
+[CLOCK_STATE_AND_CADENCE](CLOCK_STATE_AND_CADENCE.md); the tick-ownership half
+belongs to T-018 and T-024, which already own it, and is deliberately not
+duplicated into an ADR here.
+
+**Tests required:** the string, rollover and degraded-state assertions are host
+tests with no LVGL (§8.2 of the research note). The width bounds are assertions
+against `tools/font/measure_strings.py`, which reads the shipped generated fonts
+and applies LVGL's own advance arithmetic to them. The 16 screenshots are
+review artefacts and are **not** compared byte-for-byte, because determinism
+across an LVGL patch release has not been demonstrated and a golden that has to
+be regenerated is a golden nobody looks at. Nothing here needs a board; the
+things that do — panel retention across a display-off, AOD current, burn-in —
+are listed as `NOT EXECUTED — HARDWARE REQUIRED` in §10 of the research note.

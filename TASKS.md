@@ -192,10 +192,38 @@ stale silently. The protocol is
   (final §58, §88).
 - **Acceptance:** it looks like Attadipa and not like debug UI (final §96), at
   both geometries, in both locales, in both themes.
-- **Research status:** not started — mature wearable watchface patterns
-  (final §85); interaction lessons only, never someone else's visual identity
-- **Implementation status:** not started
-- **Tests:** reference screenshots across the visual matrix
+- **Research status:** **done** 2026-08-23 —
+  [CLOCK_STATE_AND_CADENCE](docs/research/CLOCK_STATE_AND_CADENCE.md), issue
+  [#144](https://github.com/hleserg/Attadipa/issues/144). InfiniTime, ZSWatch and
+  wasp-os re-read at pinned commits; LVGL's overflow behaviour read at
+  `85aa60d`; string widths measured against the shipped fonts. Interaction
+  lessons only — no visual identity taken.
+- **Implementation status:** not started, **and it has five prerequisites** the
+  research found. None is large; all five are in front of this task rather than
+  inside it, which is why they are listed rather than discovered:
+  1. **a display-sized font.** `tools/font/generate_ui_fonts.py:38` generates
+     14/16/20/28 px and `sim/boot_screen.cpp:212` maps `TypeRole::Display` to
+     **16 px on the T-Watch**. A 16 px time is a status bar, not a watchface.
+  2. **a calendar.** Nothing in the tree turns a `WallTime` into a civil date,
+     and `core/clock.h` deliberately gives `WallTime` no arithmetic — a
+     converter is a pure function of one instant and must be written as one.
+  3. **temporal strings.** 63 `StringId`s, none of them a month, weekday or
+     clock string. Russian months must be **genitive** ("30 сентября").
+  4. **simulator injection.** `--board`, `--theme` and `--locale` cover eight of
+     the sixteen configurations; the **eight Child-Mode ones have no switch at
+     all**, which final §57 lists as a simulator requirement. And no state can be
+     put on screen to photograph: no time injection, no battery injection, and
+     `--screenshot` captures frame one, so a rollover cannot be caught.
+  5. **a tick period on `AppManifest`** — T-018/T-024 below.
+- **Two findings that constrain the design rather than the plan:** Montserrat's
+  figures are proportional, so at 28 px `HH:MM` swings 36 px across a day — 15 %
+  of the 240 px face, once a minute; and `lv_label_set_text_static()` combined
+  with `LV_LABEL_LONG_MODE_DOTS` disables the ellipsis silently, which is exactly
+  the combination `tr()` invites.
+- **Tests:** strings, rollover and degraded states as host assertions; width
+  bounds against `tools/font/measure_strings.py`; 16 screenshots as review
+  artefacts and **not** as byte-compared goldens — §8.2 of the research note has
+  the reasoning.
 - **Hardware required:** no
 
 ### T-038 · The first Settings
@@ -980,6 +1008,16 @@ stale silently. The protocol is
   comparable
 - **Implementation status:** the contract is sketched in
   [ADR-0004](docs/adr/0004-capability-sources.md) §5; the framework is not built
+- **One requirement arrived from elsewhere, 2026-08-23.** T-037's research
+  ([CLOCK_STATE_AND_CADENCE](docs/research/CLOCK_STATE_AND_CADENCE.md) §5) needs
+  the tick half of this contract and found that it does not exist in code: the
+  reuse ledger and final §59 both say an application declares a tick period and
+  never holds a timer handle, but `apps/app_manifest.h` declares only `id`,
+  `required` and `enhanced_by`. **T-037 is the first application that will need
+  it**, and T-037's dependency list does not currently include this task — so
+  either it takes the dependency, or it defines a Clock-local tick that this
+  task later has to absorb. Someone has to choose; it is recorded here rather
+  than left to whoever starts T-037 first.
 - **Tests:** attach → open → detach → reattach, in host tests, with no hardware
 - **Hardware required:** no
 
@@ -991,7 +1029,16 @@ stale silently. The protocol is
   Choosing late means choosing several.
 - **Acceptance:** one mechanism; bounded queues; defined behaviour for a slow
   consumer; stack usage countable, because it is a memory-budget line.
-- **Research status:** partial
+- **Research status:** partial. **One input is now written down** —
+  [CLOCK_STATE_AND_CADENCE](docs/research/CLOCK_STATE_AND_CADENCE.md) §4 and §5,
+  2026-08-23: three mature watch firmwares were read at pinned commits and all
+  three poll (30 ms, 1 s, 1 s) and filter, rather than waking on the datum. The
+  requirement that falls out for this ADR is *an application declares the cadence
+  of each datum it displays and receives a callback; it never holds a timer
+  handle; the framework releases every wake on close **and** on suspend, which
+  are two different lists* — ZSWatch cancels different sets in each
+  (`watchface_app.c:280-283` against `:582-584`). Deliberately **not** minted as
+  its own ADR by that research, because this task already owns the decision.
 - **Implementation status:** not started
 - **Tests:** host tests
 - **Hardware required:** no
