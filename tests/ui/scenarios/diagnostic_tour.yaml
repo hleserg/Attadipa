@@ -1,0 +1,85 @@
+# A tour of the diagnostic screen, for the simulator or for a device.
+#
+# It is a *smoke* scenario: it proves the loop works end to end and leaves the
+# images an agent has to look at. It does not assert what the screen should look
+# like, because a pixel-exact expectation against a live renderer fails on an
+# antialiased glyph and teaches everybody to ignore it. What it does assert is
+# the thing a machine can be sure of -- that an action changed the screen, and
+# that a screen nobody touched did not change.
+#
+#   tools/watch_control.py run tests/ui/scenarios/diagnostic_tour.yaml
+#
+# Screenshots land in artifacts/watch/diagnostic_tour/ and their absolute paths
+# are printed, because the deliverable is the image, not the line of output.
+
+steps:
+  - action: screenshot
+    name: 01-untouched
+
+  # Nothing has happened, so nothing may have changed. This is the control: a
+  # scenario whose "changed" assertions all pass because the screen changes on
+  # its own is measuring an animation, not an action.
+  - action: expect_screen_same
+    since: 01-untouched
+
+  - action: tap
+    x: 205
+    y: 251
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 02-after-tap
+  - action: expect_screen_changed
+    since: 01-untouched
+
+  # A real down / move... / up. On the diagnostic screen this draws a trail, so
+  # the picture shows whether the intermediate points arrived -- a swipe
+  # delivered as one artificial jump draws two dots instead of a line.
+  - action: swipe
+    from: 350,120
+    to: 60,420
+    duration: 0.5
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 03-after-swipe
+  - action: expect_screen_changed
+    since: 02-after-tap
+
+  # Slow, which is the whole difference from the swipe above. A drag that is
+  # secretly a swipe passes a test the interface fails under a finger.
+  - action: drag
+    from: 60,420
+    to: 350,420
+    duration: 1.2
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 04-after-drag
+  - action: expect_screen_changed
+    since: 03-after-swipe
+
+  - action: button
+    button: button-1
+    event: click
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 05-after-click
+
+  # Held long enough that the screen's own measured duration separates it from
+  # the click above by looking.
+  - action: button
+    button: button-1
+    event: hold
+    duration: 1.0
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 06-after-hold
+  - action: expect_screen_changed
+    since: 05-after-click
+
+  - action: input_reset
+  - action: screenshot
+    name: 07-final

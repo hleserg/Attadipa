@@ -1,0 +1,5 @@
+{
+  "_comment": "An L-shaped path, for `watch_control.py gesture --file`. Asymmetric on purpose: a mirrored or rotated frame draws a visibly different letter.",
+  "duration": 0.6,
+  "points": [[80, 80], [80, 200], [80, 320], [180, 380], [300, 380]]
+}

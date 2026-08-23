@@ -1,0 +1,265 @@
+"""The closed loop, end to end, with nothing mocked.
+
+Starts the simulator, connects the real host tool to it over a real socket,
+injects real input through the real LVGL input path, pulls the real framebuffer
+back and writes real PNGs -- then checks the pictures.
+
+This is the test that catches what the unit tests structurally cannot. Both
+sides of the protocol are pinned to fixed bytes, the state machine is exercised
+without a transport, and the pixel conversions are checked against known values;
+none of that would notice if the simulator forgot to register the input device,
+or drained the queue too eagerly and collapsed a swipe, or handed back a
+framebuffer with the wrong stride.
+
+  python3 tools/watch/e2e_test.py <path-to-attadipa_sim>
+
+The assertions on the images are deliberately about *structure*, not
+appearance -- corner pixels, colour separation, how many pixels a swipe left
+behind. A pixel-exact expectation would fail on an antialiased glyph and be
+switched off within a week. Whether the screen looks *right* is for a person or
+an agent to decide by opening the file, which is the whole point of the
+mechanism.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import zlib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+
+from watch import protocol as p             # noqa: E402
+from watch import scenario as scenario_mod  # noqa: E402
+from watch.client import WatchError, connect  # noqa: E402
+
+failures: list[str] = []
+
+
+def check(condition: bool, what: str) -> None:
+    if not condition:
+        failures.append(what)
+    print(f"  {'ok  ' if condition else 'FAIL'} {what}")
+
+
+def read_png(path: str) -> tuple[int, int, bytes]:
+    """Decode our own PNG without an image library, to check what was written."""
+    raw = Path(path).read_bytes()
+    assert raw[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    width = int.from_bytes(raw[16:20], "big")
+    height = int.from_bytes(raw[20:24], "big")
+
+    at, idat = 8, b""
+    while at < len(raw):
+        length = int.from_bytes(raw[at:at + 4], "big")
+        if raw[at + 4:at + 8] == b"IDAT":
+            idat += raw[at + 8:at + 8 + length]
+        at += 12 + length
+
+    decoded = zlib.decompress(idat)
+    stride = width * 3 + 1
+    rows = [decoded[y * stride + 1:(y + 1) * stride] for y in range(height)]
+    return width, height, b"".join(rows)
+
+
+def pixel(rgb: bytes, width: int, x: int, y: int) -> tuple[int, int, int]:
+    at = (y * width + x) * 3
+    return rgb[at], rgb[at + 1], rgb[at + 2]
+
+
+def run(simulator: str, board: str = "waveshare-amoled-206") -> int:
+    with tempfile.TemporaryDirectory() as workdir:
+        socket_path = os.path.join(workdir, "sim.sock")
+        log_path = os.path.join(workdir, "sim.log")
+
+        environment = dict(os.environ, SDL_VIDEODRIVER="dummy")
+        with open(log_path, "wb") as log:
+            process = subprocess.Popen(
+                [simulator, "--board", board, "--diagnostic", "--debug-socket", socket_path],
+                stdout=log, stderr=subprocess.STDOUT, env=environment)
+            try:
+                return _drive(process, socket_path, workdir, board, log_path)
+            finally:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:      # pragma: no cover
+                    process.kill()
+
+
+def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -> int:
+    deadline = time.monotonic() + 30
+    while not os.path.exists(socket_path):
+        if process.poll() is not None:
+            print(Path(log_path).read_text(errors="replace"), file=sys.stderr)
+            print("the simulator exited before it listened", file=sys.stderr)
+            return 1
+        if time.monotonic() > deadline:
+            print("the simulator never created its socket", file=sys.stderr)
+            return 1
+        time.sleep(0.05)
+
+    watch = connect(socket_path=socket_path, timeout=30.0)
+    try:
+        caps = watch.capabilities
+        hello = watch.hello
+        assert caps and hello
+
+        print("handshake")
+        check(hello.board_id == board, f"the device names itself: {hello.board_id}")
+        check(hello.build.startswith("sim"),
+              f"and says it is a simulator, not hardware: '{hello.build}'")
+        check(caps.width > 0 and caps.height > 0,
+              f"it reports a panel: {caps.width}x{caps.height}")
+        check(caps.max_touch_points == 1,
+              "and one touch point -- single touch, asserted about LVGL's pointer device")
+        check(len(caps.buttons) >= 1, f"and {len(caps.buttons)} button(s)")
+
+        print("\nscreenshot")
+        absolute, shot = watch.save_screenshot(os.path.join(workdir, "01.png"))
+        check(os.path.getsize(absolute) > 1000, "a screenshot writes a non-trivial file")
+        width, height, rgb = read_png(absolute)
+        check((width, height) == (caps.width, caps.height),
+              f"the PNG is the size the device declared: {width}x{height}")
+
+        # The diagnostic screen's corner markers, by colour. This is what
+        # catches a rotation or a mirror -- four corners, four colours, each
+        # checked where it belongs.
+        top_left = pixel(rgb, width, 2, 2)
+        top_right = pixel(rgb, width, width - 3, 2)
+        bottom_left = pixel(rgb, width, 2, height - 3)
+        bottom_right = pixel(rgb, width, width - 3, height - 3)
+        check(top_left[0] > 200 and top_left[2] < 80,
+              f"the top-left marker is the orange one {top_left} -- not rotated, not mirrored")
+        check(top_right[2] > 200 and top_right[0] < 80,
+              f"the top-right marker is the blue one {top_right}")
+        check(bottom_left[0] > 200 and bottom_left[1] > 150 and bottom_left[2] < 80,
+              f"the bottom-left marker is the yellow one {bottom_left}")
+        check(bottom_right[1] > 200 and bottom_right[0] < 120,
+              f"the bottom-right marker is the green one {bottom_right}")
+
+        # The swatch strip: pure red, green and blue at known positions. A
+        # swapped R and B passes every corner check above and fails here.
+        strip_y = height - height // 12 - height // 8 + 4
+        swatch = width // 6
+        red = pixel(rgb, width, swatch // 2, strip_y)
+        green = pixel(rgb, width, swatch + swatch // 2, strip_y)
+        blue = pixel(rgb, width, 2 * swatch + swatch // 2, strip_y)
+        check(red == (255, 0, 0), f"the red swatch is pure red: {red}")
+        check(green == (0, 255, 0), f"the green swatch is pure green: {green}")
+        check(blue == (0, 0, 255), f"the blue swatch is pure blue: {blue}")
+
+        print("\ninput")
+        watch.tap(caps.width // 2, caps.height // 2)
+        time.sleep(0.3)
+        _, after_tap = watch.save_screenshot(os.path.join(workdir, "02.png"))
+        check(after_tap.rgb != rgb, "a tap changes the screen")
+
+        # The assertion that a swipe is a real sequence: the diagnostic screen
+        # draws one dot per point it received, so a swipe delivered as a single
+        # artificial jump leaves two dots and a real one leaves a line.
+        watch.swipe((int(caps.width * 0.85), int(caps.height * 0.25)),
+                    (int(caps.width * 0.15), int(caps.height * 0.80)), duration=0.5)
+        time.sleep(0.3)
+        swipe_path = os.path.join(workdir, "03.png")
+        watch.save_screenshot(swipe_path)
+        width, height, swiped = read_png(swipe_path)
+
+        trail = 0
+        for index in range(0, len(swiped), 3):
+            r, g, b = swiped[index], swiped[index + 1], swiped[index + 2]
+            if r < 80 and g > 200 and b > 150:   # the trail's cyan
+                trail += 1
+        # Each point is a 6x6 dot, so a genuine multi-point swipe leaves far
+        # more than two dots' worth of pixels.
+        check(trail > 6 * 6 * 4,
+              f"the swipe left a trail of {trail} pixels -- a real down/move/up, "
+              f"not one artificial jump")
+
+        print("\nbuttons")
+        injectable = [b for b in caps.buttons if b.injectable]
+        check(bool(injectable), "at least one button can be simulated")
+        watch.button_click(injectable[0].id, 0.05)
+        time.sleep(0.3)
+        _, clicked = watch.save_screenshot(os.path.join(workdir, "04.png"))
+        watch.button_hold(injectable[0].id, 0.9)
+        time.sleep(0.3)
+        _, held = watch.save_screenshot(os.path.join(workdir, "05.png"))
+        # The screen prints the measured hold, so a click and a hold cannot look
+        # the same. If they do, the duration never reached the device.
+        check(clicked.rgb != held.rgb,
+              "a click and a nine-hundred-millisecond hold produce different screens")
+
+        print("\nrefusals")
+        try:
+            watch.button_press("no-such-button")
+            check(False, "a button that does not exist was accepted")
+        except WatchError as exc:
+            check("no button called" in str(exc), f"an unknown button is refused: {exc}")
+        try:
+            watch.tap(caps.width + 100, 0)
+            check(False, "a coordinate off the screen was accepted")
+        except WatchError as exc:
+            check("outside the" in str(exc), f"a coordinate off the screen is refused: {exc}")
+        try:
+            watch._event(p.EventType.POINTER_UP, x=1, y=1)
+            check(False, "a release with nothing held was accepted")
+        except p.ProtocolError as exc:
+            check(exc.code is p.ErrorCode.BAD_INPUT,
+                  f"a release with nothing held is a typed error: {exc}")
+
+        print("\nstuck input")
+        watch._event(p.EventType.POINTER_DOWN, x=10, y=10)
+        released = watch.input_reset()
+        check(released == 1, f"input reset lifted {released} held input")
+        check(watch.input_reset() == 0, "and running it again is not an error")
+
+        # A disconnect mid-press must lift the finger by itself. Proved from a
+        # second connection, because the first one is gone.
+        watch._event(p.EventType.POINTER_DOWN, x=20, y=20)
+        watch._transport.close()
+        time.sleep(0.5)
+        watch = connect(socket_path=socket_path, timeout=30.0)
+        check(watch.input_reset() == 0,
+              "a dropped connection released its own held finger, without being asked")
+
+        print("\nscenario")
+        tour = HERE.parent.parent / "tests" / "ui" / "scenarios" / "diagnostic_tour.yaml"
+        if tour.exists():
+            try:
+                steps = scenario_mod.load(str(tour))
+            except WatchError as exc:
+                if "PyYAML" not in str(exc):
+                    raise
+                print("  --   the scenario is YAML and PyYAML is absent; skipped")
+            else:
+                report = scenario_mod.run(watch, steps, os.path.join(workdir, "tour"))
+                detail = "; ".join(f"{s.action}: {s.detail}" for s in report.steps if not s.ok)
+                check(report.ok, f"the shipped scenario passes ({len(report.steps)} steps) {detail}")
+                check(len(report.artefacts) >= 5,
+                      f"and leaves {len(report.artefacts)} images to look at")
+    finally:
+        try:
+            watch.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    if failures:
+        print(f"\nend-to-end FAILED ({len(failures)}):", file=sys.stderr)
+        for failure in failures:
+            print(f"  * {failure}", file=sys.stderr)
+        return 1
+    print("\nend-to-end: the loop closes. Screenshot, inject, look, repeat.")
+    return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("usage: e2e_test.py <path-to-attadipa_sim> [board]", file=sys.stderr)
+        sys.exit(2)
+    sys.exit(run(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "waveshare-amoled-206"))

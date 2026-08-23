@@ -254,6 +254,37 @@ void the_message_fits_inside_one_frame()
     CHECK(link::encode(message, n, frame, sizeof(frame)) == link::kMaxFrame);
 }
 
+// The literals below are asserted identically in tools/watch/selftest.py.
+//
+// Two independent implementations of one format catch the bug a shared one
+// cannot: an encoder and a decoder that agree with each other while both being
+// wrong. Round-trip tests on either side pass in that case; a fixed byte string
+// does not. If either implementation drifts, one of the two suites fails and
+// the hex says where.
+void the_wire_bytes_are_pinned_to_a_literal()
+{
+    // frame_encode(b"hello") == f15e05005f68656c6c6f750f
+    const std::uint8_t payload[] = {'h', 'e', 'l', 'l', 'o'};
+    const std::uint8_t expected[] = {0xF1, 0x5E, 0x05, 0x00, 0x5F, 'h',  'e',
+                                     'l',  'l',  'o',  0x75, 0x0F};
+
+    std::uint8_t frame[link::kMaxFrame] = {};
+    const std::size_t n = link::encode(payload, sizeof(payload), frame, sizeof(frame));
+    CHECK(n == sizeof(expected));
+    CHECK(std::memcmp(frame, expected, sizeof(expected)) == 0);
+
+    // The algorithm's own published check value, so the CRC is pinned to the
+    // standard and not merely to this project's other copy of it.
+    const char* check_string = "123456789";
+    CHECK(link::crc16_ccitt(reinterpret_cast<const std::uint8_t*>(check_string), 9) == 0x29B1);
+
+    // The salt, which is what stops a stuck bus from producing a self-consistent
+    // header out of all-zeroes or all-ones.
+    std::uint8_t empty_frame[link::kMaxFrame] = {};
+    CHECK(link::encode(nullptr, 0, empty_frame, sizeof(empty_frame)) == link::kOverheadBytes);
+    CHECK(empty_frame[4] == 0x5A);
+}
+
 void crc32_matches_the_published_vector()
 {
     const char* check_string = "123456789";
@@ -761,6 +792,7 @@ int main()
     a_body_too_large_for_a_frame_is_refused_not_truncated();
     an_output_buffer_too_small_yields_nothing();
     the_message_fits_inside_one_frame();
+    the_wire_bytes_are_pinned_to_a_literal();
     crc32_matches_the_published_vector();
     the_bodies_survive_a_round_trip();
     bytes_per_pixel_is_defined_for_every_format();

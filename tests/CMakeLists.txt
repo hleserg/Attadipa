@@ -221,6 +221,31 @@ if(ATTADIPA_BUILD_SIMULATOR)
     target_link_libraries(test_ui_icons PRIVATE attadipa_images)
     add_test(NAME ui_icons COMMAND test_ui_icons)
     set_tests_properties(ui_icons PROPERTIES LABELS design)
+
+    # ---------------------------------------------------------------------
+    # The remote-control loop, end to end (#117).
+    #
+    # Starts the simulator, connects the real host tool over a real socket,
+    # injects input through the real LVGL input path, pulls the real
+    # framebuffer back and checks the pictures. It is the only test that can
+    # catch a simulator which forgot to register its input device, or drained
+    # the queue too eagerly and collapsed a swipe into one jump, or handed back
+    # a framebuffer with the wrong stride -- none of which the protocol tests
+    # can see, because none of them touch LVGL.
+    #
+    # Its assertions are about structure, not appearance: which colour is in
+    # which corner, whether the swatches are pure, how many pixels a swipe left
+    # behind. A pixel-exact expectation against a live renderer fails on an
+    # antialiased glyph and gets switched off within a week.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME watch_control_end_to_end
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/watch/e2e_test.py
+                         $<TARGET_FILE:attadipa_sim> waveshare-amoled-206)
+        set_tests_properties(watch_control_end_to_end PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy"
+            TIMEOUT 180
+            LABELS simulator)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -273,6 +298,23 @@ add_executable(test_debug test_debug.cpp)
 target_link_libraries(test_debug PRIVATE attadipa_debug)
 add_test(NAME debug_channel COMMAND test_debug)
 set_tests_properties(debug_channel PROPERTIES LABELS input)
+
+# The host tool's own tests. Python, because the tool is.
+#
+# tools/watch/selftest.py needs nothing at all -- no device, no simulator, no
+# socket -- because the wire format is a pure module. It holds the Python
+# implementation against fixed byte vectors that tests/test_debug.cpp asserts
+# identically, so the two independent implementations are pinned to the same
+# bytes rather than to each other. An encoder and a decoder that share a mistake
+# agree perfectly; a hex literal does not.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME watch_tool
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/watch/selftest.py)
+    set_tests_properties(watch_tool PROPERTIES LABELS input)
+else()
+    add_test(NAME watch_tool_unavailable COMMAND ${CMAKE_COMMAND} -E false)
+    set_tests_properties(watch_tool_unavailable PROPERTIES LABELS input)
+endif()
 
 # ---------------------------------------------------------------------------
 # Device power states and the GNSS receiver's own.

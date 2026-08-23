@@ -153,7 +153,16 @@ enum class PixelFormat : std::uint8_t {
 
 std::uint8_t bytes_per_pixel(PixelFormat format);
 
-// How the framebuffer is oriented relative to the panel as worn.
+// The rotation the **host must apply, clockwise**, to make the received frame
+// upright.
+//
+// The direction is defined here rather than derived, because "the framebuffer
+// is rotated by N relative to the panel" and "rotate by N to display it" are
+// opposite instructions that both read naturally. A driver that reports one
+// while the host assumes the other produces an image that is upside down in
+// exactly half of the cases, which is the kind of bug that survives review
+// because the other half looks fine. `Deg90` means: turn the received image a
+// quarter turn clockwise. Width and height swap for 90 and 270.
 //
 // Carried on the wire rather than assumed by the host, because it is a board
 // fact and the host must not hold a table of board facts -- that is the
