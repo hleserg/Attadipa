@@ -31,6 +31,84 @@ An entry that cannot name its source does not belong here. It belongs in
   memory requirements, LoRa abstraction, or the companion protocol. None of
   these have been read from source yet.
 
+### The pinned MeshCore revision is upstream's current release, not a lagging one
+
+- **Claim:** `d92964352441e53b93e8667b802e04f6e072b39e` is simultaneously
+  Attadipa's pin, the tip of `meshcore-dev/MeshCore`'s `main`, and the newest
+  release (`companion-v1.17.1`, `repeater-v1.17.1`, `room-server-v1.17.1`,
+  published 2026-08-14). `dev` is at `9d7cee66394fffd6e8c6e9f39fe03660cb314f64`,
+  2026-08-22.
+- **Source:** GitHub API `repos/meshcore-dev/MeshCore/branches/{main,dev}` and
+  `/releases`.
+- **Checked:** 2026-08-23.
+- **Why it is here:** three open pull requests are based on `dev`, which normally
+  makes "does this apply to our pin" an open question. It is not one here — see
+  the next entry.
+
+### The three MeshCore parser pull requests all apply to our pin unchanged
+
+- **Claim:** `src/Packet.cpp`, `src/Dispatcher.cpp`, `src/Mesh.cpp`,
+  `src/helpers/AdvertDataHelpers.cpp` and `src/Utils.cpp` are **byte-identical**
+  between `d929643` and both pull request bases (`dev@e0031870` for #3267,
+  `dev@9d7cee66` for #3269/#3270). The 29 commits `dev` leads by touch none of
+  them.
+- **Source:** `git diff --quiet <pin> <base> -- <file>` against a full clone.
+- **Checked:** 2026-08-23.
+- **Consequence:** a measurement on a pull request's head tree is a measurement
+  of our pin plus that pull request's guards, and no rebasing is needed to reason
+  about either.
+
+### Nine of ten malformed-frame cases over-read on the pinned MeshCore revision
+
+- **Claim:** at `d929643`, `Dispatcher::tryParsePacket`, `Packet::readFrom` and
+  `AdvertDataParser` all read past the length they are given, on inputs of 0, 1
+  and 2 bytes. Reproduced, not read: upstream's own translation units compiled
+  unmodified and fed buffers of exactly their declared length behind a
+  `PROT_NONE` guard page, under AddressSanitizer.
+- **Source:** [MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §4, harness
+  and corpus in [`meshcore-parser-bounds/`](meshcore-parser-bounds/).
+- **Checked:** 2026-08-23, clang 18.1.3, Ubuntu 24.04.
+- **What it is not:** at every reachable call site in the pinned tree the buffer
+  behind these three parsers is a fixed array large enough that the read stays
+  *inside the allocation* — 256 B in `Dispatcher::checkRecv`, 262 B and 250 B in
+  the two bridges, the `Packet` object itself for adverts. The outcome in all
+  nine is a rejected packet. "Reads past its length" is verified; "leaves the
+  buffer" is verified **false** for these three, and the distinction is the whole
+  blast radius.
+- **Hardware:** **NOT EXECUTED — HARDWARE REQUIRED.** Nothing here ran on a
+  radio, a node or a board, and no host sanitizer result may be presented as
+  radio or HIL validation.
+
+### `Utils::decrypt` writes 192 bytes into MeshCore's 184-byte packet buffer
+
+- **Claim:** `src/Utils.cpp:70-83` rounds its output up to whole 16-byte blocks
+  and documents the precondition in `Utils.h`; `Mesh::onRecvPacket` passes it a
+  wire-supplied length that does not honour it, into
+  `uint8_t data[MAX_PACKET_PAYLOAD]` (184 B). For `payload_len` 181…184 it writes
+  192 bytes. Reproduced against the real `src/Utils.cpp` with a stub block cipher
+  — the bound belongs to the loop, not the cipher — faulting at `Utils.cpp:77`
+  for `src_len` 177, 180 and 182 and clean at 176.
+- **Source:** [MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §3 P4.
+- **Checked:** 2026-08-23.
+- **Not from upstream:** none of the three pull requests mentions it, and it is
+  not filed upstream. Reporting it is the owner's call, not an agent's.
+- **Not established:** what those eight bytes overwrite on an ESP32-S3, and
+  whether the end-to-end path through `Mesh::onRecvPacket` runs — both need
+  builds this project has not made. See
+  [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) M17.
+
+### Attadipa's own frame decoder validates length before reading
+
+- **Claim:** `link/src/frame_codec.cpp` rejects a declared length greater than
+  `kMaxPayload` at `:139` before touching a payload byte, waits rather than reads
+  when fewer bytes have arrived than the header declares (`:148`), and gates both
+  behind a length-check byte (`:123`) and a CRC. The MeshCore findings do not
+  transplant onto it.
+- **Source:** the file, read on 2026-08-23 while answering issue #142.
+- **Why it is here:** the finding that prompted the check was about a different
+  protocol boundary with different invariants, and "our decoder is probably fine"
+  is not a fact. This one was looked at.
+
 ---
 
 ## Toolchain / host environment

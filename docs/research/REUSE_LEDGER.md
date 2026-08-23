@@ -59,7 +59,7 @@ want to inherit the experience, not only the code.
 
 | Project | Repository | Commit at examination | Last commit | Why it is here |
 |---|---|---|---|---|
-| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006 |
+| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006. **Re-checked 2026-08-23**: still `main`'s tip and still the newest release (`companion-v1.17.1`), so the pin is current rather than lagging. `dev` is at `9d7cee66` (2026-08-22) and contains none of the parser guards below — [MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md) |
 | `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API |
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
@@ -71,6 +71,42 @@ want to inherit the experience, not only the code.
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
 | `lv_i18n` | github.com/lvgl/lv_i18n | `08944ec6dc2faed83121c53e9cf9ba05013a6686` | 2026-03-30 | LVGL's own localization generator — the closest existing answer to T-033 |
 | `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
+
+### Upstream deltas being monitored, and not taken
+
+A pinned revision is a decision to stop moving, not a decision to stop looking.
+What sits here is upstream work that would change a pin if it landed — open, so
+not takeable, and named so that the next pin decision starts from a list rather
+than a search.
+
+**Nothing in this table has been vendored, and nothing in it may be** while it is
+open: an unmerged pull request has no release behind it, and two of these three
+do not close the finding they were written for.
+
+| Upstream | Head | State 2026-08-23 | What it would change | Our decision |
+|---|---|---|---|---|
+| [MeshCore #3267](https://github.com/meshcore-dev/MeshCore/pull/3267) | `05da523e` | open, unmerged, base `dev` | length checks in `src/Dispatcher.cpp::tryParsePacket` and `src/Packet.cpp::readFrom` | **MONITOR.** Verified to close all six of our A/B corpus cases on the pin. Still not taken — unreleased, and we compile neither file |
+| [MeshCore #3269](https://github.com/meshcore-dev/MeshCore/pull/3269) | `5ebf8ef9` | open, unmerged, base `dev` | a `MESH_DEBUG_PRINTLN` on the `PAYLOAD_TYPE_PATH` length mismatch | **MONITOR as evidence, not as a fix.** The diff logs the condition and then executes the read anyway — no `break`, no `return`. Verified, not inferred |
+| [MeshCore #3270](https://github.com/meshcore-dev/MeshCore/pull/3270) | `f80d805e` | open, unmerged, base `dev` | three guards in `AdvertDataParser` | **MONITOR.** Closes three of our four C cases and **leaves `app_data[0]` unguarded** at `AdvertDataHelpers.cpp:34` when `app_data_len == 0` — measured on its own head |
+| [MeshCore #3266](https://github.com/meshcore-dev/MeshCore/pull/3266) | `d87dd32f` | **closed, unmerged** | the #3267 hunks plus 28 unrelated files | superseded by #3267, whose parser hunks are byte-identical |
+| [MeshCore #3271](https://github.com/meshcore-dev/MeshCore/pull/3271) | `f80d805e` | **closed, unmerged** | — | the *same commit* as #3270, not merely equivalent |
+| `meshcore-dev/MeshCore` `dev` | `9d7cee66` | 2026-08-22 | — | checked for equivalent guards arriving by another route: **none.** `readFrom` on `dev` is byte-identical to the pin |
+
+**Reusable as test material, not as code.** The guards in `05da523e`
+(`src/Dispatcher.cpp`, `src/Packet.cpp`) and `f80d805e`
+(`src/helpers/AdvertDataHelpers.cpp`) are MIT and may be read, adapted and used
+to derive rejection cases. What Attadipa actually took from them is **nothing but
+the shape of the inputs**: the ten-case corpus in
+[`meshcore-parser-bounds/`](meshcore-parser-bounds/) is our own, written from
+reading the parsers, and it is the artifact to keep. There is no upstream test or
+corpus to port — MeshCore's `test/` covers none of these paths, and its `AES` and
+`SHA256` test mocks are no-ops (recorded as M13 in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)).
+
+A fifth finding, in `Utils::decrypt`, is **not** in any of these pull requests and
+so is not in this table. It is P4 in
+[MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md), it is a write rather than a
+read, and reporting it upstream is the owner's decision.
 
 ### Licences, checked before anything was depended on
 

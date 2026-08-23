@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -64,6 +64,24 @@ Both owner amendments of 2026-08-21 are **closed**. They are recorded as
 eleven small tasks rather than one large one, which is what the owner asked for
 in both cases.
 
+- **T-051 — MeshCore parser bounds at the pin — done (research only).**
+  [`docs/research/MESHCORE_PARSER_BOUNDS.md`](docs/research/MESHCORE_PARSER_BOUNDS.md),
+  with a runnable harness in
+  [`docs/research/meshcore-parser-bounds/`](docs/research/meshcore-parser-bounds/).
+  Three upstream pull requests claim missing length checks in the frame and
+  advert parsers. They hold at `d929643` — nine of ten corpus cases over-read —
+  and the pin turns out to be upstream's *current* release, not a lagging one.
+  Three things the pull requests do not say: **#3270 leaves its own finding
+  open** (`app_data[0]` is still read when `app_data_len == 0`), **#3269 logs the
+  condition and then does the thing**, and there is a **fifth defect in
+  `Utils::decrypt` that none of them mentions and that is a write** — 192 bytes
+  into a 184-byte buffer, reproduced. Every one of the three parser findings ends
+  in a rejected packet with the read staying inside its allocation at every real
+  call site, so the blast radius is far smaller than "out-of-bounds" suggests;
+  the two arithmetic ones leave the buffer and are the ones that matter. **No
+  Attadipa code changed and none should**: we link no MeshCore. It moves the
+  criteria for a future local provider's pin, nothing else. `attadipa_link`'s own
+  decoder was checked and is not analogous. Left open as M15–M18.
 - **T-041 — MeshCore 1.17 upstream review — done.**
   [`docs/upstream/meshcore-1.17-review.md`](docs/upstream/meshcore-1.17-review.md).
   Ten of the thirteen owner-named pull requests are **still open**, so most of

@@ -901,6 +901,14 @@ stale silently. The protocol is
 - **Tests:** host — the third boundary test, alongside
   `capability_boundary_negative` and `l10n_boundary_negative`.
 - **Hardware required:** no.
+- **Note added 2026-08-23 (T-127):** "bumping the pin cannot require an edit
+  above the adapter" is a compile-time property, and it is not the whole of what
+  a bump costs. The pinned revision has five verified parser defects, two of
+  which leave a buffer
+  ([MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md)), so the
+  adapter is also where a malformed-frame consequence stops being MeshCore's and
+  starts being ours. That does not change this task's acceptance; it says which
+  boundary the corpus in T-013's entry condition is protecting.
 
 ### T-013 · The local mesh integration spike
 - **Priority:** P0
@@ -926,6 +934,15 @@ stale silently. The protocol is
 - **Hardware required:** for a working link, yes — and **two** radio devices
   (A3). For the cost numbers, no.
 - **Constraint that is already fixed:** `Arduino.h` does not enter `core/`.
+- **Entry condition added 2026-08-23 (T-127):** whichever revision this spike
+  proposes to pin, run the corpus in
+  [`docs/research/meshcore-parser-bounds/`](docs/research/meshcore-parser-bounds/)
+  against it first, and run `path_arith` and `decrypt_bounds` too — they are not
+  in the matrix, so a green `run.sh` is not a clean revision. At `d929643` the
+  answer is five known defects, two of which leave a buffer
+  ([MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md)). That is
+  not a reason to avoid MeshCore; it is the thing a pin has to be chosen with
+  knowledge of, and a version number does not carry it.
 
 ### T-016 · Benchmark the node protocol encoding, then accept or replace it
 - **Priority:** P1
@@ -1816,6 +1833,54 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-127 · MeshCore parser bounds at the pinned revision — **DONE** 2026-08-23
+Research only, from [#142](https://github.com/hleserg/Attadipa/issues/142). Full
+record: [MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md);
+harness and corpus:
+[`docs/research/meshcore-parser-bounds/`](docs/research/meshcore-parser-bounds/).
+**No Attadipa code changed, and none should have** — we compile no MeshCore.
+
+- **The pin is not lagging.** `d929643` is simultaneously our pin, upstream's
+  `main` tip and the newest release. Every file the three pull requests touch is
+  byte-identical between the pin and both of their `dev` bases, so their diffs
+  apply to us unchanged and a measurement on a pull request head is a measurement
+  of our pin plus that pull request's guards. That was the caveat the issue
+  raised, and it dissolves rather than being worked around.
+- **Nine of ten corpus cases over-read at the pin**, reproduced against upstream's
+  own translation units under ASan with each input flush against a guard page.
+  **But at every reachable call site the read stays inside its allocation** —
+  256 B in `Dispatcher::checkRecv`, 262 B and 250 B in the two bridges, the
+  `Packet` object for adverts — and every one of the nine ends in a rejected
+  packet. The parsers do read past their length; nothing escapes a buffer through
+  them. Keeping those two sentences apart is most of the value here.
+- **The companion path cannot reach the worst of the three.** `CMD_IMPORT_CONTACT`
+  gates on `len > 98` and `Packet::readFrom` reaches at most byte 70, so a
+  malformed contact blob from a client — which is what Attadipa is — cannot
+  trigger it. Luck rather than design, but it holds at this revision.
+- **Two of the three pull requests do not close their own findings.** #3269 logs
+  the condition and then performs the read; #3270 leaves `app_data[0]` unguarded
+  at `AdvertDataHelpers.cpp:34` for `app_data_len == 0`, measured on its own head.
+  Only #3267 is complete, and it covers none of what #3270 covers.
+- **Two arithmetic defects do leave the buffer, and neither is in any pull
+  request.** `Mesh.cpp:172` underflows `extra_len` — 187 of 1309 reachable
+  `(len, path_len)` pairs, all of them producing a window past `data[184]` — and
+  `Utils::decrypt` writes 192 bytes into that same 184-byte buffer for
+  `payload_len` 181…184, reproduced against the real translation unit. Both sit
+  behind a **2-byte** MAC ([M11](docs/research/OPEN_QUESTIONS.md)), which is not
+  the authentication gate it looks like.
+- **Reporting the `Utils::decrypt` defect upstream is the owner's call.** Filing
+  on a third-party repository is outward-facing and this run had no authority for
+  it. The evidence reproduces in one command.
+- **`attadipa_link`'s decoder was checked, not assumed.** It validates the
+  declared length before reading (`frame_codec.cpp:139`, `:148`) behind a length
+  check and a CRC. The finding does not transplant, and nothing in `link/`
+  changed.
+- **Left open as M15–M18** in [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md):
+  end-to-end reachability of the two arithmetic defects, whether the stale bytes
+  they read can be groomed, what the eight over-written bytes hit on an
+  ESP32-S3, and whether a real fuzzing pass finds more. None blocks anything
+  while we link no MeshCore.
 
 ### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
 - **The cause was not the model, the context or the turn ceiling.** It was
