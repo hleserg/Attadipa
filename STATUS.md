@@ -715,6 +715,32 @@ four more things at no cost:
   where either defect lived, which is the argument for the second reader rather
   than for more tests by the same author.
 
+  **The second pass then found the fix for that had a defect of its own, and it
+  was in the example.** `next()`'s comment wrote the correct drain out in full,
+  and on `OutputTooSmall` it took neither branch, fell off the end of the body
+  and span — `next()` mutates nothing on that path, so every round is
+  bit-identical while `stats()` goes on describing a healthy decoder. A hang
+  where the original defect was a stall, in the one piece of the contract a
+  reader is most likely to copy rather than adapt, and with zero coverage:
+  every drain in the test file used the truthy idiom the header forbids, safe
+  only because each buffer was `kMaxPayload`. The example now ends every branch
+  in `continue` or `break`, and `tests/test_link.cpp` runs it against a 16-byte
+  buffer with an iteration bound standing in for the watchdog — proven to fail
+  on `guard < 1000` rather than hang, because a test that hangs CI is not a
+  test that failed. Two non-blocking findings closed with it: `OutputTooSmall`
+  says plainly that its `length` fixes a capacity and not a pointer, and
+  `FrameQueue` finally states which context may call it — nothing in it is
+  synchronised, `push()` reads `head_` while `pop()` writes it, and that races
+  the moment the producer and consumer are different FreeRTOS tasks, which is
+  the arrangement its own header describes it for. The requirement is now on
+  the class; the *decision* — critical section, single-producer ring, or an
+  ESP-IDF queue underneath — is a cost that belongs to whoever writes the first
+  transport, filed under T-062 pointing at T-043.
+
+  Three review passes, three real defects, each one inside the fix for the last.
+  That is the loop working, and it is cheaper than any of them reaching a
+  transport.
+
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same

@@ -1043,6 +1043,74 @@ void test_a_frame_too_big_for_the_caller_does_not_end_the_drain()
     CHECK(!empty_frames.next(out, sizeof out).exhausted());
 }
 
+// Second pass of the same review, and the fix for finding 2 had a defect of its
+// own: the drain loop written out in `next()`'s comment took neither branch on
+// `OutputTooSmall`, fell off the end of its body, and span — `next()` mutates
+// nothing on that path, so every iteration is bit-identical while `stats()` goes
+// on describing a healthy decoder. Worse than the stranded frame it replaced: a
+// hang rather than a stall.
+//
+// This is the header's loop, transcribed rather than paraphrased, against the
+// only buffer size at which the third case is reachable. **Keep the two in
+// step**; a comment cannot be executed, so this test is the only thing that
+// makes that example true. The iteration bound stands in for the watchdog — a
+// spin has to fail this test, not hang the suite.
+void test_the_drain_loop_the_header_prescribes_terminates()
+{
+    std::uint8_t payload[64];
+    fill(payload, sizeof payload, 13);
+    std::uint8_t wire[kMaxFrame];
+    const std::size_t encoded = encode(payload, sizeof payload, wire, sizeof wire);
+
+    Decoder decoder;
+    CHECK(decoder.push(wire, encoded) == encoded);
+
+    std::uint8_t out[16];   // smaller than the frame, and smaller than kMaxPayload
+    std::size_t  delivered_count = 0;
+    std::size_t  undersized      = 0;
+    std::size_t  guard           = 0;
+    bool         returned        = false;
+
+    for (;;) {
+        if (++guard > 1000) {
+            break;   // a spin, not a drain
+        }
+        const FrameResult r = decoder.next(out, sizeof out);
+        if (r) { ++delivered_count; continue; }
+        if (r.exhausted()) { returned = true; break; }
+        undersized = r.length;
+        returned   = true;
+        break;
+    }
+
+    CHECK(returned);
+    CHECK(guard < 1000);
+    CHECK(delivered_count == 0);
+    CHECK(undersized == sizeof payload);
+
+    // The frame was not consumed by any of that, so a caller that comes back
+    // with room gets it whole. `OutputTooSmall` is a request, not a loss.
+    std::uint8_t roomy[kMaxPayload];
+    CHECK(delivered(decoder.next(roomy, sizeof roomy), sizeof payload));
+    CHECK(same(roomy, payload, sizeof payload));
+
+    // The same loop over a caller that took the header's other advice — a
+    // buffer of kMaxPayload — never reaches the third case at all.
+    Decoder plenty;
+    plenty.push(wire, encoded);
+    std::size_t rounds = 0;
+    for (;;) {
+        if (++rounds > 1000) { break; }
+        const FrameResult r = plenty.next(roomy, sizeof roomy);
+        if (r) { ++delivered_count; continue; }
+        if (r.exhausted()) { break; }
+        CHECK(false);   // OutputTooSmall is unreachable with kMaxPayload of room
+        break;
+    }
+    CHECK(rounds == 2);            // one delivery, one exhausted
+    CHECK(delivered_count == 1);
+}
+
 // Finding 3: the two non-delivery statuses must not claim more than the decoder
 // can see. `Incomplete` is "fewer bytes than a whole frame needs", NOT "a frame
 // is on its way" — four bytes of line noise sit below the header threshold
@@ -1178,6 +1246,7 @@ int main()
     test_a_zero_length_entry_does_not_strand_the_queue();
     test_an_empty_frame_needs_no_output_buffer_at_all();
     test_a_frame_too_big_for_the_caller_does_not_end_the_drain();
+    test_the_drain_loop_the_header_prescribes_terminates();
     test_incomplete_does_not_promise_that_anything_is_coming();
     test_the_counters_agree_with_what_was_observable();
 

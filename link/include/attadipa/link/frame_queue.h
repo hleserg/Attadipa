@@ -29,6 +29,23 @@
 // Storage is a fixed array — no allocation, ever. On a long-uptime device the
 // number that fails is not free heap but largest free block, and a queue that
 // allocates per frame is how that number goes down and never comes back.
+//
+// **Which context may call this: one, and the caller owns that.** Nothing here
+// is synchronised and nothing here is atomic. `push()` reads `head_` to compute
+// its slot while `pop()` writes it, and both read-modify-write `count_`, so a
+// producer and a consumer on different FreeRTOS tasks race — and that is
+// exactly the arrangement the paragraphs above describe it for, where under
+// ESP-IDF the producer lands on the host or TinyUSB task and the consumer does
+// not. Either call it from one task, or put a mutex or a queue boundary around
+// it; do not deduce from "bounded and allocation-free" that it is also safe to
+// share, and never call it from an ISR.
+//
+// Said here rather than left to be discovered, on the review of PR #148. Making
+// it *actually* safe to share is a design decision with a cost — a critical
+// section, a lock-free ring with a single producer and a single consumer, or an
+// ESP-IDF queue underneath — and it belongs to whoever writes the first
+// transport, with a measurement rather than a preference. Until then the
+// requirement is on the caller and it is written down.
 
 namespace attadipa::link {
 

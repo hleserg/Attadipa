@@ -195,26 +195,41 @@ public:
     // Take the next complete frame, if there is one.
     //
     // Copies into `out` and reports what happened. One push may complete
-    // several frames, so this is called in a loop — and the loop has exactly
-    // one correct exit, which is `exhausted()` and not `!result`:
+    // several frames, so this is called in a loop. There are three answers and
+    // **every one of them must end in `continue` or `break`** — `exhausted()`
+    // is the ordinary exit, `!result` is not an exit at all, and falling off
+    // the end of the body is the third mistake:
     //
     //     for (;;) {
     //         const FrameResult r = decoder.next(out, sizeof out);
     //         if (r) { deliver(out, r.length); continue; }  // r.length may be 0
     //         if (r.exhausted()) { break; }                 // NoFrame/Incomplete
-    //         // OutputTooSmall: the frame is still queued, `r.length` says how
-    //         // big it is, and leaving it there blocks this decoder.
+    //         report_undersized_buffer(r.length);           // OutputTooSmall
+    //         break;
     //     }
+    //
+    // That last `break` is load-bearing and is why the third case is spelled
+    // out rather than left as a comment. On `OutputTooSmall` this function
+    // mutates nothing — it returns above `discard_front()` and above the
+    // counter — so a body that reaches its end goes round and gets a
+    // bit-identical answer, for ever, while `stats()` describes a healthy
+    // decoder. The first draft of this comment did exactly that, and the
+    // review of PR #148 caught it: a spin is a worse answer than the stranded
+    // frame it replaced. `tests/test_link.cpp` runs this loop against a buffer
+    // too small for the frame and asserts that it returns.
     //
     // A `Delivered` result whose `length` is 0 is an empty frame that really
     // arrived: a reason to keep draining, not to stop. Making that sayable is
     // what the return type is for. Give `out` `kMaxPayload` bytes and the third
-    // case cannot occur at all.
+    // case cannot occur at all, which is the simplest correct caller there is.
     //
     // `out` may be null only for a frame with no payload, where there is
     // nothing to copy and the caller has therefore received all of it. For any
     // other frame a null `out` is a buffer that cannot hold it, reported as
-    // `OutputTooSmall` with the frame kept.
+    // `OutputTooSmall` with the frame kept — and note that `length` then tells
+    // a caller how to fix a capacity, not a pointer. Coming back with the room
+    // it asked for and still a null pointer gets the same answer again, which
+    // is why that case gets a `break` above rather than a retry.
     FrameResult next(std::uint8_t* out, std::size_t out_capacity);
 
     void reset();

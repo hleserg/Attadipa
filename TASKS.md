@@ -318,6 +318,20 @@ stale silently. The protocol is
   `02-fix-goes-stale.trace` now asserts the current behaviour either way. What
   is missing is the decision, written down, rather than a number nobody chose.
 
+- **`FrameQueue` says nothing about which task may call it.** Nothing in it is
+  synchronised or atomic: `push()` reads `head_` to compute its slot while
+  `pop()` writes it, and both read-modify-write `count_`. That races the moment
+  a producer and a consumer are different FreeRTOS tasks — which is the
+  arrangement its own header describes it for, since under ESP-IDF a BLE or USB
+  producer lands on the host or TinyUSB task and the consumer does not. Found
+  in review of #148 and **half closed there**: the requirement is now written on
+  the class — one task, or the caller provides mutual exclusion, never an ISR —
+  so no caller can arrive at it by accident. What is open is the decision, and
+  it is not a documentation job: a critical section, a single-producer
+  single-consumer lock-free ring, or an ESP-IDF queue underneath are three
+  different costs, and the one to pick depends on the first real transport.
+  Belongs with **T-043**, with a measurement rather than a preference.
+
 - **Resync costs a full CRC per candidate offset.** Correct and O(n·m) on a
   noisy link. Worth measuring before optimising, and worth a note either way:
   the frame is at most 192 bytes and the link is slow, so this may be entirely
@@ -329,8 +343,9 @@ stale silently. The protocol is
 - **Research status:** n/a
 - **Implementation status:** in progress, item by item. Two are closed in the
   list above — the relayed-fix rate interval and, as of #146, the transport's
-  zero-means-two-things — and the remaining eight bullets are open, each still
-  worth an issue of its own.
+  zero-means-two-things — and the remaining nine bullets are open, each still
+  worth an issue of its own. The ninth arrived from the review of #148 rather
+  than from the original audit, and is marked as such where it sits.
 - **Tests:** host, per item
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.
