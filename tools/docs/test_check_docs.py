@@ -124,6 +124,63 @@ def main() -> int:
             len(check_docs.check_task_ids(root)) == 1,
         )
 
+        # One OD number, one decision. The real failure was four open pull
+        # requests each inserting `## OD-16` at the same line for four different
+        # decisions, sharing no other file, so git merged them clean.
+        write(
+            root,
+            "docs/research/OWNER_DECISIONS.md",
+            "## OD-15 — one thing\n\ntext\n\n## OD-16 — another\n\ntext\n",
+        )
+        case(
+            "distinct decision numbers are not reported",
+            not check_docs.check_decision_ids(root),
+        )
+
+        write(
+            root,
+            "docs/research/OWNER_DECISIONS.md",
+            "## OD-16 — the display wakes on raise\n\ntext\n\n"
+            "## OD-16 — which radio is fitted\n\ntext\n",
+        )
+        problems = check_docs.check_decision_ids(root)
+        case(
+            "a duplicate decision number is reported",
+            len(problems) == 1 and "OD-16" in problems[0],
+        )
+
+        # The `keep both` resolution is exactly what a reader sees as two
+        # headings that differ only in their prose, so the check must not be
+        # fooled by the title differing.
+        write(
+            root,
+            "docs/research/OWNER_DECISIONS.md",
+            "## OD-16 — a\n\n## OD-17 — b\n\n## OD-16 — c\n\n## OD-17 — d\n",
+        )
+        case(
+            "two separate collisions are both reported",
+            len(check_docs.check_decision_ids(root)) == 2,
+        )
+
+        # A `### OD-16` sub-heading under a decision is not a second decision,
+        # and neither is one inside a fenced example.
+        write(
+            root,
+            "docs/research/OWNER_DECISIONS.md",
+            "## OD-16 — a\n\n### OD-16 — a sub-heading\n\n"
+            "```\n## OD-16 — inside a fence\n```\n",
+        )
+        case(
+            "a sub-heading and a fenced example are not decisions",
+            not check_docs.check_decision_ids(root),
+        )
+
+        os.remove(os.path.join(root, "docs/research/OWNER_DECISIONS.md"))
+        case(
+            "no register is not a finding",
+            not check_docs.check_decision_ids(root),
+        )
+
         write(root, "TASKS.md", "## NEXT\n\n### T-001 · One\n- **Priority:** P1.\n- **Goal:** a thing.\n")
         case(
             "a live task with a field list is not reported",

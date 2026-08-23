@@ -490,8 +490,12 @@ owes us —
 [#54](https://github.com/hleserg/Attadipa/issues/54), on 2026-08-22, recorded
 as
 [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
-Waveshare is received and its revision is `VERIFIED` from the silkscreen — what
-remains unread there is the display-FPC part marking, D19 — U2 and U3 were
+Waveshare is received and its **identity** is `VERIFIED` from the silkscreen —
+the board is the one schematic V1.0 describes. Its **revision** is not: the
+silkscreen carries the product name, whose `2.06` is the panel diagonal, and no
+revision field has been read off the unit, so V1.0-derived rows are confirmed
+against a document rather than against the board. What else remains unread there
+is the display-FPC part marking, D19 — U2 and U3 were
 answered off the die itself, `WAVESHARE_EFUSE_READ` §1.2–1.3; T-Watch
 S3 Plus is `ORDERED`, not `PRESENT` — the T-010 blocker above is unchanged
 until it arrives and its radio marking is read off the physical part. A2:
@@ -732,9 +736,20 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
-  job. **Five** checks: relative links resolve, inline code spans close, task
-  IDs are unique, a live task has a body while finished work is filed under
-  `## DONE`, and nothing unexpected is tracked at the repository root. The last two exist because the review of
+  job. **Six** checks: relative links resolve, inline code spans close, task
+  IDs are unique, **one OD number names one owner decision**, a live task has a
+  body while finished work is filed under `## DONE`, and nothing unexpected is
+  tracked at the repository root. The decision check was added 2026-08-23 for a
+  failure that was in flight rather than shipped: four open pull requests each
+  inserted `## OD-16` into `OWNER_DECISIONS.md` at the same line, for four
+  different decisions. They share no other file, so git merges them clean and no
+  conflict marker forces a choice; resolve one as *keep both* and the register
+  people read to find out what the owner decided carries two OD-16 headings with
+  two ambiguous anchors, CI green. The task-ID check is TASKS.md-only and could
+  not see it. The other half — that a link's `#anchor` is captured and then
+  never verified, so a citation survives its heading being renumbered — is
+  **T-127**, deliberately not folded in here because its first run will find
+  pre-existing breakage. The two body checks exist because the review of
   [#65](https://github.com/hleserg/Attadipa/pull/65) found the pull request had
   spliced a `### T-102` heading into the middle of an unclosed code span in
   T-100's first bullet — T-100 lost its whole field list to T-102, and **the two

@@ -141,6 +141,30 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-127 · A link's `#anchor` is captured and then never checked
+- **Priority:** P3
+- **Dependencies:** none.
+- **Goal:** `tools/docs/check_docs.py` check 1 matches a link with an anchor on
+  it, captures the anchor as a regex group, and then tests only
+  `os.path.exists(target)`. So every `#od-16--...` style deep link in this
+  repository is unverified, and a heading renamed or renumbered leaves a link
+  that resolves to the top of the right file — which reads as working. This is
+  the half of the OD-16 collision that the new duplicate-decision check does
+  **not** cover: that one catches two headings with one number, this one catches
+  a citation pointing at a number that has moved.
+- **Acceptance:** anchors resolve against the target file's own headings, using
+  GitHub's slug rule (lower-case, drop punctuation except hyphen and
+  underscore, spaces to hyphens, de-duplicate with `-1`, `-2`). Mutation tests
+  in `tools/docs/test_check_docs.py` for: a good anchor, a renamed heading, an
+  em dash, backticks and bold inside a heading, two headings that slug the same,
+  and an anchor into a file that has none.
+- **Watch for:** the first run will find pre-existing broken anchors. That is
+  the point, but it makes this a two-commit job — the check, then the fixes —
+  and the fixes are the larger half. Do not weaken the rule to make the first
+  run green.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-034a · The mascot, at a size somebody drew
@@ -1632,9 +1656,12 @@ stale silently. The protocol is
 ```
 BLOCKED:
 Reason:         The T-Watch S3 Plus is ORDERED, not PRESENT — no physical unit
-                to bring up yet. The Waveshare is on the desk and its
-                revision is read — silkscreen `ESP32-S3-Touch-AMOLED-2.06`,
-                which is what schematic V1.0 describes.
+                to bring up yet. The Waveshare is on the desk and IDENTIFIED —
+                silkscreen `ESP32-S3-Touch-AMOLED-2.06`, which is what
+                schematic V1.0 describes. Its REVISION is not read: that
+                string is the product name and its `2.06` is the panel
+                diagonal, so a V1.1 unit would carry it too. Bring-up may
+                rely on V1.0 as a document, not as a fact about this board.
 Evidence:       OPEN_QUESTIONS A1 (OD-16, issue #54, 2026-08-22). A2 (which
                 radio, which GNSS) has an answer, from two sources of
                 different strength: SX1262 at 868 MHz is quoted from the
@@ -1656,12 +1683,31 @@ Evidence:       OPEN_QUESTIONS A1 (OD-16, issue #54, 2026-08-22). A2 (which
 Impact:         Blocks all T-Watch bring-up, every power measurement, the
                 whole interference matrix, and any claim that hardware works.
                 Does not block Waveshare bring-up, which is unblocked and
-                simply not yet done (see the M1 section above).
+                simply not yet done — STATUS.md, the T-010 entry. (This
+                previously read "see the M1 section above". There is no M1
+                section: the headings are NOW, NEXT, READY, BLOCKED, WAITING
+                and DONE, and the nearest M1 above is T-106's closed-case
+                clearance measurement, which is a different subject.)
 Possible options:
                 1. Proceed on simulator and host tests only — no hardware claims.
-                2. Wait for the T-Watch to arrive, read the radio marking,
-                   and look at the back of the case for the BOOT/RST buttons
-                   that decide the GNSS rail. Two separate observations.
+                2. Wait for the T-Watch to arrive, then make THREE separate
+                   observations, none of which substitutes for another:
+                   (a) read the radio marking — settles which of the five
+                   chips is fitted, and nothing else;
+                   (b) look at the back of the case for the BOOT/RST buttons
+                   that decide the GNSS rail;
+                   (c) establish the BAND. A2's answer is "SX1262 (868 MHz)"
+                   and only the chip half of that is readable off a marking:
+                   band is set by the matching network and antenna fitted, per
+                   OWNER_DECISIONS' own #89 paragraph, and is readable neither
+                   over SPI nor off the part. So the 868 rests on the same
+                   seller's listing this task refuses for the chip. Note what
+                   happens if (c) is skipped: set RadioChip::Sx1262 after (a)
+                   alone and radio_info_for() supplies {150 MHz, 960 MHz} —
+                   RadioLib's DRIVER limits, not this unit's — so
+                   covers(eu868) is true and MeshMessaging goes Ready with
+                   nobody having looked at the matching network. The code is
+                   not lying; the checklist would be incomplete.
                 3. Write the bring-up checklist now so that day one with real
                    hardware is not spent improvising.
 Recommended next action:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Five checks on the documentation, each of a failure that already happened here.
+"""Six checks on the documentation, each of a failure that already happened here.
 
 1. Relative links resolve. This repository's documents cite each other
    constantly, and a link that 404s reads exactly like one that works until
@@ -28,7 +28,15 @@
    first time it ran -- drift that predates the splice by weeks and that no
    syntactic check would ever see.
 
-5. Nothing unexpected is tracked at the repository root. `git add -A` run from
+5. One OD number names one decision. Four open pull requests each inserted
+   `## OD-16` into OWNER_DECISIONS.md at the same line, for four different
+   decisions. They share no file, so git merges them clean and nothing forces a
+   choice; "keep both" leaves two OD-16 headings and two ambiguous anchors with
+   CI green. Check 3 is TASKS.md-only and check 1 captures a link's `#anchor`
+   and then never looks at it, so nothing saw it. See T-127 for the anchor half,
+   which is a bigger job and is not this check.
+
+6. Nothing unexpected is tracked at the repository root. `git add -A` run from
    the root has twice swept in a file that was only ever meant to be read: an
    archive waiting to be unpacked, and later a vendor documentation page saved
    while researching a part. Both are somebody else's copyrighted material and
@@ -114,6 +122,49 @@ def check_links(root: str) -> list[str]:
                 if not os.path.exists(resolved):
                     rel = os.path.relpath(path, root)
                     problems.append(f"{rel}:{lineno}: link target does not exist: {target}")
+    return problems
+
+
+# `## OD-16 — ...` in OWNER_DECISIONS.md. Level two only: a `### OD-16` under a
+# decision is part of that decision, not a second one.
+DECISION_HEADING = re.compile(r"^##\s+(OD-\d+)\b")
+
+
+def check_decision_ids(root: str) -> list[str]:
+    """One OD number, one decision.
+
+    Four open pull requests each inserted `## OD-16` at the same line of
+    OWNER_DECISIONS.md, for four different owner decisions. They touch no file
+    in common, so git merges them clean and no conflict marker forces anybody to
+    choose; resolve one of them as "keep both" and the register carries two
+    OD-16 headings with two ambiguous anchors, CI green. Nothing here looked:
+    check 3 is TASKS.md-only, and check 1 captures a link's `#anchor` and then
+    never uses it.
+
+    The register is the file people read to find out what the owner decided. Two
+    answers under one number is the same failure as two tasks under one ID, in
+    the document where being wrong is more expensive.
+    """
+    path = os.path.join(root, "docs", "research", "OWNER_DECISIONS.md")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    seen: dict[str, int] = {}
+    problems = []
+    for lineno, line in strip_fences(text):
+        match = DECISION_HEADING.match(line)
+        if not match:
+            continue
+        number = match.group(1)
+        if number in seen:
+            problems.append(
+                f"docs/research/OWNER_DECISIONS.md:{lineno}: {number} is already "
+                f"used at line {seen[number]}. One OD number names one decision; "
+                f"renumber this one and update every citation of it."
+            )
+        else:
+            seen[number] = lineno
     return problems
 
 
@@ -348,6 +399,7 @@ def main() -> int:
         ("Broken relative links", check_links(root)),
         ("Unclosed inline code spans", check_code_spans(root)),
         ("Duplicate task IDs", check_task_ids(root)),
+        ("Duplicate owner-decision numbers", check_decision_ids(root)),
         ("Tasks with no body, or finished work outside DONE", check_task_bodies(root)),
         ("Unexpected files tracked at the repository root", check_root_files(root)),
     ):

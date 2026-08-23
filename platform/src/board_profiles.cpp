@@ -84,7 +84,8 @@ BoardProfile make_twatch()
     p.display.technology          = PanelTechnology::Ips;
     p.present_mask                = kTWatchFeatures;
     // Unknown, and deliberately so -- but no longer because nobody has said.
-    // A2 was ANSWERED on 2026-08-22 (OWNER_DECISIONS.md OD-16): the order
+    // A2 was ANSWERED on 2026-08-22 (OWNER_DECISIONS.md, A1-A3, issue #54 --
+    // by question, not by OD number; see radio_info.cpp): the order
     // listing names SX1262 at 868 MHz. A listing is a seller's claim, not a
     // marking read off the part, and this value is what the firmware bets a
     // radio on, so it stays Unknown until the watch is in hand and the marking

@@ -1082,14 +1082,20 @@ it is the more precise of the two and the owner asked for it to be recorded
 **A1 — which boards, which revision.**
 
 - **Waveshare ESP32-S3-Touch-AMOLED-2.06:** received — already recorded in
-  `docs/research/WAVESHARE_BOARD_RECEIVED.md`. The schematic-revision question
-  (silkscreen against `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`) is
-  **closed**, and not by this answer: the mainboard's silkscreen reads
-  `ESP32-S3-Touch-AMOLED-2.06`, which is the revision V1.0 describes
+  `docs/research/WAVESHARE_BOARD_RECEIVED.md`. What is **closed**, and not by
+  this answer, is board *identity*: the mainboard's silkscreen reads
+  `ESP32-S3-Touch-AMOLED-2.06`, which is the product schematic V1.0 describes
   ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1, `VERIFIED`).
-  An earlier draft of this record said it was still open, 100 lines above the
-  *What it obliges* paragraph saying it was closed — the register answering one
-  question twice, differently, within itself.
+  **That is not the revision, and an earlier version of this bullet said it
+  was.** `2.06` is the panel diagonal in inches, not a revision marker — the
+  firmware reads it as one, `platform/src/board_profiles.cpp` setting
+  `diagonal_milli_inch = 2060` — and a V1.1 of the same product would carry the
+  same silkscreen. No revision field has been read off the unit, which is what
+  `HARDWARE_MATRIX.md` means by *"cite the filename for provenance, never the
+  title block for revision"*, written in the T-Watch section but not a T-Watch
+  rule. An earlier draft also said the whole thing was still open, 100 lines
+  above the *What it obliges* paragraph saying it was closed — the register
+  answering one question twice, differently, within itself.
 - **T-Watch S3 Plus:** **ordered, in transit — `ORDERED`, not `PRESENT`.**
   Nothing that needs the watch in hand moves yet.
 
@@ -1197,10 +1203,15 @@ cause.
 
 **What it obliges:**
 
-- [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) A1 stays open for the **T-Watch**
-  half only. The Waveshare half is closed: the mainboard's silkscreen reads
-  `ESP32-S3-Touch-AMOLED-2.06`, which is the revision schematic V1.0 describes
-  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1, `VERIFIED`).
+- [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) A1's **presence** half is closed for
+  the Waveshare and open for the T-Watch. Its **revision** half is open for
+  both. What the silkscreen closes is identity: it reads
+  `ESP32-S3-Touch-AMOLED-2.06`, which is the product schematic V1.0 describes
+  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1, `VERIFIED`) —
+  a product name, not a revision field, and the `2.06` in it is the panel
+  diagonal. CLAUDE.md asks for *"a schematic for the specific board
+  revision"*, so a V1.0-derived row is evidence about a document until somebody
+  reads a revision marker off this unit.
   What is still unread is narrower and now filed as **D19**: the display-FPC
   part marking, which needs a loupe. **Not U2 and U3** — the eFuses and the
   JEDEC ID already answered those on this unit
