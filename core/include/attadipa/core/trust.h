@@ -103,7 +103,7 @@ const char* to_string(std::optional<TrustState> state);
 // `Untrusted` does not fire; `!= Untrusted` is true, so a guard that permits on
 // anything-but-`Untrusted` does; and `< Degraded` is true, sorting "nobody
 // looked" below the worst verdict there is. None of those orderings was
-// decided by anyone, and the most natural-reading of them —
+// decided by anyone, and the most natural-reading guard of the set —
 // `if (trust != TrustState::Untrusted) draw_the_arrow();` — points a confident
 // arrow using a position no evaluator has seen. That is reachable today, in the
 // permanent state of a board with no receiver.
