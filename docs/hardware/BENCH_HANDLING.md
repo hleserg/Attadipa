@@ -8,8 +8,11 @@ leave them to the owner. This file is about the hours nobody is looking.
 
 ## The AMOLED sits lit on a static screen, and the owner has decided it stays
 
-The Waveshare ESP32-S3-Touch-AMOLED-2.06 boots the vendor firmware to a fixed
-desktop and stays there for as long as it has power. **That is the state
+The Waveshare ESP32-S3-Touch-AMOLED-2.06 boots `phone_s3_box_3` to a fixed
+desktop and has been seen sitting on it for hours at a time, **on USB**. It has
+never been observed on battery, and what it does when left idle is `UNKNOWN` —
+both refused further down and, until this round, asserted here in the file's
+first sentence, which is the one an agent quotes. **That is the state
 [OD-16](../research/OWNER_DECISIONS.md) chose, knowingly, over the safer one, and
 an agent does not ask for it to be undone** — it does not power the unit down and
 does not offer "unplug it" as the recommendation. What follows is why the state
@@ -119,8 +122,16 @@ And the obvious workaround — drive the port and hope something blanks it — h
   (USB_UART_CHIP_RESET)` and cost four experiments before it was read correctly.
   Defeated by never letting the port close — §2.3.
 
-Both are solved, which is why the RAM-load route above stands: a session may
-open and hold the port — **having resolved it by USB serial first, which is the
+One is solved and the other is `LIKELY`, which is worth separating before this
+paragraph is read as a blanket permission. **Hold-open has a bench result**:
+§2.3 is a recorded experiment, and it is what the RAM-load route above rests on.
+**Pre-open does not.** It is one asserted line in `WAVESHARE_RUNNING_OUR_CODE`
+§2.2, inside a list of things that turned out *not* to be the cause, and on
+Linux `cdc_acm` raises DTR and RTS in the kernel when the tty is first
+activated — before any userspace code runs — so a pyserial-side pre-set cannot
+precede the assertion, only lower the lines again after it. That is also why
+`stty -hupcl` was no help. Proving it on the unit is T-116's third goal. So a
+session may open and hold the port — **having resolved it by USB serial first, which is the
 rule at the bottom of this file and not optional here**; this sentence sits in a
 section headed by what an agent must not do, and on its own it reads like
 permission. What does not follow is that an agent may reboot the
@@ -161,7 +172,13 @@ records — a fresh session cannot know, so it is true every time and the clause
 was decoration on a threshold that the once-per-session bound is already
 carrying alone. Say that it is sitting lit, name the mitigation in force
 as the brightness the owner themself set, and stop there rather than inventing an
-action to accompany it. Repeated in every report, an observation the owner acted
+action to accompany it. **Unless this session reset the board** — the RAM-load
+route enters the ROM downloader, and opening a port does it by accident. Whether
+minimum brightness survives a reset is `UNKNOWN` (OD-16 item 2), and the BSP
+brings the panel up at 100 %, so after a reset the honest report is *"the unit
+was reset and the brightness is unconfirmed"*. Reporting the mitigation as
+standing there would be a `PASS` written for a state nobody observed, which is
+the one thing this repository does not do. Repeated in every report, an observation the owner acted
 on once becomes a line they learn to skip, which is the failure mode of a rule
 with no threshold.
 
@@ -227,7 +244,14 @@ Two consequences follow, both from facts this repository already holds at
 
 **And that is where it stops.** Nothing here says the cell is being harmed:
 those registers have not been read, and reading them means running our code on
-the unit, which is T-114's problem and not this file's. Nor does it say which
+the unit — **T-106**, whose register list now carries `0x63` and `0x64` for
+exactly this reason. An earlier version of this sentence handed it to `T-114`,
+which does not exist in `TASKS.md` on this branch: the only occurrence of that
+number in the repository was this citation. So the file's one cell-safety
+question read as *assigned* while having no owner anywhere, which is worse than
+reading as absent, because a reader who checks stops at the citation. That is
+T-117 item 2's blind spot — `check_docs.py` never finds a dangling task ID, so
+a green run says nothing about it. Nor does it say which
 state is kinder — neither is established, which is precisely why this file must
 not recommend one on the cell's account. What it does say is that *"powered
 indefinitely"* has a **second consumable** in it, that the panel's risk was

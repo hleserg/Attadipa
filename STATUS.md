@@ -591,7 +591,12 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 **The unit stays on the desk, powered.** The owner raised AMOLED ageing while it
 sat showing the vendor firmware's static desktop, and chose availability over the
 safer state: powered and attached, brightness at minimum, so a hardware run is
-possible on demand — [OD-16](docs/research/OWNER_DECISIONS.md). What an agent may
+possible on demand — [OD-16](docs/research/OWNER_DECISIONS.md). **Whether that
+brightness survives a reset is `UNKNOWN`, and a bench session is allowed to
+reset the unit**, so a session that did must report the mitigation as
+unconfirmed rather than as standing — the BSP brings the panel up at 100 %, and
+saying "mitigated" for a state nobody looked at is a `PASS` written for an
+unobserved result. What an agent may
 and may not do about that, including why it must not open the serial port to try
 to blank the panel, is
 [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md). The residual risk at minimum
@@ -607,7 +612,13 @@ whose CV and termination registers hold whatever the running image last wrote �
 been calling it; `xiaozhi 1.8.5` sits unselected in `ota_0` and `otadata` is
 blank.
 No register has been read either, so both states stay `UNKNOWN` and the file
-recommends neither on the cell's account. **One cheap thing is still unlooked-at
+recommends neither on the cell's account — and those two registers now have an
+owner, which they did not: `0x64` and `0x63[4]` are on **T-106**'s read list.
+The file had handed them to `T-114`, a number with no heading anywhere in
+`TASKS.md`, so the one cell-safety question in the repository read as assigned
+while belonging to nobody. **Absent reads as weighed; assigned reads as
+handled**, and the second is worse, because a reader who checks stops at the
+citation. **One cheap thing is still unlooked-at
 and the file now says so rather than ruling it out:** whether the factory
 launcher offers a display timeout. It carries a `Settings` app — OD-16 is the
 owner having been inside it to find the brightness — and nobody has enumerated

@@ -1570,10 +1570,18 @@ stale silently. The protocol is
     consistent with 280–330 mAh; 7.5–8 g is the only mass consistent with a
     genuine 400 mAh**, and no sampled pouch reaches that density. A kitchen
     scale settles what 51 datasheets can only estimate.
-- **And five registers, on the board, whenever convenient:** `0x62` (charge
+- **And seven registers, on the board, whenever convenient:** `0x62` (charge
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
-  `0x12` and `0x69`, at I²C address `0x34`.
+  `0x12` and `0x69`, at I²C address `0x34` — **and `0x64` (CV target) and
+  `0x63[4]` (termination enable), added 2026-08-23.** Those two are the only
+  cell-safety question this repository has: the PMU never sees a POR while the
+  cell is connected, so both persist as whatever the running image last wrote,
+  and with `0x63[4]` clear the charger holds CV indefinitely — float-charging a
+  Li-ion ([BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md), *"What is not
+  established"*). They were raised there and cited to a task number that does
+  not exist, so until now the question had no owner in this file at all. Reading
+  them is a read, not a write, and needs no permission beyond having the unit.
 - **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
   instrument named, the five register values recorded as read, and the sizing
   table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
@@ -1819,6 +1827,16 @@ stale silently. The protocol is
   it, the same shape `check_docs.py` already uses. Whichever it is, it must be
   a decision recorded once and not a number that creeps upward every time the
   check is inconvenient.
+- **And item 1 has a cheaper answer than the one it proposes.**
+  `tools/docs/check_docs.py`'s *"Nothing unexpected is tracked at the repository
+  root"* was written for exactly this failure — `git add -A` sweeping in a stray
+  — and it missed all 29 of these for one reason: `if not tracked or "/" in
+  tracked: continue` inspects root-level **files** and skips anything inside a
+  root-level **directory**, so `Testing/Temporary/…` and `artifacts/watch/…`
+  went straight past the check built to catch them. That is one line, in a check
+  that already runs in every CI job and already has an allow-list with reasons
+  in it. A size-or-binary gate is heavier, blunter, and leaves this hole open;
+  whatever else item 1 grows into, closing the directory case comes first.
 - **Research status:** done. All three blind spots were established by reading
   the checkers and the branches, and are cited by line above.
 - **Implementation status:** not started.

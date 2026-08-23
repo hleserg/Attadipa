@@ -1100,8 +1100,21 @@ survives only here.)
    not ask for it to be unplugged, and does not treat "unplug it" as the
    recommendation when reporting on this.
 2. **Minimum brightness is the mitigation in force**, set by the owner in the
-   vendor firmware. Nothing of ours can change it, because nothing of ours runs
-   on the unit.
+   vendor firmware. Nothing of ours can *deliberately* change it, because
+   nothing of ours runs on the unit — but **whether it survives a reset is
+   `UNKNOWN`**, and write-inability is not persistence. It is a runtime setting
+   in a launcher's `Settings` app; nothing establishes that `phone_s3_box_3`
+   commits it, and the BSP's init table brings the panel up at `0x51 = 0xFF`,
+   100 %. A bench session is *allowed* to reset the unit — the RAM-load route
+   enters the ROM downloader, and opening a port does it by accident — so this
+   is reachable rather than theoretical. Until somebody looks at the panel after
+   a reset, **a session that reset the unit must not report the mitigation as
+   still in force**; it must say it reset the board and that the brightness is
+   unconfirmed. `WAVESHARE_FLASH_LAYOUT` §7 is the precedent for making it
+   `MEASURED`: the owner watched the panel through six download-mode cycles and
+   that is how the `nvs` result stopped being a guess — nobody wrote down what
+   brightness it came back at, which is the one observation that would settle
+   this.
 3. **The question in it was answered honestly and stays answered that way.**
    "They will not be ruined, right?" is `UNKNOWN`, not "safe" — no lifetime
    figure exists for this panel, D7 has not settled even its initialisation
