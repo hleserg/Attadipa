@@ -404,6 +404,108 @@ def main() -> int:
         needle="title differs",
     )
 
+    # THE THIRD KIND OF DIVERGENCE: two strings inside index.html alone. No
+    # assignment touches these, so both halves above exit 0 on every one.
+    scenario(
+        "og:image and twitter:image diverge inside index.html",
+        lambda html, js: edit(
+            html,
+            '<meta name="twitter:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">',
+            '<meta name="twitter:image" content="https://hleserg.github.io/Attadipa/assets/banner.webp">',
+        ),
+        expect_fail=True,
+        needle="have diverged",
+    )
+    scenario(
+        "og:image:alt and twitter:image:alt diverge inside index.html",
+        lambda html, js: edit(
+            html,
+            '<meta name="twitter:image:alt" content="The Attadipa firefly mark',
+            '<meta name="twitter:image:alt" content="A firefly mark',
+        ),
+        expect_fail=True,
+        needle="have diverged",
+    )
+    # The JSON-LD copy is the one most likely to rot: it is fifty-odd lines
+    # below the meta description it repeats, and nothing points at it.
+    scenario(
+        "the JSON-LD description drifts from the meta description",
+        lambda html, js: edit(
+            html,
+            '"description": "Open-source ESP32-S3 smartwatch firmware:',
+            '"description": "Open source ESP32-S3 smartwatch firmware:',
+        ),
+        expect_fail=True,
+        needle="have diverged",
+    )
+    # And the completeness half: a NEW duplicate nobody declared. This is the
+    # shape the three above arrived in -- added in one pass, unrecorded, and
+    # found by a reviewer rather than by the checker built for the job.
+    scenario(
+        "a new undeclared duplicate in the head",
+        lambda html, js: edit(
+            html,
+            '<link rel="icon" type="image/png" href="assets/favicon.png">',
+            '<meta name="apple-mobile-web-app-title" content="The Attadipa firefly mark to the '
+            'left of the wordmark Attadipa, with the line Independent by design beneath it.">\n  '
+            '<link rel="icon" type="image/png" href="assets/favicon.png">',
+        ),
+        expect_fail=True,
+        needle="no rule pairs them",
+    )
+    scenario(
+        "two SHORT strings that happen to match are not a duplicate",
+        lambda html, js: edit(
+            html,
+            '<link rel="icon" type="image/png" href="assets/favicon.png">',
+            '<meta name="theme-color" content="en_US">\n  '
+            '<link rel="icon" type="image/png" href="assets/favicon.png">',
+        ),
+        expect_fail=False,
+    )
+
+    # THE COMPLETENESS CHECK ITSELF HAD NO CASE, which review pointed out and
+    # is the same defect one layer up: the rule added so the table could not
+    # silently stop covering setLanguage() was itself uncovered, and deleting
+    # it left all 32 other cases green. Two cases now, because a guard needs
+    # both halves -- it fires on a target the table does not list, and it stays
+    # quiet on one the table does.
+    scenario(
+        "a localised tag wired in setLanguage() but missing from ASSIGNMENTS",
+        lambda html, js: edit(
+            js,
+            "    if (ogLocale) ogLocale.content = copy[lang].locale;",
+            "    if (ogLocale) ogLocale.content = copy[lang].locale;\n"
+            "    if (ogImageAlt) ogImageAlt.content = copy[lang].imageAlt;",
+        ),
+        expect_fail=True,
+        needle="which is not in ASSIGNMENTS",
+    )
+    # The hole in the guard, found by review: no `\w+` before `.content`, so the
+    # completeness scan walked past an inline selector entirely.
+    scenario(
+        "a localised tag wired through an INLINE querySelector",
+        lambda html, js: edit(
+            js,
+            "    if (ogLocale) ogLocale.content = copy[lang].locale;",
+            "    if (ogLocale) ogLocale.content = copy[lang].locale;\n"
+            "    document.querySelector('meta[property=\"og:image:alt\"]').content = "
+            "copy[lang].imageAlt;",
+        ),
+        expect_fail=True,
+        needle="which is not in ASSIGNMENTS",
+    )
+    scenario(
+        "a tag setLanguage() writes a CONSTANT into is not a table row",
+        lambda html, js: edit(
+            js,
+            "    if (ogLocale) ogLocale.content = copy[lang].locale;",
+            "    if (ogLocale) ogLocale.content = copy[lang].locale;\n"
+            "    if (ogImageAlt) ogImageAlt.content = 'the same in both languages';",
+        ),
+        expect_fail=False,
+    )
+
     print()
     if FAILURES:
         print("%d case(s) failed:" % len(FAILURES))

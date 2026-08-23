@@ -365,6 +365,39 @@ def main(root="."):
                 % (declared[0], declared[1], name, *real, expected_height)
             )
 
+    # 3. og:image:width / og:image:height, which are typed numbers about a file
+    # this check already has open. A wrong pair is a social card that renders at
+    # the wrong shape or is dropped, and unlike an <img> box these are absolute:
+    # a scaler is meaningless in an og: tag, so they are compared exactly.
+    og_image = re.search(
+        r'<meta\s+property="og:image"\s+content="([^"]+)"', markup
+    )
+    og_dims = {}
+    for axis in ("width", "height"):
+        found = re.search(
+            r'<meta\s+property="og:image:%s"\s+content="(\d+)"' % axis, markup
+        )
+        if found:
+            og_dims[axis] = int(found.group(1))
+    if og_image and len(og_dims) == 2:
+        name = og_image.group(1).rsplit("/", 1)[-1]
+        if name in sizes:
+            compared += 1
+            declared = (og_dims["width"], og_dims["height"])
+            real = sizes[name]
+            if declared != real:
+                problems.append(
+                    "docs/index.html declares og:image:width/height %d x %d for %s, "
+                    "which is %d x %d. These are not a scaler -- a card renderer "
+                    "reserves exactly what they say."
+                    % (declared[0], declared[1], name, *real)
+                )
+    elif og_image and og_dims:
+        problems.append(
+            "docs/index.html has og:image:%s and not the other; a card renderer "
+            "needs both or neither." % next(iter(og_dims))
+        )
+
     # 5. The size of the mutation suite, which the suite itself reports.
     stated_cases = [
         (lineno, int(found.group(1)))

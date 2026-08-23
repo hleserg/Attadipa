@@ -117,7 +117,25 @@
   //
   // Inverted, every one of them lands on the readable page: no class, no
   // hiding. The animation is unchanged for everybody whose script runs.
-  if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  //
+  // AND THE INVERSION INTRODUCED A FADE-*OUT*, which is what this guard is for.
+  // `.reveal` carries `transition:opacity .65s` unconditionally, and this file
+  // is `defer`red. On a fast load it runs before first paint and nobody sees
+  // anything. On a slow one -- cold cache, poor connection, a delayed asset --
+  // the page paints fully visible first, and adding `js-reveal` then animates
+  // every section OUT and slides it 18px down before the observer brings the
+  // in-view ones back. Nothing faded out before the inversion; the cost was
+  // real and unrecorded until review named it.
+  //
+  // So: if the first contentful paint has already happened, the reveal is
+  // simply skipped. The animation is decorative, the readable page is not, and
+  // an animation that arrives after the content has been read is worth nothing
+  // to trade a visible flicker for. Where the Paint Timing API is missing the
+  // array is empty and behaviour is unchanged.
+  const painted = typeof performance !== 'undefined' &&
+    typeof performance.getEntriesByType === 'function' &&
+    performance.getEntriesByType('paint').some(e => e.name === 'first-contentful-paint');
+  if (!painted && 'IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     html.classList.add('js-reveal');
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {

@@ -16,11 +16,12 @@
 #      and this file becomes live at that root unchanged); or
 #   2. publishing a root robots.txt from a hleserg.github.io repository.
 #
-# Sitemap discovery therefore does NOT come from here. It comes from the
-# <link rel="sitemap"> in index.html, which several crawlers read, and from a
-# Search Console / Bing Webmaster submission -- listed in docs/site/SEO.md §5,
-# an owner action because it needs an account this project will not register on
-# the owner's behalf.
+# Sitemap discovery therefore does NOT come from here. Nor does it come from
+# the <link rel="sitemap"> in index.html: that is a hint we could find no
+# crawler documented as reading. It comes from ONE place only -- a Search
+# Console / Bing Webmaster submission, listed in docs/site/SEO.md §5, an owner
+# action because it needs an account this project will not register on the
+# owner's behalf. Until that is done the sitemap has no discovery path.
 #
 # Nothing here is load-bearing for indexing: <meta name="robots"> in index.html
 # does that work, at a URL crawlers do read. The file is kept, rather than

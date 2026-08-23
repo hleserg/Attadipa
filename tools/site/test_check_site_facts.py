@@ -135,13 +135,13 @@ def main() -> int:
     )
     scenario(
         "the script size — the number that was actually stale",
-        lambda seo, html, root: edit(seo, "one 8 KB script", "one 6 KB script"),
+        lambda seo, html, root: edit(seo, "one 9 KB script", "one 6 KB script"),
         expect_fail=True,
         needle="states 6 KB for site.js",
     )
     scenario(
         "the head-sync case count — the other number that was actually stale",
-        lambda seo, html, root: edit(seo, "**32 cases**", "**29 cases**"),
+        lambda seo, html, root: edit(seo, "**40 cases**", "**29 cases**"),
         expect_fail=True,
         needle="states 29 cases",
     )
@@ -176,6 +176,17 @@ def main() -> int:
         lambda seo, html, root: _blank(seo, html),
         expect_fail=True,
         needle="could be attributed",
+    )
+
+    scenario(
+        "og:image:width that is not the card's own width",
+        lambda seo, html, root: edit(
+            html,
+            '<meta property="og:image:width" content="1734">',
+            '<meta property="og:image:width" content="1200">',
+        ),
+        expect_fail=True,
+        needle="og:image:width/height 1200 x 907",
     )
 
     # The two that must stay quiet. Both are the live page's real behaviour, and

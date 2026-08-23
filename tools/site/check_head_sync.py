@@ -66,6 +66,22 @@ MIRRORED = {
     "twitter:description": "cardDescription",
 }
 
+# THE THIRD KIND OF DIVERGENCE: two tags INSIDE index.html holding the same
+# string, with nothing keeping them that way. MIRRORED above catches the two
+# that site.js also assigns, because both sides are compared to the same `copy`
+# field. These three are never assigned by anything -- they are static bytes,
+# duplicated by hand, and the JSON-LD one sits fifty-odd lines below the tag it
+# repeats. Editing one and not the other is a silent divergence in the HTML
+# alone, so neither half above can see it. Found in review.
+#
+# A locator is (attr, value) for a meta tag, or ("json-ld", key) for a key in
+# the JSON-LD graph.
+HTML_DUPLICATES = (
+    (("property", "og:image"), ("name", "twitter:image")),
+    (("property", "og:image:alt"), ("name", "twitter:image:alt")),
+    (("name", "description"), ("json-ld", "description")),
+)
+
 # THE WIRING TABLE. One row per field `setLanguage()` writes, and it is the
 # whole of the second half of this check:
 #
@@ -242,6 +258,23 @@ def assigned_targets(body):
         found.add("document.title")
     for match in re.finditer(r"\b(\w+)\.content\s*=\s*copy\[\s*lang\s*\]\.\w+", body):
         found.add(match.group(1))
+    # An inline selector has no `\w+` before `.content`, so the loop above walks
+    # straight past it and the completeness check never sees the tag. Review
+    # found the hole in the guard written to close a hole. It is reported under
+    # the selector itself, which is enough to name the tag in the message: the
+    # fix is a `const` at the top of the file and a row in ASSIGNMENTS, and both
+    # halves of the wiring check need the named variable anyway.
+    # The quote character is captured and back-referenced rather than excluded:
+    # a CSS attribute selector is routinely 'meta[property="og:image:alt"]',
+    # which carries the OTHER quote inside it. A character class barring both
+    # matches nothing at all -- which is how the first draft of this loop
+    # silently kept the hole it was added to close.
+    for match in re.finditer(
+        r"document\.querySelector\(\s*(['\"])(.*?)\1\s*\)\.content"
+        r"\s*=\s*copy\[\s*lang\s*\]\.\w+",
+        body,
+    ):
+        found.add("document.querySelector(%s%s%s)" % (match.group(1), match.group(2), match.group(1)))
     return sorted(found)
 
 
@@ -258,6 +291,100 @@ def assigned_field(body, target):
         pattern = r"\b%s\.content\s*=\s*copy\[\s*lang\s*\]\.(\w+)" % re.escape(target)
     found = re.search(pattern, body)
     return found.group(1) if found else None
+
+
+def json_ld_value(html, key):
+    """One key out of the JSON-LD graph, read as text rather than parsed.
+
+    Parsing would be stricter and is not what is wanted: this check is about
+    the bytes a duplicate holds, and a JSON parse would normalise escapes that
+    a hand edit would leave different.
+    """
+    block = re.search(
+        r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S
+    )
+    if block is None:
+        return None
+    found = re.findall(r'"%s"\s*:\s*"([^"]*)"' % re.escape(key), block.group(1))
+    return found[0] if found else None
+
+
+def locate(html, locator, problems):
+    """The string a locator names, whether it lives in a meta tag or the graph."""
+    attr, value = locator
+    if attr == "json-ld":
+        return json_ld_value(html, value)
+    return html_meta(html, attr, value, problems)
+
+
+def head_strings(html):
+    """Every string in the head this check can name, keyed by locator.
+
+    Used for the completeness half: a duplicate nobody declared is a pair that
+    will rot, and the whole point of HTML_DUPLICATES is that the list is the
+    contract. og:image:alt was already the next one.
+    """
+    found = {}
+    for attr, name, content in re.findall(
+        r'<meta\s+(name|property)="([^"]+)"\s+content="([^"]*)"\s*/?>', html
+    ):
+        found[(attr, name)] = content
+    graph = json_ld_value(html, "description")
+    if graph is not None:
+        found[("json-ld", "description")] = graph
+    return found
+
+
+def check_html_duplicates(html, problems):
+    """The declared pairs agree, and no undeclared pair exists."""
+    declared = set()
+    for left, right in HTML_DUPLICATES:
+        declared.add(frozenset((left, right)))
+        one = locate(html, left, problems)
+        two = locate(html, right, problems)
+        if one is None:
+            problems.append("index.html has no %s" % (left,))
+            continue
+        if two is None:
+            problems.append("index.html has no %s" % (right,))
+            continue
+        if one != two:
+            problems.append(
+                "%s and %s are duplicates of each other and have diverged\n"
+                "    %s: %r\n    %s: %r\n"
+                "    Nothing assigns either one, so only this check looks at them."
+                % (left, right, left, one, right, two)
+            )
+
+    # The two site.js also assigns are held in step through `copy.en`, so they
+    # are declared here without being compared twice.
+    for tag, field in MIRRORED.items():
+        partner = HTML_SOURCES.get(field)
+        if partner is not None and partner[0] != "title-tag":
+            declared.add(frozenset(((partner[0], partner[1]), ("name", tag))))
+
+    # COMPLETENESS. Anything else byte-identical is an undeclared duplicate.
+    # Short values are excluded: `en_US` and a locale are equal by definition
+    # and mean nothing to each other.
+    strings = head_strings(html)
+    by_value = {}
+    for locator, value in strings.items():
+        if len(value) >= 24:
+            by_value.setdefault(value, []).append(locator)
+    for value, locators in sorted(by_value.items()):
+        if len(locators) < 2:
+            continue
+        for index, left in enumerate(sorted(locators)):
+            for right in sorted(locators)[index + 1 :]:
+                if frozenset((left, right)) in declared:
+                    continue
+                problems.append(
+                    "%s and %s hold the same string and no rule pairs them\n"
+                    "    %r\n"
+                    "    Either they are duplicates -- add them to HTML_DUPLICATES so an\n"
+                    "    edit to one is an error on the other -- or the repeat is an\n"
+                    "    accident and one of them is wrong." % (left, right, value)
+                )
 
 
 def check_wiring(js, problems):
@@ -362,6 +489,8 @@ def main(root):
                 % (tag, field, in_html, in_js)
             )
 
+    check_html_duplicates(html, problems)
+
     check_wiring(js, problems)
 
     for field in HTML_SOURCES:
@@ -381,9 +510,16 @@ def main(root):
 
     print(
         "Rendered head matches index.html: %d fields and %d mirrored tags agree, "
+        "%d in-HTML duplicate pairs agree and no undeclared duplicate exists, "
         "%d assignments in setLanguage() are wired to the right tag, "
         "%d Russian strings present."
-        % (len(HTML_SOURCES), len(MIRRORED), len(ASSIGNMENTS), len(HTML_SOURCES))
+        % (
+            len(HTML_SOURCES),
+            len(MIRRORED),
+            len(HTML_DUPLICATES),
+            len(ASSIGNMENTS),
+            len(HTML_SOURCES),
+        )
     )
     return 0
 

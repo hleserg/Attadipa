@@ -90,7 +90,10 @@ WebP headers themselves and compares them with the `width`/`height` in
 uses them rather than copied into a document that cannot notice when they drift.
 It compares proportion rather than scale: `favicon.png` is 64 × 64 and the page
 draws it at 34 and again at 28, which reserves exactly the right box and is not
-a defect.
+a defect. The one exception is `og:image:width` / `og:image:height`, compared
+**exactly** — a card renderer has no page to scale them against, so they are the
+file's own numbers or they are wrong. Added after review pointed out that the
+card's dimensions were typed numbers about a file the check already had open.
 
 Loading hints added: `fetchpriority="high"` on the hero banner (it *is* the LCP
 element), `loading="lazy"` on everything below the fold, `decoding="async"`
@@ -153,11 +156,32 @@ now carries a table of *which `copy` field must be assigned into which tag*, and
 asserts `setLanguage()` against it, including which DOM element each variable
 selects. Found in review, in the artifact built to prevent exactly this.
 
-Its own mutation tests (`tools/site/test_check_head_sync.py`, **32 cases**) run
-first. Seven of them fail against the check as it was, which is what makes them
-tests rather than description. A checker that passes everything is worse than
-none — it is what the next agent trusts instead of re-checking, which is exactly
-how this section came to be wrong.
+**A third kind of divergence lives inside `index.html` alone**, and review found
+it after the other two were closed. Three head strings are duplicated by hand
+and assigned by nothing: `og:image` ↔ `twitter:image`, `og:image:alt` ↔
+`twitter:image:alt`, and the meta description ↔ the JSON-LD
+`WebSite.description` fifty-odd lines below it. Both halves above exit 0 on
+every one of them, because neither file disagrees with the other — the file
+disagrees with itself. They are now a declared table, compared on every run,
+**and the table has a completeness rule of its own**: any two head strings of
+24 characters or more that are byte-identical and not declared as a pair are
+reported, so the next duplicate is an error the day it is added rather than the
+day someone edits one half. The 24-character floor keeps `en_US` and its like
+out of it.
+
+Its own mutation tests (`tools/site/test_check_head_sync.py`, **40 cases**) run
+first: **31 break the pair and require the check to fail, 9 leave it valid and
+require the check to stay quiet.** Every one of the 31 was written against a
+version of the checker that let that exact mutation through — that is what makes
+them tests rather than description. A checker that passes everything is worse
+than none: it is what the next agent trusts instead of re-checking, which is
+exactly how this section came to be wrong.
+
+An earlier draft said *"seven of them fail against the check as it was"*. That
+counted the wiring cases in a 29-case suite and was never recounted as the suite
+grew, so it had stopped naming a set — review caught it. Splitting the count by
+what each case asserts is the version that stays true when a case is added,
+because the two numbers are read off the file rather than remembered.
 
 ### `docs/index.html` — a `<noscript>` fallback for `.reveal`
 
@@ -184,6 +208,22 @@ that line, no `IntersectionObserver`, reduced motion — now leaves the page
 visible, because the thing that hides the content and the thing that reveals it
 are the same statement. The `<noscript>` block is kept as a belt-and-braces
 override for the scripting-off case and is no longer what the argument rests on.
+
+**The inversion has a cost, and review named it before a visitor did.** `.reveal`
+carries `transition:opacity .65s` unconditionally and `site.js` is `defer`red. On
+a fast load the script runs before first paint and nobody sees anything. On a
+slow one — cold cache, poor connection, a delayed asset — the page paints fully
+visible, and *then* adding `js-reveal` fades every section out and slides it
+18px down before the observer brings the in-view ones back. Nothing faded out
+before this change; the honest description of the trade is that the blank page
+was replaced by a flicker on slow loads.
+
+So the flicker is gone too: `site.js` asks the Paint Timing API whether
+`first-contentful-paint` has already been recorded, and if it has, skips the
+reveal entirely and leaves the page as painted. The animation is decorative and
+the readable page is not, and an animation that arrives after the content has
+been read buys nothing worth a visible flicker. Where the API is missing the
+entry list is empty and behaviour is exactly as before.
 
 ### `docs/manifest.webmanifest`
 
@@ -257,20 +297,37 @@ Worth recording so nobody "fixes" it:
   policy is `hleserg.github.io/robots.txt`, which belongs to a user-pages
   repository that does not exist. Every line in it is inert, *including* the
   `Sitemap:` line, so this file is not what makes the sitemap discoverable.
-  A `<link rel="sitemap">` in the head is (several crawlers read it), and §5
-  asks the owner for the console submission that makes it certain. The file is
-  kept rather than deleted because it becomes live, unchanged, on the day a
-  custom domain is added; the header inside it says all of this so the next
-  reader does not "fix" the directives when the location is the problem.
+  Nothing else does either: **the sitemap has no automated discovery path
+  until §5's console submission is done.** The `<link rel="sitemap">` in the
+  head is kept as correct markup, not as coverage — see the note below. The
+  file is kept rather than deleted because it becomes live, unchanged, on the
+  day a custom domain is added; the header inside it says all of this so the
+  next reader does not "fix" the directives when the location is the problem.
 
   The first version of this section called it *"correct as written"*, which was
   true of the directives and false of the file. Where a file sits is part of
   whether it works.
+
+  **And the sentence that replaced it was unsourced in turn**, which is the
+  more useful half of the lesson. Retracting the `robots.txt` claim, this
+  document, `docs/robots.txt`, `docs/index.html` and `STATUS.md` all gained
+  some form of *"several crawlers read the `<link rel="sitemap">`"* — five
+  statements, no crawler named, no citation, and no file in `docs/research/`
+  behind them. Review caught it. We then tried to settle it either way and
+  **could not**: the network egress proxy in the agent environment blocks
+  `developers.google.com` and `www.sitemaps.org`, so neither Google's sitemap
+  documentation nor the sitemaps.org protocol could be read. So the claim is
+  gone rather than softened, in all five places. If someone later finds a
+  crawler that does honour the link, that is a fact for `docs/research/` with
+  a citation, and only then does this paragraph change. The rule it broke is
+  `CLAUDE.md`'s: a fact that lives only in a chat log does not exist — and a
+  section written to stop the next reader re-examining is the worst possible
+  place to put one.
 - **Canonical URL** present and absolute.
 - **Mobile.** A real viewport meta, `img{max-width:100%;height:auto}` in the
   reset, and grid/flex layout throughout — no fixed-width containers to cause a
   horizontal scroll.
-- **Performance, otherwise.** One 17 KB stylesheet and one 8 KB script, both
+- **Performance, otherwise.** One 17 KB stylesheet and one 9 KB script, both
   local, the script `defer`red. No web fonts are loaded at all — the type stack
   is `"Nunito Sans", "Avenir Next", system-ui, …`, so there is no render-blocking
   font fetch and no CLS from a swap. No third-party scripts, no analytics, no
@@ -284,8 +341,9 @@ term, and an `<h1>` is a strong signal. It stays because the brief was explicit
 that the design is not to be broken, and this line *is* the design — it is the
 product's whole argument in four words. The terms were added to the `<title>`,
 the lead paragraph and two of the `<h2>`s instead, which is most of the benefit
-at none of the cost — the architecture section now opens *"ESP32-S3 boards that
-share almost nothing: built to survive the differences"* and the status section
+at none of the cost — the hardware section (`#hardware`; the architecture
+section is `#platform` and its `<h2>` was not touched) now opens *"ESP32-S3
+boards that share almost nothing: built to survive the differences"* and the status section
 *"The foundation is real. The LoRa, GNSS and LVGL firmware on the watch is still
 early"*, both in each language. The first version of this section claimed the
 `<h2>`s already carried the terms; they did not, and review counted. Naming the
@@ -361,7 +419,7 @@ None of these are blockers, and none were registered, per the brief.
 |---|---|---|
 | Verify the site in **Google Search Console** | <https://search.google.com/search-console> — DNS or the HTML-file method; the file drops in `docs/` | the only way to see real queries, impressions and Core Web Vitals field data; also where a sitemap is submitted |
 | Verify in **Bing Webmaster Tools** | <https://www.bing.com/webmasters> — can import from Search Console in one click | Bing, DuckDuckGo and ChatGPT search all read this index |
-| Submit `sitemap.xml` | both consoles | **the only certain way the sitemap is found.** `docs/robots.txt` publishes below the origin root and no crawler reads it (§3), so discovery otherwise rests on the `<link rel="sitemap">` in the head, which not every crawler honours. Also first-crawl latency: hours instead of weeks |
+| Submit `sitemap.xml` | both consoles | **the only way the sitemap is found at all.** `docs/robots.txt` publishes below the origin root and no crawler reads it (§3), and no crawler is documented as reading the `<link rel="sitemap">` in the head either — so until this is done there is no discovery path, not a weaker one. Also first-crawl latency: hours instead of weeks |
 | Check the **Open Graph card** renders | <https://cards-dev.twitter.com/validator> and Facebook's sharing debugger | the OG tags are new and unproven against a real scraper |
 | Run **PageSpeed Insights** | <https://pagespeed.web.dev> | confirms the 2.8 MB image saving as a field number rather than an arithmetic one |
 

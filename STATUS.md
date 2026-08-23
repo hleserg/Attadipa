@@ -692,7 +692,7 @@ four more things at no cost:
   and they do match"* while two of eight fields did not.
 
   So it is a check rather than a claim: `tools/site/check_head_sync.py`, in CI
-  in the *Documentation consistency* job, with 32 mutation tests
+  in the *Documentation consistency* job, with 40 mutation tests
   (`tools/site/test_check_head_sync.py`) ahead of it. The existing rot check
   never covered this: `tools/docs/check_docs.py` filters on `.md` and was green
   while the second defect was in the tree.
@@ -708,7 +708,16 @@ four more things at no cost:
   `og:locale:alternate`, which is the state this branch fixed. The check now
   carries a table of which `copy` field must be assigned into which tag, and
   which DOM element each variable selects, and asserts `setLanguage()` against
-  it. Seven of the 32 cases fail against the check as it was.
+  it. A third kind followed: three head strings duplicated *inside*
+  `index.html` with nothing holding them in step — `og:image`/`twitter:image`,
+  `og:image:alt`/`twitter:image:alt`, and the meta description against the
+  JSON-LD `WebSite.description` — which both halves pass because the two files
+  agree and the one file does not agree with itself. Declared as a table, with
+  a completeness rule that reports any undeclared byte-identical pair of 24
+  characters or more. Of the 40 cases, 31 break the pair and require a non-zero
+  exit and 9 leave it valid and require silence; a bare *"seven of them fail against the
+  check as it was"* stood here for two rounds after the suite outgrew it, so
+  the split is quoted instead of a remembered subtotal.
 
   Three claims were removed rather than fixed, because they were not true of the
   files: three of the six JSON-LD `featureList` entries described work that is
@@ -735,7 +744,7 @@ four more things at no cost:
   guarded by a sentence** — *"if an image is swapped, its `width`/`height` must
   be re-read from the file"* — two files away from the head, which had a check
   precisely because a sentence had failed there. So they are a check too:
-  `tools/site/check_site_facts.py`, in the same CI job, with 15 mutation tests.
+  `tools/site/check_site_facts.py`, in the same CI job, with 16 mutation tests.
   It measures PNG, JPEG and WebP from their own headers and holds the document
   to the dimension pairs, the byte sizes, the saving column, both statements of
   the 2.8 MB total, the stylesheet, the script, and the head-sync case count
@@ -754,9 +763,13 @@ four more things at no cost:
   are right and the file is unreachable. `robots.txt` is read from the origin
   root only, this is a project-pages site with no `CNAME`, so the file publishes
   at `/Attadipa/robots.txt` and every line in it — including `Sitemap:` — is
-  inert. Sitemap discovery now rests on a `<link rel="sitemap">` in the head and
-  on S2's console submission; the file is kept, with a header explaining why, so
-  it is already correct the day a custom domain is added.
+  inert. Sitemap discovery rests on S2's console submission and nothing else:
+  the `<link rel="sitemap">` in the head is a hint we could find no crawler
+  documented as honouring — an unsourced claim that review caught in five files
+  at once, and that could not be settled either way because egress to
+  `developers.google.com` and `www.sitemaps.org` is blocked here. The file is
+  kept, with a header explaining why, so it is already correct the day a custom
+  domain is added.
 
 - **The unattended merge sweep failed before it looked at a single pull
   request.** `pr-merge-sweep.yml` merged green on 2026-08-23 and its cron had

@@ -32,11 +32,13 @@
   <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <!-- The only sitemap discovery path this site actually has. robots.txt
-       is host-rooted and this is a project site, so the Sitemap: line in
-       docs/robots.txt is never fetched -- see that file. Several crawlers
-       read this link; the rest need the Search Console submission recorded
-       as S2 in docs/site/SEO.md. Found in review. -->
+  <!-- A hint, NOT a discovery path. robots.txt is host-rooted and this is a
+       project site, so the Sitemap: line in docs/robots.txt is never fetched
+       -- see that file. No crawler is documented as reading this link either:
+       we could not source a single one, so the sitemap has no automated
+       discovery path at all until the Search Console / Bing submission
+       recorded as S2 in docs/site/SEO.md is done. Kept because it is correct
+       markup and costs nothing; do not read it as coverage. -->
   <link rel="sitemap" type="application/xml" href="sitemap.xml">
   <script>
     (() => {
@@ -314,7 +316,7 @@
       <div class="shell design-grid">
         <div class="design-board reveal">
           <img src="assets/style-board.webp" width="1448" height="1086" loading="lazy" decoding="async"
-               alt="Attadipa design board: the Warm Ivory and Ink Olive palette, Nunito Sans type scale, rounded card shapes and the firefly mark.">
+               alt="Attadipa design board: the Warm Ivory and Ink Olive palette, the Nunito Sans and Inter type specimens, rounded card shapes and the firefly mark.">
         </div>
         <div class="design-copy reveal reveal-delay">
           <span class="kicker lang-en">Design is architecture too</span><span class="kicker lang-ru">Дизайн — тоже часть архитектуры</span>
