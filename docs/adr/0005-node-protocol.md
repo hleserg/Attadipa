@@ -301,6 +301,18 @@ control is exactly the code that must be attacked before it is used, and
 [ADR-0002](0002-companion-is-optional.md) rule 4 already says node input is
 untrusted.
 
+> **One case added to that list, 2026-08-23** — a **zero-length frame
+> immediately before a valid one**, and an empty frame whose own CRC is wrong.
+> Nothing about it is malformed, which is why it was not on the list: the header
+> is self-consistent, the CRC is correct, and it costs a peer seven bytes to
+> send. It was found at the framing layer beneath this ADR, where both readers
+> consumed such a frame and then reported it with the value that means *nothing
+> here* — so a valid frame behind it was stranded
+> ([#146](https://github.com/hleserg/Attadipa/issues/146)). Covered there now,
+> in `tests/test_link.cpp`, and it remains required of the TLV codec above:
+> **a legal-but-empty unit of the layer below is a hostile input**, because the
+> ambiguity is in the receiving contract rather than in the bytes.
+
 ## Alternatives considered
 
 **Protocol Buffers with nanopb.** Rejected on the measured RAM figure — 768

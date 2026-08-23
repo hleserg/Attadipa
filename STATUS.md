@@ -663,6 +663,38 @@ four more things at no cost:
 
 ## Recently completed
 
+- **Zero was the transport's answer for "here is a frame" and for "there is no
+  frame", and the second one won.**
+  [#146](https://github.com/hleserg/Attadipa/issues/146), T-062.
+  `Decoder::next()` returned the payload length and reserved `0` for *nothing
+  ready*; `FrameQueue::pop()` did the same. A zero-length frame is legal —
+  `encode()` writes one, and `test_an_empty_frame_is_a_frame` has asserted the
+  round trip since the framing was written — so both readers verified it,
+  consumed it, incremented the counter that says **delivered intact**, and then
+  returned the value that tells the drain loop *they themselves document* to
+  stop. Whatever was behind it in the buffer stayed there with nothing to fetch
+  it. No corruption is needed to reach that: a `length = 0` header is
+  self-consistent, its CRC is valid, and any peer can send one. Both now return
+  `FrameResult { FrameStatus status; std::size_t length; }` with `Delivered ·
+  NoFrame · Incomplete · OutputTooSmall`, so a delivered empty frame is a
+  different answer from an empty buffer, from a frame still arriving, and from
+  a caller's buffer that is too small — that last one now carrying the room it
+  needs instead of being a stall with no explanation. The bare-size returns
+  were removed rather than kept beside the new ones, because a sentinel left
+  reachable is a sentinel; nothing outside `tests/test_link.cpp` called either,
+  so the cost was one test file. `encode()` is untouched and says why in a
+  comment: its smallest output is seven bytes, so `0` is outside its valid range
+  and there is no collision there to fix. **The same mistake was in two
+  containers written independently**, which is what makes it a rule rather than
+  a bug: [ARCHITECTURE](docs/architecture/ARCHITECTURE.md) §5 now says that a
+  value inside a type's valid domain may never also mean "there is no value",
+  beside the three-valued rule it is the function-return form of. Seven
+  regression cases, and each was proven red by mutating the old behaviour back
+  in three different ways — reporting an empty frame as `NoFrame`, deriving the
+  truth test from the length instead of the status, and the queue's half of the
+  same — rather than asserted to be a regression test. Release, `-Werror`
+  strict, Clang and ASan/UBSan all 24/24.
+
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same

@@ -102,7 +102,7 @@ void Decoder::discard_front(std::size_t count)
     size_ -= count;
 }
 
-std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
+FrameResult Decoder::next(std::uint8_t* out, std::size_t out_capacity)
 {
     // The loop is the resynchronisation. Every failure discards exactly one
     // byte and tries again from the next, so a torn frame costs at most one
@@ -115,7 +115,10 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
     // emitted.
     for (;;) {
         if (size_ < kHeaderBytes) {
-            return 0;  // not enough to judge; wait for more
+            // Not enough to judge; wait for more. An empty buffer and a header
+            // part-way in are reported apart, because they are different facts
+            // about the link and a caller can act on the difference.
+            return {size_ == 0 ? FrameStatus::NoFrame : FrameStatus::Incomplete, 0};
         }
 
         const bool header_ok =
@@ -145,7 +148,7 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
 
         const std::size_t needed = kHeaderBytes + declared + kTrailerBytes;
         if (size_ < needed) {
-            return 0;  // a real frame, still arriving
+            return {FrameStatus::Incomplete, 0};  // a real frame, still arriving
         }
 
         // `declared + 3`, matching encode(): two length bytes, the length check,
@@ -162,9 +165,11 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
         }
 
         // A caller whose buffer is too small gets nothing and the frame stays
-        // queued, rather than a partial copy it might mistake for the whole.
+        // queued, rather than a partial copy it might mistake for the whole. It
+        // is told how much room the frame needs, which is the difference
+        // between an error it can act on and a stall it cannot explain.
         if (out == nullptr || out_capacity < declared) {
-            return 0;
+            return {FrameStatus::OutputTooSmall, declared};
         }
 
         if (declared != 0) {
@@ -172,7 +177,11 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
         }
         discard_front(needed);
         ++stats_.frames;
-        return declared;
+        // `stats_.frames` says "delivered intact", and this is the line that
+        // has to make that true. It is only true because the caller can tell
+        // this apart from a non-delivery without looking at `declared`, which
+        // is 0 for an empty frame and was 0 for "nothing ready" as well.
+        return {FrameStatus::Delivered, declared};
     }
 }
 

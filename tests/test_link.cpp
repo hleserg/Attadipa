@@ -74,6 +74,16 @@ bool same(const std::uint8_t* a, const std::uint8_t* b, std::size_t length)
     return std::memcmp(a, b, length) == 0;
 }
 
+// "A frame of exactly this length was handed over." Both halves are asserted on
+// purpose: the status, because that is what the caller's drain loop reads, and
+// the boolean conversion, because an implementation that derived truth from the
+// length instead would pass every length except the one that matters.
+bool delivered(const FrameResult& result, std::size_t length)
+{
+    return result.status == FrameStatus::Delivered && result.length == length &&
+           static_cast<bool>(result);
+}
+
 // ---------------------------------------------------------------------------
 // The owner's §6 list, in order.
 
@@ -92,13 +102,17 @@ void test_fragmented_input()
     Decoder decoder;
     std::uint8_t out[kMaxPayload];
 
-    // Every byte on its own. Nothing may be delivered until the last one.
+    // Every byte on its own. Nothing may be delivered until the last one, and
+    // "still arriving" is the honest word for every one of those steps — the
+    // buffer is not empty, it is part-way through a frame.
     for (std::size_t i = 0; i + 1 < encoded; ++i) {
         CHECK(decoder.push(&wire[i], 1) == 1);
-        CHECK(decoder.next(out, sizeof out) == 0);
+        const FrameResult waiting = decoder.next(out, sizeof out);
+        CHECK(!waiting);
+        CHECK(waiting.status == FrameStatus::Incomplete);
     }
     CHECK(decoder.push(&wire[encoded - 1], 1) == 1);
-    CHECK(decoder.next(out, sizeof out) == sizeof payload);
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof payload));
     CHECK(same(out, payload, sizeof payload));
     CHECK(decoder.stats().frames == 1);
     CHECK(decoder.stats().bad_crc == 0);
@@ -125,14 +139,14 @@ void test_several_frames_in_one_read()
     // Split at an awkward place: three bytes into the second frame's header.
     const std::size_t split = sizeof a + kOverheadBytes + 3;
     CHECK(decoder.push(wire, split) == split);
-    CHECK(decoder.next(out, sizeof out) == sizeof a);
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof a));
     CHECK(same(out, a, sizeof a));
-    CHECK(decoder.next(out, sizeof out) == 0);
+    CHECK(!decoder.next(out, sizeof out));
 
     CHECK(decoder.push(wire + split, used - split) == used - split);
-    CHECK(decoder.next(out, sizeof out) == sizeof b);
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof b));
     CHECK(same(out, b, sizeof b));
-    CHECK(decoder.next(out, sizeof out) == sizeof c);
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof c));
     CHECK(same(out, c, sizeof c));
     CHECK(decoder.stats().frames == 3);
 }
@@ -150,15 +164,20 @@ void test_partial_writes()
     CHECK(queue.size() == 1);
 
     // A reader with nowhere to put it takes nothing, and does not consume the
-    // entry either — the frame is still there for a caller with a real buffer.
+    // entry either — the frame is still there for a caller with a real buffer,
+    // which is told how big that buffer has to be rather than left to guess.
     std::uint8_t small[8];
-    CHECK(queue.pop(small, sizeof small) == 0);
+    const FrameResult too_small = queue.pop(small, sizeof small);
+    CHECK(!too_small);
+    CHECK(too_small.status == FrameStatus::OutputTooSmall);
+    CHECK(too_small.length == sizeof payload);
     CHECK(queue.size() == 1);
 
     std::uint8_t out[kMaxPayload];
-    CHECK(queue.pop(out, sizeof out) == sizeof payload);
+    CHECK(delivered(queue.pop(out, sizeof out), sizeof payload));
     CHECK(same(out, payload, sizeof payload));
     CHECK(queue.empty());
+    CHECK(queue.pop(out, sizeof out).status == FrameStatus::NoFrame);
 }
 
 // Bounded, and it says how much it lost. A queue that silently overwrites is a
@@ -183,7 +202,7 @@ void test_queue_full()
 
     // Draining one makes room for exactly one.
     std::uint8_t out[kMaxPayload];
-    CHECK(queue.pop(out, sizeof out) == sizeof payload);
+    CHECK(delivered(queue.pop(out, sizeof out), sizeof payload));
     CHECK(queue.writable());
     CHECK(queue.push(payload, sizeof payload));
     CHECK(queue.full());
@@ -211,11 +230,11 @@ void test_disconnect_during_a_frame()
     // no header, so it must be discarded rather than assembled into anything.
     std::uint8_t out[kMaxPayload];
     decoder.push(wire + encoded / 2, encoded - encoded / 2);
-    CHECK(decoder.next(out, sizeof out) == 0);
+    CHECK(!decoder.next(out, sizeof out));
 
     // And a whole frame after that decodes normally.
     CHECK(decoder.push(wire, encoded) == encoded);
-    CHECK(decoder.next(out, sizeof out) == sizeof payload);
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof payload));
 }
 
 // A reconnect is a new session, not a continuation. The epoch is what lets the
@@ -265,7 +284,7 @@ void test_large_payload()
     Decoder decoder;
     CHECK(decoder.push(wire, encoded) == encoded);
     std::uint8_t out[kMaxPayload];
-    CHECK(decoder.next(out, sizeof out) == kMaxPayload);
+    CHECK(delivered(decoder.next(out, sizeof out), kMaxPayload));
     CHECK(same(out, payload, kMaxPayload));
 
     // One byte too many is refused at the encoder, and refused as a failure
@@ -303,7 +322,7 @@ void test_malformed_frame()
 
         Decoder decoder;
         decoder.push(corrupt, encoded);
-        CHECK(decoder.next(out, sizeof out) == 0);
+        CHECK(!decoder.next(out, sizeof out));
         CHECK(decoder.stats().bad_crc == 1);
         CHECK(decoder.stats().frames == 0);
     }
@@ -318,7 +337,7 @@ void test_malformed_frame()
 
         Decoder decoder;
         decoder.push(lying, encoded);
-        decoder.next(out, sizeof out);
+        CHECK(!decoder.next(out, sizeof out));
         CHECK(decoder.stats().bad_length + decoder.stats().resyncs > 0);
         CHECK(decoder.stats().frames == 0);
     }
@@ -330,7 +349,7 @@ void test_malformed_frame()
         Decoder decoder;
         decoder.push(noise, sizeof noise);
         decoder.push(wire, encoded);
-        CHECK(decoder.next(out, sizeof out) == sizeof payload);
+        CHECK(delivered(decoder.next(out, sizeof out), sizeof payload));
         CHECK(same(out, payload, sizeof payload));
         CHECK(decoder.stats().resyncs > 0);
     }
@@ -361,8 +380,7 @@ void test_an_over_long_frame_is_refused_not_truncated()
     decoder.push(frame, sizeof frame);
 
     std::uint8_t out[kMaxPayload];
-    const std::size_t delivered = decoder.next(out, sizeof out);
-    CHECK(delivered == 0);
+    CHECK(!decoder.next(out, sizeof out));
     CHECK(decoder.stats().frames == 0);
 }
 
@@ -404,13 +422,14 @@ void test_no_single_byte_corruption_is_ever_delivered()
                 Decoder decoder;
                 decoder.push(corrupt, encoded);
                 std::uint8_t out[kMaxPayload];
-                const std::size_t delivered = decoder.next(out, sizeof out);
+                const FrameResult result = decoder.next(out, sizeof out);
 
                 // Delivering nothing is fine. Delivering the right thing is fine
                 // — a corrupted sync byte can resynchronise onto a frame that
                 // happens to still be intact. Delivering the WRONG thing is the
                 // failure, and it must be impossible.
-                if (delivered == size && size != 0 && !same(out, payload, size)) {
+                if (result && result.length == size && size != 0 &&
+                    !same(out, payload, size)) {
                     std::fprintf(stderr,
                                  "FAIL line %d: payload of %lu bytes, corrupting byte %lu with "
                                  "mask 0x%02X, delivered wrong content\n",
@@ -642,8 +661,19 @@ void test_input_beyond_the_buffer_is_refused_and_counted()
     const std::size_t encoded = encode(payload, sizeof payload, wire, sizeof wire);
     decoder.push(wire, encoded);
     std::uint8_t out[kMaxPayload];
-    CHECK(decoder.next(out, sizeof out) == sizeof payload);
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof payload));
 }
+
+// ---------------------------------------------------------------------------
+// A zero-length frame, and the sentinel it used to be indistinguishable from.
+//
+// Issue #146, and `TASKS.md` T-062 before it: a valid payload length of zero
+// was returned by `Decoder::next()` and `FrameQueue::pop()` as the same value
+// they used for "nothing here", *after* consuming the frame. The documented
+// drain loop stopped on it, so the next frame in the buffer was stranded with
+// nothing to fetch it, while `stats().frames` and `accepted()` counted the
+// empty one as delivered. Two independently written containers, one rule
+// broken, so these tests attack both.
 
 // A zero-length frame is a legitimate thing to send — a keepalive is exactly
 // that — and it must survive the round trip as an empty frame rather than as
@@ -657,8 +687,305 @@ void test_an_empty_frame_is_a_frame()
     Decoder decoder;
     decoder.push(wire, encoded);
     std::uint8_t out[kMaxPayload];
-    CHECK(decoder.next(out, sizeof out) == 0);
+    CHECK(delivered(decoder.next(out, sizeof out), 0));
     CHECK(decoder.stats().frames == 1);   // delivered, not merely absent
+}
+
+// THE PROOF TEST for this defect, and the one that has to be read before the
+// others: it pins the two answers apart rather than pinning either alone.
+//
+// An implementation that reports a delivered empty frame as `NoFrame`, or whose
+// truth test reads `length != 0` instead of the status, passes every other test
+// in this file — including the round-trip one directly above — and has the bug
+// back. So both are asserted here explicitly and against each other.
+void test_a_delivered_empty_frame_is_not_the_answer_for_nothing()
+{
+    std::uint8_t wire[kMaxFrame];
+    const std::size_t encoded = encode(nullptr, 0, wire, sizeof wire);
+
+    Decoder decoder;
+    std::uint8_t out[kMaxPayload];
+
+    // Nothing has arrived at all.
+    const FrameResult idle = decoder.next(out, sizeof out);
+    CHECK(idle.status == FrameStatus::NoFrame);
+    CHECK(!idle);
+    CHECK(idle.length == 0);
+
+    decoder.push(wire, encoded);
+    const FrameResult empty = decoder.next(out, sizeof out);
+    CHECK(empty.status == FrameStatus::Delivered);
+    CHECK(static_cast<bool>(empty));       // and NOT derived from the length
+    CHECK(empty.length == 0);
+
+    // The two lengths are equal and the two answers must not be. That sentence
+    // is the whole defect and the whole fix.
+    CHECK(empty.length == idle.length);
+    CHECK(empty.status != idle.status);
+    CHECK(static_cast<bool>(empty) != static_cast<bool>(idle));
+
+    // And the queue, which had the identical collision, gives the identical
+    // pair of answers.
+    FrameQueue<> queue;
+    const FrameResult queue_idle = queue.pop(out, sizeof out);
+    CHECK(queue_idle.status == FrameStatus::NoFrame);
+    CHECK(!queue_idle);
+
+    const std::uint8_t nothing = 0;
+    CHECK(queue.push(&nothing, 0));
+    const FrameResult queue_empty = queue.pop(out, sizeof out);
+    CHECK(queue_empty.status == FrameStatus::Delivered);
+    CHECK(static_cast<bool>(queue_empty));
+    CHECK(queue_empty.length == 0);
+    CHECK(queue_empty.length == queue_idle.length);
+    CHECK(queue_empty.status != queue_idle.status);
+}
+
+// Scenario 1 from the report: an empty frame and a real one in a single read.
+// The empty frame is consumed and reported, and the byte behind it comes out of
+// the SAME drain cycle rather than waiting for the transport to speak again.
+void test_an_empty_frame_does_not_strand_the_frame_behind_it()
+{
+    const std::uint8_t one = 0xA7;
+    std::uint8_t wire[kMaxFrame * 2];
+    std::size_t  used = 0;
+    used += encode(nullptr, 0, wire + used, sizeof wire - used);
+    used += encode(&one, 1, wire + used, sizeof wire - used);
+    CHECK(used == kOverheadBytes * 2 + 1);
+
+    Decoder decoder;
+    CHECK(decoder.push(wire, used) == used);
+
+    // Drained the way the header documents it: keep going while the result is
+    // true. Against the old contract this loop ran exactly zero times.
+    std::uint8_t out[kMaxPayload];
+    std::size_t  seen[4]  = {};
+    std::size_t  count    = 0;
+    for (FrameResult r = decoder.next(out, sizeof out); r;
+         r = decoder.next(out, sizeof out)) {
+        if (count < 4) {
+            seen[count] = r.length;
+        }
+        if (r.length == 1) {
+            CHECK(out[0] == one);
+        }
+        ++count;
+    }
+
+    CHECK(count == 2);
+    CHECK(seen[0] == 0);
+    CHECK(seen[1] == 1);
+    CHECK(decoder.stats().frames == 2);
+    CHECK(decoder.buffered() == 0);
+    CHECK(decoder.next(out, sizeof out).status == FrameStatus::NoFrame);
+}
+
+// The same pair, arriving in fragments that split both a header and a trailer.
+// Fragment boundaries are the transport's business and must not change what
+// comes out — least of all for the frame whose payload is empty, where the
+// header and the trailer are all there is.
+void test_an_empty_frame_survives_a_split_header_and_trailer()
+{
+    std::uint8_t payload[9];
+    fill(payload, sizeof payload, 5);
+
+    std::uint8_t wire[kMaxFrame * 2];
+    std::size_t  used = 0;
+    used += encode(nullptr, 0, wire + used, sizeof wire - used);
+    used += encode(payload, sizeof payload, wire + used, sizeof wire - used);
+
+    Decoder decoder;
+    std::uint8_t out[kMaxPayload];
+
+    // Cut three bytes into the empty frame's header, then one byte before the
+    // end of its trailer, then partway through the second frame's header.
+    const std::size_t cuts[] = {3, kOverheadBytes - 1, kOverheadBytes + 3};
+    std::size_t       fed    = 0;
+    for (std::size_t cut : cuts) {
+        CHECK(decoder.push(wire + fed, cut - fed) == cut - fed);
+        fed = cut;
+        const FrameResult partial = decoder.next(out, sizeof out);
+        if (cut < kOverheadBytes) {
+            CHECK(!partial);   // the empty frame is not complete yet
+        }
+    }
+
+    // The empty frame completed at the third cut, which is past its trailer.
+    CHECK(decoder.stats().frames == 1);
+
+    CHECK(decoder.push(wire + fed, used - fed) == used - fed);
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof payload));
+    CHECK(same(out, payload, sizeof payload));
+    CHECK(decoder.stats().frames == 2);
+    CHECK(decoder.stats().bad_crc == 0);
+    CHECK(decoder.stats().resyncs == 0);
+}
+
+// Scenario 3: an empty frame between two ordinary ones. The protocol above
+// assumes its stream is ordered, so the two real payloads must arrive in the
+// order they were sent with the empty one accounted for between them — not
+// reordered, not dropped, not merged.
+void test_an_empty_frame_between_two_frames_changes_no_order()
+{
+    std::uint8_t first[13], second[70];
+    fill(first, sizeof first, 11);
+    fill(second, sizeof second, 12);
+
+    std::uint8_t wire[kMaxFrame * 3];
+    std::size_t  used = 0;
+    used += encode(first, sizeof first, wire + used, sizeof wire - used);
+    used += encode(nullptr, 0, wire + used, sizeof wire - used);
+    used += encode(second, sizeof second, wire + used, sizeof wire - used);
+
+    Decoder decoder;
+    CHECK(decoder.push(wire, used) == used);
+
+    std::uint8_t out[kMaxPayload];
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof first));
+    CHECK(same(out, first, sizeof first));
+    CHECK(delivered(decoder.next(out, sizeof out), 0));
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof second));
+    CHECK(same(out, second, sizeof second));
+    CHECK(!decoder.next(out, sizeof out));
+    CHECK(decoder.stats().frames == 3);
+}
+
+// Scenario 4: an empty frame whose CRC is wrong. It must be counted as a
+// checksum failure like any other corrupt frame — not as an empty delivery,
+// which is the one mistake that would look right in the counters — and the
+// valid frame behind it must still arrive.
+void test_a_corrupt_empty_frame_is_a_crc_error_and_blocks_nothing()
+{
+    std::uint8_t payload[24];
+    fill(payload, sizeof payload, 7);
+
+    std::uint8_t wire[kMaxFrame * 2];
+    std::size_t  used = 0;
+    used += encode(nullptr, 0, wire + used, sizeof wire - used);
+    used += encode(payload, sizeof payload, wire + used, sizeof wire - used);
+
+    // Corrupt the empty frame's own checksum, the last byte before the good
+    // frame begins.
+    wire[kOverheadBytes - 1] = static_cast<std::uint8_t>(wire[kOverheadBytes - 1] ^ 0xFFu);
+
+    Decoder decoder;
+    CHECK(decoder.push(wire, used) == used);
+
+    std::uint8_t out[kMaxPayload];
+    CHECK(delivered(decoder.next(out, sizeof out), sizeof payload));
+    CHECK(same(out, payload, sizeof payload));
+    CHECK(decoder.stats().bad_crc == 1);
+    CHECK(decoder.stats().frames == 1);   // one delivery, and it is the real one
+    CHECK(!decoder.next(out, sizeof out));
+}
+
+// Scenario 2: the queue's half of the same defect. A zero-length entry occupies
+// a slot and is counted as accepted, so it has to be reportable as a successful
+// pop — otherwise the entry behind it is stranded in a container that says it
+// took both.
+void test_a_zero_length_entry_does_not_strand_the_queue()
+{
+    FrameQueue<> queue;
+    const std::uint8_t nothing = 0;
+    std::uint8_t       payload[40];
+    fill(payload, sizeof payload, 9);
+
+    CHECK(queue.push(&nothing, 0));
+    CHECK(queue.push(payload, sizeof payload));
+    CHECK(queue.size() == 2);
+    CHECK(queue.accepted() == 2);
+
+    // Drained the way a consumer drains: while the result is true.
+    std::uint8_t out[kMaxPayload];
+    std::size_t  seen[4] = {};
+    std::size_t  count   = 0;
+    for (FrameResult r = queue.pop(out, sizeof out); r; r = queue.pop(out, sizeof out)) {
+        if (count < 4) {
+            seen[count] = r.length;
+        }
+        ++count;
+    }
+
+    CHECK(count == 2);
+    CHECK(seen[0] == 0);
+    CHECK(seen[1] == sizeof payload);
+    CHECK(same(out, payload, sizeof payload));
+    CHECK(queue.empty());
+
+    // A null pointer with a zero length is what `encode()` already accepts, and
+    // the three boundaries have to agree about what an empty frame is or a
+    // frame that survives one of them is refused by the next.
+    CHECK(queue.push(nullptr, 0));
+    CHECK(delivered(queue.pop(out, sizeof out), 0));
+    CHECK(queue.malformed() == 0);
+
+    // A null pointer with something to copy is still a caller error.
+    CHECK(!queue.push(nullptr, 1));
+    CHECK(queue.malformed() == 1);
+}
+
+// The counters have to agree with what a caller could actually observe. That is
+// the property the defect broke without breaking any single counter: `frames`
+// and `accepted()` were right about what had been consumed and wrong about what
+// had been handed over, and nothing in the code could tell the two apart.
+void test_the_counters_agree_with_what_was_observable()
+{
+    std::uint8_t payload[16];
+    fill(payload, sizeof payload, 3);
+
+    std::uint8_t wire[kMaxFrame * 4];
+    std::size_t  used = 0;
+    used += encode(nullptr, 0, wire + used, sizeof wire - used);
+    used += encode(payload, sizeof payload, wire + used, sizeof wire - used);
+    used += encode(nullptr, 0, wire + used, sizeof wire - used);
+
+    Decoder decoder;
+    CHECK(decoder.push(wire, used) == used);
+
+    std::uint8_t out[kMaxPayload];
+    std::size_t  observed = 0;
+    while (decoder.next(out, sizeof out)) {
+        ++observed;
+    }
+    CHECK(observed == 3);
+    CHECK(decoder.stats().frames == observed);
+    CHECK(decoder.stats().bad_crc == 0);
+    CHECK(decoder.stats().bad_length == 0);
+    CHECK(decoder.stats().resyncs == 0);
+    CHECK(decoder.stats().input_dropped == 0);
+
+    // A frame refused for want of room is not a delivery and must not be
+    // counted as one — and it is still there afterwards.
+    std::uint8_t big[kMaxPayload];
+    fill(big, sizeof big, 4);
+    std::uint8_t one_more[kMaxFrame];
+    const std::size_t encoded = encode(big, sizeof big, one_more, sizeof one_more);
+    CHECK(decoder.push(one_more, encoded) == encoded);
+
+    std::uint8_t cramped[8];
+    const FrameResult refused = decoder.next(cramped, sizeof cramped);
+    CHECK(refused.status == FrameStatus::OutputTooSmall);
+    CHECK(refused.length == kMaxPayload);
+    CHECK(decoder.stats().frames == observed);   // unchanged: nothing was handed over
+    CHECK(delivered(decoder.next(out, sizeof out), kMaxPayload));
+    CHECK(decoder.stats().frames == observed + 1);
+
+    // The queue's counters, against the same standard. Two accepted, two
+    // observably delivered, one refused for want of room and not counted.
+    FrameQueue<2> queue;
+    const std::uint8_t nothing = 0;
+    CHECK(queue.push(&nothing, 0));
+    CHECK(queue.push(payload, sizeof payload));
+    CHECK(!queue.push(payload, sizeof payload));
+    CHECK(queue.accepted() == 2);
+    CHECK(queue.dropped() == 1);
+    CHECK(queue.malformed() == 0);
+
+    std::size_t popped = 0;
+    while (queue.pop(out, sizeof out)) {
+        ++popped;
+    }
+    CHECK(popped == queue.accepted());
 }
 
 }  // namespace
@@ -686,7 +1013,16 @@ int main()
     test_suspend_ends_the_session_rather_than_pausing_it();
     test_a_fault_is_not_cleared_by_trying_again();
     test_input_beyond_the_buffer_is_refused_and_counted();
+
+    // The zero-length frame and the sentinel it collided with (#146, T-062).
     test_an_empty_frame_is_a_frame();
+    test_a_delivered_empty_frame_is_not_the_answer_for_nothing();
+    test_an_empty_frame_does_not_strand_the_frame_behind_it();
+    test_an_empty_frame_survives_a_split_header_and_trailer();
+    test_an_empty_frame_between_two_frames_changes_no_order();
+    test_a_corrupt_empty_frame_is_a_crc_error_and_blocks_nothing();
+    test_a_zero_length_entry_does_not_strand_the_queue();
+    test_the_counters_agree_with_what_was_observable();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

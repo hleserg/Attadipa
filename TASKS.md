@@ -223,11 +223,12 @@ stale silently. The protocol is
 - **Dependencies:** none
 - **Goal:** close, or consciously decline with reasons, each finding below.
   Every one of them was read in the source before being written here; none is a
-  report taken on trust. Five from the same audit are already fixed —
+  report taken on trust. Six from the same audit are already fixed —
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
-  evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
-  (the movement/altitude baseline, below) — and the rule from the research
-  prompt applies: **do not stop after the first fix.**
+  evaluator), `7e4c4f9` (the replay rig could not produce Stale), issue #26
+  (the movement/altitude baseline, below) and issue #146 (zero meant two things
+  in the transport, below) — and the rule from the research prompt applies:
+  **do not stop after the first fix.**
 
 - **A state that cannot say "nobody has checked".** `GnssCapabilities`
   (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
@@ -276,11 +277,26 @@ stale silently. The protocol is
   no way to tell. Either the readers take `now`, or the class documents that a
   reader must update first and something enforces it.
 
-- **Zero means two things in the transport.** `Decoder::next()` returns 0 for
-  "nothing ready" and for "a zero-length frame was delivered", and
-  `FrameQueue::pop()` has the same ambiguity. A zero-length frame is legal —
-  `encode()` accepts it and the round-trip tests cover it — so a caller
-  draining until zero silently drops one.
+- ~~**Zero means two things in the transport.**~~ **Fixed** (issue #146).
+  `Decoder::next()` returned 0 for "nothing ready" and for "a zero-length frame
+  was delivered", and `FrameQueue::pop()` had the same ambiguity. A zero-length
+  frame is legal — `encode()` accepts it and the round-trip tests cover it — so
+  a caller draining until zero silently dropped one, *after* both readers had
+  consumed the frame and counted it as delivered. Both now return
+  `FrameResult { FrameStatus status; std::size_t length; }`, so a delivered
+  empty frame (`Delivered`, length 0) is a different answer from an empty
+  buffer (`NoFrame`), a frame still arriving (`Incomplete`) and a caller's
+  buffer that is too small (`OutputTooSmall`, carrying the room it needs). The
+  bare-size returns are gone rather than kept beside the new ones: a sentinel
+  left reachable is a sentinel. `encode()` is deliberately unchanged — its
+  smallest output is seven bytes, so `0` is not a valid answer there and
+  nothing collides. Zero-length now means the same thing at all three
+  boundaries, which cost the queue one line: `push(nullptr, 0)` is accepted, as
+  `encode(nullptr, 0, …)` always was. Seven regression cases in
+  `tests/test_link.cpp`, each proven red against the old behaviour by mutating
+  it back. The general rule — a valid value may never also mean "no value" — is
+  in [ARCHITECTURE](docs/architecture/ARCHITECTURE.md) §5, because this was the
+  same mistake in two independently written containers.
 
 - **`Attach` while `Faulted` reports the wrong refusal.** It returns `Redundant`
   where `Ignored` is the truth: nothing about a faulted link makes a new attach
@@ -308,10 +324,13 @@ stale silently. The protocol is
   affordable. `ESTIMATED`, not measured.
 
 - **Acceptance:** each item either fixed with a test that fails without the fix
-  — mutation-verified, as the four already closed were — or declined in writing
+  — mutation-verified, as every one already closed was — or declined in writing
   with the reason. A silent decline is not one.
 - **Research status:** n/a
-- **Implementation status:** not started
+- **Implementation status:** in progress, item by item. Two are closed in the
+  list above — the relayed-fix rate interval and, as of #146, the transport's
+  zero-means-two-things — and the remaining eight bullets are open, each still
+  worth an issue of its own.
 - **Tests:** host, per item
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.

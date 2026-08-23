@@ -503,6 +503,33 @@ The rules:
   none* · *not known* are three facts, and rendering the third as the second —
   "0 nodes nearby" when we have no idea — is a lie the interface tells
   confidently.
+- **A value inside a type's valid domain may never also mean "there is no
+  value".** This is the rule above applied one layer down, to a function's
+  return rather than to a datum, and it binds every bounded parser, reader and
+  queue in the tree. Either the status travels separately from the payload — a
+  small result type, or a boolean beside an out-parameter — or the sentinel is
+  refused at the door, in writing, at every boundary that can produce it. A
+  reader that reports "I gave you nothing" with a value it can also legitimately
+  give you has no way to be used correctly, and the caller loop that gets it
+  wrong is the one the documentation prescribed.
+
+  Written here because it was already broken twice. `Decoder::next()` and
+  `FrameQueue::pop()` each returned a payload length and each reserved `0` for
+  "nothing ready" — but a zero-length frame is a valid frame, `encode()` writes
+  one, and both readers consumed it, counted it as delivered, and then returned
+  the value that tells a drain loop to stop. Anything behind it in the buffer
+  was stranded with nothing to fetch it, and a hostile peer needs no more than a
+  self-consistent header to trigger that. Two containers, written
+  independently, same mistake — which is why the fix was one shared result type
+  (`FrameStatus`, `FrameResult`) rather than a check at each call site, and why
+  this is a rule rather than a commit message. Issue #146; the regression tests
+  are in `tests/test_link.cpp` and each was proven red against the old
+  behaviour.
+
+  The corollary matters as much as the rule: `encode()` still returns a bare
+  size, because the smallest frame it can write is seven bytes, so `0` is
+  outside its valid range and nothing there is ambiguous. Applying the rule
+  where there is no collision is churn, not rigour.
 - The simulator can present a device with no radio and no GNSS, one with a node
   attached, and one that **loses the node while an application is open** —
   because all three are real configurations, the third is the one that exercises
