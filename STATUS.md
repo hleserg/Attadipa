@@ -72,6 +72,21 @@ in both cases.
   by default with the companion's control removed (#3010, #3232 — noise floor up
   13–22 dB, unfixed), and `HeltecV4R8Board::powerOff()` is wake-on-LoRa deep
   sleep, so "off" ends at the next packet (#3165). Filed **T-043 … T-050**.
+- **T-127 — what a companion frame fits over BLE — done**, research only
+  (issue [#143](https://github.com/hleserg/Attadipa/issues/143)).
+  [MESHCORE_BLE_FRAME_CAPACITY](docs/research/MESHCORE_BLE_FRAME_CAPACITY.md),
+  with a harness that compiles upstream's own headers either side of the fix.
+  **One number was doing the work of four**: 176 is the protocol buffer, 173 is
+  what an MTU-176 BLE link delivers, and 171 is a chunk payload after a 2-byte
+  header. A MeshCore derivative lost the difference for months and shipped three
+  fixes to code the firmware never called, because the wrapper holding the
+  transports overrode nine methods and not the capacity query. **Vanilla at our
+  pin cannot have that defect — it has no capacity query at all**, and four of
+  its producers size against the buffer: `logRxRaw` fills a frame to exactly 176,
+  and three others can build 177 bytes, which every transport refuses silently.
+  The one that reaches the ceiling carries **raw received LoRa bytes**, so a
+  truncated frame reads as a radio fault. Nothing measured here — the field
+  evidence is upstream's, on their boards and a different BLE stack.
 - **T-042 — GNSS integrity — done**, in its architecture-only scope.
   [ADR-0011](docs/adr/0011-gnss-integrity.md): the observation keeps the
   receiver's native values as well as a normalized form, ten state axes that may
@@ -267,6 +282,12 @@ changed what we can plan:
   the first `OBSERVED` fact in this area.
 - **176 bytes is the frame budget**, a bare `#define` with no `#ifndef` guard, so
   no peer can raise it. Every queue and buffer size on our side is bounded by it.
+  **It is not the transport's capacity, corrected 2026-08-23.** Over BLE at a
+  negotiated MTU of 176 one notification carries 173, and a chunk payload after a
+  2-byte header is 171 — four different numbers where this said one. Every
+  *chunking* decision is bounded by the third, not the first
+  ([MESHCORE_BLE_FRAME_CAPACITY](docs/research/MESHCORE_BLE_FRAME_CAPACITY.md),
+  T-127).
 - **A companion's position arrives with no provenance and no age.** No fix flag,
   no satellite count, no timestamp, no HDOP — and `node_lat` is a single slot
   shared by the GNSS loop, the saved prefs and the client app, written only

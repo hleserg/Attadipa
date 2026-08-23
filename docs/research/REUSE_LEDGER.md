@@ -71,6 +71,7 @@ want to inherit the experience, not only the code.
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
 | `lv_i18n` | github.com/lvgl/lv_i18n | `08944ec6dc2faed83121c53e9cf9ba05013a6686` | 2026-03-30 | LVGL's own localization generator — the closest existing answer to T-033 |
 | `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
+| `meshcore-firmware` (Offband) | github.com/OffbandMesh/meshcore-firmware | `4f5e8b7aa63408370d95d44cdf60ba4125f07ea0` (branch `firmware-base`) | 2026-08-23 | a MeshCore derivative that measured the BLE frame-capacity defect on hardware; T-143. Examined at three revisions — `fda4cdd8`, `4f5e8b7a`, `7549cf30`. **Not** a GitHub fork of `meshcore-dev/MeshCore`: the API reports `fork: false` and no parent, so it is an independent tree, and its divergence has to be read rather than diffed |
 
 ### Licences, checked before anything was depended on
 
@@ -82,6 +83,7 @@ badge or a recollection.
 | Project | Licence | Where it was read | What Attadipa may do with it |
 |---|---|---|---|
 | MeshCore | **MIT** | `license.txt`, and the README's licence section | anything |
+| `meshcore-firmware` (Offband) | **MIT** | the GitHub API's `license.spdx_id` for the repository, plus `license.txt` in the tree; the README applies the same terms to Offband's own additions | anything — but see the record below: what is being taken is an invariant and two test suites, not the tree |
 | RadioLib | **MIT** | `license.txt`; `library.json` agrees | anything |
 | LVGL | **MIT** | `LICENCE.txt` | anything |
 | LilyGO T-Watch library | **MIT** | `LICENSE` | anything |
@@ -820,6 +822,17 @@ frame and delivers it as complete (the same defect already recorded under
 path requests a 176-byte MTU and never checks the negotiated one; and a stock
 build answers `CMD_EXPORT_PRIVATE_KEY`.
 
+> **The MTU weakness is worse than this line implied, corrected 2026-08-23.**
+> Requesting 176 and getting it is the failure case, not the miss: an MTU of 176
+> delivers 173, so the frame buffer is three bytes larger than the link it asked
+> for. Four vanilla producers size against the buffer, one of them exactly. A
+> MeshCore derivative measured the resulting loss on ESP32 hardware — record
+> below, evidence in
+> [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md). It adds one
+> requirement to the *Tests required* list at the end of this record: **a frame
+> at the link's exact ceiling arrives whole, and one above it is refused rather
+> than silently shortened.**
+
 **Decision:** `REIMPLEMENT` — an Attadipa-side **client**, written fresh against
 the documented protocol, behind [ADR-0008](../adr/0008-mesh-service-providers.md)'s
 provider interface. Explicitly **not** `PORT`, **not** `USE AS DEPENDENCY`, and
@@ -849,6 +862,100 @@ reported to the user as an unsupported node; a telemetry response whose
 `LPP_GPS` record is absent because permission was denied, which is a normal
 outcome and not an error; and a position from a companion carrying no better
 provenance than "arrived at time T from key K".
+
+---
+
+### How a transport says how much it can carry
+
+**Problem:** a wrapper sits between an application and one or more concrete
+transports. The application asks how much fits in a frame. Which number is
+right, and what happens when the wrapper answers instead of the transport?
+
+**Projects investigated:** `OffbandMesh/meshcore-firmware` (MIT), a MeshCore
+derivative, at three revisions — `fda4cdd8` (PR #937), `4f5e8b7a` (PR #939) and
+`7549cf30` (the beta5 changelog carrying the hardware evidence) · vanilla
+MeshCore at our pin `d929643` (MIT), for whether the same shape exists there ·
+the Bluetooth Core specification's ATT notification sizing, which is where the
+`− 3` comes from and is not either project's to define.
+
+**Useful implementation:** two invariants and two test suites. Not a subsystem.
+
+- `src/helpers/MultiSerialInterface.h` at `4f5e8b7a` — *a wrapper's capacity is
+  the minimum over exactly the sinks its write reaches.* Twelve lines.
+- `src/helpers/BleFrameSizing.h` — *capacity is the link's number, floored by the
+  buffer, never raised by it,* plus a refusal to trust a reported MTU below the
+  23-byte spec floor.
+- `test/test_frame_size/test_ble_frame_sizing.cpp` — the arithmetic cases,
+  including the exact field figures.
+- `test/test_multiserial/test_multiserial_framesize.cpp` — six wrapper-level
+  cases: the field case, the minimum rule, the disabled-sink predicate, and that
+  a generous sink cannot exceed the buffer.
+
+> Issue [#143](https://github.com/hleserg/Attadipa/issues/143) named the first of
+> those as `test/test_ble_frame_sizing/`. **That directory does not exist**; the
+> file is `test/test_frame_size/test_ble_frame_sizing.cpp`, verified in the file
+> lists of both `fda4cdd8` and `4f5e8b7a`. Recorded because a reuse candidate
+> looked up at the wrong path reads as a candidate that is not there.
+
+**Licence:** **MIT**, checked at the repository and in the tree. Nothing here is
+copied verbatim into Attadipa in any case — the harness compiles upstream's
+headers *in place*, under `docs/research/`, and links none of them into a build.
+
+**Strengths:** the arithmetic is isolated into a pure, dependency-free header
+precisely so a test can pin it, and the commit messages record what was tried and
+refuted rather than only what was kept. That is why the correction chain could be
+reconstructed at all.
+
+**Weaknesses**, and both are ours not to inherit:
+
+- `writeFrame()` **returns full success when no sink is enabled.** The fan-out
+  loop body never runs, so `allSuccessful` stays `true`. Reproduced by our
+  harness.
+- `maxFrameSize()` returns the buffer size when nothing is enabled, so a capacity
+  query can never express *"there is no sink"*. Safe upstream; in Attadipa's model
+  that has to be a state, not a number.
+
+Also: upstream's comment claims the capacity predicate is identical to
+`writeFrame()`'s. It is not — `writeFrame()` additionally tests the wrapper's own
+`_enabled`. The difference is conservative in every case, so it is not a defect
+there, but it is not the invariant the comment states.
+
+**Decision:** **ADAPT** the two invariants and **port the two test suites as
+specifications**. Explicitly **not** adopt the fork: Offband carries its own
+features (caplog, observer views, block lists), is on **NimBLE** while the vanilla
+node Attadipa will actually talk to is on **Bluedroid**, and none of that is
+needed to speak a protocol. **MONITOR** vanilla for convergence — there is
+nothing to converge yet, since `meshcore-dev/MeshCore` `main` is still `d929643`
+and has no `maxFrameSize` concept at all.
+
+**Reason.** The transferable finding is not the number 173. It is that a correct
+leaf implementation behind a wrapper that does not delegate is indistinguishable
+from no implementation — and worse than none, because the leaf's own tests
+testify that the behaviour exists. Three upstream fixes were merged, tested and
+shipped against code the firmware never called. Attadipa's capability registry is
+a wrapper by construction, and every capability query added to it inherits that
+hazard the day it is not forwarded.
+
+**Source revision:** `4f5e8b7aa63408370d95d44cdf60ba4125f07ea0`, branch
+`firmware-base`. Read on 2026-08-23. Full reading, matrix and correction chain in
+[MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md); the executable
+half is [`meshcore-ble-frame-capacity/`](meshcore-ble-frame-capacity/), which
+compiles upstream's real headers at both revisions and shows the defect as the
+difference between them.
+
+**Hardware:** upstream's bench evidence is a Heltec V4.3 on their firmware and
+their BLE stack. On Attadipa hardware: **`NOT EXECUTED — HARDWARE REQUIRED`.**
+
+**Attadipa integration:** none today, and none until a companion client exists.
+When one does, this is a constraint on its transport interface, not a component
+of it.
+
+**Tests required**, when there is something to test them against: a capacity
+query returns the minimum over the enabled sinks and not over the registered
+ones; a disabled sink neither lowers nor raises it; a sink claiming more than the
+buffer cannot raise it; a capacity below a builder's own header floors at zero
+rather than wrapping; and — the one upstream does not have — **no active sink is
+reported as a completed write**.
 
 ---
 
