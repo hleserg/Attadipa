@@ -135,6 +135,14 @@ struct GnssStatus {
     // recovery and the transition log in trust.cpp all compare its values — and
     // a member with no place in that order would need one invented at every
     // comparison site.
+    //
+    // **Read this through `trust_or()` (trust.h), not by comparing it.** The
+    // optional does not stop a comparison against a bare `TrustState` from
+    // compiling, and it silently answers several of them in the unsafe
+    // direction: `!= Untrusted` is true while empty, and `< Degraded` is true
+    // while empty, which sorts "nobody looked" below the worst verdict there
+    // is. `trust_or(gnss.trust, TrustState::Untrusted)` makes the caller say
+    // what absence means before any of that can happen.
     std::optional<TrustState>     trust;
 
     // The `TrustReason` bitmask behind that verdict, and zero while there is
@@ -153,21 +161,38 @@ struct GnssStatus {
     ReceiverIndication            jamming  = ReceiverIndication::Unknown;
     ReceiverIndication            spoofing = ReceiverIndication::Unknown;
 
-    // The verdict and its reasons are one fact, so they move together. A
-    // producer that assigns the two fields separately can leave them out of
-    // step in both directions — a mask with no verdict is evidence nobody
-    // weighed, and a verdict with an empty mask is the collapsed answer
-    // ADR-0011 §5 exists to refuse — and neither is visible at the call site.
+    // The verdict and its reasons are one fact, so write them in one call. A
+    // producer assigning the two fields separately can leave them out of step
+    // in both directions — a mask with no verdict is evidence nobody weighed,
+    // and a verdict with an empty mask is the collapsed answer ADR-0011 §5
+    // exists to refuse — and neither is visible at the call site.
+    //
+    // **This is a call-site discipline, not an atomicity guarantee**, and the
+    // difference matters for the one consumer this header was written for. Two
+    // stores are two instructions; a panic landing between them writes a
+    // snapshot holding exactly the pairing the paragraph above says cannot
+    // exist. Nothing single-threaded can reach that and no store order avoids
+    // both interleavings — making the pair indivisible means packing the
+    // verdict into the mask, which is a change to the wire shape of this field
+    // and is filed as such in TASKS.md rather than assumed here.
     void record_trust(TrustState verdict, std::uint32_t reasons)
     {
         trust         = verdict;
         trust_reasons = reasons;
     }
 
-    // And the way back to "nothing has been evaluated". This is the state a
-    // provider walking away leaves behind: a verdict about a receiver that is
-    // no longer attached is about nothing, and no state survives implicitly
-    // (ADR-0004 §3).
+    // And the way back to "no verdict", for a receiver whose verdict is now
+    // about nothing — a provider detaching, or a reset (ADR-0004 §3).
+    //
+    // **It clears the verdict and its reasons, and nothing else.** Every other
+    // field here — `present`, `state`, `validity`, `fix_age`, the satellite
+    // counts, the two receiver indications — is the producer's to retire, and
+    // leaving them is worse than the bug this pairing was introduced to fix: a
+    // `NotEvaluated` verdict beside `present = true`, `validity = Valid` and a
+    // `fix_age` that has stopped advancing still describes a live, recent,
+    // healthy fix from a receiver that has gone, and ADR-0004 §3 is the section
+    // about exactly that — a remote datum has two ages and the interface shows
+    // the larger.
     void forget_trust()
     {
         trust.reset();

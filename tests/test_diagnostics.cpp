@@ -115,16 +115,24 @@ void test_every_real_verdict_round_trips_with_its_reasons()
         TrustState  expected;
     };
 
-    // Weights from default_trust_policy(): spoofing alone (70) passes
-    // untrust_at, jamming alone (35) passes degrade_at and no further, and no
-    // evidence at all is where the engine starts.
+    // A policy written here rather than default_trust_policy()'s. Those weights
+    // and thresholds are labelled ESTIMATED in trust.h and are named as the
+    // first numbers to change once somebody walks somewhere with a board
+    // (T-051/T-052) — and a snapshot-layout test that reddens when the trust
+    // policy is tuned gets edited until it passes rather than read.
+    TrustPolicy policy;
+    policy.degrade_at = 30;
+    policy.untrust_at = 60;
+    policy.weight[static_cast<std::size_t>(TrustReason::ReceiverSpoofing)] = 70;
+    policy.weight[static_cast<std::size_t>(TrustReason::ReceiverJamming)]  = 35;
+
     const Case cases[] = {
         {TrustReason::ReceiverSpoofing, TrustState::Untrusted},
         {TrustReason::ReceiverJamming,  TrustState::Degraded},
     };
 
     for (const Case& c : cases) {
-        TrustEngine engine;
+        TrustEngine engine{policy};
         engine.report(c.evidence, MonotonicTime{0});
         engine.update(MonotonicTime{0});
         CHECK(engine.state() == c.expected);
@@ -144,8 +152,9 @@ void test_every_real_verdict_round_trips_with_its_reasons()
 
     // And the third: a clean engine really does say Trusted, so recording a
     // verdict of Trusted stays possible and stays distinguishable from the
-    // default this whole structure used to ship with.
-    TrustEngine clean;
+    // default this whole structure used to ship with. No evidence is reported,
+    // so no weight is consulted and this holds under any policy.
+    TrustEngine clean{policy};
     clean.update(MonotonicTime{0});
     CHECK(clean.state() == TrustState::Trusted);
 
@@ -181,8 +190,12 @@ void test_the_snapshot_is_small_enough_to_keep()
 
     // The GNSS block has its own bound, because making "not evaluated" sayable
     // cost a byte and the next honest-default fix will want another. A budget
-    // is only a budget if it is checked where the spending happens.
-    CHECK(sizeof(GnssStatus) <= 48);
+    // is only a budget if it is checked where the spending happens, and only if
+    // it is set at what is actually being spent: this is 40 on the host and,
+    // every member being a `uint8_t`-backed enum or a `uint32_t`, on the target
+    // too. Slack here would let the next field in unremarked, which is the
+    // whole failure this number exists to prevent.
+    CHECK(sizeof(GnssStatus) <= 40);
 }
 
 // §14 of the brief, checked structurally. A std::string anywhere in this
@@ -296,11 +309,58 @@ void test_an_unevaluated_trust_is_not_a_verdict()
     CHECK(fresh.state == GnssState::Off);
 }
 
-// What a reader is shown for a verdict that does not exist. The consumers this
-// header anticipates — a diagnostics screen, a support bundle, a companion app —
-// each have to print this field, and each would otherwise pick their own answer
-// for the empty case. `to_string` gives them one, and it is a word rather than
-// a blank or a zero.
+// The three checks above are true and they are not the whole story, so this is
+// the rest of it: comparing this field against a bare `TrustState` compiles,
+// and several of those comparisons answer in the unsafe direction.
+//
+// Pinned rather than merely warned about, because the checks above read as a
+// licence to compare — and the most natural-reading guard a navigation consumer
+// would write, `trust != Untrusted`, is true for a verdict nobody reached. This
+// test is the statement that says so out loud, and it is where the next person
+// to widen this type finds out what they are changing.
+void test_comparing_an_unevaluated_trust_answers_unsafely()
+{
+    const std::optional<TrustState> unevaluated;
+
+    // A guard that *refuses* on Untrusted does not fire — absence is not equal
+    // to the state that would have stopped it.
+    CHECK(!(unevaluated == TrustState::Untrusted));
+
+    // And a guard that *permits* on anything-but-Untrusted does fire. This is
+    // the failing-open one, and the reason `trust_or` exists.
+    CHECK(unevaluated != TrustState::Untrusted);
+
+    // Relationally, an empty optional sorts below every value, so "nobody
+    // looked" ranks worse than the worst verdict there is — an ordering nobody
+    // decided and the opposite of what to_string() says about it.
+    CHECK(unevaluated < TrustState::Untrusted);
+    CHECK(unevaluated < TrustState::Degraded);
+    CHECK(!(unevaluated >= TrustState::Trusted));
+
+    // trust_or() is the way through: absence is resolved to a real verdict the
+    // caller named, before any comparison can quietly answer for it.
+    CHECK(trust_or(unevaluated, TrustState::Untrusted) == TrustState::Untrusted);
+    CHECK(trust_or(unevaluated, TrustState::Degraded) == TrustState::Degraded);
+
+    // And a verdict that exists is returned unchanged, whatever the fallback —
+    // the fallback answers one question and never overrides an answer.
+    const std::optional<TrustState> evaluated{TrustState::Trusted};
+    CHECK(trust_or(evaluated, TrustState::Untrusted) == TrustState::Trusted);
+
+    // It is constexpr, so the resolution can happen where the verdict is known
+    // at compile time and costs nothing where it is not.
+    static_assert(trust_or(std::optional<TrustState>{}, TrustState::Untrusted) ==
+                  TrustState::Untrusted);
+    static_assert(trust_or(std::optional<TrustState>{TrustState::Degraded},
+                           TrustState::Untrusted) == TrustState::Degraded);
+}
+
+// The diagnostic identifier for a verdict that does not exist — for a log line,
+// a replay trace or a support bundle, and not for a screen: core does not speak
+// English and neither external protocol may carry display text (ADR-0010 §4),
+// so a user-facing version of this state is an `l10n` key. What is checked here
+// is that a reader of a bundle meets a word rather than a blank, a zero or the
+// first enumerator, each of which would print a confidence nobody has.
 void test_an_unevaluated_trust_renders_as_itself()
 {
     const GnssStatus fresh;
@@ -318,7 +378,7 @@ void test_an_unevaluated_trust_renders_as_itself()
     CHECK(to_string(fresh.trust)[0] != '\0');
 
     // A verdict that does exist still prints as itself through the same call,
-    // so a renderer needs no second code path and cannot forget one.
+    // so a bundle writer needs no second code path and cannot forget one.
     GnssStatus evaluated;
     evaluated.record_trust(TrustState::Degraded, 0);
     CHECK(std::strcmp(to_string(evaluated.trust), "Degraded") == 0);
@@ -409,6 +469,7 @@ int main()
     test_the_snapshot_carries_no_format();
     test_nothing_defaults_to_a_confident_answer();
     test_an_unevaluated_trust_is_not_a_verdict();
+    test_comparing_an_unevaluated_trust_answers_unsafely();
     test_an_unevaluated_trust_renders_as_itself();
     test_reasons_never_outlive_their_verdict();
     test_the_reason_mask_carries_the_whole_set();

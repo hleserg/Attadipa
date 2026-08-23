@@ -254,14 +254,32 @@ stale silently. The protocol is
   ordered and compared against thresholds throughout `trust.cpp`.
   `trust_reasons` moves with the verdict through `record_trust()` /
   `forget_trust()`, so a mask cannot outlive the evaluation that produced it,
-  and `to_string(std::optional<TrustState>)` gives the renderer that does not
-  exist yet the word `NotEvaluated` rather than a blank or an enum zero. Seven
+  and `to_string(std::optional<TrustState>)` gives a log or a support bundle the
+  word `NotEvaluated` rather than a blank or an enum zero — a diagnostic
+  identifier, not a screen string (ADR-0010 §4). A stored verdict is read
+  through `trust_or(stored, when_not_evaluated)`, because the optional's
+  comparisons against a bare `TrustState` compile and `!= Untrusted` is *true*
+  while empty, which is a navigation guard failing open. Eight
   regression tests in `tests/test_diagnostics.cpp`, including the round trip
   through the panic-handler `memcpy` for all three real verdicts; restoring
   either candidate default turns them red. Recorded as an amendment to
   [ADR-0011](docs/adr/0011-gnss-integrity.md) §5. The snapshot did not grow:
   the extra byte fits existing padding, so `GnssStatus` is 40 bytes and
   `DiagnosticsSnapshot` 384 before and after.
+
+- **Still open, raised by the review of that fix: the verdict and its reason
+  mask are paired by discipline, not indivisibly.** `record_trust()` and
+  `forget_trust()` (`core/include/attadipa/core/diagnostics.h`) are two stores
+  each, and the consumer this snapshot exists for is a panic handler — an
+  exception context that can land between any two instructions of the task
+  filling it in. The result is the one pairing the header says cannot happen: an
+  empty verdict beside a live reason mask, in the artefact somebody reads after
+  a crash. Nothing single-threaded can reach it and no store order avoids both
+  interleavings. Making it indivisible means packing the verdict into spare bits
+  of `trust_reasons` — there are 15 reasons and the mask is 32 bits, so two bits
+  are free — which changes the shape of the field and should be decided when
+  something actually writes a snapshot from a panic path, not before. Filed so
+  that the assumption is written down rather than inherited.
 
 - **Rates for a relayed fix were divided by the wrong interval — fixed,
   issue #26.** `TrustEvaluator::observe` used to set `previous_position_at_

@@ -685,12 +685,47 @@ four more things at no cost:
   and the transition log all compare its values. `trust_reasons` now moves with
   the verdict through `record_trust()` / `forget_trust()`, so evidence cannot
   outlive the evaluation that weighed it, and `to_string(std::optional<
-  TrustState>)` hands the renderer that does not exist yet the word
-  `NotEvaluated` instead of leaving it to invent a blank or an enum zero. There
+  TrustState>)` gives a log, a replay trace or a support bundle the word
+  `NotEvaluated` instead of leaving each to invent a blank or an enum zero — a
+  diagnostic identifier, not a screen string, because ADR-0010 §4 still binds
+  and core does not speak English. There
   is no renderer, serializer or other producer of this field anywhere in the
   tree — `DiagnosticsSnapshot` appears only in its own header and in
   `tests/test_diagnostics.cpp` — so nothing downstream needed changing and no
-  persisted format could break. Seven regression tests, including all three real
+  persisted format could break.
+
+  **The independent review found the type right and three of the comments around
+  it wrong, which is worth recording because it is the same defect one layer
+  out.** With no consumer in the tree those header comments *are* the forward
+  interface, and two of them stated guarantees the code does not give. A
+  `std::optional<TrustState>` does not stop a comparison against a bare
+  `TrustState` from compiling, and several of those comparisons answer unsafely:
+  `!= Untrusted` is **true** while empty, so
+  `if (trust != TrustState::Untrusted) draw_the_arrow()` — which reads correctly
+  in English — draws a confident arrow from a position no evaluator has seen,
+  reachable today in the Waveshare board's permanent state; `< Degraded` is true
+  as well, sorting "nobody looked" below the worst verdict there is. A stored
+  verdict is now read through `trust_or(stored, when_not_evaluated)`, which makes
+  the caller name what absence means before any comparison can answer for it, and
+  the unsafe readings are pinned in a test rather than left as a warning.
+  Deliberately **not** a `may_navigate()` boolean: whether a `Degraded` fix is
+  good enough depends on whether the user is reading a map or recording a track,
+  and collapsing three states into one answer inside core is the
+  policy-in-the-detector mistake ADR-0011 §5 opens by refusing.
+  `record_trust()`/`forget_trust()` now say they are a call-site discipline and
+  **not** atomic — two stores are two instructions, and a panic landing between
+  them writes the one pairing the comment claimed impossible; making them
+  indivisible means packing the verdict into the mask's two spare bits, filed in
+  `TASKS.md` rather than assumed. And `forget_trust()` says plainly that it
+  clears the verdict and nothing else: `NotEvaluated` beside a `present`, a
+  `Valid` and a `fix_age` that has stopped advancing describes a healthy fix from
+  a receiver that has gone, which is worse than the bug being fixed. The
+  round-trip test also stopped depending on `default_trust_policy()`'s weights —
+  they are `ESTIMATED` and named as the first numbers to change, and a
+  snapshot-layout test that reddens when the trust policy is tuned gets edited
+  until it passes rather than read.
+
+  Eight regression tests, including all three real
   verdicts round-tripping through the panic-handler `memcpy` with their reason
   masks, and a disengaged one arriving still disengaged. Both candidate defaults
   were re-applied as mutants and turn the suite red — nine failures for

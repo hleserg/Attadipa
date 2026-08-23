@@ -199,8 +199,21 @@ evidence, and a collapsed boolean serves none of them.
 > order would need one invented at every comparison site. Not `Untrusted` as a
 > safe default either: that says a verdict was reached and it was bad, which
 > anything counting integrity alarms across a fleet of support bundles would
-> believe. `to_string(std::optional<TrustState>)` renders the empty case as
-> `NotEvaluated`, so a renderer cannot spell absence as a blank or a zero.
+> believe.
+>
+> Two consequences, both found by the review of that change rather than
+> designed in. `to_string(std::optional<TrustState>)` names the empty case
+> `NotEvaluated` — a **diagnostic identifier** for a log, a replay trace or a
+> support bundle, not a screen string; [ADR-0010](0010-localization.md) §4 still
+> binds, and a user-facing version of this state is an `l10n` key. And a stored
+> verdict is read through `trust_or(stored, when_not_evaluated)`, because
+> `std::optional`'s comparisons against a bare `TrustState` compile and answer
+> unsafely: `!= Untrusted` is *true* while empty, so the most natural-reading
+> guard a navigation consumer would write permits a position no evaluator has
+> seen. `trust_or` makes the caller name what absence means before any
+> comparison can answer for it — and is deliberately not a `may_navigate()`
+> boolean, which would move the policy back into the detector that §5 above
+> refuses to put it in.
 
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 
