@@ -413,8 +413,8 @@ jobs:
       # either file: it filters on `.md`.
       #
       # Its own mutation tests run first, for the same reason check_docs.py's
-      # do. tools/site/test_check_head_sync.py holds 40 cases: 31 break the
-      # pair and demand a non-zero exit, 9 leave it valid and demand silence --
+      # do. tools/site/test_check_head_sync.py holds 44 cases: 34 break the
+      # pair and demand a non-zero exit, 10 leave it valid and demand silence --
       # the Russian strings differ from the English by design, a `//` inside a
       # copy string is not a comment, and a tag setLanguage() writes a constant
       # into is not a row in the wiring table.
@@ -447,8 +447,8 @@ jobs:
       # draft of the check attributed a number to a file by requiring exactly
       # one filename on the line, every row of the table names two, so it
       # skipped every claim in the document and printed "9 images measured".
-      # tools/site/test_check_site_facts.py holds 22 cases: 19 demand a report,
-      # 3 demand silence -- the tree as it stands must pass, a 64 x 64 mark
+      # tools/site/test_check_site_facts.py holds 23 cases: 19 demand a report,
+      # 4 demand silence -- the tree as it stands must pass, a 64 x 64 mark
       # drawn at 34 reserves the right box, and a rounder number is allowed.
       # The suite holds this comment and STATUS.md to those three numbers on
       # its way out, the same way check_site_facts.py holds the three copies of
@@ -458,6 +458,30 @@ jobs:
 
       - name: The numbers in SEO.md are the repository's own
         run: python3 tools/site/check_site_facts.py .
+
+      # The reveal animation is a contract across three files and one class
+      # name: `.reveal` ships visible in docs/assets/site.css, a rule scoped to
+      # `.js-reveal` is what hides it, docs/assets/site.js adds that class, and
+      # a <noscript> block in docs/index.html restores it. Nothing in this job
+      # read any of that -- the head-sync pair reads site.js only for its copy
+      # object and its assignments, the facts step only stat()s the stylesheet,
+      # and the rot check filters on `.md`. So putting `opacity:0` back on the
+      # bare `.reveal` rule -- the exact state that shipped a hero and empty
+      # space to every reader whose script did not run, for whatever reason --
+      # left this whole job green. Found in review.
+      #
+      # tools/site/test_check_reveal_contract.py holds 11 cases: 7 demand a
+      # report, 4 demand silence. The first of the seven is that reproduce
+      # step. The four that demand silence are the ones that would make this
+      # check annoying enough to switch off: a longer transition is the
+      # animation rather than a hiding rule, a `transform:none` is not a
+      # displacement, and the reduced-motion block setting `opacity:1` is the
+      # accessibility path working as designed.
+      - name: The reveal-contract check actually checks
+        run: python3 tools/site/test_check_reveal_contract.py
+
+      - name: A script that never runs cannot leave the page blank
+        run: python3 tools/site/check_reveal_contract.py .
 
   simulator:
     name: Simulator build and headless run

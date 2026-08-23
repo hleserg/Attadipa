@@ -82,6 +82,31 @@ HTML_DUPLICATES = (
     (("name", "description"), ("json-ld", "description")),
 )
 
+# A DUPLICATE PAIR WHOSE TWO HALVES ARE NOT BOTH REWRITTEN AT RUNTIME agrees in
+# the file and disagrees in the browser. HTML_DUPLICATES says an edit to one
+# half is an error on the other -- but `setLanguage()` rewrites the meta
+# description on every load and nothing rewrites the JSON-LD `description`
+# fifty lines below it, so a Russian-locale reader gets a Russian meta
+# description beside an English JSON-LD one at the same URL. The pair the table
+# holds together in the bytes comes apart in the DOM, and nothing said so.
+# Found in review.
+#
+# So the asymmetry is declared, with the reason, or it is reported. The rule is
+# checked in both directions: an undeclared pair with one half wired is a
+# finding, and a declaration for a pair that is no longer asymmetric is a stale
+# one -- because the day somebody DOES wire the graph, this note becomes wrong
+# and would otherwise sit here being read.
+RUNTIME_DIVERGENCE = {
+    frozenset((("name", "description"), ("json-ld", "description"))): (
+        "the JSON-LD graph is English-only by design. The page has one canonical "
+        "URL and its hreflang declares that URL English (x-default); the Russian "
+        "toggle is a reader convenience that changes neither. Rewriting the graph "
+        "under a client-side toggle would give one URL two machine-readable "
+        "identities -- which is the failure this whole file exists to prevent, "
+        "arriving through the fix for it. Recorded in docs/site/SEO.md."
+    ),
+}
+
 # THE WIRING TABLE. One row per field `setLanguage()` writes, and it is the
 # whole of the second half of this check:
 #
@@ -387,6 +412,47 @@ def check_html_duplicates(html, problems):
                 )
 
 
+def check_runtime_divergence(problems):
+    """Declared duplicates must survive the language switch, or say why not.
+
+    A statement about this file's own two tables rather than about the tree, so
+    no edit to index.html or site.js can reach it -- which is exactly why it is
+    here: the model those tables hold is what every other check reasons from,
+    and it was wrong in a way no amount of reading the HTML would show.
+    """
+    assigned = {
+        (attr, value) for attr, value, _ in ASSIGNMENTS.values() if attr is not None
+    }
+    pairs = set()
+    for left, right in HTML_DUPLICATES:
+        pair = frozenset((left, right))
+        pairs.add(pair)
+        rewritten = [locator for locator in (left, right) if locator in assigned]
+        if len(rewritten) == 1:
+            if pair not in RUNTIME_DIVERGENCE:
+                problems.append(
+                    "%s and %s are declared duplicates, but setLanguage() rewrites only\n"
+                    "    one half (%s), so they agree in the file and diverge in the DOM\n"
+                    "    the moment a visitor switches language.\n"
+                    "    Either wire the other half -- a row in ASSIGNMENTS -- or declare the\n"
+                    "    asymmetry in RUNTIME_DIVERGENCE with the reason. Silence is what\n"
+                    "    HTML_DUPLICATES exists to stop." % (left, right, rewritten[0])
+                )
+        elif pair in RUNTIME_DIVERGENCE:
+            problems.append(
+                "%s and %s carry a RUNTIME_DIVERGENCE note that no longer describes them:\n"
+                "    setLanguage() now rewrites %s of the two. Delete the note -- it reads as\n"
+                "    a decision and is a leftover." % (left, right, "both" if rewritten else "neither")
+            )
+    for pair in RUNTIME_DIVERGENCE:
+        if pair not in pairs:
+            problems.append(
+                "RUNTIME_DIVERGENCE declares %s, which is not a pair in HTML_DUPLICATES.\n"
+                "    Nothing compares those two, so the exemption exempts them from nothing."
+                % sorted(pair)
+            )
+
+
 def check_wiring(js, problems):
     """The half a string comparison cannot see: which field lands in which tag.
 
@@ -491,6 +557,8 @@ def main(root):
 
     check_html_duplicates(html, problems)
 
+    check_runtime_divergence(problems)
+
     check_wiring(js, problems)
 
     for field in HTML_SOURCES:
@@ -510,13 +578,15 @@ def main(root):
 
     print(
         "Rendered head matches index.html: %d fields and %d mirrored tags agree, "
-        "%d in-HTML duplicate pairs agree and no undeclared duplicate exists, "
+        "%d in-HTML duplicate pairs agree (%d of them declared English-only "
+        "under the language switch) and no undeclared duplicate exists, "
         "%d assignments in setLanguage() are wired to the right tag, "
         "%d Russian strings present."
         % (
             len(HTML_SOURCES),
             len(MIRRORED),
             len(HTML_DUPLICATES),
+            len(RUNTIME_DIVERGENCE),
             len(ASSIGNMENTS),
             len(HTML_SOURCES),
         )

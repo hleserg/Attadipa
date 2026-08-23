@@ -692,7 +692,7 @@ four more things at no cost:
   and they do match"* while two of eight fields did not.
 
   So it is a check rather than a claim: `tools/site/check_head_sync.py`, in CI
-  in the *Documentation consistency* job, with 40 mutation tests
+  in the *Documentation consistency* job, with 44 mutation tests
   (`tools/site/test_check_head_sync.py`) ahead of it. The existing rot check
   never covered this: `tools/docs/check_docs.py` filters on `.md` and was green
   while the second defect was in the tree.
@@ -714,8 +714,8 @@ four more things at no cost:
   JSON-LD `WebSite.description` — which both halves pass because the two files
   agree and the one file does not agree with itself. Declared as a table, with
   a completeness rule that reports any undeclared byte-identical pair of 24
-  characters or more. Of the 40 cases, 31 break the pair and require a non-zero
-  exit and 9 leave it valid and require silence; a bare *"seven of them fail against the
+  characters or more. Of the 44 cases, 34 break the pair and require a non-zero
+  exit and 10 leave it valid and require silence; a bare *"seven of them fail against the
   check as it was"* stood here for two rounds after the suite outgrew it, so
   the split is quoted instead of a remembered subtotal.
 
@@ -744,7 +744,7 @@ four more things at no cost:
   guarded by a sentence** — *"if an image is swapped, its `width`/`height` must
   be re-read from the file"* — two files away from the head, which had a check
   precisely because a sentence had failed there. So they are a check too:
-  `tools/site/check_site_facts.py`, in the same CI job, with 22 mutation tests.
+  `tools/site/check_site_facts.py`, in the same CI job, with 23 mutation tests.
   It measures PNG, JPEG and WebP from their own headers and holds the document
   to the dimension pairs, the byte sizes, the saving column, both statements of
   the 2.8 MB total, the stylesheet, the script, and the head-sync case count
@@ -762,6 +762,29 @@ four more things at no cost:
   naming no file was dropped rather than reported, and a size whose sentence
   named its files on the previous line (Markdown prose wraps) was invisible to
   both halves of the attribution.
+
+  **A seventh round found the reveal inversion itself unguarded.** `.reveal`
+  ships visible, a rule scoped to `.js-reveal` hides it, the script adds that
+  class and the `<noscript>` block puts it back — three files and one class
+  name, and no check in the documentation job opened any of them. Putting
+  `opacity:0` back on the bare rule, which is exactly the state that shipped a
+  hero and empty space, left every job green. `check_reveal_contract.py` reads
+  that contract now and `tools/site/test_check_reveal_contract.py` holds 11
+  cases: 7 demand a report, 4 demand silence — the first of the seven is the
+  reproduce step review supplied, and the four that must stay quiet are the
+  ones that would make the check annoying enough to delete.
+
+  The same round found the head checker's duplicate table making a promise the
+  runtime breaks: it pairs the meta description with the JSON-LD
+  `WebSite.description` — *"an edit to one is an error on the other"* — while
+  `setLanguage()` rewrites the meta tag on every load and rewrites nothing in
+  the graph, so a Russian-locale visitor sees a Russian description beside an
+  English graph at one URL. The graph stays English, because the page has one
+  canonical URL whose lone `hreflang` says English and structured data that
+  changes under a client-side toggle would give that URL two machine-readable
+  identities. That is now a declared exemption carrying its reason, checked in
+  both directions: an undeclared one-sided pair is reported, and so is an
+  exemption for a pair that has stopped being one-sided.
 
   Writing it found two numbers already wrong — the script had grown past the
   6 KB claimed for it, and the case count said 29 for a suite of 32 — and its

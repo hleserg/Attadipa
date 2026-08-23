@@ -11,7 +11,7 @@ is worse than none, and this one managed it while its own docstring said so.
 Hence the case below that asserts the *zero-facts* state is a failure, and the
 case that asserts an ambiguous attribution is reported rather than skipped. The
 rest break one real number at a time, in a copy of the live tree, and assert the
-check notices; the two that assert it does *not* fire are the half that would
+check notices; the four that assert it does *not* fire are the half that would
 otherwise land a job failing on `main` -- the brand mark is a 64 x 64 PNG drawn
 at 34, and a check that called that a layout shift would be trained away.
 
@@ -175,7 +175,7 @@ def main() -> int:
     )
     scenario(
         "the head-sync case count — the other number that was actually stale",
-        lambda seo, html, root: edit(seo, "**40 cases**", "**29 cases**"),
+        lambda seo, html, root: edit(seo, "**44 cases**", "**29 cases**"),
         expect_fail=True,
         needle="states 29 where",
     )
@@ -250,8 +250,8 @@ def main() -> int:
         "a stale head-sync count in the CI comment, not just in SEO.md",
         lambda seo, html, root: edit(
             os.path.join(root, ".github", "workflows", "ci.yml"),
-            "holds 40 cases: 31 break the",
-            "holds 37 cases: 31 break the",
+            "holds 44 cases: 34 break the",
+            "holds 37 cases: 34 break the",
         ),
         expect_fail=True,
         needle="ci.yml:",
@@ -260,25 +260,55 @@ def main() -> int:
         "a stale head-sync SPLIT, where the total is still right",
         lambda seo, html, root: edit(
             os.path.join(root, ".github", "workflows", "ci.yml"),
-            "40 cases: 31 break the",
-            "40 cases: 30 break the",
+            "44 cases: 34 break the",
+            "44 cases: 33 break the",
         ),
         expect_fail=True,
         needle="(report)",
     )
+    # A suite whose size is stated nowhere is a suite whose printed number is
+    # compared with nothing, which is the state this whole mechanism exists to
+    # refuse. It takes six edits to reach because three files quote it -- and
+    # that redundancy is the point: losing one copy is not the failure.
     scenario(
-        "a claim file that stops quoting the count at all",
-        lambda seo, html, root: edit(
-            os.path.join(root, "STATUS.md"),
-            "with 40 mutation tests",
-            "with mutation tests",
+        "every copy of one suite's count disappears at once",
+        lambda seo, html, root: all(
+            [
+                edit(seo, "holds 11 cases: 7 demand", "holds many cases: some demand"),
+                edit(seo, "a report, 4 demand silence", "a report, some demand silence"),
+                edit(os.path.join(root, "STATUS.md"), "holds 11", "holds many"),
+                edit(
+                    os.path.join(root, "STATUS.md"),
+                    "cases: 7 demand a report, 4 demand silence",
+                    "cases: some demand a report, some demand silence",
+                ),
+                edit(
+                    os.path.join(root, ".github", "workflows", "ci.yml"),
+                    "holds 11 cases: 7 demand a",
+                    "holds many cases: some demand a",
+                ),
+                edit(
+                    os.path.join(root, ".github", "workflows", "ci.yml"),
+                    "# report, 4 demand silence",
+                    "# report, some demand silence",
+                ),
+            ]
         ),
         expect_fail=True,
-        needle="quotes no count this check recognises",
+        needle="quotes the size of",
     )
 
-    # The two that must stay quiet. Both are the live page's real behaviour, and
-    # a check that fired on either would be switched off within a week.
+    # The four that must stay quiet. Each is the live tree's real behaviour, and
+    # a check that fired on any of them would be switched off within a week.
+    scenario(
+        "one file drops a count that the other two still state",
+        lambda seo, html, root: edit(
+            os.path.join(root, "STATUS.md"),
+            "with 44 mutation tests",
+            "with mutation tests",
+        ),
+        expect_fail=False,
+    )
     scenario(
         "a uniformly scaled box is NOT a layout shift — 64 x 64 drawn at 32",
         lambda seo, html, root: edit(html, 'width="34" height="34"', 'width="32" height="32"'),

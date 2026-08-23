@@ -109,6 +109,9 @@ CASES_SPLIT = re.compile(
     r"^(\S+): (\d+) cases, (\d+) demand a report, (\d+) demand silence$", re.M
 )
 SUITE = "tools/site/test_check_head_sync.py"
+# Run for its count as well, for the same reason and by the same route. It does
+# not test this file, so there is no recursion to guard against.
+REVEAL_SUITE = "tools/site/test_check_reveal_contract.py"
 
 # Where a suite size is quoted, and by what wording. SEO.md's copy was already
 # enforced; STATUS.md's and the CI comment's were not, and the CI one was found
@@ -129,15 +132,43 @@ SUITES = {
         "aliases": ("check_site_facts.py",),
         "files": ("STATUS.md", ".github/workflows/ci.yml"),
     },
+    "tools/site/test_check_reveal_contract.py": {
+        "aliases": ("check_reveal_contract.py",),
+        "files": ("docs/site/SEO.md", "STATUS.md", ".github/workflows/ci.yml"),
+    },
 }
-# The three numbers, by the cue that introduces each. Prose is allowed to vary
-# around them -- what is not allowed is a count with no cue, which is why a
-# block naming a suite and quoting no recognised number is reported below.
+# The three numbers, by the CUE PHRASE that introduces each -- not by any digit
+# standing near the word "cases". The first version matched the latter, and
+# review showed what that costs: the true sentence "it has caught 2 cases of
+# drift since", added to a STATUS.md paragraph that happens to name a checker,
+# turns the documentation job red on a pull request that changed nothing about
+# the suite. A check that reddens for a true statement gets edited until it
+# stops, which is the argument this very file makes twice about something else.
+# So a claim is a claim when it is phrased as one.
 CUES = (
-    ("total", re.compile(r"(\d+)\s*\**\s*(?:cases|mutation tests)\b")),
+    (
+        "total",
+        re.compile(
+            r"(?:holds|with)\s+(\d+)\s+(?:cases|mutation tests)\b"
+            r"|\*\*(\d+)\s+cases\*\*"
+        ),
+    ),
     ("report", re.compile(r"(\d+) (?:break the pair|demand a report)")),
     ("quiet", re.compile(r"(\d+) (?:leave it valid|demand silence)")),
 )
+
+
+def numbers(cue, block):
+    """Every number a cue finds, whichever of its alternatives matched.
+
+    The total cue has two spellings -- "holds 40 cases" and "**40 cases**" --
+    so `findall` hands back a tuple per match with one half empty.
+    """
+    out = []
+    for found in cue.findall(block):
+        parts = found if isinstance(found, tuple) else (found,)
+        out.extend(int(part) for part in parts if part)
+    return out
 
 
 def blocks(text):
@@ -178,6 +209,7 @@ def verify_case_claims(root, suite, total, must_report, must_stay_quiet):
         for name in (key,) + entry["aliases"]
     ]
     expected = {"total": total, "report": must_report, "quiet": must_stay_quiet}
+    total_quoted = 0
     for relative in SUITES[suite]["files"]:
         path = root / relative
         if not path.exists():
@@ -186,13 +218,12 @@ def verify_case_claims(root, suite, total, must_report, must_stay_quiet):
                 "It is one of the files that quotes it." % (relative, suite)
             )
             continue
-        anchored = quoted = 0
+        quoted = 0
         for lineno, block in blocks(path.read_text(encoding="utf-8")):
             if not any(name in block for name in names):
                 continue
-            anchored += 1
             if any(name in block for name in other):
-                found = [c for _, cue in CUES for c in cue.findall(block)]
+                found = [c for _, cue in CUES for c in numbers(cue, block)]
                 if found:
                     problems.append(
                         "%s:%d quotes a count in a paragraph naming two suites, "
@@ -202,33 +233,34 @@ def verify_case_claims(root, suite, total, must_report, must_stay_quiet):
                     )
                 continue
             for kind, cue in CUES:
-                for stated in cue.findall(block):
+                for stated in numbers(cue, block):
                     quoted += 1
                     compared += 1
-                    if int(stated) != expected[kind]:
+                    if stated != expected[kind]:
                         problems.append(
-                            "%s:%d states %s where %s runs %d (%s)"
+                            "%s:%d states %d where %s runs %d (%s)"
                             % (relative, lineno, stated, suite, expected[kind], kind)
                         )
-        if anchored and not quoted:
-            problems.append(
-                "%s names %s and quotes no count this check recognises. Either "
-                "the number was removed -- say so -- or it is phrased in a way "
-                "nothing reads back, which is how the last three went stale."
-                % (relative, suite)
-            )
-        if not anchored:
-            problems.append(
-                "%s no longer mentions %s. It is listed as a place that quotes "
-                "the suite size; drop it from SUITES deliberately rather "
-                "than letting the check pass because the claim vanished."
-                % (relative, suite)
-            )
+        total_quoted += quoted
+    # A claim must exist SOMEWHERE, and that is the whole completeness rule.
+    # The first version demanded one per listed file, which made trimming a
+    # STATUS.md paragraph -- the routine maintenance of a file whose own first
+    # lines call it "a status file, not a history" -- fail a job. Requiring the
+    # number to be quoted and correct at least once keeps the guard; requiring
+    # it in every file was a tripwire on ordinary editing. Found in review.
+    if not total_quoted:
+        problems.append(
+            "nothing in %s quotes the size of %s any more, so the number the "
+            "suite prints is checked against nothing. Quote it in one of them "
+            "-- \"holds N cases\" or \"with N mutation tests\" -- or drop the "
+            "suite from SUITES deliberately."
+            % (", ".join(SUITES[suite]["files"]), suite)
+        )
     return problems, compared
 
 
-def suite_size(root):
-    """How big the head-sync suite is, and how it splits, from the suite itself.
+def suite_size(root, suite=SUITE):
+    """How big a suite is, and how it splits, asked of the suite itself.
 
     Asking it is the only honest way: counting `case(` calls in the source would
     count the helper's own definition and miss any case a loop generates.
@@ -241,19 +273,19 @@ def suite_size(root):
     """
     try:
         done = subprocess.run(
-            [sys.executable, SUITE, "--count"],
+            [sys.executable, suite, "--count"],
             cwd=str(root),
             capture_output=True,
             text=True,
             timeout=120,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return None, "could not run %s: %s" % (SUITE, exc)
+        return None, "could not run %s: %s" % (suite, exc)
     found = CASES_SPLIT.search(done.stdout)
-    if not found or found.group(1) != SUITE:
+    if not found or found.group(1) != suite:
         return None, (
             "%s did not report its case count and split. It prints them on "
-            "success; if it failed, that is the finding." % SUITE
+            "success; if it failed, that is the finding." % suite
         )
     return (int(found.group(2)), int(found.group(3)), int(found.group(4))), None
 
@@ -636,12 +668,14 @@ def main(root="."):
     # one stale. Both halves of the split are held too: a case that changes
     # polarity moves 31 and 9 while leaving 40 alone.
     claims = 0
-    counts, failure = suite_size(root)
-    if failure:
-        problems.append(failure)
-    else:
-        found, claims = verify_case_claims(root, SUITE, *counts)
+    for which in (SUITE, REVEAL_SUITE):
+        counts, failure = suite_size(root, which)
+        if failure:
+            problems.append(failure)
+            continue
+        found, held = verify_case_claims(root, which, *counts)
         problems.extend(found)
+        claims += held
 
     # A check with nothing to check is the failure this file was rewritten for.
     # Counted separately from the case claims above deliberately: those live in

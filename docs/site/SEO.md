@@ -9,17 +9,34 @@ because they are not true yet.
 ## 0. The constraint this whole document works under
 
 Attadipa is at early implementation. Six libraries and a simulator build and
-pass 24 host tests; **no Attadipa firmware has run on a physical board**, and no
-power, timing or GNSS number has been measured. Every line below was written so
-that a reader arriving from a search engine learns that in the first screenful
-rather than the fifth.
+pass 24 host tests; **the firmware has not run on a board yet — only bench
+code has.** Every line below was written so that a reader arriving from a
+search engine learns that in the first screenful rather than the fifth.
+
+**That sentence used to be three sentences, and the broadest of them went
+false.** The page said *"not yet run on hardware"* in the meta description,
+*"no board has run it yet"* on the card and in the manifest, and *"no Attadipa
+firmware has yet run on a physical board"* in the JSON-LD. On 2026-08-23 bench
+images built from this repository ran on the Waveshare unit — out of RAM,
+writing nothing, `verify-flash` clean over all 33 554 432 bytes — and produced
+measurements: the IMU at `0x6B` and not `0x6A`, `REVISION_ID 0x7C`, gravity at
+1.03 g, the touch controller answering `0x64` after a 10 ms reset pulse, the
+AXP2101 rails read raw (`STATUS.md` §*The bench session of 2026-08-23*,
+[WAVESHARE_RUNNING_OUR_CODE](../research/WAVESHARE_RUNNING_OUR_CODE.md)). Two of
+the three wordings were then untrue and one was still exact. **Three wordings
+meaning three different things is the tell** — a deliberate distinction would
+have been one sentence written six times, which is what it is now. The claim
+kept is the narrow one, and it is checked: `check_head_sync.py` holds the HTML
+and `site.js` to the same string, so the six copies cannot drift apart again
+even if the sentence needs replacing a third time. Found in review, on the
+branch whose subject is claims about verification.
 
 Concretely, that ruled out: "the best smartwatch OS", any superlative, any
 feature described as working that has only been designed, any benchmark, and any
-metric — stars, downloads, users — dressed up as adoption. The `description`
-meta tag ends *"Early stage — not yet run on hardware."* on purpose, and
-`og:description` ends *"Early implementation — no board has run it yet."* It
-costs click-through and it is the correct trade.
+metric — stars, downloads, users — dressed up as adoption. Both the
+`description` meta tag and `og:description` end
+*"Early stage — the firmware has not run on a board yet; only bench code has."*
+It costs click-through and it is the correct trade.
 
 ## 1. The search niche, as it actually is
 
@@ -169,8 +186,8 @@ reported, so the next duplicate is an error the day it is added rather than the
 day someone edits one half. The 24-character floor keeps `en_US` and its like
 out of it.
 
-Its own mutation tests (`tools/site/test_check_head_sync.py`, **40 cases**) run
-first: **31 break the pair and require the check to fail, 9 leave it valid and
+Its own mutation tests (`tools/site/test_check_head_sync.py`, **44 cases**) run
+first: **34 break the pair and require the check to fail, 10 leave it valid and
 require the check to stay quiet.** Every one of the 31 was written against a
 version of the checker that let that exact mutation through — that is what makes
 them tests rather than description. A checker that passes everything is worse
@@ -235,6 +252,21 @@ one — the failure is a page that appears without animating, never a page that
 stays blank — and this is the trade taken knowingly rather than an effect
 nobody looked at. Restoring the animation on those visits would mean animating
 content the visitor is already reading, which is the flicker this removed.
+
+**And the contract itself is now read by something.** The inversion is three
+files and one class name — `.reveal` ships visible in the stylesheet, a rule
+scoped to `.js-reveal` is what hides it, the script adds that class, and the
+`<noscript>` block puts it back — and nothing in CI opened any of it. Putting
+`opacity:0` back on the bare `.reveal` rule, which is the exact state that
+shipped a hero and empty space, left every job green. Review named it the next
+check to write and the smallest one here, and it was right on both counts.
+`check_reveal_contract.py` refuses that state now, and its own mutation tests
+run first: `tools/site/test_check_reveal_contract.py` holds 11 cases: 7 demand
+a report, 4 demand silence. The first of the seven is the reviewer's own
+reproduce step. The quiet four are the ones that would otherwise make this
+check annoying enough to switch off — a longer transition is the animation, a
+`transform:none` is not a displacement, and the reduced-motion block setting
+`opacity:1` is the accessibility path working.
 
 ### `docs/manifest.webmanifest`
 
@@ -412,6 +444,23 @@ not vary `Accept-Language` per query. But it is a real consequence of making the
 head bilingual, it was absent from the first draft of this audit, and it is the
 strongest argument for the `/ru/` page below: a separate URL is the only way to
 give each language a stable identity that a crawler can attribute.
+
+**The JSON-LD graph stays English under that switch, and that is a decision
+rather than an omission.** Review found the asymmetry: `check_head_sync.py`
+pairs the meta description with the JSON-LD `WebSite.description` and says an
+edit to one is an error on the other, while `setLanguage()` rewrites the meta
+tag on every load and rewrites nothing in the graph — so a Russian-locale
+visitor gets a Russian meta description beside an English JSON-LD one at the
+same URL. Wiring the graph into the switch is the other available fix and was
+not taken: the page has one canonical URL, its lone `hreflang` declares that URL
+English, and structured data that changes under a client-side toggle would give
+one URL two machine-readable identities — the failure the checker exists to
+prevent, arriving through the fix for it. The graph therefore describes the
+canonical English document, which is what the canonical says it is. The pair is
+declared in `RUNTIME_DIVERGENCE` in the checker with that reason, and the
+declaration is checked both ways: an undeclared one-sided pair is reported, and
+so is a declaration for a pair that has stopped being one-sided — so the day
+`/ru/` exists and the graph is wired, this note cannot quietly survive it.
 
 The fix is a genuinely separate `/ru/` page with its own `<title>`,
 `description`, canonical and reciprocal `hreflang`. It was not done here because

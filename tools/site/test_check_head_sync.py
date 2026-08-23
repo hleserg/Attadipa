@@ -46,7 +46,7 @@ COUNT_ONLY = "--count" in sys.argv[1:]
 FAILURES: list[str] = []
 RAN: list[str] = []
 # Split by polarity, because the split is quoted too. docs/site/SEO.md states
-# "31 break the pair ... 9 leave it valid", and a case that changes polarity
+# "34 break the pair ... 10 leave it valid", and a case that changes polarity
 # moves both halves while leaving the total alone -- the one drift the total
 # cannot see. Counted here rather than by hand, and printed below.
 MUST_REPORT: list[str] = []
@@ -109,6 +109,35 @@ def scenario(name: str, mutate, expect_fail: bool, needle: str = "") -> None:
             case(name, status != 0 and (not needle or needle in output))
         else:
             case(name, status == 0)
+
+
+def table_scenario(name: str, patch: dict, expect_fail: bool, needle: str = "") -> None:
+    """Break one of the CHECKER's own tables instead of one of the files.
+
+    The runtime-divergence rule is a statement about HTML_DUPLICATES,
+    ASSIGNMENTS and the exemption table -- no edit to index.html or site.js can
+    reach it. Leaving it untested because this harness only knows how to break
+    files is how the wiring half stayed unchecked for two rounds, so the harness
+    learns a second move. The tree is the live one and the patch is undone
+    whatever happens, so a case cannot leak into the next.
+    """
+    (MUST_REPORT if expect_fail else MUST_STAY_QUIET).append(name)
+    if COUNT_ONLY:
+        return
+    saved = {attr: getattr(check_head_sync, attr) for attr in patch}
+    for attr, value in patch.items():
+        setattr(check_head_sync, attr, value)
+    try:
+        with tempfile.TemporaryDirectory() as root:
+            fixture(root)
+            status, output = run(root)
+    finally:
+        for attr, value in saved.items():
+            setattr(check_head_sync, attr, value)
+    if expect_fail:
+        case(name, status != 0 and (not needle or needle in output))
+    else:
+        case(name, status == 0)
 
 
 def summary() -> None:
@@ -549,6 +578,61 @@ def main() -> int:
             "    if (ogLocale) ogLocale.content = copy[lang].locale;\n"
             "    if (ogImageAlt) ogImageAlt.content = 'the same in both languages';",
         ),
+        expect_fail=False,
+    )
+
+    # The runtime-divergence rule, all three of its branches. These break the
+    # checker's tables rather than the tree, because the defect they describe
+    # lives there: HTML_DUPLICATES paired the meta description with the JSON-LD
+    # description and said an edit to one was an error on the other, while
+    # setLanguage() rewrote one of the two on every load. Found in review.
+    DESCRIPTION_PAIR = frozenset(
+        (("name", "description"), ("json-ld", "description"))
+    )
+    IMAGE_PAIR = frozenset((("property", "og:image"), ("name", "twitter:image")))
+    table_scenario(
+        "a one-sided duplicate with the exemption deleted",
+        {"RUNTIME_DIVERGENCE": {}},
+        expect_fail=True,
+        needle="rewrites only",
+    )
+    table_scenario(
+        "an exemption left behind on a pair nobody rewrites",
+        {
+            "RUNTIME_DIVERGENCE": {
+                DESCRIPTION_PAIR: check_head_sync.RUNTIME_DIVERGENCE[DESCRIPTION_PAIR],
+                IMAGE_PAIR: "neither half of this one is assigned by anything",
+            }
+        },
+        expect_fail=True,
+        needle="no longer describes them",
+    )
+    table_scenario(
+        "an exemption for a pair that is not a declared duplicate",
+        {
+            "RUNTIME_DIVERGENCE": {
+                DESCRIPTION_PAIR: check_head_sync.RUNTIME_DIVERGENCE[DESCRIPTION_PAIR],
+                frozenset(
+                    (("property", "og:title"), ("name", "twitter:image:alt"))
+                ): "a pair HTML_DUPLICATES has never heard of",
+            }
+        },
+        expect_fail=True,
+        needle="exempts them from nothing",
+    )
+    # And the one that must stay quiet. A pair is a set, and the exemption is
+    # keyed by that set: somebody re-declaring it with the two locators the
+    # other way round has changed nothing, and a check that reported it would
+    # be teaching a false rule about the table's own shape.
+    table_scenario(
+        "the exemption declared with the pair written the other way round",
+        {
+            "RUNTIME_DIVERGENCE": {
+                frozenset(
+                    (("json-ld", "description"), ("name", "description"))
+                ): check_head_sync.RUNTIME_DIVERGENCE[DESCRIPTION_PAIR]
+            }
+        },
         expect_fail=False,
     )
 

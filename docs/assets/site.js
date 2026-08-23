@@ -17,30 +17,39 @@
   // have put the old strings straight back into the rendered DOM.
   //
   // AND `description` IS NOT `cardDescription`. index.html carries two strings
-  // on purpose: the meta description is written for a search result and ends
-  // "Early stage — not yet run on hardware.", while og:description and
-  // twitter:description are written for a social card and end "Early
-  // implementation — no board has run it yet." Assigning one to all three put
-  // the search-result string on the card for every renderer-based crawler
-  // while Facebook, X, Slack and Discord -- which do not run scripts -- read
-  // the other from the HTML. One URL, two card texts. Found in review, in the
-  // fix for the first version of this same defect.
+  // on purpose: the meta description is written for a search result and the
+  // card text for a social preview, which is a different length and a
+  // different reader. Assigning one to all three put the search-result string
+  // on the card for every renderer-based crawler while Facebook, X, Slack and
+  // Discord -- which do not run scripts -- read the other from the HTML. One
+  // URL, two card texts. Found in review, in the fix for the first version of
+  // this same defect.
+  //
+  // The two DO now end in the same sentence, and that is also a review
+  // finding: the honesty caveat was written three ways -- "not yet run on
+  // hardware", "no board has run it yet", "no Attadipa firmware has yet run on
+  // a physical board" -- and the broadest of them stopped being true on
+  // 2026-08-23, when bench images built from this repository ran from RAM on
+  // the Waveshare unit and produced measurements. Three wordings meaning three
+  // different things is the tell. One sentence now, in all six places, and it
+  // is the narrow claim that is still true: the firmware has not run on a
+  // board; bench code has.
   const copy = {
     en: {
       title: 'Attadipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS',
       ogTitle: 'Attadipa — open-source ESP32-S3 smartwatch firmware',
       locale: 'en_US',
       localeAlternate: 'ru_RU',
-      description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — not yet run on hardware.',
-      cardDescription: 'LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, for two ESP32-S3 wearables. Early implementation — no board has run it yet.'
+      description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — the firmware has not run on a board yet; only bench code has.',
+      cardDescription: 'LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — the firmware has not run on a board yet; only bench code has.'
     },
     ru: {
       title: 'Attadipa — открытая прошивка для умных часов на ESP32-S3, LoRa mesh, GNSS офлайн',
       ogTitle: 'Attadipa — открытая прошивка для умных часов на ESP32-S3',
       locale: 'ru_RU',
       localeAlternate: 'en_US',
-      description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — на плате ещё не запускалась.',
-      cardDescription: 'LoRa-переписка через MeshCore, офлайн-навигация по GNSS и интерфейс LVGL на FreeRTOS для двух носимых устройств на ESP32-S3. Ранняя стадия — ни на одной плате ещё не запускалась.'
+      description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — прошивка ещё не запускалась на плате; запускался только стендовый код.',
+      cardDescription: 'LoRa-переписка через MeshCore, офлайн-навигация по GNSS и интерфейс LVGL на FreeRTOS на ESP32-S3. Ранняя стадия — прошивка ещё не запускалась на плате; запускался только стендовый код.'
     }
   };
 
