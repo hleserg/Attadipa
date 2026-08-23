@@ -66,7 +66,7 @@ public:
         height_out      = h_;
         format_out      = f_;
         orientation_out = Orientation::Deg0;
-        bytes_out       = image_.size();
+        bytes_out       = understated_ != 0 ? understated_ : image_.size();
         why_out         = Failure::None;
 
         if (fail_capture_ != Failure::None) {
@@ -80,12 +80,23 @@ public:
             why_out = Failure::ShapeQuery;
             return false;
         }
-        if (capacity < image_.size()) {
+        if (capacity < image_.size() || understated_ != 0) {
+            // The second arm is the contradiction being modelled: the shape
+            // query said `understated_` bytes, the caller sized its buffer for
+            // that, and the copy now wants more. A real source does this by
+            // being wrong, not by being asked.
+            why_out = Failure::BufferTooSmall;
             return false;
         }
         std::memcpy(out, image_.data(), image_.size());
         return true;
     }
+
+    // Report a shape smaller than the image actually is, so the bridge's
+    // pre-screen passes and the copy then refuses. That is the only way to reach
+    // the `BufferTooSmall` arm of the failure mapping -- a source disagreeing
+    // with its own shape query -- and without it that arm has never run.
+    void understate_shape(std::size_t bytes) { understated_ = bytes; }
 
     // No idle tracking of its own -- the rig sets the answer. Spelled out
     // rather than inherited: the base class used to default this to `true`, and
@@ -127,6 +138,7 @@ private:
     std::vector<std::uint8_t> image_;
     ButtonDescriptor          buttons_[2] = {};
     Failure                   fail_capture_ = Failure::None;
+    std::size_t               understated_  = 0;
 };
 
 // --- collecting what the bridge emits -------------------------------------
@@ -603,6 +615,23 @@ void nothing_rendered_yet_is_a_typed_error()
 // answer -- NoScreen, "nothing has been rendered yet" -- which sent the reader
 // to look at the interface when LVGL was out of memory or the composition root
 // had built a screen the wrong size.
+// The bridge pre-screens the shape and answers `Unsupported` before the copy, so
+// the `BufferTooSmall` arm of the failure mapping is only reached by a source
+// that disagrees with its own shape query. It is an arm for a source bug, and a
+// source bug is exactly the thing no other test can stand in for.
+void a_source_that_contradicts_its_own_shape_query_still_says_unsupported()
+{
+    Rig rig;
+    // Small enough to pass the pre-screen against the bridge's buffer, then the
+    // copy refuses because the real image is larger.
+    rig.screen.understate_shape(16);
+    rig.send(request(Opcode::ScreenRequest, 1));
+    CHECK(rig.sink.last_error() == ErrorCode::Unsupported);
+    // Not NoScreen. That conflation is the whole reason the failure is typed.
+    CHECK(rig.sink.last_error() != ErrorCode::NoScreen);
+    CHECK(!rig.bridge.transfer_in_progress());
+}
+
 void a_capture_that_waiting_will_not_fix_says_which_one_it_is()
 {
     {
@@ -980,6 +1009,47 @@ void a_release_that_could_not_be_queued_leaves_the_input_held()
     CHECK(rig.state.button_down(0));
 }
 
+// A refused pointer event must leave the coordinates exactly where they were.
+// Both halves of this were live defects and neither had a test: the `PointerMove`
+// case fell through `default:` and did not roll back at all, and the `PointerUp`
+// case rolled the *type* back while re-pressing at the refused release's
+// coordinate. `release_all` and `Bridge::tick` lift "where it was last seen"
+// from this field, so either one ends with LVGL getting a release at a point the
+// finger never reached, firing whatever widget is there.
+void a_refused_pointer_event_does_not_move_the_finger()
+{
+    {
+        Rig rig;
+        rig.send(input_request(core::InputEventType::PointerDown, 1, 10, 10));
+        CHECK(rig.state.pointer_down());
+
+        fill_queue(rig.queue);
+        rig.sink.clear();
+        rig.send(input_request(core::InputEventType::PointerMove, 2, 300, 400));
+
+        CHECK(rig.sink.last_error() == ErrorCode::QueueFull);
+        CHECK(rig.state.pointer_down());
+        CHECK(rig.state.pointer_x() == 10);
+        CHECK(rig.state.pointer_y() == 10);
+    }
+    {
+        Rig rig;
+        rig.send(input_request(core::InputEventType::PointerDown, 1, 10, 10));
+        CHECK(rig.state.pointer_down());
+
+        fill_queue(rig.queue);
+        rig.sink.clear();
+        rig.send(input_request(core::InputEventType::PointerUp, 2, 300, 400));
+
+        // Still held -- the release never reached the interface -- and still at
+        // the coordinate the finger is actually at.
+        CHECK(rig.sink.last_error() == ErrorCode::QueueFull);
+        CHECK(rig.state.pointer_down());
+        CHECK(rig.state.pointer_x() == 10);
+        CHECK(rig.state.pointer_y() == 10);
+    }
+}
+
 void an_overrun_is_not_reported_as_a_screenshot_collision()
 {
     Rig rig;
@@ -1203,6 +1273,7 @@ int main()
     a_build_without_a_frame_buffer_says_so();
     nothing_rendered_yet_is_a_typed_error();
     a_capture_that_waiting_will_not_fix_says_which_one_it_is();
+    a_source_that_contradicts_its_own_shape_query_still_says_unsupported();
 
     an_injected_tap_reaches_the_same_queue_a_finger_would();
     a_clients_own_timestamps_are_kept();
@@ -1222,6 +1293,7 @@ int main()
     a_hold_that_cannot_be_released_stays_held_for_the_next_tick();
     a_pointer_hold_that_cannot_be_released_also_stays_held();
     a_release_that_could_not_be_queued_leaves_the_input_held();
+    a_refused_pointer_event_does_not_move_the_finger();
     an_overrun_is_not_reported_as_a_screenshot_collision();
     the_remote_may_not_lift_a_hold_a_person_owns();
     the_hold_watchdog_ignores_the_clients_clock();

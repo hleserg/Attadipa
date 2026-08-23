@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -25,16 +26,32 @@ constexpr std::size_t kOutputWatermark = 16 * 1024;
 // client was holding.
 constexpr std::size_t kOutputMax = 4 * 1024 * 1024;
 
-// A bound on how many chunks one poll may hand to the socket, independent of
-// how many bytes they came to. The watermark below cannot bound this by itself:
-// `out_sent_` does not move inside the pump loop -- `flush()` runs after it --
-// so the loop stops only once 16 KiB has *accumulated*, which at a 199-byte
-// frame is about eighty chunks, each paying two passes of a bitwise CRC. On a
-// desktop that is invisible. This file is named as the model for the firmware
-// transport (`TASKS.md` T-114), where the same loop is an eighty-chunk burst of
-// bitwise CRC on the task that services the interface -- the shape `pump`
-// exists to avoid.
-constexpr int kMaxChunksPerPoll = 16;
+// A declared bound on how many chunks one poll hands to the socket, so the
+// loop's iteration count is a number somebody chose rather than a consequence.
+//
+// **It is not the cost bound, and the first spelling of it was 16, which cost a
+// factor of five.** The work here is a bitwise CRC and its cost is proportional
+// to *bytes*, which `kOutputWatermark` already bounds at 16 KiB. A chunk count
+// binds only when it is tighter than the watermark, and then what it bounds is
+// throughput. Measured on this desktop: a Waveshare screenshot takes ~0.50 s
+// with the watermark alone and took **1.05 s** at 16 chunks a poll, because
+// 617,460 bytes is 3,469 chunks of 178 and `sim/main.cpp` caps the loop at 5 ms
+// while a client is connected -- so 217 polls cannot happen faster. Thirty-two
+// already costs 0.54 s; sixty-four sits at the watermark's own effective limit,
+// 0.48-0.50 s against 0.50 s unbounded, so the count is declared without the
+// transfer being slowed to declare it. `docs/testing/WATCH_CONTROL.md` carries
+// the figures and says to re-measure them when this constant moves.
+//
+// This file is named as the model for the firmware transport (`TASKS.md`
+// T-114). What carries over is which bound matters: if 16 KiB of bitwise CRC in
+// one pass is too much for the task servicing a device's interface, the numbers
+// to change are the watermark and the CRC implementation, not this one.
+constexpr int kMaxChunksPerPoll = 64;
+
+// How long the stale-socket probe waits for a connect to resolve. Short,
+// because it runs before anything is on screen and the fallback answer is a
+// refusal the operator can read.
+constexpr int kProbeTimeoutMs = 250;
 
 bool set_non_blocking(int fd)
 {
@@ -61,12 +78,34 @@ bool socket_is_served(const std::string& path)
     if (probe < 0) {
         return true;
     }
+    // Non-blocking, with a bounded wait. A blocking connect to a listening
+    // socket whose accept backlog is full does not return, and this runs on the
+    // start-up path with nothing printed yet -- so pointing `--debug-socket` at
+    // another program's busy socket would hang the simulator before it had said
+    // anything. The answer for a timeout is the same as for every other
+    // non-ECONNREFUSED result: live, and therefore refused.
+    (void)set_non_blocking(probe);
+
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
     std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
 
-    const int  rc      = ::connect(probe, reinterpret_cast<sockaddr*>(&address), sizeof(address));
-    const int  err     = errno;
+    int rc  = ::connect(probe, reinterpret_cast<sockaddr*>(&address), sizeof(address));
+    int err = errno;
+    if (rc != 0 && (err == EINPROGRESS || err == EAGAIN || err == EALREADY)) {
+        pollfd waiting{};
+        waiting.fd     = probe;
+        waiting.events = POLLOUT;
+        const int ready = ::poll(&waiting, 1, kProbeTimeoutMs);
+        if (ready == 1) {
+            int       so_error = 0;
+            socklen_t len      = sizeof(so_error);
+            if (::getsockopt(probe, SOL_SOCKET, SO_ERROR, &so_error, &len) == 0) {
+                rc  = so_error == 0 ? 0 : -1;
+                err = so_error;
+            }
+        }
+    }
     const bool refused = rc != 0 && err == ECONNREFUSED;
     ::close(probe);
     return !refused;
@@ -151,6 +190,21 @@ bool DebugServer::listen(const std::string& path)
         close();
         return false;
     }
+
+    // Claimed here, immediately after the bind that created it, and not after
+    // the three checks below. Those call `close()` on failure, and `close()`
+    // removes the socket by matching `path_` against the inode -- so recording
+    // it at the end of a successful `listen()` meant a failed `chmod`, `listen`
+    // or `fcntl` left the file behind with nothing owning it. The next
+    // simulator recovers through the staleness probe, which is why this was a
+    // leak rather than a lock-out, but the cleanup should not depend on
+    // somebody else's rescue.
+    path_ = path;
+    struct stat bound {};
+    if (::stat(path_.c_str(), &bound) == 0) {
+        path_dev_ = bound.st_dev;
+        path_ino_ = bound.st_ino;
+    }
     // Belt and braces: POSIX does not require a socket file's mode to be
     // honoured at all, and some filesystems ignore the umask. Failing loudly
     // beats listening on something more open than advertised.
@@ -170,13 +224,6 @@ bool DebugServer::listen(const std::string& path)
         return false;
     }
 
-    path_ = path;
-    // Remember which inode this bind created; `close` unlinks only that one.
-    struct stat bound {};
-    if (::stat(path_.c_str(), &bound) == 0) {
-        path_dev_ = bound.st_dev;
-        path_ino_ = bound.st_ino;
-    }
     std::printf("debug: listening on %s\n", path_.c_str());
     std::fflush(stdout);
     return true;

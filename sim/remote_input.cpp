@@ -162,8 +162,30 @@ void remote_input_pump()
     // can actually see each step. Buttons never went through LVGL and still do
     // not -- the project has not decided what its buttons mean (D5), so they
     // reach listeners rather than an `lv_group`.
+    //
+    // The FIFO-full check is per event rather than on the loop, and that is the
+    // whole of this paragraph's reason to exist. Guarding the drain meant a full
+    // pointer FIFO also stopped every **button** behind it -- and a button
+    // consumes no FIFO slot at all. Reachable inside the protocol's own limits:
+    // the bridge permits 500 events a second and about 485 drain, so sustained
+    // injection fills the 64-deep FIFO in a few seconds and the buttons stop
+    // with it. Peeking keeps the pointer event in the queue for the next pump:
+    // delayed, never dropped.
     core::InputEvent event;
-    while (!transitions_full() && g_queue->pop(event)) {
+    for (;;) {
+        const core::InputEvent* next = g_queue->peek();
+        if (next == nullptr) {
+            break;
+        }
+        const bool needs_slot = next->type == core::InputEventType::PointerDown ||
+                                next->type == core::InputEventType::PointerMove ||
+                                next->type == core::InputEventType::PointerUp;
+        if (needs_slot && transitions_full()) {
+            break;
+        }
+        if (!g_queue->pop(event)) {
+            break;
+        }
         switch (event.type) {
         case core::InputEventType::PointerDown:
             push_transition(event.x, event.y, true);

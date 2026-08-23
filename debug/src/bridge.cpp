@@ -428,6 +428,17 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
         // forgotten, the expiry that exists to rescue exactly that case had
         // nothing left to fire on.
         core::InputEvent undo = event;
+        // Every pointer transition writes `pointer_x_`/`pointer_y_` from its own
+        // event -- `core/src/input.cpp` does it in all three cases -- so undoing
+        // one by type alone leaves the coordinates of the *refused* event
+        // behind. That is not cosmetic: `release_all` and `tick` lift "where it
+        // was last seen" from exactly that field, so a refused release at
+        // (300,400) over a finger held at (10,10) ends with LVGL getting a
+        // release at (300,400) and firing whatever sits there. The rollback
+        // therefore restores the coordinates as well as the type, which is what
+        // "every transition is rolled back" has to mean.
+        undo.x = before_x;
+        undo.y = before_y;
         switch (event.type) {
         case core::InputEventType::ButtonDown:
             undo.type = core::InputEventType::ButtonUp;
@@ -446,13 +457,8 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
             (void)state_.apply(undo, source_.button_count());
             break;
         case core::InputEventType::PointerMove:
-            // A move has no inverse type, so it is undone by moving back. The
-            // coordinates were read before `apply` overwrote them, because
-            // afterwards there is nothing left to read: `release_all` and
-            // `tick` both lift "where it was last seen", and a refused move
-            // left that reading a place the finger never travelled to.
-            undo.x = before_x;
-            undo.y = before_y;
+            // A move has no inverse type, so it is undone by moving back --
+            // which the shared coordinate restore above already does.
             (void)state_.apply(undo, source_.button_count());
             break;
         default:

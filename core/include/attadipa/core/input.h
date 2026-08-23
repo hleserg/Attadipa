@@ -134,6 +134,17 @@ public:
     // Takes the oldest event. Returns false when empty.
     bool pop(InputEvent& out);
 
+    // Looks at the oldest event without taking it, or nullptr when empty.
+    //
+    // A consumer that can accept some kinds of event and not others needs this:
+    // it cannot decide whether it is able to take the next one until it has
+    // seen it, and `pop` would have already removed it by then. The simulator's
+    // pump uses it so that a full pointer FIFO stops pointer events without
+    // also stopping the buttons queued behind them, which do not go through
+    // that FIFO at all. The pointer is left in the queue and delivered on the
+    // next pump -- delayed, never dropped.
+    const InputEvent* peek() const { return count_ == 0 ? nullptr : &buffer_[head_]; }
+
     // Discards everything, counting what it discarded. Used by the tests and
     // available to a caller that has decided the queued past is meaningless;
     // note that `input reset` does **not** use it — that path lifts what is
