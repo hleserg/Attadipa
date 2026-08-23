@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -14,8 +14,8 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
-simulator and twenty-four tests, and has a font pipeline whose output has been
+**Attadipa has code.** As of 2026-08-23 the repository builds six libraries, a
+simulator and twenty-six tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -604,6 +604,20 @@ the unit is byte-identical to the T-099 backup with `verify-flash` over all
   Attadipa: every app partition on this board lives below 16 MB**, unless somebody
   proves ESP-IDF's experimental `BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH` on it,
   which nobody has.
+
+  **And the upper half is not "for data" either, which took a second look to
+  establish.** That measurement is of the *bootloader's* read. An application has
+  four flash paths of its own and none of them has ever been run above the line;
+  a source trace of ESP-IDF v5.5.5 finds that exactly one — `esp_partition_mmap`
+  — refuses, and that it has only refused **since v5.5.5** (the vendor's own
+  v5.5.1 build has no such check). Read, write and erase emit four-byte-address
+  commands with no guard in front of them, and the capability gate that might
+  have stopped them is passed by this part's JEDEC ID `0xC8 0x4019`. So an erase
+  at `0x1600000` would return `ESP_OK` whether or not the sector it hit was the
+  one intended. **Nothing of ours goes at or above `0x1000000` until somebody
+  measures it**, and `ctest` now enforces that on every partition table in the
+  tree — [FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md),
+  which carries the reversible plan that would settle it, and #132.
 - **A `PURE_RAM_APP` runs fine — if the serial port is never closed.** Four
   earlier attempts reset within milliseconds and were written up as proof the
   board refuses RAM images. They were not: the kernel drops DTR and RTS on the

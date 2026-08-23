@@ -127,6 +127,17 @@ this defect is invisible to every host-side tool and fatal at boot.
   driver having 32-bit addressing; the bootloader's limitation does not bind a
   running app, but nothing here has demonstrated the app side either.
   `storage` at `0x1600000` is above the line too.
+
+  **The app side now has a document of its own, and it is less comfortable than
+  "for data only" sounds** — [FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md),
+  written for [#132](https://github.com/hleserg/Attadipa/issues/132), which
+  observed correctly that this paragraph's caveat had been read as a permission
+  everywhere it was quoted. Short version: of an application's four flash paths
+  only `esp_partition_mmap` refuses, and only since ESP-IDF v5.5.5; read, write
+  and erase have no guard at all and this part's JEDEC ID passes the one
+  capability gate that might have supplied one. **Until somebody measures it,
+  nothing of ours goes above the line**, and `tools/flash/partition_check.py`
+  enforces that rather than a reader remembering this bullet.
 - **ESP-IDF has an escape hatch, and it is experimental.**
   `CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH` — *"Enable cache access to
   32-bit-address (over 16MB) range of SPI Flash (READ DOCS FIRST)"* — exists in
