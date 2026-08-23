@@ -108,7 +108,7 @@ An entry that cannot name its source does not belong here. It belongs in
 
 - **Claim:** `link/src/frame_codec.cpp` rejects a declared length greater than
   `kMaxPayload` at `:139` before touching a payload byte, waits rather than reads
-  when fewer bytes have arrived than the header declares (`:148`), and gates both
+  when fewer bytes have arrived than the header declares (`:147`), and gates both
   behind a length-check byte (`:123`) and a CRC. The MeshCore findings do not
   transplant onto it.
 - **Source:** the file, read on 2026-08-23 while answering issue #142.

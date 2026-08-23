@@ -2,7 +2,7 @@
 //
 // Real upstream translation unit (src/Utils.cpp, unmodified) against a stub
 // block cipher. The cipher is irrelevant: what is under test is how far the
-// loop at src/Utils.cpp:76-81 walks 'dest' for a src_len that is not a multiple
+// loop at src/Utils.cpp:76-79 walks 'dest' for a src_len that is not a multiple
 // of the block size, which is exactly the shape Mesh::onRecvPacket hands it.
 //
 // dest is 184 bytes — sizeof(uint8_t data[MAX_PACKET_PAYLOAD]) in

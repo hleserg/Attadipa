@@ -1878,7 +1878,7 @@ harness and corpus:
   on a third-party repository is outward-facing and this run had no authority for
   it. The evidence reproduces in one command.
 - **`attadipa_link`'s decoder was checked, not assumed.** It validates the
-  declared length before reading (`frame_codec.cpp:139`, `:148`) behind a length
+  declared length before reading (`frame_codec.cpp:139`, `:147`) behind a length
   check and a CRC. The finding does not transplant, and nothing in `link/`
   changed.
 - **Left open as M15–M18** in [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md):

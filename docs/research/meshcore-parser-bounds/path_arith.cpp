@@ -31,7 +31,7 @@ int main()
     // The decrypted plaintext length. MACThenDecrypt returns 0 for anything at
     // or under CIPHER_MAC_SIZE, and cannot exceed the payload buffer.
     // Utils::decrypt returns whole 16-byte blocks ("will always be multiple of
-    // 16", src/Utils.cpp:82), so len is a multiple of 16. 176 is the largest
+    // 16", src/Utils.cpp:81), so len is a multiple of 16. 176 is the largest
     // that still fits data[184]; 192 is the P4 case and is excluded here so the
     // two findings do not get mixed up.
     const int len_min = 16, len_max = 176, len_step = 16;

@@ -252,7 +252,7 @@ negative becomes a large positive, and `extra`/`extra_len` are then handed to
 `onPeerPathRecv` as a window that runs off the end of `data`.
 
 **The domain, computed rather than asserted.** `Utils::decrypt` returns whole
-16-byte blocks — *"will always be multiple of 16"*, `src/Utils.cpp:82` — so `len`
+16-byte blocks — *"will always be multiple of 16"*, `src/Utils.cpp:81` — so `len`
 is a multiple of 16. Over every `(len, path_len)` pair that reaches this code
 with `len` in 16…176:
 
@@ -411,7 +411,7 @@ before anyone refactors it; not a defect today.
 
 **Outcome:** `reject`. `_valid` requires `app_data_len >= i`, which is exactly
 the condition that failed, so the parser returns an object the callers discard —
-`BaseChatMesh.cpp:122` and `MyMesh.cpp:656` both test `isValid()`.
+`BaseChatMesh.cpp:122` and `MyMesh.cpp:657` both test `isValid()`.
 
 **Status: confirmed by execution (C1, C2, C3, C4), and #3270 does not close it.**
 On `#3270`'s own head `f80d805e`, case C3 — `app_data_len == 0` — still reads
@@ -519,7 +519,7 @@ local provider without re-running the corpus in
 **Our own decoder is not analogous, and it was checked rather than assumed.**
 `link/src/frame_codec.cpp` validates the declared length *before* reading —
 `if (declared > kMaxPayload)` at `:139`, counted as its own error class, and
-`if (size_ < needed) return 0;` at `:148` before any payload is touched — behind
+`if (size_ < needed) return 0;` at `:147` before any payload is touched — behind
 a length-check byte at `:123` and a CRC. The issue's caution about not
 transplanting the finding onto it is right. **No change to `attadipa_link` is
 proposed by this document.** Its boundary fixtures may still be worth extending
