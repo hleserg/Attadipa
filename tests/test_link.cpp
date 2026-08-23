@@ -53,6 +53,30 @@ void check_phase(TransportPhase actual, TransportPhase expected, int line)
 
 #define CHECK_PHASE(actual, expected) check_phase((actual), (expected), __LINE__)
 
+void check_outcome(EventOutcome actual, EventOutcome expected, int line)
+{
+    if (actual != expected) {
+        std::fprintf(stderr, "FAIL line %d: outcome is %s, expected %s\n", line,
+                     to_string(actual), to_string(expected));
+        ++failures;
+    }
+}
+
+#define CHECK_OUTCOME(actual, expected) check_outcome((actual), (expected), __LINE__)
+
+// For checks inside a loop over phases, where the line number alone does not
+// say which case failed.
+void check_in(bool condition, TransportPhase phase, const char* what, int line)
+{
+    if (!condition) {
+        std::fprintf(stderr, "FAIL line %d [phase %s]: %s\n", line, core::to_string(phase),
+                     what);
+        ++failures;
+    }
+}
+
+#define CHECK_IN(phase, cond) check_in((cond), (phase), #cond, __LINE__)
+
 MonotonicTime at(std::uint64_t ms) { return MonotonicTime{ms}; }
 
 // A payload with no accidental structure: every byte different from its
@@ -620,6 +644,189 @@ void test_a_fault_is_not_cleared_by_trying_again()
     CHECK(link.last_disconnect() == DisconnectReason::SubsystemRestart);
 }
 
+// Drive a fresh link into `phase` using only public events, and assert it got
+// there. A table that silently tested the wrong state would prove nothing.
+void place_in(LinkState& link, TransportPhase phase, int line)
+{
+    switch (phase) {
+        case TransportPhase::Absent:
+            break;
+        case TransportPhase::Attached:
+            link.apply(LinkEvent::Attach, at(1));
+            break;
+        case TransportPhase::Connecting:
+            link.apply(LinkEvent::Attach, at(1));
+            link.apply(LinkEvent::PeerArriving, at(2));
+            break;
+        case TransportPhase::Ready:
+            link.apply(LinkEvent::Attach, at(1));
+            link.apply(LinkEvent::PeerArriving, at(2));
+            link.apply(LinkEvent::PeerEstablished, at(3));
+            break;
+        case TransportPhase::Suspended:
+            link.apply(LinkEvent::Attach, at(1));
+            link.apply(LinkEvent::Suspend, at(2));
+            break;
+        case TransportPhase::Faulted:
+            link.apply(LinkEvent::Attach, at(1));
+            link.apply(LinkEvent::Fault, at(2), DisconnectReason::Fault);
+            break;
+    }
+    check_phase(link.phase(), phase, line);
+}
+
+// What `Attach` means is a question per phase, and it was being answered by one
+// negative guard for all six.
+//
+// The two refusals are not synonyms. `Redundant` is the claim that the link is
+// already in the state the event asked for — uncounted, and a caller may read
+// it as success. `Ignored` is the claim that the event does not apply here, and
+// it is counted, because the rate of inapplicable callbacks is the diagnostic
+// this machine exists to preserve. `phase_ != Absent -> Redundant` said the
+// first for a faulted transport, which carries nothing however present its
+// hardware is, and for a suspended one, which we quiesced on purpose.
+void test_attach_is_classified_per_phase()
+{
+    struct Case {
+        TransportPhase phase;
+        EventOutcome   expected;
+    };
+
+    const Case cases[] = {
+        // Absent is the only one where there is work to do.
+        {TransportPhase::Absent,     EventOutcome::Applied},
+        // Attached is the state Attach asks for, and Connecting and Ready are
+        // strictly downstream of it: the peripheral is there in all three, so
+        // the request is already satisfied. Answering anything else would mean
+        // dropping an arriving peer or a live session on behalf of an event
+        // that asked for something already true.
+        {TransportPhase::Attached,   EventOutcome::Redundant},
+        {TransportPhase::Connecting, EventOutcome::Redundant},
+        {TransportPhase::Ready,      EventOutcome::Redundant},
+        // Suspended needs a Resume and Faulted needs a SubsystemRestart. In
+        // neither is the attach satisfied, and in both the frequency of the
+        // attempt is worth counting.
+        {TransportPhase::Suspended,  EventOutcome::Ignored},
+        {TransportPhase::Faulted,    EventOutcome::Ignored},
+    };
+
+    // Adding a phase to the enum without deciding what Attach does about it is
+    // a build failure rather than a gap nobody notices.
+    static_assert(sizeof cases / sizeof cases[0] ==
+                      static_cast<std::size_t>(core::kTransportPhaseCount),
+                  "every TransportPhase needs a decided Attach outcome");
+
+    for (const Case& c : cases) {
+        LinkState link(LinkState::Config{TransportKind::Usb, Millis{5000}, true});
+        place_in(link, c.phase, __LINE__);
+
+        const std::uint32_t    ignored_before  = link.ignored_events();
+        const std::uint32_t    epoch_before    = link.epoch();
+        const std::uint32_t    sessions_before = link.sessions();
+        const DisconnectReason reason_before   = link.last_disconnect();
+
+        const EventOutcome outcome = link.apply(LinkEvent::Attach, at(100));
+        if (outcome != c.expected) {
+            std::fprintf(stderr, "FAIL line %d: Attach in %s gave %s, expected %s\n", __LINE__,
+                         core::to_string(c.phase), to_string(outcome), to_string(c.expected));
+            ++failures;
+        }
+
+        // Counted exactly when it was Ignored, and exactly once.
+        const std::uint32_t counted = c.expected == EventOutcome::Ignored ? 1u : 0u;
+        CHECK_IN(c.phase, link.ignored_events() == ignored_before + counted);
+
+        // Attach moves the link out of Absent and out of nothing else.
+        CHECK_IN(c.phase, link.phase() == (c.phase == TransportPhase::Absent
+                                               ? TransportPhase::Attached
+                                               : c.phase));
+
+        // And it never touches the session accounting. Attaching is not a
+        // session, so even the applied case leaves all three alone.
+        CHECK_IN(c.phase, link.epoch() == epoch_before);
+        CHECK_IN(c.phase, link.sessions() == sessions_before);
+        CHECK_IN(c.phase, link.last_disconnect() == reason_before);
+    }
+}
+
+// A faulted link refuses an attach every time, and says so every time.
+//
+// The count is the point. A controller whose attach callback fires on every
+// enumeration attempt against broken hardware produces exactly this shape, and
+// under the old answer it produced nothing at all to look at: `Redundant` is
+// not counted, so a retry storm and a quiet link read identically.
+void test_attach_while_faulted_is_refused_and_counted_every_time()
+{
+    LinkState link(LinkState::Config{TransportKind::Usb, Millis{5000}, true});
+    link.apply(LinkEvent::Attach, at(0));
+    link.apply(LinkEvent::PeerArriving, at(10));
+    link.apply(LinkEvent::PeerEstablished, at(20));
+    CHECK(link.sessions() == 1);   // a real session, so the counters have something to keep
+
+    link.apply(LinkEvent::Fault, at(30), DisconnectReason::Fault);
+    CHECK_PHASE(link.phase(), TransportPhase::Faulted);
+
+    const std::uint32_t epoch_faulted   = link.epoch();
+    const std::uint32_t ignored_faulted = link.ignored_events();
+
+    for (std::uint64_t i = 0; i < 5; ++i) {
+        CHECK_OUTCOME(link.apply(LinkEvent::Attach, at(40 + i)), EventOutcome::Ignored);
+        CHECK_PHASE(link.phase(), TransportPhase::Faulted);
+    }
+    CHECK(link.ignored_events() == ignored_faulted + 5);
+    CHECK(!link.ready());
+
+    // The fault survives intact: the attaches changed nothing except the count
+    // of how many arrived.
+    CHECK(link.epoch() == epoch_faulted);
+    CHECK(link.sessions() == 1);
+    CHECK(link.last_disconnect() == DisconnectReason::Fault);
+
+    // The one way out, and afterwards an attach is real work again.
+    CHECK_OUTCOME(link.apply(LinkEvent::SubsystemRestart, at(100)), EventOutcome::Applied);
+    CHECK_PHASE(link.phase(), TransportPhase::Absent);
+    CHECK_OUTCOME(link.apply(LinkEvent::Attach, at(110)), EventOutcome::Applied);
+    CHECK_PHASE(link.phase(), TransportPhase::Attached);
+
+    // The restart cleared the link, not the evidence about it — the five
+    // refusals are still there to be read.
+    CHECK(link.ignored_events() == ignored_faulted + 5);
+    CHECK(link.sessions() == 1);
+}
+
+// Suspended is a state we asked for, and an attach must not undo it by accident.
+//
+// The peripheral never went anywhere, which is exactly why the answer is not
+// "already attached": the link is quiesced and carries nothing, and the way
+// back is Resume — which lands in Attached with the peer still to arrive,
+// because the peer was never told we went away. An Attach honoured here would
+// route around that lifecycle, and a `Redundant` reported here would tell a
+// caller the link was usable while it was not.
+void test_attach_does_not_resurrect_a_suspended_link()
+{
+    LinkState link(LinkState::Config{TransportKind::Bluetooth, Millis{5000}, true});
+    link.apply(LinkEvent::Attach, at(0));
+    link.apply(LinkEvent::PeerArriving, at(10));
+    link.apply(LinkEvent::PeerEstablished, at(20));
+    link.apply(LinkEvent::Suspend, at(100));
+    CHECK_PHASE(link.phase(), TransportPhase::Suspended);
+
+    const std::uint32_t ignored_suspended = link.ignored_events();
+    const std::uint32_t epoch_suspended   = link.epoch();
+
+    CHECK_OUTCOME(link.apply(LinkEvent::Attach, at(110)), EventOutcome::Ignored);
+    CHECK_PHASE(link.phase(), TransportPhase::Suspended);
+    CHECK(link.ignored_events() == ignored_suspended + 1);
+    CHECK(link.epoch() == epoch_suspended);
+    CHECK(!link.ready());
+
+    // Resume still lands where it always did, and the attach minted no session
+    // on the way past.
+    CHECK_OUTCOME(link.apply(LinkEvent::Resume, at(200)), EventOutcome::Applied);
+    CHECK_PHASE(link.phase(), TransportPhase::Attached);
+    CHECK(link.sessions() == 1);
+}
+
 // The decoder's buffer is finite, and what it does when a peer fills it faster
 // than anybody drains it is a design decision rather than an accident.
 void test_input_beyond_the_buffer_is_refused_and_counted()
@@ -685,6 +892,9 @@ int main()
     test_unexpected_events_are_ignored_and_counted();
     test_suspend_ends_the_session_rather_than_pausing_it();
     test_a_fault_is_not_cleared_by_trying_again();
+    test_attach_is_classified_per_phase();
+    test_attach_while_faulted_is_refused_and_counted_every_time();
+    test_attach_does_not_resurrect_a_suspended_link();
     test_input_beyond_the_buffer_is_refused_and_counted();
     test_an_empty_frame_is_a_frame();
 

@@ -56,6 +56,16 @@ enum class LinkEvent : std::uint8_t {
 // arrived in a state where it makes no sense" is not a harmless no-op — it is
 // the signature of the ghost-connection bug, and a device that has ignored four
 // hundred of them is telling you something.
+//
+// Which makes the boundary between the two refusals load-bearing, so both
+// halves are written down rather than one. `Redundant` is the narrow claim that
+// **the link is already in the state the event asked for** — nothing to do,
+// nothing worth counting, and a caller may read it as success. It is not a
+// general "not applied": an event that cannot apply in this phase is `Ignored`,
+// even where the hardware it names is physically present. An attach to a
+// faulted transport is the example that cost a defect — the peripheral is
+// there, and the link still carries nothing until the subsystem is restarted,
+// so answering `Redundant` told an operator the attach had succeeded.
 enum class EventOutcome : std::uint8_t {
     Applied,
     Ignored,

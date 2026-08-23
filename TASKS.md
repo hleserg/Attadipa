@@ -282,9 +282,25 @@ stale silently. The protocol is
   `encode()` accepts it and the round-trip tests cover it — so a caller
   draining until zero silently drops one.
 
-- **`Attach` while `Faulted` reports the wrong refusal.** It returns `Redundant`
-  where `Ignored` is the truth: nothing about a faulted link makes a new attach
-  redundant, and the two words tell an operator different things.
+- **`Attach` while `Faulted` reported the wrong refusal — fixed, issue #158.**
+  It returned `Redundant` where `Ignored` is the truth: nothing about a faulted
+  link makes a new attach redundant, and the two words tell an operator
+  different things. The cause was one guard, `phase_ != Absent -> Redundant`,
+  answering for five phases at once, and the diagnostic cost was the larger
+  half — `Redundant` is not counted, so a controller retrying an attach against
+  broken hardware left nothing in `ignored_events()` to find. `Attach` is now
+  classified per phase: `Absent` applies it, `Attached`/`Connecting`/`Ready`
+  answer `Redundant` because the peripheral genuinely is there, and `Faulted`
+  and `Suspended` answer `Ignored` and are counted. **`Suspended` is the
+  contract that had never been decided**, and it is decided here: a quiesced
+  link carries nothing, so an attach is refused rather than satisfied and the
+  way back stays `Resume` — otherwise a lifecycle owner that had not noticed
+  the suspend could route around it silently. A phase added to the enum later
+  falls to `Ignored` rather than `Redundant`, and a `static_assert` on
+  `kTransportPhaseCount` makes adding one without deciding a build failure.
+  Mutation-verified: restoring the old guard turns 13 checks red across the
+  three new tests, and leaves the `Attached`/`Connecting`/`Ready` rows green,
+  which is the evidence that only the two intended phases moved.
 
 - **`Detach` hardcodes `PeerClosed`.** A detach the *device* initiated is
   recorded as one the peer initiated. That is the field-report evidence for the
@@ -311,7 +327,11 @@ stale silently. The protocol is
   — mutation-verified, as the four already closed were — or declined in writing
   with the reason. A silent decline is not one.
 - **Research status:** n/a
-- **Implementation status:** not started
+- **Implementation status:** in progress. The `Attach`-while-`Faulted` refusal
+  is closed (issue #158); every other bullet above is still open, and the two
+  that live in the same file as it — `Detach` hardcoding `PeerClosed`, and zero
+  meaning two things in the decoder — were deliberately left alone so that one
+  finding is one change.
 - **Tests:** host, per item
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.
