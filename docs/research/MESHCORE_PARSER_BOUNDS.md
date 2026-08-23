@@ -58,7 +58,10 @@ src/Utils.cpp                     vs 9d7cee66                      : identical
 ```
 
 Every file any of these pull requests touches is byte-identical between our pin
-and both of their bases. The 29 commits `dev` is ahead by are elsewhere. So each
+and both of their bases. `dev` leads the pin by **31** commits and `#3267`'s base
+by 29 — measured on 2026-08-23, `git rev-list --count`, not carried over from
+[M2](OPEN_QUESTIONS.md#meshcore)'s count of 29, which was true of `dev` on
+2026-08-21 and has since moved. All of them are elsewhere in the tree. So each
 diff applies to `d929643` unchanged, and a measurement taken on a pull request's
 head tree is a measurement of our pin plus that pull request's guards.
 
