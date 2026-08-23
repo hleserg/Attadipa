@@ -318,6 +318,22 @@ jobs:
       - name: Restarting a blocked task produces an outcome
         run: bash .github/tests/blocked-restart-test.sh
 
+      # Taking a pull request out of draft is not a sentence in a comment: a
+      # draft can never read `mergeable_state: clean`, so undrafting is the step
+      # that makes a branch eligible for an unattended merge. The number it is
+      # given for done_pr comes from whichever open pull request says
+      # `Fixes #N`, which an abandoned branch also says. This is the evidence
+      # test between the two.
+      - name: What may be taken out of draft
+        run: bash .github/tests/promote-decision-test.sh
+
+      # `gh issue edit` resolves repository.issue(number:), which does not
+      # resolve pull requests -- three of claude-agent.yml's five triggers fire
+      # on one, and every call is `|| true`, so neither outcome was reported.
+      # Run against a stub `gh` on PATH: no network, no token.
+      - name: A label edit reaches the object it names
+        run: bash .github/tests/gh-label-test.sh
+
       # The staleness line is the only thing telling an agent that the finding
       # it is about to implement was made against code that has since moved.
       # Its previous version truncated at 800 characters and, on issue #26,

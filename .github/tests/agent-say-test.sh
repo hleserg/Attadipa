@@ -138,6 +138,23 @@ says "says the retry is bounded rather than promising an unconditional pick-up" 
      "fails a second time" "needs-owner"
 says "warns against retrying a deterministic failure" -- "$FAILED" -- \
      "same failure" "with a bill attached"
+
+# THE ONLY BUDGET-RESET ROUTE THIS COMMENT OFFERS MUST BE ONE THAT WORKS.
+# Review of #85: the text said "add `agent:ready` yourself", and by the time
+# anybody reads it the label is already on the issue -- claude-agent.yml's
+# hand-over posts this comment and then adds agent:failed AND agent:ready
+# together. Adding a label that is already present raises no `labeled` event, so
+# failure-count.jq records no reset; the owner who fixed the real cause is
+# escalated on the next tick carrying every pre-fix failure. The two-step
+# version is the only one that raises the event.
+says "the reset route is remove-then-add, not add" -- "$FAILED" -- \
+     "remove" "add it back"
+says "and says why: the label is already there" -- "$FAILED" -- \
+     "already on this issue" "already present does nothing"
+says "and still says only a person's labelling counts" -- "$FAILED" -- \
+     "by a person"
+lacks "and never tells the reader to add a label that is already on the issue" -- \
+     "$FAILED" -- "add \`agent:ready\` yourself"
 # The old text sent the reader to the run log for the cause. That log is
 # emptied by `show_full_output: false` on purpose, so the advice was sound and
 # the address was wrong; sending somebody to a redacted log to find out why a

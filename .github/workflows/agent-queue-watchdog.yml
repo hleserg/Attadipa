@@ -195,7 +195,7 @@ jobs:
               gh issue comment "$CANDIDATE" --repo "$REPO" --body "$(printf '%s\n\n%s\n\n%s\n\n%s' \
                 "This has failed \`$COUNT\` times since a person last put it in the queue, so the automatic retry stops here rather than buying the same answer every hour -- the bound #82 asked for. Read the reason on the failure comment above, and fix or close what is causing it." \
                 "**To start it again, comment \`@claude\`.** That works as it stands and needs no label surgery: a comment event skips the claimed-state check by design." \
-                "**If you would rather use labels, it takes two of them: remove \`agent:blocked\` AND add \`agent:ready\`.** Adding \`agent:ready\` on its own does nothing. \`.github/scripts/queue-scan.jq\` drops anything carrying \`agent:blocked\` before it ever reads the ready/failed pairing, and \`.github/scripts/intake-decision.sh\` rejects the labelling as already claimed -- so the issue would sit with three labels and no way through, which is the exact shape #82 was opened about." \
+                "**If you would rather use labels, it takes two of them IN THIS ORDER: remove \`agent:blocked\` FIRST, then add \`agent:ready\`.** The order is not cosmetic. Add \`agent:ready\` first and \`.github/scripts/intake-decision.sh\` rejects that \`labeled\` event as already claimed; removing \`agent:blocked\` afterwards raises \`unlabeled\`, which nothing listens for -- so nothing starts, nothing says so, and only the next hourly tick recovers it. Adding \`agent:ready\` on its own does nothing at all: \`.github/scripts/queue-scan.jq\` drops anything carrying \`agent:blocked\` before it ever reads the ready/failed pairing, so the issue sits with three labels and no way through, which is the exact shape #82 was opened about. \`needs-owner\` is left for you to remove or keep -- nothing here removes it, and nothing reads it." \
                 "The label route is also the one that resets the retry budget. A \`@claude\` comment starts a run without resetting the count, so if it fails again it escalates straight back here.")" || true
             else
               echo "::warning::Could not relabel #$CANDIDATE; leaving it as it was rather than commenting on a change that did not happen."
@@ -240,6 +240,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # The same variable the scan job reads, and for the same reason: this
+          # sweep must agree with queue-scan.jq about whose issues are picked
+          # up, or it re-queues issues the scan will never take and comments
+          # that something will happen. Found in review of #85.
+          TRUSTED_PRODUCERS: ${{ vars.ATTADIPA_TRUSTED_PRODUCERS }}
         run: |
           set -euo pipefail
 
@@ -267,7 +272,8 @@ jobs:
           # retry budget for precisely the issues that keep stranding.
           gh api "repos/$REPO/issues?state=open&per_page=100" --paginate --slurp \
             | jq 'if (length > 0 and (.[0] | type) == "array") then add else . end' > /tmp/open.json
-          jq -r -f .github/scripts/stranded-failures.jq /tmp/open.json > /tmp/stranded
+          jq -r --arg trusted "${TRUSTED_PRODUCERS:-}" \
+            -f .github/scripts/stranded-failures.jq /tmp/open.json > /tmp/stranded
 
           while read -r n; do
             [ -n "$n" ] || continue

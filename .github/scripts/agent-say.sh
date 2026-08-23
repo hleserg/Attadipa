@@ -312,12 +312,31 @@ attadipa_outcome() {
       # `agent:ready` labelling by a person -- a comment is not a labelling, so
       # an owner who fixes the cause and replies `@claude` still carries every
       # failure that happened before their fix, and escalates on the next one.
-      echo "**To start it now:** add \`agent:ready\` yourself. A human labelling is"
-      echo "also what resets the retry budget, so a task whose cause you have"
-      echo "actually fixed starts again from zero. Commenting \`@claude\` starts a"
-      echo "run too, but it does **not** reset the count — read the line above"
-      echo "first either way, because a retry of a deterministic failure is the"
-      echo "same failure with a bill attached."
+      #
+      # AND "add agent:ready" IS NOT A ROUTE FROM HERE, which is what this said
+      # until review of #85 caught it. By the time anybody reads this comment
+      # the label is already on the issue: claude-agent.yml's hand-over posts
+      # this text and then adds agent:failed AND agent:ready together. Adding a
+      # label that is already present is a no-op -- GitHub records no `labeled`
+      # event, so failure-count.jq sees no reset, so the owner who fixed the
+      # real cause is escalated on the next tick carrying every pre-fix
+      # failure. Worse in the obvious UI path: clicking the label REMOVES it,
+      # which leaves agent:failed alone and invisible to queue-scan.jq until
+      # the stranded sweep re-adds it as github-actions[bot] -- deliberately
+      # not a reset either. So the words have to name the two-step version,
+      # which is the only one that raises the event the reset reads.
+      echo "**To start it now, comment \`@claude\`.** That works as it stands."
+      echo
+      echo "**To start it AND reset the retry budget, remove \`agent:ready\` and"
+      echo "add it back.** It is already on this issue — the hand-over put it"
+      echo "there — and adding a label that is already present does nothing at"
+      echo "all. Only a fresh labelling **by a person** resets the count, so a"
+      echo "task whose cause you have actually fixed starts again from zero"
+      echo "this way and only this way. A \`@claude\` comment starts a run"
+      echo "without resetting it, and if that run fails the issue escalates."
+      echo
+      echo "Read the line above first either way, because a retry of a"
+      echo "deterministic failure is the same failure with a bill attached."
       ;;
     *)
       echo "### The run ended in an unrecognised state (\`$kind\`)"
