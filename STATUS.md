@@ -663,6 +663,35 @@ four more things at no cost:
 
 ## Recently completed
 
+- **The owner is addressed in Russian, and the split is by reader, not by
+  surface.** Recorded as **OD-21** and stated in `CLAUDE.md`'s Conventions
+  (#126). The rule that was there routed "GitHub issue and review comments" to
+  English wholesale — which is the channel the owner actually uses, four of the
+  fifteen recorded owner decisions having arrived as a Russian comment on an
+  issue. Three things came out of the two reviews of it and are worth carrying
+  forward. **The exception list is the owner's own *two files* under
+  `docs/ideas/`, not the directory** — its `README.md` is an agent-written
+  English index, and the first draft cited that very file while calling the
+  directory Russian. **The `BLOCKED` block is bilingual on an issue**, which
+  `docs/automation/AI_TASK_PROTOCOL.md` did not say while claiming to carry
+  `CLAUDE.md`'s format; English stays *first* there because `^\s*BLOCKED:` and
+  the queue's marker matchers read the first half. And **the rule ships
+  breached**: `attadipa_receipt`, `attadipa_outcome` and the missing-credential
+  `BLOCKED` block are literal English strings in shell and YAML that no agent
+  can rewrite from inside a run — **T-131**, filed rather than excused, because
+  the unattended fleet is exactly where the owner has no other channel.
+
+  **Four open pull requests claim `OD-16`.** #92, #97, #95 and #112 each add one;
+  #94 is OD-17. OD-21 was taken to stay clear of them, and an earlier draft said
+  OD-16 through OD-20 were *allocated*, which would have left a permanent hole at
+  OD-18–20 and sent a later reader hunting three decisions nobody wrote. The
+  first of the four to merge takes OD-16 and the other three renumber at merge
+  time; merge order is not something a document can predict. **The duplicate
+  check that would catch it is in #92 and is not merged** — `check_docs.py` on
+  `main` runs five checks and none of them reads `## OD-` headings, so until #92
+  lands a collision is silent and both anchors resolve to whichever heading
+  GitHub renders first.
+
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the
   built-in `GITHUB_TOKEN`, so the actor is `github-actions[bot]`;

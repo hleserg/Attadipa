@@ -144,6 +144,42 @@ stale silently. The protocol is
 
 ## NEXT
 
+### T-131 · The unattended agent's owner-facing comments are English, and OD-21 says they must not be
+- **Priority:** P2. Nothing is broken; the owner is addressed in a language he
+  asked agents to stop using, on the only channel the unattended fleet has.
+- **Dependencies:** #126 merged, which is what makes this a breach rather than a
+  preference.
+- **Why this exists:** [OD-21](docs/research/OWNER_DECISIONS.md) item 3 requires
+  a `BLOCKED` block, a `needs-owner` escalation, an `OWNER DECISION REQUIRED`
+  block and the plan/progress/outcome narration to be **English first and
+  Russian below** on a public issue or pull request. Three generated texts are
+  English only, and an agent cannot fix them from inside a run because a
+  workflow writes them:
+  1. `attadipa_receipt` in [`.github/scripts/agent-say.sh`](.github/scripts/agent-say.sh)
+     — posted by the `acknowledge` job the moment the gate accepts;
+  2. `attadipa_outcome` in the same file — posted by `Hand over` on **every**
+     exit path, which makes it the most-read comment the fleet produces;
+  3. the `BLOCKED` block generated in bash in
+     [`.github/workflows/claude-agent.yml`](.github/workflows/claude-agent.yml)
+     for the missing-credential case, `Owner action required:` and all.
+
+  Review found it: the decision obliges something the obliged party cannot do.
+  Recording it as pending is the honest state — narrowing OD-21 to "text an
+  agent writes by hand" would fix the contradiction by giving up the thing the
+  rule is for, since the unattended fleet is precisely where the owner has no
+  other channel.
+- **Acceptance:** all three carry both languages, English first. The field names
+  and the machine-read lines stay English and stay first — `check_docs.py` reads
+  `^\s*BLOCKED:`, `queue-scan.jq` and `intake-decision.sh` match on markers, and
+  none of them may start matching Russian. The `.github/tests/` suites still
+  pass, with a case asserting the English half is intact and first.
+- **What must not be assumed:** that a translation can be generated at run time.
+  These are literal strings in shell and YAML with no model in the loop; the
+  Russian half is written into the source next to the English one.
+- **Hardware required:** no.
+- **ID note:** allocated as **T-131**, clear of `T-126` on `main` and of the
+  numbers taken on the other open branches, which have already collided once.
+
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
 - **Dependencies:** T-034 (**done**)

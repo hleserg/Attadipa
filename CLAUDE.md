@@ -174,8 +174,9 @@ A screen with the right elements on it is not done. Design is part of Done.
   - **What the repository, CI and other agents read is English.** Code,
     comments, documentation, commit messages, branch names, pull request titles
     and bodies, review findings. Exceptions, all of them the owner's own text
-    kept verbatim: the two specification documents, and everything under
-    [`docs/ideas/`](docs/ideas/README.md).
+    kept verbatim: the two specification documents, and **the owner's own two
+    files** under [`docs/ideas/`](docs/ideas/README.md) — not the directory,
+    which also holds an agent-written index in English, correctly so.
   - **What is addressed to the owner is Russian.** Every chat reply, question,
     status report, explanation and apology, including the one-word ones —
     *"готово"*, not *"done"*. Technical terms stay in English inside a Russian
@@ -188,27 +189,30 @@ A screen with the right elements on it is not done. Design is part of Done.
     `BLOCKED` block, a `needs-owner` escalation, an `OWNER DECISION REQUIRED`
     block and the plan/progress/outcome narration `claude-agent.yml` requires
     are written for one person, and for the unattended agents a comment is the
-    *only* owner-facing channel there is. They take the shape
-    [`HANDOFF_LOCAL_CODER.md`](docs/automation/HANDOFF_LOCAL_CODER.md) already
-    uses — **English first and Russian below** — because the reader is the owner
-    and the repository is public, and both facts are true at once.
+    *only* owner-facing channel there is. **English first and Russian below** —
+    the same shape the seed discussions in
+    [`HANDOFF_LOCAL_CODER.md`](docs/automation/HANDOFF_LOCAL_CODER.md) §6 use,
+    borrowed for its layout and not its reasoning, which there is about public
+    visitors rather than about the owner — because the reader is the owner
+    and the repository is public, and both facts are true at once. English
+    first is not a courtesy to the visitor: `^\s*BLOCKED:` and the queue's
+    marker matchers read the first half, and they must not start matching
+    Russian. Three of the generated texts do not comply yet — they are literal
+    strings in shell and YAML that no agent can rewrite from inside a run —
+    which is **T-131**, not an exemption.
 
-  The owner directed this in a session on 2026-08-22, having asked before; OD-21
-  carries the provenance. Drifting back into English mid-session is the common
-  way it fails: an agent writes an English commit message, then keeps going in
-  English into the chat. Repository text and conversation are different
-  artefacts with different readers, and the language follows the reader, not the
-  paragraph before it.
+  **This is not about the product's own language.** What a *user* sees on a
+  device is governed by [`l10n/`](l10n/) and
+  [ADR-0010](docs/adr/0010-localization.md), and none of this reaches the
+  fallback chain, the plural rules or glyph coverage.
 
-  A first version of this bullet routed "GitHub issue and review comments" to
-  English wholesale. That is the channel the owner actually uses — four of the
-  fifteen owner decisions on record arrived as a Russian comment on an issue,
-  and `.github/scripts/intake-decision.sh` lowercases multibyte-safely for that
-  exact reason — so the rule would have answered them in English, by the rule,
-  with documentation behind it. Found in review.
-
-  The only exception is the owner writing in English and asking for an English
-  answer.
+  Drifting back into English mid-session is the common way this fails: an agent
+  writes an English commit message, then keeps going in English into the chat.
+  Repository text and conversation are different artefacts with different
+  readers, and the language follows the reader, not the paragraph before it. The
+  only exception is the owner writing in English and asking for an English
+  answer. OD-21 carries the provenance and the two corrections this rule has
+  already taken — this file states the rule and does not narrate its history.
 - **The README exists twice, and the two are one document.** `README.md` is the
   English original and [`README.ru.md`](README.ru.md) is its Russian version.
   Any change to one is made in the other **in the same commit** — not "later",

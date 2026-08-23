@@ -325,6 +325,21 @@ How to resume:
 
 and the issue gets `agent:blocked` plus `needs-hardware` or `needs-owner`.
 
+**On an issue or pull request this block is bilingual — English first, Russian
+below.** `CLAUDE.md`'s Conventions and
+[OD-21](../research/OWNER_DECISIONS.md#od-21--the-owner-is-addressed-in-russian-and-the-split-is-by-reader-not-by-surface)
+item 3 say why: the reader of a `BLOCKED` block is the owner, who reads Russian,
+and the surface is public, so both facts hold at once. English first keeps the
+`^\s*BLOCKED:` line and the field names machine-readable and keeps a passing
+visitor served.
+
+The field names above stay English in both halves — they are the format, not
+prose. Only their contents are written twice. This paragraph exists because the
+document said *"the comment format is `CLAUDE.md`'s"* while defining an
+English-only block, so an agent opening it for the format — which is where the
+format is — would have been compliant with this file and in breach of the other.
+Found in review.
+
 **When to stop and ask**, and only these:
 
 1. an unknown product requirement;
