@@ -30,8 +30,8 @@ The executable half is [`meshcore-ble-frame-capacity/`](meshcore-ble-frame-capac
 |---|---|---|---|---|
 | 1 | **Protocol / buffer maximum** | **176** | `#define MAX_FRAME_SIZE 176`, `src/helpers/BaseSerialInterface.h:5` — a bare `#define` with no `#ifndef`, so no build flag moves it | the protocol's. Both peers must agree; it is not negotiable |
 | 2 | **ATT notification payload** | **negotiated ATT MTU − 3** | the Bluetooth Core specification: a Handle Value Notification spends 3 octets on opcode and handle | the *link's*, settled per connection |
-| 3 | **Effective frame ceiling** | **min(2, 1)**, and on a fan-out wrapper the **minimum across the sinks a write actually reaches** | upstream `deliverableFrame()` and `MultiSerialInterface::maxFrameSize()` | the transport set's, and it changes when an interface is enabled or disabled |
-| 4 | **Application chunk payload** | **3 − the builder's own header** (2 bytes for the chunked paths measured upstream) | each frame builder | the application's |
+| 3 | **Effective frame ceiling** | the **smaller of rows 1 and 2**, and on a fan-out wrapper the **minimum across the sinks a write actually reaches** | upstream `deliverableFrame()` and `MultiSerialInterface::maxFrameSize()` | the transport set's, and it changes when an interface is enabled or disabled |
+| 4 | **Application chunk payload** | **row 3 minus the builder's own header** (2 bytes for the chunked paths measured upstream) | each frame builder | the application's |
 
 On an ESP32 companion whose link negotiates MTU 176 those are **176, 173, 173
 and 171** — four different numbers, and the one a client must size its chunks
@@ -69,11 +69,19 @@ transferable part and the last row alone does not show it.
 ### What #939 found, and why nobody found it for months
 
 `companion_radio` holds a `MultiSerialInterface` as its `_serial`. That wrapper
-overrides nine `BaseSerialInterface` methods — `enable`, `disable`, `isEnabled`,
-`isConnected`, `loop`, `isWriteBusy`, `writeFrame`, `checkRecvFrame` — and **not
-`maxFrameSize()`**. So every caller got `BaseSerialInterface`'s default, 176, and
-the BLE interface's MTU-aware answer was never reached on the companion path, on
-any board, on any link.
+overrode **eight** `BaseSerialInterface` methods — `enable`, `disable`,
+`isEnabled`, `isConnected`, `loop`, `isWriteBusy`, `writeFrame`,
+`checkRecvFrame` — and **not `maxFrameSize()`**. So every caller got
+`BaseSerialInterface`'s default, 176, and the BLE interface's MTU-aware answer
+was never reached on the companion path, on any board, on any link.
+
+> Upstream's own commit message says *nine*, and lists those eight. Counted here
+> at both revisions: eight `override`s at `fda4cdd8`, nine at `4f5e8b7a` — the
+> ninth being the `maxFrameSize()` the same commit adds. The message describes
+> the state before its change with the count from after it. Recorded because this
+> document is meant to be checkable, and a number transcribed from a commit
+> message is not a number that was checked. **Vanilla's wrapper at `d929643` has
+> the same eight**, which is the shape without the capacity concept at all.
 
 **Every earlier fix was to code that was not called.** They were reviewed,
 tested, merged and shipped, and their tests went green, because the tests called

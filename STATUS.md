@@ -80,7 +80,7 @@ in both cases.
   what an MTU-176 BLE link delivers, and 171 is a chunk payload after a 2-byte
   header. A MeshCore derivative lost the difference for months and shipped three
   fixes to code the firmware never called, because the wrapper holding the
-  transports overrode nine methods and not the capacity query. **Vanilla at our
+  transports overrode eight methods and not the capacity query. **Vanilla at our
   pin cannot have that defect — it has no capacity query at all**, and four of
   its producers size against the buffer: `logRxRaw` fills a frame to exactly 176,
   and three others can build 177 bytes, which every transport refuses silently.

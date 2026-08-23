@@ -2161,7 +2161,7 @@ Recommended next action:
   header is then taken out of it.
 - **The upstream defect is a wrapper, not arithmetic.** A MeshCore derivative
   merged three fixes to code its own firmware never called: the wrapper holding
-  the transports overrode nine methods and not the capacity query, so the
+  the transports overrode eight methods and not the capacity query, so the
   MTU-aware leaf was unreachable and its tests passed anyway. Reproduced here by
   compiling their headers either side of the fix — `pre` fails exactly the four
   wrapper checks, `post` passes all 31.
