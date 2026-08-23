@@ -531,14 +531,22 @@ receiver of its own would take a permanent trust penalty. That is the product
 **Committed to**, its **Testable** list and T-026's acceptance — it was in none
 of them, so nothing would have noticed it was never built.
 
-*§3a also breaks a detector already in the tree.* `TrustEvaluator::compare_provider`
-raises `ProviderDisagreement` past 250 m inside a 5 s window with no notion of
-which body either fix came from. §3a makes two bodies 300 m apart the ordinary
-case — a node in a bag by the door, the configuration OD-8 asks for by name — so
-a good node fix would degrade trust in a good local fix. The same failure was
-already closed on the **time** axis by the comparison window; the **space** axis
-now has the state that closes it, and consulting it is in T-026's acceptance with
-a host test.
+*§3a sits next to a detector already in the tree, and the second draft tried to
+overrule it in prose.* `TrustEvaluator::compare_provider` raises
+`ProviderDisagreement` past 250 m inside a 5 s window with no notion of which
+body either fix came from, and §3a makes two bodies 300 m apart the ordinary
+case — a node in a bag by the door, the configuration OD-8 asks for by name. The
+draft answered that by requiring the comparison to consult co-location. **Review
+proved that wrong against the tree three ways**: it failed its own fixture, it
+contradicted two passing tests in `tests/test_trust.cpp` — one of them the
+regression test for the silence-not-an-all-clear rule it cited as precedent —
+and, since nothing produced any value but `Unknown`, it would have made a
+weight-30 spoofing signal unreachable on every pair including local-versus-local.
+So §3a governs the **claim** and not the arithmetic: `SameBody` is produced only
+by this board's own receiver for its own fixes, co-location is never an input to
+`TrustState`, and the pair comparison keeps the behaviour its tests describe.
+Whether that behaviour should change is **T-141**, an ADR of its own — because
+an amendment that switches off a trust signal is a decision, not a description.
 
 **T-130 is new, and it exists because a gate pointed at the wrong task.** Fifteen
 citations across five files blocked the retrofit magnetometer's bus hazard on

@@ -233,6 +233,48 @@ stale silently. The protocol is
   moved.
 - **Hardware required:** no.
 
+### T-141 · Should co-location scope `ProviderDisagreement`? An ADR, not an amendment
+- **Priority:** P2
+- **Dependencies:** [ADR-0009](docs/adr/0009-heading.md) §3a (**done**), which
+  defines the state and deliberately does not use it here.
+- **Goal:** `TrustEvaluator::compare_provider` raises `ProviderDisagreement`
+  when two fixes inside the 5 s window are more than 250 m apart, with no notion
+  of which body either came from. ADR-0009 §3a makes two bodies far apart the
+  ordinary case — a node in a bag by the door while the wearer sits at a desk is
+  the configuration [OD-8](docs/research/OWNER_DECISIONS.md) asks for by name —
+  so a good node fix costs trust in a good local fix, at weight 30. **That is a
+  real tension and it is not a documentation defect.** An earlier draft of §3a
+  tried to settle it in prose and review proved the settlement wrong three ways:
+  it failed its own fixture, it contradicted two passing tests, and because
+  nothing produced any co-location value but `Unknown` it would have disabled
+  the signal for every pair including local-versus-local.
+- **Acceptance:** an ADR that decides one of — scope the comparison by
+  co-location; keep raising the bit but stop weighting it when the two fixes are
+  known not to share a body; report the separation without a reason bit; or
+  leave it exactly as it is and say why. Whatever it decides, it states what
+  `ProviderDisagreement` then means under
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §4 (*evidence about both providers,
+  belonging to neither*), and it rewrites or keeps
+  `tests/test_trust.cpp`'s two fixtures **deliberately** — the ~550 m
+  `NodeGnss` disagreement and the live-bit-left-standing case — rather than
+  discovering them when the build goes red. A change that clears a live bit is
+  refused outright: `trust.cpp` and the same test file already forbid it, and a
+  test written as *"assert no bit is set"* cannot tell an early return from a
+  `set(..., false)` that clears one. Any test here asserts both the bit's
+  absence **and** that a previously raised bit survives.
+- **Watch for:** the evaluator cannot consult co-location on the side it stores.
+  `TrustEvaluator` keeps a bare `Position` (`trust.h`), which is the coordinate
+  pair; `PositionSource` — and anything sitting beside it — lives on
+  `GnssObservation`, which is passed in and not retained. So any decision that
+  needs *both* fixes' co-location needs a storage change first, and that is part
+  of this task rather than a surprise inside it. Found in review, against an
+  earlier draft that required the comparison to consult a state it could not
+  reach.
+- **Research status:** the tension is stated; the decision is not made
+- **Implementation status:** not started
+- **Tests:** host tests in `tests/test_trust.cpp`, both directions
+- **Hardware required:** no
+
 ### T-130 · The retrofit magnetometer's own bus question, which T-096 does not ask
 - **Priority:** P2, and it gates every magnetometer interference measurement on
   the Waveshare unit.
@@ -284,7 +326,12 @@ stale silently. The protocol is
   needs neither.
 - **ID note:** allocated as **T-130**, clear of `T-126` on `main` and of every
   number visible on an open branch, because four branches have already collided
-  on `T-111`–`T-113`.
+  on `T-111`–`T-113`. **This file is one of the four**: the `T-111` below is
+  this branch's claim on that number and `main` has since taken `T-112` and
+  `T-113` for other work, so `T-111` renumbers at merge time if anything else
+  has taken it by then. Every agent reads `TASKS.md` at branch time and takes
+  highest-plus-one, which is why the collision keeps happening and why saying so
+  in the entry is worth more than picking a number and hoping.
 
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
@@ -1147,19 +1194,25 @@ stale silently. The protocol is
   From ADR-0009 §3a: **co-location carried in a field of its own beside
   `PositionSource`**, defaulting to `Unknown`, and never in `PositionValidity`,
   `TrustState` or a `TrustReason` bit — an eleventh axis under
-  [ADR-0011](docs/adr/0011-gnss-integrity.md) §2. A node-supplied fix whose
-  co-location is `Unknown` reaches the screen labelled as the node's, and costs
-  nothing in `TrustState`: replaying the same fix with the state set and unset
-  must give an identical verdict and identical reason bits. Without this the
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §2. `SameBody` is produced by one
+  thing only — this board's own receiver, for its own fixes; everything over the
+  node link is `Unknown` and nothing promotes it. A node-supplied fix whose
+  co-location is `Unknown` reaches the screen labelled as the node's, and the
+  label is `LocationService`'s rather than an application's, per
+  [ADR-0002](docs/adr/0002-companion-is-optional.md) §2. Without this the
   Waveshare board, which has no receiver of its own, loses the only navigation
-  story it has. And **`TrustEvaluator::compare_provider` must consult the
-  state**: it raises `ProviderDisagreement` past 250 m within a 5 s window with
-  no notion of which body either fix came from, and §3a makes two bodies 300 m
-  apart the ordinary case rather than evidence of a fault. Two fixes whose
-  co-location is `Unknown` are neither disagreement nor agreement — the same
-  silence-not-an-all-clear rule the comparison window already applies on the time
-  axis. Host test: replay `LocalGnss` and `NodeGnss` 300 m apart inside the
-  window and assert no `ProviderDisagreement` bit is set.
+  story it has. **Co-location costs a fix nothing in `TrustState`**: take one
+  fix, replay it with the state `SameBody` and with it `Unknown`, and assert an
+  identical verdict and identical reason bits — scoped to the fix's own weight,
+  which is the assertion that fails if somebody re-implements the state as a
+  reason bit. **It is not an input to the pair comparison.**
+  `TrustEvaluator::compare_provider` keeps the behaviour
+  `tests/test_trust.cpp` already asserts — a `NodeGnss` fix ~550 m out raises
+  `ProviderDisagreement`, and a live bit is left standing by a comparison that
+  could not be made — and an implementation of this task that reddens either has
+  changed something nobody asked it to. Whether that behaviour *should* change,
+  given that a node in a bag by the door is the configuration OD-8 asks for, is
+  **T-141** and not this task.
 - **Research status:** done
 - **Implementation status:** not started
 - **Tests:** host tests over recorded NMEA including stationary traces; a
@@ -1939,7 +1992,18 @@ Recommended next action:
 ### T-111 · The node IMU needs a capability model of its own
 - **Priority:** P2
 - **State:** filed, not started.
+- **Waiting on:** the part existing. OD-17 *plans* an accelerometer and
+  *probably* a gyroscope for the node; neither is ordered, so the capability
+  question is about a device nobody can point at. It sits here rather than in
+  `## READY` for that reason and not because anything technical blocks it — the
+  design work could be done today and would be guessing at a part list. Nothing
+  here needs hardware to *decide*; it needs a decision that the hardware is
+  real. An earlier version of this entry paired *"Dependencies: none"* with
+  *"Not blocked on hardware"* under a `## WAITING` heading, which reads as
+  ready-to-start filed in the wrong section. Found in review.
 - **Issue:** [#93](https://github.com/hleserg/Attadipa/issues/93).
+- **ID note:** `T-111` is contested — see T-130's note. Renumber at merge time
+  if `main` has taken it.
 - **What:** [OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)
   plans an accelerometer, and probably a gyroscope, for the node — planned, not
   ordered, and the gyroscope only probably (OD-17 quotes the words). For GNSS power
@@ -1954,10 +2018,15 @@ Recommended next action:
   still is not the wearer standing still, even though (unlike heading) the
   node's own IMU correcting the node's own GNSS needs no cross-body transform
   ([ADR-0009](docs/adr/0009-heading.md) §3a).
-- **Dependencies:** none for the design; no node hardware exists yet, so
-  nothing here is `NOT EXECUTED — HARDWARE REQUIRED`, it is un-started design.
-- **Not blocked on hardware.** The shape of the model does not depend on which
-  IMU part the node ends up carrying.
+- **Dependencies:** none *technical*. Nothing here is
+  `NOT EXECUTED — HARDWARE REQUIRED` either — it is un-started design, not a
+  measurement. What it waits on is the decision above: the node IMU is planned
+  and not ordered, and a capability model for a part nobody has chosen is a
+  guess with a task number on it. **That is why this is in `## WAITING` and not
+  in `## READY`**, and the two lines this replaces read as the opposite.
+- **Not blocked on hardware existing to *test* against.** The shape of the model
+  does not depend on which IMU part the node ends up carrying — only on there
+  being one.
 
 ---
 

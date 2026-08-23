@@ -1064,7 +1064,12 @@ the two that actually conflicted.
 
 > ### The gap between OD-15 and OD-17 is deliberate
 >
-> **There is no OD-16 in this file, and that is not an omission to fix.** Three
+> **There is no OD-16 in this file *on this branch*, and that is not an omission
+> to fix here.** The statement is about `main` at the time of writing and about
+> what this branch adds; [#92](https://github.com/hleserg/Attadipa/pull/92) is
+> open and does add one, and whichever of the two merges first takes the number
+> while the rest renumber. Read the sentence as *"this branch does not claim
+> OD-16"*, not as a fact about the repository a week from now. Three
 > open pull requests each wrote an entry numbered OD-16 against the same `main`,
 > so the number belongs to whichever lands first and the rest renumber. Writing a
 > forward reference here would be a prediction about merge order — it would point

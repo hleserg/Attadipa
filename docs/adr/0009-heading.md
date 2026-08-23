@@ -237,8 +237,9 @@ screen says which, in words."* So a node-supplied *position* reaches the wearer'
 screen, labelled as the node's; a node-supplied *heading* does not reach the
 arrow at all.
 
-**One detector already in the tree will fire on this, and §3a is what makes it
-wrong.** `TrustEvaluator::compare_provider`
+**One detector already in the tree fires on this configuration, and an earlier
+version of this section tried to legislate it away.**
+`TrustEvaluator::compare_provider`
 ([`core/src/trust.cpp`](../../core/src/trust.cpp)) raises
 `TrustReason::ProviderDisagreement` when two positions inside the 5 s comparison
 window are more than `provider_disagreement_mm` apart — 250 m by default
@@ -252,12 +253,53 @@ fix would degrade trust in the wearer's own perfectly good fix.
 
 The same failure was already closed on the **time** axis — the comparison window
 exists because *"a node's position arriving after the watch's own fix went stale
-is measured against wherever the wearer was standing several minutes ago"*. §3a
-introduces the state that closes it on the **space** axis, and the comparison has
-to consult it: two fixes whose co-location is `Unknown` are not evidence of
-disagreement, and must not be recorded as such — nor as agreement, by the same
-silence-not-an-all-clear rule the window already follows. Carried into T-026's
-acceptance. Found in review.
+is measured against wherever the wearer was standing several minutes ago"*. The
+space axis has the same shape, and an earlier version of this section wrote the
+same answer for it: that `compare_provider` *must consult* co-location, and that
+two fixes whose co-location is `Unknown` are neither disagreement nor agreement.
+
+**That was wrong three ways, and review proved each of them against the tree
+rather than against the argument.** It contradicted itself on its own fixture —
+with the state consulted, 300 m still exceeds the 250 mm-per-metre threshold, so
+the two replays it demanded be identical are not. It contradicted two tests that
+pass today: [`tests/test_trust.cpp`](../../tests/test_trust.cpp) asserts that a
+`PositionSource::NodeGnss` fix ~550 m from the local one **raises**
+`ProviderDisagreement`, and that a live bit is **left standing** when a later
+comparison cannot be made — the regression test for the very
+silence-not-an-all-clear rule the deleted paragraph cited as its precedent. And
+because nothing produced any co-location value other than `Unknown`, the
+exemption would have fired on every pair including local-versus-local, making a
+weight-30 spoofing-relevant signal unreachable. **An ADR does not get to switch
+off a trust signal in prose**, and one that reaches for a rule this large has
+stopped describing a decision and started making an undocumented one.
+
+**So this section governs the claim, not the arithmetic.** Co-location decides
+what the screen may say a position is *about*. It is not an input to
+`TrustState`, it does not gate `compare_provider`, and it changes nothing in the
+two fixtures above.
+
+**Who produces the value, because a state nothing can set is a constant.** A fix
+from this board's own receiver is co-located *by construction* — the receiver is
+strapped to the wrist the position is about — so a `LocalGnss` fix carries
+`SameBody`. Everything arriving over the node link carries `Unknown`, because
+nothing on either board measures node-to-wearer separation, which is this
+section's own premise. There is deliberately no third producer and no way to
+promote `Unknown` to `SameBody` by inference: the promotion would be the
+confident number on an unobservable quantity that §3 exists to refuse.
+
+**And the tension is real, so it is filed rather than legislated.** A node in a
+bag by the door with a perfectly good fix 300 m from the wearer's perfectly good
+fix raises `ProviderDisagreement` today, and that is the configuration OD-8 asks
+for by name. Whether the comparison should be scoped by co-location, whether the
+disagreement should be reported without costing trust, or whether it should be
+left exactly as it is, is a **trust-engine decision with its own tests**: it
+changes what `ProviderDisagreement` means under
+[ADR-0011](0011-gnss-integrity.md) §4 — *evidence about both providers, belonging
+to neither* — and it invalidates two shipped regression tests. That is an ADR of
+its own, filed as **T-141**. Until it is answered the tree's behaviour stands
+unchanged, and this section says so instead of quietly overruling it. Found in
+review, twice: the first version put the state on the wrong field, the second put
+the wrong rule on the right field.
 
 [OD-7](../research/OWNER_DECISIONS.md) item 3's *"never presented as the wearer's
 own fix"* says the same thing, and an earlier version of this section rested on it
@@ -389,7 +431,11 @@ when the provider changes. A Navigator that is designed for the states it will
 actually be in. **Co-location as a field of its own beside `PositionSource`**
 (§3a), defaulting to `Unknown`, never folded into `PositionValidity`,
 `TrustState` or a `TrustReason` bit — an eleventh axis under ADR-0011 §2 and
-subject to that section's rule.
+subject to that section's rule. **`SameBody` is produced by exactly one thing**:
+this board's own receiver, for its own fixes. Everything arriving over the node
+link is `Unknown`, and nothing promotes it. **It is not an input to the trust
+engine** — `compare_provider` keeps the behaviour its tests describe, and
+whether that behaviour should change is T-141 rather than this ADR.
 
 **Testable.** In the simulator: scripted heading and scripted GNSS, including
 zero speed, a speed ramp across the gate, a node attaching with a `NodeBody`
@@ -397,17 +443,31 @@ heading, and a stale heading. The assertion that matters: **no configuration of
 inputs causes a wrist-relative arrow to be drawn from a `NodeBody` or
 `CourseOverGround` source.**
 
-For §3a, three more, none of which need hardware. **One:** a node-supplied
+For §3a, four more, none of which need hardware. **One:** a node-supplied
 position with co-location `Unknown` reaches the screen and is labelled as the
 node's fix, not the wearer's — the Waveshare configuration, where refusing it
-would leave the board with no navigation at all. **Two:** co-location `Unknown`
-costs the fix nothing in `TrustState` — replay the same fix with the state set
-and unset and assert the verdict and the reason bits are identical, which is the
-assertion that fails if somebody re-implements it as a `TrustReason` bit.
-**Three:** the field is not `PositionValidity` and not `TrustState` — a
-compile-time assertion that both enumerations still hold exactly their documented
-values, so appending `Unknown` to either is a build failure rather than a silent
-reordering. On hardware: `NOT EXECUTED — HARDWARE REQUIRED`.
+would leave the board with no navigation at all. The label is
+`LocationService`'s: under [ADR-0002](0002-companion-is-optional.md) §2 an
+application asks the owning service and provenance is that service's business,
+so the distinction is drawn where the position is handed out and **not** by an
+application reading `PositionSource`, which ADR-0004 forbids. **Two:**
+co-location costs a fix nothing in `TrustState` — take **one** fix, replay it
+with its co-location `SameBody` and with it `Unknown`, and assert the verdict
+and the reason bits are identical. Scoped to the fix's own weight on purpose:
+this is the assertion that fails if somebody re-implements the state as a
+`TrustReason` bit, and it says nothing about what a *pair* comparison does,
+because the pair rule is T-141's to decide and not this ADR's. **Three:** the
+two fixtures the trust suite already holds still pass unchanged — a `NodeGnss`
+fix ~550 m out raises `ProviderDisagreement`, and a live bit is left standing by
+a comparison that could not be made. An implementation of §3a that reddens
+either has changed something §3a did not ask for. **Four:** the field is not
+`PositionValidity`, not `TrustState` and not a reason bit — a compile-time
+assertion that `kPositionValidityCount`, the `TrustState` enumerators and
+`kTrustReasonCount` all still hold exactly their documented values, so appending
+`Unknown` to any of the three is a build failure rather than a silent
+reordering. The third of those is the one the earlier draft omitted, and the
+reason-bit reading is the one §3a calls *the worst of the three, because it
+looks right*. On hardware: `NOT EXECUTED — HARDWARE REQUIRED`.
 
 **Open.** **H10** — the speed gate, per GNSS module. **A5 and A6 are answered**
 (2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-17): a

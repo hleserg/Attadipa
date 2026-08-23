@@ -16,11 +16,19 @@ that matters is Evidence:
 | `BLOCKED` | there is a physical reason to suspect it, and it cannot be measured here yet. The blocker is named per row and is a fact, not an absence — a part not fitted, a rail not chosen, a board not owned |
 
 `BLOCKED` is not a fifth degree of certainty. It is the same state as
-`THEORETICAL RISK` about the *effect*, plus a named obstacle to finding out. It
-replaced `NOT MEASURABLE`, which read as a property of physics rather than of
-this project's current hardware, and which said "never" about rows that a
-soldering iron and a decision about a rail would open. Where an older document
-says `NOT MEASURABLE`, it means this.
+`THEORETICAL RISK` about the *effect*, plus a named obstacle to finding out.
+
+**On the name, because this file got the history wrong.** The binding
+specification's own vocabulary for this matrix ends in `NOT MEASURABLE ON
+CURRENT HARDWARE` (final §29, *Interference matrix*), and those last four words
+are exactly the qualification an earlier version of this paragraph complained
+was missing — it quoted the term as bare `NOT MEASURABLE` and then called the
+specification *"an older document"*. What had drifted was this file's own
+abbreviation of the spec's term, not the spec. `BLOCKED` is kept because it is
+shorter and because it forces the obstacle into a named cell rather than leaving
+it implied by the label; it means precisely what the specification's fifth value
+means, and `NOT MEASURABLE ON CURRENT HARDWARE` in the specification means this.
+Found in review.
 
 A `THEORETICAL RISK` row is not permission to add a mitigation. Mitigating a
 problem that does not exist costs power and latency for nothing.
@@ -37,7 +45,7 @@ is known to exist.
 
 | Subsystem A | Subsystem B | Suspected effect | Evidence | Severity | Method | Mitigation | Board | Firmware |
 |---|---|---|---|---|---|---|---|---|
-| Haptic motor | Magnetometer | magnetic field distorts heading | **BLOCKED** — no motor is fitted to the retrofit board | — | — | — | Waveshare (no motor); T-Watch (not owned) | — |
+| Haptic motor | Magnetometer | magnetic field distorts heading | **BLOCKED** — no motor is fitted to the retrofit board, **unless T-105 says otherwise**: `AAC210602A1` is `CONFLICTING` between speaker and haptic actuator, and an actuator is a magnetic source | — | — | — | Waveshare (no motor); T-Watch (not owned) | — |
 | Haptic motor | IMU | vibration corrupts accelerometer | THEORETICAL RISK | — | — | — | — | — |
 | LoRa TX | GNSS acquisition | RF desensitisation | THEORETICAL RISK | — | — | — | — | — |
 | Watch↔node link TX | GNSS acquisition | RF desensitisation | THEORETICAL RISK | both | — | — | — | — |
@@ -45,7 +53,7 @@ is known to exist.
 | LoRa TX | Magnetometer | supply current transient | **BLOCKED** — the retrofit board has no LoRa at all, so no placement or rail decision opens this one | — | — | — | T-Watch only, and not owned | — |
 | Display DMA | GNSS | broadband EMI | THEORETICAL RISK | — | — | — | — | — |
 | High brightness | Battery / GNSS | supply droop | THEORETICAL RISK | — | — | — | — | — |
-| Audio amplifier | Magnetometer | speaker magnet and coil current | **BLOCKED** — sensor not placed (T-109), rail open (G-14), module pull-ups unknown, bus hazard T-130 | — | — | — | Waveshare | — |
+| Audio amplifier | Magnetometer | speaker magnet and coil current | **BLOCKED** — sensor not placed (T-109), rail open (G-14), module pull-ups unknown, bus hazard T-130, **and whether there is a speaker at all is T-105** — the part is `CONFLICTING` between speaker and haptic actuator | — | — | — | Waveshare | — |
 | Battery charging | GNSS | switching noise | THEORETICAL RISK | — | — | — | — | — |
 | Battery charging | Magnetometer | charge current field | **BLOCKED** — sensor not placed (T-109), rail open (G-14), module pull-ups unknown, bus hazard T-130 | — | — | — | Waveshare | — |
 
@@ -81,8 +89,13 @@ closed list of two that was true of one row:
      naming a rail: on the Waveshare board
      [HARDWARE_MATRIX](../research/HARDWARE_MATRIX.md) lists ALDO1, ALDO2 and
      ALDO3 as three bare 3.3 V rails and says which load sits on which is *"not
-     resolved from the text extraction"*, and both disturbing sources here carry
-     `D13` for exactly that. An earlier version named ALDO3 — which is the
+     resolved from the text extraction"* — `D13`. **Neither disturbing source
+     here has a rail recorded at all**, which is weaker than carrying `D13` and
+     was stated as if it were stronger: the Speaker row's rail column reads
+     *"via ES8311"*, which is a signal path and not a rail, and there is no
+     charging row in that table to read one off. So the confound cannot be
+     cleared by picking a different rail from the list — the load side is not
+     known either. Found in review. An earlier version named ALDO3 — which is the
      **T-Watch's** display-and-touch rail, and neither the audio path nor the
      charge path on either board. An engineer who read "don't share ALDO3",
      mounted on ALDO1 and believed the confound cleared would have a one-in-three

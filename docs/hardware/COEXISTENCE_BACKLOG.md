@@ -52,8 +52,8 @@ blocked, and saying so is more useful than quietly substituting a different test
 | C-05 | Priority model | DESIGN | **Yes** — must state plainly that SOS and CRITICAL outrank everything |
 | C-06 | GNSS coexistence tests | BLOCKED | hardware (A1) |
 | C-07 | LoRa coexistence tests | BLOCKED | hardware (A1) |
-| C-08 | Haptic / magnetometer tests | **BLOCKED** | placement (T-109) **and a vibration motor**: the unit the sensor is going into has none fitted, `OBSERVED` — T-097 |
-| C-09 | Audio / magnetometer tests | **BLOCKED** | placement (T-109), a rail (G-14), the module pull-ups, and the bus hazard **T-130**. The speaker is on the unit and `VERIFIED` |
+| C-08 | Haptic / magnetometer tests | **BLOCKED** | placement (T-109) **and a vibration motor**: the unit the sensor is going into has none fitted, `OBSERVED` — T-097. **T-105 can invert that**: `AAC210602A1` is `CONFLICTING` between speaker and haptic actuator |
+| C-09 | Audio / magnetometer tests | **BLOCKED** | placement (T-109), a rail (G-14), the module pull-ups, the bus hazard **T-130**, **and T-105**. What is `VERIFIED` is the part's marking, mounting and wiring; its *function* is `CONFLICTING` — speaker or haptic actuator |
 | C-10 | Display / GNSS tests | BLOCKED | hardware (A1) |
 | C-11 | Charging / GNSS tests | BLOCKED | hardware (A1) |
 | C-12 | Diagnostic trace | DESIGN + BUILD | **Yes** — and it must come *before* the tests that need it |
