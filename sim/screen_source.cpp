@@ -1,5 +1,7 @@
 #include "screen_source.h"
 
+#include "remote_input.h"
+
 #include <cstdio>
 #include <cstring>
 
@@ -53,7 +55,18 @@ bool LvglScreenSource::stable_since(std::uint32_t ms) const
     // success. `lv_anim_count_running()` closes that, and the two together are
     // what "the interface has settled" has to mean for a screenshot to be
     // evidence about a finished frame.
-    return lv_anim_count_running() == 0 && lv_display_get_inactive_time(nullptr) >= ms;
+    //
+    // Three terms, not two. LVGL's read timer runs at `LV_DEF_REFR_PERIOD`
+    // (33 ms here) while the simulator loop turns every 5 ms with a client
+    // attached, so a transition pumped into the FIFO at the top of an iteration
+    // can still be sitting there when `WaitStable` is answered further down the
+    // same one -- and neither term above can see it, because both are stamped
+    // by *processing*. `remote_input_pending()` is that FIFO. The queue behind
+    // it is checked by the bridge, which owns it; between the three, "settled"
+    // means the event has been delivered and its consequences have finished,
+    // rather than "nothing has happened here lately".
+    return remote_input_pending() == 0 && lv_anim_count_running() == 0 &&
+           lv_display_get_inactive_time(nullptr) >= ms;
 }
 
 const char* LvglScreenSource::build_id() const

@@ -112,7 +112,7 @@ void read_pointer(lv_indev_t* indev, lv_indev_data_t* data)
         // lets a single `lv_indev_read` dispatch all 64 queued transitions --
         // and every widget event they fire -- inside one `lv_timer_handler`.
         // That is the pause the screenshot is chunked to avoid
-        // (`bridge.h:139-145`), reintroduced next door. The remainder is not
+        // (`bridge.h:176-182`), reintroduced next door. The remainder is not
         // lost, it waits for the next 33 ms read, and a burst larger than this
         // is a client outrunning the interface rather than a gesture.
         ++g_read_burst;
@@ -148,6 +148,11 @@ void remote_input_set_button_listener(InputListener listener)
 void remote_input_set_pointer_listener(InputListener listener)
 {
     g_pointer_listener = listener;
+}
+
+std::size_t remote_input_pending()
+{
+    return g_transition_count;
 }
 
 void remote_input_pump()

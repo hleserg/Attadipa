@@ -167,9 +167,13 @@ Open every image. Look for:
 python3 tools/watch_control.py run tests/ui/scenarios/diagnostic_tour.yaml
 ```
 
-Steps are `screenshot` (named), `tap`, `swipe`, `drag`, `button`, `wait`,
-`input_reset`, and two weak assertions — `expect_screen_changed` and
-`expect_screen_same`. Weak on purpose: a pixel-exact expectation against a live
+Steps are `screenshot` (named), `tap`, `long_tap`, `double_tap`, `swipe`,
+`drag`, `gesture`, `button`, `wait`, `wait_stable`, `input_reset`, and two weak
+assertions — `expect_screen_changed` and `expect_screen_same`. **`wait_stable`
+is the one to reach for after an action**: it polls until the interface has been
+idle for `quiet_ms` *and* nothing is queued, pumped or animating, and it **fails
+the step** if that never happens — a `wait` of a fixed length is a guess that
+passes either way. Weak on purpose: a pixel-exact expectation against a live
 renderer fails on an antialiased glyph and gets switched off within a week.
 **The strong check is you, opening the PNGs.**
 

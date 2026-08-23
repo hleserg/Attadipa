@@ -103,9 +103,28 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         const std::uint32_t quiet_ms =
             static_cast<std::uint32_t>(body[0]) | (static_cast<std::uint32_t>(body[1]) << 8);
         Envelope reply;
-        reply.req_id             = envelope.req_id;
-        reply.op                 = Opcode::StableOk;
-        const std::uint8_t ready = source_.stable_since(quiet_ms) ? 1u : 0u;
+        reply.req_id = envelope.req_id;
+        reply.op     = Opcode::StableOk;
+        // The queue is asked **first**, and it is asked here rather than in the
+        // source. A source answers about what the interface has already
+        // processed -- an idle timer and a running animation are both stamped
+        // by processing -- so neither term can see an event that reached the
+        // device and has not been drained yet. That event is input, and it is
+        // the input the caller is waiting on: `tap` sends down and up in about
+        // ten milliseconds, and the drain is one loop iteration away, so
+        // `wait_stable` immediately afterwards used to answer against the idle
+        // the *previous* step left behind and say `ok`. The screenshot after it
+        // then re-rendered a tree that had never seen the tap. Not a rare race:
+        // the window is a whole read period wide and the round trips inside it
+        // are shorter than that.
+        //
+        // `queue_.size()` is the half the bridge can see without knowing what a
+        // display is, which is why it lives here. The other half -- events the
+        // simulator has pumped into LVGL's transition FIFO but LVGL's read
+        // timer has not consumed -- belongs to whoever owns that FIFO, and
+        // `LvglScreenSource::stable_since` carries it as a third term.
+        const bool         queued = queue_.size() != 0;
+        const std::uint8_t ready  = (!queued && source_.stable_since(quiet_ms)) ? 1u : 0u;
         send(reply, &ready, 1, emit, ctx);
         return;
     }

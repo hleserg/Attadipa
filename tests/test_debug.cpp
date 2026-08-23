@@ -1212,6 +1212,37 @@ void the_stability_answer_is_measured_against_the_duration_that_was_asked_for()
     CHECK(stable_reply(rig) == 0);
 }
 
+void an_event_still_in_the_queue_is_not_a_settled_interface()
+{
+    Rig rig;
+    // The screen says settled, loudly: four hundred milliseconds idle and
+    // nothing animating. This is exactly the state a preceding screenshot
+    // leaves behind -- half a second of no input on the Waveshare.
+    rig.screen.set_idle(400);
+
+    core::InputEvent tap{};
+    tap.type   = core::InputEventType::PointerDown;
+    tap.origin = core::InputOrigin::Remote;
+    CHECK(rig.queue.push(tap));
+
+    const std::uint8_t three_hundred[2] = {0x2C, 0x01};
+    rig.send(request(Opcode::WaitStable, 1, three_hundred, sizeof(three_hundred)), 10000);
+    CHECK(rig.sink.last_is(Opcode::StableOk));
+    // Not settled, because the event the caller is waiting on has reached the
+    // device and not the interface. The source cannot know that -- `FakeScreen`
+    // has no queue, which is why the neighbouring stability test cannot cover
+    // this and a reader must not take it as covering it.
+    CHECK(stable_reply(rig) == 0);
+
+    // Drained: the same instant, the same idle, the answer the screen gives.
+    core::InputEvent out;
+    CHECK(rig.queue.pop(out));
+    rig.sink.messages.clear();
+    rig.send(request(Opcode::WaitStable, 2, three_hundred, sizeof(three_hundred)), 10000);
+    CHECK(rig.sink.last_is(Opcode::StableOk));
+    CHECK(stable_reply(rig) == 1);
+}
+
 void a_hold_the_client_left_behind_is_still_released_once_it_is_gone()
 {
     Rig rig;
@@ -1306,6 +1337,7 @@ int main()
     a_flush_is_counted_like_an_overrun();
     a_stability_question_with_no_duration_in_it_is_refused();
     the_stability_answer_is_measured_against_the_duration_that_was_asked_for();
+    an_event_still_in_the_queue_is_not_a_settled_interface();
     a_hold_the_client_left_behind_is_still_released_once_it_is_gone();
 
     if (failures != 0) {

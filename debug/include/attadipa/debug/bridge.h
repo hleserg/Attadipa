@@ -105,7 +105,16 @@ public:
     virtual const ButtonDescriptor* buttons() const = 0;
 
     // True once the interface has settled: no input for at least `ms` -- a
-    // duration, not a point in time -- **and** nothing animating. The caller
+    // duration, not a point in time -- **and** nothing animating, **and**
+    // nothing still on its way in. The third is the one a source cannot
+    // usually see and the bridge checks for it: an event sitting in
+    // `core::InputQueue`, or in whatever the source pumps it into before the
+    // interface reads, is input that has reached the device and not the
+    // interface. `tap` sends down and up in about ten milliseconds and the
+    // drain is one loop iteration away, so a `wait_stable` immediately after
+    // an action used to be answered against the idle the *previous* step left
+    // behind, say `ok`, and let the screenshot after it re-render a tree that
+    // had never seen the tap. The caller
     // supplies the duration; `WaitStable` carries it in the body for exactly
     // this reason, because a source cannot know how long "settled" is for the
     // transition the host is waiting on.

@@ -2,6 +2,8 @@
 
 #include "attadipa/core/input.h"
 
+#include <cstddef>
+
 struct _lv_indev_t;
 
 namespace attadipa::sim {
@@ -53,6 +55,14 @@ void remote_input_attach(core::InputQueue& queue);
 
 // Drains the queue into LVGL. Called once per frame, before lv_timer_handler.
 void remote_input_pump();
+
+// How many pointer transitions are queued for LVGL's read timer and not yet
+// consumed. Zero means the FIFO is empty, which is one of the three things
+// "the interface has settled" has to mean -- the other two are LVGL's own idle
+// timer and its animation count, and neither can see this FIFO. Exposed rather
+// than inferred because `wait_stable` answered `ok` with a tap still sitting
+// here, and the screenshot after it caught the frame from before the tap.
+std::size_t remote_input_pending();
 
 // Notified for every event drained, whatever its origin.
 //

@@ -34,7 +34,12 @@ namespace attadipa::sim {
 // why its colours are literal -- see tools/ui/check_raw_values.py.
 void build_diagnostic_screen(const platform::BoardProfile& board);
 
-// Rebuilt on a theme or locale change, like the boot screen.
+// Rebuilt on a **locale** change, and deliberately not on a theme change --
+// which is where this differs from the boot screen and is why the difference is
+// stated rather than left to be inferred. The pattern's colours are test
+// vectors: pure primaries exist so a swapped channel is visible, and a palette
+// that followed the theme would make the screen unable to detect the thing it
+// is for. `main.cpp` wires this to the locale handler only.
 void rebuild_diagnostic_screen();
 
 // Fed from the input layer so that what is drawn is what the interface saw,

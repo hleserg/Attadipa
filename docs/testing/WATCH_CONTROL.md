@@ -27,6 +27,7 @@ real framebuffer and a real input path, on a desktop.
 | navigation paths and what each one reaches | touch sensitivity, palm rejection, wet fingers |
 | touch-target geometry and reachability | readability in sunlight |
 | whether an animation finishes — *after a `wait_stable`, which is what makes the frame a finished one* | power, thermals, timing under load |
+| whether an action **arrived** — `wait_stable` answers `false` while an event is still queued on the device or pumped and unread, not only while something is animating; those two are what a settled interface means and the first was missing | |
 
 The tool prints the build it is connected to. The simulator says `sim 0.0.1`.
 **If it says `sim`, nothing you saw is a hardware result** — `CLAUDE.md` is
