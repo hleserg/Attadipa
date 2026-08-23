@@ -532,6 +532,75 @@ jobs:
           PRODUCER: ${{ needs.gate.outputs.producer }}
         run: |
           set -euo pipefail
+
+          # WHEN THIS RUN STARTED, recorded before anything else in the job and
+          # therefore before the agent can push a commit. The hand-over uses it
+          # to tell a pull request this run put work on from one that merely
+          # carries `Fixes #N` -- see .github/scripts/promote-decision.sh. It is
+          # written here rather than read from a context because no context
+          # offers the writer job's own start, and `github.event...` timestamps
+          # can predate a queued run by hours.
+          echo "ATTADIPA_RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+          # WHAT THIS NUMBER ACTUALLY IS, read once, before anything is changed.
+          #
+          # `needs.gate.outputs.issue` is a PULL REQUEST number whenever the
+          # trigger was `issue_comment` on a pull request,
+          # `pull_request_review_comment` or `pull_request_review` -- three of
+          # this workflow's five triggers. Two facts follow from that and both
+          # were being guessed at until review of #85:
+          #
+          #   ATTADIPA_TARGET_KIND     which gh command edits it (see
+          #                            .github/scripts/gh-label.sh -- `gh issue
+          #                            edit` does not resolve pull requests, and
+          #                            every call here is `|| true`, so neither
+          #                            outcome was reported);
+          #   ATTADIPA_BLOCKED_BEFORE  whether agent:blocked was already there
+          #                            when this run started.
+          #
+          # The second replaces an inference. The hand-over treats agent:blocked
+          # at the end of a run as "the AGENT blocked itself, so do not talk over
+          # its BLOCKED comment", which is only true if the label cannot have
+          # arrived before the run -- and the argument for that held for issues
+          # and not for pull requests: claude-ci-repair.yml puts `ci:failed` +
+          # `agent:blocked` on a PULL REQUEST when repair gives up. Recording the
+          # fact costs one API call and removes the inference entirely.
+          #
+          # An unreadable lookup writes `unknown`, and the hand-over treats
+          # unknown as "not this run" -- it REPORTS rather than falling silent.
+          # Silence is the defect being fixed; a redundant outcome comment is
+          # not.
+          BEFORE_JSON=$(gh api "repos/$REPO/issues/$ISSUE" 2>/dev/null || echo "")
+          TARGET_KIND=issue
+          BLOCKED_BEFORE=unknown
+          if [ -n "$BEFORE_JSON" ]; then
+            TARGET_KIND=$(printf '%s' "$BEFORE_JSON" \
+              | jq -r 'if .pull_request then "pr" else "issue" end' 2>/dev/null || echo issue)
+            BLOCKED_BEFORE=$(printf '%s' "$BEFORE_JSON" \
+              | jq -r 'if ([.labels[]?.name] | index("agent:blocked")) then "true" else "false" end' 2>/dev/null || echo unknown)
+          fi
+          case "$TARGET_KIND" in pr|issue) ;; *) TARGET_KIND=issue ;; esac
+          case "$BLOCKED_BEFORE" in true|false) ;; *) BLOCKED_BEFORE=unknown ;; esac
+          echo "ATTADIPA_TARGET_KIND=$TARGET_KIND" >> "$GITHUB_ENV"
+          echo "ATTADIPA_BLOCKED_BEFORE=$BLOCKED_BEFORE" >> "$GITHUB_ENV"
+          echo "::notice::#$ISSUE is a $TARGET_KIND; agent:blocked before this run: $BLOCKED_BEFORE"
+
+          # The same split .github/scripts/gh-label.sh makes, written out here
+          # rather than sourced, because THIS step runs before the checkout --
+          # the claim has to happen the moment the writer starts, and a
+          # bootstrap checkout ahead of it would put a sparse working tree where
+          # the agent's full one goes. The two copies are held together by
+          # .github/tests/blocked-restart-test.sh, which asserts that neither
+          # place edits a label without asking which object it is editing;
+          # queue-scan.jq and stranded-failures.jq repeat the author filter for
+          # the same reason and say so in the same words.
+          label_edit() {
+            case "$TARGET_KIND" in
+              pr) gh pr edit "$ISSUE" --repo "$REPO" "$@" ;;
+              *)  gh issue edit "$ISSUE" --repo "$REPO" "$@" ;;
+            esac
+          }
+
           add=(agent:working agent:claude)
 
           case "$TASK_TYPE" in
@@ -568,9 +637,46 @@ jobs:
           # issue itself, and exits without clearing agent:working. The task is
           # then stuck working forever, the watchdog "unsticks" it two hours
           # later, and a finished task is re-queued on a loop.
-          gh issue edit "$ISSUE" --repo "$REPO" "${args[@]}" || true
-          for stale in agent:ready agent:review agent:failed; do
-            gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$stale" || true
+          #
+          # agent:blocked is in the list for a fourth reason, and it is the one
+          # that is easy to get wrong in the other direction. The `Hand over`
+          # step below re-reads the labels at the end and, if it finds
+          # agent:blocked, concludes the AGENT blocked itself during this run,
+          # writes no outcome comment, and exits. It cannot tell that apart
+          # from a label that was already on the issue before the run started.
+          # There is exactly one way an issue carrying agent:blocked can reach
+          # this step at all -- a person commenting `@claude`, because the
+          # comment event skips the claimed-state check by design, while
+          # queue-scan.jq and the intake gate both refuse a labelled or
+          # dispatched start on anything carrying it. So the person deliberately
+          # restarting a blocked task got a run that did the work and then
+          # reported nothing, every time -- which is the route the watchdog's
+          # own escalation comment leads with. Clearing it here makes the check
+          # below mean what it says: agent:blocked at hand-over time is a label
+          # THIS run applied. needs-owner is deliberately left alone -- a
+          # decision only the owner can make is not undone by starting a run.
+          # Found in review of #85; asserted by blocked-restart-test.sh.
+          #
+          # AND agent:blocked IS STRIPPED FROM ISSUES ONLY, which the second
+          # review of #85 asked for. The paragraph above reasons about issues
+          # throughout -- "a person commenting `@claude`" -- and this step also
+          # runs for PULL REQUESTS, where claude-ci-repair.yml writes
+          # `ci:failed` + `agent:blocked` when repair gives up and asks for a
+          # human. Removing it there would clear that escalation silently, and
+          # agent:blocked is one of the labels the unattended backstop requires
+          # ABSENT (docs/automation/attadipa-backstop-routine.md STEP 2) while
+          # `ci:failed` is not on that list -- so a pull request escalated to a
+          # person would become backstop-eligible the moment somebody commented
+          # `@claude` on it. It is not stripped, and the hand-over does not need
+          # it stripped any more: ATTADIPA_BLOCKED_BEFORE above records the fact
+          # directly instead of inferring it from the label's presence.
+          label_edit "${args[@]}" || true
+          stale_labels=(agent:ready agent:review agent:failed)
+          if [ "$TARGET_KIND" != "pr" ]; then
+            stale_labels+=(agent:blocked)
+          fi
+          for stale in "${stale_labels[@]}"; do
+            label_edit --remove-label "$stale" || true
           done
 
       - name: Check that an Anthropic credential exists
@@ -613,8 +719,18 @@ jobs:
             echo "an API account per token, which is a separate bill from the subscription."
             echo "How to resume: comment @claude on this issue."
           } > /tmp/blocked.md
-          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/blocked.md
-          gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true
+          # Same object question as the claim step, and the same answer it wrote
+          # down there: this step also runs when the trigger was a comment on a
+          # pull request. See .github/scripts/gh-label.sh. Written out rather
+          # than sourced because the checkout is the step after this one.
+          case "${ATTADIPA_TARGET_KIND:-issue}" in
+            pr)
+              gh pr comment "$ISSUE" --repo "$REPO" --body-file /tmp/blocked.md
+              gh pr edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true ;;
+            *)
+              gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/blocked.md
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true ;;
+          esac
 
       - uses: actions/checkout@v7
         if: steps.auth.outputs.ok == 'true'
@@ -986,6 +1102,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Which object is this? The claim step wrote it down at the start of
+          # the run; the fallback is the issue path, which is what every
+          # scheduled trigger dispatches. See .github/scripts/gh-label.sh for
+          # why `gh issue edit` is not safe to point at a pull request.
+          TARGET="${ATTADIPA_TARGET_KIND:-issue}"
+          # shellcheck source=.github/scripts/gh-label.sh
+          . .github/scripts/gh-label.sh
+
           LABELS=$(gh api "repos/$REPO/issues/$ISSUE" --jq '[.labels[].name] | join(",")')
 
           # Did the agent open a pull request for this issue? That is the
@@ -1068,26 +1192,121 @@ jobs:
                   "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}")
           echo "::notice::hand over as $KIND (${DETAIL:-no detail}${EXTRA:+, $EXTRA})"
 
-          # The agent labels the issue itself when it blocks — and a BLOCKED
-          # comment written by the agent says far more than this step could, so
-          # do not talk over it. Release the claim and stop: leaving
-          # agent:working beside agent:blocked makes the issue invisible to the
-          # watchdog while looking finished to a person, which is the worst of
-          # both. Smoke test A ended in exactly that state.
+          # THE AGENT LABELS THE ISSUE ITSELF WHEN IT BLOCKS -- OR SOMEBODY
+          # ELSE DID, WHICH IS THE WHOLE QUESTION. It WAS INFERRED, and the second
+          # review of #85 was right that the inference does not hold. It rested
+          # on the claim step stripping agent:blocked at the start of the run,
+          # and that strip is issue-only: on a pull request the label can be
+          # claude-ci-repair.yml's escalation, put there before this run existed.
+          # Inferring "the agent blocked itself" from it made a run that did the
+          # work report nothing -- #82's own shape, on the other half of the
+          # trigger surface.
+          #
+          # So the fact is recorded rather than deduced. The claim step wrote
+          # ATTADIPA_BLOCKED_BEFORE from a read taken before it changed anything.
+          # `unknown` means the read failed, and unknown is treated as "not this
+          # run": falling silent is the defect, and a redundant outcome comment
+          # beside a BLOCKED comment is a smaller cost than a finished run
+          # saying nothing at all.
+          #
+          # `.github/tests/blocked-restart-test.sh` asserts the pair, which lives
+          # in two steps of one workflow and is correct in neither alone.
           case ",$LABELS," in
             *,agent:blocked,*)
-              gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working || true
-              echo "::notice::#$ISSUE is blocked and the agent has said why; not commenting over it."
-              exit 0 ;;
+              if [ "${ATTADIPA_BLOCKED_BEFORE:-unknown}" = "false" ]; then
+                # agent:blocked was NOT there when this run started, so this run
+                # applied it -- and a BLOCKED comment written by the agent says
+                # far more than this step could. Release the claim and stop:
+                # leaving agent:working beside agent:blocked makes the issue
+                # invisible to the watchdog while looking finished to a person,
+                # which is the worst of both. Smoke test A ended in that state.
+                attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --remove-label agent:working || true
+                echo "::notice::#$ISSUE is blocked and the agent has said why; not commenting over it."
+                exit 0
+              fi
+              echo "::notice::#$ISSUE carried agent:blocked before this run started (ATTADIPA_BLOCKED_BEFORE=${ATTADIPA_BLOCKED_BEFORE:-unknown}); reporting the outcome rather than mistaking somebody else's label for this agent's."
+              ;;
           esac
 
           bash .github/scripts/agent-say.sh outcome \
             "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" "${REASON:-}" > /tmp/outcome.md
-          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/outcome.md
+          attadipa_label_comment "$TARGET" "$ISSUE" "$REPO" --body-file /tmp/outcome.md
+
+          # A DRAFT IS NOT A HAND-OVER. The prompt tells the agent to open the
+          # pull request as a draft while it is still moving and to mark it
+          # ready when it is not -- and the second half was left to the agent
+          # remembering, which it reliably did not. On 2026-08-22 five finished
+          # pull requests (#88, #92, #94, #95, #97) sat as drafts with green CI
+          # for hours; nothing merges a draft, so six issues stayed open with
+          # their fix already written and their `Fixes #N` already in place. The
+          # owner asked why. This is why.
+          #
+          # So the step that decides the run is done marks it ready, rather than
+          # asking the model to. `--undo` is never used: a person who puts a
+          # pull request back to draft has said something, and a later run must
+          # not overrule them. Only the four "done" kinds qualify; a cut-off run
+          # (done_pr_cut) leaves the draft alone, because a draft is exactly
+          # what half-finished work should be.
+          # Two of the four "done" kinds carry a pull request this run actually
+          # moved -- done_pr (one was opened or found for the issue) and
+          # done_here (the run started from one and its head advanced). Those
+          # get marked ready. done_here_nopush pushed nothing, and done_nopr has
+          # no pull request at all, so neither has anything to promote.
+          #
+          # AND A DRAFT IS NOT ALWAYS OURS TO PROMOTE. For done_pr the number
+          # above came from `closedByPullRequestsReferences` -- whichever open
+          # pull request declares it closes this issue. Anybody can write
+          # `Fixes #N`, including an abandoned branch from a run three days ago,
+          # and that heuristic has already misfired here (#75 reported as #71).
+          # While it only put a wrong number in a sentence, being wrong was
+          # cheap. Undrafting is not: a draft can never read
+          # `mergeable_state: clean`, so taking one out of draft is exactly what
+          # makes a branch eligible for the unattended backstop. Review of #85
+          # asked for the guard handover-decision.sh already applies to
+          # done_here -- a moved head -- to reach done_pr as well.
+          #
+          # The decision is .github/scripts/promote-decision.sh, a file for the
+          # same reason as its three siblings. The two timestamps it needs are
+          # fetched here and nowhere else; a lookup that fails leaves them empty
+          # and the decision holds, which costs a person one button press.
+          PR_CREATED=""
+          PR_HEAD_AT=""
+          case "$KIND" in
+            done_pr)
+              if printf '%s' "${DETAIL:-}" | grep -qE '^[0-9]+$'; then
+                # shellcheck disable=SC2016  # GraphQL variables, bound by -F.
+                read -r PR_CREATED PR_HEAD_AT <<< "$(gh api graphql -f query='
+                  query($owner:String!, $repo:String!, $number:Int!) {
+                    repository(owner:$owner, name:$repo) {
+                      pullRequest(number:$number) {
+                        createdAt
+                        commits(last:1) { nodes { commit { committedDate } } }
+                      }
+                    }
+                  }' -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F number="$DETAIL" \
+                  --jq '.data.repository.pullRequest
+                        | "\(.createdAt // "") \(.commits.nodes[0].commit.committedDate // "")"' \
+                  2>/dev/null || echo "")"
+              fi ;;
+          esac
+
+          PROMOTE=$(bash .github/scripts/promote-decision.sh \
+                      "$KIND" "$PR_CREATED" "$PR_HEAD_AT" "${ATTADIPA_RUN_STARTED_AT:-}")
+
+          case "$KIND" in
+            done_pr|done_here)
+              if [ "${PROMOTE%% *}" != "promote" ]; then
+                echo "::notice::#${DETAIL:-?} stays a draft: ${PROMOTE#hold }"
+              elif printf '%s' "${DETAIL:-}" | grep -qE '^[0-9]+$'; then
+                gh pr ready "$DETAIL" --repo "$REPO" \
+                  && echo "::notice::marked pull request #$DETAIL ready for review" \
+                  || echo "::warning::could not mark #$DETAIL ready for review; it stays a draft and a person has to press the button"
+              fi ;;
+          esac
 
           case "$KIND" in
             done_pr|done_here|done_here_nopush|done_nopr)
-              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
+              attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --add-label agent:review --remove-label agent:working || true ;;
             done_pr_cut|done_here_cut)
               # agent:review only, and NOT agent:ready. The first version added
               # both -- a commit to read, and somebody to pick up the rest --
@@ -1098,11 +1317,11 @@ jobs:
               # for. Nothing would ever have come back for it, while the label
               # said something would. The comment says so in words instead --
               # words are the only thing that actually reaches a person here.
-              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:review --remove-label agent:working || true ;;
+              attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --add-label agent:review --remove-label agent:working || true ;;
             *)
               # agent:failed AND back to agent:ready: the label pair says both
               # "this went wrong" and "somebody should pick it up", and the
               # watchdog only reads the second. A failed task that nothing
               # re-queues is a task nobody ever looks at again.
-              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:failed --add-label agent:ready --remove-label agent:working || true ;;
+              attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --add-label agent:failed --add-label agent:ready --remove-label agent:working || true ;;
           esac

@@ -908,8 +908,47 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
   through the one door that no longer asks. The repository's own output starting
   its own writer: the exact loop the allowlist was built to prevent. The
   non-listable rule is now enforced in both places, the scan filter moved to
-  `.github/scripts/queue-scan.jq` so it can be executed, and 17 tests cover it in
+  `.github/scripts/queue-scan.jq` so it can be executed, and 37 tests cover it in
   CI. There was no test before, which is why review caught it and CI did not.
+- **The queue's own hand-over had four more of the same shape, and the review
+  that found them is the first one this repository has ever actually run.** All
+  four are a sentence that a mechanism does not honour, or a premise that holds
+  for issues and not for pull requests — [#82](https://github.com/hleserg/Attadipa/issues/82)'s
+  shape, one file over from where it was fixed. (1) The failure comment's only
+  budget-reset route was *"add `agent:ready` yourself"*, and by the time anybody
+  reads it the hand-over has already added that label: adding one that is
+  present raises no `labeled` event, so `failure-count.jq` records no reset and
+  an owner who fixed the real cause is escalated carrying every pre-fix failure.
+  It now says **remove it and add it back**, which is the only version that
+  raises the event. (2) The claim step's argument for stripping `agent:blocked`
+  — *"there is exactly one way an issue carrying it can reach this step"* — is
+  true of issues and false of pull requests: three of five triggers fire on one,
+  and `claude-ci-repair.yml` writes `ci:failed` + `agent:blocked` on a **pull
+  request** when repair gives up. Stripping it there clears a human escalation
+  and hands the branch to the unattended backstop, which requires `agent:blocked`
+  absent and never reads `ci:failed`. The strip is now issue-only and the
+  hand-over reads a **recorded** `ATTADIPA_BLOCKED_BEFORE` instead of inferring
+  ownership from the label's presence — an unreadable read reports rather than
+  falls silent, because silence is the defect. (3) `gh pr ready` was pointed at
+  whichever open pull request declares `Fixes #N`, which an abandoned branch
+  also declares; a draft can never read `mergeable_state: clean`, so undrafting
+  is precisely what makes a branch backstop-eligible. It now goes through
+  `.github/scripts/promote-decision.sh`, which promotes only on evidence this
+  run owns the branch — created during the run, or its head committed during it
+  — and holds on anything it cannot read. (4) The assertion guarding that step
+  **could not fail**: `grep -A3 'gh pr ready'` saw the three lines after the
+  command while the `case` selecting the kinds was above it. It is anchored on
+  the case block now, and each of these four is asserted in the direction that
+  reproduces the defect. Also: `gh issue edit` resolves `repository.issue(number:)`,
+  which does not resolve pull requests — the field that once put a GraphQL error
+  document inside an outcome comment — so every label edit now goes through
+  `.github/scripts/gh-label.sh`, and the stranded sweep applies `queue-scan.jq`'s
+  author filter so it stops re-queueing issues the scan will never pick. Two new
+  suites and three widened ones — `promote-decision-test.sh` 29,
+  `blocked-restart-test.sh` 21, `stranded-failures-test.sh` 18,
+  `gh-label-test.sh` 10 against a stub `gh` on `PATH`, `agent-say-test.sh` 61 —
+  and every one of the four findings above has an assertion proven to fail
+  against the code as it was.
 - **The silent refusal was reproduced, not theorised.** A task with a valid
   marker filed through the GitHub API ([#10](https://github.com/hleserg/Attadipa/issues/10))
   arrived as `claude[bot]`, was refused by the bot guard — correctly — and was
