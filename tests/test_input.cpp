@@ -94,6 +94,62 @@ void queue_counts_an_overrun_instead_of_hiding_it()
     CHECK(q.stats().pushed == InputQueue::kCapacity);
 }
 
+void peek_shows_the_head_without_taking_it()
+{
+    InputQueue q;
+    CHECK(q.peek() == nullptr);
+    CHECK(q.push(pointer(InputEventType::PointerDown, 5, 6)));
+    const InputEvent* head = q.peek();
+    CHECK(head != nullptr);
+    CHECK(head->type == InputEventType::PointerDown);
+    CHECK(head->x == 5 && head->y == 6);
+    // Looking is not taking: the same event is still there, and still first.
+    CHECK(q.peek() != nullptr);
+    InputEvent out;
+    CHECK(q.pop(out));
+    CHECK(out.x == 5 && out.y == 6);
+    CHECK(q.peek() == nullptr);
+}
+
+void a_selective_consumer_stops_at_the_head_and_keeps_the_order()
+{
+    // What the simulator's pump does, in the small. A consumer that can take
+    // buttons but has run out of room for pointers drains until the head is a
+    // pointer, and then stops -- **including** when buttons are queued behind
+    // it. `core/input.h` used to claim the opposite. Letting the button past
+    // would reorder input, which is the one thing this queue exists to prevent.
+    InputQueue q;
+    CHECK(q.push(button(InputEventType::ButtonDown, 0)));
+    CHECK(q.push(pointer(InputEventType::PointerDown, 1, 1)));
+    CHECK(q.push(button(InputEventType::ButtonUp, 0)));
+
+    int taken = 0;
+    InputEvent out;
+    for (;;) {
+        const InputEvent* next = q.peek();
+        if (next == nullptr) {
+            break;
+        }
+        const bool needs_slot = next->type == InputEventType::PointerDown ||
+                                next->type == InputEventType::PointerMove ||
+                                next->type == InputEventType::PointerUp;
+        if (needs_slot) {  // stands in for a full transition FIFO
+            break;
+        }
+        CHECK(q.pop(out));
+        ++taken;
+    }
+    // The button in front went through; the pointer and the button behind it
+    // are both still queued, in the order they arrived.
+    CHECK(taken == 1);
+    CHECK(q.size() == 2);
+    const InputEvent* head = q.peek();
+    CHECK(head != nullptr && head->type == InputEventType::PointerDown);
+    CHECK(q.pop(out) && out.type == InputEventType::PointerDown);
+    CHECK(q.pop(out) && out.type == InputEventType::ButtonUp);
+    CHECK(!q.pop(out));
+}
+
 void queue_wraps_without_losing_order()
 {
     InputQueue q;
@@ -276,6 +332,8 @@ int main()
     queue_is_first_in_first_out();
     queue_counts_an_overrun_instead_of_hiding_it();
     queue_wraps_without_losing_order();
+    peek_shows_the_head_without_taking_it();
+    a_selective_consumer_stops_at_the_head_and_keeps_the_order();
 
     a_button_goes_down_and_up();
     a_button_past_the_profile_is_refused();

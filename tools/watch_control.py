@@ -215,17 +215,13 @@ def cmd_drag(watch: Watch, args) -> int:
 
 
 def cmd_gesture(watch: Watch, args) -> int:
-    with open(args.file, "r", encoding="utf-8") as handle:
-        text = handle.read()
-    if args.file.endswith((".yaml", ".yml")):
-        import yaml  # type: ignore
-        data = yaml.safe_load(text)
-    else:
-        data = json.loads(text)
-    points = data["points"] if isinstance(data, dict) else data
-    duration = float(data.get("duration", 0.5)) if isinstance(data, dict) else 0.5
-    watch.gesture([(int(pt[0]), int(pt[1])) if not isinstance(pt, str)
-                   else parse_point(pt) for pt in points], duration)
+    # Through `scenario` rather than `int()` on each coordinate, so that a
+    # gesture file obeys the same pixels-or-fractions rule a scenario step
+    # does and refuses in the same sentences. Both were true of the scenario
+    # runner and neither was true here: `int(pt[0])` turned `[0.5, 0.5]` into a
+    # silent tap on (0, 0), and every parse failure was a traceback.
+    points, duration = scenario_mod.load_gesture(args.file, watch)
+    watch.gesture(points, duration)
     return after_action(watch, args, f"gesture of {len(points)} points", "gesture")
 
 

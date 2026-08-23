@@ -20,6 +20,7 @@ fails and the hex string says where.
 from __future__ import annotations
 
 import io
+import json
 import os
 import struct
 import sys
@@ -334,19 +335,73 @@ def the_tool_fails_loudly_with_no_device() -> None:
     check("could not connect" in stderr.getvalue(), "and the message names the cause")
 
 
+class _FakeScreen:
+    """Just enough of `Watch` for `resolve_point` -- a geometry, no socket.
+
+    Both boards are checked on the host this way, which is the point: the
+    defect being pinned here is a coordinate that only ever fitted one panel,
+    and a check that needs a running simulator would not have caught it in the
+    job that matters.
+    """
+
+    def __init__(self, width: int, height: int) -> None:
+        self._size = (width, height)
+
+    def screen_size(self) -> tuple[int, int]:
+        return self._size
+
+
+def _raw_points(path) -> list:
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)["points"]
+
+
 def scenarios_load() -> None:
     from watch import scenario  # noqa: PLC0415
+    from watch.client import WatchError  # noqa: PLC0415
 
     root = HERE.parent.parent
     tour = root / "tests" / "ui" / "scenarios" / "diagnostic_tour.yaml"
+    check(tour.exists(), "the shipped scenario is where both documents say it is")
     if tour.exists():
+        # No silent skip on a missing PyYAML. The old spelling matched
+        # "PyYAML" in the message and dropped the failure, so the group printed
+        # `ok` having parsed nothing -- and this is the *worse* place for that
+        # than the one next door, because `e2e_test.py` runs only behind
+        # ATTADIPA_BUILD_SIMULATOR while this runs unconditionally. On a host
+        # job without PyYAML, nothing would read `diagnostic_tour.yaml` at all
+        # and the count would not move. A skip that is worth taking says so in
+        # the count; see e2e_test.py's own note on the same shape.
         try:
             steps = scenario.load(str(tour))
+        except Exception as exc:  # noqa: BLE001
+            failures.append(
+                f"the shipped scenario failed to load: {exc}"
+                + (" -- install PyYAML; this is a real gap in the run, not a"
+                   " skip" if "PyYAML" in str(exc) else ""))
+        else:
             check(len(steps) > 0, "the shipped scenario parses into steps")
             check(all("action" in step for step in steps), "and every step names an action")
-        except Exception as exc:  # noqa: BLE001 - PyYAML may be absent
-            if "PyYAML" not in str(exc):
-                failures.append(f"the shipped scenario failed to load: {exc}")
+
+    gesture = root / "tests" / "ui" / "gestures" / "example.json"
+    check(gesture.exists(), "the shipped gesture file is where the documents say it is")
+    if gesture.exists():
+        # Both documents point at this file under a heading saying to run it on
+        # both boards, and nothing loaded it: it was written in Waveshare pixels
+        # and three of its five points are off a 240x240 panel, so it refused
+        # before a byte went out. Resolved without a connection, which is what
+        # makes the fractions provable on the host.
+        for width, height, board in ((240, 240, "t-watch-s3-plus"),
+                                     (410, 502, "waveshare-amoled-206")):
+            points, duration = scenario.load_gesture(
+                str(gesture), _FakeScreen(width, height))
+            check(len(points) >= 2 and duration > 0,
+                  f"the shipped gesture file parses into a path for the {board}")
+            check(all(0 <= x < width and 0 <= y < height for x, y in points),
+                  f"and every point lands inside the {board} panel")
+        check_raises(
+            WatchError, "and a fraction with no device to resolve it says so",
+            lambda: scenario.load_gesture(str(gesture)))
 
     with tempfile.TemporaryDirectory() as directory:
         path = os.path.join(directory, "steps.json")

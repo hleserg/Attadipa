@@ -1,5 +1,5 @@
 {
-  "_comment": "An L-shaped path, for `watch_control.py gesture --file`. Asymmetric on purpose: a mirrored or rotated frame draws a visibly different letter.",
+  "_comment": "An L-shaped path, for `watch_control.py gesture --file`. Asymmetric on purpose: a mirrored or rotated frame draws a visibly different letter. Coordinates are fractions of the panel so that it runs on both boards -- it used to be Waveshare pixels, and three of its five points were off the edge of a 240x240 T-Watch, which is the same defect diagnostic_tour.yaml records one directory over.",
   "duration": 0.6,
-  "points": [[80, 80], [80, 200], [80, 320], [180, 380], [300, 380]]
+  "points": [[0.2, 0.16], [0.2, 0.4], [0.2, 0.64], [0.44, 0.76], [0.73, 0.76]]
 }

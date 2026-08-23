@@ -138,11 +138,24 @@ public:
     //
     // A consumer that can accept some kinds of event and not others needs this:
     // it cannot decide whether it is able to take the next one until it has
-    // seen it, and `pop` would have already removed it by then. The simulator's
-    // pump uses it so that a full pointer FIFO stops pointer events without
-    // also stopping the buttons queued behind them, which do not go through
-    // that FIFO at all. The pointer is left in the queue and delivered on the
-    // next pump -- delayed, never dropped.
+    // seen it, and `pop` would have already removed it by then. Two things
+    // follow for the simulator's pump, and only the first was true before:
+    //
+    //   - a consumer that cannot take *this* event stops **without losing it**.
+    //     Guarding a drain with `pop` means the refused event is already gone;
+    //     peeking leaves it at the head for the next pump -- delayed, never
+    //     dropped.
+    //   - the drain is no longer stopped by a condition that does not apply to
+    //     the event in front of it. A full pointer FIFO used to stop the whole
+    //     loop, so buttons -- which consume no FIFO slot -- stopped too.
+    //
+    // What it does **not** do is let a button overtake a pointer queued ahead
+    // of it. This queue is strictly FIFO by design (see the ordering note at
+    // the top of this file), so a blocked pointer at the head holds everything
+    // behind it, buttons included, until a slot frees. That is the intended
+    // behaviour and not a limitation to route around: delivering the button
+    // first would reorder input, which is the one thing this queue exists to
+    // prevent. Only buttons *ahead* of the first blocked pointer get through.
     const InputEvent* peek() const { return count_ == 0 ? nullptr : &buffer_[head_]; }
 
     // Discards everything, counting what it discarded. Used by the tests and

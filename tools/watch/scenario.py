@@ -61,20 +61,67 @@ class Report:
         return all(step.ok for step in self.steps)
 
 
-def load(path: str) -> list[dict]:
-    with open(path, "r", encoding="utf-8") as handle:
-        text = handle.read()
+def read_document(path: str):
+    """The parsed contents of a scenario or gesture file, or a `WatchError`.
+
+    Shared so that every file this tool reads refuses in the same sentence.
+    `gesture --file` used to open, parse and index the document itself, with
+    none of the four failures below guarded, so a missing file or a mis-keyed
+    document came out as a traceback while the scenario runner next door had a
+    sentence for each.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError as exc:
+        raise WatchError(f"{path} could not be read: {exc.strerror}") from exc
     if path.endswith((".yaml", ".yml")):
         try:
             import yaml  # type: ignore
         except ImportError as exc:
             raise WatchError(
                 f"{path} is YAML and PyYAML is not installed. Either "
-                f"`pip install pyyaml` or write the scenario as JSON -- the "
+                f"`pip install pyyaml` or write it as JSON -- the "
                 f"structure is identical.") from exc
-        data = yaml.safe_load(text)
+        try:
+            return yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise WatchError(f"{path} is not valid YAML: {exc}") from exc
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise WatchError(
+            f"{path} is not valid JSON at line {exc.lineno}: {exc.msg}") from exc
+
+
+def load_gesture(path: str, watch: Watch | None = None):
+    """The points and duration of a gesture file, resolved against the panel.
+
+    Returns `(points, duration)`. Coordinates follow the same rule as a
+    scenario step -- whole numbers are pixels, a value strictly between 0 and 1
+    or a string ending in `%` is a fraction of the screen the device reported.
+    That rule is the whole reason this goes through `resolve_point` rather than
+    `int()`: the shipped `example.json` was written in Waveshare pixels, three
+    of its five points are off the edge of a 240x240 T-Watch, and both
+    `WATCH_CONTROL.md` and the skill point at it under a heading saying to check
+    both geometries.
+    """
+    data = read_document(path)
+    if isinstance(data, dict):
+        if "points" not in data:
+            raise WatchError(
+                f"{path} has no 'points' list; its top-level keys are: "
+                f"{', '.join(sorted(map(str, data))) or '(none)'}")
+        points, duration = data["points"], float(data.get("duration", 0.5))
     else:
-        data = json.loads(text)
+        points, duration = data, 0.5
+    if not isinstance(points, list) or not points:
+        raise WatchError(f"{path} does not contain a non-empty list of points")
+    return [resolve_point(point, watch) for point in points], duration
+
+
+def load(path: str) -> list[dict]:
+    data = read_document(path)
 
     if isinstance(data, dict):
         if "steps" not in data:
@@ -103,11 +150,7 @@ def _point(step: dict, key: str, watch: Watch | None = None) -> tuple[int, int]:
     T-Watch, so it silently only ever ran on the Waveshare while
     `WATCH_CONTROL.md` said "both boards, every time".
     """
-    value = step[key]
-    if isinstance(value, str):
-        x, _, y = value.partition(",")
-        return _axis(x, watch, "width"), _axis(y, watch, "height")
-    return _axis(value[0], watch, "width"), _axis(value[1], watch, "height")
+    return resolve_point(step[key], watch)
 
 
 def _axis(value, watch: Watch | None, axis: str) -> int:
@@ -130,6 +173,21 @@ def _axis(value, watch: Watch | None, axis: str) -> int:
         span = width if axis == "width" else height
         return int(round(value * span))
     return int(value)
+
+
+def resolve_point(value, watch: Watch | None = None) -> tuple[int, int]:
+    """One coordinate pair in pixels or as a fraction of the panel.
+
+    The public half of `_point`, so that `watch_control.py gesture --file`
+    resolves coordinates the same way a scenario step does instead of calling
+    `int()` on them -- which turned `[0.5, 0.5]` into a silent tap on (0, 0).
+    """
+    if isinstance(value, str):
+        x, _, y = value.partition(",")
+        return _axis(x, watch, "width"), _axis(y, watch, "height")
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise WatchError(f"{value!r} is not an x,y pair")
+    return _axis(value[0], watch, "width"), _axis(value[1], watch, "height")
 
 
 def _xy(step: dict, watch: Watch) -> tuple[int, int]:

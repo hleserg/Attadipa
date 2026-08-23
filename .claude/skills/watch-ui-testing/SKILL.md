@@ -102,6 +102,8 @@ python3 tools/watch_control.py drag  --from 60,420  --to 350,420 --duration 1.2
 python3 tools/watch_control.py button button-1 click
 python3 tools/watch_control.py button button-1 hold --duration 1.5
 python3 tools/watch_control.py gesture --file tests/ui/gestures/example.json
+#   fractions of the panel, so this one is board-independent -- it used to be
+#   Waveshare pixels and refused outright on a 240x240 T-Watch
 ```
 
 **`press` and `release` are not two commands.** Run as separate invocations

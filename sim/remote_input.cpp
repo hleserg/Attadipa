@@ -163,14 +163,22 @@ void remote_input_pump()
     // not -- the project has not decided what its buttons mean (D5), so they
     // reach listeners rather than an `lv_group`.
     //
-    // The FIFO-full check is per event rather than on the loop, and that is the
-    // whole of this paragraph's reason to exist. Guarding the drain meant a full
-    // pointer FIFO also stopped every **button** behind it -- and a button
-    // consumes no FIFO slot at all. Reachable inside the protocol's own limits:
-    // the bridge permits 500 events a second and about 485 drain, so sustained
-    // injection fills the 64-deep FIFO in a few seconds and the buttons stop
-    // with it. Peeking keeps the pointer event in the queue for the next pump:
-    // delayed, never dropped.
+    // The FIFO-full check is per event rather than on the loop, and it buys
+    // two things -- neither of which is "buttons overtake a full pointer FIFO",
+    // which an earlier version of this comment claimed and the code has never
+    // done. Guarding the whole drain meant a full pointer FIFO stopped every
+    // button as well, including buttons **ahead** of any pointer, and a button
+    // consumes no FIFO slot at all; and `pop`-then-refuse discarded the pointer
+    // it refused. Now the loop stops at the first event it cannot take and
+    // leaves it in the queue: delayed, never dropped.
+    //
+    // A button queued **behind** a blocked pointer still waits, because
+    // `InputQueue` is strictly FIFO and letting the button past would reorder
+    // input. Reachable inside the protocol's own limits -- the bridge permits
+    // 500 events a second and about 485 drain, so sustained injection fills the
+    // 64-deep FIFO in a few seconds -- and it is the correct outcome, not a
+    // residual defect. What is fixed is the case where nothing in front of the
+    // button needed a slot in the first place.
     core::InputEvent event;
     for (;;) {
         const core::InputEvent* next = g_queue->peek();
