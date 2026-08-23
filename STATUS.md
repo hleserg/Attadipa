@@ -588,6 +588,17 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 
 ## Recently completed
 
+- **Four open pull requests independently allocated the same task IDs.** Noticed
+  while filing this pass's two tasks. Every agent adds a task by reading
+  `TASKS.md` at branch time and taking the highest ID plus one, so four branches
+  cut from the same `main` all took `T-111`/`T-112`/`T-113`: #110 (T-112, T-113),
+  #112 (T-111, T-112, T-113), #115 (T-112) and the SEO branch, which has moved
+  its two to **T-120** and **T-121** to get out of the way. `check_docs.py`
+  catches a duplicate ID, so the second merge goes red rather than landing two
+  tasks answering to one name — the guard works, it just works one merge late
+  and costs a cycle each time. Recorded here rather than fixed: a cross-branch
+  allocation check belongs in `.github/`, not in a pull request about SEO.
+
 - **The site's head was written twice, in two files, and only one of them was
   being edited.** The SEO pass — [`docs/site/SEO.md`](docs/site/SEO.md) is the
   full record — rewrote `docs/index.html`'s `<title>` and `<meta>` tags, and

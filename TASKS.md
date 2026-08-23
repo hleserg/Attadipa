@@ -143,7 +143,7 @@ stale silently. The protocol is
 
 ## NEXT
 
-### T-111 · The Russian half of the site is not indexed, and the fix is a second document
+### T-120 · The Russian half of the site is not indexed, and the fix is a second document
 - **Priority:** P3, and it is **an owner decision before it is work.**
 - **Dependencies:** none
 - **Goal:** decide whether <https://hleserg.github.io/Attadipa/> gets a genuinely
@@ -166,7 +166,7 @@ stale silently. The protocol is
   unindexed and why.
 - **Hardware required:** no. **Owner required:** yes.
 
-### T-112 · A maskable app icon, which the current one is not
+### T-121 · A maskable app icon, which the current one is not
 - **Priority:** P4. Cosmetic, and only for someone who installs the page.
 - **Dependencies:** none
 - **Goal:** an opaque, edge-to-edge 512 × 512 icon variant so
