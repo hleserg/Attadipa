@@ -100,7 +100,9 @@ closed from a document.
   (CC charge current), `0x50` bits 4 and 3:2 (does `TS` gate the charger; is its
   current source on), `0x58` (JEITA enable), `0x12` bit 3 (BATFET when powered
   off on battery), `0x69` bits 2:1 (CHGLED mode — moot, that net goes nowhere,
-  but read it anyway). One I²C burst at `0x34` settles all five.
+  but read it anyway). One I²C burst at `0x34` settles all five — and the
+  same burst should carry `0x64` and `0x63` too, which are **not** of this class
+  and are listed separately in §4.
 - **The board's peak current draw.** Needed to state a PCM over-current
   acceptance criterion (§8) and never measured.
 - **Stock availability of every geometry named in §5.** Datasheet existence was
@@ -906,9 +908,13 @@ cell is `ESTIMATED`; every hardware test named here is
    motor is on pads `P1`/`P2`, not `J1`; its rail is `ALDO3`, not `BLDO2`; and
    `R13` (47 kΩ pulldown on `Q1`) is missing from the drive circuit. Evidence in
    §1.1 and §1.4. Documentation only.
-4. **Read the five eFuse-defaulted AXP2101 registers on the powered board.**
-   `0x62`, `0x50`, `0x58`, `0x12`, `0x69`, in one I²C burst at `0x34`. Until then
-   every "default" claimed for them is `UNKNOWN`. `needs-hardware`.
+4. **Read seven AXP2101 registers on the powered board, in one I²C burst at
+   `0x34`.** Five eFuse-defaulted ones — `0x62`, `0x50`, `0x58`, `0x12`, `0x69`
+   — where until then every "default" claimed for them is `UNKNOWN`; **and
+   `0x64` (CV target) with `0x63` bit 4 (termination enable)**, which are a
+   different class, hold whatever the running image last wrote, and are the
+   cell-safety pair of §4. Reading five answers the defaults question and leaves
+   the safety one open, so this item is not done at five. `needs-hardware`.
 5. **Settle which AXP2101 variant is fitted.** Scope the `LP2`/`SW` node while
    charging: the SWcharge part switches there, the linear part should be quiet.
    Never probe it by writing high `REG 0x62` codes. Decides whether 1.5 A is
