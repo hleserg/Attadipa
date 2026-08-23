@@ -149,7 +149,16 @@ CUES = (
     (
         "total",
         re.compile(
-            r"(?:holds|with)\s+(\d+)\s+(?:cases|mutation tests)\b"
+            # `of the` is here because narrowing this cue to fix a false
+            # positive silently stopped checking a copy it had been checking:
+            # STATUS.md writes "**Of the 44 cases**, 34 break the pair", and the
+            # sentence went unread for a round while the two numbers beside it
+            # kept passing. A cue that gets narrower has to be re-checked
+            # against what it used to match. Found in review.
+            # `[Oo]f` because the sentence that went unchecked opens one:
+            # "**Of the 44 cases**, 34 break the pair". A cue that is
+            # case-sensitive where prose capitalises is a cue with a hole in it.
+            r"(?:holds|with|[Oo]f the)\s+\**\s*(\d+)\s*\**\s+(?:cases|mutation tests)\b"
             r"|\*\*(\d+)\s+cases\*\*"
         ),
     ),
@@ -201,6 +210,7 @@ def verify_case_claims(root, suite, total, must_report, must_stay_quiet):
     and which nothing else can ask for without recursion).
     """
     problems, compared = [], 0
+    totals_quoted = 0
     names = (suite,) + SUITES[suite]["aliases"]
     other = [
         name
@@ -235,6 +245,8 @@ def verify_case_claims(root, suite, total, must_report, must_stay_quiet):
             for kind, cue in CUES:
                 for stated in numbers(cue, block):
                     quoted += 1
+                    if kind == "total":
+                        totals_quoted += 1
                     compared += 1
                     if stated != expected[kind]:
                         problems.append(
@@ -248,11 +260,18 @@ def verify_case_claims(root, suite, total, must_report, must_stay_quiet):
     # lines call it "a status file, not a history" -- fail a job. Requiring the
     # number to be quoted and correct at least once keeps the guard; requiring
     # it in every file was a tripwire on ordinary editing. Found in review.
-    if not total_quoted:
+    #
+    # And the completeness rule is about the SIZE, which is what the message
+    # says: the first version counted any cue, so a document quoting only "7
+    # demand a report" satisfied a rule whose diagnostic reads "nothing quotes
+    # the size". The split halves are still checked wherever they appear; they
+    # just do not stand in for the total. Found in review.
+    if not totals_quoted:
         problems.append(
             "nothing in %s quotes the size of %s any more, so the number the "
-            "suite prints is checked against nothing. Quote it in one of them "
-            "-- \"holds N cases\" or \"with N mutation tests\" -- or drop the "
+            "suite prints is checked against nothing (a split half like \"7 "
+            "demand a report\" is not the size). Quote it in one of them -- "
+            "\"holds N cases\" or \"with N mutation tests\" -- or drop the "
             "suite from SUITES deliberately."
             % (", ".join(SUITES[suite]["files"]), suite)
         )

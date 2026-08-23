@@ -18,11 +18,19 @@ the smallest one here.
 
 What is checked:
 
-1. No rule whose selector is exactly `.reveal` may hide it: no `opacity` other
-   than 1, no `transform` other than `none`. A transition is fine -- that is the
-   animation, and it animates nothing until something else moves.
+1. **No rule that can hide `.reveal` outside the `.js-reveal` scope**, whatever
+   its selector. The first version of this check matched a selector *exactly
+   equal* to `.reveal`, which review showed is a rule about spelling rather than
+   about the page: `body .reveal{opacity:0;transform:translateY(18px)}` is
+   (0,1,1), beats both the bare rule and the `<noscript>` override at (0,1,0),
+   and reproduces the shipped defect exactly -- while falling into neither
+   branch of the check written to catch it. A transition is still fine: that is
+   the animation, and it animates nothing until something else moves.
 2. Some rule scoped to `.js-reveal` must hide it, or the class is decorative and
-   the animation silently does not exist.
+   the animation silently does not exist. **Scoped means the class actually
+   applies**: `html:not(.js-reveal) .reveal{opacity:0}` contains the string and
+   hides the page for exactly the readers the inversion was for, so a selector
+   carrying `:not(` is not scope, it is the opposite of scope. Also review's.
 3. The class string appears in all three files: the stylesheet that acts on it,
    the script that adds it, and the `<noscript>` override in the HTML.
 4. The `<noscript>` block must put `.reveal` back to `opacity:1`, because with
@@ -104,20 +112,29 @@ def main(root_dir=None) -> int:
     bare = scoped = 0
     for selectors, declarations in rules(css):
         for selector in selectors:
+            if ".reveal" not in selector:
+                continue
+            # SCOPE IS WHAT THE CLASS SELECTS, NOT WHAT THE STRING CONTAINS.
+            # `html:not(.js-reveal) .reveal` carries the class name and applies
+            # precisely when the class is absent -- which is every reader the
+            # inversion exists for.
+            in_scope = ("." + CLASS) in selector and ":not(" not in selector
             if selector == ".reveal":
                 bare += 1
-                hiding = hides(declarations)
-                if hiding:
-                    problems.append(
-                        "%s: the bare `.reveal` rule sets %s, so a section is "
-                        "hidden before any script runs. That is the state this "
-                        "was inverted out of: scripting off, a failed request "
-                        "or a throw then leaves a hero and empty space."
-                        % (CSS, hiding)
-                    )
-            elif CLASS in selector and ".reveal" in selector:
+            if in_scope:
                 if hides(declarations):
                     scoped += 1
+                continue
+            hiding = hides(declarations)
+            if hiding:
+                problems.append(
+                    "%s: `%s` sets %s and is not scoped to `.%s`, so a section "
+                    "is hidden before any script runs. That is the state this "
+                    "was inverted out of: scripting off, a failed request or a "
+                    "throw then leaves a hero and empty space. A selector more "
+                    "specific than the `<noscript>` override beats that too."
+                    % (CSS, selector, hiding, CLASS)
+                )
 
     if not bare:
         problems.append(

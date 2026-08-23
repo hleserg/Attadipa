@@ -29,8 +29,12 @@
   // finding: the honesty caveat was written three ways -- "not yet run on
   // hardware", "no board has run it yet", "no Attadipa firmware has yet run on
   // a physical board" -- and the broadest of them stopped being true on
-  // 2026-08-23, when bench images built from this repository ran from RAM on
-  // the Waveshare unit and produced measurements. Three wordings meaning three
+  // 2026-08-23, when bench probes written for this project ran from RAM on the
+  // Waveshare unit and produced measurements. Not "built from this repository":
+  // nothing here compiles for a board -- no `app_main`, no
+  // `idf_component_register` anywhere in the tree -- and the first draft of
+  // this round's fix said it did, one comma from "the repository builds six
+  // libraries". Found in review. Three wordings meaning three
   // different things is the tell. One sentence now, in all six places, and it
   // is the narrow claim that is still true: the firmware has not run on a
   // board; bench code has.

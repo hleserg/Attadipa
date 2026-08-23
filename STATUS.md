@@ -714,10 +714,15 @@ four more things at no cost:
   JSON-LD `WebSite.description` — which both halves pass because the two files
   agree and the one file does not agree with itself. Declared as a table, with
   a completeness rule that reports any undeclared byte-identical pair of 24
-  characters or more. Of the 44 cases, 34 break the pair and require a non-zero
-  exit and 10 leave it valid and require silence; a bare *"seven of them fail against the
-  check as it was"* stood here for two rounds after the suite outgrew it, so
-  the split is quoted instead of a remembered subtotal.
+  characters or more. `tools/site/test_check_head_sync.py` holds 44 cases: 34
+  break the pair and require a non-zero exit, 10 leave it valid and require
+  silence; a bare *"seven of them fail against the check as it was"* stood here
+  for two rounds after the suite outgrew it, so the split is quoted instead of a
+  remembered subtotal. **The suite is named in this sentence deliberately**: the
+  paragraph quoted three of its numbers while naming neither the suite nor the
+  checker, so the verifier could not attribute them and read none of the three.
+  A claim nothing can attribute is a claim nothing checks, which is the same
+  hole one level up. Found in review.
 
   Three claims were removed rather than fixed, because they were not true of the
   files: three of the six JSON-LD `featureList` entries described work that is
@@ -744,7 +749,7 @@ four more things at no cost:
   guarded by a sentence** — *"if an image is swapped, its `width`/`height` must
   be re-read from the file"* — two files away from the head, which had a check
   precisely because a sentence had failed there. So they are a check too:
-  `tools/site/check_site_facts.py`, in the same CI job, with 23 mutation tests.
+  `tools/site/check_site_facts.py`, in the same CI job, with 25 mutation tests.
   It measures PNG, JPEG and WebP from their own headers and holds the document
   to the dimension pairs, the byte sizes, the saving column, both statements of
   the 2.8 MB total, the stylesheet, the script, and the head-sync case count
@@ -769,10 +774,16 @@ four more things at no cost:
   name, and no check in the documentation job opened any of them. Putting
   `opacity:0` back on the bare rule, which is exactly the state that shipped a
   hero and empty space, left every job green. `check_reveal_contract.py` reads
-  that contract now and `tools/site/test_check_reveal_contract.py` holds 11
-  cases: 7 demand a report, 4 demand silence — the first of the seven is the
+  that contract now and `tools/site/test_check_reveal_contract.py` holds 13
+  cases: 9 demand a report, 4 demand silence — the first of the nine is the
   reproduce step review supplied, and the four that must stay quiet are the
-  ones that would make the check annoying enough to delete.
+  ones that would make the check annoying enough to delete. The next review
+  showed the first draft of the checker was a rule about *spelling*: it matched
+  a selector exactly equal to `.reveal`, so `body .reveal{opacity:0}` — which
+  beats both the bare rule and the `<noscript>` override — fell through it, and
+  `html:not(.js-reveal) .reveal` was counted as the scoped hiding rule while
+  applying precisely when the class is absent. Any unscoped rule that can hide
+  it is now the test, and `:not(` is not scope.
 
   The same round found the head checker's duplicate table making a promise the
   runtime breaks: it pairs the meta description with the JSON-LD

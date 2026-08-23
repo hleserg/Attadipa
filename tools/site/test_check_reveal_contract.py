@@ -8,10 +8,11 @@ script did not run -- and demand the check goes red. Before this file, that
 mutation left every job in CI green.
 
 The rest break one strand of the contract at a time, in a copy of the live tree.
-The three that assert silence are the ones that would otherwise make this check
-annoying enough to switch off: a transition on `.reveal` is the animation, a
-`transform:none` is not a displacement, and the reduced-motion block setting
-`opacity:1` is the accessibility path working.
+The four that assert silence are the ones that would otherwise make this check
+annoying enough to switch off: the tree as it stands, a transition on `.reveal`
+(that is the animation), a `transform:none` (not a displacement), and the
+reduced-motion block setting `opacity:1` (the accessibility path working). The
+first of the four is not ceremony -- every other case is measured against it.
 
 Run: python3 tools/site/test_check_reveal_contract.py [--count]
 """
@@ -163,7 +164,33 @@ def main() -> int:
         needle="does not set `opacity:1`",
     )
 
-    # The three that must stay quiet, because a check that fires on these is a
+    # REVIEW'S TWO, and both passed the first version of this checker. The
+    # first is the defect wearing a different selector; the second wears the
+    # scope itself.
+    scenario(
+        "a descendant selector hides `.reveal` and beats the <noscript> override",
+        lambda css, js, html: edit(
+            css,
+            ".reveal{transition:opacity .65s ease,transform .65s ease}",
+            ".reveal{transition:opacity .65s ease,transform .65s ease}"
+            "body .reveal{opacity:0;transform:translateY(18px)}",
+        ),
+        expect_fail=True,
+        needle="not scoped",
+    )
+    scenario(
+        "`html:not(.js-reveal) .reveal` carries the class name and inverts it",
+        lambda css, js, html: edit(
+            css,
+            ".reveal{transition:opacity .65s ease,transform .65s ease}",
+            ".reveal{transition:opacity .65s ease,transform .65s ease}"
+            "html:not(.js-reveal) .reveal{opacity:0}",
+        ),
+        expect_fail=True,
+        needle="not scoped",
+    )
+
+    # The four that must stay quiet, because a check that fires on these is a
     # check somebody deletes.
     scenario(
         "a transition on `.reveal` is the animation, not a hiding rule",

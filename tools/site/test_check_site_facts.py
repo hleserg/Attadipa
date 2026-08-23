@@ -274,17 +274,17 @@ def main() -> int:
         "every copy of one suite's count disappears at once",
         lambda seo, html, root: all(
             [
-                edit(seo, "holds 11 cases: 7 demand", "holds many cases: some demand"),
+                edit(seo, "holds 13 cases: 9 demand", "holds many cases: some demand"),
                 edit(seo, "a report, 4 demand silence", "a report, some demand silence"),
-                edit(os.path.join(root, "STATUS.md"), "holds 11", "holds many"),
+                edit(os.path.join(root, "STATUS.md"), "holds 13", "holds many"),
                 edit(
                     os.path.join(root, "STATUS.md"),
-                    "cases: 7 demand a report, 4 demand silence",
+                    "cases: 9 demand a report, 4 demand silence",
                     "cases: some demand a report, some demand silence",
                 ),
                 edit(
                     os.path.join(root, ".github", "workflows", "ci.yml"),
-                    "holds 11 cases: 7 demand a",
+                    "holds 13 cases: 9 demand a",
                     "holds many cases: some demand a",
                 ),
                 edit(
@@ -296,6 +296,42 @@ def main() -> int:
         ),
         expect_fail=True,
         needle="quotes the size of",
+    )
+
+    # REVIEW'S TWO, both about the cue rather than the number. Narrowing the
+    # total cue to kill a false positive silently stopped it matching a copy it
+    # had been checking, and the completeness rule counted any cue at all --
+    # so a document quoting only "9 demand a report" satisfied a rule whose
+    # message says "nothing quotes the size".
+    scenario(
+        "the size written as `Of the N cases` is read, not walked past",
+        lambda seo, html, root: edit(
+            os.path.join(root, "STATUS.md"),
+            "`tools/site/test_check_head_sync.py` holds 44 cases:",
+            "`tools/site/test_check_head_sync.py`. Of the 40 cases:",
+        ),
+        expect_fail=True,
+        needle="(total)",
+    )
+    scenario(
+        "a split half does not stand in for the size",
+        lambda seo, html, root: all(
+            [
+                edit(seo, "holds 13 cases", "holds 13 scenarios"),
+                edit(
+                    os.path.join(root, "STATUS.md"),
+                    "cases: 9 demand a report",
+                    "scenarios: 9 demand a report",
+                ),
+                edit(
+                    os.path.join(root, ".github", "workflows", "ci.yml"),
+                    "holds 13 cases: 9 demand a",
+                    "holds 13 scenarios: 9 demand a",
+                ),
+            ]
+        ),
+        expect_fail=True,
+        needle="is not the size",
     )
 
     # The four that must stay quiet. Each is the live tree's real behaviour, and

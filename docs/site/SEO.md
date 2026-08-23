@@ -17,8 +17,9 @@ search engine learns that in the first screenful rather than the fifth.
 false.** The page said *"not yet run on hardware"* in the meta description,
 *"no board has run it yet"* on the card and in the manifest, and *"no Attadipa
 firmware has yet run on a physical board"* in the JSON-LD. On 2026-08-23 bench
-images built from this repository ran on the Waveshare unit — out of RAM,
-writing nothing, `verify-flash` clean over all 33 554 432 bytes — and produced
+probes written for this project ran on the Waveshare unit — ESP-IDF images
+loaded out of RAM, writing nothing, `verify-flash` clean over all 33 554 432
+bytes — and produced
 measurements: the IMU at `0x6B` and not `0x6A`, `REVISION_ID 0x7C`, gravity at
 1.03 g, the touch controller answering `0x64` after a 10 ms reset pulse, the
 AXP2101 rails read raw (`STATUS.md` §*The bench session of 2026-08-23*,
@@ -188,7 +189,7 @@ out of it.
 
 Its own mutation tests (`tools/site/test_check_head_sync.py`, **44 cases**) run
 first: **34 break the pair and require the check to fail, 10 leave it valid and
-require the check to stay quiet.** Every one of the 31 was written against a
+require the check to stay quiet.** Every one of the 34 break the pair cases was written against a
 version of the checker that let that exact mutation through — that is what makes
 them tests rather than description. A checker that passes everything is worse
 than none: it is what the next agent trusts instead of re-checking, which is
@@ -261,12 +262,16 @@ scoped to `.js-reveal` is what hides it, the script adds that class, and the
 shipped a hero and empty space, left every job green. Review named it the next
 check to write and the smallest one here, and it was right on both counts.
 `check_reveal_contract.py` refuses that state now, and its own mutation tests
-run first: `tools/site/test_check_reveal_contract.py` holds 11 cases: 7 demand
-a report, 4 demand silence. The first of the seven is the reviewer's own
-reproduce step. The quiet four are the ones that would otherwise make this
-check annoying enough to switch off — a longer transition is the animation, a
-`transform:none` is not a displacement, and the reduced-motion block setting
-`opacity:1` is the accessibility path working.
+run first: `tools/site/test_check_reveal_contract.py` holds 13 cases: 9 demand
+a report, 4 demand silence. The first of the nine is the reviewer's own
+reproduce step, and two more are the next review's: a selector does not have to
+be spelled `.reveal` to hide it — `body .reveal{opacity:0}` beats both the bare
+rule and the `<noscript>` override, and `html:not(.js-reveal) .reveal` carries
+the scope class and applies exactly when the class is absent. The quiet four
+are the ones that would otherwise make this check annoying enough to switch off:
+the tree as it stands, a longer transition (that is the animation), a
+`transform:none` (not a displacement), and the reduced-motion block setting
+`opacity:1` (the accessibility path working).
 
 ### `docs/manifest.webmanifest`
 
