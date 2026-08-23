@@ -1854,10 +1854,15 @@ harness and corpus:
   `Packet` object for adverts — and every one of the nine ends in a rejected
   packet. The parsers do read past their length; nothing escapes a buffer through
   them. Keeping those two sentences apart is most of the value here.
-- **The companion path cannot reach the worst of the three.** `CMD_IMPORT_CONTACT`
-  gates on `len > 98` and `Packet::readFrom` reaches at most byte 70, so a
-  malformed contact blob from a client — which is what Attadipa is — cannot
-  trigger it. Luck rather than design, but it holds at this revision.
+- **The companion path reaches one of the three and not the other.**
+  `CMD_IMPORT_CONTACT` gates on `len > 98` while `Packet::readFrom` reaches at
+  most byte 70, so a malformed contact blob from a client — which is what
+  Attadipa is — cannot trigger it; luck rather than design, but it holds here.
+  `CMD_SEND_RAW_PACKET` **does** reach `tryParsePacket`, gated only by `len >= 4`,
+  which makes it the single place where our side hands bytes to a MeshCore
+  parser. It stays inside `cmd_frame` and returns `ERR_CODE_ILLEGAL_ARG`, so it
+  costs nothing today — but it is the fact to have before writing a client that
+  emits raw packets.
 - **Two of the three pull requests do not close their own findings.** #3269 logs
   the condition and then performs the read; #3270 leaves `app_data[0]` unguarded
   at `AdvertDataHelpers.cpp:34` for `app_data_len == 0`, measured on its own head.

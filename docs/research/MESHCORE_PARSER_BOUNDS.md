@@ -145,21 +145,34 @@ The path-bytes check at `:173` is there. The three reads before it are not.
 route, four extra bytes), or `len < 2` otherwise. Maximum index reached before
 the first bound check is `raw[5]`.
 
-**Reachable from:** the radio, and only the radio. `Dispatcher::checkRecv`
-(`:190-217`) is the sole caller.
+**Reachable from: two callers, not one, and the second is the interesting one.**
 
-**What actually backs `raw`:** `uint8_t raw[MAX_TRANS_UNIT+1]` — a **256-byte
-stack array** in `checkRecv`, filled by `_radio->recvRaw(raw, 255)`. The furthest
-this parser can reach is `raw[5]`. **The read never leaves the allocation.** It
-reads stack bytes the radio did not write on this pass — the tail of an earlier
-frame, or whatever the frame before that left there.
+| Caller | Direction | Buffer behind `raw` |
+|---|---|---|
+| `Dispatcher::checkRecv`, `src/Dispatcher.cpp:205` | the radio | `uint8_t raw[MAX_TRANS_UNIT+1]` — a **256-byte stack array**, filled by `_radio->recvRaw(raw, 255)` |
+| `MyMesh::handleCmdFrame`, `examples/companion_radio/MyMesh.cpp:2000` | **the companion link** — `CMD_SEND_RAW_PACKET`, `tryParsePacket(pkt, &cmd_frame[2], len - 2)` | `cmd_frame[MAX_FRAME_SIZE+1]` — a **177-byte member array** of `MyMesh` |
+
+The second is the one place in this whole document where **a client hands bytes
+to a MeshCore parser**, and a client is what Attadipa is. Its guard is `len >= 4`,
+so the parser can be called with a declared length of 2, and with a transport
+route in the header it then reads `cmd_frame[4..7]` having been given
+`cmd_frame[2..3]`. That is reachable by any connected app, ours included, by
+sending four bytes.
+
+**What actually backs `raw`, either way:** a fixed array far larger than this
+parser's furthest reach, which is `raw[5]`. **The read never leaves the
+allocation** on either caller. It picks up bytes the current frame did not write
+— the tail of an earlier frame on the radio path, the tail of an earlier command
+on the companion path.
 
 **Outcome:** `reject`, in every case. Follow the arithmetic: whatever garbage
 `path_len` picks up, `i` is already at least 2, so `i + path_byte_len > len`
 holds for any `len` short enough to have triggered the over-read, and
 `tryParsePacket` returns `false`. No crash, no disclosure — the parsed packet is
-freed. `checkRecv` also gates on `len > 0`, so the missing `len < 1` guard that
-#3267 adds is unreachable through this caller.
+freed. Both callers also gate on a positive length (`len > 0` in `checkRecv`,
+`len >= 4` on the command), so the missing `len < 1` guard that #3267 adds is
+unreachable through either; case A3 exists to characterise the function, not a
+reachable state.
 
 **Status:** confirmed by execution (A1, A2, A3). Fixed on `#3267`'s head.
 **Severity for a stock node: cosmetic — a use of uninitialised memory whose
@@ -273,11 +286,12 @@ the stock firmware Attadipa's node path talks to, the chain is
 `pending_*` branches each do
 
 ```cpp
-memcpy(&out_frame[i], &data[4], len - 4);     // MyMesh.cpp:722, :735, :744
+memcpy(&out_frame[i], &data[4], len - 4);     // MyMesh.cpp:722, :733, :744
 ```
 
-with `out_frame[MAX_FRAME_SIZE + 1]` = **177 bytes** and `i` = 8. With `len`
-underflowed to 255 that writes about 82 bytes past a member array — a write, not
+with `out_frame[MAX_FRAME_SIZE + 1]` = **177 bytes** and `i` already at 8 in the
+status and telemetry branches, 6 in the binary-response one. With `len`
+underflowed to 255 that writes some 80 bytes past a member array — a write, not
 a read. Two things stop this being called a proven memory-corruption path and
 both are load-bearing:
 
@@ -464,7 +478,21 @@ stock-node path is a protocol client behind
 [ADR-0008](../adr/0008-mesh-service-providers.md). Every one of P1–P5 executes on
 the node, on the far side of the companion link.
 
-It changes three things anyway.
+It changes four things anyway.
+
+**One of them is reachable from our side of the link, and it is the only one.**
+`CMD_SEND_RAW_PACKET` calls `tryParsePacket` on a client-supplied buffer
+(`examples/companion_radio/MyMesh.cpp:2000`), gated only by `len >= 4`, so a
+four-byte command from any connected app makes the node read four bytes of its
+own previous command frame. It stays inside `cmd_frame` and ends in
+`ERR_CODE_ILLEGAL_ARG`, so the consequence is nil — but it is the one place where
+Attadipa is the party handing bytes to a MeshCore parser rather than the party
+receiving the result, and that is worth knowing before anyone writes a client
+that emits raw packets. Two practical consequences, neither of them urgent: if
+Attadipa ever uses that opcode it should send a complete frame or none, and a
+node shared with another client is a node whose parser another client can poke.
+It does **not** follow that the companion link is dangerous — P2's
+`CMD_IMPORT_CONTACT` path was checked and cannot be reached at all.
 
 **The node's output is a peer's output, not a trusted source.** P3 and P4 are
 memory-safety defects on the device that supplies Attadipa's mesh capability, and

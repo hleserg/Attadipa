@@ -70,11 +70,18 @@ An entry that cannot name its source does not belong here. It belongs in
 - **Checked:** 2026-08-23, clang 18.1.3, Ubuntu 24.04.
 - **What it is not:** at every reachable call site in the pinned tree the buffer
   behind these three parsers is a fixed array large enough that the read stays
-  *inside the allocation* — 256 B in `Dispatcher::checkRecv`, 262 B and 250 B in
-  the two bridges, the `Packet` object itself for adverts. The outcome in all
-  nine is a rejected packet. "Reads past its length" is verified; "leaves the
-  buffer" is verified **false** for these three, and the distinction is the whole
-  blast radius.
+  *inside the allocation* — 256 B in `Dispatcher::checkRecv`, 177 B in
+  `MyMesh::handleCmdFrame`, 262 B and 250 B in the two bridges, the `Packet`
+  object itself for adverts. The outcome in all nine is a rejected packet.
+  "Reads past its length" is verified; "leaves the buffer" is verified **false**
+  for these three, and the distinction is the whole blast radius.
+- **Reachable from the companion link, once.** `CMD_SEND_RAW_PACKET` calls
+  `tryParsePacket` on a client-supplied buffer with only a `len >= 4` guard
+  (`examples/companion_radio/MyMesh.cpp:2000`), which is the one place a
+  *client* — Attadipa's role on the node path — hands bytes to a MeshCore
+  parser. `CMD_IMPORT_CONTACT` was checked and **cannot** reach
+  `Packet::readFrom`'s over-read: it gates on `len > 98` and the parser reaches
+  at most byte 70.
 - **Hardware:** **NOT EXECUTED — HARDWARE REQUIRED.** Nothing here ran on a
   radio, a node or a board, and no host sanitizer result may be presented as
   radio or HIL validation.
