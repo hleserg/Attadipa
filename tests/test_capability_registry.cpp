@@ -159,7 +159,8 @@ void test_radio_is_not_lora()
         {platform::RadioChip::Lr1121, core::Availability::Unprovisioned,
          "LoRa, but the pinned MeshCore needs driver work"},
         {platform::RadioChip::Unknown, core::Availability::Unprovisioned,
-         "nobody has told us which chip is fitted (open question A2)"},
+         "no marking has been read off the fitted chip; A2's answer is a "
+         "seller's listing (OD-16), which does not move this enum"},
     };
 
     for (const Case& c : cases) {

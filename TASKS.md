@@ -1636,11 +1636,15 @@ Reason:         The T-Watch S3 Plus is ORDERED, not PRESENT — no physical unit
                 revision is read — silkscreen `ESP32-S3-Touch-AMOLED-2.06`,
                 which is what schematic V1.0 describes.
 Evidence:       OPEN_QUESTIONS A1 (OD-16, issue #54, 2026-08-22). A2 (which
-                radio, which GNSS) is answered by the order listing — SX1262
-                868 MHz, MIA-M10Q — but a listing is a seller's claim, not a
-                marking read off the part, so RadioChip::Unknown does not
-                change until the watch arrives and the marking is read. The
-                GNSS power rail still differs between board revisions (BLDO1
+                radio, which GNSS) has an answer, from two sources of
+                different strength: SX1262 at 868 MHz is quoted from the
+                order listing, and MIA-M10Q is the owner's recollection,
+                because that listing names the radio and is silent on GNSS.
+                Neither is a marking read off the part, so RadioChip::Unknown
+                does not change until the watch arrives and the marking is
+                read.
+
+                The GNSS power rail still differs between board revisions (BLDO1
                 vs DC3), and **no part marking distinguishes them** — the
                 discriminator is a feature of the case: a unit with rear
                 BOOT/RST buttons is the DC3-unused revision. See
@@ -1703,9 +1707,12 @@ Recommended next action:
   list** — answered 2026-08-22 on
   [#54](https://github.com/hleserg/Attadipa/issues/54), recorded as
   [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
-  A1's schematic-revision sub-question and A2's marking-read-off-the-part
-  confirmation remain, but both are hardware-in-hand tasks now, not owner
-  questions. **A5 is no longer on it either** — 2026-08-22, the owner has
+  A1's schematic-revision sub-question is **closed** — the silkscreen reads
+  `ESP32-S3-Touch-AMOLED-2.06`, which is the revision V1.0 describes
+  (`WAVESHARE_BOARD_RECEIVED` §1.1). A2's marking-read-off-the-part
+  confirmation remains, and it is a hardware-in-hand task now, not an owner
+  question. **A11 is new and IS on this list** — one T114 with GNSS or two,
+  [#124](https://github.com/hleserg/Attadipa/issues/124). **A5 is no longer on it either** — 2026-08-22, the owner has
   ordered a CJMCU-9911 (AK09911C) and a GY-271 (QMC5883L) and is soldering one
   in ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
   that: a node's magnetometer and a wrist's magnetometer answer different

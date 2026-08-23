@@ -1084,8 +1084,12 @@ it is the more precise of the two and the owner asked for it to be recorded
 - **Waveshare ESP32-S3-Touch-AMOLED-2.06:** received — already recorded in
   `docs/research/WAVESHARE_BOARD_RECEIVED.md`. The schematic-revision question
   (silkscreen against `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`) is
-  **still open**; this answer does not close it. It belongs on the same
-  checklist as the T-106 measurements, since it is read with the case open.
+  **closed**, and not by this answer: the mainboard's silkscreen reads
+  `ESP32-S3-Touch-AMOLED-2.06`, which is the revision V1.0 describes
+  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1, `VERIFIED`).
+  An earlier draft of this record said it was still open, 100 lines above the
+  *What it obliges* paragraph saying it was closed — the register answering one
+  question twice, differently, within itself.
 - **T-Watch S3 Plus:** **ordered, in transit — `ORDERED`, not `PRESENT`.**
   Nothing that needs the watch in hand moves yet.
 
@@ -1093,9 +1097,15 @@ it is the more precise of the two and the owner asked for it to be recorded
 **MIA-M10Q** from the owner, and the two do not rest on the same evidence. The
 listing reads *"LILYGO® T-WATCH-S3 Plus умные часы, SX1262 (868MHz)"* — it names
 the radio and is **silent on GNSS**, so the GNSS half is the owner's
-recollection of the variant ordered rather than a quoted source, and it is gated
-exactly as the radio half is: it does not move `GnssModule::Unknown` until the
-marking is read off the module. That gate carries more than the radio's, because
+recollection of the variant ordered rather than a quoted source, and it is held
+to the same standard as the radio half: no GNSS module is treated as fitted
+until the marking is read off it. **That gate is documentary, and the radio's is
+not** — say so rather than implying a symmetry the code does not have.
+`RadioChip::Unknown` is a value the firmware branches on
+(`platform/src/radio_info.cpp`, `platform/src/board_profiles.cpp`); there is no
+`GnssModule` enum anywhere in the tree, so nothing but this sentence holds the
+GNSS half. If that is not strong enough, the fix is to add the type, not to name
+one the next agent will grep for and not find. That gate carries more than the radio's, because
 MIA-M10Q against LS550G decides a second PMU rail (DC4 at 850 mV,
 [HARDWARE_MATRIX](HARDWARE_MATRIX.md):102, :145), the assistance mechanism
 ([VERIFIED_FACTS](VERIFIED_FACTS.md):141-143), and which of T-051 and T-052 is
@@ -1129,9 +1139,12 @@ paragraph.** It reached `main` in `485dddb` from this same answer on the same
 day, and it holds two operational facts this decision does not and must not
 duplicate — because a copy that drifts is worse than a pointer:
 
-- **both nodes advertise over BLE under the same name**, so anything selecting a
-  node by advertised name gets whichever answered first (`TEST_FLEET.md:29-32`).
-  Select by address;
+- **the two T114s advertise over BLE under the same name**, so anything
+  selecting a node by advertised name gets whichever answered first
+  (`TEST_FLEET.md:29-32`, where they are the antecedent of "both"). Whether the
+  V4 also answers to that name is not recorded, and it does not change the rule:
+  **select by address**, which is correct for every node here under either
+  reading;
 - **a BLE pairing PIN is required and is deliberately not in this repository**
   (`:33-36`). This repository is public and a pairing PIN is a device access
   credential. The owner holds it; ask in the session that needs it.
@@ -1188,16 +1201,23 @@ cause.
   half only. The Waveshare half is closed: the mainboard's silkscreen reads
   `ESP32-S3-Touch-AMOLED-2.06`, which is the revision schematic V1.0 describes
   ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1, `VERIFIED`).
-  What is still unread is narrower and now filed as **D19**: the U2, U3 and
-  display-FPC part markings, which need a loupe. A2 and A3 move to RESOLVED,
-  pointing here.
+  What is still unread is narrower and now filed as **D19**: the display-FPC
+  part marking, which needs a loupe. **Not U2 and U3** — the eFuses and the
+  JEDEC ID already answered those on this unit
+  ([WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2–1.3), and a lid marking
+  read through a loupe is weaker evidence than a fuse read of the die under it.
+  A2 and A3 move to RESOLVED, pointing here.
 - **A divergence to record rather than paper over.**
   [ADR-0003](../adr/0003-radio-not-lora.md):109-111, :265 and :270-271 still
-  list A2 as open. That is correct as of the ADR's own evidence — it reasons
-  from marking reads, and there has been none. This decision answers A2 from an
-  order listing, which is a weaker source and gated accordingly. No ADR edit is
+  list A2 as open. Its stated reason is not "no marking read" but ownership:
+  `:270-271` calls A2 *"the owner's to answer"*, and the owner has now answered
+  it. So the divergence is narrower than it looks — what the ADR is still
+  waiting for is the evidence it treats as decisive, a marking read off the
+  part, and this decision supplies a seller's listing instead. No ADR edit is
   asked for here: the two documents disagree because they are answering to
-  different standards of proof, and T-013 re-asks A2 when the part can be read.
+  different standards of proof, and **T-010** carries the marking read that
+  discharges it (`TASKS.md`, the T-010 BLOCKED block). Not T-013 — that is the
+  mesh cost spike, and it never mentions A2.
 - Three follow-up issues, filed separately rather than folded into this
   record: the T114 band check
   ([#89](https://github.com/hleserg/Attadipa/issues/89)), the

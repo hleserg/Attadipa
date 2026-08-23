@@ -37,9 +37,11 @@ constexpr std::uint32_t feature_bit(HardwareFeature feature)
 // The board profiles this build knows about.
 //
 // The T-Watch appears more than once, once per radio variant, because the chip
-// is chosen at purchase and open question A2 records that we do not know which
-// one this project has. A profile named "t-watch, radio unknown" is the honest
-// default and is deliberately the first one.
+// is chosen at purchase. A2 has an answer since 2026-08-22 -- SX1262 at 868 MHz
+// by order listing, OWNER_DECISIONS.md OD-16 -- and a listing is not a marking
+// read, so "t-watch, radio unknown" is still the honest default and is
+// deliberately the first one. It stops being the default when somebody reads
+// the part, not when somebody quotes a seller.
 const BoardProfile* board_profiles(std::uint8_t& count_out);
 const BoardProfile* find_board_profile(const char* id);
 

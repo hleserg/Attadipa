@@ -457,8 +457,9 @@ available on this board.
   the T-Watch's variant question (which of five radios, which of two GNSS
   modules) has an *answer* from the order listing — SX1262 at 868 MHz, and the
   owner's recollection of MIA-M10Q — but not a *marking read*, which is the only
-  thing that moves `RadioChip::Unknown` and `GnssModule::Unknown`, and needs the
-  unit in hand. The Waveshare half is
+  thing that moves `RadioChip::Unknown`, and needs the unit in hand. The GNSS
+  half has no enum to move: there is no `GnssModule` type in the tree, so its
+  gate is documentary where the radio's is in code. The Waveshare half is
   no longer blocked and is no longer being *done* either — see the section
   above; **nothing in this repository may say `PASS` until somebody runs a test
   on the board and writes down what came out.**
@@ -477,22 +478,25 @@ available on this board.
 
 | | Question | Why it matters |
 |---|---|---|
-| A1 | Is either board physically available, and which revision? | everything hardware — **partial**, see below |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
-| A11 | **Do one or two of the T114s carry GNSS?** The fleet table records one GNSS-capable node; the indoor-fix observation in OD-16 says "either unit" | nothing is blocked either way — no node here gets an indoor fix under either reading — but [#90](https://github.com/hleserg/Attadipa/issues/90) and [#91](https://github.com/hleserg/Attadipa/issues/91) both plan against that table |
+| A11 | **Do one or two of the T114s carry GNSS?** ([#124](https://github.com/hleserg/Attadipa/issues/124)) The fleet table records one GNSS-capable node; the indoor-fix observation in OD-16 says "either unit" | nothing is blocked either way — no node here gets an indoor fix under either reading — but [#90](https://github.com/hleserg/Attadipa/issues/90) and [#91](https://github.com/hleserg/Attadipa/issues/91) both plan against that table |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
 None of these blocks M1. All of them block hardware work.
 
-**A1 is partly answered, A2 and A3 are answered** —
+**A1 is partly answered, A2 and A3 are answered** — and A1 is off the table
+above because what is left of it is the post arriving, not an answer somebody
+owes us —
 [#54](https://github.com/hleserg/Attadipa/issues/54), on 2026-08-22, recorded
 as
 [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
 Waveshare is received and its revision is `VERIFIED` from the silkscreen — what
-remains unread there is the U2/U3/display-FPC part markings, D19; T-Watch
+remains unread there is the display-FPC part marking, D19 — U2 and U3 were
+answered off the die itself, `WAVESHARE_EFUSE_READ` §1.2–1.3; T-Watch
 S3 Plus is `ORDERED`, not `PRESENT` — the T-010 blocker above is unchanged
 until it arrives and its radio marking is read off the physical part. A2:
-SX1262 at 868 MHz, MIA-M10Q GNSS, by order listing — the good outcome
+SX1262 at 868 MHz by order listing; MIA-M10Q from the owner's recollection,
+because the listing is silent on GNSS — the good outcome
 ADR-0003 flagged as possible but not guaranteed. A3: three MeshCore nodes
 (Heltec V4 companion, two Heltec T114s), not one. Two questions this answer
 raised are filed separately rather than folded in: T114 band
