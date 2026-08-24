@@ -63,14 +63,16 @@ want to inherit the experience, not only the code.
 | `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API |
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
-| `lvgl` | github.com/lvgl/lvgl | `7cc13aafaa2e7acab6cf3c1977ab6ca70b6c2ed7` | 2026-08-20 | the UI toolkit; version choice is open question T2 |
+| `lvgl` | github.com/lvgl/lvgl | `85aa60d1` (**v9.5.0**) | 2026-08-23 | the UI toolkit. **T2 is settled**: [`DEPENDENCIES.md`](DEPENDENCIES.md) pins v9.5.0 = `85aa60d1…`, verified by `git ls-remote` and observed in CI, and source **S14** in [`VERIFIED_FACTS`](VERIFIED_FACTS.md) reads that revision. This row carried `7cc13aaf…` with *"version choice is open question T2"* until 2026-08-24, so the ledger and the dependency record named two different revisions of the same dependency — the ledger being the file `CLAUDE.md` sends an agent to before implementing anything. Found in review |
 | `T-Watch-S3` | github.com/Xinyuan-LilyGO/TTGO_TWatch_Library | `e5a0f825a21198f97d2bafee03ea853766483d20` | 2025-02-28 | LilyGO vendor library for one of the two target boards |
 | `esp-bsp` | github.com/espressif/esp-bsp | `2f519317d5375f7bbb0190b29a4988c2ea2453e2` | 2026-08-13 | Espressif's BSP collection and the source of the `esp_lcd_touch_ft5x06` dependency. **It does not contain the Waveshare board** — `esp-bsp/bsp` holds 26 board entries and none is a Waveshare AMOLED. Recorded here as `waveshare-bsp` until 2026-08-22, which sent readers to the wrong repository |
-| `waveshare-components` | github.com/waveshareteam/Waveshare-ESP32-components | — | 2026-08-22 | where the Waveshare BSP actually lives. Drives display, touch, audio and SD only: `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`, and it never touches the QMI8658, AXP2101 or PCF85063 on the board. Its `esp_lcd_sh8601` is a two-line fork of Espressif's, and one of those lines drops the error check on `tx_color()` so a failed frame reports success — see [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.3. Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300`, same Apache-2.0 |
+| `waveshare-components` | github.com/waveshareteam/Waveshare-ESP32-components | — | 2026-08-22 | where the Waveshare BSP actually lives. Drives display, touch, audio and SD only: `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`, and it never touches the QMI8658, AXP2101 or PCF85063 on the board. Its `esp_lcd_sh8601` is a fork of Espressif's in which `tx_color()` goes unchecked, so a failed frame reports success — **inherited from upstream rather than introduced by the fork**, and fixed upstream in `v2.0.1` (2025-12-10); the "two-line" count is withdrawn pending a re-derivation against the right base, see [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.3. Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300`, same Apache-2.0, in `esp-iot-solution` |
 | `Gadgetbridge` | codeberg.org/Freeyourgadget/Gadgetbridge | `40326980ca871989961ba2442e7cabd4d204b1b6` | 2026-08-21 | host side of many watch protocols; companion protocol prior art |
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
 | `lv_i18n` | github.com/lvgl/lv_i18n | `08944ec6dc2faed83121c53e9cf9ba05013a6686` | 2026-03-30 | LVGL's own localization generator — the closest existing answer to T-033 |
-| `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
+| `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model. **Also the ancestor of the app the bench unit actually runs** — `phone_s3_box_3 v0.4.2-92-g5c6be6c-dirty`, Waveshare's port, 92 commits past a tag and unpublished, so the running binary cannot be read from here |
+| `esp-iot-solution` | github.com/espressif/esp-iot-solution | `5d75f3f0dc499d9ed4b69284a3741187c2b75a70` | 2026-08-23 | **where `esp_lcd_sh8601` and `esp_lcd_co5300` upstream actually live** — not `esp-bsp`, whose `components/lcd` holds neither. Read 2026-08-23 for the byte-order trace (D21): both drivers pass the framebuffer to `esp_lcd_panel_io_tx_color()` **verbatim**, so any swap is above them. Apache-2.0. **Read, not depended on** |
+| `xiaozhi-esp32` | github.com/78/xiaozhi-esp32 | `bb9122ab08c3083eeb4f67b3974b7afe771723b8` | 2026-08-22 | MIT; carries `main/boards/waveshare/esp32-s3-touch-amoled-2.06/` — this exact board. Evaluated for the audio path below; **re-read 2026-08-23 for the display path**, where `SpiLcdDisplay` sets `.swap_bytes = 1`. The commit is the one the licence check was run against. Note the version on the unit is **1.8.5**, in `ota_0`, never selected |
 
 ### Licences, checked before anything was depended on
 
@@ -145,7 +147,7 @@ anything equivalent is written by hand.
 | `meshcore-dev/MeshCore` | the mesh protocol the product is specified around | MIT |
 | `Xinyuan-LilyGO/LilyGoLib` | vendor library for the T-Watch family; schematics and authoritative pin map | MIT |
 | `waveshare/esp32_s3_touch_amoled_2_06` | vendor BSP for the second board — display, touch, audio, SD only | Apache-2.0 |
-| `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | to check |
+| `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | **Apache-2.0** at the pinned `==1.0.2`, checked 2026-08-22 (§ the xiaozhi record). Upstream is `espressif/esp-iot-solution`, **not** `esp-bsp`, whose `components/lcd` contains neither this driver nor `esp_lcd_co5300`. Read 2026-08-23 for D21. **The unchecked `tx_color()` was upstream's own code, not a fork divergence** — see the correction in [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §3.3 — and upstream fixed it in `v2.0.1`, 2025-12-10 |
 | XPowersLib | AXP2101 driver used by **both** vendors — covers the one shared part | to check |
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
 | ~~`78/xiaozhi-esp32`~~ | **evaluated 2026-08-22 — see the record below.** MIT, and it carries a board directory for this exact board. Its *audio-path dependencies* are the finding: `esp-sr`, `esp_audio_codec` and `esp_audio_effects` are **not** MIT | MIT; deps vary |
@@ -1727,3 +1729,141 @@ mutation-checked three ways: disabling the comment/string blanking, loosening
 the colour rule back to where it would read `Rgb make_colour()\n{...}` as a
 colour literal, and dropping the zero exemption each turn it red. No hardware —
 this is a source-tree checker and touches no board.
+
+---
+
+### Remote UI testing: screenshot a running interface and inject input into it
+
+**Problem:** an agent, or a person over ssh, has to be able to see what is on the
+watch's screen and drive it the way a finger does — screenshot, look, tap or
+swipe or press, wait, screenshot again. Owner request, 2026-08-23, filed as
+[#117](https://github.com/hleserg/Attadipa/issues/117).
+
+**Projects investigated:**
+
+- **LVGL 9.5 itself**, at the revision this build pins
+  (`cmake/AttadipaLvgl.cmake`). Two facilities are directly relevant and both
+  are used rather than reimplemented:
+  - `lv_snapshot_take(obj, LV_COLOR_FORMAT_RGB888)` (`src/others/snapshot/`) —
+    re-renders an object tree into a fresh buffer. This is the "штатный
+    screenshot API графической библиотеки" the request asks to prefer, and it
+    is preferred.
+  - `lv_indev_create` + `LV_INDEV_TYPE_POINTER` with a read callback, and
+    `lv_indev_data_t::continue_reading` to hand LVGL a queue of transitions in
+    one pass (`src/indev/lv_indev.c`: the read timer is created at `:132` with
+    `LV_DEF_REFR_PERIOD`, and `:253-287` is the
+    `do { read; process } while (continue_reading)` loop).
+    Several indevs may be registered at once, **each with its own read timer
+    and its own press state**, and each dispatches independently to whatever
+    lies under its own point — which is what lets a person's SDL mouse and an
+    injected touch coexist without either knowing about the other. LVGL does
+    **not** arbitrate between them: `LV_STATE_PRESSED` is per widget, so a
+    release from one clears the state the other is holding. An earlier version
+    of this entry said "LVGL arbitrates" and cited the header; the word was
+    wrong and the citation was to the API rather than to the behaviour.
+    Read 2026-08-23.
+- **LVGL's own `lv_test_indev_*` harness** (`tests/src/`) — rejected, and worth
+  saying why. It drives LVGL's simulator inside LVGL's own unit-test build with
+  a fake tick, which is the opposite of what is wanted: the point here is a
+  *live* interface at real speed, in this project's binary, reachable from
+  another process.
+- **`esp_lcd`'s panel read-back path** — rejected on hardware grounds, not on
+  preference. The Waveshare's AMOLED sits behind QSPI and the CO5300's read path
+  is not established; [D7](OPEN_QUESTIONS.md) has not even settled its
+  initialisation sequence. The request says explicitly not to read pixels back
+  from an SPI display when the controller and wiring do not properly support it.
+- **`espressif/esp-idf`'s `esp_console`** — considered as the command channel
+  and rejected: it is a line-oriented text REPL over the same UART as the log,
+  and a 617 kB binary image does not belong in one. The framing this project
+  already has solves the interleaving problem properly.
+- **Android's `adb shell input` / `screencap`** — studied as a *shape*, not as
+  code (Apache-2.0, but it is an Android system service). Two things were taken
+  as ideas: separating low-level `down`/`move`/`up` from convenience verbs like
+  `tap` and `swipe`, and expressing a swipe as a duration rather than as a
+  single event. Its worst property was avoided deliberately: `adb shell input
+  swipe` synthesises the intermediate points *on the device*, which makes the
+  host unable to control the gesture's speed profile.
+- **`pytest-embedded`, `Appium`, `Squish`** — rejected as frameworks. The
+  request says not to build a large test framework where the project already has
+  one, and this project's runner is CTest. A scenario here is a data file CTest
+  can point at.
+
+**Useful implementation:** LVGL's snapshot and input-device APIs, used as APIs.
+Nothing was copied.
+
+**License:** LVGL is MIT (`LICENCE.txt` at the pinned revision), already a
+dependency of the simulator target, and no new dependency was added. PyYAML is
+optional and only for `.yaml` scenarios; JSON works without it. `pyserial` is
+optional and only for a serial device, of which there is none yet.
+
+**Strengths of reusing LVGL's own facilities:** `lv_snapshot_take` gives one
+internally consistent frame, which reading a driver's partial draw buffers
+cannot; and a second registered pointer device is the supported way to have two
+sources of touch, so physical input keeps working while remote input is
+connected.
+
+**Weaknesses, recorded rather than discovered later:** `lv_indev_data_t` carries
+**one** point, so the graphics stack is single-touch regardless of what any
+panel can do. That is asserted about LVGL and about nothing else — whether the
+Waveshare's controller can report two fingers is still open ([T-113], no FT3168
+datasheet obtained). The wire format keeps a `touch_id` field and refuses a
+second point rather than silently merging it.
+
+**Decision: reuse LVGL's snapshot and input-device APIs; reuse this project's
+own `link::frame_codec` framing and [ADR-0005](../adr/0005-node-protocol.md) §4
+envelope; write our own message bodies.**
+
+**Reason:** the framing question was already answered in this repository, and
+answering it twice is how a project acquires two incompatible debug channels —
+which the request forbids by name. `link::frame_codec` already provides exactly
+what a debug stream sharing a link with a text log needs: resynchronisation on a
+sync pattern that ASCII does not contain, a length checked before it is trusted,
+a CRC over length and payload, and an over-long frame treated as an error rather
+than truncated. The envelope's `class` field is the extension point ADR-0005
+provided for precisely this.
+
+The message **bodies** are ours and are fixed little-endian rather than TLV,
+which is a deliberate narrowing rather than a departure: ADR-0005's TLV body is
+recorded as provisional pending the encoding benchmark (T-016), and the debug
+class must not pre-empt that decision. Its messages are fixed-shape and one of
+them is high-volume — a screenshot is thousands of chunks, and a tag and a
+length on every field of every chunk is overhead paid ten thousand times to
+describe a layout that never varies. `class` and `ver` are what let the two
+version independently.
+
+`kMaxPayload` was **not** raised for screenshots. It is 192 bytes and
+RESOURCE_BUDGET §4 requires the bound be declared; images are chunked to fit, so
+every buffer in the system stays the size it was reviewed at.
+
+**Source revision:** LVGL v9.5.0, the tag pinned in `cmake/AttadipaLvgl.cmake`
+and reported by the build (`LVGL 9.5.0 at build/_deps/lvgl-src`). Read
+2026-08-23: `src/others/snapshot/lv_snapshot.h`, `src/indev/lv_indev.h`,
+`src/misc/lv_color.h` (which is where `LV_COLOR_FORMAT_RGB888` being **B, G, R**
+in memory comes from — the fact the wire format names as `Bgr888` rather than
+swapping silently).
+
+**Attadipa integration:** `core/input.{h,cpp}` (the input layer, which did not
+exist), `debug/` (protocol and bridge), `sim/remote_input.cpp`,
+`sim/screen_source.cpp`, `sim/debug_server.cpp`, `sim/diagnostic_screen.cpp`,
+`tools/watch/` and `tools/watch_control.py`.
+
+**Tests required, and their status:**
+
+- Protocol round trips, corruption, length disagreement, chunk reassembly,
+  rate limiting, hold expiry, disconnect cleanup — `tests/test_debug.cpp`,
+  **PASSING**, no device needed.
+- The input queue and state machine, including every refusal —
+  `tests/test_input.cpp`, **PASSING**.
+- The host format, RGB565 and BGR888 conversion, orientation, PNG structure,
+  non-zero exit codes — `tools/watch/selftest.py`, **PASSING**. Pinned to the
+  same fixed byte literals as the C++ suite — the framing, a whole `HelloOk`, a
+  whole `ScreenInfo`, a whole `InputEvent`, and both numbering tables written
+  out — so the two independent implementations cannot drift into agreeing on a
+  mistake. Until 2026-08-23 that covered the framing alone and the sentence said
+  otherwise.
+- The whole loop against the simulator — `tools/watch/e2e_test.py`,
+  **PASSING**.
+- **On a physical watch: `NOT EXECUTED — HARDWARE REQUIRED`, and it cannot be
+  executed.** There is no Attadipa firmware, so nothing on the far end of a USB
+  cable speaks this protocol. `SerialTransport` is written and has never spoken
+  to a device.

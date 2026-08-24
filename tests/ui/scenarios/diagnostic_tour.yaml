@@ -1,0 +1,111 @@
+# A tour of the diagnostic screen, for the simulator or for a device.
+#
+# It is a *smoke* scenario: it proves the loop works end to end and leaves the
+# images an agent has to look at. It does not assert what the screen should look
+# like, because a pixel-exact expectation against a live renderer fails on an
+# antialiased glyph and teaches everybody to ignore it. What it does assert is
+# the thing a machine can be sure of -- that an action changed the screen, and
+# that a screen nobody touched did not change.
+#
+# **It runs on both boards.** Coordinates are fractions of the panel, not
+# pixels: this file used to hard-code (350, 420), which is off the edge of a
+# 240x240 T-Watch, so it silently only ever ran on the Waveshare while
+# WATCH_CONTROL.md said "both boards, every time". `first-injectable` is the
+# same problem for buttons -- the two boards share no button name, and which
+# physical input the Waveshare's two reach is open question D5.
+#
+# **The Waveshare skips the button step, and says so.** `first-injectable` is
+# `power` on the T-Watch, whose only other button is not injectable. The
+# Waveshare declares neither of its two: which physical input each reaches is
+# open question D5, so `injectable` is `false` there until somebody answers it.
+# The step then prints `skip` and the summary counts it separately -- coverage
+# that did not happen, rather than a press that worked.
+#
+# **Nothing here holds a button.** Injection bypasses the PMU, but firmware is
+# free to map a held power key to a shutdown flow, and an unattended smoke
+# scenario must not be the thing that discovers it. A held *pointer* measures
+# the same thing on the same screen and risks nothing. The button hold path is
+# covered by `tests/test_debug.cpp`; running it on a device waits for D5 and
+# T-114.
+#
+#   tools/watch_control.py run tests/ui/scenarios/diagnostic_tour.yaml
+#
+# Screenshots land in artifacts/watch/diagnostic_tour/ and their absolute paths
+# are printed, because the deliverable is the image, not the line of output.
+
+steps:
+  - action: screenshot
+    name: 01-untouched
+
+  # Nothing has happened, so nothing may have changed. This is the control: a
+  # scenario whose "changed" assertions all pass because the screen changes on
+  # its own is measuring an animation, not an action.
+  - action: expect_screen_same
+    since: 01-untouched
+
+  - action: tap
+    x: 0.5
+    y: 0.5
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 02-after-tap
+  - action: expect_screen_changed
+    since: 01-untouched
+
+  # A real down / move... / up. On the diagnostic screen this draws a trail, so
+  # the picture shows whether the intermediate points arrived -- a swipe
+  # delivered as one artificial jump draws two dots instead of a line.
+  - action: swipe
+    from: 0.85,0.24
+    to: 0.15,0.84
+    duration: 0.5
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 03-after-swipe
+  - action: expect_screen_changed
+    since: 02-after-tap
+
+  # Slow, which is the whole difference from the swipe above. A drag that is
+  # secretly a swipe passes a test the interface fails under a finger.
+  - action: drag
+    from: 0.15,0.84
+    to: 0.85,0.84
+    duration: 1.2
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 04-after-drag
+  - action: expect_screen_changed
+    since: 03-after-swipe
+
+  - action: button
+    button: first-injectable
+    event: click
+  - action: wait
+    seconds: 0.2
+  - action: screenshot
+    name: 05-after-click
+
+  # Held long enough that the screen's own measured duration separates it from
+  # a tap by looking. A pointer rather than a button -- see the header.
+  - action: long_tap
+    x: 0.5
+    y: 0.62
+    duration: 1.0
+
+  # And a real wait rather than a fixed sleep: this one can fail. It used to
+  # discard the device's answer, and the device could not have answered
+  # truthfully anyway, so the step passed whatever the interface was doing.
+  - action: wait_stable
+    quiet_ms: 300
+    timeout: 5.0
+  - action: screenshot
+    name: 06-after-hold
+  - action: expect_screen_changed
+    since: 05-after-click
+
+  - action: input_reset
+  - action: screenshot
+    name: 07-final

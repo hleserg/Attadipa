@@ -133,7 +133,7 @@ Whatever is decided, wrapping the BSP does not cover the board.
 "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
 ([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
 `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
-([`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+([`.github/workflows/ci.yml:500`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
 What exists
 is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
 installed is not decided.
@@ -288,16 +288,67 @@ constraint; internal SRAM, PSRAM bandwidth and cache coherency are.
 
 **A live defect in the panel driver the vendor depends on.**
 `waveshare/esp_lcd_sh8601` is a fork of `espressif/esp_lcd_sh8601` — its own files
-carry Espressif's SPDX headers — differing by exactly two lines. One is a tear
+carry Espressif's SPDX headers — differing by ~~exactly two lines~~ (that count is
+withdrawn; see the correction below). One difference is a tear
 scanline in a default init table the BSP overrides, and it is provably inert. The
-other is not: at `:280` the fork calls `tx_color(...)` bare where upstream wraps
-it in `ESP_RETURN_ON_ERROR`, inside `panel_sh8601_draw_bitmap`, which then
-returns `ESP_OK` unconditionally. **A failed frame transfer is reported as
-success.** It is present in 1.0.2, the version the published demo pins, as well
-as in 2.0.0. Espressif ships both an unforked `esp_lcd_sh8601` and a
-purpose-named `esp_lcd_co5300` — QSPI, accepting a custom init table — under the
-same Apache-2.0, which is the strongest concrete argument yet recorded for T6
-resolving as "take the pin map and the init table, depend on upstream."
+second thing this paragraph named is not a difference at all: at `:280`, inside
+`panel_sh8601_draw_bitmap`, `tx_color(...)` is
+called bare and the function then returns `ESP_OK` unconditionally. **A failed
+frame transfer is reported as success.** It is present at the **two revisions
+whose source was actually read** — `694ece03` (2023-11-03), where the bare call
+appears, and `5d75f3f0`, where it is still bare. A third, `e5b9295a`
+(2025-12-10), **fixes it according to the changelog**, sourced in the correction
+block below; its source was not read, and the sentence read as though all three
+had been until the fifth review round of
+[#152](https://github.com/hleserg/Attadipa/pull/152). Which
+released component versions those revisions correspond to **is not derived**:
+the sentence used to say *"present in 1.0.2, the version the published demo
+pins, as well as in 2.0.0"*, which is the same inference-from-commit-count the
+correction below withdraws for its neighbour, and the same block also records
+that the version strings do not identify whose versioning they are. Two of the
+four commits touching the file lie inside the window unread. Found in the fourth
+review round of [#152](https://github.com/hleserg/Attadipa/pull/152), which
+noted that the correction named the sin and left the sentence standing above
+it. Espressif ships both an unforked
+`esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300` — QSPI, accepting a custom
+init table — under the same Apache-2.0, which is the strongest concrete argument
+yet recorded for T6 resolving as "take the pin map and the init table, depend on
+upstream."
+
+> **Corrected 2026-08-23 — the defect is real, the attribution was wrong.** This
+> paragraph used to read *"the fork calls `tx_color(...)` bare **where upstream
+> wraps it in `ESP_RETURN_ON_ERROR`**"*, and that half is false for the period it
+> matters. Upstream's own `esp_lcd_sh8601.c` carried the bare call at the
+> identical line 280 from `694ece03` (2023-11-03) until `e5b9295a` (2025-12-10),
+> and the changelog dates the fix to **`v2.0.1`** — *"Fix draw_bitmap not
+> propagating tx_color errors."* Four commits have ever touched that file, and
+> the two bounding this window are the two named above; what lies **between**
+> those two dates was not read commit-by-commit against the tag dates, so
+> *"nothing changed across 1.0.0, 1.0.2 and 2.0.0"* is an inference from the
+> commit count rather than a read, and an earlier version of this paragraph
+> stated it as a read — inside the section whose subject is exactly that
+> mistake. The version numbers are **`esp-iot-solution`'s component versions**,
+> not upstream LVGL's or the fork's own; the fork pins `==1.0.2` and upstream
+> has a `1.0.2` too, so the string alone does not identify which. What is
+> **read** is the state at the two revisions named. Found in review. **The check the fork was
+> said to have dropped did not exist upstream to drop**, over exactly the period
+> the comparison was about. Read at `espressif/esp-iot-solution@5d75f3f0` and
+> `@694ece03`, source **S14** — and note that upstream is `esp-iot-solution`, not
+> `esp-bsp`, whose `components/lcd` contains no `esp_lcd_sh8601` at all.
+>
+> **Stated as narrowly as the evidence allows:** what was read here is upstream,
+> at two revisions. The Waveshare fork's own source was **not** re-read — its
+> registry host does not resolve from this environment — so this corrects the
+> claim *about upstream* and leaves the fork's contents on the earlier record's
+> authority. That is also why the line count cannot simply be re-stated as one.
+>
+> The conclusion for **T6 is unchanged and if anything firmer**: the fix exists
+> upstream and does not exist in the pinned fork, so "depend on upstream" now
+> buys a specific, dated bug fix rather than a hypothetical one. What changes is
+> the count — the "exactly two differing lines" figure was derived against
+> current upstream and should not be quoted until it is re-derived against the
+> revision the fork was actually taken from. Nobody has done that; the fork's own
+> source is on a registry host unreachable from CI.
 
 ### 3.4 A correction to the schematic reading: J3 is the display FPC
 
@@ -424,7 +475,7 @@ Recorded here because it is the part of §1 that has an architectural answer, an
 it is small.
 
 `platform::PanelTechnology` already exists and the Waveshare profile already sets
-`Amoled` ([`platform/src/board_profiles.cpp:107`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
+`Amoled` ([`platform/src/board_profiles.cpp:122`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
 **Nothing reads it.** A grep across `platform/`, `core/`, `ui/` and `apps/`
 returns the two assignments and no consumers, so no code in this project can
 behave differently on an emissive panel today, whatever is decided.
@@ -711,7 +762,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+    [`.github/workflows/ci.yml:500`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more

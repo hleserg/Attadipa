@@ -84,11 +84,15 @@ EASTER_EGGS.md
 # all). Under those two: unanchored `Testing/` matches `docs/testing/HIL_PLANS.md`
 # and `docs/testing/WATCH_CONTROL.md`; anchored `/Testing/` matches neither.
 #
-# **#121 adds these same two names unanchored, in this same place in this same
-# file, from this same base.** Whichever merges second conflicts, and gitignore
-# is additive -- keeping both hunks leaves the unanchored pair in force and
-# recreates exactly what this comment argues against. **These two lines replace
-# them; they do not join them.**
+# **#121 added these same two names unanchored, in this same place in this same
+# file, from this same base -- and it merged first.** The conflict this paragraph
+# predicted happened on 2026-08-24 and was resolved the way it says: gitignore is
+# additive, so keeping both hunks would have left the unanchored pair in force
+# and recreated exactly what this comment argues against. **These lines REPLACED
+# them; they did not join them.** If a future conflict here offers a bare
+# `Testing/` or `artifacts/` again, the same resolution applies, and T-159 exists
+# so the next one is a red build rather than a paragraph somebody has to read
+# while resolving.
 #
 # Written here rather than in a pull request body because a squash merge keeps
 # the file and discards the body. **And a comment is all it is: nothing enforces

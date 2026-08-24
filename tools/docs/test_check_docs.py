@@ -72,7 +72,17 @@ def checks_with_no_case() -> list[str]:
 # paragraph observed that "the three documents quoting it were all stale within
 # a day of the last time cases were added". An instruction to fix them by hand
 # is what had just failed, so they are read back instead. Found in review.
-CLAIM_FILES = ("STATUS.md", "TASKS.md", os.path.join(".github", "workflows", "ci.yml"))
+# `check_docs.py` is in this list because it was NOT, and went stale the way
+# the other three had: its docstring opened "Seven checks" above an enumeration
+# running 1 to 8 and a `CHECKS` tuple with eight entries. A guard that reads
+# three copies of a number and not the one inside the tool is a guard with a
+# blind spot shaped like the tool. Found in review of #152.
+CLAIM_FILES = (
+    "STATUS.md",
+    "TASKS.md",
+    os.path.join(".github", "workflows", "ci.yml"),
+    os.path.join("tools", "docs", "check_docs.py"),
+)
 ANCHORS = ("check_docs.py", "test_check_docs.py")
 WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
@@ -426,6 +436,81 @@ def main() -> int:
             and not check_docs.check_decision_ids(root),
         )
 
+        # Check 8. One open-question ID, one question. The real failure: a
+        # branch filed the panel's wire byte order as `D19` while `main` took
+        # `D19` for the display-FPC part marking, the branch merged `main`, and
+        # nothing re-checked the number -- nineteen citations in eight files
+        # then pointed at two different questions, CI green throughout.
+        write(
+            root,
+            "docs/research/OPEN_QUESTIONS.md",
+            "| ID | Question | Status |\n|---|---|---|\n"
+            "| D19 | the wire byte order | UNKNOWN |\n"
+            "| D20 | the board revision | UNKNOWN |\n",
+        )
+        case(
+            "distinct question IDs are not reported",
+            not check_docs.check_question_ids(root),
+        )
+
+        write(
+            root,
+            "docs/research/OPEN_QUESTIONS.md",
+            "| D19 | the wire byte order | UNKNOWN |\n"
+            "| D20 | the board revision | UNKNOWN |\n"
+            "| D19 | the display-FPC part marking | UNKNOWN |\n",
+        )
+        problems = check_docs.check_question_ids(root)
+        case(
+            "a duplicate question ID is reported",
+            len(problems) == 1 and "D19" in problems[0],
+        )
+
+        # A struck row still owns its number. Reusing a retired one sends a
+        # reader to a question marked RESOLVED and tells them their own subject
+        # is settled, which is worse than a plain collision rather than better.
+        write(
+            root,
+            "docs/research/OPEN_QUESTIONS.md",
+            "| ~~D12~~ | ~~quad or octal~~ **RESOLVED** |\n"
+            "| D12 | something else entirely | UNKNOWN |\n",
+        )
+        case(
+            "a struck row still owns its number",
+            len(check_docs.check_question_ids(root)) == 1,
+        )
+
+        # The lettered suffix the file already uses for a question that split.
+        write(
+            root,
+            "docs/research/OPEN_QUESTIONS.md",
+            "| D12a | Waveshare |\n| D12b | T-Watch |\n| D12a | again |\n",
+        )
+        problems = check_docs.check_question_ids(root)
+        case(
+            "a lettered question ID is matched and D12b is not confused with it",
+            len(problems) == 1 and "D12a" in problems[0],
+        )
+
+        # Not every table in that file is the question register -- and a row
+        # inside a fenced example is an example.
+        write(
+            root,
+            "docs/research/OPEN_QUESTIONS.md",
+            "| D19 | a question |\n\n```\n| D19 | inside a fence |\n```\n"
+            "| Necessity | not an ID |\n| Cost | nor this |\n",
+        )
+        case(
+            "a fenced row and a non-ID first column are not questions",
+            not check_docs.check_question_ids(root),
+        )
+
+        os.remove(os.path.join(root, "docs/research/OPEN_QUESTIONS.md"))
+        case(
+            "no open-question register is not a finding",
+            not check_docs.check_question_ids(root),
+        )
+
         # Check 7. A branch inserted seven lines into HARDWARE_MATRIX.md, moved
         # two PMU-rail rows past the lines two other documents cited, and left
         # one citation pointing at a blank line -- inside the `BLOCKED:` block
@@ -554,6 +639,25 @@ def main() -> int:
         write(root, "docs/research/CITER.md", 'A row at `TARGET.md:3` "three".\n')
         case(
             "a fingerprint that still matches is not reported",
+            not check_docs.check_citation_lines(root),
+        )
+
+        # A WRAPPED FINGERPRINT IS NOT A FINGERPRINT, and this case exists to
+        # say so rather than to approve of it. `_report` reads the remainder of
+        # the citation's OWN physical line, so a snippet that wraps onto the
+        # next one is invisible and the citation silently falls back to the
+        # blank-line test -- protected in appearance only. Found three times by
+        # hand in one file before anyone noticed the shape; filed as T-153 on
+        # https://github.com/hleserg/Attadipa/pull/128, which is where the fix
+        # goes and where the task entry currently lives. Asserted as CURRENT
+        # BEHAVIOUR: the
+        # citation below is wrong by the fingerprint and passes anyway, so the
+        # day T-153 lands this case goes red and is rewritten deliberately,
+        # which is the only way a known gap stays known.
+        write(root, "docs/research/CITER.md",
+              'A row at `TARGET.md:2`\n"three".\n')
+        case(
+            "a fingerprint on the NEXT line is not read -- T-153, asserted so it cannot drift",
             not check_docs.check_citation_lines(root),
         )
 
