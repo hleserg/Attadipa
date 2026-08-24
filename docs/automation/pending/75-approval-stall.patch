@@ -94,14 +94,32 @@ index 69dea3d..3098445 100644
 +            # commit. Read once per pull request rather than once per run: the
 +            # bound is per head, so several stalled runs on one head are one
 +            # comment naming all of them, not one comment each.
++            # A read failure here is NOT "never told". The marker is the only
++            # input that bounds output, so resolving an unreadable endpoint to
++            # the empty string would make a 502 or a secondary rate limit read
++            # as "say it again" -- hourly, on the same head. That is the shape
++            # of #82, which this file's own reasoning says it is avoiding.
++            # Skip the pull request instead and try on the next tick.
 +            SAID=""
-+            SAID=$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp </dev/null 2>/dev/null \
++            RAW=""
++            if ! RAW=$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp </dev/null 2>/dev/null); then
++              echo "::warning::#$PR: could not read comments; skipping this tick rather than risking a repeat."
++              continue
++            fi
++            SAID=$(printf '%s' "$RAW" \
 +                     | jq -r 'if (length > 0 and (.[0] | type) == "array") then add else . end | .[].body' 2>/dev/null \
 +                     | sed -n 's/.*<!-- attadipa-approval-stall \([0-9a-fA-F]\{7,40\}\) -->.*/\1/p' \
 +                     | tail -1) || SAID=""
 +
 +            STALLED=""
 +            GATED=""
++            # Set when ANY run on this head came back with a job count we could
++            # not read. The comment may still go out -- a stall we can see is
++            # worth saying -- but the marker is withheld, because the marker is
++            # per HEAD while the job count is per RUN. Burning the head on a
++            # partial picture answers `repeat` forever for a stall never
++            # mentioned, which is the silence this job exists to break.
++            UNREADABLE=""
 +            while IFS=$'\t' read -r RUN_ID STATUS CONCLUSION RUN_SHA RUN_NAME; do
 +              [ -n "$RUN_ID" ] || continue
 +
@@ -114,6 +132,7 @@ index 69dea3d..3098445 100644
 +              JOBS=""
 +              JOBS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=1" \
 +                       --jq '.total_count' </dev/null 2>/dev/null) || JOBS=""
++              [ -n "$JOBS" ] || UNREADABLE="yes"
 +
 +              # Called ONCE and both lines read off the result. Calling it twice
 +              # -- once for the decision, once for the reason -- would let the
@@ -137,7 +156,16 @@ index 69dea3d..3098445 100644
 +            echo "::warning::#$PR at $SHA has a run waiting for an approval; saying so on the pull request."
 +
 +            {
-+              printf '<!-- attadipa-approval-stall %s -->\n' "$SHA"
++              # Withheld when any run on this head had an unreadable job count:
++              # see UNREADABLE above. Without the marker the next tick will
++              # look at this head again, which is the failure we want -- a
++              # second comment is noise, a permanently silenced stall is the
++              # bug.
++              if [ -z "$UNREADABLE" ]; then
++                printf '<!-- attadipa-approval-stall %s -->\n' "$SHA"
++              else
++                echo "::warning::#$PR at $SHA: a job count was unreadable; commenting without the marker so this head is looked at again." >&2
++              fi
 +              printf "### A check on \`%s\` is waiting for an approval, and nothing was going to ask for it\n\n" "${SHA:0:7}"
 +              if [ -n "$STALLED" ]; then
 +                printf '%s\n' "$STALLED"

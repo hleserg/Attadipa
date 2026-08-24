@@ -88,8 +88,16 @@ stale silently. The protocol is
   disables it**. The checkout now reads
   `${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}`, which changes nothing
   until that secret exists. **Create a fine-grained PAT scoped to this
-  repository — *Contents: Read and write*, *Pull requests: Read and write*, and
-  `Workflows` deliberately NOT granted — and set it as `ATTADIPA_AGENT_TOKEN`.**
+  repository — *Contents: Read and write*, *Pull requests: Read and write*,
+  ***Issues: Read and write***, and `Workflows` deliberately NOT granted — and
+  set it as `ATTADIPA_AGENT_TOKEN`.** The issue permission is **not optional**:
+  this secret is `github_token:` for `claude-code-action`, which posts the
+  agent's report on the triggering issue and does its own labelling through
+  `gh`. Without it the next issue-driven run 403s on the issue write, leaves no
+  `agent:review`, and the watchdog re-queues a billable writer hourly with every
+  run green. An earlier version of this bullet listed two permissions; the
+  working scope in `CLAUDE_AUTOMATION.md` has always been three. Found in
+  review.
   The cost being accepted is attribution: agent commits will then carry the PAT
   owner's name rather than `claude[bot]`. Granting `Workflows` too would retire
   `docs/automation/pending/`, which is convenient and is exactly the widening
@@ -267,6 +275,50 @@ stale silently. The protocol is
   `merge-candidate.sh` does not enumerate, and a `gh pr merge` refused by branch
   protection, which the workflow deliberately turns into one loud failure rather
   than 48 quiet warnings a day.
+- **Hardware required:** no.
+
+### T-145 · The recursion bound must stop depending on who wrote the issue
+- **Priority:** P1 — it becomes live the moment the owner sets
+  `ATTADIPA_AGENT_TOKEN` to a fine-grained PAT, which T-108 asks them to do.
+- **Dependencies:** none. It is a change to the intake rules and can land
+  before or after the secret exists.
+- **Why now:** the anti-recursion boundary is a **login-name** test.
+  `intake-decision.sh` rejects `*"[bot]"`, `claude` and `github-actions`, and
+  `queue-scan.jq` refuses the last two as producers, with the reason written
+  beside it: *"our own output would start a billable writer: exactly the loop
+  the allowlist was built to avoid."* A fine-grained PAT belongs to a **user**,
+  so everything `claude-code-action` writes under it carries the owner's login
+  and `author_association: OWNER` — and `queue-scan.jq` accepts on
+  `author_association` **before** the login test is evaluated. The guard is not
+  bypassed; it is unreachable, and no change to the login list can reach it,
+  because the login really is the owner's. Found in review on
+  [#128](https://github.com/hleserg/Attadipa/pull/128), where the document had
+  claimed the opposite in as many words.
+- **The two reachable consequences**, both today rather than hypothetically:
+  - the agent files a blocker issue — which `CLAUDE.md` instructs, and the
+    BLOCKED template the workflow shows it ends with *"How to resume: comment
+    @claude on this issue."* — carrying `@claude` and the `attadipa-agent-task`
+    marker. `queue-scan.jq` matches on the marker with no label needed and the
+    watchdog dispatches a billable writer on our own output, hourly;
+  - `pr-merge-sweep.yml` clears the unanswered-Codex hold on `select(.bot |
+    not)`. Under the PAT the agent's comments are `user.type == "User"`, so the
+    agent answers Codex on the owner's behalf and the one rule that can put a
+    commit in `main` unattended merges over findings nobody replied to.
+- **Goal:** a bound that does not ask *who wrote it*. Candidates, none decided
+  here: a marker the agent stamps on its own output that the scanner refuses
+  regardless of author; a per-issue dispatch counter in the watchdog, which
+  bounds the loop rather than preventing it; or keeping a distinct bot identity
+  by choosing Option B (a second GitHub App) over the PAT, which leaves the
+  existing login test reachable and is the cheapest of the three if the owner
+  has not already made the PAT.
+- **Acceptance:** a test that fails against today's tree — an issue authored
+  with `author_association: OWNER` carrying the agent's own marker must not be
+  enqueued — plus whichever bound is chosen, and
+  [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md)'s *What this does not
+  cover* updated to match what is then true.
+- **What must not be assumed:** that setting the PAT is what creates the
+  problem. It is what makes it reachable; the ordering bug in `queue-scan.jq`
+  is already there.
 - **Hardware required:** no.
 
 

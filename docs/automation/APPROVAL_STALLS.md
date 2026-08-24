@@ -188,8 +188,24 @@ observation on the next real stall before writing any code.
 ### What is recommended, as one action
 
 **Option A, with the PAT scoped to this repository only and `Workflows` left
-unchecked** — *Contents: Read and write* and *Pull requests: Read and write*,
-set as the repository secret `ATTADIPA_AGENT_TOKEN`.
+unchecked** — *Contents: Read and write*, *Pull requests: Read and write* **and
+*Issues: Read and write***, set as the repository secret
+`ATTADIPA_AGENT_TOKEN`.
+
+**The third permission is not optional and an earlier version of this section
+omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is
+`github_token:` for `claude-code-action` at `claude-agent.yml:804`,
+`claude-pr-review.yml:111` and `claude-ci-repair.yml:237`. `display_report:
+"true"` posts the agent's summary **on the triggering issue** over it, and the
+agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
+`claude-agent.yml:846` says the action has no label feature of its own and that
+labelling *"depends entirely on `gh` being allowed"*.
+[CLAUDE_AUTOMATION.md](CLAUDE_AUTOMATION.md) already records the working scope
+for this same secret as all three. Set only the first two and the next
+issue-driven run — the canonical path per `CLAUDE.md` — takes a 403 on the issue
+write: no report, no `agent:review`, so `queue-scan.jq` still sees the issue
+waiting, the watchdog re-queues it hourly, and a billable writer repeats the
+same task with every run reporting **green**. Found in review.
 
 It is the documented remedy, the secret it fills already exists and is already
 read by two workflows, and it needs no new App, no new action and no setting
@@ -206,7 +222,13 @@ at the price of two more secrets.
 ## What happens in the meantime — written, tested, **not deployed**
 
 > [!IMPORTANT]
-> The rule below is on `main` and tested. The watchdog job that calls it is
+> The rule below is on `main` and has 38 cases — **but nothing on `main` runs
+> them.** `ci.yml` enumerates every shell test by name and this one is absent,
+> because the line that would add it rides the same blocked patch: `ci.yml` is
+> itself under `.github/workflows/`. `shellcheck` globs the file, so it is
+> linted and never executed. Tested **by hand, not by CI, until the patch
+> lands** — which in a document about checks that did not run is the one thing
+> that must not be glossed. The watchdog job that calls it is
 > **not**, and until somebody applies
 > [`pending/75-approval-stall.patch`](pending/README.md) this stall is still
 > silent.
@@ -242,8 +264,40 @@ real runs above with the values the API actually returned.
 
 ## What this does not cover
 
-The intake gate is untouched. The actor check is the security boundary, nothing
-here reads it, and no option above changes who may drive a write-capable agent.
+The intake gate is untouched and the actor check is the security boundary —
+nothing here reads it. **But Option A does change who may drive a write-capable
+agent, and an earlier version of this section said the opposite.** The
+anti-recursion boundary is a *login-name* test: `intake-decision.sh:142` rejects
+`*"[bot]"`, `claude` and `github-actions`, and `queue-scan.jq` refuses the last
+two as producers because *"our own output would start a billable writer: exactly
+the loop the allowlist was built to avoid."* A fine-grained PAT belongs to a
+**user**, so everything `claude-code-action` writes under it carries that login
+with `author_association: OWNER` — and `queue-scan.jq` accepts on
+`author_association` **before** the login test is ever evaluated. The guard is
+not bypassed; it becomes unreachable, and no change to the login list can fix
+that, because the login is genuinely the owner's.
+
+Two concrete consequences, both reachable today:
+
+- The agent files a blocker issue — which `CLAUDE.md` instructs it to do, and
+  the BLOCKED template the workflow shows it ends with the literal *"How to
+  resume: comment @claude on this issue."* — carrying `@claude` and the
+  `attadipa-agent-task` marker. `queue-scan.jq` matches on the marker with no
+  label needed, and the watchdog dispatches a billable writer on our own output,
+  hourly.
+- `pr-merge-sweep.yml` clears the unanswered-Codex hold only on
+  `select(.bot | not)`. Under the PAT the agent's comments are `user.type ==
+  "User"`, so the agent answers Codex on the owner's behalf and
+  `merge-candidate.sh`'s *"only rule that can put a commit in `main`
+  unattended"* merges over findings nobody replied to.
+
+This is not an argument against Option A — it is the part of its price that was
+missing. **Option B keeps the boundary intact**, because a second GitHub App
+keeps a distinct bot login, and that is now a reason to prefer it beyond
+attribution. Whichever is chosen, the recursion bound has to stop depending on
+who wrote the issue: filed as its own task rather than decided here, because it
+is a change to the intake rules and those are not this document's to make.
+Found in review.
 
 [#74](https://github.com/hleserg/Attadipa/issues/74) is the other way a pull
 request ends up with no CI while looking merely unfinished — a merge conflict,
