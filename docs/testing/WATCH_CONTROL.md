@@ -110,6 +110,14 @@ with nothing held and is refused. A hold that spans time belongs in one process:
 `hold --duration`, a `button` step in a scenario, or `press`/`release` inside
 `live`.
 
+`--json` on any of them for machine-readable output. Every command exits
+non-zero on failure. Every image's **absolute path** is printed, because the
+image is the deliverable.
+
+By default the tool looks for a simulator socket at `./.attadipa-sim.sock` and
+`/tmp/attadipa-sim.sock`. `--socket <path>` says where; `--port <device>` is for
+a serial device.
+
 ### What `duration` measures
 
 **The whole path, from the `PointerDown` to the `PointerUp`.** A gesture of `N`
@@ -140,13 +148,11 @@ refused **before** the `PointerDown` goes out, so a mistyped gesture file
 cannot leave a finger down on the device. The same rule reaches a scenario step
 and a `gesture --file`, because both go through the one client method.
 
-`--json` on any of them for machine-readable output. Every command exits
-non-zero on failure. Every image's **absolute path** is printed, because the
-image is the deliverable.
-
-By default the tool looks for a simulator socket at `./.attadipa-sim.sock` and
-`/tmp/attadipa-sim.sock`. `--socket <path>` says where; `--port <device>` is for
-a serial device.
+`swipe` and `drag` are a hair short of this today — they take `steps` intervals
+between their points and sleep for `steps - 1` of them, so a swipe runs `1/steps`
+under its duration and starts with a zero-length segment. Bounded, unlike the
+gesture defect above, and recorded under **T-114** in
+[TASKS.md](../../TASKS.md) rather than left to be rediscovered.
 
 ### `info` is not decoration
 
