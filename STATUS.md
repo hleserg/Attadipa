@@ -12,6 +12,30 @@ forced by the owner's new master specification, is complete: all eight §75
 items closed plus one the review did not list
 ([RECONCILIATION](docs/research/RECONCILIATION_2026-08-21.md)).
 
+**And the next one is named, because M1 was allowed to run too far.** The owner
+ordered a course correction on 2026-08-24, after an independent cold read:
+**M2 — the first device vertical slice**, written up in
+[ROADMAP](docs/ROADMAP.md). The finding it rests on is checkable rather than
+impressionistic — **this repository contains no ESP-IDF project at all.** No
+`main/` component, no `idf_component_register` anywhere in the tree, no
+`sdkconfig.defaults`, no partition table; every `CMakeLists.txt` here is
+host-native and the root one says so deliberately. Meanwhile `T-004`, which
+pins the IDF version and whose toolchain is *already installed and already
+building a trivial `esp32s3` target*, had been sitting under `READY` behind
+roughly fifty research tasks, and `T-114` records its own dependency as *"an
+ESP-IDF firmware project. There is none."*
+
+So M2 is not a reset and reopens nothing: `T-165`, `T-166` and `T-167` are new,
+`T-004` moved from `READY` into `NOW`, and the rule that decides between two
+competing tasks now lives in `CLAUDE.md` under *Which of two tasks wins*. The
+board is the **Waveshare**, because it is the only board in the building —
+`T-010` is blocked on the T-Watch and says in the same sentence that Waveshare
+bring-up is unblocked and merely undone. The one open technical unknown on the
+path is **D21**, the CO5300's wire byte order, which blocks the first line of
+display bring-up and is a probe to run early rather than a reason to wait.
+**No agent flashes a board**, so every hardware step ends at a reproducible
+build, a written procedure and `NOT EXECUTED — HARDWARE REQUIRED`.
+
 ## Current implementation
 
 **Attadipa has code.** As of 2026-08-24 the repository builds seven libraries and

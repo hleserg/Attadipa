@@ -39,6 +39,145 @@ stale silently. The protocol is
 
 ## NOW
 
+**The first four entries are the device vertical slice, and they are first on
+purpose** — owner course correction, 2026-08-24,
+[`docs/ROADMAP.md`](docs/ROADMAP.md). The engineering base ran a long way ahead
+of the device: there is no ESP-IDF project in this repository at all. Nothing
+below them is cancelled and nothing already decided is reopened; when two tasks
+compete, the one that gets a real watch closer to booting wins unless the other
+blocks it or is a correctness, security or queue-stalling defect.
+
+### T-165 · There is no ESP-IDF project, and every device task waits behind that
+- **Priority:** P0 — item 2 on [`docs/ROADMAP.md`](docs/ROADMAP.md)'s critical
+  path, and the one that unblocks the rest of it.
+- **Dependencies:** T-004, which is a decision record rather than work.
+- **Why it exists as a task at all.** The tree has **no ESP-IDF artefact of any
+  kind**: no `main/` component, no `idf_component_register` anywhere, no
+  `sdkconfig.defaults`, no partition table. Every `CMakeLists.txt` here is
+  host-native and the root one says so deliberately. That was correct for M1 —
+  the simulator had to work on a machine with no toolchain — and it is why
+  T-114 records its dependency as *"an ESP-IDF firmware project. There is
+  none."*
+- **Goal:** an ESP-IDF project that builds for `esp32s3` from a clean checkout,
+  for **one** board, plus a flash procedure a person can follow without
+  improvising.
+- **Acceptance:**
+  1. a `main/` component with `idf_component_register` and an `app_main` that
+     boots and says so on the console;
+  2. `sdkconfig.defaults` for the board, a `partitions.csv`, and the target
+     pinned — **a development table, labelled as one.** It does not pre-empt
+     **T-025**, which is the partitions/NVS/OTA ADR for two devices; this table
+     is allowed to change and the ADR is what freezes it;
+  3. `idf.py build` reproducible from a clean checkout on the pinned IDF, proved
+     by **a CI job** rather than by a sentence in a pull request;
+  4. the existing libraries **link into it** rather than being copied —
+     `attadipa_core`, `attadipa_platform`, `attadipa_link` and `attadipa_l10n`
+     compile for the target. If one of them does not, that is the finding, and
+     it is worth more than the skeleton;
+  5. serial diagnostics on boot: chip revision, flash id, PSRAM presence and
+     mode, reset reason, free heap. Enough that the first hardware report is a
+     transcript instead of an impression;
+  6. a flash procedure in `docs/hardware/` — commands, port, baud, what a good
+     boot looks like, and what to do when it is not one.
+- **Non-goals, and they matter:** the second board, any driver, LVGL, OTA,
+  secure boot, flash encryption. This task is the floor, not the building.
+- **Research status:** done for the toolchain — T-004 records
+  `v5.5.5-496-gc197d718bcc` installed and a trivial `esp32s3` build passing.
+- **Implementation status:** not started.
+- **Tests:** a CI target build. Everything past `idf.py build` is
+  **NOT EXECUTED — HARDWARE REQUIRED** and stays that way here: no agent flashes
+  a physical device, and this task hands over a procedure rather than a result.
+- **Hardware required:** no to build; yes to prove, and the proof belongs to
+  whoever has the board.
+- **Number:** `T-158`–`T-164` are allocated on open branches and not on `main`.
+  Check the open pull requests before allocating another.
+
+---
+
+### T-166 · One board driven vertically: display, touch, PMU and RTC on the Waveshare
+- **Priority:** P0 after T-165 — item 3 on the roadmap's critical path.
+- **Dependencies:** T-165. **D21** blocks the first line of display bring-up and
+  nothing before it.
+- **Why this board.** Not a preference: the Waveshare
+  ESP32-S3-Touch-AMOLED-2.06 is the only board in the building. Its eFuses have
+  been read (`ESP32-S3R8`), its flash identified, its schematic traced. The
+  T-Watch S3 Plus is `ORDERED` — **T-010** is blocked on that and says in the
+  same breath that Waveshare bring-up *"is unblocked and simply not yet done."*
+  One board vertically beats two boards halfway, and the abstraction boundaries
+  get their real test on the **second** board, which is the honest order.
+- **Goal:** the unit shows something Attadipa drew, and responds to a finger.
+- **Acceptance:**
+  1. the CO5300 driven over QSPI, with **the byte order resolved rather than
+     guessed** — D21, and the swap is a **board** fact that belongs in
+     `platform/`, absorbed once at flush, never a build flag or a setting;
+  2. LVGL bound to a real flush path, one internally consistent frame at a time;
+  3. FT3168 touch pushed into `core::InputQueue` with `InputOrigin::Physical`,
+     which is how remote and physical input are made to coexist rather than
+     compete;
+  4. the AXP2101 rails owned by something, and the PCF85063ATL as a time source
+     — **the vendor BSP drives neither**, nor the IMU, and `BSP_CAPS_BUTTONS` and
+     `BSP_CAPS_IMU` are both `0` there. "Vendor supported" is not "handled";
+  5. `#ifdef BOARD_` appears nowhere in `core/` or `apps/`, checked rather than
+     asserted.
+- **Reuse before writing:** `espressif/esp_lcd_co5300` and
+  `espressif/esp_lcd_sh8601` are Apache-2.0 and upstream in `esp-iot-solution`,
+  both already recorded in the ledger. Read them before writing a driver.
+- **Research status:** deep and mostly done — the schematic, the bus map, the
+  addresses and the two drivers are all recorded. **D21 is the open one.**
+- **Implementation status:** not started.
+- **Tests:** host tests for anything separable. On the board:
+  **NOT EXECUTED — HARDWARE REQUIRED** until somebody with it runs them.
+- **Hardware required:** yes.
+
+---
+
+### T-167 · Sleep, wake, and a lifecycle that survives both
+- **Priority:** P1 — item 6 on the roadmap's critical path, and part of the
+  first vertical result rather than polish after it. A watch that cannot sleep
+  is not a watch.
+- **Dependencies:** T-166; **T-114** for the repeatable half; **T-068**, which
+  asks whether either board can sleep on a 32 kHz clock at all and is therefore
+  a prerequisite question rather than a parallel one.
+- **Goal:** the device sleeps and wakes without losing the interface or the
+  input queue, and the cycle can be run many times without a person watching.
+- **Acceptance:**
+  1. screen off, then a controlled sleep — the mode named and justified, not
+     whichever one worked;
+  2. wake from touch and from the PMU's button;
+  3. the interface restored with no stuck input, no stale frame and no lost
+     queue entry;
+  4. the **wake reason** readable and reported, because a wake nobody can
+     attribute is a power bug that cannot be found;
+  5. the cycle repeatable under the debug channel — N iterations, screenshot
+     compared each time, reported as a count and not as an adjective.
+- **Research status:** T-068 is open and this task should not start ahead of it.
+- **Implementation status:** not started.
+- **Tests:** the repeat loop is the test, and it runs on hardware.
+  **NOT EXECUTED — HARDWARE REQUIRED.**
+- **Hardware required:** yes.
+
+---
+
+### T-004 · ESP-IDF version decision
+- **Priority:** **P0**, and moved out of `READY` on 2026-08-24. It was lowered to
+  P1 on the grounds that it *"blocks embedded work; it does not block M1, which
+  is the simulator"* — true then, and the reason it sat behind fifty research
+  tasks. [`docs/ROADMAP.md`](docs/ROADMAP.md) makes embedded work the milestone,
+  so this is now the first item on the critical path and the cheapest one on it.
+- **Dependencies:** none
+- **Goal:** pin ESP-IDF with recorded reasoning.
+- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
+  source, version, licence, rationale and upgrade strategy.
+- **Research status:** narrowed — Waveshare supports v5.5.5 and v6.0.2, its BSP
+  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 probably does not bind
+  Attadipa (T7)
+- **Implementation status:** `v5.5.5-496-gc197d718bcc` installed and **verified**
+  by a real `idf.py set-target esp32s3 && idf.py build`. Verified is not decided.
+- **Tests:** a trivial esp32s3 build — **passed**
+- **Hardware required:** no
+
+---
+
 ### T-100 · The agent queue, verified by running it rather than by reading it
 - **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
   different pieces of work carried that ID: this one, and the transport tests
@@ -153,9 +292,12 @@ stale silently. The protocol is
   and run against the simulator.
 - **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
   task after that point is supposed to end with a real screenshot, and this is
-  what makes one possible.
+  what makes one possible. That point now has a task and a date attached:
+  **T-165**, item 4 on [`docs/ROADMAP.md`](docs/ROADMAP.md)'s critical path.
 - **Dependencies:** an ESP-IDF firmware project. There is none — `README.md`
-  says so — which is why this is a task rather than an omission.
+  says so — which is why this is a task rather than an omission. **T-165** is
+  the task that ends this dependency, and **T-166** the one that gives the
+  screenshot a real panel to come from.
 - **Why it is separate:** the vertical
   `agent → host tool → protocol → input layer → UI → framebuffer → PNG` is
   complete except for the transport at the device end. `attadipa_debug` is a
@@ -718,8 +860,13 @@ stale silently. The protocol is
 - **Hardware required:** no. **Owner required:** yes.
 
 ### T-037 · The first Clock
-- **Priority:** P0
-- **Dependencies:** T-008, T-009, T-033, T-034
+- **Priority:** P0 — and item 5 on
+  [`docs/ROADMAP.md`](docs/ROADMAP.md)'s critical path, which adds one word to
+  the goal below: the first real screen **on the watch**. The simulator version
+  is worth building first and is not the milestone; a Clock that has only ever
+  run on a desktop has not been shown to fit in the RAM, redraw at the panel's
+  rate, or survive a wake.
+- **Dependencies:** T-008, T-009, T-033, T-034; **T-166** for the hardware half
 - **Goal:** the first real screen. Time, date, battery, a good watchface, day and
   night, EN and RU, a Child variant, and one purposeful use of the owner's art
   (final §58, §88).
@@ -1802,23 +1949,6 @@ stale silently. The protocol is
 - **Implementation status:** not started
 - **Tests:** this *is* test infrastructure
 - **Hardware required:** no
-
-### T-004 · ESP-IDF version decision
-- **Priority:** P1 — lowered from P0. It blocks embedded work; it does not block
-  M1, which is the simulator.
-- **Dependencies:** none
-- **Goal:** pin ESP-IDF with recorded reasoning.
-- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
-  source, version, licence, rationale and upgrade strategy.
-- **Research status:** narrowed — Waveshare supports v5.5.5 and v6.0.2, its BSP
-  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 probably does not bind
-  Attadipa (T7)
-- **Implementation status:** `v5.5.5-496-gc197d718bcc` installed and **verified**
-  by a real `idf.py set-target esp32s3 && idf.py build`. Verified is not decided.
-- **Tests:** a trivial esp32s3 build — **passed**
-- **Hardware required:** no
-
----
 
 ### T-101 · A formatting rule, and CI that enforces it
 - **Renumbered from T-039 on 2026-08-22, and do not renumber it back.** That

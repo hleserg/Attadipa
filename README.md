@@ -34,6 +34,14 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 | **Has not been measured** | there is no Attadipa firmware to flash yet, and no power, timing, GNSS or interference number exists. Ten hardware-in-the-loop plans are written with equipment, procedure and pass/fail criteria, so each unproven claim is visibly unproven rather than merely absent |
 | **Runs its own engineering queue** | work arrives as a GitHub issue, an agent opens a branch and a draft pull request, and a second agent reviews it independently. The workflows, their security model and their cost controls are in [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md) |
 
+**What is next, and it is deliberately narrow.** That last row is the one that
+sets the direction: the architecture, the tests, the simulator and the research
+are all a long way ahead of the device, and there is no ESP-IDF project in this
+repository yet. The next milestone is one board brought up vertically until a
+watch boots, shows a clock, takes a touch, sleeps and wakes — and until then
+nothing here claims to have run on hardware. [`docs/ROADMAP.md`](docs/ROADMAP.md)
+is the whole plan and the reasoning behind it.
+
 Attadipa is not a Linux-like OS. It is a single embedded
 firmware/application platform on top of ESP32-S3 and ESP-IDF/FreeRTOS,
 designed to support several watch models from one codebase.

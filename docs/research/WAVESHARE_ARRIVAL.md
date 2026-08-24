@@ -790,7 +790,11 @@ twice. **Two are still live.**
    `HARDWARE_MATRIX.md:331` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
-   open-question row at `STATUS.md:266` is struck and split the same way.
+   open-question row in [STATUS.md](../../STATUS.md) — the one that reads
+   `~~D12~~ → **D12b**` — is struck and split the same way. (Cited by line
+   number until 2026-08-24, when a milestone paragraph above it moved the file
+   and the line went blank. A row identified by the text it starts with cannot
+   go stale that way.)
 
    The third took one more commit and is the one worth remembering.
    [VERIFIED_FACTS.md](VERIFIED_FACTS.md) still concluded, twenty-five lines
