@@ -75,7 +75,8 @@ dated Friday 8 January 2021 — a 2020-era title block the vendor never updated.
 The contents are unambiguously S3-class (`ESP32-S3-R8`, `W25Q128JW`), so the
 drawing is the right board with the wrong nameplate. **Cite the filename for
 provenance, never the title block for revision.** Board revision of a *physical*
-unit is still unknown — see OPEN_QUESTIONS A1.
+unit is still unknown — see OPEN_QUESTIONS **D20**. (Not A1: A1 is struck and
+marked ANSWERED, and the revision half of it was carved out into D20.)
 
 ### Core
 
@@ -134,7 +135,14 @@ from RadioLib's drivers and MeshCore's build configuration, not from the TI and
 Silicon Labs datasheets, which refused automated retrieval. Confirming them from
 primary sources is open question **R1**. The schematic itself fits an
 SX1262-class module (HPD16B3), so the most likely fitted part is also the one
-that works — but "most likely" is not A2 answered.
+that works.
+
+**A2 is answered as of 2026-08-22** — SX1262 at 868 MHz, from the order listing
+(`OWNER_DECISIONS.md`, A1–A3, issue #54). It is answered in the *record*, and
+that is the whole distinction this section has to keep: a seller's listing is
+not a marking read off the part, so `RadioChip::Unknown` does not move and
+nothing here is upgraded from PARTIAL. Reading the marking off the fitted chip,
+once the watch arrives, is what closes both.
 
 ### AXP2101 rail map
 
@@ -301,8 +309,15 @@ as a target to reproduce — not as evidence about Attadipa's own firmware.
 
 ## Waveshare ESP32-S3-Touch-AMOLED-2.06
 
-Revision: schematic `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**,
-3 sheets; pin map from vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0.
+Revision: **of the document, not of the unit.** Schematic
+`ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**, 3 sheets; pin map from
+vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0. The received board's
+own revision is unread: its silkscreen carries the product name, whose `2.06` is
+the panel diagonal, and a V1.1 unit would carry the same string. This section's
+own rule above — *cite the filename for provenance, never the title block for
+revision* — is written under the T-Watch and applies here identically. See
+OPEN_QUESTIONS **D20**, which is the revision question itself; A1 is struck and
+answered, and sends a reader nowhere.
 Where the two differ, the schematic wins on *what exists* and the BSP wins on
 *which pin firmware should use* — the BSP was demonstrably written to a subset
 of the board.
@@ -312,7 +327,7 @@ of the board.
 | Item | Value | Status |
 |---|---|---|
 | SoC | **ESP32-S3R8** — bare chip, not a module. `ESP32-S3 (QFN56)`, **revision v0.2**; 40 MHz crystal; ADC and temperature calibration fuses burned. A build must keep `CONFIG_ESP32S3_REV_MIN` at 0 or the bootloader refuses the chip. **All eight errata in sheet v1.3 apply to v0.2**, seven permanently, and no later revision exists — [ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md) | VERIFIED — S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1 |
-| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3). JEDEC read back `0xC8 0x4019` = GigaDevice, 2^25 bytes; eFuse `FLASH_TYPE = 4 data lines`, rail forced to 3.3 V by `VDD_SPI_TIEH`, and `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` all unprogrammed — **no in-package flash** | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.3 |
+| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3). JEDEC read back `0xC8 0x4019` = GigaDevice, 2^25 bytes; eFuse `FLASH_TYPE = 4 data lines`, rail forced to 3.3 V by `VDD_SPI_TIEH`, and `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` all unprogrammed — **no in-package flash**. Booted **QIO at 80 MHz**, the bootloader agreeing the part is 32 MB. **Only the low 16 MB is bootable**: the ROM and the second-stage bootloader address flash with 24 bits, so `0x1000000` aliases to `0x0` — any app partition at or above 16 MB is dead, and the vendor ships one | VERIFIED — S6, S10 and S13, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.3, [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §1 |
 | PSRAM | 8 MB **octal** — ESP32-S3 Series Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` and the table contains no 8 MB quad in-package variant. Corroborated by five vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y`, and by GPIO33–37 — octal's DQ4–DQ7 and DQS — sitting unrouted on the schematic. **The die's own fuses now agree**: `PSRAM_CAP = 8M`, `PSRAM_VENDOR = AP_3v3` — so `R8`, not the 1.8 V `R8V` — and `PIN_POWER_SELECTION = VDD_SPI` puts GPIO33–37 on the memory rail, which is where octal's DQ4–DQ7 and DQS go. The eFuse states capacity and rail, not bus width; the step to *octal* remains Table 1-1's, and is sound because no 8 MB quad in-package part exists. D12a | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2 |
 | Battery | **Marked 400 mAh, 3.7 V — and the marking is the thing in doubt.** `VERIFIED` here means the label was read correctly, not that the cell holds it: 400 mAh in `402728`'s 3.024 cm³ implies 132.3 mAh/cm³ against an 87–102 band across 51 datasheet cells, so the honest expectation is **250–310 mAh, `ESTIMATED`** — [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1, settled by weighing the cell (T-106 M3). Cell `402728` (4.0 × 27 × 28 mm), on connector `BAT1` via the AXP2101 charge path. The cell is **not soldered**: red/black leads into a white 2-pin plug, identified from a photograph as **MX1.25 / PicoBlade, 1.25 mm — `LIKELY`, not measured**. A photograph without a scale reference does not establish a pitch, and this decides what plugs in | VERIFIED — read off the cell of a received unit, 2026-08-22, [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2 |
 
@@ -326,18 +341,18 @@ the board with 3.57× the pixels. That is a convenient coincidence, not a plan.
 | Peripheral | Part | Bus / pins | I2C addr | Power rail | Status |
 |---|---|---|---|---|---|
 | Display | **CO5300**, 2.06" 410×502 AMOLED, RGB565 | QSPI: CS 12, PCLK 11, D0 4, D1 5, D2 6, D3 7, RST 8 | — | D13 | VERIFIED |
-| Touch | FT3168 (driven by the FT5x06-family driver) | INT 38, RST 9, on main I2C | `0x38` — **driver source only**, no datasheet states it; the controller is inside the display module so no strap is inspectable | D13 | address LIKELY |
+| Touch | FT3168 (driven by the FT5x06-family driver) | INT 38, RST 9, on main I2C | **`0x38`, CONFIRMED on the board** (S13) — it was previously driver source only. **It answers only after GPIO 9 is pulsed low→high**: absent from the scan with the pin untouched, still absent while the pin is held high, present after a 10 ms reset pulse. It then reads chip ID `0x64`, firmware `0x02`, vendor `0x11` — FocalTech's vendor byte and the ID the FT5x06/FT6x36 drivers expect; the mapping to a part number is UNKNOWN, no FT3168 datasheet obtained | D13 | **VERIFIED** — the reset *edge* is required, not the level, so this belongs in the BSP. [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.3 |
 | PMU | AXP2101 | main I2C | `0x34` — datasheet-fixed, no address-select pin. Table 6-1 gives write byte `0x68`, so `0x68` is **not** the 7-bit address | — | VERIFIED |
-| IMU | QMI8658 / QMI8658C, 6-axis. **Board-frame axes are silkscreened beside it**: X toward the battery edge, Y toward the USB-C edge, Z as ⊙ out of the back face (H15, half answered) | main I2C; SDO/SA0 to GND, CS to VCC3V3 | `0x6B` printed on the schematic — but QMI8658C Rev 0.6, the PDF Waveshare's own wiki links, maps SA0-low to `0x6A`. Revs 0.8/0.9/A say `0x6B` | D13 | address CONFLICTING |
+| IMU | QMI8658, 6-axis. **The silicon reports `REVISION_ID = 0x7C`**, which is the value in `13-52-25 ∙ QMI8658A ∙ Rev A` — the document whose chapter 11 has a hardware pedometer. The QMI8658C Rev 0.6 document gives `0x79`, so **that document does not describe this part**, despite the schematic printing `QMI8658C` twice. **Board-frame axes are silkscreened beside it**: X toward the battery edge, Y toward the USB-C edge, Z as ⊙ out of the back face (H15, half answered) | main I2C; SDO/SA0 to GND, CS to VCC3V3 | **`0x6B`, MEASURED** — `0x6A` does not acknowledge. The schematic and revs 0.8/0.9/A are right; Rev 0.6's SA0-low → `0x6A` mapping is not this board | D13 | **VERIFIED** (was address CONFLICTING) — S13, bus scan and register read from a RAM app, [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1–3.2 |
 | RTC | PCF85063ATL | main I2C | `0x51` — datasheet-fixed, NXP PCF85063A Rev. 7 §9.5.1 reserves `1010001` | D13 | VERIFIED |
 | Audio codec | ES8311 | I2S for data; **also an I2C control slave on the main bus** | `0x18` — R50 (10 kΩ) ties `Codec_CE` to AGND, and the vendor example states CE-low = `0x18` | D13 | VERIFIED |
 | Mic ADC | ES7210, **dual** digital microphones — **both fitted**, silkscreened `MIC1` and `MIC2` at opposite ends of the left edge | I2S for data; **also an I2C control slave on the main bus** | `0x40` — A1/A0 to AGND through R42/R43 (0 Ω), alternates R35/R36 marked NC, and the schematic prints `0x40` beside them | D13 | VERIFIED |
 | Amplifier enable | — | GPIO 46 | — | — | VERIFIED |
 | Speaker | AAC `AAC210602A1`, metal-can module in the back cover, **wired to solder pads** rather than a connector; impedance and rated power not published — `UNKNOWN`. **A parallel reading of the same unit calls this part a haptic actuator rather than a speaker.** Against that: the case has a grille slot directly over it, the schematic carries a *separate* motor path on GPIO 18 → Q1 → `P1`/`P2`, and the factory demo ships `MusicPlayer`. AAC makes both, so the marking does not decide it | `+`/`−` pads at the board's bottom-right | — | via ES8311 | **CONFLICTING** — S9 and S11, [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §6. Resolved by tracing the pads: a speaker sits behind the ES8311/amplifier output, an actuator does not |
 | **Vibration motor** | **no driver IC** — GPIO 18 → R12 (4.7 kΩ) → Q1 (MMBT3904, NPN) → motor on pads **`P1`/`P2`**. **Those pads are bare and no motor is fitted** on the unit received 2026-08-22; the coin-motor footprint beside them is empty. **Designator corrected 2026-08-22:** the motor pads are **`P1`/`P2`**, not `J1`. `J1` is the **battery** connector — a word-coordinate extraction of the schematic puts `J1` at (267.4, 193.8) beside net `VBAT1` at (297.2, 189.9), while the motor block (`MOTOR`, `R12 4.7K`, `R13 47K`, `Q1`, `R7 0R`, `P1`, `P2`) clusters at x ≈ 154–205, and the designator list holds `COJ1`, `COJ2` and `COP1`–`COP6` with **no `BAT1` at all**. It also resolves a contradiction inside this repository's own record: the battery plug is visibly mated to a two-pin header on the received unit, so `J1` cannot be "two bare pads". [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1.1. **The conclusion is unchanged** — the pads are bare and the coin-motor footprint is empty either way. | net `MOTOR` | — | **BLDO2** | driver VERIFIED; **actuator absent**, OBSERVED on one unit — [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.7 |
-| Buttons | at least two tactile keys on the board (`Key1` adjacent to `BOOT`, `Key3`) plus `PWRON` on the PMU. **The vendor BSP declares none** | specific GPIO assignment not resolved from the extraction — D5 | — | — | PARTIAL |
-| SD card | — | SDMMC 1-bit: CLK 2, CMD 1, D0 3 | — | D13 | VERIFIED |
-| Main I2C bus | — | SDA 15, SCL 14 — **and both are brought out on the expansion pad row below**, labelled there as bare `IO15`/`IO14` | **six devices**: `0x18`, `0x34`, `0x38`, `0x40`, `0x51`, `0x6B`. Nothing collides and `0x6A` is free, which is what makes one scan decisive | — | VERIFIED |
+| Buttons | **two** pressable buttons on the assembled case (owner count, 2026-08-23, **S13** — pressed, not photographed). The schematic names three candidate inputs — `Key1` adjacent to `BOOT`, `Key3`, and `PWRON` on the PMU — and **the count does not by itself say which of them reach a finger**: one key may sit on `PWRON` *and* a GPIO in parallel, which is ordinary on AXP2101 designs, and `PWRON` may equally reach neither button (on the T-Watch it wires to SW7 and never reaches a GPIO). `Key1` is adjacent to `BOOT` and may never be brought out at all. The schematic list is itself a floor, not a census — S6 is a text extraction whose pin-to-net adjacency is only partially recoverable, and the designators are `Key1` and `Key3` with **no `Key2`**. **The vendor BSP declares none** | specific GPIO assignment not resolved from the extraction, and whether either button is `PWRON` is unknown — D5 | — | — | PARTIAL |
+| SD card | — | SDMMC 1-bit: CLK 2, CMD 1, D0 3 | — | D13 | VERIFIED — and **the mode is settled**: the vendor's shipping firmware calls `sdmmc_common`/`vfs_fat_sdmmc`, not `sdspi`, so the schematic's `MOSI`/`SCK`/`MISO` net names are labels rather than a mode. D14 closes. S13 |
+| Main I2C bus | — | SDA 15, SCL 14 — **and both are brought out on the expansion pad row below**, labelled there as bare `IO15`/`IO14` | **Scanned, 2026-08-23: five devices** — `0x18`, `0x34`, `0x40`, `0x51`, `0x6B`. The predicted sixth, `0x38` (touch), answers only after its reset is pulsed on GPIO 9 — touch row; `0x6A` is free, and so are `0x0C`, `0x0D` and `0x1E`, which is where a magnetometer retrofit would sit (T-109) | — | **VERIFIED by measurement** — S13, [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1. The earlier six-device list was predicted from documentation and is corrected here |
 | I2S bus | — | MCLK 16, SCLK 41, LCLK/WS 45, DOUT 40, DSIN 42 | — | — | VERIFIED |
 | Display FPC | the 34-pin AMOLED flex, connector `J3` — **not an expansion header**. There is no expansion *connector*; there is a pad row, below | `QSPI_SIO0`–`SIO3`, `QSPI_SCL`, `LCD_CS`/`RESET`/`TE`, the MIPI pairs, `VCI`, `VDDIO`, `IM0`/`IM1`, `TP_SCL`/`TP_SDA`/`TP_INT`/`TP_RESET` | — | — | VERIFIED |
 | **Expansion pad row** | ten plated pads along the board's bottom edge, individually silkscreened | `VBUS · GND · D+/IO20 · D-/IO19 · IO15 · IO14 · RXD · TXD · GND · 3V3` — **`IO15`/`IO14` are the main I2C bus, not spare GPIO**; the only uncommitted channel here is `RXD`/`TXD` | see the bus rows | `3V3` sourced, rail not identified | VERIFIED — S9, [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.5 |
@@ -349,9 +364,12 @@ The `Power rail` column reads `D13` where the load is known to be on a PMU rail
 but which rail is unresolved — all three of ALDO1, ALDO2 and ALDO3 are 3.3 V and
 the schematic extraction did not separate them. Addresses are from
 [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.2, which cites each one; three
-are datasheet-fixed, two are schematic-strapped, one is driver-source-only and
-one is in conflict between datasheet revisions. A bus scan settles the last two
-in a second — §5 step 5.
+are datasheet-fixed, two are schematic-strapped and one is driver-source-only.
+The IMU's was **in conflict between datasheet revisions and is not any more**:
+the bus scan of 2026-08-23 got no answer at `0x6A` and an ACK at `0x6B`
+([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1), which is
+what the IMU row nineteen lines above and the `Main I2C bus` row both already
+record. Nothing on this bus is waiting on a scan.
 
 ### AXP2101 rail map
 
@@ -391,6 +409,15 @@ The product is documented as using a **CO5300** panel controller, while the
 BSP depends on the component `waveshare/esp_lcd_sh8601`. This is not a
 contradiction — the vendor drives the CO5300 through the SH8601-family driver.
 Recorded so nobody later "fixes" the apparent mismatch.
+
+**Confirmed working on the unit, 2026-08-23.** The factory firmware's own log
+says `sh8601: LCD panel create success, version: 1.0.2` and then
+`Backlight on`. That is evidence about the **driver**, not about the die behind
+the QSPI bus — a driver logging its own name says nothing about the silicon — so
+the row above still reads CO5300. What it does settle is the practically
+important half: **`esp_lcd_sh8601` initialises this panel on this hardware**, so
+the mismatch will not bite at bring-up. S13,
+[WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.2.
 
 ---
 
@@ -470,4 +497,9 @@ a typed descriptor rather than a flag.
 
 | S12 | **the complete 32 MB flash of that same unit**, read whole and verified against the device — three independent complete passes (the owner's on Windows over native USB, two on Linux over USB/IP) agreeing byte for byte, plus `esptool verify-flash 0x0` returning `Verification successful` over all 33 554 432 bytes, 2026-08-22. Extends S11 from three partitions to the whole part. The image itself is **not committed** — Waveshare's binary plus third-party licensed audio; see [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §2.2 |
 
-S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22.
+| S13 | **the received unit itself, on 2026-08-23, by two methods.** *Running:* an owner-authorised bench session — the vendor bootloader's and factory application's boot log captured from 62 ms, a diagnostic written into the free OTA slot, and a `PURE_RAM_APP` loaded over USB. The flash route is closed (`ota_1` aliases to `0x0`); **the RAM route works** and the whole bench sequence ran from it, writing nothing — the flash was restored and re-verified byte-for-byte against the T-099 backup. [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md). *Under a hand:* the buttons counted by pressing them. A distinct method from S9, which is defined as silkscreen and populated-or-not only — how many protrusions are *pressable* is tactile, and none of the four S9 frames is a side view of the case. Reported by the owner on [#99](https://github.com/hleserg/Attadipa/issues/99); no separate write-up, and that row is the record |
+
+| S14 | **four upstream repositories read at pinned revisions**, 2026-08-23, tracing one display path for this board end to end: `78/xiaozhi-esp32` @ `bb9122ab08c3083eeb4f67b3974b7afe771723b8` (MIT), `espressif/esp-bsp` @ `2f519317d5375f7bbb0190b29a4988c2ea2453e2` (Apache-2.0), `lvgl/lvgl` @ `v9.5.0` = `85aa60d18b3d5e5588d7b247abf90198f07c8a63` (MIT) and `espressif/esp-iot-solution` @ `5d75f3f0dc499d9ed4b69284a3741187c2b75a70` (Apache-2.0). **This is software, not silicon** — it is evidence about what a program does, and it is not a datasheet, a schematic or a measurement. Per-file sha256 in [VERIFIED_FACTS](VERIFIED_FACTS.md), "The panel driver does not swap pixel bytes" |
+
+S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22; S13 and S14 on
+2026-08-23.

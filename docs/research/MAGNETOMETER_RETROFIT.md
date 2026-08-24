@@ -230,6 +230,20 @@ specification. Three limits exist and only the first is usually quoted:
 
 | Limit | Meaning |
 |---|---|
+| `0x18` | ES8311 codec — `VERIFIED` by scan |
+| `0x34` | AXP2101 PMU — datasheet-fixed, `VERIFIED` by scan |
+| `0x38` | FT3168 touch — answers only after its reset is pulsed on GPIO 9 |
+| `0x40` | ES7210 microphone ADC — `VERIFIED` by scan |
+| `0x51` | PCF85063ATL RTC — datasheet-fixed, `VERIFIED` by scan |
+| `0x6B` | QMI8658 IMU — **`MEASURED`**. `0x6A` does not answer, so the datasheet-revision conflict is settled and `0x6A` is free |
+
+**`0x0C`, `0x0D` and `0x1E` are all free**, measured on 2026-08-23 rather than
+inferred — [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1. No
+conflict with anything already on the board, for either candidate.
+
+An earlier version of this section listed six predicted addresses and marked the
+IMU `CONFLICTING`. The scan replaced prediction with measurement on every row,
+which is why the table is longer: it now says what answered, not what should.
 | **Full-scale range** | above this the output clips |
 | **Continuous-field limit** | above this the part is out of specification even though it still reads |
 | **Disturbing field** | above this the *characteristics change* and a set/reset is required to restore them — so exceeding it invalidates the **stored calibration**, not merely the sample |
@@ -1152,7 +1166,7 @@ MIT.
 **Two `REJECT` verdicts fire their own written revisit triggers**, not a proposal
 of ours: `REUSE_LEDGER`:659-661 — *"Revisit when: an external magnetometer is
 decided (OPEN_QUESTIONS A5)"* — and
-[`research-integration.md`](../upstream/research-integration.md):405 — *"Verdict:
+[`research-integration.md`](../upstream/research-integration.md):406 — *"Verdict:
 REJECT, and not deferred — the finding is inapplicable to this hardware rather
 than premature."* The Waveshare with a magnetometer has accel + gyro + mag, which
 is the full Madgwick/Mahony parts list. **The reason is now false for this unit;
