@@ -218,13 +218,14 @@ unchecked** — *Contents: Read and write*, *Pull requests: Read and write* **an
 `ATTADIPA_AGENT_TOKEN`.
 
 **The third permission is not optional and an earlier version of this section
-omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is
-`github_token:` for `claude-code-action` at `claude-agent.yml:804`
-"github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
-`claude-pr-review.yml:111` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}"
-and `claude-ci-repair.yml:237`
-"github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}". `display_report:
-"true"` posts the agent's summary **on the triggering issue** over it, and the
+omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
+`github_token:` for `claude-code-action` — one citation per line, because the
+checker reads a fingerprint only from the citation's own physical line:
+`claude-agent.yml:804` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+`claude-pr-review.yml:111` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+`claude-ci-repair.yml:237` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
+`display_report: "true"` posts the agent's summary **on the triggering issue**
+over it, and the
 agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
 `claude-agent.yml:884` "depends entirely on `gh` being allowed" says the
 action has no label feature of its own. That citation read `:846` until
@@ -233,9 +234,20 @@ asserts this stays in`, an unrelated comment — so a reader checking the eviden
 for the blocking claim found nothing. Found in review, and it is the failure
 this document's own §*Citations* warns about at
 [`APPROVAL_STALLS.md#citations-in-this-file`](APPROVAL_STALLS.md): a bare line
-number rots silently. All six code citations in this file now carry a
-fingerprint, so the next one to drift is reported with the line the text moved
-to rather than passing because the line it landed on happened to be non-blank.
+number rots silently. All eight code citations in this file now carry a
+fingerprint **on the citation's own physical line**, which is the only place the
+checker looks:
+`tools/docs/check_docs.py:466` "FINGERPRINT.match(line[match.end()" reads it out
+of the remainder of that same line, so a citation whose quoted snippet wraps
+onto the next line is checked for nothing but non-blankness and drifts as
+silently as a bare number. Three here did
+until 2026-08-24 — two found in review, the third found by counting the file's
+citations with the checker's own `CITATION` and `FINGERPRINT` patterns rather
+than by eye, which is also how the count in this sentence stopped being six. All
+three were reflowed rather than reworded; the third also had to drop a `"` from
+its snippet, because `FINGERPRINT`'s `"([^"]{3,80})"` cannot match a quote.
+The next one to drift is now reported with the line the text moved to rather
+than passing because the line it landed on happened to be non-blank.
 [CLAUDE_AUTOMATION.md](CLAUDE_AUTOMATION.md) already records the working scope
 for this same secret as all three. Set only the first two and the next
 issue-driven run — the canonical path per `CLAUDE.md` — takes a 403 on the issue
@@ -328,8 +340,8 @@ containing a recognisable `while IFS=`.
 The intake gate is untouched and the actor check is the security boundary —
 nothing here reads it. **But Option A does change who may drive a write-capable
 agent, and an earlier version of this section said the opposite.** The
-anti-recursion boundary is a *login-name* test: `intake-decision.sh:142`
-"[bot]\"|claude|github-actions" rejects
+anti-recursion boundary is a *login-name* test —
+`.github/scripts/intake-decision.sh:142` "|claude|github-actions)" rejects
 `*"[bot]"`, `claude` and `github-actions`, and `queue-scan.jq` refuses the last
 two as producers because *"our own output would start a billable writer: exactly
 the loop the allowlist was built to avoid."* A fine-grained PAT belongs to a

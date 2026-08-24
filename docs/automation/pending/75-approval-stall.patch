@@ -2,7 +2,7 @@ diff --git a/.github/workflows/agent-queue-watchdog.yml b/.github/workflows/agen
 index 69dea3d..3098445 100644
 --- a/.github/workflows/agent-queue-watchdog.yml
 +++ b/.github/workflows/agent-queue-watchdog.yml
-@@ -289,6 +289,267 @@ jobs:
+@@ -289,6 +289,280 @@ jobs:
              fi
            done < /tmp/stranded
  
@@ -52,7 +52,14 @@ index 69dea3d..3098445 100644
 +          #
 +          # This job's whole contribution is that the last word is no longer
 +          # that. It fixes nothing -- see APPROVAL_STALLS.md for what would.
-+          gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp \
++          # `sort=created&direction=asc` is load-bearing, not tidiness. The
++          # REST default here is `created` DESCENDING, and the cap below stops
++          # after three comments -- so the default order serves the three
++          # NEWEST stalled heads every tick and the one that has been stalled
++          # silently the longest is served last. Under sustained agent pushing
++          # that tail never comes up at all, which is #75's own failure mode at
++          # a slower cadence. Oldest first drains it. Found in review.
++          gh api "repos/$REPO/pulls?state=open&sort=created&direction=asc&per_page=100" --paginate --slurp \
 +            | jq 'if (length > 0 and (.[0] | type) == "array") then add else . end' > /tmp/pulls.json
 +
 +          jq -r '.[] | "\(.number) \(.head.sha) \(.head.repo.full_name // "")"' /tmp/pulls.json > /tmp/heads
@@ -214,8 +221,14 @@ index 69dea3d..3098445 100644
 +
 +              [ "$DECISION" = "say" ] || continue
 +              case "$REASON" in
-+                stalled) STALLED="${STALLED}- **${RUN_NAME}** — run \`${RUN_ID}\`, \`conclusion: action_required\`, **0 jobs**"$'\n' ;;
-+                gated)   GATED="${GATED}- **${RUN_NAME}** — run \`${RUN_ID}\`, \`action_required\` with jobs present"$'\n' ;;
++                # `$STATUS` and `$CONCLUSION` as read, never a literal. The
++                # stalled shape is `status: action_required` with an EMPTY
++                # conclusion -- that is the whole record this job exists to
++                # surface -- so a hardcoded `conclusion: action_required` sends
++                # a maintainer looking for a field the run does not have, in
++                # the only artifact anybody sees. Found in review.
++                stalled) STALLED="${STALLED}- **${RUN_NAME}** — run \`${RUN_ID}\`, \`status: ${STATUS}\`, \`conclusion: ${CONCLUSION:-(empty)}\`, **0 jobs**"$'\n' ;;
++                gated)   GATED="${GATED}- **${RUN_NAME}** — run \`${RUN_ID}\`, \`status: ${STATUS}\`, \`conclusion: ${CONCLUSION:-(empty)}\`, jobs present"$'\n' ;;
 +              esac
 +            done <<< "$RUNS"
 +
@@ -350,3 +363,84 @@ index 9a25754..d082ec0 100644
  
        # WHERE THE BRANCH WAS BEFORE THIS RUN TOUCHED IT.
        #
+diff --git a/docs/automation/APPROVAL_STALLS.md b/docs/automation/APPROVAL_STALLS.md
+index 719b43e..a974383 100644
+--- a/docs/automation/APPROVAL_STALLS.md
++++ b/docs/automation/APPROVAL_STALLS.md
+@@ -139,7 +139,7 @@ That closes the issue's evidence table exactly:
+ | `c9e00d0` | the owner | ran |
+ | `488be1e` | **the agent's own `git push`, over the checkout's persisted `GITHUB_TOKEN`** | `action_required`, 0 jobs |
+ 
+-The workflow already knows the rule — `claude-agent.yml:795-804` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
++The workflow already knows the rule — `claude-agent.yml:838-847` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
+ `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
+ action's push path was fixed. The agent's own push path was never covered by it.
+ 
+@@ -221,13 +221,13 @@ unchecked** — *Contents: Read and write*, *Pull requests: Read and write* **an
+ omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
+ `github_token:` for `claude-code-action` — one citation per line, because the
+ checker reads a fingerprint only from the citation's own physical line:
+-`claude-agent.yml:804` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
++`claude-agent.yml:847` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+ `claude-pr-review.yml:111` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+ `claude-ci-repair.yml:237` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
+ `display_report: "true"` posts the agent's summary **on the triggering issue**
+ over it, and the
+ agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
+-`claude-agent.yml:884` "depends entirely on `gh` being allowed" says the
++`claude-agent.yml:927` "depends entirely on `gh` being allowed" says the
+ action has no label feature of its own. That citation read `:846` until
+ 2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
+ asserts this stays in`, an unrelated comment — so a reader checking the evidence
+diff --git a/docs/automation/pending/README.md b/docs/automation/pending/README.md
+index 21b97cf..f7a5c74 100644
+--- a/docs/automation/pending/README.md
++++ b/docs/automation/pending/README.md
+@@ -39,13 +39,15 @@ waiting on a person.
+ 
+ ## Waiting now
+ 
+-| Patch | For | Written |
+-|---|---|---|
+-| `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
+-
+-Verified before it was parked: `actionlint` clean over all seven workflows with
+-the patch applied, `shellcheck -x` clean, and the `approvals` job's body
+-dry-run against the live repository — the pagination, the jq, the marker
+-written and read back, and the rendered comment. What that does **not** prove
+-is the job running on a schedule under its own permissions, which no local run
+-can prove and which is therefore `NOT EXECUTED` until it is deployed.
++Nothing — the normal state described above.
++
++`75-approval-stall.patch` was the last one, landed for
++[#75](https://github.com/hleserg/Attadipa/issues/75): the writer checkout's
++`token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See
++[APPROVAL_STALLS.md](../APPROVAL_STALLS.md). Verified before it was parked:
++`actionlint` clean over all seven workflows with the patch applied,
++`shellcheck -x` clean, and the `approvals` job's body dry-run against the live
++repository — the pagination, the jq, the marker written and read back, and the
++rendered comment. What that does **not** prove is the job running on a schedule
++under its own permissions, which no local run can prove and which is therefore
++`NOT EXECUTED` until it has run deployed.
+diff --git a/docs/research/WAVESHARE_ARRIVAL.md b/docs/research/WAVESHARE_ARRIVAL.md
+index 5c097bf..cdbe059 100644
+--- a/docs/research/WAVESHARE_ARRIVAL.md
++++ b/docs/research/WAVESHARE_ARRIVAL.md
+@@ -121,7 +121,7 @@ Whatever is decided, wrapping the BSP does not cover the board.
+ "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
+ ([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
+ `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
+-([`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
++([`.github/workflows/ci.yml:510`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+ What exists
+ is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
+ installed is not decided.
+@@ -699,7 +699,7 @@ does not, kept because an uncorrected claim propagates.
+     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
+     Both live citations are written above with fingerprints —
+     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
+-    [`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
++    [`.github/workflows/ci.yml:510`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+     — and the numbers in this paragraph are
+     deliberately **not** citations: it is a record of where two claims used to
+     point, and writing that record in the live syntax would make it four more

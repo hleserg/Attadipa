@@ -378,6 +378,35 @@ stale silently. The protocol is
   is fresh and whose head commit is three hours old, and asserts it is swept.
 - **Hardware required:** no.
 
+### T-153 · A citation's fingerprint on the next line is silently unchecked
+- **Priority:** P2
+- **Dependencies:** none. Touches `tools/docs/check_docs.py` only, so it waits
+  behind whatever else is in flight on that file rather than on any decision.
+- **Goal:** `tools/docs/check_docs.py:466` "FINGERPRINT.match(line[match.end()"
+  reads a citation's fingerprint out of the remainder of **the citation's own
+  physical line**. A citation whose quoted snippet wraps onto the next line
+  therefore has no fingerprint as far as the checker is concerned, and falls
+  back to the blank-line test — which passes on any non-blank line, and that is
+  precisely the rot the fingerprint was added to catch. It reads as protected
+  and is not. Three such citations were found in `APPROVAL_STALLS.md` on
+  2026-08-24: two in review of
+  [#128](https://github.com/hleserg/Attadipa/pull/128), and the third only by
+  re-counting that file's citations with the checker's own `CITATION` and
+  `FINGERPRINT` patterns instead of by eye — which also caught its prose
+  undercounting them, six against eight. Eye-counting is not a check, and a
+  defect found three times in one file by hand is a missing check rather than
+  three mistakes.
+- **Acceptance:** `check_docs.py` reports a citation whose fingerprint sits on
+  the following line, naming it a misplaced fingerprint rather than passing it.
+  The signal is precise, not heuristic: fire only when what follows the citation
+  on its own line is trivial — a stray backtick, bracket, comma or dash — **and**
+  `FINGERPRINT` matches the start of the next line. A citation deliberately
+  written without a fingerprint stays legal, because most are. Tests all three
+  ways: a wrapped fingerprint is reported, a citation with no fingerprint at all
+  is not, and one correctly fingerprinted on its own line is not. Reverting the
+  fix turns the new cases red.
+- **Hardware required:** no.
+
 
 ## NEXT
 

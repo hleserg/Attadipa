@@ -30,6 +30,14 @@ git commit -m "Land the workflow half of <what>"
 its application is a second copy of a workflow file, and the second copy is the
 one that goes stale — silently, because nothing lints it and nothing runs it.
 
+**A patch carries every edit its own landing forces**, so that those three
+commands produce a commit CI accepts. Two kinds are easy to miss: its row in
+*Waiting now* below, which otherwise advertises a patch that no longer exists;
+and any fingerprinted citation that the insertion pushes down the file, which
+`tools/docs/check_docs.py` reports on the landing commit — naming the document
+that holds the citation rather than the workflow that moved it. `git apply`
+then `python3 tools/docs/check_docs.py .` before parking a patch says which.
+
 Check it before trusting it. `git apply --check` says whether it still applies;
 a patch written against a `main` that has since moved may need `git apply -3`,
 and one whose target job has been rewritten needs reading rather than applying.

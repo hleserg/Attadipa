@@ -137,7 +137,7 @@ says "the word in the status field of a completed run is still not this" \
      "$(decide completed completed 0 "$SHA_STALLED" "")" "quiet|ran"
 
 echo
-echo "The field split in the pending patch, lifted out of the patch itself"
+echo "The deployed field split, lifted out of the workflow itself"
 # Every defect this guard has shipped lived in a `run:` block, and the split
 # below is one. It cannot be reached from here -- the loop is inside an
 # unapplied patch in docs/automation/pending/, which neither this suite nor
@@ -161,7 +161,11 @@ echo "The field split in the pending patch, lifted out of the patch itself"
 # retired only deliberately, never by a file moving.
 PATCH=docs/automation/pending/75-approval-stall.patch
 LANDED=.github/workflows/agent-queue-watchdog.yml
-SPLIT=$(sed -n 's/^[+ ] *\(while IFS=.*read -r RUN_ID .*; do\)$/\1/p' "$PATCH" "$LANDED" 2>/dev/null | head -1)
+# `$LANDED` first, and that order is the point. Between applying the patch and
+# `git rm`ing it both files exist, and with the patch first the retired copy
+# would answer while the deployed loop went unchecked -- edit the live one back
+# to a tab and this suite stays green. Deployed wins wherever it exists.
+SPLIT=$(sed -n 's/^[+ ] *\(while IFS=.*read -r RUN_ID .*; do\)$/\1/p' "$LANDED" "$PATCH" 2>/dev/null | head -1)
 
 if [ -z "$SPLIT" ]; then
   printf '  FAIL  neither the patch nor %s contains a recognisable field split\n' "$LANDED"
