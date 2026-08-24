@@ -319,7 +319,7 @@ and `agent:ready` where one is genuinely needed.
           `docs/brand/`, `docs/robots.txt`, `docs/sitemap.xml`,
           `docs/manifest.webmanifest`. This repository serves GitHub Pages from
           `/docs` and there is **no build or deploy workflow at all** — checked,
-          `.github/workflows/` has six files and none of them is a Pages job.
+          `.github/workflows/` has seven files and none of them is a Pages job.
           So a merge here is a publication, live, with nothing between it and
           the public but this rule. `docs/brand/` is also an identity decision
           and identity is the owner's;

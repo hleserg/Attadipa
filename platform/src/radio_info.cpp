@@ -83,9 +83,17 @@ RadioInfo radio_info_for(RadioChip chip)
             break;
 
         case RadioChip::Unknown:
-            // A radio is fitted; nobody has told us which. Claiming no
-            // modulations is right: every derived answer becomes "we cannot
-            // say", which is true, and is A2 waiting to be answered.
+            // A radio is fitted and A2 now names it -- SX1262 at 868 MHz,
+            // from the order listing (OWNER_DECISIONS.md, A1-A3, 2026-08-22,
+            // issue #54). Cited by what it decides rather than by its OD
+            // number, because an OD number is allocated by whichever branch
+            // merges first: a citation that names the question cannot come to
+            // mean somebody else's answer.
+            // This stays Unknown anyway: a listing is a seller's claim, and
+            // ADR-0003 moves this enum on a marking read off the part, which
+            // needs the watch in hand. Claiming no modulations is right until
+            // then -- every derived answer becomes "we cannot say", which is
+            // true.
             info.modulations = 0;
             info.band_count  = 0;
             info.meshcore    = MeshCoreSupport::Untested;

@@ -1062,7 +1062,190 @@ the two that actually conflicted.
 
 ---
 
-## OD-16 — A9: automatic by panel technology, and the theme toggle is unchanged
+## OD-16 — A1, A2 and A3: no watch yet, SX1262 confirmed by listing, and three MeshCore nodes instead of one
+
+**Decided:** 2026-08-22, on [issue #54](https://github.com/hleserg/Attadipa/issues/54).
+
+**As stated:**
+
+> *"@claude A1 пока нет ни тех ни других часов. A2 sx1262 mia-m10q A3 есть
+> компаньон ноды meshcore heltec t114 и heltec v4"*
+
+**In English:** A1 — no watch of either kind yet. A2 — SX1262, MIA-M10Q. A3 —
+there is a companion node, MeshCore Heltec T114 and Heltec V4.
+
+The owner then posted a longer analysis of their own answer on the same issue;
+this record follows that analysis rather than the three words alone, because
+it is the more precise of the two and the owner asked for it to be recorded
+"with the precision above."
+
+**A1 — which boards, which revision.**
+
+- **Waveshare ESP32-S3-Touch-AMOLED-2.06:** received — already recorded in
+  `docs/research/WAVESHARE_BOARD_RECEIVED.md`. What is **closed**, and not by
+  this answer, is board *identity*: the mainboard's silkscreen reads
+  `ESP32-S3-Touch-AMOLED-2.06`, which is the product schematic V1.0 describes
+  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1, `VERIFIED`).
+  **That is not the revision, and an earlier version of this bullet said it
+  was.** `2.06` is the panel diagonal in inches, not a revision marker — the
+  firmware reads it as one, `platform/src/board_profiles.cpp` setting
+  `diagonal_milli_inch = 2060` — and a V1.1 of the same product would carry the
+  same silkscreen. No revision field has been read off the unit, which is what
+  `HARDWARE_MATRIX.md` means by *"cite the filename for provenance, never the
+  title block for revision"*, written in the T-Watch section but not a T-Watch
+  rule. An earlier draft also said the whole thing was still open, 100 lines
+  above the *What it obliges* paragraph saying it was closed — the register
+  answering one question twice, differently, within itself.
+- **T-Watch S3 Plus:** **ordered, in transit — `ORDERED`, not `PRESENT`.**
+  Nothing that needs the watch in hand moves yet.
+
+**A2 — which radio, which GNSS.** **SX1262, 868 MHz** from the order listing;
+**MIA-M10Q** from the owner, and the two do not rest on the same evidence. The
+listing reads *"LILYGO® T-WATCH-S3 Plus умные часы, SX1262 (868MHz)"* — it names
+the radio and is **silent on GNSS**, so the GNSS half is the owner's
+recollection of the variant ordered rather than a quoted source, and it is held
+to the same standard as the radio half: no GNSS module is treated as fitted
+until the marking is read off it. **That gate is documentary, and the radio's is
+not** — say so rather than implying a symmetry the code does not have.
+`RadioChip::Unknown` is a value the firmware branches on
+(`platform/src/radio_info.cpp`, `platform/src/board_profiles.cpp`); there is no
+`GnssModule` enum anywhere in the tree, so nothing but this sentence holds the
+GNSS half. If that is not strong enough, the fix is to add the type, not to name
+one the next agent will grep for and not find. That gate carries more than the radio's, because
+MIA-M10Q against LS550G decides a second PMU rail — the `DC4` row of the
+T-Watch rail table in [HARDWARE_MATRIX](HARDWARE_MATRIX.md) reads *"LS550G GNSS
+variant only, 850 mV"*, beside a `DC3` row that is unused on that variant — the
+assistance mechanism ([VERIFIED_FACTS](VERIFIED_FACTS.md), the A-GNSS entries),
+and which of T-051 and T-052 is the live task. Cited by row rather than by line:
+this branch's own seven-line insertion into that table moved both rails, and the
+citations left behind pointed at a blank line until review caught them. Checked
+against [ADR-0003](../adr/0003-radio-not-lora.md)'s table: SX1262 is one of
+the three genuinely-LoRa parts (CC1101 and Si4432 are FSK, not LoRa, and
+CC1101 is additionally compiled out of this project's MeshCore build via
+`-D RADIOLIB_EXCLUDE_CC1101=1`), and of the three LoRa parts it is the one
+MeshCore supports at the pinned revision `d929643` — `CustomSX1262Wrapper`,
+"the most common variant upstream." SX1280 has no wrapper at all; LR1121 is
+`NeedsWork`. 868 MHz sits inside the driver's permitted 150–960 MHz range.
+
+So `RadioChip::Unknown` becomes `RadioChip::Sx1262` and `MeshCoreSupport`
+becomes `Supported` **once the watch arrives and the marking on the part is
+read** — not before. An order listing is a claim by a seller, not a marking
+read off the part, and this project's own rule (and ADR-0003's own point,
+"an SX1262 board and an SX1280 board differ in the parts you cannot read over
+SPI") is that only the latter counts as verified. Still true regardless of
+that distinction: **there is no T-Watch variant in MeshCore** — 87 variants
+upstream, none of them this watch. A supported radio chip removes the hardest
+blocker; it does not make the T-Watch a build target.
+
+**A3 — is there a second radio device.** **Three MeshCore nodes, not one**,
+and the earlier "is there a USB node" framing is obsolete:
+
+One Heltec V4 companion on [`dt267/MeshCore-Low-Power-Firmware`](https://github.com/dt267/MeshCore-Low-Power-Firmware),
+and two Heltec T114s to be flashed with the latest official MeshCore.
+
+**The fleet's record of record is [TEST_FLEET](TEST_FLEET.md) §1, not this
+paragraph.** It reached `main` in `485dddb` from this same answer on the same
+day, and it holds two operational facts this decision does not and must not
+duplicate — because a copy that drifts is worse than a pointer:
+
+- **the two T114s advertise over BLE under the same name**, so anything
+  selecting a node by advertised name gets whichever answered first
+  (`TEST_FLEET.md:29-32`, where they are the antecedent of "both"). Whether the
+  V4 also answers to that name is not recorded, and it does not change the rule:
+  **select by address**, which is correct for every node here under either
+  reading;
+- **a BLE pairing PIN is required and is deliberately not in this repository**
+  (`:33-36`). This repository is public and a pairing PIN is a device access
+  credential. The owner holds it; ask in the session that needs it.
+
+The V4 reaches a host over BLE and USB, as both T114s do — the **T114** and
+**V4** rows of the fleet table in [TEST_FLEET](TEST_FLEET.md) §1.
+An earlier version of this table recorded the V4's links as `—`, which was
+wrong. A second side drivable from a laptop is a test fixture, not just another
+radio in the room.
+
+`doctor` as a hostname names no node in this answer — the Home Assistant role
+is a node's job, and the headless T114 inherits it.
+
+**Two things this answer surfaces that the issue did not ask, raised as their
+own issues per the owner's instruction rather than resolved here:**
+
+1. **Three firmware revisions, not one** — filed as
+   [#90](https://github.com/hleserg/Attadipa/issues/90). The companion runs a
+   third-party low-power fork; the T114s will run official latest; this
+   repository pins MeshCore at `d929643` (2026-08-14), the commit every
+   ADR-0003 claim was verified against. "Official latest" is not that commit.
+   Before any mesh result is believed, the pairing under test has to be named —
+   fork-to-official, official-to-official, or either against the pinned
+   revision — because a failure between two of them is a **firmware-compatibility
+   finding** and a failure within one is a mesh finding,
+   and conflating them produces a false bug report either way.
+2. **Band has to match, and nobody has checked the T114s** — filed as
+   [#89](https://github.com/hleserg/Attadipa/issues/89). The watch is
+   868 MHz. If either T114 is a 915 or 433 MHz variant there is no mesh to
+   test at all — not a weak link, no link. Band is set by "which
+   band-specific matching network and antenna are fitted" (ADR-0003), which is
+   not readable over SPI; the order record or a label on the module settles
+   it. Whether the T114s carry an SX1262 at all is likewise unconfirmed here.
+
+**A hardware constraint recorded here so it is not rediscovered as a bug** —
+filed as [#91](https://github.com/hleserg/Attadipa/issues/91): no T114 gets a
+GPS fix indoors — owner-observed, 2026-08-22. **The observation as given said
+"either unit", and the fleet records only one T114 as carrying GNSS at all**
+([TEST_FLEET](TEST_FLEET.md) §1). Either the headless node has a receiver the
+fleet table does not credit it with, or "either unit" was a manner of speaking.
+The operational consequence is identical under both readings — no indoor fix
+from anything in this fleet — so nothing downstream is blocked; but #90 and #91
+read that table, so which it is stays **open for the owner** rather than being
+picked here. This
+is not a GNSS defect. Any position-dependent test run from indoors must either
+inject a fix, mock the source, or be marked `NOT EXECUTED — HARDWARE REQUIRED`
+with reason "requires outdoor conditions", not "requires hardware" — the board
+is present; the sky is the missing part. Filing it as a power-rail bug (a real
+failure mode on the T-Watch, per A1) would waste a day chasing the wrong
+cause.
+
+**What it obliges:**
+
+- [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) A1's **presence** half is closed for
+  the Waveshare and open for the T-Watch. Its **revision** half is open for
+  both. What the silkscreen closes is identity: it reads
+  `ESP32-S3-Touch-AMOLED-2.06`, which is the product schematic V1.0 describes
+  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1, `VERIFIED`) —
+  a product name, not a revision field, and the `2.06` in it is the panel
+  diagonal. CLAUDE.md asks for *"a schematic for the specific board
+  revision"*, so a V1.0-derived row is evidence about a document until somebody
+  reads a revision marker off this unit.
+  What is still unread is narrower and now filed as **D19**: the display-FPC
+  part marking, which needs a loupe. **Not U2 and U3** — the eFuses and the
+  JEDEC ID already answered those on this unit
+  ([WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2–1.3), and a lid marking
+  read through a loupe is weaker evidence than a fuse read of the die under it.
+  A2 and A3 move to RESOLVED, pointing here.
+- **A divergence to record rather than paper over.**
+  [ADR-0003](../adr/0003-radio-not-lora.md):109-111, :265 and :270-271 still
+  list A2 as open. Its stated reason is not "no marking read" but ownership:
+  `:270-271` calls A2 *"the owner's to answer"*, and the owner has now answered
+  it. So the divergence is narrower than it looks — what the ADR is still
+  waiting for is the evidence it treats as decisive, a marking read off the
+  part, and this decision supplies a seller's listing instead. No ADR edit is
+  asked for here: the two documents disagree because they are answering to
+  different standards of proof, and **T-010** carries the marking read that
+  discharges it (`TASKS.md`, the T-010 BLOCKED block). Not T-013 — that is the
+  mesh cost spike, and it never mentions A2.
+- Three follow-up issues, filed separately rather than folded into this
+  record: the T114 band check
+  ([#89](https://github.com/hleserg/Attadipa/issues/89)), the
+  three-firmware-revision compatibility matrix
+  ([#90](https://github.com/hleserg/Attadipa/issues/90)), and the indoor-GNSS
+  constraint documentation
+  ([#91](https://github.com/hleserg/Attadipa/issues/91)).
+
+**What it does not do:** it does not make the T-Watch S3 Plus a build
+target — it is not in hand yet — and it does not read a single part marking on
+either board, which is what the remaining questions turn on, regardless of this
+answer.
+## OD-22 — A9: automatic by panel technology, and the theme toggle is unchanged
 
 **Decided:** 2026-08-22, on [issue #52](https://github.com/hleserg/Attadipa/issues/52).
 
@@ -1148,8 +1331,12 @@ past.
 
 ## Still with the owner
 
-Nothing here answers A1–A3, A5 or the compass question. Those remain in
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+Nothing here answers the compass question (A6), which remains in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). **A5 is answered** — separately, on the
+same day, on [#83](https://github.com/hleserg/Attadipa/issues/83): an external
+magnetometer is intended and two candidate parts are ordered. Not by *this*
+decision, which is why an earlier version of this paragraph still listed it as
+open.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
 answered from a datasheet: whether Meshtastic's protocol definitions are licensed
