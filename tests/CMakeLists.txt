@@ -108,11 +108,14 @@ if(Python3_Interpreter_FOUND)
     # property of the source tree rather than of any one screen. Its self-test
     # is registered beside it because a checker nobody has ever seen fail is a
     # checker nobody has tested.
-    # The generated fonts are committed, so something has to notice when their
-    # inputs change. `--check` with no Node and no configured build compares a
-    # digest of charset.py, the size list and the source TTF's hash — which
-    # catches the case that actually happens: somebody adds a codepoint and
-    # forgets that four .c files were built from the old list.
+    # The generated fonts are committed, so something has to notice when they or
+    # their inputs change. `--check` with no Node and no configured build
+    # compares a digest of charset.py, the size list, the source TTF's hash and
+    # the converter pin — and then the SHA-256 of every committed .c file
+    # against the stamp. The first half catches somebody adding a codepoint and
+    # forgetting that four .c files were built from the old list; the second
+    # catches an edited or corrupted glyph, which for as long as only the first
+    # existed went through green.
     add_test(NAME ui_fonts_are_current
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/font/generate_ui_fonts.py --check)
@@ -131,8 +134,20 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME ui_images_are_current
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/assets/generate_images.py --check)
+
+    # And the check that those two checks work. Both of them once passed a
+    # hand-edited font byte and a hand-edited icon byte — verified reproducers,
+    # not a worry — because they compared inputs and then counted filenames.
+    # This mutates each of the fourteen committed outputs in turn, in a copy of
+    # the tree, and fails if either tool accepted one. It needs neither Node nor
+    # Pillow, so it runs in the same job as the gate it is about; the half that
+    # does need them, reproducibility across checkout paths, is its own CI job.
+    add_test(NAME ui_generated_outputs_reject_mutations
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/integrity/selftest.py)
     set_tests_properties(ui_no_raw_values ui_check_rejects_mistakes
                          ui_fonts_are_current ui_images_are_current
+                         ui_generated_outputs_reject_mutations
                          PROPERTIES LABELS design)
 
     # The 16 MB flash addressing ceiling
@@ -251,6 +266,40 @@ if(ATTADIPA_BUILD_SIMULATOR)
     target_link_libraries(test_ui_icons PRIVATE attadipa_images)
     add_test(NAME ui_icons COMMAND test_ui_icons)
     set_tests_properties(ui_icons PROPERTIES LABELS design)
+
+    # ---------------------------------------------------------------------
+    # The remote-control loop, end to end (#117).
+    #
+    # Starts the simulator, connects the real host tool over a real socket,
+    # injects input through the real LVGL input path, pulls the real
+    # framebuffer back and checks the pictures. It is the only test that can
+    # catch a simulator which forgot to register its input device, or drained
+    # the queue too eagerly and collapsed a swipe into one jump, or handed back
+    # a framebuffer with the wrong stride -- none of which the protocol tests
+    # can see, because none of them touch LVGL.
+    #
+    # Its assertions are about structure, not appearance: which colour is in
+    # which corner, whether the swatches are pure, how many pixels a swipe left
+    # behind. A pixel-exact expectation against a live renderer fails on an
+    # antialiased glyph and gets switched off within a week.
+    #
+    # Both boards, which is what the documentation always claimed. It ran only
+    # on the Waveshare because the shipped scenario hard-coded coordinates off
+    # the edge of a 240x240 panel and a button name the T-Watch does not have;
+    # both are now expressed as fractions and `first-injectable`, so the same
+    # file exercises both geometries. The Definition of Done asks for "reviewed
+    # at both geometries" and CI was reviewing one.
+    if(Python3_Interpreter_FOUND)
+        foreach(_board t-watch-s3-plus waveshare-amoled-206)
+            add_test(NAME watch_control_end_to_end_${_board}
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/watch/e2e_test.py
+                             $<TARGET_FILE:attadipa_sim> ${_board})
+            set_tests_properties(watch_control_end_to_end_${_board} PROPERTIES
+                ENVIRONMENT "SDL_VIDEODRIVER=dummy"
+                TIMEOUT 180
+                LABELS simulator)
+        endforeach()
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -280,6 +329,52 @@ add_executable(test_link test_link.cpp)
 target_link_libraries(test_link PRIVATE attadipa_link)
 add_test(NAME link COMMAND test_link)
 set_tests_properties(link PROPERTIES LABELS transport)
+
+# ---------------------------------------------------------------------------
+# The input layer, and the debug channel above it.
+#
+# Split into two executables because they fail for different reasons and a
+# reader should be able to tell which. test_input is the queue and the state
+# machine the debug bridge pushes into, and that a touch controller and the
+# board's buttons will push into once T-114 gives them a driver. test_debug is the wire format and the bridge, and it
+# runs with no LVGL, no socket and no device, which is the whole reason the
+# bridge takes its transport and its frame source as seams.
+#
+# In both, the tests that matter are the refusals. A state machine that accepts
+# a move with nothing down, or a protocol that answers an unknown opcode with
+# silence, passes every legal-sequence test ever written.
+add_executable(test_input test_input.cpp)
+target_link_libraries(test_input PRIVATE attadipa_core)
+add_test(NAME input COMMAND test_input)
+set_tests_properties(input PROPERTIES LABELS input)
+
+add_executable(test_debug test_debug.cpp)
+target_link_libraries(test_debug PRIVATE attadipa_debug)
+add_test(NAME debug_channel COMMAND test_debug)
+set_tests_properties(debug_channel PROPERTIES LABELS input)
+
+# The host tool's own tests. Python, because the tool is.
+#
+# tools/watch/selftest.py needs nothing at all -- no device, no simulator, no
+# socket -- because the wire format is a pure module. It holds the Python
+# implementation against fixed byte vectors that tests/test_debug.cpp asserts
+# identically, so the two independent implementations are pinned to the same
+# bytes rather than to each other. An encoder and a decoder that share a mistake
+# agree perfectly; a hex literal does not.
+#
+# The vectors cover the framing *and* this protocol: a whole HelloOk, a whole
+# ScreenInfo, a whole InputEvent, and both numbering tables. They did not until
+# 2026-08-23, and this comment claimed they did -- the envelope and the bodies
+# were compared only to themselves, on each side, and only here in the
+# simulator-gated job.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME watch_tool
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/watch/selftest.py)
+    set_tests_properties(watch_tool PROPERTIES LABELS input)
+else()
+    add_test(NAME watch_tool_unavailable COMMAND ${CMAKE_COMMAND} -E false)
+    set_tests_properties(watch_tool_unavailable PROPERTIES LABELS input)
+endif()
 
 # ---------------------------------------------------------------------------
 # Device power states and the GNSS receiver's own.

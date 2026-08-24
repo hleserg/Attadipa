@@ -218,7 +218,12 @@ def check_discovery(tmp: Path) -> list[str]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(HEADER, encoding="utf-8")
 
-    found = {str(path.relative_to(root)) for path in module.discover(root)}
+    # as_posix(), because the expectation below is written with forward
+    # slashes and str(Path) uses the platform separator: on Windows this
+    # compared "boards\waveshare\partitions.csv" against the same path
+    # spelt the other way and reported the checker broken. The separator
+    # is not what this case is about.
+    found = {path.relative_to(root).as_posix() for path in module.discover(root)}
     expected = {"boards/waveshare/partitions.csv"}
     if found != expected:
         return [f"discover() picked up {sorted(found)}, expected "
