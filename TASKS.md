@@ -399,7 +399,7 @@ stale silently. The protocol is
 - **Priority:** P2
 - **Dependencies:** none. Touches `tools/docs/check_docs.py` only, so it waits
   behind whatever else is in flight on that file rather than on any decision.
-- **Goal:** `tools/docs/check_docs.py:466` "FINGERPRINT.match(line[match.end()"
+- **Goal:** `tools/docs/check_docs.py:498` "FINGERPRINT.match(line[match.end()"
   reads a citation's fingerprint out of the remainder of **the citation's own
   physical line**. A citation whose quoted snippet wraps onto the next line
   therefore has no fingerprint as far as the checker is concerned, and falls
@@ -422,6 +422,44 @@ stale silently. The protocol is
   ways: a wrapped fingerprint is reported, a citation with no fingerprint at all
   is not, and one correctly fingerprinted on its own line is not. Reverting the
   fix turns the new cases red.
+
+### T-157 · Prose cites a check by number and nothing reconciles the number
+- **Priority:** P3 — small, and it has already produced two wrong instructions.
+- **Dependencies:** none. `tools/docs/` only.
+- **Goal:** `check_docs.py`'s docstring enumerates the checks 1–8 and the
+  `CHECKS` tuple at the foot of the same file orders them, and until the third
+  review round of [#152](https://github.com/hleserg/Attadipa/pull/152) the two
+  disagreed: items 4 and 5 were swapped, from before the tuple existed. Nothing
+  reconciles a docstring with a data structure, so the drift was invisible until
+  prose started citing the numbers — at which point `TASKS.md` said *Check 4*
+  for OD numbers and `STATUS.md` said *Check 5*, one of them wrong and neither
+  checkable. Both are now the tuple's order, which is the order the tool prints
+  and therefore the only one a reader can verify. That fixes the instance.
+  Nothing stops it recurring, and the same round's headline finding was a stale
+  count in the same docstring for the same reason.
+- **Acceptance:** the suite reads the docstring's enumeration and asserts it
+  matches `CHECKS` — count and order both — so reordering the tuple without
+  touching the prose turns a case red, and vice versa. Cheap: the enumeration is
+  `^(\d+)\. ` in `check_docs.__doc__`. Optionally also reject a `Check N` in
+  `STATUS.md` or `TASKS.md` that names a check the tuple does not have at that
+  position, which is the half that produced the two wrong instructions; if that
+  is judged too clever, say so in the docstring rather than leaving the gap
+  unstated.
+- **And the count guard is narrower than it reads**, found in the fourth review
+  round of [#152](https://github.com/hleserg/Attadipa/pull/152). It requires the
+  *paragraph* to name the checker (`quoted_counts_that_disagree`), so prose that
+  **describes** `check_docs.py` without naming the file is uncovered — which is
+  where two stale claims were living, both in `ci.yml`: a step name listing
+  seven checks and omitting open-question IDs, so a check-8 failure surfaced
+  under a label that does not mention it, and a comment 24 lines above the one
+  that *was* kept in step, saying *"Four failures"* and describing four. Both
+  are corrected; neither was catchable. Widening the guard from "names the
+  filename" to "names the checker" is part of this task, or the docstring says
+  it does not.
+- **What must not be assumed:** that this is the same guard as the count. The
+  count guard (`CLAIM_FILES` in `test_check_docs.py`) reads *how many* checks
+  are claimed; this is about *which check is which*, and the count was right in
+  both files that got the number wrong.
 - **Hardware required:** no.
 
 
@@ -533,6 +571,38 @@ stale silently. The protocol is
 - **Acceptance:** either a committed source asset with its provenance recorded,
   or a written decision that the mascot is redrawn and by whom. Not a scaled
   crop committed quietly.
+- **Does NOT carry D21, and an earlier version of this bullet said it did.**
+  A mascot in `RGB565A8` is the first asset in this repository whose bytes have
+  an order — true — but that order is not a fact about the panel. It is fixed by
+  LVGL's colour-format contract and must match the framebuffer the software
+  renderer writes into; the wire order is absorbed once, at flush, by the
+  display port's `swap_bytes` flag. So **this task emits the asset in LVGL's
+  format and reads nothing off D21**. Following the old instruction was not even
+  possible for `RGB565A8`: the vendored converter packs it `uint16_t(color)` in
+  host order and has no swapped variant to select — `--cf` offers
+  `RGB565_SWAPPED` and no `RGB565A8_SWAPPED`. And for plain `RGB565` it would
+  have bought nothing: a pre-swapped asset renders **correctly**, because LVGL
+  un-swaps a swapped source while blending it into a native framebuffer
+  (`lvgl@85aa60d1 src/draw/sw/blend/lv_draw_sw_blend_to_rgb565.c:935`), so all
+  it costs is a conversion per blend that a native-order asset does not pay.
+  Turning the **port's** swap off breaks things instead — every glyph, arc and
+  `A8` icon LVGL renders into the same framebuffer, **and the asset with them**,
+  because LVGL has already un-swapped it into native order by the time it is in
+  the framebuffer. There is no configuration that leaves the asset right and
+  only the glyphs wrong. D21 governs one board-level knob, in
+  `boards/`/`platform/`, and the first line of display bring-up. Found in
+  review; the *"wrong colours in both directions"* half of an earlier version of
+  this bullet was over-stated and is withdrawn.
+  **All of that holds while the LVGL destination is native-order, which is
+  T-093's to decide and not a constant.** `RESOURCE_BUDGET.md`'s Avoidability
+  row keeps the swapped-destination strategy live — LVGL has a whole
+  `lv_draw_sw_blend_to_rgb565_swapped` target — and on that branch the guidance
+  inverts and the pre-swapped asset is the free one. So the rule this task
+  follows is the general one: **an asset's byte order follows the framebuffer
+  the renderer writes into**, whichever that turns out to be, and never D21
+  directly. Stated in the fourth review round of
+  [#152](https://github.com/hleserg/Attadipa/pull/152), which found the
+  absolutes bolted onto the correct rule going stale the moment T-093 decides.
 - **Hardware required:** no. **Owner required:** yes.
 
 ### T-037 · The first Clock
@@ -2673,20 +2743,35 @@ A1's schematic-revision
 ### T-103 · What the vendor's three images actually are — **DONE** 2026-08-22
 - **Six files, not three.** `/image/image1..3.bin` and a `/music/` directory
   holding three MP3s. The earlier record came from `strings` and was incomplete.
-- **The image format is settled, not inferred**: each image is exactly
+- **The stored format is settled, not inferred**: each image is exactly
   **411 652** bytes = a **12-byte header** plus **410 × 502 RGB565
   little-endian**. Header is `u32` magic `0x00001219`, `u16` width, `u16` height,
   `u32` stride (820 = width × 2). `12 + w·h·2` equals the file length exactly.
-- **The byte order was settled by rendering**, which is the only thing that could
-  settle it: little-endian gives coherent artwork, big-endian gives noise.
+- **The on-disk byte order was settled by rendering**, which is the only thing
+  that could settle it: little-endian gives coherent artwork, big-endian gives
+  noise.
 - **`tools/flash/spiffs_extract.py`** does the extraction without `mkspiffs` and
   without an ESP-IDF build — the blocker the original task named. `strings`
   recovers a SPIFFS image's names and none of its bodies.
-- **Feeds T-034**, and the distinction matters: the panel's pixel format and byte
-  order are facts about the hardware; the vendor's header is not, and is worth
-  noticing rather than copying — it has width, height and stride but **no format
-  field**, which is the field needed the moment a second format exists. Three
-  full frames cost 1.18 MB.
+- **Feeds T-034**, and the distinction matters: the vendor's header is not a
+  hardware fact and is worth noticing rather than copying — it has width, height
+  and stride but **no format field**, which is the field needed the moment a
+  second format exists. Three full frames cost 1.18 MB.
+- **Corrected 2026-08-23, and the correction is the point of the entry now.**
+  This record used to continue *"the panel's pixel format and byte order are
+  facts about the hardware"*. The pixel **format** half stands. The byte
+  **order** half was an inference across a boundary the render never crossed, and
+  the one display path readable in pinned source **swaps every pixel** before
+  transfer (`.swap_bytes = 1` → `lv_draw_sw_rgb565_swap()` → `tx_color()`
+  verbatim). The transfer order is now **`UNKNOWN`**, registered as **D21**, with
+  two routes to close it in
+  [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §7. Nothing
+  shipped is wrong — T-034 emits `A8` masks, which have no byte order — but the
+  first line of display bring-up must not read its answer off this task. (Nor
+  must the first colour **asset** read it off D21: an asset's byte order follows
+  LVGL's framebuffer format, and the wire order is absorbed at flush. Corrected
+  in review; see VERIFIED_FACTS.) Issue
+  [#109](https://github.com/hleserg/Attadipa/issues/109).
 - **Two findings outside the task's scope**, both recorded in
   [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md): the music gives T-105 a
   strong prior that `AAC210602A1` is the speaker, and the factory image carries
@@ -2698,8 +2783,9 @@ A1's schematic-revision
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
 - `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
-  Seven checks: relative links, inline code spans, task IDs, owner-decision
-  numbers, task bodies, root files, and `file:line` citations. Four at first,
+  Eight checks: relative links, inline code spans, task IDs, owner-decision
+  numbers, task bodies, root files, `file:line` citations, and open-question
+  IDs. Four at first,
   each of a failure that had already happened here. **A fifth was
   added 2026-08-23** — nothing unexpected is tracked at the repository root —
   after `git add -A` swept a scraped vendor page into `main` through
@@ -2751,7 +2837,16 @@ A1's schematic-revision
   this is the one place in the checker that reads fenced lines — everywhere else
   a `**Priority:**` inside a fence is an example and does not count as a body.
 - **Mutation-tested**, and CI runs those tests before it runs the checker:
-  **67 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  **An eighth check landed 2026-08-24**: one open-question ID names one
+  question. Check 4 does that for OD numbers in `OWNER_DECISIONS.md` and
+  stopped there; `OPEN_QUESTIONS.md` carries about four times as many
+  identifiers and had nothing. A branch filed the panel's wire byte order as
+  `D19` while `main` took `D19` for the display-FPC part marking, the branch
+  merged `main`, and nineteen citations in eight files then pointed at two
+  different questions with CI green. Struck rows count — a retired number is
+  spent, not free. Found in review of
+  [#152](https://github.com/hleserg/Attadipa/pull/152).
+  **74 cases** in `tools/docs/test_check_docs.py`, several of which assert the
   checker does *not* fire where firing would be wrong — a `###` sub-heading is
   not a second decision, a range straddling a blank line is how a table is
   cited, and a line number in somebody else's tree is not ours to verify. The
@@ -2793,6 +2888,25 @@ A1's schematic-revision
 - **Not done, and split out rather than quietly dropped:** the mascot — T-034a.
 - **Not measured on hardware.** The byte counts are `CALCULATED` from the
   format; `idf.py size` is the only thing that settles cost after alignment.
+- **A prerequisite that was closed on an unproven fact, reopened 2026-08-23.**
+  T-103 told this task the panel's byte order was settled; it was not — only the
+  vendor *files*' on-disk order was, and D21 now holds the real question. **This
+  task is unaffected in fact**: every asset it emits is `LV_COLOR_FORMAT_A8`
+  (`tools/assets/generate_images.py:168` "--cf"), one byte per pixel, no byte order to
+  get wrong — so `DONE` is still honest and no output needs regenerating. It is
+  **not affected in inheritance either, and an earlier version of this bullet
+  said it was.** *"The first task to add a colour format inherits D21 and must
+  take the swap setting from a datasheet or a measurement"* was the instruction
+  this correction exists to withdraw, and it survived here — 2 100 lines from
+  the bullet that corrects it, in the entry an agent picking up T-034a reads to
+  find out what it inherited. An asset's byte order follows LVGL's colour-format
+  contract and the framebuffer the software renderer writes into; the wire order
+  is absorbed once at flush by the port's `swap_bytes` flag, which is a **board**
+  fact living in `boards/`/`platform/`. For `RGB565A8` the old instruction was
+  not even executable: the vendored converter has no swapped variant of that
+  format. Found in the second review round of
+  [#152](https://github.com/hleserg/Attadipa/pull/152). Issue
+  [#109](https://github.com/hleserg/Attadipa/issues/109).
 
 ### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22
 - [PEDOMETER_PARTS](docs/research/PEDOMETER_PARTS.md), and four entries in
@@ -3446,16 +3560,32 @@ A1's schematic-revision
 
 - **Priority:** P2 — it decides part of T6 with evidence rather than preference.
 - **Dependencies:** feeds open question T6.
-- **Goal:** `waveshare/esp_lcd_sh8601` is a two-line fork of
-  `espressif/esp_lcd_sh8601` — its own files carry Espressif's SPDX headers. One
-  line is inert. The other, at `:280`, calls `tx_color(...)` bare where upstream
-  wraps it in `ESP_RETURN_ON_ERROR`, inside `panel_sh8601_draw_bitmap`, which
+- **Goal:** `waveshare/esp_lcd_sh8601` is a fork of `espressif/esp_lcd_sh8601` —
+  its own files carry Espressif's SPDX headers. At `:280`, inside
+  `panel_sh8601_draw_bitmap`, `tx_color(...)` is called bare and the function
   then returns `ESP_OK` unconditionally: **a failed frame transfer is reported as
-  success.** Present in 1.0.2, which the published demo pins, and in 2.0.0.
+  success.** Present at the two revisions read — `694ece03` (2023-11-03) and
+  `5d75f3f0`, still bare — and fixed by `e5b9295a`. **Which released component
+  versions those correspond to is not derived**; this bullet said *"present in
+  1.0.2, which the published demo pins, and in 2.0.0"* until the fourth review
+  round of [#152](https://github.com/hleserg/Attadipa/pull/152), which is the
+  same inference-from-commit-count the *Sharpened* bullet below already
+  withdrew for its neighbour, and the version strings do not identify whose
+  versioning they are — the fork pins `==1.0.2` and upstream has a `1.0.2` too.
   Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named
   `esp_lcd_co5300` — QSPI, accepting a custom init table — under the same
   Apache-2.0. Take the pin map and the init table; depend on upstream.
-- **Evidence:** [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §3.3.
+- **Sharpened 2026-08-23, and one premise withdrawn.** The unchecked call is
+  **not** a fork divergence: upstream carried it at the same line 280 from
+  `694ece03` (2023-11-03) until `e5b9295a` (2025-12-10), where the changelog
+  records *"Fix draw_bitmap not propagating tx_color errors"* for **`v2.0.1`**.
+  So the fork inherited it. The task's conclusion is unchanged and better
+  evidenced — upstream **has** the fix and the pinned fork does not — but the
+  "two-line fork" count was derived against *today's* upstream and must be
+  re-derived against the revision the fork was taken from before it is quoted
+  again. Also: upstream lives in `espressif/esp-iot-solution`, not `esp-bsp`.
+- **Evidence:** [WAVESHARE_ARRIVAL.md](docs/research/WAVESHARE_ARRIVAL.md) §3.3,
+  including the 2026-08-23 correction block.
 
 ### T-093 · The LVGL draw-buffer ADR has no vendor existence proof to lean on
 
