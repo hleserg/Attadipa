@@ -746,8 +746,16 @@ in every job. A second sweep the same day finds **six branches still holding
 `OD-16`** — #95, #97, #112, #94, #128, and `claude/review-convergence-169`,
 which has no open pull request and would therefore not appear in any listing of
 the queue. This branch **renumbered itself to `OD-17`** rather than waiting to be
-told, which is the convention T-117 asks for applied to itself; it cost 15
-occurrences across six files, none of them a deep anchor. Not `OD-18`, because
+told, which is the convention T-117 asks for applied to itself; it cost **16**
+occurrences across **seven** files, none of them a deep anchor. It said 15 across
+six until the thirteenth review round of
+[#134](https://github.com/hleserg/Attadipa/pull/134): the sixteenth was one
+sentence duplicated into `docs/hardware/BENCH_HANDLING.md`, renumbered here and
+not there, so it attributed the owner's brightness quote to a decision about
+radio chips and node counts. A count that matches what changed is exactly what
+makes a miss invisible, and nothing catches a bare `OD-NN` in prose —
+`check_decision_ids` reads headings, `check_links` needs a link,
+`check_citation_lines` needs a `path:line`. Not `OD-18`, because
 `main` ends at 16 and #94's rival claim on 17 is half of a duplicate it must
 resolve anyway — dodging it would bake in the gap. What T-117 still owns: the
 dangling task-ID check, the root-**directory** case in `check_root_files`, and

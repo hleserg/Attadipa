@@ -395,6 +395,40 @@ stale silently. The protocol is
   is fresh and whose head commit is three hours old, and asserts it is swept.
 - **Hardware required:** no.
 
+### T-159 · The `.gitignore` anchoring rule is a comment and nothing enforces it
+- **Priority:** P3 — small, and the window in which it can be resolved wrongly
+  closes when [#121](https://github.com/hleserg/Attadipa/pull/121) lands.
+- **Dependencies:** it needs a line in `.github/workflows/ci.yml`, or a home in
+  something CI already runs, which is why it is a task and not a commit.
+- **Goal:** `.gitignore` carries `/Testing/` and `/artifacts/` **anchored**, and
+  a long comment explaining that the anchors are load-bearing: unanchored,
+  gitignore(5) matches the name at any depth, and on a case-insensitive checkout
+  `Testing/` also swallows `docs/testing/` — the directory `CLAUDE.md` sends
+  every agent to. [#121](https://github.com/hleserg/Attadipa/pull/121) adds the
+  same two names **unanchored**, in the same place in the same file, from the
+  same base. gitignore is additive, so a conflict resolved by keeping both hunks
+  leaves the unanchored pair in force and recreates exactly what the comment
+  argues against. **Nothing catches that.** The owner's working tree is
+  case-insensitive and CI's is not, so the one environment that would show it is
+  the one with no checks in it. Found in review of
+  [#134](https://github.com/hleserg/Attadipa/pull/134).
+- **Acceptance:** a check that fails when `.gitignore` contains an unanchored
+  `Testing` or `artifacts` entry, run by CI, with a case that goes red when the
+  anchor is removed and stays green both for the anchored form and for an
+  unrelated pattern. It states in its own message *why* the anchor matters,
+  because a failure saying only "unanchored" invites somebody to delete the line
+  instead of anchoring it.
+- **What must not be assumed:** that `git check-ignore` alone proves it. Without
+  `--no-index` it consults the index and calls any *tracked* path not-ignored
+  whatever the patterns say, so it answers identically for both spellings; and
+  the case fold only appears under `-c core.ignorecase=true`, which CI does not
+  have. Both traps are already written into the `.gitignore` comment and the
+  test has to honour them.
+- **Research status:** n/a
+- **Implementation status:** not started.
+- **Tests:** host, in whatever runs it.
+- **Hardware required:** no.
+
 ### T-153 · A citation's fingerprint on the next line is silently unchecked
 - **Priority:** P2
 - **Dependencies:** none. Touches `tools/docs/check_docs.py` only, so it waits

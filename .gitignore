@@ -91,7 +91,16 @@ EASTER_EGGS.md
 # them; they do not join them.**
 #
 # Written here rather than in a pull request body because a squash merge keeps
-# the file and discards the body.
+# the file and discards the body. **And a comment is all it is: nothing enforces
+# it.** Resolve the conflict wrongly and the failure is silent, and silent only
+# where it matters -- an unanchored `Testing/` swallows `docs/testing/` on a
+# case-insensitive checkout, which the owner has and CI does not, so CI would
+# never show it. Filed as **T-159**: a check that fails when this file carries an
+# unanchored `Testing` or `artifacts` entry, so the rule is a red build rather
+# than a paragraph somebody has to read while resolving a conflict. Raised in
+# review of https://github.com/hleserg/Attadipa/pull/134 and not built there,
+# because the only home CI already runs it from needs a line in
+# `.github/workflows/ci.yml`, which an agent token cannot write.
 /Testing/
 
 # Screenshots and scenario output from the UI test tooling: evidence for a
@@ -117,13 +126,23 @@ EASTER_EGGS.md
 # screenshot` writes `sim/artifacts/watch/*.png`, which `/artifacts/` does not
 # match and the next `git add -A` at the root would carry -- a fourth prefix for
 # the recurrence T-117 is written about, one directory from the one just closed.
-# So the second line, which catches that directory at any depth while still
-# leaving `docs/hardware/artifacts/` visible -- files directly in it, that is.
-# `docs/hardware/artifacts/watch/` would be hidden, by construction: the second
-# line matches that name at every depth and cannot tell whose it is. Said here
-# because `docs/hardware/` is both where this branch puts its new file and a
-# prefix the unattended sweep may merge, so the one directory name to avoid
-# there is `artifacts/watch/`. Both verified in a scratch
-# repository with `check-ignore --no-index`.
+# So the second line, which catches that directory at any depth. On its own it
+# would also hide `docs/hardware/artifacts/watch/`, by construction -- it
+# matches the name at every depth and cannot tell whose it is -- and that is a
+# real cost rather than a theoretical one: `docs/hardware/` is where bench
+# evidence goes AND a prefix the unattended sweep may merge, so an agent writing
+# a screenshot there would lose it inside a sweep-merged commit with nothing
+# red. The third line buys it back. It is safe because the hazard the second
+# line exists for is TOOL OUTPUT, and `tools/watch_control.py` writes relative
+# to the process working directory -- never under `docs/`. Recorded as a comment
+# and left to be obeyed until review of
+# https://github.com/hleserg/Attadipa/pull/134 asked why a rule nothing enforces
+# was thought to be enough.
+#
+# All three verified in a scratch repository with `check-ignore`:
+# `artifacts/watch/a.png` ignored, `sim/artifacts/watch/b.png` ignored,
+# `docs/hardware/artifacts/watch/c.png` VISIBLE, `docs/hardware/artifacts/d.txt`
+# visible.
 /artifacts/
 **/artifacts/watch/
+!docs/**/artifacts/watch/

@@ -184,9 +184,23 @@ to, through the CDC control lines. That should have been the first clue rather
 than a footnote — nothing about a misbehaving image produces `0x15`.
 
 Every one of the four runs ended the same way: `esptool` finished and exited. On
-the last close of a `ttyACM` device the kernel drops DTR and RTS, and on this
-board those are GPIO0 and EN. **The tool that delivered the image killed it a few
-milliseconds later by closing the port.**
+the last close of a `ttyACM` device the kernel drops DTR and RTS, and **this
+board's USB-Serial/JTAG peripheral resets the digital core when the host changes
+them**. **The tool that delivered the image killed it a few milliseconds later by
+closing the port.**
+
+> **This said *"on this board those are GPIO0 and EN"* until 2026-08-24, and it
+> was never sourced.** There is no USB-UART bridge here: `USB_N`/`USB_P` run
+> through 22 Ω resistors R19/R20 to the SoC's **native** USB pins
+> ([HARDWARE_MATRIX](HARDWARE_MATRIX.md), `VERIFIED`), so DTR and RTS exist only
+> as CDC control-line bits host-side and no wire runs from either to a pin. The
+> mechanism is the one §2.2 argues for three paragraphs down and is the stronger
+> claim, because the board reported it: `rst:0x15 (USB_UART_CHIP_RESET)` is by
+> definition the peripheral resetting the core at the host's request, and a reset
+> delivered by pulling EN would not name itself that. Nothing operational
+> changes — closing the port still killed the image. Found in review of
+> [#134](https://github.com/hleserg/Attadipa/pull/134), which had copied the
+> sentence into a new file.
 
 Two host-side explanations *were* tested before the wrong conclusion was drawn,
 and neither one touched this:
@@ -583,7 +597,9 @@ writing a byte to the owner's flash.
   MAC, and that is the owner's, not the repository's — see
   [`WAVESHARE_EFUSE_READ.md`](WAVESHARE_EFUSE_READ.md) §0.
 - **Opening the serial port resets this board.** pyserial asserts DTR and RTS on
-  `open()`; on a USB-Serial/JTAG board those are GPIO0 and EN. Two RAM images
+  `open()`, and this board's USB-Serial/JTAG peripheral resets the digital core
+  when it sees that — they are CDC control-line bits, **not** GPIO0 and EN,
+  which is what this line said until 2026-08-24; see §2.2. Two RAM images
   were destroyed by the tool sent to observe them before this was noticed. Set
   both `False` on the `Serial` object *before* `open()` — **and do not treat
   that as a fix.** `cdc_acm` raises both lines in the kernel when the tty is

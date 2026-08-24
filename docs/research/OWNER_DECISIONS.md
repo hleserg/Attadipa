@@ -1308,12 +1308,37 @@ survives only here.)
    and `phy_init` (`0x9000`–`0x12000`) to
    `803798ee52013c09e9dd55a72226d0195ec6a3582f85af3b43315f9247b3e26e` across
    three reads on **2026-08-22** — the day *before* the brightness was set to
-   minimum. Re-read that range on the next trip: **an unchanged hash means the
-   setting was never committed to flash at all**, so it cannot survive a reset,
-   and no reboot has to be watched to learn it. That is a negative a pair of
-   eyes cannot give, and it costs one dump on a visit already being made for the
-   register burst. A *changed* hash proves only that something was written, so
-   the panel still has to be looked at in that case.
+   minimum.
+
+   **That range is three of the five data partitions, and the negative needs
+   all five.** `0x9000`–`0x12000` stops at the byte where `model` begins;
+   [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §1 lists two more data
+   partitions outside it — `model` (952 KB spiffs) and **`storage`** (6 MB
+   spiffs, UI assets) — and nothing establishes where `phone_s3_box_3` commits a
+   runtime setting. On the branch whose thesis is that this image is opaque, an
+   unchanged 36 KB says the setting is not in *those* 36 KB, not that it was
+   never written. **So the baseline to re-read is the whole flash**, which is
+   already taken and is stronger: `WAVESHARE_FLASH_LAYOUT` §5 hashes all
+   33 554 432 bytes to
+   `2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5`, agreed by
+   three independent complete reads and by the device's own MD5, on the same
+   2026-08-22 and likewise before the brightness was set. For a negative, a
+   whole-image hash is the strongest form there is.
+
+   Re-read it on the next trip: **an unchanged whole-flash hash means the setting
+   was never committed to flash at all**, so it cannot survive a reset, and no
+   reboot has to be watched to learn it. That is a negative a pair of eyes cannot
+   give. A *changed* hash proves only that something was written, so the panel
+   still has to be looked at in that case — and the 36 KB range above is then
+   worth reading as a second step, because it says *where*.
+
+   The cost is the honest part: a full 32 MB read, not one 36 KB dump. It is the
+   same read the backup already needed and takes minutes over USB/IP, but it is
+   not free, and the twelfth review round proposed the cheap version while the
+   thirteenth found the shortcut scoped to three of five partitions and worded as
+   though it covered flash. Taking the cheap dump and writing *"the brightness
+   setting is not persisted — `MEASURED`"* would be a `PASS` for a state nobody
+   observed, in the register `CLAUDE.md` says is not ours to overturn.
 
    `WAVESHARE_FLASH_LAYOUT` §2.2, under
    *"`nvs`, `otadata` and `phy_init` did not move either"*, is the precedent for

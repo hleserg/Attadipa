@@ -65,7 +65,7 @@ assumed — see row 1 and *"What was tried"* below.
 
 | | Effect | Cost to development |
 |---|---|---|
-| **Screen timeout, shortest available** | removes the static image entirely | **none** — and whether the received unit offers one is `UNKNOWN`, unobserved, **not** absent. The launcher it boots carries a **`Settings`** app ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.9) and OD-16 is the owner having already been inside it — «нашел **в настройках** яркость экрана». Nobody has enumerated the rest of that menu. This is the cheapest open question in the file: thirty seconds, and unlike the one below it needs no cable out. The likeliest upstream **has** been read — see *"What was tried"* — and its display page offers brightness and theme and no timeout, which makes "no" `LIKELY` and leaves the unit itself unobserved |
+| **Screen timeout, shortest available** | removes the static image entirely | **none** — and whether the received unit offers one is `UNKNOWN`, unobserved, **not** absent. The launcher it boots carries a **`Settings`** app ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.9) and **OD-17** is the owner having already been inside it — «нашел **в настройках** яркость экрана». Nobody has enumerated the rest of that menu. This is the cheapest open question in the file: thirty seconds, and unlike the one below it needs no cable out. The likeliest upstream **has** been read — see *"What was tried"* — and its display page offers brightness and theme and no timeout, which makes "no" `LIKELY` and leaves the unit itself unobserved |
 | **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | **not none** — it is the *plugged-in* state, and what that costs the cell is `UNKNOWN` rather than nothing: see **the cell** under *"What is not established"* |
 | **Unplug** | **cannot be assumed to stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so removing USB does not remove power; what the factory image does on battery is `UNKNOWN`, unobserved | the unit is not reachable, *and* the cell carries the load instead of USB. Direction only: **how fast, and therefore whether it is left sitting at a low state of charge, depends on the same unread image behaviour the effect cell declines to lean on** |
 
@@ -112,7 +112,22 @@ no Attadipa firmware on the unit, so nothing of ours can address the display.
 And the obvious workaround — drive the port and hope something blanks it — has
 **two** ways to reboot the board, both recorded in
 [WAVESHARE_RUNNING_OUR_CODE](../research/WAVESHARE_RUNNING_OUR_CODE.md) §2.2 and
-§7. DTR and RTS are GPIO0 and EN here, and:
+§7. **DTR and RTS are not pins on this board** — it has no USB-UART bridge:
+`USB_N`/`USB_P` go through 22 Ω resistors R19/R20 to the SoC's **native** USB
+pins ([HARDWARE_MATRIX](../research/HARDWARE_MATRIX.md), `VERIFIED`), and every
+session here has used `USB-Serial/JTAG`. They are **CDC control-line bits**, and
+the USB-Serial/JTAG peripheral resets the digital core when the host changes
+them. That is not a reading of a schematic, it is what the board *reported*:
+`rst:0x15 (USB_UART_CHIP_RESET)`, which by definition is the peripheral doing it
+at the host's request
+([WAVESHARE_RUNNING_OUR_CODE](../research/WAVESHARE_RUNNING_OUR_CODE.md) §2.2) —
+a reset delivered by pulling EN would not name itself that. This file said *"DTR
+and RTS are GPIO0 and EN here"* in two places until the thirteenth review round
+of [#134](https://github.com/hleserg/Attadipa/pull/134), inherited from `main`
+and unsourced in either; it matters because **T-116** goal 3 is a hardware
+observation and whoever designs that experiment against pins will scope GPIO0
+and learn nothing. **The operational rule is unchanged either way: plan for the
+board to reset on open.** And:
 
 - **pyserial asserts both on `open()`**, so naive tooling resets the board just
   by attaching to watch it. Two RAM images were destroyed that way. Setting both
@@ -289,7 +304,7 @@ resolves — to the wrong task — and a reader following the retraction to chec
 cannot tell whether the registers moved there or this sentence went stale.
 Which is why the claim is scoped to the two branches it was checked against
 rather than to *the repository*: absent-everywhere is a claim about branches,
-and the sweep that found five `OD-16`s is the method that answers it.
+and the sweep that found five `OD-16`s is the method that answers it. It found five and there were six: the sixteenth occurrence was this file's own row 1 above, renumbered in `STATUS.md` and not here — one sentence, two files — and found only in the thirteenth review round of [#134](https://github.com/hleserg/Attadipa/pull/134). Nothing catches a bare `OD-NN` in prose: `check_decision_ids` reads headings, `check_links` needs a link, `check_citation_lines` needs a `path:line`. The renumber's own price of *"15 occurrences across six files"* is what makes that miss invisible — the count matches what changed.
 
 So the file's cell-safety questions read as *assigned* while having no owner
 anywhere, which is worse than reading as absent, because a reader who checks
@@ -313,8 +328,10 @@ not a stable name for either.
 **Every tool that opens a port on a device must resolve it from the unit's USB
 serial and exit non-zero rather than guess — and none does yet.** *Opens*, not
 *writes*: the casualty forty lines above wrote nothing. pyserial asserts DTR and
-RTS inside `Serial(...)`, and here those are GPIO0 and EN, so the reset is done
-by the time a tool has decided whether it has anything to say. What exists is
+RTS inside `Serial(...)`, and this board's USB-Serial/JTAG peripheral resets the
+digital core when it sees that — no pin is involved, see the correction above —
+so the reset is done by the time a tool has decided whether it has anything to
+say. What exists is
 the ad-hoc guard every write in the [#110](https://github.com/hleserg/Attadipa/pull/110)
 session went through, which was that session's own script and did not survive it.
 The shared one is **T-116** in [`TASKS.md`](../../TASKS.md), together with the
