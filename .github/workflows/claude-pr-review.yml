@@ -68,6 +68,10 @@ jobs:
       vars.CLAUDE_PR_REVIEW_ENABLED != 'false' &&
       (!endsWith(github.actor, '[bot]') || github.actor == 'claude[bot]')
     steps:
+      - name: Record review-run start
+        id: started
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Check that an Anthropic credential exists
         id: auth
         env:
@@ -348,6 +352,51 @@ jobs:
           if [ "$ran" = "no" ] && [ "${OUTCOME}" = "success" ]; then
             echo "::warning::The review step reported success and never reached the model — see the note on the pull request."
           fi
+
+      - name: Establish whether the review was published
+        id: published
+        if: always() && steps.auth.outputs.ok == 'true' && steps.happened.outputs.ran == 'yes' && steps.review.outcome != 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          STARTED: ${{ steps.started.outputs.at }}
+          OUTCOME: ${{ steps.review.outcome }}
+        run: |
+          set -uo pipefail
+          comments="$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp 2>/dev/null | jq -c 'flatten(1)' 2>/dev/null || true)"
+          labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)"
+          answer="$(bash .github/scripts/review-published.sh yes "$OUTCOME" "$comments" "$labels" "$STARTED" || echo 'unknown helper failed')"
+          case "$answer" in
+            published\ *) state=published ;;
+            silent\ *) state=silent ;;
+            *) state=unknown ;;
+          esac
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+
+      - name: Say that the review published nothing
+        if: always() && steps.published.outputs.state == 'silent'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          marker="attadipa-review-not-published:${SHA}"
+          if ! gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body' | grep -Fq "$marker"; then
+            {
+              echo "<!-- $marker -->"
+              echo "**The independent review ran on \`${SHA:0:8}\` but published no verdict.**"
+              echo
+              echo "No \`ai-review:pass\` from an older head is valid for this commit."
+              echo "Run: $RUN_URL"
+            } > /tmp/review-not-published.md
+            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/review-not-published.md
+          fi
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:blocking || true
 
       - name: Work out why the review did not happen
         id: why
