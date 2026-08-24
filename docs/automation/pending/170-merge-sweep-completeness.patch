@@ -1,5 +1,14 @@
-Issue #170 — the caller half: make the merge sweep prove it read all of the
-pull request before it decides anything about it.
+Issues #170 and #199 — the caller half: make the merge sweep prove it read all
+of the pull request, and make it stop taking the head commit's word for when
+that commit arrived.
+
+ONE PATCH FOR ONE WORKFLOW, AND THAT IS A DECISION RATHER THAN A CONVENIENCE.
+#199 needed four more edits to `pr-merge-sweep.yml` while #170's four were still
+parked. Parking them separately would have produced two patches against one
+file, an apply order to get right by hand, and a `merge-candidate.sh` arity that
+moves twice — which is the state T-144 exists to stop growing, not to feed. So
+they travel together: the live sweep passes nine arguments today and eleven the
+moment this lands, with nothing in between for anybody to land halfway.
 
 WHY THIS IS A FILE AND NOT A COMMIT. Agents here run as `claude[bot]` through
 the Claude GitHub App, `ATTADIPA_AGENT_TOKEN` is unset by design, and that
@@ -10,12 +19,13 @@ pushing a one-character change to a scratch branch:
       (refusing to allow a GitHub App to create or update workflow
        `.github/workflows/pr-merge-sweep.yml` without `workflows` permission)
 
-So the rule, its filter, its query and its tests are on `main`, and the four
-edits that make the sweep USE them are here. Until this lands the sweep merges
-nothing: `merge-candidate.sh` refuses a nine-argument caller by arity and says
-so in the log, once per open pull request per sweep, naming this file. That is
-the intended state -- a gate that cannot prove it read the whole pull request
-must not merge one -- but it is not the finished one.
+So the rules, their filters, their query and their tests are on `main`, and the
+eight edits that make the sweep USE them are here. Until this lands the sweep
+merges nothing: `merge-candidate.sh` refuses a nine-argument caller by arity and
+says so in the log, once per open pull request per sweep, naming this file. That
+is the intended state -- a gate that cannot prove it read the whole pull request,
+and cannot say when its head arrived, must not merge one -- but it is not the
+finished one.
 
 TO APPLY, from a session whose token may write workflows:
 
@@ -26,8 +36,8 @@ TO APPLY, from a session whose token may write workflows:
     #  `75-approval-stall.patch` -- 34 kB parked by #128, on `main` today and
     #  not yet applied -- the directory's README, and #154's patch when it
     #  lands. See T-144.
-    bash .github/tests/merge-candidate-test.sh   # 135 assertions, and the last
-                                                 # two flip to the applied state
+    bash .github/tests/merge-candidate-test.sh   # 182 assertions, and the last
+                                                 # four flip to the applied state
 
 THEN THE FIVE DOCUMENTS THAT DESCRIBE THE PARKED STATE, in the same commit.
 This directory's README says a patch carries every edit its own landing forces,
@@ -57,21 +67,30 @@ human and matched a different one.
                          describe a sweep that merges three per run, become
                          true again the moment this lands.
     docs/automation/CLAUDE_AUTOMATION.md
-                         THREE places, and the third is the one a reader of
-                         this list misses: the "HALF LIVE" banner and the table
-                         under it, including "It merges nothing at all" and the
-                         row answering "Who can finish it?" -- and, fourteen
-                         lines ABOVE the banner, the row in the conditions table
-                         beginning "A page is not a set -- HALF LIVE, see
-                         below". Leave that one and a fully live protection
-                         still says half, pointing `see below` at a section
-                         that is gone.
+                         THREE places, and the two in the conditions table are
+                         the ones a reader of this list misses, because the
+                         banner is the only one that looks like a banner:
+                           - the section opening "### (warning) Two protections
+                             are half live, and this is which half", and the
+                             whole table under it, including "It merges nothing
+                             at all" and the row answering "Who can finish
+                             it?";
+                           - fourteen lines ABOVE that heading, the conditions
+                             row opening "**A page is not a set -- (warning)
+                             HALF LIVE, see below.**";
+                           - two rows below that one, the conditions row
+                             opening "**A six-hour settling window, on a clock
+                             the author does not hold -- (warning) HALF LIVE,
+                             see below.**", which #199 added and which carries
+                             the same pointer.
+                         Leave either row and a fully live protection still says
+                         half, pointing `see below` at a section that is gone.
     STATUS.md            the "Agent automation" row's closing sentence, which
                          names this file as parked.
     docs/automation/pending/README.md
                          THREE things, and each is named here by the words it
-                         actually opens with, because the last two rounds got
-                         this wrong by describing them instead:
+                         actually opens with, because two rounds got this wrong
+                         by describing them instead:
                            - this patch's row in "Waiting now". The row is the
                              worked example :31-33 gives for the very rule this
                              block quotes, and a row for a file that is gone
@@ -95,32 +114,44 @@ human and matched a different one.
                          rather than closed. Its Impact says the sweep
                          "merges NOTHING" because the arity refusal holds
                          every pull request -- that ends here: the caller
-                         passes ten arguments the moment this lands. Its
+                         passes eleven arguments the moment this lands. Its
                          "Apply both in one commit" instruction then governs
                          one patch, not two.
 
     git commit -am "The merge sweep asks whether it read all of the pull request"
 
-WHAT IT CHANGES, all in .github/workflows/pr-merge-sweep.yml:
+WHAT IT CHANGES, all in .github/workflows/pr-merge-sweep.yml. The first four are
+#170's and the last four are #199's:
 
   1. the inline GraphQL query becomes `-F query=@.github/scripts/merge-facts.graphql`,
-     which is the same query plus `pageInfo` on all five decision-critical
-     connections and `labels(first:100)` in place of `first:50`;
+     which is the same query plus `pageInfo` on all six decision-critical
+     connections, `labels(first:100)` in place of `first:50`, `oid` and
+     `checkSuites` on the head commit, and no `committedDate` or `pushedDate`
+     at all;
   2. a completeness step between reading the facts and using them, which holds
      on anything `merge-facts.sh` cannot prove complete;
   3. the `FILE_COUNT >= 100` guard goes, because the schema now answers that
-     question exactly for all five connections instead of by length for one;
-  4. the verdict call passes the completeness answer as its tenth argument.
+     question exactly for all six connections instead of by length for one;
+  4. the verdict call passes the completeness answer as its tenth argument;
+  5. the `COMMITTED = (.pushedDate // .committedDate)` extraction goes, and with
+     it the hand-rolled `PASS_AT` / `PASS_AFTER_HEAD` comparison built on it;
+  6. a head-trust step in their place, `.github/scripts/merge-head-trust.sh`,
+     which returns the head's object id, whether the latest `ai-review:pass`
+     labelling post-dates GitHub's own record of that head arriving, and how old
+     that arrival is -- and holds outright where GitHub has stamped nothing;
+  7. the separate `HEAD_AGE` computation goes, because it is one of those three;
+  8. the verdict call passes the head's object id as its eleventh argument, and
+     the merge notice names the commit it merged.
 
 Nothing else moves. The path allowlist, the six-hour settling window, the
 three-per-run cap, the reviewer's verdict conditions and the CheckRun /
 StatusContext separation from a192a89 are untouched.
 
 diff --git a/.github/workflows/pr-merge-sweep.yml b/.github/workflows/pr-merge-sweep.yml
-index 598fbaa..6035032 100644
+index 598fbaa..da9cad3 100644
 --- a/.github/workflows/pr-merge-sweep.yml
 +++ b/.github/workflows/pr-merge-sweep.yml
-@@ -35,6 +35,16 @@ name: Merge what is finished
+@@ -35,6 +35,24 @@ name: Merge what is finished
  # so a hostile contributor's tree cannot execute here -- the only inputs are API
  # facts, and the decision itself is a file that a test can execute:
  # .github/scripts/merge-candidate.sh, .github/tests/merge-candidate-test.sh.
@@ -134,10 +165,18 @@ index 598fbaa..6035032 100644
 +# is .github/scripts/merge-facts.jq, driven by .github/scripts/merge-facts.sh,
 +# for the same reason: a query and a filter inside a YAML block cannot be
 +# executed, so nothing can assert what they ask for. Issue #170.
++#
++# AND SO IS THE QUESTION OF WHOSE CLOCK THOSE FACTS ARE ON. The settling window
++# and "was the verdict reached on this head" were both derived here from
++# `(.pushedDate // .committedDate)` -- and `pushedDate` is deprecated and null on
++# every commit this repository has, so both rested on the git committer clock,
++# which `GIT_COMMITTER_DATE` sets. .github/scripts/merge-head-trust.sh replaces
++# it with GitHub's own stamp on the runs it started for that object id, and holds
++# where there is none. Issue #199.
  
  on:
    schedule:
-@@ -132,31 +142,14 @@ jobs:
+@@ -132,31 +150,14 @@ jobs:
              # GraphQL in one round trip for the facts REST splits across four
              # endpoints, including the two REST cannot answer at all:
              # mergeStateStatus and whether a review thread is resolved.
@@ -177,7 +216,7 @@ index 598fbaa..6035032 100644
                2>/dev/null)" || FACTS=""
  
              # An empty or error document means the facts were not established.
-@@ -167,6 +160,29 @@ jobs:
+@@ -167,6 +168,29 @@ jobs:
                continue
              fi
  
@@ -207,9 +246,79 @@ index 598fbaa..6035032 100644
              IS_DRAFT="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.isDraft')"
              MERGEABLE="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.mergeStateStatus // "" | ascii_downcase')"
              # One label per line, not space joined: GitHub permits a space
-@@ -208,16 +224,15 @@ jobs:
-               fi
-             fi
+@@ -174,50 +198,52 @@ jobs:
+             # satisfied a space-separated substring test. Found in review.
+             LABELS="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.labels.nodes[].name')"
+             UNRESOLVED="$(printf '%s' "$FACTS" | jq -r '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length')"
+-            # pushedDate first, committedDate as the fallback. The settling
+-            # window asks when code last ARRIVED, and committedDate is the git
+-            # committer clock -- `GIT_COMMITTER_DATE=2020-01-01` defeats it
+-            # while pushedDate is observed by GitHub. pushedDate is null for
+-            # some commits, which is why the fallback exists and why this is a
+-            # narrowing rather than a replacement. Found in review.
+-            COMMITTED="$(printf '%s' "$FACTS" | jq -r '
+-              .data.repository.pullRequest.commits.nodes[0].commit
+-              | (.pushedDate // .committedDate) // "null"')"
+-
+-            # WHICH COMMIT THE VERDICT WAS REACHED ON. The label says a verdict
+-            # happened, not which commit it happened on -- and a review that
+-            # reaches no verdict leaves the previous commit's label in place,
+-            # which is how a commit nothing reviewed reaches `main`. So the most
+-            # recent `labeled ai-review:pass` event is dated against the head.
+-            # `unknown` when either date is missing, and unknown holds.
+-            PASS_AT="$(printf '%s' "$FACTS" | jq -r '
+-              [ .data.repository.pullRequest.timelineItems.nodes[]?
+-                | select(.label.name == "ai-review:pass") | .createdAt ]
+-              | max // ""')"
+-            PASS_AFTER_HEAD=unknown
+-            if [ -n "$PASS_AT" ] && [ "$PASS_AT" != "null" ] \
+-               && [ -n "$COMMITTED" ] && [ "$COMMITTED" != "null" ]; then
+-              PASS_EPOCH=$(date -u -d "$PASS_AT" +%s 2>/dev/null || echo "")
+-              HEAD_EPOCH=$(date -u -d "$COMMITTED" +%s 2>/dev/null || echo "")
+-              if [ -n "$PASS_EPOCH" ] && [ -n "$HEAD_EPOCH" ]; then
+-                if [ "$PASS_EPOCH" -ge "$HEAD_EPOCH" ]; then
+-                  PASS_AFTER_HEAD=true
+-                else
+-                  PASS_AFTER_HEAD=false
+-                fi
+-              fi
+-            fi
++            # WHICH COMMIT IS THIS, WHEN DID GITHUB SEE IT ARRIVE, AND WAS THE
++            # VERDICT REACHED ON IT? Three questions, one answer, and until #199
++            # the answer to all three came out of
++            #
++            #     COMMITTED = (.pushedDate // .committedDate)
++            #
++            # `pushedDate` is deprecated and answers `null` for every commit this
++            # repository has -- read live against the head of #193 on 2026-08-24,
++            # beside a live `committedDate` -- so the fallback was the only
++            # branch ever taken, and the fallback is the git committer clock. A
++            # commit made with `GIT_COMMITTER_DATE` six hours in the past cleared
++            # the settling window at the moment it existed and post-dated no
++            # `ai-review:pass`, so the previous head's verdict read as a verdict
++            # about it. Two security properties, both resting on an input, in a
++            # step whose own comment described the attack and fell back anyway.
++            #
++            # The rule is a file for the reason merge-facts.sh and
++            # merge-candidate.sh are: this normalisation is where BOTH #170 and
++            # #199 lived, and nothing on `main` could execute a line of it. It
++            # reads `workflowRun.createdAt` on the head commit's own check
++            # suites -- GitHub's stamp against that object id -- and holds where
++            # there is none. There is no fallback and adding one is the defect.
++            TRUST="$(printf '%s' "$FACTS" | bash .github/scripts/merge-head-trust.sh)"
++            case "$TRUST" in
++              "TRUSTED "*) : ;;
++              HOLD*)
++                echo "::notice::#$PR: ${TRUST#HOLD }"
++                continue ;;
++              *)
++                echo "::warning::#$PR: the head-trust check answered '$TRUST', which is not one of its two answers; leaving it alone"
++                continue ;;
++            esac
++            # Shape-validated inside the rule above, so these three are known
++            # good before they are read: an object id, one of true/false/unknown,
++            # and whole seconds.
++            IFS=' ' read -r _ HEAD_OID PASS_AFTER_HEAD HEAD_AGE <<<"$TRUST"
  
 -            # WHAT IT TOUCHES. `files(first:100)` -- a pull request with more
 -            # than a hundred changed files reads as a truncated list, so the
@@ -232,13 +341,42 @@ index 598fbaa..6035032 100644
  
              # A run still in flight has a null conclusion. It must reach the
              # decision as something, and `pending` is what the rule refuses on
-@@ -293,7 +308,8 @@ jobs:
+@@ -239,10 +265,12 @@ jobs:
+                   else "status:" + (.state // "pending") end
+                 | ascii_downcase ] | join(" ")')"
+ 
+-            HEAD_AGE=""
+-            if [ -n "$COMMITTED" ] && [ "$COMMITTED" != "null" ]; then
+-              HEAD_AGE=$(( $(date -u +%s) - $(date -u -d "$COMMITTED" +%s) ))
+-            fi
++            # HEAD_AGE used to be computed here, out of `$COMMITTED`, and it is
++            # now one of the three fields the head-trust rule above returns. It
++            # moved rather than being deleted because it is the same question the
++            # settling window has always asked -- "when did code last arrive" --
++            # answered at last by something the author of the commit does not
++            # write. Issue #199.
+ 
+             # The other reviewer. Codex is configured on ChatGPT's side and does
+             # not set `ai-review:pass`, so a finding of its reaches us only as a
+@@ -293,7 +321,8 @@ jobs:
  
              VERDICT="$(bash .github/scripts/merge-candidate.sh \
                "$CHECKS" "$LABELS" "$UNRESOLVED" "$CODEX" \
 -              "$MERGEABLE" "$IS_DRAFT" "$HEAD_AGE" "$PATHS" "$PASS_AFTER_HEAD")"
 +              "$MERGEABLE" "$IS_DRAFT" "$HEAD_AGE" "$PATHS" "$PASS_AFTER_HEAD" \
-+              "$COMPLETE")"
++              "$COMPLETE" "$HEAD_OID")"
  
              case "$VERDICT" in
                HOLD*)
+@@ -335,7 +364,10 @@ jobs:
+ 
+             if gh pr merge "$PR" --repo "$REPO" --squash --delete-branch; then
+               MERGED=$((MERGED + 1))
+-              echo "::notice::#$PR: merged"
++              # The commit, not just the number. Everything above was decided
++              # about one object id, and a log line that does not carry it
++              # cannot be checked afterwards against what was reviewed.
++              echo "::notice::#$PR: merged at ${HEAD_OID:0:8}"
+             else
+               REFUSED=$((REFUSED + 1))
+               echo "::warning::#$PR: merge refused by GitHub; nothing changed"
