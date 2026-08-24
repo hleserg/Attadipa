@@ -2487,18 +2487,45 @@ A1's schematic-revision
   `.github/tests/gh-api-usage-test.sh`, which CI already runs at `ci.yml:360` —
   a new script would have needed a line in `ci.yml`, which is the file an agent
   cannot write, which is the whole reason patches are parked in the first place.
-  The `gh api` scan now also reads `docs/automation/pending/*.patch`, **added
-  lines only**, because a patch that *removes* a bad call is the fix and a scan
-  that flagged it would teach the next person to route around the guard. And
+  The `gh api` scan now also reads `docs/automation/pending/*.patch`, as each
+  patch's **post-image** — context plus added lines, restricted to hunks whose
+  `+++` target is under `.github/`. Added-lines-only was the first read and the
+  reviewer of [#180](https://github.com/hleserg/Attadipa/pull/180) killed it:
+  every `--slurp` call in this repository puts `gh api` on one line and its
+  flags on the next, so a patch editing only the flag line has no `gh api`
+  among its added lines and the scan says nothing while the patch deploys the
+  pair `gh` rejects. The post-image keeps the property added-only was chosen
+  for — remove `--jq` and the post-image no longer holds one — so a patch that
+  *fixes* a bad call still is not flagged. The `+++` restriction is what keeps
+  the repository's own prose about the rule, which has no `#` to strip, from
+  being reported for breaking it.
+
   `git apply --check` runs over every parked patch, which writes nothing and
-  needs no repository. An empty pending directory is a pass with its own line,
-  not a skip.
-- **Tests:** the suite goes 7 → 15 cases. Five are new: the patch scan catching
-  an added offender, leaving a removed one alone, leaving a good one alone, and
-  the apply check passing a patch that fits and failing one whose context has
-  moved. Mutation-verified against the **real** parked patch in both
-  directions: inserting a `--slurp`/`--jq` line into it reddens the scan, and
-  shifting one context line reddens the apply check; restored, 15/15.
+  needs no repository. **It is a warning, not a failure**, and that is the
+  decision worth recording: a parked patch goes stale because of work
+  elsewhere, often work CI itself demands, so a fatal check would red `main`
+  and every open pull request over a file none of them touched — one stale
+  patch stopping the whole queue. It emits an `::warning file=` annotation and
+  a `$GITHUB_STEP_SUMMARY` line naming the remedy (`git rm` if it has landed,
+  rebuild if it has not). Making it fatal safely needs a job gated on
+  `paths: docs/automation/pending/**`, which is a write under
+  `.github/workflows/` and therefore parked work itself. An empty pending
+  directory is a pass with its own line, not a skip; an unreadable patch is a
+  failure, not a clean read.
+- **Tests:** the suite goes 7 → 24 cases. The patch scan is covered in both
+  directions and over the shape this repository actually writes: an added
+  offender on one line, an added offender split across a continuation, a
+  *removed* offender, a good call, and a Markdown patch that documents the rule
+  in prose. Three cases pin the reported line number — it is the patch line the
+  invocation *starts* on, which is a line an operator can open, and not the
+  n-th added line, which is what it printed before. The apply loops are driven
+  through four fixture trees (empty, fits, drifted, offends) with `PENDING_DIR`
+  pointed at each, because calling `git apply --check` directly tests git and
+  exercises no branch of the shipping code — review of #180 found that
+  inverting a condition in those loops left every case green. Mutation-verified
+  against the **real** parked patch in both directions: inserting a
+  `--slurp`/`--jq` line into it reddens the scan, and shifting one context line
+  raises the warning; restored, 24/24.
 - **Hardware required:** no.
 - **Known gap, recorded rather than fixed:** `ci.yml:359`'s step name still
   reads *"The gh calls in the workflows are ones gh accepts"*, which is now

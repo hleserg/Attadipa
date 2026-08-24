@@ -1081,10 +1081,18 @@ four more things at no cost:
   changes an agent cannot write land under `docs/automation/pending/`, and no
   guard in the repository reached that directory, so a parked patch could
   redeploy this exact defect and stay green until the day somebody applied it.
-  The same suite now reads what a parked patch would *add* and runs
-  `git apply --check` over each one, which nothing did while
-  `pending/README.md` told a person to. 15 cases, both new halves
-  mutation-verified against the real parked patch. The general lesson is the one that produced this: **dispatch a new
+  The same suite now reads a parked patch's **post-image** — context plus added
+  lines, restricted to hunks targeting `.github/` — and runs `git apply --check`
+  over each one, which nothing did while `pending/README.md` told a person to.
+  Added-lines-only was the first read and it was blind to the shape every
+  `--slurp` call here uses, `gh api` on one line and its flags on the next: edit
+  the flag line alone and the added lines hold no `gh api` at all. The apply
+  half is a **warning, not a failure**, because a parked patch goes stale from
+  work elsewhere — often work CI itself demands — and one stale patch must not
+  red `main` and every open pull request; making it fatal safely needs a job
+  gated on `paths: docs/automation/pending/**`, which is itself a write an agent
+  cannot make. 24 cases, both new halves mutation-verified against the real
+  parked patch. The general lesson is the one that produced this: **dispatch a new
   scheduled workflow once by hand instead of waiting for its cron**, because
   reading it had already passed it.
 

@@ -42,17 +42,40 @@ then `python3 tools/docs/check_docs.py .` before parking a patch says which.
 `.github/tests/gh-api-usage-test.sh` (`ci.yml:360`) — `git apply --check` over
 every `*.patch` in this directory. Until T-158 that sentence read *"check it
 before trusting it"* and nothing did, which is the shape of every defect this
-directory's own patches were written to fix. The same suite also reads the
-shell a parked patch would **add** for the `gh api --slurp` with `--jq` pair
-that `gh` rejects before making a request: three of those shipped in
+directory's own patches were written to fix.
+
+**It reports as a warning, not a failure** — a job-summary line and a
+`::warning file=` annotation on the patch. That is deliberate. A parked patch
+goes stale because of work somewhere else, sometimes work CI itself demands:
+`check_docs.py` enforces the `ci.yml` citation fingerprints, so inserting a
+line into `ci.yml` forces a citation edit that moves this patch's own pinned
+context. A fatal check would then red `main` and every open pull request over a
+file none of them touched, and one stale patch would stop the whole queue.
+Making it fatal safely needs a job gated on `paths: docs/automation/pending/**`
+— a write under `.github/workflows/`, which is to say parked work itself.
+
+**A warning here has exactly two answers, and doing nothing is not one.** If
+the patch has already been landed, it is a leftover copy: `git rm` it, which is
+the same rule as *delete the patch in the same commit that applies it*, one
+commit late. If it has not been landed, rebuild it against the current tree —
+never hand-edit the hunk headers, and note that a patch written against a
+`main` that has since moved may want `git apply -3` when it does land.
+
+The same suite also reads the shell a parked patch would deploy — its
+**post-image**, context plus added lines — for the `gh api --slurp` with `--jq`
+pair that `gh` rejects before making a request: three of those shipped in
 `pr-merge-sweep.yml`, and the scan that catches them globbed
-`.github/workflows/` only, so it could not see this directory at all.
+`.github/workflows/` only, so it could not see this directory at all. It reads
+the post-image and not the added lines alone because every `--slurp` call in
+this repository puts `gh api` on one line and its flags on the next; a patch
+touching only the flag line has no `gh api` among its added lines. Removing a
+bad call is still not an offence — take `--jq` out and the post-image no longer
+holds one — and only hunks targeting `.github/` are read, so a patch that
+*documents* the rule in prose is left alone.
 
 What CI still cannot judge: a patch that applies cleanly onto a job that has
 been rewritten underneath it. `--check` says the context matches, not that the
-change still makes sense; and a patch written against a `main` that has since
-moved may need `git apply -3`. Read a red apply check as *rebuild it against
-the current tree* rather than as *hand-edit the hunk headers*.
+change still makes sense.
 
 This directory being empty is the normal state. If it is not empty, something is
 waiting on a person.
