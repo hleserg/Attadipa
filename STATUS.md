@@ -755,6 +755,11 @@ four more things at no cost:
   `.github/workflows/`, probed and rejected on this branch, so it is
   `docs/automation/pending/169-review-convergence.patch` and every round is still
   a first round until a local session applies it.
+  **The landing recipe has been run rather than read** (2026-08-24, detached
+  worktree): the three commands beside the patch produce a tree
+  `tools/docs/check_docs.py` rejects in three places, so the note now names
+  **five** documents the same commit must carry, two of them citations whose
+  line numbers have to be re-derived at apply time rather than copied.
   **Tests:** 97 assertions, offline, proven to fail against six deliberate
   defects — the literal `carry-over` reading (15 failed), an unknown kind
   defaulting to `normal` (2), model-supplied dating (4), silence closing a
