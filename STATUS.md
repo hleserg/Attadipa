@@ -185,10 +185,12 @@ REQUIRED`.**
 - **The main I2C bus has six devices, not four.** The ES8311 codec and the ES7210
   microphone ADC are I2C control slaves on the same wire; both were recorded here
   as "I2S", which is their data path. All six addresses are now in the matrix,
-  each cited — three datasheet-fixed, two schematic-strapped, one
-  driver-source-only, and one (`0x6A` vs `0x6B` on the IMU) in conflict between
-  datasheet revisions, where the revision Waveshare's own wiki links is the one
-  that disagrees.
+  each cited. The IMU's `0x6A` vs `0x6B` conflict between datasheet revisions
+  is **settled by measurement** since this was written — the bench scan on
+  2026-08-23 found `0x6B` and no answer at `0x6A`, so the revision Waveshare's
+  own wiki links is the one that disagrees with the silicon. Five answer on a
+  bare scan (`0x18`, `0x34`, `0x40`, `0x51`, `0x6B`); the sixth, touch at
+  `0x38`, answers only after its reset is pulsed on GPIO 9.
 - **The vendor BSP is not the existence proof it is taken for.** Its PSRAM
   draw-buffer configuration is dead code; what ships is one ~80 KiB partial
   buffer in internal SRAM. T-093.
@@ -403,7 +405,23 @@ open question**, gated on three measurements only the owner can take: the
 closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
 the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
 280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
-need. **T-106** holds all three, and the register reads that go with them.
+need. **T-106** holds all three, and **all three are still untaken** — a caliper and
+a scale, the two instruments T-106 names, plus plasticine for the closed-case
+clearance, which is a squashed-thickness read and **not** something a feeler
+gauge can take through a closed cover. None of them has been used. The bus-scan
+half of T-106 is **done** — 2026-08-23, and `0x6A` is free after all, which is
+what the claim said before anybody could know it — and an earlier version of
+this paragraph let that stand in for the rest, listing *"what remains"* as the
+magnetometer modules and the register reads while silently dropping the
+clearance, the rectangle-and-diagonal and the mass. That is the one wrong
+sentence here that spends money: an owner reading it concludes the battery gate
+is clear and orders against the `ESTIMATED` 250–310 mAh tree without the mass —
+this paragraph's own lie detector — or the diagonal, which T-106 calls the
+measurement that gets forgotten. Found in review. **What remains under T-106 is
+M1, M2 and M3 — the clearance, the rectangle and its diagonal, and the mass —
+plus** confirming the magnetometer modules once they arrive
+([#83](https://github.com/hleserg/Attadipa/issues/83)), and the register reads
+that go with them.
 
 **Both inheritable charge currents are wrong for the real cell.** Waveshare's own
 demo sets 400 mA, which is 1.33C on ~300 mAh against a 1.0C class maximum, and
@@ -555,7 +573,7 @@ companion *any* node and a third party's is `UNKNOWN`, which is why
 `HeadingSource::RemoteSensor` and its gate stay. It gets an accelerometer and
 probably a gyroscope instead, for GNSS power optimisation — filed as its own
 capability question, [#93](https://github.com/hleserg/Attadipa/issues/93)
-(T-111).
+(T-144).
 
 **Two corrections from the third review of #94, both recorded here because they
 change what the next agent must do rather than only what a document says.**

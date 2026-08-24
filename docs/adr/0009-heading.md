@@ -326,7 +326,7 @@ is this section's own premise. There is deliberately no third producer and no
 way to promote `Unknown` to `SameBody` by inference: the promotion would be the
 confident number on an unobservable quantity that §3 exists to refuse.
 
-**`PositionSource` has six enumerators and the sixth is the default.**
+**`PositionSource` has six enumerators and the *first* is the default.**
 `PositionSource::Unknown` ([`position.h`](../../core/include/attadipa/core/position.h))
 is the field's initialiser — what a driver that forgets to stamp provenance
 produces — so *shown with its actual source* can print `Unknown` for the source
@@ -516,12 +516,19 @@ would leave the board with no navigation at all. The label is
 for a position and never learns where it came from"* — the distinction is drawn
 where the position is handed out and **not** by an application reading
 `PositionSource`. An earlier version of this sentence cited ADR-0002 **rule 4**
-directly, and it was wrong twice: rule 4 is *"all companion input is untrusted:
-range-checked, expiry-checked, refusable"*, and ADR-0002 says in as many words
-that *"an Attadipa node is not a companion, and the rule above does not apply to
-it"*. An implementer following it lands on an untrusted-input rule, finds
-nothing about labels, and either re-derives the boundary or concludes an
-application may read `PositionSource` after all. Found in review — the third
+directly, and it was the wrong rule *for this question*: rule 4 is *"all input
+from outside the device is untrusted — range-checked, expiry-checked,
+refusable"*, which says nothing about labels. An implementer following it lands
+on an untrusted-input rule, finds nothing about provenance, and either
+re-derives the boundary or concludes an application may read `PositionSource`
+after all. **Rule 4 itself reaches a node and is not weakened by any of this**:
+[ADR-0002](0002-companion-is-optional.md) lists it among the two rules that
+*"are **not** phone-specific and extend to the node unchanged"* — *"A node is
+closer to us than a phone is; it is not more trusted for it"* — and
+`position.h`'s `in_range()` guard, `ADR-0005`'s hostile-frame corpus and T-020
+all rest on that sentence. A node-supplied coordinate is range-checked before
+anything narrows, indexes or multiplies it. What rule 4 does not do is decide
+whose name goes on the position. Found in review — the third
 time a load-bearing citation in this ADR has pointed at the wrong text, which is
 the failure this section itself names: *the next agent follows it.* **And the same
 case again with a `Manual` fix on a board with no node attached**, because

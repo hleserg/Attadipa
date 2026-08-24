@@ -1427,7 +1427,7 @@ sits (T-109), and it does not design the node-IMU capability (filed separately,
 not resolved here).
 
 **Status:** documentation only. Filed the node-IMU capability question as
-[#93](https://github.com/hleserg/Attadipa/issues/93) (T-111).
+[#93](https://github.com/hleserg/Attadipa/issues/93) (T-144).
 
 ---
 
@@ -1463,7 +1463,7 @@ duplicate-number check is satisfied by exactly that: two headings that differ.
 The next reader finds two entries, cannot tell which is authoritative, and the
 checker says the file is fine. **This branch landed first, so #112 must delete
 its copy rather than renumber it**, and that deletion is #112's to carry. #112
-also *implements* T-111, which this branch files as *not started*; that line is
+also *implements* T-144, which this branch files as *not started*; that line is
 true of `main` today and will not be true of it for long. Found in review.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
