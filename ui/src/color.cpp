@@ -28,28 +28,45 @@ struct Entry {
     ColorKind          kind;
     std::optional<Rgb> day;
     std::optional<Rgb> night;
+    // Day, on a panel where `PixelCost::PerPixel` — OD-16. Explicit rather than
+    // derived from the other two columns, for the same reason they are not
+    // derived from each other: a role added to one and forgotten in another
+    // is visible in the source rather than at runtime.
+    //
+    // Every value below already exists in the seed set above; this column
+    // invents no colour. Backgrounds and text reuse the night column, which
+    // DESIGN_SYSTEM already audited for contrast against a dark page.
+    // `AccentPrimary` is the one deliberate exception — it keeps Day's own
+    // Attadipa Orange rather than Night's Amber, so that day and night remain
+    // visually distinct on an emissive panel instead of becoming the same
+    // theme under two names.
+    std::optional<Rgb> day_emissive;
 };
 
-// One row per role, both themes side by side, so that a role added to one theme
-// and forgotten in the other is visible in the source rather than at runtime.
+// One row per role, every theme side by side, so that a role added to one
+// column and forgotten in another is visible in the source rather than at
+// runtime.
 //
 // `std::nullopt` in the night column of a *foreground* row means "falls through
 // to day, and the contrast test has to agree". In a *background* row it means
 // UNKNOWN, and DESIGN_SYSTEM's night table genuinely does not define
-// BackgroundRaised — recorded there as a gap rather than filled in here.
+// BackgroundRaised — recorded there as a gap rather than filled in here. The
+// `day_emissive` column never falls through: every role that has an answer at
+// all states it, because it does not share `Theme::Day`'s fall-through rule
+// (it is consulted only through `color()`'s own `pixel_cost` branch).
 const std::array<Entry, 12> kTable{{
-    {ColorRole::BackgroundPrimary, ColorKind::Background, kWarmIvory, kInkOlive},
-    {ColorRole::BackgroundSurface, ColorKind::Background, kSandBeige, kDarkOlive},
-    {ColorRole::BackgroundRaised, ColorKind::Background, kSoftClay, std::nullopt},
-    {ColorRole::TextPrimary, ColorKind::Foreground, kInkOlive, kWarmIvory},
-    {ColorRole::TextMuted, ColorKind::Foreground, kCocoaBrown, kLeafSage},
-    {ColorRole::AccentPrimary, ColorKind::Foreground, kAttadipaOrange, kGlowAmber},
-    {ColorRole::AccentGlow, ColorKind::Foreground, kGlowAmber, kGlowAmber},
-    {ColorRole::Success, ColorKind::Foreground, kMeadowGreen, std::nullopt},
-    {ColorRole::Warning, ColorKind::Foreground, kAttadipaOrange, std::nullopt},
-    {ColorRole::Danger, ColorKind::Foreground, std::nullopt, std::nullopt},
-    {ColorRole::Navigation, ColorKind::Foreground, kSkyTeal, std::nullopt},
-    {ColorRole::BorderSubtle, ColorKind::Foreground, kLeafSage, std::nullopt},
+    {ColorRole::BackgroundPrimary, ColorKind::Background, kWarmIvory, kInkOlive, kInkOlive},
+    {ColorRole::BackgroundSurface, ColorKind::Background, kSandBeige, kDarkOlive, kDarkOlive},
+    {ColorRole::BackgroundRaised, ColorKind::Background, kSoftClay, std::nullopt, std::nullopt},
+    {ColorRole::TextPrimary, ColorKind::Foreground, kInkOlive, kWarmIvory, kWarmIvory},
+    {ColorRole::TextMuted, ColorKind::Foreground, kCocoaBrown, kLeafSage, kLeafSage},
+    {ColorRole::AccentPrimary, ColorKind::Foreground, kAttadipaOrange, kGlowAmber, kAttadipaOrange},
+    {ColorRole::AccentGlow, ColorKind::Foreground, kGlowAmber, kGlowAmber, kGlowAmber},
+    {ColorRole::Success, ColorKind::Foreground, kMeadowGreen, std::nullopt, kMeadowGreen},
+    {ColorRole::Warning, ColorKind::Foreground, kAttadipaOrange, std::nullopt, kAttadipaOrange},
+    {ColorRole::Danger, ColorKind::Foreground, std::nullopt, std::nullopt, std::nullopt},
+    {ColorRole::Navigation, ColorKind::Foreground, kSkyTeal, std::nullopt, kSkyTeal},
+    {ColorRole::BorderSubtle, ColorKind::Foreground, kLeafSage, std::nullopt, kLeafSage},
 }};
 
 const Entry& entry_for(ColorRole role)
@@ -81,11 +98,11 @@ ColorKind kind_of(ColorRole role)
     return entry_for(role).kind;
 }
 
-std::optional<Rgb> color(ColorRole role, Theme theme)
+std::optional<Rgb> color(ColorRole role, Theme theme, PixelCost pixel_cost)
 {
     const Entry& e = entry_for(role);
     if (theme == Theme::Day) {
-        return e.day;
+        return pixel_cost == PixelCost::PerPixel ? e.day_emissive : e.day;
     }
     if (e.night.has_value()) {
         return e.night;
@@ -96,10 +113,13 @@ std::optional<Rgb> color(ColorRole role, Theme theme)
     return e.kind == ColorKind::Foreground ? e.day : std::nullopt;
 }
 
-bool is_defined_for(ColorRole role, Theme theme)
+bool is_defined_for(ColorRole role, Theme theme, PixelCost pixel_cost)
 {
     const Entry& e = entry_for(role);
-    return theme == Theme::Day ? e.day.has_value() : e.night.has_value();
+    if (theme == Theme::Day) {
+        return pixel_cost == PixelCost::PerPixel ? e.day_emissive.has_value() : e.day.has_value();
+    }
+    return e.night.has_value();
 }
 
 std::uint16_t contrast_ratio_centi(Rgb a, Rgb b)
@@ -112,24 +132,24 @@ std::uint16_t contrast_ratio_centi(Rgb a, Rgb b)
     return static_cast<std::uint16_t>(ratio * 100.0 + 0.5);
 }
 
-std::uint16_t contrast_against_page_centi(ColorRole role, Theme theme)
+std::uint16_t contrast_against_page_centi(ColorRole role, Theme theme, PixelCost pixel_cost)
 {
-    const std::optional<Rgb> ink  = color(role, theme);
-    const std::optional<Rgb> page = color(ColorRole::BackgroundPrimary, theme);
+    const std::optional<Rgb> ink  = color(role, theme, pixel_cost);
+    const std::optional<Rgb> page = color(ColorRole::BackgroundPrimary, theme, pixel_cost);
     if (!ink.has_value() || !page.has_value()) {
         return 0;
     }
     return contrast_ratio_centi(*ink, *page);
 }
 
-bool legible_as_graphic(ColorRole role, Theme theme)
+bool legible_as_graphic(ColorRole role, Theme theme, PixelCost pixel_cost)
 {
-    return contrast_against_page_centi(role, theme) >= kContrastLargeOrGraphic;
+    return contrast_against_page_centi(role, theme, pixel_cost) >= kContrastLargeOrGraphic;
 }
 
-bool legible_as_body_text(ColorRole role, Theme theme)
+bool legible_as_body_text(ColorRole role, Theme theme, PixelCost pixel_cost)
 {
-    return contrast_against_page_centi(role, theme) >= kContrastBodyText;
+    return contrast_against_page_centi(role, theme, pixel_cost) >= kContrastBodyText;
 }
 
 const char* name_of(ColorRole role)
@@ -156,6 +176,15 @@ const char* name_of(Theme theme)
     switch (theme) {
         case Theme::Day:   return "day";
         case Theme::Night: return "night";
+    }
+    return "unknown";
+}
+
+const char* name_of(PixelCost pixel_cost)
+{
+    switch (pixel_cost) {
+        case PixelCost::Fixed:    return "fixed";
+        case PixelCost::PerPixel: return "per-pixel";
     }
     return "unknown";
 }
