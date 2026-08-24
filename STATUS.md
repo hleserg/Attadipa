@@ -871,7 +871,12 @@ the unit is byte-identical to the T-099 backup with `verify-flash` over all
   at `0x1600000` would return `ESP_OK` whether or not the sector it hit was the
   one intended. **Nothing of ours goes at or above `0x1000000` until somebody
   measures it**, and `ctest` now enforces that on every partition table in the
-  tree — [FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md),
+  tree — **of which there are currently none.** The check is real and passes
+  vacuously until a firmware project puts a CSV here, which is the same shape as
+  the defect #132 was filed about: a caveat kept honestly in the tool and
+  dropped by the summary quoting it. Both boards still boot a table this
+  repository does not own —
+  [FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md),
   which carries the reversible plan that would settle it, and #132.
 - **A `PURE_RAM_APP` runs fine — if the serial port is never closed.** Four
   earlier attempts reset within milliseconds and were written up as proof the

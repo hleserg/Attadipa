@@ -237,11 +237,58 @@ def check_discovery(tmp: Path) -> list[str]:
     return []
 
 
+def check_the_flash_size_is_a_rule_of_its_own(tmp: Path) -> list[str]:
+    """`--flash-size` has to be able to refuse a table on its own.
+
+    It could not be seen doing so. `DEFAULT_FLASH_SIZE` is 32 MB and
+    `ADDRESSING_CEILING` is 16 MB, so every table long enough to overrun the
+    default part is already past the ceiling, and the ceiling rule answers
+    first. Every existing case therefore exercises the ceiling and none of them
+    exercises the size — including the one that means to, because the T-Watch's
+    whole 16 MB flash *is* the ceiling and the two rules coincide on it.
+
+    Two consequences, and the second is the one that bites. Today a T-Watch
+    table that runs off the end of the part is refused with a sentence about
+    "the unverified half" and a document that says at
+    FLASH_ADDRESSING_LIMITS.md:315 "The T-Watch is unaffected" — the right
+    refusal for the wrong reason. And when the ceiling moves, which
+    partition_check.py:26-30 plans for in one commit, that table goes green: a
+    partition past the end of the part, passing, in a commit whose diff is
+    entirely about the other board.
+
+    So this case picks a part *smaller* than the ceiling — 8 MB, ending at
+    10 MB — where the size rule is the only rule that can fire.
+    """
+    body = "app0, app, ota_0, 0x10000, 10M,\n"
+    path = write(tmp, "eight-megabyte-part", body)
+
+    result = run("--flash-size", "8M", str(path))
+    output = result.stdout + result.stderr
+    failures = []
+    if result.returncode == 0:
+        failures.append("a partition ending at 10 MB on an 8 MB part was "
+                        "accepted; --flash-size refuses nothing on its own")
+    if "the part holds" not in output:
+        failures.append("an 8 MB part overrun was refused without naming the "
+                        f"size of the part: {output.strip()!r}")
+    if "ceiling" in output:
+        failures.append("the ceiling answered for a table that never reaches "
+                        f"it: {output.strip()!r}")
+
+    # And the same table is fine on the part the default assumes, which is what
+    # makes the case above about the size and not about the table.
+    if run("--flash-size", "32M", str(path)).returncode != 0:
+        failures.append("the same table was refused on a 32 MB part, so this "
+                        "case is not testing --flash-size")
+    return failures
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
         failures = (check_rejections(tmp) + check_acceptances(tmp)
-                    + check_vendor_table() + check_discovery(tmp))
+                    + check_vendor_table() + check_discovery(tmp)
+                    + check_the_flash_size_is_a_rule_of_its_own(tmp))
 
     if failures:
         print("partition_check.py does not do what it says:\n")
@@ -249,7 +296,7 @@ def main() -> int:
             print(f"  - {failure}")
         return 1
 
-    cases = len(MUST_REJECT) + len(MUST_ACCEPT) + 2
+    cases = len(MUST_REJECT) + len(MUST_ACCEPT) + 3
     print(f"partition_check selftest: {cases} cases, all as expected.")
     return 0
 
