@@ -118,65 +118,60 @@ change still makes sense.
 This directory being empty is the normal state. If it is not empty, something is
 waiting on a person.
 
-## Two things the guard does on purpose, and only the owner may change either
+## Two rules that came out of one review round, and the owner's answers
 
-Both were found in the fourth review round of
-[#180](https://github.com/hleserg/Attadipa/pull/180) and both are written down
-rather than quietly decided, because each puts a red on `main` **and every open
-pull request at once** — and widening or narrowing what the guard fails on is
-the same class of decision as the unattended-merge allowlist, which
-[`CLAUDE.md`](../../../CLAUDE.md) already reserves to the owner.
+Both were raised in the fourth review round of
+[#180](https://github.com/hleserg/Attadipa/pull/180), because each put a red on
+`main` **and every open pull request at once** — and that radius is the same
+class of decision as the unattended-merge allowlist, which
+[`CLAUDE.md`](../../../CLAUDE.md) reserves to the owner. Both were answered on
+2026-08-24, and both answers are now enforced by
+`.github/tests/gh-api-usage-test.sh` rather than left as prose.
 
-**1. Two parked patches that both edit `ci.yml` will red the queue when the
-first one lands.** The fatal arm covers `.github/workflows/`, and that is
-correct as far as it goes: nobody but the owner can move workflow context, so a
-patch whose workflow half has drifted really is wrong now. But *landing another
-parked patch* moves that context too, and two patches each inserting a step into
-`ci.yml` is the natural shape — a new test script needs a line there, which is
-the stated reason patches get parked at all. Land the first and the second goes
-`stale-workflow`, which is red on `main`, on every open pull request, and
-therefore on the orchestrator merge and on
+### At most one parked patch may carry a hunk for any one workflow file
+
+The apply half is fatal on a `.github/workflows/` hunk because nobody but the
+owner can move workflow context. That is right as far as it goes, and it has one
+failure mode nothing else covers: **landing a parked patch moves that context
+too.** Two patches each inserting a step into `ci.yml` is the natural shape — a
+new test script needs a line there, which is the stated reason patches get parked
+at all. Land the first and the second goes `stale-workflow`: red on `main`, on
+every open pull request, and therefore on the orchestrator merge and on
 [`pr-merge-sweep.yml`](../../../.github/workflows/pr-merge-sweep.yml), both of
-which are gated on green.
+which gate on green. Not a deadlock — the pull request that rebuilds the second
+patch has a green tree of its own — but everything else is red while somebody
+does it.
 
-It is not a deadlock — the pull request that rebuilds the second patch has a
-green tree of its own — but everything else is red while somebody does it.
-"Rare" is a claim nobody has established; "small audience" is the one that is
-true, and they are different sentences. The docs half was made a warning to
-avoid exactly this radius. **The options are: leave it fatal; make it a warning
-like the other half; or keep it fatal and require that only one patch at a time
-may carry a `ci.yml` hunk.** No agent picks between those.
+Three options were put to the owner: leave it fatal, soften it to a warning like
+the docs half, or forbid the collision. **The answer was to forbid the
+collision**, and the reasoning is worth keeping: softening loses the only hard
+barrier over files an agent token cannot write, while forbidding costs one
+patch's parking and fails **here, when the second patch is written**, instead of
+on `main` after the first one lands. It fails at the cheap moment rather than the
+expensive one.
 
-**2. A placeholder file in this directory reds the whole queue.** Anything here
-that is not a `*.patch` and not a `README.md` fails the scan — `.gitkeep`,
-`.gitignore`, `NOTES.md`, a stray `README.ru.md`. That is deliberate: the
-enumeration's promise is that it opens everything parked here, and passing over
-a file it does not recognise is how the guard turns itself off. It is also a
-trap, because this file says the directory is empty in normal operation and git
-cannot track an empty directory, so `.gitkeep` is the obvious reach. Worse, the
-apply half returns *silently* while that red is being diagnosed, so half the
-guard is off and nothing says so.
+So: if a patch you are about to park carries a hunk for a workflow file another
+parked patch already carries, **land the parked one first, or fold your workflow
+hunk into it.** Never `git rm` either — both are work nobody has landed. A patch
+that renames a workflow counts for both names.
 
-The behaviour is now pinned by a fixture either way
-(`.github/tests/gh-api-usage-test.sh`, *"a .gitkeep beside a valid patch fails
-the queue"*), so a change to it is a change somebody chose. **The options are:
-leave it; allow a named placeholder such as `.gitkeep` explicitly; or warn on an
-unrecognised file rather than failing.**
+### An empty `.gitkeep` is allowed; one with content in it is not
 
-> **For the owner — two questions, and both can wait.**
-> Neither is urgent: nothing is broken today, both are recorded so that the day
-> one of them fires, nobody has to reconstruct why. Answer them whenever the
-> queue next comes up.
->
-> **По-русски.** Два вопроса к тебе, оба не срочные. Ничего сейчас не сломано —
-> это записано, чтобы в день, когда оно выстрелит, никто не разбирался заново.
-> Первый: два припаркованных патча, оба правящие `ci.yml`, — когда садится
-> первый, второй краснеет, и краснеет он на `main` и на всех открытых PR сразу.
-> Оставить как есть (это честно: патч действительно устарел), сделать
-> предупреждением, или запретить больше одного патча с правкой `ci.yml`
-> одновременно? Второй: любой посторонний файл в `pending/` (например
-> `.gitkeep`) роняет всю проверку. Оставить, разрешить `.gitkeep` явно, или
-> сделать предупреждением? Ответ «оставить как есть» — полный ответ на оба.
+Anything here that is not a `*.patch`, not a `README.md` and not a `.gitkeep`
+fails the scan — and that failure then turns the apply half off as well, because
+it returns silently on `UNREADABLE`. Half the guard is off while somebody works
+out why.
+
+This file says the directory is empty in normal operation, and git cannot track
+an empty directory, so a placeholder is the reach anybody would make. Refusing it
+was a trap. The owner's answer was to **allow `.gitkeep`, and only when it is
+empty** — the emptiness test is what keeps the exemption from becoming a hiding
+place. A `.gitkeep` with anything in it is a file somebody put content in, and
+this guard cannot judge content. Both directions are pinned by fixtures.
+
+Every other unrecognised name still fails, and that stays deliberate: the
+enumeration's promise is that it opens everything parked here, and passing over a
+file it does not recognise is how a guard turns itself off.
 
 ## Waiting now
 

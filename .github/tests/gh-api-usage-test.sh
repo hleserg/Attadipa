@@ -248,6 +248,18 @@ parked_patches() {
       "$dir"/*/*)  bad_entry="$bad_entry$f (in a subdirectory)"$'\n' ;;
       *.patch)     good="$good$f"$'\n' ;;
       *README.md)  ;;
+      # `.gitkeep`, AND ONLY WHEN IT IS EMPTY. This directory is empty in normal
+      # operation -- its own README says so -- and git cannot track an empty
+      # directory, so a placeholder is the reach anybody would make and failing
+      # on it was a trap: 1b went red and 1c then returned silently, so half the
+      # guard was off while somebody worked out why. Owner call, answered
+      # 2026-08-24: allow it. The emptiness test is what keeps the exemption
+      # from becoming a hiding place -- a `.gitkeep` with anything in it is a
+      # file somebody put content in, and this cannot judge content.
+      */.gitkeep)
+        if [ -s "$f" ]; then
+          bad_entry="$bad_entry$f (a .gitkeep with content in it, which is no longer a placeholder) (not a .patch)"$'\n'
+        fi ;;
       *)           bad_entry="$bad_entry$f (not a .patch)"$'\n' ;;
     esac
   done <<EOF
@@ -499,8 +511,75 @@ check_parked_applies() {
   done
 }
 
+# 1d. AT MOST ONE PARKED PATCH MAY CARRY A HUNK FOR ANY ONE WORKFLOW FILE, and
+#     this is a guard against a state rather than against a drift.
+#
+#     1c is fatal on the `.github/workflows/` half because nobody but the owner
+#     can move workflow context, and that is right as far as it goes. It has one
+#     failure mode nothing else covers: LANDING A PARKED PATCH MOVES THAT
+#     CONTEXT TOO. Two patches each inserting a step into `ci.yml` is the
+#     natural shape -- a new test script needs a line there, which is the stated
+#     reason patches get parked at all -- and landing the first turns the second
+#     `stale-workflow`. That is red on `main`, on every open pull request, and
+#     therefore on the orchestrator merge and on `pr-merge-sweep.yml`, both of
+#     which gate on green. Not a deadlock: the pull request rebuilding the
+#     second patch has a green tree of its own. But everything else is red until
+#     somebody does it, and the queue this directory exists to serve is stopped.
+#
+#     Raised as an owner call in the fourth review round of #180 and answered
+#     2026-08-24: keep the fatal arm, and refuse the state that makes it fire.
+#     The three options were leave it fatal, soften it to a warning like the
+#     docs half, or forbid the collision. Softening loses the only hard barrier
+#     over files an agent token cannot write; forbidding the collision costs
+#     one patch's parking and is checkable HERE, when the second patch is
+#     written, instead of on `main` after the first one lands. It fails at the
+#     cheap moment rather than the expensive one, which is the whole argument.
+#
+#     The remedy is never `git rm`: land the parked one, or fold the second
+#     patch's workflow hunk into the first.
+check_one_patch_per_workflow() {
+  local dir=$1 entries pairs dupes
+  entries=$(parked_patches "$dir")
+  case "$entries" in
+    MISSING*|UNREADABLE*) return ;;   # 1b has already failed the suite for these
+  esac
+  [ -n "$entries" ] || return
+  pairs=""
+  while IFS= read -r patch; do
+    [ -n "$patch" ] || continue
+    [ -e "$patch" ] || continue       # 1b and 1c both report this; do not triple it
+    # The post-image target, `b/...`, and only under `.github/workflows/`. A
+    # patch that renames a workflow names two files and both count -- landing it
+    # moves context in each.
+    while IFS= read -r target; do
+      [ -n "$target" ] || continue
+      pairs="$pairs$target	$patch"$'\n'
+    done <<TARGETS
+$(awk '/^\+\+\+ /{ t = $2; sub(/^b\//, "", t); if (t ~ /^\.github\/workflows\//) print t }' "$patch" | sort -u)
+TARGETS
+  done <<EOF
+$(printf '%s\n' "$entries" | grep -v '(in a subdirectory)$\|(not a .patch)$')
+EOF
+  [ -n "$pairs" ] || return
+  dupes=$(printf '%s' "$pairs" | cut -f1 | sort | uniq -d)
+  if [ -z "$dupes" ]; then
+    ok "no workflow file is carried by more than one parked patch"
+    return
+  fi
+  bad "two parked patches carry a hunk for the same workflow file -- landing either one makes the other stale-workflow, which is fatal on main and on every open pull request:"
+  printf '%s\n' "$dupes" | while IFS= read -r target; do
+    [ -n "$target" ] || continue
+    printf '       %s is carried by:\n' "$target"
+    printf '%s' "$pairs" | awk -F'\t' -v t="$target" -v root="$root/" \
+      '$1 == t { p = $2; sub(root, "", p); printf "         %s\n", p }'
+  done
+  printf '       land one of them, or fold its workflow hunk into the other. Do NOT git rm\n'
+  printf '       either -- both are work nobody has landed yet.\n'
+}
+
 check_parked_shell "$PENDING_DIR"
 check_parked_applies "$PENDING_DIR" "$root"
+check_one_patch_per_workflow "$PENDING_DIR"
 
 # 2. The detector itself detects. A guard that cannot fail guards nothing, and
 #    this one is a text scan over files it does not control, so it is worth
@@ -1049,31 +1128,88 @@ case "$out" in
   *)                           bad "the drifted warning vanishes when a corrupt patch is parked with it" ;;
 esac
 
-# A PLACEHOLDER IN `pending/` REDS THE WHOLE QUEUE, and that is recorded as a
-# tested fact rather than left to be discovered. `pending/README.md` says the
-# directory is empty in normal operation; git cannot track an empty directory;
-# so `.gitkeep` is the reach anybody would make, and it fails 1b -- which then
-# turns 1c off as well, because 1c returns silently on UNREADABLE. The verdict
-# is deliberate (an unrecognised file in the queue is a thing somebody has to
-# look at, not a thing to pass over), but "deliberate" and "known" are different
-# claims and only a fixture makes the second one true. Whether the fail/warn
-# split should move is an owner call, written up in
-# `docs/automation/pending/README.md`. Fourth review round of #180.
+# AN EMPTY `.gitkeep` IS ALLOWED AND A NON-EMPTY ONE IS NOT, which is the owner's
+# answer of 2026-08-24 to a question raised in the fourth review round of #180.
+# `pending/README.md` says this directory is empty in normal operation and git
+# cannot track an empty directory, so a placeholder is the reach anybody would
+# make -- and failing on it set a trap: 1b went red, and 1c then returned
+# SILENTLY, so half the guard was off while somebody worked out why. The
+# emptiness test is what keeps the exemption from becoming a hiding place. Both
+# directions, because an exemption nothing bounds is not an exemption.
 mkdir -p "$sub/placeholder"
 cp "$tree/fits/a.patch" "$sub/placeholder/a.patch"
 : > "$sub/placeholder/.gitkeep"
 out=$(check_parked_shell "$sub/placeholder" 2>&1)
 case "$out" in
-  *FAIL*) ok "a .gitkeep beside a valid patch fails the queue, and that is the recorded behaviour" ;;
-  *)      bad "a .gitkeep passes -- then the enumeration's promise is that it reads everything, and it does not" ;;
+  *FAIL*) bad "an empty .gitkeep fails the queue -- the placeholder this directory's own README makes necessary" ;;
+  *)      ok "an empty .gitkeep is allowed beside a valid patch" ;;
+esac
+# And the valid patch beside it is still actually read, rather than the exemption
+# taking the whole directory out of the scan.
+case "$out" in
+  *"no parked patch would deploy"*) ok "and the patch parked with it is still scanned" ;;
+  *)                                bad "the .gitkeep exemption silenced the scan -- got: $(printf '%s' "$out" | head -1)" ;;
 esac
 out=$(GITHUB_STEP_SUMMARY="$tree/summary" \
       check_parked_applies "$sub/placeholder" "$tree" 2>&1)
-if [ -z "$out" ]; then
-  ok "and 1c stays silent about it rather than reporting green on a queue 1b refused"
-else
-  bad "1c spoke about a queue 1b could not read -- got: $(printf '%s' "$out" | head -1)"
-fi
+case "$out" in
+  *"still applies"*) ok "and the apply half runs over the directory rather than returning on UNREADABLE" ;;
+  *)                 bad "1c did not run over a directory holding an allowed placeholder -- got: $(printf '%s' "$out" | head -1)" ;;
+esac
+# The other direction: content in it is content this cannot judge, so it is a
+# file parked here that neither half can open, which is what UNREADABLE means.
+mkdir -p "$sub/placeholder-with-content"
+cp "$tree/fits/a.patch" "$sub/placeholder-with-content/a.patch"
+printf 'notes I meant to put somewhere else\n' > "$sub/placeholder-with-content/.gitkeep"
+out=$(check_parked_shell "$sub/placeholder-with-content" 2>&1)
+case "$out" in
+  *FAIL*) ok "a .gitkeep with content in it is refused -- the exemption is for a placeholder, not for a name" ;;
+  *)      bad "a .gitkeep passes whatever is in it, so the exemption is a hiding place" ;;
+esac
+
+# 1d. TWO PARKED PATCHES MAY NOT CARRY THE SAME WORKFLOW FILE. The fixture is
+# two patches whose hunks both target `.github/workflows/w.yml` -- the state in
+# which landing either one makes the other fatal on `main` and on every open
+# pull request. And the negative, because a guard that always fires guards
+# nothing: the same two patches targeting different workflow files are fine.
+mkdir -p "$sub/one-workflow-twice"
+cp "$tree/both-halves/a.patch" "$sub/one-workflow-twice/a.patch"
+cp "$tree/workflow-drifted/a.patch" "$sub/one-workflow-twice/b.patch"
+out=$(check_one_patch_per_workflow "$sub/one-workflow-twice" 2>&1)
+case "$out" in
+  *FAIL*) ok "two parked patches carrying the same workflow file are refused" ;;
+  *)      bad "two patches both editing .github/workflows/w.yml pass -- landing one reds main and every open PR" ;;
+esac
+case "$out" in
+  *"Do NOT git rm"*) ok "and neither is offered git rm, since both are unlanded work" ;;
+  *)                 bad "the remedy offered deletes one of two unlanded patches" ;;
+esac
+#
+# THE NEGATIVE SHARES A NON-WORKFLOW FILE ON PURPOSE. Two patches with nothing
+# whatever in common prove nothing about the `.github/workflows/` filter: drop
+# the filter and there is still no duplicate, so the mutation stays green. These
+# two both carry `target.txt` and carry *different* workflow files, which is the
+# ordinary shape -- a patch pins the docs its own landing moves, and two patches
+# routinely pin the same document. Without the filter that pairing is reported
+# as a collision and the guard reds correct work. Written with two unrelated
+# patches first and caught by mutating the filter away.
+mkdir -p "$sub/two-workflows"
+cp "$tree/both-halves/a.patch" "$sub/two-workflows/a.patch"
+sed 's|\.github/workflows/w\.yml|.github/workflows/other.yml|g' \
+  "$tree/both-halves/a.patch" > "$sub/two-workflows/b.patch"
+out=$(check_one_patch_per_workflow "$sub/two-workflows" 2>&1)
+case "$out" in
+  *FAIL*) bad "two patches carrying DIFFERENT workflow files are refused -- the guard fires on the ordinary case" ;;
+  *)      ok "two parked patches carrying different workflow files are fine, even sharing a document" ;;
+esac
+# The real queue has one patch in it, so the shipping call must say so rather
+# than staying silent -- a guard nobody sees the output of is a guard nobody
+# notices has stopped running.
+out=$(check_one_patch_per_workflow "$PENDING_DIR" 2>&1)
+case "$out" in
+  *"no workflow file is carried by more than one"*) ok "and the real queue is reported on, not passed over in silence" ;;
+  *) bad "1d said nothing about the real pending directory -- got: $(printf '%s' "$out" | head -1)" ;;
+esac
 
 # A PARKED PATCH WHOSE NAME CONTAINS A SPACE. `for patch in $(...)` split it into
 # words, each of which failed `[ -e ]` and was skipped in silence, so BOTH halves

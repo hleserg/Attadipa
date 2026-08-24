@@ -1255,15 +1255,26 @@ four more things at no cost:
   scan's on purpose**, and it was `.github/*` until the third review round of
   #180 found that `scripts/` and `tests/` are agent-writable — 32 of 262 commits
   since 2026-08-01 touch them — so the wide form put two directories any branch
-  edits on the fatal side. **60 cases** — the suite's own
-  `60 passed, 0 failed` — of which **55 are assertions and five are not**, and
+  edits on the fatal side. A third guard was added when the owner answered the
+  round-four questions: **at most one parked patch may carry a hunk for any one
+  workflow file**, because landing a parked patch moves workflow context exactly
+  as an owner edit does, so two patches both touching `ci.yml` red `main` and
+  every open pull request the moment the first lands. The choice was between
+  softening the fatal arm and refusing the state that makes it fire; refusing
+  costs one patch's parking and fails when the second patch is *written* rather
+  than after the first one *lands*. An empty `.gitkeep` is now allowed in
+  `pending/` for the same round's other question — the directory is empty in
+  normal operation and git cannot track an empty one — and a `.gitkeep` with
+  content in it still fails, because the emptiness test is what stops the
+  exemption becoming a hiding place. **67 cases** — the suite's own
+  `67 passed, 0 failed` — of which **62 are assertions and five are not**, and
   the difference is worth stating precisely because an earlier version of this
   paragraph got it wrong in a way that flattered the number. The five come from
   three `quietly` calls, which run a shipping check in the current shell to
   assert on the job-summary file it writes; that check calls `ok` itself, so
   those five passes are **the code under test reporting on a fixture**, not an
   expectation anybody checked. `quietly` holds their output, which is why the
-  transcript shows 55 `ok` lines and the total says 60. Both halves
+  transcript shows 62 `ok` lines and the total says 67. Both halves
   mutation-verified against the real parked patch, in both directions: each fix
   was reverted and the case that binds it went red, the queue-stopping scenario
   was reproduced end to end before the split was written, and **two fixtures
