@@ -2414,6 +2414,11 @@ Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
                     DONE. Whichever of the two lands second should fold its
                     entry into this one rather than leave three numbers for
                     one problem.
+                Apply both **in one commit**, not in either order: they edit the
+                same workflow, and `merge-candidate-test.sh` hard-fails CI for
+                every open pull request while one is applied and the other is
+                not. Each `git rm`s only its own file, so neither deletes the
+                other's while it is still parked.
 Impact:         #170 is closed fail-closed rather than fixed: until the patch
                 lands, `merge-candidate.sh` refuses the pre-#170 nine-argument
                 caller by arity, so the sweep merges NOTHING and logs the file

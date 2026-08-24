@@ -318,8 +318,12 @@ that installation token holds no `workflows` permission — a push touching
 ```
 
 So the four edits that point the sweep at the rule are parked in
-[`pending/170-merge-sweep-completeness.patch`](pending/170-merge-sweep-completeness.patch),
-with the command that applies them in its own header.
+`docs/automation/pending/170-merge-sweep-completeness.patch`, with the command
+that applies them in its own header. Deliberately not a link: applying the patch
+deletes the file, and `check_docs.py` fails on a relative link whose target is
+absent — on every push to `main`, which stops the sweep for every pull request
+behind it. A parked patch is named rather than linked for exactly as long as
+following the procedure would remove it.
 
 **What is true right now, in both directions, so nobody has to guess:**
 

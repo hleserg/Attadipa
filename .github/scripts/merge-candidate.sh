@@ -218,6 +218,15 @@ attadipa_merge_candidate() {
   # different sentences in the log. The message names the fix because this line
   # is what a reader will see 48 times a day until somebody applies it.
   if [ "$argc" -lt 10 ]; then
+    # Also to **stderr**, as a workflow warning. The caller turns every HOLD
+    # into a `::notice::` and carries on, so the job stays green and reads
+    # "sweep finished, 0 merged" -- the same line a sweep with nothing to do
+    # prints, 48 times a day, while the sweep is in fact disabled. This file
+    # already carries that lesson for the empty-repository case; it was not
+    # applied to the one state in which the gate refuses *everything*. Only
+    # stdout is captured into the caller's verdict and compared by the tests,
+    # so this reaches the run log without changing either.
+    echo "::warning::the merge sweep is holding every pull request: its caller predates the completeness condition. Apply docs/automation/pending/170-merge-sweep-completeness.patch (T-144)." >&2
     echo "HOLD this caller cannot prove it read all of the pull request; apply docs/automation/pending/170-merge-sweep-completeness.patch"
     return 0
   fi

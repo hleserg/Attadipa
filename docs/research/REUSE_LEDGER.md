@@ -1774,8 +1774,19 @@ The query was run read-only against `hleserg/Attadipa` pull requests #173 and
 three things that were otherwise assumptions: that `totalCount` ignores
 `itemTypes` while `pageInfo` respects it; that `statusCheckRollup` is **null**,
 not empty, on a head commit with no checks at all; and that a `last:`-only
-connection answers `hasNextPage: false`, which is what makes it the right flag to
-assert on the timeline and `hasPreviousPage` the wrong one.
+connection answers `hasNextPage: false`.
+
+That third one was first written down as evidence that the flag is the right one
+to assert on the timeline. It is not, and the observation could not have shown
+it either way: #173's filtered connection held a **single** node, nowhere near
+the limit, so `false` there cannot be told apart from `false` by construction.
+Under the Relay contract `hasNextPage` is true only when paginating forward with
+`first:` or when `before:` is set, so on a `last:`-only page it is a constant and
+the completeness refusal on that connection can never fire. What the timeline is
+actually safe on is downstream: an event outside the window is older than
+everything in it and cannot raise the maximum, so a truncated window yields no
+date and the caller holds. Recorded as a correction rather than edited away,
+because this file is what the next agent is told to trust.
 
 **Weakness, stated rather than discovered:** a pull request that genuinely
 exceeds a page is now unmergeable by the sweep rather than merged wrongly, and it

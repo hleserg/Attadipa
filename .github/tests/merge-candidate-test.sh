@@ -497,8 +497,13 @@ complete_says "and a missing head commit refuses" \
   "HOLD the head commit is missing from the response" \
   "$(facts '.data.repository.pullRequest.commits.nodes = []')"
 
-# THE TIMELINE, WHERE THE DIRECTION THAT MATTERS IS NOT THE OBVIOUS ONE.
-complete_says "a label timeline that does not reach the newest event refuses, because the latest pass cannot be identified" \
+# THE TIMELINE. Both documents below are hypothetical: a `last:`-only connection
+# answers `hasNextPage: false` under the Relay contract whatever it holds, so
+# GitHub will not return the first one. These assert that the *extraction* treats
+# the flag uniformly across every connection -- not that the case can arise. The
+# timeline's real safety is downstream: an event outside the window is older than
+# everything in it, so a truncated window yields no date and the caller holds.
+complete_says "a label timeline flagged truncated refuses, uniformly with every other connection" \
   "HOLD the label timeline is truncated" \
   "$(facts '.data.repository.pullRequest.timelineItems.pageInfo.hasNextPage = true')"
 complete_says "but older label events beyond the window are not a refusal, and must not become one" COMPLETE \

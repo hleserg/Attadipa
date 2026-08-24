@@ -65,16 +65,21 @@ query($owner: String!, $name: String!, $number: Int!) {
       # `last:` because the question is which `ai-review:pass` labelling is the
       # MOST RECENT one, and the newest events are the ones that answer it.
       #
-      # WHICH DIRECTION MATTERS HERE, AND IT IS NOT THE OBVIOUS ONE. Under the
-      # Relay contract a `last:`-only page ends at the newest edge, so
-      # `hasNextPage` is false and asserting it is what proves the window
-      # reaches the present. `hasPreviousPage` will often be true on a busy pull
-      # request and is deliberately NOT a refusal: an older labelling cannot
-      # raise the maximum, and if the latest pass event is older than this
-      # window then no pass event is inside it at all, the date comes back
-      # empty, and the caller already holds on `unknown`. Refusing on
-      # `hasPreviousPage` would hold every pull request with a hundred label
-      # events and prove nothing extra.
+      # NEITHER FLAG PROVES ANYTHING HERE, AND THAT IS WORTH SAYING PLAINLY.
+      # Under the Relay contract `hasNextPage` is true only when paginating
+      # forward with `first:`, or when `before:` is set. A `last:`-only page is
+      # the "otherwise", so it answers false *by construction* -- asserting it
+      # is a tautology, and the completeness refusal on this one connection can
+      # never fire. It is kept because the shape must match every other
+      # connection here, not because it tests anything.
+      #
+      # What actually makes the window safe is downstream and does not depend on
+      # a flag: an event outside a `last:` window is older than everything in
+      # it and cannot raise the maximum, so a truncated window yields no
+      # `PASS_AT`, `PASS_AFTER_HEAD` comes back `unknown`, and the caller holds.
+      # `hasPreviousPage` is deliberately not a refusal for the same reason:
+      # refusing on it would hold every pull request with a hundred label events
+      # and prove nothing extra.
       timelineItems(last: 100, itemTypes: [LABELED_EVENT]) {
         totalCount
         pageInfo { hasNextPage hasPreviousPage }

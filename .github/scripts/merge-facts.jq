@@ -82,11 +82,13 @@ def incomplete($what; $hides; $conn):
         # reads as permitted.
         incomplete("the changed-file list"; "a path off the allowlist"; $pr.files),
 
-        # THE DIRECTION THAT MATTERS HERE IS NOT `hasPreviousPage`. This is a
-        # `last:` page, so under the Relay contract it ends at the NEWEST edge,
-        # and `hasNextPage: false` is exactly the claim the caller needs: that
-        # the window reaches the present, so the latest `ai-review:pass`
-        # labelling inside it is the latest one there is.
+        # THIS ONE CANNOT FIRE, AND IT IS HONEST TO SAY SO. `hasNextPage` is
+        # true only under forward pagination or with `before:` set; a `last:`
+        # page is the "otherwise" and answers false whatever it contains, so
+        # this refusal is a tautology rather than a check. It stays for shape.
+        # The real guarantee is that an event outside the window is older than
+        # everything inside it and so cannot raise the maximum: a truncated
+        # window produces no date, and the caller holds on `unknown`.
         #
         # `hasPreviousPage` is routinely true on a busy pull request and is
         # deliberately not a refusal. An older labelling cannot raise a maximum;

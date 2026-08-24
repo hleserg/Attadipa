@@ -21,7 +21,9 @@ TO APPLY, from a session whose token may write workflows:
 
     git checkout main && git pull
     git apply docs/automation/pending/170-merge-sweep-completeness.patch
-    git rm -r --ignore-unmatch docs/automation/pending
+    git rm docs/automation/pending/170-merge-sweep-completeness.patch
+    #  This file only. `git rm -r docs/automation/pending` would also delete
+    #  #154's parked patch and the directory's README -- see T-144.
     bash .github/tests/merge-candidate-test.sh   # 134 assertions, and the last
                                                  # two flip to the applied state
     git commit -am "The merge sweep asks whether it read all of the pull request"
