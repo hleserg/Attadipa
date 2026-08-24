@@ -20,7 +20,7 @@ index 1414c2b..990315c 100644
      name: Documentation consistency
      runs-on: ubuntu-latest
 diff --git a/.github/workflows/claude-pr-review.yml b/.github/workflows/claude-pr-review.yml
-index 76e171b..fd67686 100644
+index 76e171b..8501054 100644
 --- a/.github/workflows/claude-pr-review.yml
 +++ b/.github/workflows/claude-pr-review.yml
 @@ -279,6 +279,22 @@ jobs:
@@ -96,7 +96,7 @@ index 76e171b..fd67686 100644
        # What actually went wrong, read from the action's own execution log
        # rather than guessed at.
        #
-@@ -347,6 +400,183 @@ jobs:
+@@ -347,6 +400,210 @@ jobs:
              echo "::warning::The review step reported success and never reached the model — see the note on the pull request."
            fi
  
@@ -123,6 +123,14 @@ index 76e171b..fd67686 100644
 +      # direction that blocks.
 +      - name: Read the ledger and this round's findings
 +        id: ledger
++        # continue-on-error on all five, and it is the same argument the Review
++        # step above makes: this job's verdict is the LABEL, not the exit code,
++        # and a job that goes red because a `gh api` call timed out is a job
++        # people learn to ignore. Every one of these failing leaves the reviewer's
++        # own label standing, which is the behaviour this repository had before
++        # the rule existed -- so the failure mode of the convergence rule is the
++        # absence of the convergence rule, never a weaker one.
++        continue-on-error: true
 +        if: >-
 +          !cancelled() && steps.auth.outputs.ok == 'true' &&
 +          steps.happened.outputs.ran == 'yes'
@@ -165,9 +173,18 @@ index 76e171b..fd67686 100644
 +
 +      - name: Decide what may still hold this pull request
 +        id: verdict
++        continue-on-error: true
++        # `steps.ledger.outcome == 'success'` is load-bearing, not tidiness. A
++        # failed ledger read leaves /tmp/prev-ledger.md empty, which the rule
++        # reads as round 1 -- and round 1 judges only what THIS round's block
++        # says, so a finding carried on the ledger but not repeated in the block
++        # would stop being counted. Round 1 blocks more, not less, so the label
++        # would still be safe; the record behind it would not be. No ledger, no
++        # verdict.
 +        if: >-
 +          !cancelled() && steps.auth.outputs.ok == 'true' &&
-+          steps.happened.outputs.ran == 'yes'
++          steps.happened.outputs.ran == 'yes' &&
++          steps.ledger.outcome == 'success'
 +        env:
 +          # THE FLOOR, and the number is a decision rather than a default.
 +          # Rounds 1 to 3 are the regime this repository had all along: anything
@@ -194,9 +211,11 @@ index 76e171b..fd67686 100644
 +
 +      - name: File the deferred findings, so not holding them is not losing them
 +        id: deferred
++        continue-on-error: true
 +        if: >-
 +          !cancelled() && steps.auth.outputs.ok == 'true' &&
 +          steps.happened.outputs.ran == 'yes' &&
++          steps.verdict.outcome == 'success' &&
 +          steps.verdict.outputs.deferred != '0' &&
 +          steps.verdict.outputs.deferred != ''
 +        env:
@@ -234,9 +253,12 @@ index 76e171b..fd67686 100644
 +          esac
 +
 +      - name: Say which round this is and what it may still hold
++        id: ledger_say
++        continue-on-error: true
 +        if: >-
 +          !cancelled() && steps.auth.outputs.ok == 'true' &&
-+          steps.happened.outputs.ran == 'yes'
++          steps.happened.outputs.ran == 'yes' &&
++          steps.verdict.outcome == 'success'
 +        env:
 +          GH_TOKEN: ${{ github.token }}
 +          REPO: ${{ github.repository }}
@@ -255,9 +277,14 @@ index 76e171b..fd67686 100644
 +          fi
 +
 +      - name: Set the verdict from the rule rather than from the reviewer
++        continue-on-error: true
++        # Gated on the ledger comment having actually landed. A blocking label
++        # with no ledger beside it saying which finding does the blocking is the
++        # state this whole change exists to get out of.
 +        if: >-
 +          !cancelled() && steps.auth.outputs.ok == 'true' &&
 +          steps.happened.outputs.ran == 'yes' &&
++          steps.ledger_say.outcome == 'success' &&
 +          steps.verdict.outputs.label != 'unknown' &&
 +          steps.verdict.outputs.label != ''
 +        env:

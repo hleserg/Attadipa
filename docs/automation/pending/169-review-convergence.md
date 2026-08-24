@@ -64,6 +64,30 @@ GitHub deliberately does not use to start workflow runs — so the follow-up iss
 this can file cannot start a billable writer even if somebody later labels the
 wrong thing.
 
+## What a failure of this plumbing looks like
+
+All five new steps carry `continue-on-error: true`, and the chain is gated so
+that each one only runs if the one it depends on succeeded. That is the same
+argument the `Review` step above them already makes: **this job's verdict is the
+label, not the exit code**, and a job that goes red because a `gh api` call timed
+out is a job people learn to ignore.
+
+So the failure mode of the convergence rule is the **absence** of the convergence
+rule — the reviewer's own label stands, exactly as before this change — and never
+a weaker one. Two gates carry the weight:
+
+- **No ledger, no verdict.** A failed ledger read leaves the previous state
+  empty, which the rule reads as round 1. Round 1 judges only what this round's
+  block says, so a finding carried on the ledger but not repeated in the block
+  would stop being counted. The label would still be safe, because round 1 blocks
+  more rather than less; the record behind it would not be.
+- **No ledger comment, no label.** A blocking label with nothing beside it saying
+  which finding blocks is the state this whole change exists to get out of.
+
+One residual: if `gh issue create` succeeds and the `sed` that records its number
+does not, the next round with deferred findings files a second follow-up issue.
+A duplicate note, not a wrong verdict.
+
 ## The one thing to check on the first real run
 
 **Does the reviewer actually emit the findings block?** The rule degrades safely
