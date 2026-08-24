@@ -328,6 +328,9 @@ jobs:
       - name: Restarting a blocked task produces an outcome
         run: bash .github/tests/blocked-restart-test.sh
 
+      - name: A completed review reaches the pull request
+        run: bash .github/tests/review-published-test.sh
+
       # Taking a pull request out of draft is not a sentence in a comment: a
       # draft can never read `mergeable_state: clean`, so undrafting is the step
       # that makes a branch eligible for an unattended merge. The number it is
