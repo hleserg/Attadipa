@@ -50,7 +50,8 @@ patch that moved.** A patch has two, and they rot for different reasons.
 
 | what moved | CI | why |
 |---|---|---|
-| a hunk under `.github/` | **fails** | nobody but the owner or another landing patch can move that context, and a stale workflow hunk means the parked change itself is now wrong |
+| a hunk under `.github/workflows/` | **fails** | nobody but the owner or another landing patch can move that context, and a stale workflow hunk means the parked change itself is now wrong |
+| a hunk under `.github/scripts/` or `.github/tests/` | **warns** | the `workflows` permission gates `.github/workflows/` and nothing else: agent branches write scripts and tests constantly, so this half rots under ordinary work like the docs half does |
 | anything else the patch carries | **warns** — a job-summary line and a `::warning file=` annotation, naming the file that moved | those pins move under ordinary work, by people who did not choose to and cannot rebuild a workflow patch either |
 
 The second row is not caution, it is arithmetic. `check_docs.py` enforces the
@@ -75,8 +76,14 @@ the post-image and not the added lines alone because every `--slurp` call in
 this repository puts `gh api` on one line and its flags on the next; a patch
 touching only the flag line has no `gh api` among its added lines. Removing a
 bad call is still not an offence — take `--jq` out and the post-image no longer
-holds one — and only hunks targeting `.github/` are read, so a patch that
-*documents* the rule in prose is left alone.
+holds one — and only hunks targeting `.github/workflows/`, `.github/scripts/`
+or `.github/tests/` are read, so a patch that *documents* the rule in prose is
+left alone.
+
+That scan filter is deliberately **wider** than the fail-versus-warn split
+above: a forbidden `gh` call is forbidden wherever it is parked, and breadth
+costs nothing there, while the split needs precision because a wrong fatal reds
+every open pull request at once. Two globs, on purpose.
 
 **What is parked here must be one flat directory of `*.patch` files**, and CI
 now refuses anything else rather than skipping it. A patch in a subdirectory, a

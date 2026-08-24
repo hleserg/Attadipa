@@ -1082,19 +1082,29 @@ four more things at no cost:
   guard in the repository reached that directory, so a parked patch could
   redeploy this exact defect and stay green until the day somebody applied it.
   The same suite now reads a parked patch's **post-image** — context plus added
-  lines, restricted to hunks targeting `.github/` — and runs `git apply --check`
-  over each one, which nothing did while `pending/README.md` told a person to.
+  lines, restricted to hunks targeting `.github/workflows/`, `.github/scripts/`
+  or `.github/tests/` — and runs `git apply --check` over each one, which nothing
+  did while `pending/README.md` told a person to.
   Added-lines-only was the first read and it was blind to the shape every
   `--slurp` call here uses, `gh api` on one line and its flags on the next: edit
   the flag line alone and the added lines hold no `gh api` at all. The apply
-  half **fails on a `.github/` hunk and warns on everything else the patch
-  carries**, because those two rot for different reasons: nobody but the owner
-  can move workflow context, while the docs a patch pins move under ordinary
-  work — often work CI itself demands — and one stale patch must not red `main`
-  and every open pull request. `git apply --check --include='.github/*'`
-  separates them without a `fetch-depth` or a workflow write. 42 cases, both
-  halves mutation-verified against the real parked patch, and the queue-stopping
-  scenario reproduced end to end before the split was written.
+  half **fails on a `.github/workflows/` hunk and warns on everything else the
+  patch carries**, because those two rot for different reasons: nobody but the
+  owner can move workflow context, while the docs a patch pins move under
+  ordinary work — often work CI itself demands — and one stale patch must not red
+  `main` and every open pull request.
+  `git apply --check --include='.github/workflows/*'` separates them without a
+  `fetch-depth` or a workflow write. **The split's glob is narrower than the
+  scan's on purpose**, and it was `.github/*` until the third review round of
+  #180 found that `scripts/` and `tests/` are agent-writable — 32 of 262 commits
+  since 2026-08-01 touch them — so the wide form put two directories any branch
+  edits on the fatal side. **49 cases** — the suite's own
+  `49 passed, 0 failed`; only 46 print an `ok` line, because three run with
+  their stdout captured to assert on the job-summary file instead. Both halves
+  mutation-verified against the real parked patch, in both directions: each of
+  the four fixes was reverted and the case that binds it went red, and the
+  queue-stopping scenario was reproduced end to end before the split was
+  written.
   The general lesson is the one that produced this: **dispatch a new
   scheduled workflow once by hand instead of waiting for its cron**, because
   reading it had already passed it.

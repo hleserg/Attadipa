@@ -180,8 +180,17 @@ refused_files() {
 # and a missing directory. A missing directory is NOT an empty one -- empty is a
 # state somebody chose, missing is one nobody noticed -- and reporting them
 # alike is the same swallow this file exists to refuse.
+# THE MARKER IS PRINTED FIRST, ahead of every valid patch, and that ordering is
+# load-bearing. Both callers test the whole string with a `case` prefix pattern
+# (`MISSING*|UNREADABLE*`), so a marker emitted after a real patch is a marker
+# nobody sees -- and the only state where refusing matters is the one where
+# something IS parked, which is exactly the state that used to hide it. This
+# printed valid patches as it walked and the marker last until the third review
+# round of #180, where the failing arrangement is a directory holding a good
+# patch and a bad entry together; every fixture at the time held only the bad
+# one, which is the single arrangement that put the marker first by accident.
 parked_patches() {
-  local dir=$1 f bad_entry=""
+  local dir=$1 f bad_entry="" good=""
   if [ ! -d "$dir" ]; then
     printf 'MISSING\n'
     return
@@ -190,7 +199,7 @@ parked_patches() {
     [ -n "$f" ] || continue
     case "$f" in
       "$dir"/*/*)  bad_entry="$bad_entry$f (in a subdirectory)"$'\n' ;;
-      *.patch)     printf '%s\n' "$f" ;;
+      *.patch)     good="$good$f"$'\n' ;;
       *README.md)  ;;
       *)           bad_entry="$bad_entry$f (not a .patch)"$'\n' ;;
     esac
@@ -198,6 +207,15 @@ parked_patches() {
 $(find "$dir" -type f 2>/dev/null | sort)
 EOF
   [ -z "$bad_entry" ] || printf 'UNREADABLE\n%s' "$bad_entry"
+  [ -z "$good" ] || printf '%s' "$good"
+}
+
+# The annotated entries out of a `parked_patches` string -- the ones that made it
+# say UNREADABLE, and not the valid patches printed after them. A caller that
+# indents the whole string under "this cannot read" would now name every good
+# patch as unreadable, which is the mirror of the bug above.
+parked_bad_entries() {
+  printf '%s\n' "$1" | grep -e '(in a subdirectory)$' -e '(not a .patch)$'
 }
 
 # Every parked patch in DIR that no longer applies to TREE, one per line as
@@ -213,7 +231,18 @@ patch_apply_states() {
   local dir=$1 tree=$2 patch err
   for patch in $(parked_patches "$dir" | grep -v '^MISSING$\|^UNREADABLE$\|(in a subdirectory)$\|(not a .patch)$'); do
     [ -e "$patch" ] || continue
-    if ! err=$(git -C "$tree" apply --check --include='.github/*' -- "$patch" 2>&1); then
+    # `.github/workflows/*` and NOT `.github/*`. The whole rationale for making
+    # this half fatal is at 1c: "no agent token can write those files." That is
+    # true of `.github/workflows/`, which the `workflows` permission gates, and
+    # false of `.github/scripts/` and `.github/tests/`, which any agent branch
+    # edits -- 9991e79 created both while parking this patch, and this suite adds
+    # 650 lines to `.github/tests/` itself. Under the wider glob, a patch
+    # carrying a script-and-test hunk (the natural shape: a workflow change
+    # arrives with its script and its test, as #128 did) goes fatal the moment an
+    # unrelated pull request moves that context -- reddening a pull request that
+    # did not cause it, which TASKS.md names as the criterion this must not
+    # violate. Found in the third review round of #180.
+    if ! err=$(git -C "$tree" apply --check --include='.github/workflows/*' -- "$patch" 2>&1); then
       if patch_is_corrupt "$err"; then
         printf 'corrupt\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | head -1)"
       else
@@ -261,7 +290,7 @@ and reporting them alike is how a guard turns itself off"
     UNREADABLE*)
       bad "something is parked here that this cannot read, so neither half of the \
 guard covers it:"
-      printf '%s\n' "$entries" | sed '1d;/^$/d;s/^/       /'
+      parked_bad_entries "$entries" | sed 's/^/       /'
       return ;;
   esac
   for patch in $entries; do
@@ -300,18 +329,32 @@ guard covers it:"
 #     the only options, because the blast radius is not a property of the check
 #     -- it is a property of WHICH HALF of the patch moved:
 #
-#       * the hunks under `.github/` can only be moved by an owner edit or by
-#         another patch landing, since no agent token can write those files.
-#         Small audience, and a stale workflow hunk means the parked change
-#         itself is now wrong. FATAL.
+#       * the hunks under `.github/workflows/` can only be moved by an owner
+#         edit or by another patch landing, since no agent token can write those
+#         files. Small audience, and a stale workflow hunk means the parked
+#         change itself is now wrong. FATAL.
 #       * everything else a patch carries -- the docs edits its own landing
-#         forces, per `pending/README.md` -- moves under ordinary work, by
-#         people who did not choose to and cannot rebuild a workflow patch.
-#         WARNING: a `::warning::` annotation, a job-summary line, and a named
-#         remedy.
+#         forces, per `pending/README.md`, and its `.github/scripts/` and
+#         `.github/tests/` halves too -- moves under ordinary work, by people who
+#         did not choose to and cannot rebuild a workflow patch. WARNING: a
+#         `::warning::` annotation, a job-summary line, and a named remedy.
 #
-#     `git apply --check --include='.github/*'` separates them, needs no history
-#     and no `fetch-depth`, and works in the shallow checkout `ci.yml` makes.
+#     `.github/workflows/` and NOT `.github/`, which is what this used until the
+#     third review round of #180. `scripts/` and `tests/` sit under `.github/`
+#     and are written by agent branches constantly -- 32 of 262 commits since
+#     2026-08-01 touch them -- so the wider glob put two agent-writable
+#     directories on the fatal side, where an unrelated pull request moving a
+#     test's context reds every open pull request at once.
+#
+#     `git apply --check --include='.github/workflows/*'` separates them, needs
+#     no history and no `fetch-depth`, and works in the shallow checkout
+#     `ci.yml` makes.
+#
+#     The SCAN's filter is deliberately wider than this SPLIT's: `patch_postimage`
+#     reads `workflows|scripts|tests` because a forbidden `gh` call is a forbidden
+#     call wherever it is parked, and breadth costs nothing there. Precision is
+#     what the split needs, breadth is what the scan needs, and they are two
+#     different globs on purpose.
 check_parked_applies() {
   local dir=$1 tree=$2 states stale drifted patch refused entries
   entries=$(parked_patches "$dir")
@@ -338,17 +381,23 @@ check_parked_applies() {
     printf '       nobody can read is work nobody has read either.\n'
   fi
   if [ -n "$stale" ]; then
-    bad "a parked patch no longer applies under .github/ -- the workflow half it would land has moved:"
+    bad "a parked patch no longer applies under .github/workflows/ -- the workflow half it would land has moved:"
     printf '%s\n' "$stale" \
       | awk -F'\t' '{ printf "       %s\n         git refused: %s\n", $2, $3 }'
     printf '       already landed? git rm it -- pending/README.md says a patch is deleted in\n'
     printf '       the commit that applies it. Not landed? rebuild it against the current\n'
     printf '       tree; do not hand-edit the hunk headers.\n'
-  elif [ -z "$drifted" ]; then
+  elif [ -z "$drifted" ] && [ -z "$corrupt" ]; then
+    # `-z "$corrupt"` because the corrupt branch above is its own `if`, outside
+    # this chain: without it a malformed patch printed FAIL and then this printed
+    # `ok every parked patch still applies` directly underneath, about a file
+    # nothing had read. Third review round of #180.
     ok "every parked patch still applies to the tree"
     return
+  elif [ -z "$drifted" ]; then
+    return
   else
-    ok "every parked patch still applies under .github/, the half nobody here can rebuild"
+    ok "every parked patch still applies under .github/workflows/, the half nobody here can rebuild"
   fi
   [ -n "$drifted" ] || return
   ok "$(printf '%s\n' "$drifted" | wc -l | tr -d ' ') no longer apply in full (warning, not a failure)"
@@ -358,13 +407,13 @@ check_parked_applies() {
     # against workspace-relative paths, so an absolute runner path does not
     # anchor the annotation in Files changed -- and a summary line naming
     # /home/runner/work/... is meaningless the moment the container is gone.
-    printf '::warning file=%s::this parked patch still applies under .github/ but not in full: %s moved under it. If it has already been landed, git rm it -- pending/README.md says a patch is deleted in the commit that applies it. If it has not, update that hunk, or land it with git apply -3 from a full clone.\n' \
+    printf '::warning file=%s::this parked patch still applies under .github/workflows/ but not in full: %s moved under it. If it has already been landed, git rm it -- pending/README.md says a patch is deleted in the commit that applies it. If it has not, update that hunk, or land it with git apply -3 from a full clone.\n' \
       "${patch#"$root/"}" "${refused:-something it also edits}"
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       # shellcheck disable=SC2016  # the backticks are Markdown code spans in
       # the job summary, not command substitution; single quotes are what keeps
       # them literal.
-      printf -- '- **drifted parked patch**: `%s` still applies under `.github/`, but `%s` moved under it. Landed already? `git rm` it. Not landed? Update that hunk, or `git apply -3`.\n' \
+      printf -- '- **drifted parked patch**: `%s` still applies under `.github/workflows/`, but `%s` moved under it. Landed already? `git rm` it. Not landed? Update that hunk, or `git apply -3`.\n' \
         "${patch#"$root/"}" "${refused:-something it also edits}" >> "$GITHUB_STEP_SUMMARY"
     fi
   done
@@ -528,12 +577,15 @@ fi
 #    condition in them left every case green.
 tree=$(mktemp -d) || exit 1
 trap 'rm -rf "$probe" "$tree"' EXIT
-git -C "$tree" init -q .
+git -C "$tree" init -q . || exit 1
 printf 'alpha\nbeta\ngamma\n' > "$tree/target.txt"
 mkdir -p "$tree/.github/workflows"
 printf 'alpha\nbeta\ngamma\n' > "$tree/.github/workflows/w.yml"
+mkdir -p "$tree/.github/tests"
+printf 'alpha\nbeta\ngamma\n' > "$tree/.github/tests/t.sh"
 mkdir -p "$tree/empty" "$tree/fits" "$tree/drifted" "$tree/offends" \
-         "$tree/both-halves" "$tree/workflow-drifted" "$tree/workflow-gone"
+         "$tree/both-halves" "$tree/workflow-drifted" "$tree/workflow-gone" \
+         "$tree/tests-drifted"
 cat > "$tree/fits/a.patch" <<'FIXTURE'
 --- a/target.txt
 +++ b/target.txt
@@ -584,6 +636,31 @@ cat > "$tree/workflow-drifted/a.patch" <<'FIXTURE'
 @@ -1,3 +1,4 @@
  alpha
  beta
++delta
+ gamma
+FIXTURE
+# tests-drifted: the SHAPE OF THE REAL ONE. A workflow change arrives with its
+# script and its test -- 9991e79 parked exactly that -- and `.github/tests/` is a
+# directory agent branches edit constantly. So this half moving is ordinary work
+# by somebody who did not choose it and cannot rebuild a workflow patch, and it
+# must come out a WARNING. It was a FAILURE while the split's glob was
+# `.github/*`, which is finding 2 of the third review round of #180: an
+# unrelated pull request touching a test would have redded every open pull
+# request at once. The workflow half here is untouched, which is what makes the
+# verdict turn on the glob and nothing else.
+cat > "$tree/tests-drifted/a.patch" <<'FIXTURE'
+--- a/.github/workflows/w.yml
++++ b/.github/workflows/w.yml
+@@ -1,3 +1,4 @@
+ alpha
+ beta
++delta
+ gamma
+--- a/.github/tests/t.sh
++++ b/.github/tests/t.sh
+@@ -1,3 +1,4 @@
+ alpha
+ BETA-RENAMED
 +delta
  gamma
 FIXTURE
@@ -649,19 +726,33 @@ verdict() {  # $1 = what, $2 = ok|FAIL, $3 = fixture dir
   esac
 }
 verdict "a docs hunk moving under a patch is a warning, not a failure" ok both-halves
-verdict "a .github/ hunk moving under a patch IS a failure" FAIL workflow-drifted
+verdict "a .github/workflows/ hunk moving under a patch IS a failure" FAIL workflow-drifted
+verdict "a .github/tests/ hunk moving under a patch is a warning, not a failure" ok tests-drifted
 verdict "a patch aimed at a workflow that no longer exists IS a failure" FAIL workflow-gone
 expect "the warning names the file that actually moved, not just the patch" \
   "target.txt moved under it" check_parked_applies "$tree/both-halves" "$tree"
 expect "the failure names the file that actually moved, not just the patch" \
   "git refused: .github/workflows/w.yml" check_parked_applies "$tree/workflow-drifted" "$tree"
+expect "and a drifted test hunk is named in the warning, not in a failure" \
+  ".github/tests/t.sh moved under it" check_parked_applies "$tree/tests-drifted" "$tree"
 
 # 5. The job summary, which is the only operator-facing side effect in the file
 #    and was both untested and leaking into the real one until review of #180.
 #    `expect` cannot see it -- a redirection is not command substitution -- so
 #    these read the file.
+# Runs a shipping check for its SIDE EFFECT -- the job summary -- rather than its
+# transcript, without throwing the transcript away. `>/dev/null` here meant a
+# `bad` inside reached the counter with its message gone: `41 passed, 1 failed`
+# and nothing naming which. Third review round of #180. It must stay in the
+# CURRENT shell, or the counter moves in a subshell and the failure vanishes the
+# other way round.
+quietly() {
+  local before=$fail
+  GITHUB_STEP_SUMMARY="$tree/summary" "$@" > "$tree/quiet" 2>&1
+  [ "$fail" -eq "$before" ] || sed 's/^/       /' "$tree/quiet"
+}
 : > "$tree/summary"
-GITHUB_STEP_SUMMARY="$tree/summary" check_parked_applies "$tree/both-halves" "$tree" >/dev/null 2>&1
+quietly check_parked_applies "$tree/both-halves" "$tree"
 if grep -q 'drifted parked patch' "$tree/summary"; then
   ok "a drifted patch writes its line to the job summary"
 else
@@ -683,7 +774,7 @@ else
 -- file= will not anchor in Files changed, and the path is meaningless once the runner is gone"
 fi
 : > "$tree/summary"
-GITHUB_STEP_SUMMARY="$tree/summary" check_parked_applies "$tree/fits" "$tree" >/dev/null 2>&1
+quietly check_parked_applies "$tree/fits" "$tree"
 if [ -s "$tree/summary" ]; then
   bad "a patch that fits wrote to the job summary -- a false warning there is how the true one goes unread"
 else
@@ -724,6 +815,44 @@ case "$out" in
   *)      ok "an empty pending directory is still a pass, as it should be" ;;
 esac
 
+# THE ARRANGEMENT THE THREE CASES ABOVE ALL MISS: a valid patch and a bad entry
+# in the same directory. Each of `nested`, `odd` and `does-not-exist` holds only
+# the bad thing, which is the one arrangement that put the UNREADABLE marker
+# first by accident -- so all three passed while `parked_patches` printed valid
+# patches as it walked and the marker last, and both callers tested the string
+# with a `case` prefix pattern that a leading patch path defeats. This is the
+# only state that matters, because a pending directory with nothing worth
+# guarding in it is not the one that gets missed. Finding 1, third review round
+# of #180.
+mkdir -p "$sub/mixed/inner"
+cp "$probe/adds-good.patch" "$sub/mixed/visible.patch"
+cp "$probe/adds-good.patch" "$sub/mixed/inner/hidden.patch"
+out=$(check_parked_shell "$sub/mixed" 2>&1)
+case "$out" in
+  *FAIL*) ok "a bad entry beside a valid patch is still a failure, not a pass about the good one" ;;
+  *)      bad "a bad entry hides behind a valid patch -- the refusal fires only when there is nothing to guard" ;;
+esac
+# And it must name the bad entry ONLY. The marker now prints ahead of the valid
+# patches, so a caller indenting the whole string would list every good patch as
+# unreadable -- the same bug pointing the other way.
+case "$out" in
+  *"hidden.patch (in a subdirectory)"*)
+    ok "and it names the entry it cannot read" ;;
+  *) bad "the refusal does not name the unreadable entry: $(printf '%s' "$out" | tr '\n' ' ')" ;;
+esac
+case "$out" in
+  *"visible.patch"*) bad "the refusal lists a valid patch as unreadable -- the marker's new position needs the caller to filter" ;;
+  *)                 ok "and does not list the valid patch beside it as unreadable" ;;
+esac
+# 1c must refuse it too, and silently: 1b has already failed the suite, and two
+# failures for one cause is noise.
+out=$(GITHUB_STEP_SUMMARY="$tree/summary" check_parked_applies "$sub/mixed" "$tree" 2>&1)
+if [ -z "$out" ]; then
+  ok "and 1c says nothing about a directory 1b has already refused"
+else
+  bad "1c reported on a directory it cannot judge: $(printf '%s' "$out" | head -1)"
+fi
+
 # 7. A file that is not a patch at all, and one git cannot parse. Both used to
 #    read as clean: the first has no `+++` so the scan matched nothing and the
 #    caller saw an empty result, the second was reported in the same words as a
@@ -757,6 +886,16 @@ esac
 case "$out" in
   *"Do NOT git rm"*) ok "and its remedy is a rebuild, never git rm" ;;
   *)                 bad "a corrupt patch is offered git rm, which deletes work nobody has read" ;;
+esac
+# And it must not be contradicted two lines later. `corrupt` is its own `if`,
+# outside the stale/drifted chain, so the chain's `ok every parked patch still
+# applies` used to print directly under the FAIL -- about the very file nothing
+# had been able to read. The suite still failed, so this never showed up as a
+# red run; it showed up as a transcript that says both things. Third review
+# round of #180.
+case "$out" in
+  *"still applies"*) bad "a malformed patch is reported and then contradicted by an ok line about the same file" ;;
+  *)                 ok "and nothing prints ok still-applies about a file git could not parse" ;;
 esac
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

@@ -2491,7 +2491,11 @@ A1's schematic-revision
   cannot write, which is the whole reason patches are parked in the first place.
   The `gh api` scan now also reads `docs/automation/pending/*.patch`, as each
   patch's **post-image** — context plus added lines, restricted to hunks whose
-  `+++` target is under `.github/`. Added-lines-only was the first read and the
+  `+++` target is under `.github/workflows/`, `.github/scripts/` or
+  `.github/tests/`. That is the SCAN's filter and it is wider than the
+  fail-versus-warn split's `.github/workflows/` on purpose: a forbidden `gh`
+  call is forbidden wherever it is parked, while a wrong fatal reds every open
+  pull request at once. Added-lines-only was the first read and the
   reviewer of [#180](https://github.com/hleserg/Attadipa/pull/180) killed it:
   every `--slurp` call in this repository puts `gh api` on one line and its
   flags on the next, so a patch editing only the flag line has no `gh api`
