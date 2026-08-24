@@ -516,12 +516,24 @@ Two further reasons the pin numbers cannot stand in for it:
   matrix. This means that any GPIO may be used for each of the SD card
   signals."* GPIO 1/2/3 carrying `CMD`/`CLK`/`D0` is a software assignment, not a
   constraint the silicon imposed and not a fact the board revealed.
-- **Espressif's own default treats the two modes' pins as the same pins.** Of
-  `SDSPI_DEVICE_CONFIG_DEFAULT()` the ESP-IDF documentation says it *"will also
-  fill in the default pin mappings, which are the same as the pin mappings of the
-  SDMMC host driver"*. So a net named `MOSI` on a schematic and a net named `CMD`
-  in a BSP can be the same copper, and the pair of names is not a contradiction
-  waiting to be resolved by picking one.
+- **The two modes share the card's own contacts, by specification.** Pin 2 of an
+  SD card is `CMD` in native mode and `DI`/`MOSI` in SPI mode; pin 5 is
+  `CLK`/`SCK`; pin 7 is `DAT0` in native mode and `DO`/`MISO` in SPI. SPI adds a
+  chip select on pin 1 (`DAT3`/`CS`) and nothing else. So a net named `MOSI` on a
+  schematic and a net named `CMD` in a BSP are the same copper on those three
+  contacts *always*, not merely *possibly*, and the pair of names is not a
+  contradiction waiting to be resolved by picking one.
+
+  An earlier version of this bullet argued the same conclusion from ESP-IDF's
+  `SDSPI_DEVICE_CONFIG_DEFAULT()`, quoted as *"will also fill in the default pin
+  mappings, which are the same as the pin mappings of the SDMMC host driver"*.
+  That quote does no work here: at tag **v5.4** the macro fills in `gpio_cs`
+  (`GPIO_NUM_13`) and three `GPIO_NUM_NC`s, and `sdspi_device_config_t` has no
+  clock, MOSI or MISO field to fill —
+  [`components/esp_driver_sdspi/include/driver/sdspi_host.h:68-78`](https://github.com/espressif/esp-idf/blob/v5.4/components/esp_driver_sdspi/include/driver/sdspi_host.h)
+  and `:89-97`. Those three pins come from `spi_bus_config_t`. The right
+  conclusion for the simpler reason; noted rather than deleted because the wrong
+  reason was cited into two other documents.
 
 **What actually moved.** D14 began as *"the BSP says one thing and the schematic
 says another"*. It is now *"the BSP says one thing, the schematic says another,

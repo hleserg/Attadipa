@@ -666,6 +666,25 @@ four more things at no cost:
   non-destructive bench procedure is
   [SD_CARD_MODE_TEST](docs/hardware/SD_CARD_MODE_TEST.md) — **T-127**,
   `NOT EXECUTED — HARDWARE REQUIRED`.
+- **And the procedure written to close D14 cannot close it either** — the fifth
+  review round of [#155](https://github.com/hleserg/Attadipa/pull/155), which
+  found the same error one level up. An SD card's pins 2/5/7 are
+  `CMD`/`CLK`/`DAT0` in native mode and `DI`/`SCK`/`DO` in SPI mode: **the same
+  three contacts, by specification**, with SPI adding only a chip select on
+  pin 1. So a card enumerating over SDMMC on GPIO 2/1/3 is exactly what a slot
+  wired for SPI would also produce — an observation every candidate makes,
+  promoted to a discriminator, which is the empty-slot mistake again. The only
+  discriminator the bench has is GPIO 17, and the success path never looked at
+  it. What changed: the procedure gained a **step 0** that reads the AXP2101
+  rails and reads GPIO 17 passively before anything is driven; driving GPIO 17
+  became a step with four preconditions, one of which is the schematic sheet
+  already read; `ESP_ERROR_CHECK` came out of a probe whose deliverable is the
+  log a panic-reset would take with it; and §10 now says the file closes *which
+  host driver enumerates a card here* and explicitly **not** the wiring. D14's
+  wiring half is closed by the schematic sheet and by nothing else.
+  The cross-document `D<nn>` status check that would have caught the original
+  contradiction is filed as **T-161**, not implemented — a new repository-wide
+  rule reddens every open pull request the day it lands.
 - **`esp_lcd_sh8601` initialises this panel** — `LCD panel create success,
   version: 1.0.2`, then `Backlight on`. That is evidence about the driver, not
   about the die, so the CO5300 row stands; what it settles is that the

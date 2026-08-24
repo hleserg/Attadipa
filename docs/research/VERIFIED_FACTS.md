@@ -629,10 +629,14 @@ BSP already demonstrated to be an incomplete description of its own board.
   with the BSP"*, which is worth having and is not a measurement of copper.
   Two things this second reading cannot supply either: on the ESP32-S3 the SDMMC
   slots route through the GPIO matrix, so *"any GPIO may be used for each of the
-  SD card signals"* and the pin numbers constrain nothing; and Espressif's own
-  `SDSPI_DEVICE_CONFIG_DEFAULT()` *"will also fill in the default pin mappings,
-  which are the same as the pin mappings of the SDMMC host driver"*, so `MOSI`
-  and `CMD` may be one net rather than two readings of one. **No card
+  SD card signals"* and the pin numbers constrain nothing; and the two modes
+  share the card's own contacts **by specification** — pin 2 is `CMD`/`DI`,
+  pin 5 `CLK`/`SCK`, pin 7 `DAT0`/`DO`, with SPI adding only a chip select on
+  pin 1 — so `MOSI` and `CMD` are one net rather than two readings of one.
+  (This bullet used to argue that from ESP-IDF's
+  `SDSPI_DEVICE_CONFIG_DEFAULT()` instead; at v5.4 that macro fills in `gpio_cs`
+  and three `GPIO_NUM_NC`s, and its struct has no clock, MOSI or MISO field, so
+  the quote did not support the claim. Same conclusion, sounder reason.) **No card
   has ever enumerated on this board.** [#131](https://github.com/hleserg/Attadipa/issues/131);
   the procedure that would settle it is
   [SD_CARD_MODE_TEST](../hardware/SD_CARD_MODE_TEST.md), `NOT EXECUTED —

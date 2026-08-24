@@ -1682,7 +1682,14 @@ stale silently. The protocol is
   the shared protocol layer, not the SDMMC host, and an SD-over-SPI mount prints
   under both.
   [WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md) §4.3.
-- **Goal:** enumerate a card, and find out whether GPIO 17 is needed.
+- **Goal:** enumerate a card, and record a passive reading of GPIO 17. **Not**
+  "close D14" — the fifth review round of
+  [#155](https://github.com/hleserg/Attadipa/pull/155) established that
+  enumeration cannot: pins 2/5/7 of an SD card are `CMD`/`CLK`/`DAT0` in native
+  mode and `DI`/`SCK`/`DO` in SPI mode, the same three contacts by
+  specification, so a card answering over SDMMC on GPIO 2/1/3 is exactly what a
+  slot wired for SPI would also produce. D14's wiring question is closed by the
+  schematic sheet, read visually, and by nothing this task can do.
 - **What is already prepared:** the procedure, written non-destructive by
   default — [SD_CARD_MODE_TEST](docs/hardware/SD_CARD_MODE_TEST.md). Steps 1–5
   write nothing to the card, `format_if_mount_failed` is `false` throughout and
@@ -1691,11 +1698,23 @@ stale silently. The protocol is
   its own preconditions and does not run without a separate decision. The reuse
   decision and licence are in
   [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
-- **Acceptance:** either a card enumerates — `sdmmc_card_print_info` output
-  recorded verbatim, with the mode, the pins, the clock and whether GPIO 17 was
-  touched — or it does not, recorded just as fully with the card named. A
-  negative on an unnamed card is not a result. D14 then moves to `RESOLVED` or
-  stays `PARTIAL` with the next step named.
+- **Acceptance:** three records, and a negative needs all three as much as a
+  positive does.
+  1. **The AXP2101 output registers, read and written down before step 1.** A
+     `0x107` from an unpowered slot is indistinguishable from a `0x107` from a
+     mis-wired one, and D13 — the slot's rail — is open. Without this reading a
+     failure is not a result.
+  2. **GPIO 17 read passively** — as an input, with no pull, then with the
+     internal pull-up, then with the internal pull-down, all three values
+     recorded. Driving it is `UNKNOWN` territory and needs the schematic sheet
+     first (`SD_CARD_MODE_TEST.md` §7 precondition 3).
+  3. **The enumeration result** — `sdmmc_card_print_info` output verbatim with
+     the mode, the pins and the clock, or the failure recorded just as fully
+     with the card named. A negative on an unnamed card is not a result.
+
+  D14 stays `PARTIAL` either way; what moves is the narrower fact *which host
+  driver enumerates a card here*, which is what `SD_CARD_MODE_TEST.md` §10 now
+  claims.
 - **What must not be assumed:** that the BSP's pin map is a wiring fact. On the
   ESP32-S3 the SDMMC slots route through the GPIO matrix — *"any GPIO may be
   used for each of the SD card signals"* — and SPI mode uses a subset of the same
@@ -1705,6 +1724,36 @@ stale silently. The protocol is
   (4-bit), and card detect — no card-detect pin appears in either source.
 - **Hardware required:** yes — the owner's Waveshare unit, and one card whose
   contents are expendable. `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### T-161 · A `D<nn>` status asserted in one document and contradicted in another
+- **Filed from the fifth review round of
+  [#155](https://github.com/hleserg/Attadipa/pull/155)**, which found the shape
+  in the tree rather than in the abstract: one document held D14 `CONFLICTING`
+  and *"D14 resolved"* at the same time —
+  [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md) calls that *"the shape this
+  repository is supposed to notice"* and it went unnoticed for a day.
+- **Priority:** P2. Cheap to write, and the class of bug is one nobody catches
+  by reading, because the two halves are in different files.
+- **The check.** For every `D<nn>` in the status column of
+  [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md), assert that no other
+  markdown file in the tree asserts a *different* status for the same ID. The
+  register is the single source; a second file may cite the status, and citing
+  a stale one is the failure.
+- **Why it is a task and not part of #155.** A new repository-wide check in
+  `tools/docs/check_docs.py` turns every open pull request red on the day it
+  lands, because each carries documents written before the rule existed. That
+  blast radius was weighed and accepted as a reason to file rather than
+  implement on [#94](https://github.com/hleserg/Attadipa/pull/94); the same
+  reasoning applies here, and there were 35 open pull requests when this was
+  filed. It lands on a branch of its own, with the tree already swept.
+- **Dependencies:** none technical. Land it when the open-branch count is low
+  enough that a sweep is one commit rather than thirty.
+- **Acceptance:** the check exists in `tools/docs/check_docs.py` with cases in
+  `tools/docs/test_check_docs.py` covering a match, a mismatch and an ID that
+  appears only in the register; the whole tree passes; and the two documents
+  that would have been caught in August 2026 are named in the test as the
+  regression they came from.
+- **Hardware required:** no.
 
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do
