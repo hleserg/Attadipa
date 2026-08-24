@@ -792,6 +792,48 @@ four more things at no cost:
   clean. **No hardware involved and none needed** — the defect and its fix are
   entirely host-reproducible arithmetic.
 
+- **A faulted link answered an attach with the one word that is never counted.**
+  [#158](https://github.com/hleserg/Attadipa/issues/158), a T-062 bullet.
+  `LinkState::apply()` classified `Attach` with a single negative guard —
+  `phase_ != Absent -> Redundant` — so `Attached`, `Connecting`, `Ready`,
+  `Suspended` and `Faulted` all received the same answer, and `Redundant` is
+  precisely the outcome the machine does **not** count. The visible half is that
+  a controller retrying an attach against a transport that needs a
+  `SubsystemRestart` was told the attach had already succeeded. The expensive
+  half is quieter: `ignored_events()` exists because "a callback arrived in a
+  state where it makes no sense" is a diagnostic signal, and this one route
+  produced none, so a retry storm and a healthy link read identically in the
+  field. `Attach` is now decided per phase — `Absent` applies it;
+  `Attached`, `Connecting` and `Ready` answer `Redundant`, because the
+  peripheral genuinely is there and the two live phases are downstream of the
+  state being asked for; `Faulted` and `Suspended` answer `Ignored` and are
+  counted. **`Suspended` was a contract nobody had written down**, and it is
+  written down now: a quiesced link carries nothing, so the attach is refused
+  rather than satisfied, and `Resume` stays the only way back — an `Attach`
+  honoured there would let a lifecycle owner that had not noticed the suspend
+  route around it in silence. A phase added to `TransportPhase` later falls to
+  `Ignored` rather than `Redundant` in `link_state.cpp` — the safe default of
+  the two, and deliberately not compile-time guarded, so a new phase compiles
+  and behaves sanely. The guard is in **the test**: a `constexpr` coverage check
+  over `kTransportPhaseCount` refuses to build unless the phase table names
+  every phase by value, so the suite stops until somebody has decided what
+  `Attach` should do about it.
+  `Fault`, the epoch and session accounting, and `reset()` are untouched, and
+  the `Detach`-hardcodes-`PeerClosed` bullet from the same audit was left alone
+  so that one finding stays one change. Three tests in `tests/test_link.cpp`: a
+  table over every phase, five consecutive refusals in `Faulted` followed by a
+  restart that makes an attach real work again, and a suspended link that an
+  attach does not resurrect. **Mutation-verified** — restoring the old guard
+  turns 13 checks red, and leaves the `Attached`/`Connecting`/`Ready` rows
+  green, which is the evidence that only the two intended phases moved. Host
+  suite 24/24 under GCC, under Clang, under `-Werror` with `-Wshadow
+  -Wconversion -Wsign-conversion -Wcast-qual -Wold-style-cast`, and under
+  ASan+UBSan with `-fno-sanitize-recover=all`; both documentation checks clean.
+  No hardware: `NOT EXECUTED — HARDWARE REQUIRED` for the thing this change is
+  ultimately about, which is how often a real BLE or USB stack re-fires an
+  attach callback after a subsystem failure — that is a measurement, nobody has
+  taken it, and the fix does not depend on the number.
+
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same
