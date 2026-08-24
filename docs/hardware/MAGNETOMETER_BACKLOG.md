@@ -48,8 +48,11 @@ transform) — **and it is not a dead path, which matters most to whoever
 implements G-02.** The owner's decision is about *this project's* node; OD-7
 makes the companion **any** node, and whether a third-party MeshCore device
 carries a magnetometer is `UNKNOWN`. So `HeadingSource::RemoteSensor` and its
-four-condition gate are the code that runs when one turns up, not scaffolding
-around a possibility that has been closed. An earlier version of this paragraph
+four-condition gate are what **will** run when one turns up, not scaffolding
+around a possibility that has been closed. Future tense on purpose: neither the
+enumerator nor the gate exists in the tree — `Capability::Heading` and `Origin`
+do, which is what made the present tense feel safe — and T-026, which builds
+them, is *not started*. Found in review. An earlier version of this paragraph
 called it "this one dead path", which is exactly the sentence that would make an
 implementer delete the gate.
 

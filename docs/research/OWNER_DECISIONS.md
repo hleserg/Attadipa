@@ -1461,16 +1461,18 @@ merging both leaves two owner-decision records for one owner decision, each
 with a distinct number and therefore a distinct heading. `check_docs.py`'s
 duplicate-number check is satisfied by exactly that: two headings that differ.
 The next reader finds two entries, cannot tell which is authoritative, and the
-checker says the file is fine. **Whichever of the two lands second deletes its
-copy rather than renumbering it** — both are open as this is written, so a
-sentence asserting which landed first would be a claim about history this file
-cannot make and, sitting where it does, would read as an owner decision rather
-than a merge note. An earlier version said *"this branch landed first"*; if
-#112 had landed first, the record `CLAUDE.md` ranks above the ADRs would have
-stated a falsehood about its own history and ordered the surviving entry to
-delete itself. Found in review. #112 also *implements* T-144, which this branch
-files as *not started*; that line is true of `main` today and will not be true
-of it for long.
+checker says the file is fine, because it compares the **number** and two
+renumbered records differ. Recorded here as the hazard it is; **what to do about
+it is not recorded here**, and an earlier version of this paragraph carried the
+instruction — *"whichever lands second deletes its copy"* — which is a merge
+policy, written by an agent, sitting in the file `CLAUDE.md` defines as
+*"decisions the owner gave us directly … not ours to overturn"*. The same
+paragraph had already argued that a merge claim in this register reads as an
+owner decision; leaving one two sentences later is the same mistake. It belongs
+in the pull request bodies, where a merging orchestrator reads it and where it
+binds nobody afterwards, and it is in both. Found in review. #112 also
+*implements* T-144, which this branch files as *not started*; that line is true
+of `main` today and will not be true of it for long.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
 answered from a datasheet: whether Meshtastic's protocol definitions are licensed

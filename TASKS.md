@@ -235,61 +235,17 @@ stale silently. The protocol is
 
 ## NEXT
 
-### T-122 · `check_docs.py` checks that a link's file exists, never that its anchor does
-- **Priority:** P2. Cheap, and it closes a class of silent rot rather than an
-  instance.
-- **Dependencies:** none
-- **Goal:** make the documentation check validate the `#fragment` half of a
-  relative link, not just the path.
-- **The gap:** `tools/docs/check_docs.py:53-55` captures the fragment and
-  `check_links()` at `:99-118` then only calls `os.path.exists()` on the path.
-  So a link to `OWNER_DECISIONS.md#od-16--…` passes whether or not any heading
-  generates that anchor. **Two live consequences, both found by review rather
-  than by CI:**
-  - three pull requests open at once each recorded a decision numbered
-    **OD-16** — #92 (A1–A3), #94 (A5/A6, renumbered to OD-17 to end the
-    collision) and #97 (A10). Renumbering one silently breaks every hard-coded
-    anchor pointing at it, and six of them were in `STATUS.md` and `TASKS.md`
-    alone;
-  - a **second** kind of silent rot this checker still would not see, kept here
-    because it was found looking for the first. **`A7` names two different
-    questions.** `STATUS.md` (*"A7 is answered"*) records it as the
-    **tag-emulation** question — should the watch be findable through a
-    crowd-sourced finding network —
-    [#33](https://github.com/hleserg/Attadipa/issues/33), answered by OD-13;
-    `OPEN_QUESTIONS.md`'s A-table records A7 as the **palette** question, which
-    orange and which olive, [#57](https://github.com/hleserg/Attadipa/issues/57),
-    answered by OD-15. `STATUS.md`'s brand-art paragraph says the reuse out loud
-    — *"once recorded here as A7"* — which is how it was found.
-
-    **Two, not three.** An earlier version of this bullet counted
-    `REUSE_LEDGER.md` as a third use. It is not: that A7 sits under the heading
-    *"Crowd-sourced tag emulation — the ecosystems, and why none of them was
-    reached"* and asks the same question as the `STATUS.md` one. The count came
-    from a previous review and went in unchecked; corrected here rather than
-    carried into a task somebody would have to hunt a missing question for.
-
-    **So A7 is a reused question ID, not a mislinked anchor**, and the fix is
-    renumbering rather than anything a link checker can do — an earlier version
-    of this task called it a broken link and coupled its acceptance to resolving
-    it, which would have held a cheap tooling fix behind an owner decision it
-    does not depend on. Both anchors involved resolve, or carry no anchor at
-    all, so the proposed checker stays green over the whole discrepancy.
-    **Recorded, not guessed at**: which question keeps A7 is a documentation
-    decision, filed as T-125 below rather than settled here.
-- **Acceptance:** the checker resolves a fragment against the target file's
-  headings using the same slug rule GitHub applies, fails on one that resolves
-  to nothing, and has a mutation test per direction — including one asserting it
-  does **not** fire on a bare `#L12-L20` line reference, which is a different
-  thing. `main` green afterwards — which this change alone achieves, since every
-  anchor on `main` today resolves. **Not** contingent on the A7 question: see
-  above.
-- **Hardware required:** no. **Owner required:** no.
-
 ### T-125 · `A7` names two different questions
 - **Priority:** P3. Nothing is blocked by it; it is a trap for the next reader.
-- **Dependencies:** none. **Not** a dependency of T-122 either way, which is the
-  correction that produced this task.
+- **Dependencies:** none. It was once filed as a consequence of the missing
+  anchor check, and it is not one: both anchors involved resolve, so no checker
+  could ever have seen it. That correction is why this is a task of its own.
+  (The anchor check itself is **T-127**, done 2026-08-23 and on `main`;
+  `check_docs.py` resolves a fragment against the target's headings with
+  GitHub's slug rule. This branch carried a duplicate of it as **T-122**, filed
+  before T-127 landed and left standing after — at the head of `## NEXT`, where
+  `CLAUDE.md` sends every agent for what to pick up, citing two line ranges that
+  were about a different check entirely. Deleted 2026-08-24; found in review.)
 - **Goal:** give each of the two questions currently called A7 its own
   identifier, and leave a line saying which was which.
 - **The two:**
@@ -375,7 +331,14 @@ stale silently. The protocol is
   travelled with the wrong number, *"disagreement is evidence about both of them
   and belongs to neither"*, is the comment on `compare_provider` in
   [`trust.h`](core/include/attadipa/core/trust.h), not an ADR sentence. Found in
-  review. It rewrites or keeps
+  review — **and there is a third copy, in the file this acceptance sends the
+  implementer to**: the comment above `test_provider_disagreement_is_evidence_about_both`
+  in `tests/test_trust.cpp`, sitting directly over the two fixtures named below.
+  No checker sees it; it is prose in a comment, not a link. It is corrected on
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which is already editing
+  that file — this branch touches no code and files it here rather than opening
+  a second writer on one file. If #153 lands without it, the correction is
+  T-141's first act. It rewrites or keeps
   `tests/test_trust.cpp`'s two fixtures **deliberately** — the ~550 m
   `NodeGnss` disagreement and the live-bit-left-standing case — rather than
   discovering them when the build goes red. A change that clears a live bit is
@@ -482,7 +445,8 @@ stale silently. The protocol is
 - **Hardware required:** partly. The module pull-up question is a meter on the
   board or a vendor schematic; the blast-radius decision is a design decision and
   needs neither.
-- **ID note:** allocated as **T-130**, clear of `T-126` on `main` and of every
+- **ID note:** allocated as **T-130**, clear of the highest ID on `main` at the
+  time of writing and of every
   number visible on an open branch, because four branches have already collided
   on `T-111`–`T-113`. **This file is one of the four**: the `T-111` below is
   this branch's claim on that number and `main` has since taken `T-112` and
@@ -1390,10 +1354,17 @@ stale silently. The protocol is
   thing only — this board's own receiver, for its own fixes; everything over the
   node link is `Unknown` and nothing promotes it.
   **And because that makes co-location a function of `PositionSource`, the two
-  fields are asserted to agree**: `SameBody` implies
-  `source == PositionSource::LocalGnss`, checked where the observation is
-  constructed and covered by a test that constructs the invalid pairing
-  deliberately. Without it a driver, a fixture or a new trace can stamp
+  fields are asserted to agree — in BOTH directions**: `SameBody` **if and only
+  if** `source == PositionSource::LocalGnss`, checked where the observation is
+  constructed and covered by tests that construct each invalid pairing
+  deliberately. The implication alone is the wrong half to write down, because
+  the direction it leaves open is the one a forgotten line produces: the field
+  *defaults* to `Unknown`, so a driver that sets `source = LocalGnss` and never
+  touches co-location yields `LocalGnss` + `Unknown` — precisely the case §3a
+  calls *co-located by construction* — and §3a then requires that fix be shown
+  under the hedge written for a node in a bag, on a T-Watch whose own receiver
+  produced it. Every other assertion in this task passes, because nothing is
+  ever stamped `SameBody`. Found in review. Without it a driver, a fixture or a new trace can stamp
   `SameBody` on a `NodeGnss` observation and every other assertion in this task
   still passes — two fields that must agree, no invariant. Note this does not
   make the field redundant: the invariant is what keeps a *derived* value from
@@ -1451,9 +1422,12 @@ stale silently. The protocol is
   human language — *"the device moved while the accelerometer says it did not"*
   is not that, and on this board it is not even true of the wearer. So shipping
   T-026 before T-141 requires the degraded state to carry a sentence that is
-  honest about which body was measured (*"this position comes from the node, and
-  the watch did not move"*), and T-141 remains the task that decides whether the
-  bit should be raised at all. Naming T-141 a hard dependency would put a P1
+  honest about which body was measured — *"this position comes from the node,
+  and the watch did not move"* is the **sense** of it, not the string: user text
+  in this repository is a `StringId` resolved through `l10n/`, and a task that
+  writes an English sentence into an acceptance criterion is how a literal ends
+  up in a widget. T-141 remains the task that decides whether the bit should be
+  raised at all. Naming T-141 a hard dependency would put a P1
   power-and-navigation feature behind a P2 ADR, which is the wrong trade; naming
   nothing leaves the user with a false sentence. Found in review.
 - **Research status:** done
@@ -2406,7 +2380,18 @@ Recommended next action:
 - **Priority:** P0
 - **Waiting on:** the project owner
 - **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) **A11** —
-  whether one or two of the T114s carry GNSS. **A1–A3 are no longer on this
+  whether one or two of the T114s carry GNSS — and **Q2**, *is the compass a
+  feature of the product, or of one modified device?*
+  ([#138](https://github.com/hleserg/Attadipa/issues/138)). Q2 is added here
+  2026-08-24 because it was on `STATUS.md`'s owner table and in
+  `OWNER_DECISIONS.md` and **nowhere in the file agents pick work from** — in
+  the very branch that reclassifies five magnetometer epics, whose scope is what
+  Q2 decides. It is not an `A`-series question, which is the scope this bullet
+  was written for; the scope was the reason it was missing, not a reason for it
+  to stay missing. Found in review. (`D16`, the font choice, is on that table
+  too and is likewise absent here — it blocks freezing the design tokens rather
+  than any task in this list, so it stays where it is until something in
+  `TASKS.md` waits on it.) **A1–A3 are no longer on this
   list** — answered 2026-08-22 on
   [#54](https://github.com/hleserg/Attadipa/issues/54), recorded as
   [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
