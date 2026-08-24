@@ -331,7 +331,8 @@ when both sides are answers to the same question. An answer is a *measurement*:
 a coordinate the receiver solved for, and the instant it solved it. It is not
 "the last thing that was in the position field".
 
-**Those are different, and a receiver makes them different once a minute.** A
+**Those are different, and a receiver makes them different every time it goes
+under a roof.** A
 GNSS frame's position field is not emptied when the solution goes away — the
 receiver keeps sending the coordinate it last solved for, with a fix type of
 `NoFix` in the same frame saying there is no position at all. §2 above is the
@@ -347,9 +348,13 @@ that still had a fix — reporting the place the wearer had actually walked to �
 was measured against a coordinate this device was no longer standing behind. The
 difference was reported as `ProviderDisagreement`: 30 points, which reaches
 `degrade_at` unaided, renewed for the whole dropout rather than for one epoch,
-naming a conflict between two providers only one of which had a position. And
-because `remember()` runs only while `Trusted`, the fallback position stopped
-being updated for as long as it lasted while the circle around it grew.
+naming a conflict between two providers only one of which had a position. And it
+outlives the dropout: `remember()` runs only while `Trusted`, so the fallback
+position does not resume updating the moment the receiver recovers, and if the
+node leaves in the meantime without anybody calling `provider_detached()`, the
+fabricated allegation lapses into `unconfirmed_` where nothing can withdraw it —
+the per-boot pin bound 3 above removes for real allegations, reached through one
+that was never true.
 
 **One direction of it was not fail-safe at all.** A node reporting the same
 retained coordinate *agrees* with it — and agreement reaches `clear()`, which is
@@ -357,9 +362,10 @@ the only retraction this design has and the one thing that lets the state climb.
 A coordinate nobody was asserting could therefore withdraw a live allegation
 from a node that was still making it.
 
-The rule, and it is symmetrical: **only `Valid` or `Degraded` may seed either
-side, both sides are judged by measurement age against the same window, and
-being unable to compare withdraws nothing and asserts nothing.** A local
+The rule, and it binds both sides even though only one of them can honour it
+today: **only a `Valid` or `Degraded` measurement may seed a side, both sides
+are judged by measurement age against the same window, and being unable to
+compare withdraws nothing and asserts nothing.** A local
 receiver that loses its fix stops answering; the next real fix reopens the
 comparison and reports or clears in the ordinary way, which is exactly what §5.1
 bound 3 already promised for the *other* side in the words *"one frame with a
