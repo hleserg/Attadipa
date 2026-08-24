@@ -1,8 +1,8 @@
 diff --git a/.github/workflows/agent-queue-watchdog.yml b/.github/workflows/agent-queue-watchdog.yml
-index 69dea3d..3098445 100644
+index 69dea3d..b92271f 100644
 --- a/.github/workflows/agent-queue-watchdog.yml
 +++ b/.github/workflows/agent-queue-watchdog.yml
-@@ -289,6 +289,280 @@ jobs:
+@@ -289,6 +289,350 @@ jobs:
              fi
            done < /tmp/stranded
  
@@ -76,6 +76,24 @@ index 69dea3d..3098445 100644
 +          # not reached this tick is reached on the next one. Found in review.
 +          COMMENTS=0
 +          COMMENT_CAP=3
++          # AND A BOUND ON THE INPUT, because the cap above bounds only the
++          # output. Per tick this job spends one `actions/runs` call and one
++          # `issues/{n}/comments` call per open pull request, plus one `jobs`
++          # call per run on each head -- roughly four per pull request here --
++          # against a 1,000/hour `GITHUB_TOKEN` budget shared with
++          # `pr-merge-sweep.yml`, which runs twice an hour. At the ~30 open
++          # pull requests this repository carries that is ~120 calls hourly and
++          # nowhere near the limit; at 250 it would be, and exhausting the
++          # budget produces exactly the failure this job is least able to
++          # report -- `jobs` calls start failing, every head reads unreadable,
++          # and the guard's own call volume is what silenced it. The cap is set
++          # well above the working set so it does not bite in normal operation,
++          # and what it drops is ANNOUNCED rather than silently truncated.
++          # Ascending order means the pull requests it drops are the newest,
++          # which is the right end to drop: the oldest stall is the one nobody
++          # is coming back to on their own. Found in the fifth review round.
++          HEADS_SEEN=0
++          HEADS_CAP=40
 +
 +          while read -r PR SHA HEADREPO; do
 +            if [ -z "$PR" ] || [ -z "$SHA" ]; then
@@ -84,6 +102,12 @@ index 69dea3d..3098445 100644
 +
 +            if [ "$COMMENTS" -ge "$COMMENT_CAP" ]; then
 +              echo "::notice::Reached the $COMMENT_CAP-comment cap for this tick; the rest are left for the next one."
++              break
++            fi
++
++            HEADS_SEEN=$((HEADS_SEEN + 1))
++            if [ "$HEADS_SEEN" -gt "$HEADS_CAP" ]; then
++              echo "::notice::Looked at $HEADS_CAP pull requests this tick, which is the API-call bound; the newest ones beyond that were not examined and are left for the next tick."
 +              break
 +            fi
 +
@@ -131,10 +155,21 @@ index 69dea3d..3098445 100644
 +              echo "::warning::#$PR: could not read comments; skipping this tick rather than risking a repeat."
 +              continue
 +            fi
-+            SAID=$(printf '%s' "$RAW" \
-+                     | jq -r 'if (length > 0 and (.[0] | type) == "array") then add else . end | .[].body' 2>/dev/null \
++            BODIES=$(printf '%s' "$RAW" \
++                       | jq -r 'if (length > 0 and (.[0] | type) == "array") then add else . end | .[].body' 2>/dev/null) || BODIES=""
++            SAID=$(printf '%s' "$BODIES" \
 +                     | sed -n 's/.*<!-- attadipa-approval-stall \([0-9a-fA-F]\{7,40\}\) -->.*/\1/p' \
 +                     | tail -1) || SAID=""
++            # The PARTIAL marker, written when a job count on this head could
++            # not be read. It deliberately does NOT feed the repeat bound in
++            # the decision script -- the head stays eligible for a complete
++            # report the moment the counts read -- it bounds the INCOMPLETE
++            # report to one. The `-partial` suffix means the pattern above
++            # cannot match it: `-->` after the SHA is required, and the partial
++            # marker's name differs before the SHA, so the two never alias.
++            SAID_PARTIAL=$(printf '%s' "$BODIES" \
++                     | sed -n 's/.*<!-- attadipa-approval-stall-partial \([0-9a-fA-F]\{7,40\}\) -->.*/\1/p' \
++                     | tail -1) || SAID_PARTIAL=""
 +
 +            STALLED=""
 +            GATED=""
@@ -236,16 +271,39 @@ index 69dea3d..3098445 100644
 +
 +            echo "::warning::#$PR at $SHA has a run waiting for an approval; saying so on the pull request."
 +
++            # WHICH MARKER, AND WHETHER TO SPEAK AT ALL. In the script with the
++            # rest of the rules and with cases of its own, not re-derived here:
++            # the first version of this decided it inline, wrote no marker at
++            # all on the unreadable path, and posted anyway -- so the body's
++            # own closing line was false, the repeat bound was off, and with
++            # the ascending sort and the three-comment cap three heads in that
++            # state starved every newer one. Found in the fifth review round.
++            MARKER=""
++            MARKER=$(bash .github/scripts/approval-stall-decision.sh --marker \
++                       "$UNREADABLE" "$SAID_PARTIAL" "$SHA") \
++              || { MARKER=""; echo "::warning::#$PR: approval-stall-decision.sh --marker did not run for $SHA; saying nothing about this head this tick."; }
++            # Said HERE rather than inside the block below. The block's stdout
++            # is the comment body, so a `::warning::` written in it has to go
++            # to stderr to stay out of the comment -- and whether the runner
++            # parses workflow commands off stderr at all is not established
++            # anywhere in this repository. Rather than rest a diagnostic on an
++            # unverified behaviour, it is emitted on stdout before the body
++            # starts. Found in the fifth review round of #128.
++            if [ "$MARKER" = "partial" ]; then
++              echo "::warning::#$PR at $SHA: a job count was unreadable; reporting what can be seen, once, and re-checking this head next tick."
++            fi
++            if [ "$MARKER" != "full" ] && [ "$MARKER" != "partial" ]; then
++              [ "$MARKER" = "silent" ] \
++                && echo "::notice::#$PR at $SHA: already reported once on an unreadable job count; not repeating until the counts read." \
++                || echo "::warning::#$PR at $SHA: no marker verdict; saying nothing rather than commenting unbounded."
++              continue
++            fi
++
 +            {
-+              # Withheld when any run on this head had an unreadable job count:
-+              # see UNREADABLE above. Without the marker the next tick will
-+              # look at this head again, which is the failure we want -- a
-+              # second comment is noise, a permanently silenced stall is the
-+              # bug.
-+              if [ -z "$UNREADABLE" ]; then
++              if [ "$MARKER" = "full" ]; then
 +                printf '<!-- attadipa-approval-stall %s -->\n' "$SHA"
 +              else
-+                echo "::warning::#$PR at $SHA: a job count was unreadable; commenting without the marker so this head is looked at again." >&2
++                printf '<!-- attadipa-approval-stall-partial %s -->\n' "$SHA"
 +              fi
 +              printf "### A check on \`%s\` is waiting for an approval, and nothing was going to ask for it\n\n" "${SHA:0:7}"
 +              if [ -n "$STALLED" ]; then
@@ -257,7 +315,11 @@ index 69dea3d..3098445 100644
 +                printf '%s\n' "$GATED"
 +                printf 'These have jobs, so they are visible above and are waiting on a deployment or environment approval — a different thing, and one somebody configured on purpose.\n\n'
 +              fi
-+              printf 'This is said once per head commit. Push again and it is re-checked against the new one; re-run the checks and this goes quiet by itself.\n'
++              if [ "$MARKER" = "full" ]; then
++                printf 'This is said once per head commit. Push again and it is re-checked against the new one; re-run the checks and this goes quiet by itself.\n'
++              else
++                printf 'One of the runs on this commit would not report how many jobs it has, so **this list may be incomplete** — what is above was visible, what was not is not here. This partial report is also said once per head commit; the counts are re-read every hour, and if they come back a complete report follows. Push again and it is re-checked against the new commit; re-run the checks and this goes quiet by itself.\n'
++              fi
 +            } > /tmp/approval-stall.md
 +
 +            # AND THIS COMMENT BUMPS `updated_at` ON THE PULL REQUEST.
@@ -273,6 +335,14 @@ index 69dea3d..3098445 100644
 +            # patch is already blocked on a `workflows` permission and widening
 +            # it to change the orphan sweep would put two unrelated behaviours
 +            # behind one owner action. Found in review.
++            #
++            # "The marker above bounds this to one comment per head" was false
++            # on the unreadable path until the fifth review round, which wrote
++            # no marker there and posted anyway. Both markers are written now,
++            # so the bound holds on every path and this paragraph is true as
++            # stated -- at most two comments per head, one incomplete and one
++            # complete, and only when the counts change from unreadable to
++            # readable.
 +            if gh pr comment "$PR" --repo "$REPO" --body-file /tmp/approval-stall.md </dev/null; then
 +              COMMENTS=$((COMMENTS + 1))
 +            else
@@ -284,7 +354,7 @@ index 69dea3d..3098445 100644
      name: Anything stuck
      runs-on: ubuntu-latest
 diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
-index bdd6a27..d52d88a 100644
+index 1414c2b..e2227ce 100644
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -282,6 +282,17 @@ jobs:
@@ -306,7 +376,7 @@ index bdd6a27..d52d88a 100644
        # repository that can put a commit in `main` unattended, so it gets the
        # heaviest test: every one of the six conditions asserted in both
 diff --git a/.github/workflows/claude-agent.yml b/.github/workflows/claude-agent.yml
-index 9a25754..d082ec0 100644
+index 9a25754..ec72201 100644
 --- a/.github/workflows/claude-agent.yml
 +++ b/.github/workflows/claude-agent.yml
 @@ -732,10 +732,53 @@ jobs:
@@ -364,7 +434,7 @@ index 9a25754..d082ec0 100644
        # WHERE THE BRANCH WAS BEFORE THIS RUN TOUCHED IT.
        #
 diff --git a/docs/automation/APPROVAL_STALLS.md b/docs/automation/APPROVAL_STALLS.md
-index 719b43e..a974383 100644
+index 4e21eda..eaf6fc3 100644
 --- a/docs/automation/APPROVAL_STALLS.md
 +++ b/docs/automation/APPROVAL_STALLS.md
 @@ -139,7 +139,7 @@ That closes the issue's evidence table exactly:
@@ -376,7 +446,7 @@ index 719b43e..a974383 100644
  `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
  action's push path was fixed. The agent's own push path was never covered by it.
  
-@@ -221,13 +221,13 @@ unchecked** — *Contents: Read and write*, *Pull requests: Read and write* **an
+@@ -238,13 +238,13 @@ left unchecked** — *Contents: Read and write*, *Pull requests: Read and write*
  omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
  `github_token:` for `claude-code-action` — one citation per line, because the
  checker reads a fingerprint only from the citation's own physical line:
@@ -393,10 +463,10 @@ index 719b43e..a974383 100644
  2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
  asserts this stays in`, an unrelated comment — so a reader checking the evidence
 diff --git a/docs/automation/pending/README.md b/docs/automation/pending/README.md
-index 21b97cf..f7a5c74 100644
+index 4882e57..157e9d4 100644
 --- a/docs/automation/pending/README.md
 +++ b/docs/automation/pending/README.md
-@@ -39,13 +39,15 @@ waiting on a person.
+@@ -47,13 +47,15 @@ waiting on a person.
  
  ## Waiting now
  

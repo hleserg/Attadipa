@@ -189,6 +189,78 @@ else
                  0 "$(printf '%s' "$fields" | sed -n 3p)" "")" "say|stalled"
 fi
 
+
+echo
+echo "Which marker a head's comment carries -- the per-HEAD half of the rule"
+
+# marker UNREADABLE PARTIAL_FOR HEAD_SHA -> the one word it prints
+marker() {
+  bash .github/scripts/approval-stall-decision.sh --marker "$1" "$2" "$3"
+}
+
+says "every job count read: the full marker, and the head is finished with" \
+     "$(marker "" "" "$SHA_STALLED")" "full"
+says "a count that would not read: an incomplete report, marked as one" \
+     "$(marker "yes" "" "$SHA_STALLED")" "partial"
+says "and the second tick on that same head says nothing" \
+     "$(marker "yes" "$SHA_STALLED" "$SHA_STALLED")" "silent"
+says "case is not allowed to reopen a bound the way it nearly did above" \
+     "$(marker "yes" "${SHA_STALLED^^}" "$SHA_STALLED")" "silent"
+says "a partial marker for a DIFFERENT head does not silence this one" \
+     "$(marker "yes" "$SHA_RAN" "$SHA_STALLED")" "partial"
+# The bound that matters most, and the one the fifth review round found
+# missing: a head already partially reported must produce a COMPLETE report
+# the moment the counts read, because the per-run repeat bound reads only the
+# full marker and never the partial one.
+says "counts that start reading turn a partial head into a full report" \
+     "$(marker "" "$SHA_STALLED" "$SHA_STALLED")" "full"
+says "an unnameable head is silent rather than unbounded" \
+     "$(marker "yes" "" "not-a-sha")" "silent"
+says "and so is an empty one" \
+     "$(marker "" "" "")" "silent"
+
+echo
+echo "The lines that fix #75, as opposed to the rule that reports it"
+
+# WHY THIS SECTION EXISTS. Every case above is about the *rule*. What actually
+# ends the stall is two lines of workflow: the writer checkout taking a token
+# that is not the built-in one, and the `approvals` job existing to call this
+# script at all. This repository has already lost a workflow line silently
+# twice -- `allowed_bots: ""` in two files, and this document's own citation 38
+# lines out of date -- and neither was noticed by anything automatic. Drop the
+# `token:` in a future edit and #75 returns with its original symptom: nothing
+# red, no check, an agent saying it is waiting on CI. Read from whichever of
+# the patch and the deployed workflow holds each line, `$LANDED` first, for the
+# reason given above. Raised in the fifth review round of #128.
+WRITER=.github/workflows/claude-agent.yml
+
+TOKEN_LINE=$(sed -n 's/^[+ ] *token: \(.*ATTADIPA_AGENT_TOKEN.*\)$/\1/p' "$WRITER" "$PATCH" 2>/dev/null | head -1)
+if [ -z "$TOKEN_LINE" ]; then
+  printf '  FAIL  neither the patch nor %s gives the writer checkout a token of its own\n' "$WRITER"
+  fail=$((fail + 1))
+else
+  # Order matters and is not decoration. `${{ A || B }}` takes A when A is
+  # non-empty, so with the fallback written first the built-in token always
+  # wins and setting the secret changes nothing -- the same silent no-op #75
+  # spent a month being. Asserted by looking at what precedes the secret's
+  # name rather than by matching the whole line, so reformatting the
+  # expression is allowed and reversing it is not.
+  BEFORE=${TOKEN_LINE%%ATTADIPA_AGENT_TOKEN*}
+  case "$BEFORE" in
+    *github.token*) ORDER="fallback first" ;;
+    *)              ORDER="secret first" ;;
+  esac
+  says "the writer checkout does not push over the built-in token" "$ORDER" "secret first"
+fi
+
+APPROVALS_JOB=$(sed -n 's/^[+ ] *\(approvals\):$/\1/p' "$LANDED" "$PATCH" 2>/dev/null | head -1)
+says "the watchdog has a job that asks the question at all" \
+     "$APPROVALS_JOB" "approvals"
+
+CALLS=$(sed -n 's/^[+ ] *.*\(approval-stall-decision\.sh\).*$/\1/p' "$LANDED" "$PATCH" 2>/dev/null | head -1)
+says "and that job calls this script rather than re-deriving it in a run block" \
+     "$CALLS" "approval-stall-decision.sh"
+
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

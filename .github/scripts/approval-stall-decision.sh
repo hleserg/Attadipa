@@ -121,7 +121,77 @@ attadipa_approval_stall_decision() {
   fi
 }
 
-# Callable as a script as well as sourceable.
+# attadipa_approval_stall_marker UNREADABLE PARTIAL_FOR HEAD_SHA
+#
+# Which marker a head's comment carries, and whether it should be written at
+# all. A separate question from the per-run decision above, and a per-HEAD one:
+# the job count is per run, the marker is per head, and a head with one
+# unreadable run has an incomplete picture of itself however many of its other
+# runs read fine.
+#
+# UNREADABLE   non-empty if ANY run on this head came back with a job count
+#              that could not be read.
+# PARTIAL_FOR  the head SHA this pull request already carries a PARTIAL marker
+#              for, empty when it carries none.
+# HEAD_SHA     the head being reported on.
+#
+# Prints one word:
+#   full     write `<!-- attadipa-approval-stall SHA -->`; this head is done.
+#   partial  write `<!-- attadipa-approval-stall-partial SHA -->`; say what can
+#            be seen now, and look at this head again when the counts read.
+#   silent   do not comment: this head has already been reported once on an
+#            incomplete picture and nothing about it has changed.
+#
+# WHY A PARTIAL MARKER RATHER THAN NO MARKER. The first version withheld the
+# marker entirely on the unreadable path and posted anyway. So the comment
+# body's own closing line -- "This is said once per head commit" -- was false
+# exactly where it mattered, and the repeat bound was off for as long as the
+# endpoint stayed bad. It compounds with two other bounds in the same job: the
+# pull-request listing sorts `created` ASCENDING and the tick is capped at
+# three comments, so three old heads stuck in that state consume the whole
+# budget every tick and a newly stalled head is never reported at all. That is
+# #75's own failure mode -- a stall nothing says anything about -- reproduced
+# inside the guard written to end it. A partial marker bounds the incomplete
+# report to once while keeping the head eligible for a COMPLETE one: the repeat
+# bound in `attadipa_approval_stall_decision` above reads only the full marker,
+# so the counts are re-read every tick and a readable one still produces the
+# real comment. Found in the fifth review round of
+# https://github.com/hleserg/Attadipa/pull/128.
+attadipa_approval_stall_marker() {
+  local unreadable="$1" partial_for="$2" head_sha="$3"
+
+  # A head we cannot name cannot be bounded, and an unbounded comment is the
+  # #82 shape. Same guard, same reason, as the decision above.
+  case "$head_sha" in
+    "" | *[!0-9a-fA-F]*)
+      printf 'silent\n'
+      return
+      ;;
+  esac
+
+  if [ -z "$unreadable" ]; then
+    printf 'full\n'
+    return
+  fi
+
+  # Case-insensitive, for the reason the repeat bound above is: the marker is
+  # written by one job and read back hours later by another, and the day one
+  # side changes case the bound disappears silently.
+  if [ "${partial_for,,}" = "${head_sha,,}" ]; then
+    printf 'silent\n'
+    return
+  fi
+
+  printf 'partial\n'
+}
+
+# Callable as a script as well as sourceable. The first argument selects which
+# question is being asked, defaulting to the per-run decision so that every
+# existing caller and case is unchanged.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  attadipa_approval_stall_decision "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}"
+  if [ "${1:-}" = "--marker" ]; then
+    attadipa_approval_stall_marker "${2:-}" "${3:-}" "${4:-}"
+  else
+    attadipa_approval_stall_decision "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}"
+  fi
 fi

@@ -212,9 +212,26 @@ maintainer has to be present for.
 
 ### What is recommended, as one action
 
-**Option A, with the PAT scoped to this repository only and `Workflows` left
-unchecked** — *Contents: Read and write*, *Pull requests: Read and write* **and
-*Issues: Read and write***, set as the repository secret
+**Option B — a second GitHub App — unless the owner has already made the PAT.**
+This section recommended **A** flatly until the fifth review round of
+[#128](https://github.com/hleserg/Attadipa/pull/128), which pointed out that it
+contradicted *What this does not cover* below in the same file: that section
+established a **fourth** cost of A — the anti-recursion guard becoming
+unreachable — and said in as many words *"Option B keeps the boundary intact …
+now a reason to prefer it beyond attribution"*. A document cannot both establish
+that and recommend past it. **The fourth cost is not a trade-off; it is a
+condition**, and the two consequences it opens are reachable today rather than
+hypothetically: a billable writer dispatched hourly on our own blocker issue,
+and the one unattended merge rule proceeding over findings nobody answered.
+
+**A remains available and is not wrong — it is A-with-T-145-first.** If the PAT
+already exists the cheaper path is to keep it and land **T-145** (P1) before
+the secret is used, rather than to build an App for the sake of the ordering.
+What is not available is A with the guard left as it is.
+
+**If A is taken, the PAT is scoped to this repository only with `Workflows`
+left unchecked** — *Contents: Read and write*, *Pull requests: Read and write*
+**and *Issues: Read and write***, set as the repository secret
 `ATTADIPA_AGENT_TOKEN`.
 
 **The third permission is not optional and an earlier version of this section
@@ -263,7 +280,12 @@ makes the secret *sufficient* is in
 `${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}`, so applying it while the
 secret is unset changes nothing at all and the two can land in either order.
 
-**Three costs are being accepted, and naming one of them was not enough.**
+**Four costs are being accepted, and naming one of them was not enough.** This
+list said **three** until the fifth review round of
+[#128](https://github.com/hleserg/Attadipa/pull/128) — the fourth was written
+out at length in *What this does not cover* below and never counted here, which
+is how a reader could finish the priced list and still not have met the one that
+changes the recommendation.
 
 1. **Attribution.** Agent commits will carry the PAT owner's name. If that is
    the wrong trade, **B** is the same fix without it, at the price of two more
@@ -286,11 +308,21 @@ secret is unset changes nothing at all and the two can land in either order.
    per-run figure `STATUS.md` records. The `approvals` job added by the patch
    costs nothing from Anthropic; this consequence of the same patch does not,
    and the risk list said only the first. Found in review.
+4. **The anti-recursion guard becomes unreachable.** Written out in full under
+   *What this does not cover* below and absent from this list until the fifth
+   review round. It is the one that is **not a trade-off**: a fine-grained PAT
+   belongs to a user, so everything the agent writes carries
+   `author_association: OWNER`, and `queue-scan.jq` accepts on
+   `author_association` before the login test is evaluated. It is why this
+   section now recommends **B** unless the PAT already exists, and why taking
+   **A** means landing **T-145** first rather than afterwards. It cannot be
+   priced in money — it removes a bound, and the two consequences it opens are
+   reachable today.
 
 ## What happens in the meantime — written, tested, **not deployed**
 
 > [!IMPORTANT]
-> The rule below is on `main` and has 40 cases — **but nothing on `main` runs
+> The rule below is on `main` and has 51 cases — **but nothing on `main` runs
 > them.** `ci.yml` enumerates every shell test by name and this one is absent,
 > because the line that would add it rides the same blocked patch: `ci.yml` is
 > itself under `.github/workflows/`. `shellcheck` globs the file, so it is
@@ -327,9 +359,17 @@ the API has a bad minute, hourly and forever, which is
 [#82](https://github.com/hleserg/Attadipa/issues/82)'s shape; guessing "fine"
 restores exactly the silence being fixed.
 
-40 cases in `.github/tests/approval-stall-decision-test.sh`, including the two
-real runs above with the values the API actually returned, and two that lift the
-field split out of `pending/75-approval-stall.patch` and run it — because the
+51 cases in `.github/tests/approval-stall-decision-test.sh`, including the two
+real runs above with the values the API actually returned, two that lift the
+field split out of `pending/75-approval-stall.patch` and run it, eight over the
+per-head marker rule, and **three over the deployed lines themselves** — the
+writer checkout's `token:` (present, and naming the secret *before* the
+`github.token` fallback, because `${{ A || B }}` takes A and the reversed order
+is a silent no-op), the `approvals` job existing, and that job calling this
+script rather than re-deriving it in a `run:` block. Those three are the fifth
+review round's finding: every other case was about the *rule*, and what actually
+ends the stall is two lines of workflow that nothing asserted. This repository
+has lost a workflow line silently twice already — because the
 loop that split lives in is inside an unapplied patch, which neither this suite
 nor `ci.yml`'s `actionlint`/`shellcheck` globs can see. Extracted rather than
 copied: a copy drifts, an extraction goes red the moment the patch stops

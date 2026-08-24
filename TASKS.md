@@ -98,16 +98,33 @@ stale silently. The protocol is
   run green. An earlier version of this bullet listed two permissions; the
   working scope in `CLAUDE_AUTOMATION.md` has always been three. Found in
   review.
-  The cost being accepted is attribution: agent commits will then carry the PAT
-  owner's name rather than `claude[bot]`. Granting `Workflows` too would retire
-  `docs/automation/pending/`, which is convenient and is exactly the widening
-  that lets an agent rewrite the gate governing it. The alternative without the
-  attribution cost is a separate GitHub App; both are priced in
-  [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md).
+  **Four costs are being accepted, and this bullet used to name one.** They are
+  listed in full in
+  [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md); in short: attribution
+  (agent commits carry the PAT owner's name rather than `claude[bot]`); a
+  long-lived credential in `.git/config` in the one job the model holds `Bash`
+  in (**T-146**); `claude-ci-repair.yml` becoming reachable, so a red run calls
+  a second billable writer; and — the one that is not a trade-off but a
+  condition — **the anti-recursion guard becomes unreachable** (**T-145**, P1). A
+  fine-grained PAT belongs to a *user*, so the agent's own output carries
+  `author_association: OWNER`, which `queue-scan.jq` accepts *before* the
+  `claude`/`github-actions` login test is ever evaluated. Granting `Workflows`
+  too would retire `docs/automation/pending/`, which is convenient and is exactly
+  the widening that lets an agent rewrite the gate governing it.
+  **So the recommendation is now B — a separate GitHub App — unless the PAT
+  already exists**, because a second App keeps a distinct bot login and leaves
+  the login test reachable. Taking A instead means landing T-145 first, not
+  afterwards. This bullet said *"the cost being accepted is attribution"* and
+  *"the alternative without the attribution cost is a separate GitHub App"* until
+  the fifth review round of
+  [#128](https://github.com/hleserg/Attadipa/pull/128) pointed out that both
+  sentences are ones this branch had corrected in three other files while leaving
+  the one `CLAUDE.md` sends an agent to first.
 - **Tests:** `actionlint` over seven workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
-  cases — 16/16; the approval-stall rule, 40 cases including both of #71's real
-  runs with the values the API actually returned — 40/40, **not yet wired into
+  cases — 16/16; the approval-stall rule, 51 cases including both of #71's real
+  runs with the values the API actually returned, the per-head marker rule, and
+  the deployed `token:`/`approvals` lines themselves — 51/51, **not yet wired into
   CI** because that line is in `ci.yml` and rides the same blocked patch, and
   the watchdog job around it dry-run against the live repository (the jq, the
   pagination, the marker written and read back, the rendered comment) — which
