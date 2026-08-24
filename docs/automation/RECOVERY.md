@@ -74,7 +74,8 @@ command with a plain substring match, so the bot's own escalation comment
 appears to satisfy it — the two-attempt bound looks like it resets itself once
 the escalation is raised. Found while fixing #129 and **not fixed there**,
 because that issue said explicitly not to change the retry budget; filed as
-T-127 in [`TASKS.md`](../../TASKS.md).
+T-169 in [`TASKS.md`](../../TASKS.md) — filed as T-127 and renumbered on merge,
+because `main` took that number for the anchor check while this branch was open.
 
 ### A pull request is green, reviewed, and never merges
 

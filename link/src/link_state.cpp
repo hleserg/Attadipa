@@ -35,11 +35,37 @@ EventOutcome LinkState::apply(LinkEvent event, MonotonicTime now, DisconnectReas
 {
     switch (event) {
         case LinkEvent::Attach:
-            if (phase_ != TransportPhase::Absent) {
+            if (phase_ == TransportPhase::Absent) {
+                enter(TransportPhase::Attached, now, DisconnectReason::None);
+                return EventOutcome::Applied;
+            }
+            // The two refusals are different sentences and they were being said
+            // with one word. `Redundant` means the caller asked for a state the
+            // link is already in — nothing to do, nothing to report.
+            // `Ignored` means the event does not apply here, and it is counted,
+            // because the rate of inapplicable callbacks is the diagnostic.
+            //
+            // Attached is the state Attach asks for, and Connecting and Ready
+            // are strictly downstream of it: the peripheral is there in all
+            // three, so the request is satisfied. Answering anything else would
+            // mean dropping an arriving peer or a live session on behalf of an
+            // event that asked for something already true.
+            if (phase_ == TransportPhase::Attached || is_live(phase_)) {
                 return EventOutcome::Redundant;
             }
-            enter(TransportPhase::Attached, now, DisconnectReason::None);
-            return EventOutcome::Applied;
+            // Faulted needs a SubsystemRestart and Suspended needs a Resume. In
+            // neither is the attach satisfied — a faulted transport carries
+            // nothing however present the hardware is, and a quiesced one must
+            // not be resurrected by a lifecycle owner that has not noticed the
+            // suspend. Refused, and counted, so a retry storm against broken
+            // hardware or a controller fighting the sleep path is visible in
+            // ignored_events() rather than reported as a harmless no-op.
+            //
+            // Any phase added later lands here too, which is the safe default:
+            // counted and refused, rather than silently claiming the link is
+            // already where the caller wanted it.
+            ++ignored_;
+            return EventOutcome::Ignored;
 
         case LinkEvent::Detach:
             // Unconditional, from any state including Absent and Faulted. This

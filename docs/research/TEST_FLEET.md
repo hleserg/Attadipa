@@ -26,7 +26,7 @@ save the next agent a wasted run.
 - The two **T114** nodes are to be flashed to the latest official MeshCore
   release. One carries no screen and no GNSS and stays on Home Assistant; the
   other has both and is available.
-- **Both advertise over BLE under the same name, `Beta Serega`.** Two devices
+- **Both T114s advertise over BLE under the same name, `Beta Serega`.** Two devices
   answering to one name is a discovery problem, not a detail: anything that
   selects a node by advertised name will pick whichever answered first. Select
   by address.
