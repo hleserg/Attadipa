@@ -1,1 +1,24 @@
-4bdfaa8511fe57621d99e820ae167ce2aff46b06c589d60c4ae6994ca1a102f3
+# What the generated image tree was built from, and what was built. The file is
+# still called INPUTS.sha256 because several documents cite it by name; it has
+# recorded outputs as well since issue #69, and this line is here so that nobody
+# has to infer that from the name.
+#
+# `inputs` covers the source art, the manifest, the drawings and the vendored
+# converter — an encoder that changes its output *is* the asset changing. Each
+# `output` line is the SHA-256 of a committed file, so an edited bitmap byte, a
+# truncated header or a deleted mask fails `--check` on a machine with neither
+# Pillow nor a build.
+#
+# Written only by tools/assets/generate_images.py. Editing a line here to make a
+# check pass is the one repair that fixes nothing.
+inputs  b72e9edb5bbdd4483617c3c3c5b24a92e877ed6220927a7b247dfc16c98c7b1f
+output  843260afca39c1e96ccec2330369cadfca5661879dbc298d9295e814a1af18da  attadipa_icon_mesh_33.c
+output  49d32e93b5aa3079556fefd7a5a30e397de50fe708660db3d7f8f4f2af940c53  attadipa_icon_mesh_39.c
+output  de35e18a5004f2369d7f6602c2c727cca0e2b3eb441ce1c6e8ee5fc50c567b6f  attadipa_icon_mesh_47.c
+output  42e68f1869d71425d5d451151e077ebfaf436a95f935542d9b9bc8dcbad604d3  attadipa_icon_position_33.c
+output  d02915f7bf94400a260accb7b16fa625d9de6f05aaac81d0cbd0c7417b4bd6bd  attadipa_icon_position_39.c
+output  af3c984ca888dc006e82c09834ba5e00a95a7e1d10387157275c57d8f752d885  attadipa_icon_position_47.c
+output  104936c3cdb2b79fb00c6b0c6820623a54f3e8f310749f36acc9a756437b3d13  attadipa_icon_warning_33.c
+output  b7a033bb3055749355617d32a44b3ce27496e2689f98d4f2b7fe5f54be12211e  attadipa_icon_warning_39.c
+output  fface498e5cc8bfb9fb3a4887cf2e96806a71b6b8ef53b54844c296fc92d2cab  attadipa_icon_warning_47.c
+output  d913de64a070c295bc02c4ccd3c7b08362f51b0a2485ba5ec9aed1e12a4ab69b  attadipa_images.h

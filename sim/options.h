@@ -37,6 +37,18 @@ struct Options {
     bool node_attached = false;   // a paired, reachable, compatible Attadipa node
     bool bring_up      = true;    // pretend every present part came up
 
+    // Where the debug channel listens, or nullptr for not at all.
+    //
+    // Off by default and a filesystem path rather than a network port. The
+    // feature exists for development and must not be something a build acquires
+    // by accident -- section 10 of the request, and the same instinct that
+    // keeps `--no-bring-up` explicit.
+    const char* debug_socket = nullptr;
+
+    // Which screen to build. `diagnostic` is the test pattern that makes a
+    // broken screenshot visible; `boot` is the capability screen.
+    bool diagnostic_screen = false;
+
     bool help        = false;
     bool list_boards = false;
 };

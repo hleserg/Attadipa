@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Five checks on the documentation, each of a failure that already happened here.
+"""Eight checks: documentation failures that have already happened here.
+`test_check_docs.py` reads this number back against the `CHECKS` tuple at the
+foot of this file. It did not, until #152's third review round: the guard
+covered STATUS.md, TASKS.md and the CI comment, and this docstring was a fourth
+copy nothing looked at -- so the three guarded ones were dragged to Eight and
+the one inside the checker stayed at Seven, on the very commit that made it
+eight. That is the failure this file is proudest of catching, recurring one
+file further in. The colon above is load-bearing: the cue requires it, because
+"the two checks this pull request added" is prose and a claim about the whole
+checker enumerates.
 
 1. Relative links resolve. This repository's documents cite each other
    constantly, and a link that 404s reads exactly like one that works until
@@ -20,7 +29,15 @@
    rejected task's original scope in one, and that is a record rather than a
    second live task.
 
-4. A live task has a body, and a finished one is filed under DONE. Check 2
+4. One OD number names one decision. Four open pull requests each inserted
+   `## OD-16` into OWNER_DECISIONS.md at the same line, for four different
+   decisions. They share no file, so git merges them clean and nothing forces a
+   choice; "keep both" leaves two OD-16 headings and two ambiguous anchors with
+   CI green. Check 3 is TASKS.md-only and check 1 captures a link's `#anchor`
+   and then never looks at it, so nothing saw it. See T-127 for the anchor half,
+   which is a bigger job and is not this check.
+
+5. A live task has a body, and a finished one is filed under DONE. Check 2
    catches the splice at its cause; this catches it at its effect, and catches
    the effect however it got there. The rule is TASKS.md's own, stated two
    paragraphs into it: every live task carries priority, dependencies, goal,
@@ -28,13 +45,51 @@
    first time it ran -- drift that predates the splice by weeks and that no
    syntactic check would ever see.
 
-5. Nothing unexpected is tracked at the repository root. `git add -A` run from
+   THE NUMBERS ABOVE ARE THE `CHECKS` ORDER, which is the order this tool
+   prints. They had not been: 4 and 5 were swapped here relative to the tuple,
+   from before the tuple existed, and nothing reconciles a docstring with a
+   data structure. The first prose to cite one of these numbers did so twice,
+   differently -- TASKS.md said Check 4 for OD numbers and STATUS.md said Check
+   5 -- which is how a stale ordering becomes a wrong instruction. Reconciled in
+   the third review round of #152; a reader can now check any of these against
+   the tool's own output.
+
+6. Nothing unexpected is tracked at the repository root. `git add -A` run from
    the root has twice swept in a file that was only ever meant to be read: an
    archive waiting to be unpacked, and later a vendor documentation page saved
    while researching a part. Both are somebody else's copyrighted material and
    the second one reached `main` before anyone noticed. .gitignore now covers
    the two shapes that have occurred; the allow-list here covers the shape that
    has not occurred yet, because the failure is the sweep and not the extension.
+
+7. A `file.md:123` citation lands on a line that exists and is not blank. These
+   documents cite each other by line number constantly, and a line number is a
+   fact about a file at one moment. A branch that inserted seven lines into
+   HARDWARE_MATRIX.md moved two PMU-rail rows from :144 and :145 to :151 and
+   :152, and left two citations behind -- one of them pointing at a blank line,
+   inside a `BLOCKED:` block whose whole subject is that guessing the GNSS rail
+   means GNSS silently never starts. A citation with nothing at the end of it
+   reads as a claim with no source.
+
+   Without a fingerprint this checks only that there is something there, not
+   that the line still *says* the right thing. WITH one -- a quoted snippet on
+   the citation's own physical line -- it checks the content too, which is what
+   `_report` below does and what this sentence denied until 2026-08-24: it was
+   written before fingerprints existed and never revisited. So a bare citation
+   is the cheap half and a fingerprinted one is not, and which you get is the
+   author's choice per citation. Citations to paths outside the repository
+   -- upstream MeshCore sources and the like -- are skipped, because their line
+   numbers are facts about somebody else's tree.
+
+8. One open-question ID names one question. Check 4 does this for OWNER_DECISIONS
+   and nothing did it for OPEN_QUESTIONS, which is the same register one step
+   earlier and has four times as many identifiers in it. A branch filed the
+   panel's wire byte order as `D19` while `main` was taking `D19` for the
+   display-FPC part marking; the branch merged `main` and nothing re-checked the
+   number, so two unrelated questions shared one ID across nineteen citations in
+   eight files, with every check green. Struck rows count: `~~D12~~` is still
+   spent, and reusing a retired number is the same ambiguity with a subtler
+   cause. Found in review of #152.
 
 Run: python3 tools/docs/check_docs.py [root]
 Exits non-zero on the first category that has findings, after printing all of
@@ -50,9 +105,20 @@ import re
 import subprocess
 import sys
 
-# ](target) and ](target#anchor). Excludes targets containing whitespace, which
-# in Markdown would carry a title string we do not want to parse.
-LINK = re.compile(r"\]\(\s*([^)\s#]+)(#[^)\s]*)?\s*\)")
+# ](target), ](target#anchor) and ](#anchor). Excludes targets containing
+# whitespace, which in Markdown would carry a title string we do not want to
+# parse. The target may be EMPTY -- `](#od-16)` is a link into the current
+# document, and until check 1 verified anchors there was no reason to capture
+# one.
+LINK = re.compile(r"\]\(\s*([^)\s#]*)(#[^)\s]*)?\s*\)")
+
+# GitHub builds a heading's anchor by lowercasing it, dropping everything that
+# is not a letter, a digit, a space, a hyphen or an underscore, and turning
+# spaces into hyphens. Markdown emphasis and inline code disappear with the
+# punctuation, which is why `## OD-16 — A1, A2 and A3` answers to
+# `#od-16--a1-a2-and-a3`: the em dash goes, its two spaces do not.
+HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+ANCHOR_STRIP = re.compile(r"[^\w\- ]", re.UNICODE)
 FENCE = re.compile(r"^\s*(```|~~~)")
 TASK_HEADING = re.compile(r"^###\s+(T-\d+[a-z]?)\b")
 # Runs of backticks delimit an inline code span, and a span does not survive a
@@ -86,6 +152,35 @@ def strip_fences(text: str) -> list[tuple[int, str]]:
     return [(n, line) for n, line, fenced in scan_lines(text) if not fenced]
 
 
+def without_code_spans(line: str) -> str:
+    """The line with every inline code span blanked, offsets preserved.
+
+    `](#some-anchor)` inside backticks is TEXT -- GitHub renders it as the
+    characters, not as a link -- so a document illustrating link syntax was
+    being read as making the link. That is the same defect the `EXAMPLE.md`
+    reservation exists for, one check over: an illustration became an
+    assertion, and the document reporting it was the one describing the fix.
+    Blanking rather than deleting keeps every column where it was, so a
+    reported line number still points at the right place. An unbalanced
+    backtick would swallow the rest of the line here; check 2 exists to report
+    exactly that, so it cannot pass unnoticed.
+    """
+    out = list(line)
+    spans = list(TICK_RUN.finditer(line))
+    i = 0
+    while i < len(spans):
+        opener = spans[i]
+        for j in range(i + 1, len(spans)):
+            if spans[j].group(0) == opener.group(0):
+                for k in range(opener.start(), spans[j].end()):
+                    out[k] = " "
+                i = j + 1
+                break
+        else:
+            break
+    return "".join(out)
+
+
 def markdown_files(root: str) -> list[str]:
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -96,24 +191,385 @@ def markdown_files(root: str) -> list[str]:
     return sorted(found)
 
 
+def heading_anchors(text: str) -> set[str]:
+    """Every anchor the headings of one document answer to.
+
+    A repeated heading gets `-1`, `-2` and so on, in document order, which is
+    how GitHub disambiguates and how `#od-16-1` would be written by hand.
+    Headings inside fenced blocks are not headings.
+    """
+    seen: dict[str, int] = {}
+    anchors: set[str] = set()
+    for _lineno, line, fenced in scan_lines(text):
+        if fenced:
+            continue
+        match = HEADING.match(line)
+        if not match:
+            continue
+        slug = ANCHOR_STRIP.sub("", match.group(2).lower()).replace(" ", "-")
+        if not slug:
+            continue
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        anchors.add(slug if count == 0 else "%s-%d" % (slug, count))
+    return anchors
+
+
 def check_links(root: str) -> list[str]:
     problems = []
+    anchor_cache: dict[str, set[str] | None] = {}
+
+    def anchors_of(target: str):
+        if target not in anchor_cache:
+            try:
+                with open(target, encoding="utf-8") as handle:
+                    anchor_cache[target] = heading_anchors(handle.read())
+            except (OSError, UnicodeDecodeError):
+                anchor_cache[target] = None
+        return anchor_cache[target]
+
     for path in markdown_files(root):
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
         here = os.path.dirname(path)
         for lineno, line in strip_fences(text):
-            for match in LINK.finditer(line):
-                target = match.group(1)
+            for match in LINK.finditer(without_code_spans(line)):
+                target, anchor = match.group(1), match.group(2)
                 if target.startswith(EXTERNAL) or target.startswith("<"):
+                    continue
+                if not target and not anchor:
                     continue
                 # A repository-root-absolute link is written /like/this; treat it
                 # as relative to the root rather than to the filesystem.
                 base = root if target.startswith("/") else here
-                resolved = os.path.normpath(os.path.join(base, target.lstrip("/")))
+                resolved = (
+                    path
+                    if not target
+                    else os.path.normpath(os.path.join(base, target.lstrip("/")))
+                )
+                rel = os.path.relpath(path, root)
                 if not os.path.exists(resolved):
-                    rel = os.path.relpath(path, root)
                     problems.append(f"{rel}:{lineno}: link target does not exist: {target}")
+                    continue
+                # AND THE `#anchor` IS HALF THE LINK. Check 1 captured it and
+                # then never looked at it, which is recorded as T-127 and is
+                # what makes an OD-number collision survive a merge: renumber
+                # one of two `## OD-16` headings and every `#od-16` link in the
+                # repository silently lands at the top of the file, CI green.
+                # A missing anchor is a 404 the reader only notices by ending
+                # up in the wrong place, which is worse than a 404 they see.
+                if not anchor or len(anchor) < 2 or not resolved.endswith(".md"):
+                    continue
+                known = anchors_of(resolved)
+                if known is None or anchor[1:] in known:
+                    continue
+                where = "this document" if resolved == path else target
+                problems.append(
+                    "%s:%d: no heading in %s answers to the anchor %s"
+                    % (rel, lineno, where, anchor)
+                )
+    return problems
+
+
+# A citation of the form `path/to/file.md:123` or `file.h:12-34`, as this
+# repository writes them: inside backticks, in a link, or bare in prose. The
+# suffix list is the file kinds actually cited here; widening it would start
+# matching version strings and times.
+# The leading class allows `.` because a relative path starts with one:
+# `[ADR-0003](../adr/0003-radio-not-lora.md):109-111` was captured from the `a`
+# of `adr/`, resolved from nowhere, and silently skipped as "not a file in this
+# repository" -- while three documents said citations were now checked. Found in
+# review. `\b` cannot open the pattern once `.` may lead it, so the boundary is
+# a look-behind for a character that could continue a path.
+#
+# AND A DOT-DIRECTORY IS A PATH TOO. `(?:\.{1,2}/)*` only admits `./` and `../`,
+# so `.github/workflows/ci.yml:281` matched nothing: the pattern cannot start at
+# the `.`, and starting at the `g` is what the look-behind exists to refuse. Two
+# citations to that file sat 211 lines out of date because the check that three
+# documents call the answer to citation drift could not see them at all. Found
+# in review; `\.?` before the first path character is the whole fix.
+CITATION = re.compile(
+    r"(?<![A-Za-z0-9_./-])((?:\.{1,2}/)*\.?[A-Za-z0-9_][A-Za-z0-9_./-]*"
+    r"\.(?:md|cpp|h|hpp|py|sh|yml|yaml|json|jq|txt|cmake))"
+    # The `)` is a Markdown link closing before the line number:
+    # `[ADR-0003](../adr/0003-radio-not-lora.md):109-111`. Not captured.
+    #
+    # NO WHITESPACE AROUND THE SEPARATOR, and that is the whole of the rule.
+    # Allowing it turned "STATUS.md:843 - 26 lines below" -- ordinary English,
+    # a correct citation followed by a correct number -- into the range 843-26,
+    # which then failed as a descending range and reddened CI for a true
+    # sentence. Every real range in this repository is written closed up.
+    # Found in review.
+    r"\)?:(\d+)(?:[-\u2013](\d+))?\b"
+)
+
+# An optional FINGERPRINT after a citation: `HARDWARE_MATRIX.md:357 "Display
+# FPC"`. A bare line number rots every time anybody inserts a paragraph above
+# it, and it rots SILENTLY -- the line it lands on is real and non-blank, so
+# nothing here could see it. Two citations in this repository were thirteen
+# lines out and pointed at a real, wrong row for weeks. With a fingerprint the
+# check reads the cited line and says where the text actually went, which turns
+# drift from an undetectable defect into a one-line fix. Opt-in by design:
+# adding one is a promise this check then keeps.
+# The optional `](...)` is the tail of a Markdown link: these documents write
+# `[HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md)`, and the citation match ends
+# inside it, so a fingerprint written after the link would otherwise be seen by
+# nothing -- a promise silently not kept, which is worse than no promise.
+FINGERPRINT = re.compile(
+    r'\A`?(?:\]\([^)]*\))?`?\s*[\u2014-]?\s*"([^"]{3,80})"'
+)
+
+# HOW TO WRITE AN EXAMPLE THAT IS NOT A CITATION. A fingerprint is an
+# assertion, and prose that merely ILLUSTRATES the syntax makes it by accident:
+# STATUS.md and TASKS.md both showed the new form with a real path and a real
+# line number, so the two documents CLAUDE.md tells the next agent to read
+# first were quietly asserting a line number in a third document that neither
+# of them is about. Inserting one line above that row reddens CI naming them.
+# Found in review, and there was no way to write the example inertly -- fences
+# are deliberately not stripped here, and backticks exempt nothing.
+#
+# The escape is a path that resolves to nothing, since an unresolvable citation
+# is already skipped as somebody else's tree. Naming one reserved spelling
+# makes that deliberate rather than folklore, and the check then keeps the
+# reservation: if a file called EXAMPLE.md is ever added, every illustration in
+# the repository silently becomes a live assertion, so the placeholder existing
+# is itself reported.
+PLACEHOLDER = "EXAMPLE.md"
+
+# These documents also cite a sibling by its bare SHOUTING name --
+# `HARDWARE_MATRIX:144`, no extension -- and that spelling is where the defect
+# this check was written for actually lived. Resolved against the tree rather
+# than a hardcoded list, and only when exactly one file answers to the name.
+BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,}):(\d+)(?:[-\u2013](\d+))?\b")
+
+
+def bare_document_index(root: str) -> dict[str, str]:
+    index: dict[str, list[str]] = {}
+    for path in markdown_files(root):
+        stem = os.path.basename(path)[: -len(".md")]
+        index.setdefault(stem, []).append(path)
+    return {name: paths[0] for name, paths in index.items() if len(paths) == 1}
+
+
+# CITED_SUFFIXES mirrors the suffix list inside CITATION: the same file kinds,
+# indexed by basename so a citation written without a path can still be
+# resolved.
+CITED_SUFFIXES = (
+    ".md", ".cpp", ".h", ".hpp", ".py", ".sh", ".yml", ".yaml", ".json",
+    ".jq", ".txt", ".cmake",
+)
+
+
+def basename_index(root: str) -> dict[str, str]:
+    """Every citable file, by basename, where exactly one file answers to it.
+
+    A citation is written with a path only when the writer thought of one.
+    `ARCHITECTURE.md:139` from `docs/research/` resolved neither beside the
+    citing document nor at the repository root, so it was skipped as "somebody
+    else's tree" -- and it was wrong: 139 is inside a `HardwareFeature` enum
+    fence, and the `has()` sites it claims to cite are at 215, 223 and 659.
+    Four citations were being skipped this way. Ambiguity is still a skip: two
+    files with one basename cannot be told apart from the citation alone, and
+    guessing between them would report a line number from the wrong file.
+    """
+    index: dict[str, list[str]] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in filenames:
+            if name.endswith(CITED_SUFFIXES):
+                index.setdefault(name, []).append(os.path.join(dirpath, name))
+    return {name: paths[0] for name, paths in index.items() if len(paths) == 1}
+
+
+def check_citation_lines(root: str) -> list[str]:
+    """A `file:line` citation points at a line that exists, is not blank, and --
+    where the citation carries a fingerprint -- still says what it was cited
+    for."""
+    problems = []
+    cache: dict[str, list[str] | None] = {}
+
+    def lines_of(target: str):
+        if target not in cache:
+            try:
+                with open(target, encoding="utf-8") as handle:
+                    body = handle.read().split("\n")
+                # A file ending in a newline splits to a trailing empty string
+                # that is not a line. Left in, it makes the last line number a
+                # file has look like a valid one, which is the off-by-one this
+                # check exists to catch.
+                if body and body[-1] == "":
+                    body.pop()
+                cache[target] = body
+            except (OSError, UnicodeDecodeError):
+                cache[target] = None
+        return cache[target]
+
+    bare_index = bare_document_index(root)
+    by_basename = basename_index(root)
+    for path in markdown_files(root):
+        if os.path.basename(path) == PLACEHOLDER:
+            problems.append(
+                "%s: %s is the reserved placeholder this repository writes "
+                "citation EXAMPLES with, so it must not exist -- every "
+                "illustration of the syntax would become a live assertion "
+                "about this file. Rename it."
+                % (os.path.relpath(path, root), PLACEHOLDER)
+            )
+    for path in markdown_files(root):
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        here = os.path.dirname(path)
+        rel_self = os.path.relpath(path, root)
+        # Fences are NOT stripped here, unlike every other check in this file.
+        # TASKS.md keeps its `BLOCKED:` records in fenced blocks, and the
+        # citation that sent a reader to a blank line -- on the GNSS rail, the
+        # fact CLAUDE.md holds up as the cost of guessing -- was inside one.
+        for lineno, line, _fenced in scan_lines(text):
+            for match in list(CITATION.finditer(line)) + list(
+                BARE_CITATION.finditer(line)
+            ):
+                cited, first, last = match.group(1), int(match.group(2)), match.group(3)
+                if cited in bare_index:
+                    resolved = bare_index[cited]
+                    body = lines_of(resolved)
+                    if body is not None:
+                        _report(
+                            problems, rel_self, lineno, cited, match, body, line
+                        )
+                    continue
+                # Resolve beside the citing file first, then from the root. A
+                # bare basename -- `TEST_FLEET.md:21` -- is how these documents
+                # cite a sibling, and both spellings appear.
+                for base in (here, root):
+                    resolved = os.path.normpath(os.path.join(base, cited.lstrip("/")))
+                    if os.path.isfile(resolved):
+                        break
+                else:
+                    # Then anywhere in the tree, if exactly one file carries
+                    # that basename -- see basename_index().
+                    resolved = by_basename.get(os.path.basename(cited), "")
+                    if not resolved or "/" in cited.strip("./"):
+                        # Not a file in this repository: an upstream source, a
+                        # renamed path, or a false positive. check_links covers
+                        # the ones written as links; a line number in somebody
+                        # else's tree is not ours to verify. A citation that
+                        # names a DIRECTORY is not resolved by basename either:
+                        # `upstream/foo/ci.yml:12` means their ci.yml, not ours.
+                        continue
+                body = lines_of(resolved)
+                if body is None:
+                    continue
+                _report(problems, rel_self, lineno, cited, match, body, line)
+    return problems
+
+
+def _report(problems, rel_self, lineno, cited, match, body, line="") -> None:
+    first = int(match.group(2))
+    last = match.group(3)
+    span = match.group(0).split(":", 1)[1]
+    # A DESCENDING or ZERO range. `range(30, 12)` is empty and `max()` of it
+    # raises, so the job died on a traceback instead of naming the document --
+    # and `:0` indexed `body[-1]`, quietly approving a citation to the last
+    # line of the file. Prose reaches here: the separator allows spaces, so
+    # "STATUS.md:843 - 26 lines below" parses as the range 843-26. Found in
+    # review; both are now reported rather than crashed on or waved through.
+    if first < 1 or (last is not None and int(last) < first):
+        problems.append(
+            "%s:%d: cites %s:%s, which is not a line range -- a citation reads "
+            "first-last, and lines start at 1"
+            % (rel_self, lineno, cited, span)
+        )
+        return
+    wanted = [first] if last is None else list(range(first, int(last) + 1))
+    if max(wanted) > len(body):
+        problems.append(
+            "%s:%d: cites %s:%s, but that file has %d lines"
+            % (rel_self, lineno, cited, span, len(body))
+        )
+        return
+    if all(not body[n - 1].strip() for n in wanted):
+        problems.append(
+            "%s:%d: cites %s:%s, which is blank -- the lines it named have moved"
+            % (rel_self, lineno, cited, span)
+        )
+        return
+    # And the half a blank-line test cannot see: the cited lines are real, and
+    # about something else entirely.
+    stamp = FINGERPRINT.match(line[match.end() :])
+    if not stamp:
+        return
+    snippet = stamp.group(1)
+    if any(snippet in body[n - 1] for n in wanted):
+        return
+    elsewhere = [n for n, text in enumerate(body, 1) if snippet in text]
+    if elsewhere:
+        problems.append(
+            '%s:%d: cites %s:%s for "%s", which is now at %s'
+            "\n    (illustrating the syntax rather than citing? write it with "
+            "the placeholder path %s, which resolves to nothing)"
+            % (
+                rel_self,
+                lineno,
+                cited,
+                span,
+                snippet,
+                ", ".join(":%d" % n for n in elsewhere[:3]),
+                PLACEHOLDER,
+            )
+        )
+    else:
+        problems.append(
+            '%s:%d: cites %s:%s for "%s", which is not on those lines and is '
+            "not anywhere in that file"
+            "\n    (illustrating the syntax rather than citing? write it with "
+            "the placeholder path %s, which resolves to nothing)"
+            % (rel_self, lineno, cited, span, snippet, PLACEHOLDER)
+        )
+
+
+# `## OD-16 — ...` in OWNER_DECISIONS.md. Level two only: a `### OD-16` under a
+# decision is part of that decision, not a second one.
+DECISION_HEADING = re.compile(r"^##\s+(OD-\d+)\b")
+
+
+def check_decision_ids(root: str) -> list[str]:
+    """One OD number, one decision.
+
+    Four open pull requests each inserted `## OD-16` at the same line of
+    OWNER_DECISIONS.md, for four different owner decisions. Git does conflict on
+    that -- an earlier version of this docstring claimed the branches shared no
+    file and merged clean, and review refuted it with one counterexample: two of
+    them share five files and both insert at the same line. The conflict is real
+    and a person resolves it, which is exactly the problem. "Keep both" is the
+    obvious resolution and the correct one for the prose; it leaves two `## OD-16`
+    headings and two ambiguous anchors, with CI green. Nothing here looked: check
+    3 is TASKS.md-only, and check 1 captures a link's `#anchor` and then never
+    uses it.
+
+    The register is the file people read to find out what the owner decided. Two
+    answers under one number is the same failure as two tasks under one ID, in
+    the document where being wrong is more expensive.
+    """
+    path = os.path.join(root, "docs", "research", "OWNER_DECISIONS.md")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    seen: dict[str, int] = {}
+    problems = []
+    for lineno, line in strip_fences(text):
+        match = DECISION_HEADING.match(line)
+        if not match:
+            continue
+        number = match.group(1)
+        if number in seen:
+            problems.append(
+                f"docs/research/OWNER_DECISIONS.md:{lineno}: {number} is already "
+                f"used at line {seen[number]}. One OD number names one decision; "
+                f"renumber this one and update every citation of it."
+            )
+        else:
+            seen[number] = lineno
     return problems
 
 
@@ -341,16 +797,119 @@ def check_root_files(root: str) -> list[str]:
     return sorted(problems)
 
 
+# `| D19 | ...` or `| ~~D19~~ | ...` at the head of a table row in
+# OPEN_QUESTIONS.md. Letter-and-number, optionally with a lowercase suffix
+# (`D12a`), because that is how the file already sub-divides a question that
+# split in two.
+QUESTION_ROW = re.compile(r"^\|\s*(?:~~)?\s*([A-Z]+\d+[a-z]?)\s*(?:~~)?\s*\|")
+
+
+def check_question_ids(root: str) -> list[str]:
+    """One open-question ID, one question.
+
+    Check 4 does this for OWNER_DECISIONS.md. Nothing did it for
+    OPEN_QUESTIONS.md, which is the register one step earlier -- the questions
+    that become owner decisions -- and carries about four times as many
+    identifiers.
+
+    The failure it exists for: a branch filed the panel's wire byte order as
+    `D19` while `main`, independently, took `D19` for the display-FPC part
+    marking. The branch merged `main` afterwards and the number was not
+    re-checked, because nothing re-checks a number. Two unrelated questions then
+    shared one ID across nineteen citations in eight files, including
+    `OWNER_DECISIONS.md` -- and every check passed, since the rows are in
+    different tables and neither is a heading, a task or a link.
+
+    Struck rows are counted. `~~D12~~` is a retired number, not a free one, and
+    reusing it produces the same ambiguity with a subtler cause: a reader
+    following a citation lands on a question marked RESOLVED and concludes the
+    thing they were asking about is settled.
+
+    FOUR BOUNDS, WRITTEN DOWN BECAUSE EACH IS INVISIBLE FROM THE OUTSIDE.
+    Named in the third review round of #152; the fourth in the fourth.
+
+    * It is bound to a PATH. A missing `OPEN_QUESTIONS.md` returns no findings,
+      and the suite asserts that as intended -- so renaming or moving the file
+      removes this guard silently, with CI green. That is the right behaviour
+      for a repository where the file may not exist yet and the wrong one for a
+      rename, and nothing here can tell those apart.
+    * It is bound to a TABLE SHAPE. Any row in that file whose first cell reads
+      `[A-Z]+` then digits then an optional letter is treated as a register
+      entry -- written out rather than as the pattern, because this docstring is
+      not raw and `\\d` in it is an invalid escape sequence: a SyntaxWarning on
+      every compile today and a SyntaxError in a future Python. The pattern
+      itself is `QUESTION_ROW` above. Found in review -- and it is the only
+      backslash of its kind in the file. And the file already
+      holds nine tables. A future cross-reference table repeating register IDs
+      would redden CI on a correct document, with a message telling the reader
+      to renumber a row that is only being cited -- the exact harm this check
+      exists to prevent. Clean today: every ID in the register is unique and no
+      other table reuses the shape.
+    * It is bound to an UNDECORATED ID. `QUESTION_ROW` requires the first cell
+      to be the bare identifier, so `| **D22** |` and a backticked one are
+      invisible to it -- and this repository backticks identifiers nearly
+      everywhere else, including inside the D21 row #152 itself added. All 78
+      rows are undecorated today, so this is latent rather than live; it is a
+      bound and not a bug, because a register row is a definition and the plain
+      form is the one to insist on. Worth knowing that emphasising a row is how
+      you silently leave the register. Found in the fourth review round of #152.
+    * It does NOT check that a `D<NN>` cited elsewhere resolves to a live row.
+      That is the half that cost the nineteen hand-edits, and a citation to a
+      retired or renumbered ID is exactly as invisible now as the collision was.
+      A fair follow-up; not covered here, and this docstring should not be read
+      as implying otherwise.
+    """
+    path = os.path.join(root, "docs", "research", "OPEN_QUESTIONS.md")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    seen: dict[str, int] = {}
+    problems = []
+    for lineno, line in strip_fences(text):
+        match = QUESTION_ROW.match(line)
+        if not match:
+            continue
+        number = match.group(1)
+        if number in seen:
+            problems.append(
+                f"docs/research/OPEN_QUESTIONS.md:{lineno}: {number} is already "
+                f"used at line {seen[number]}. One ID names one question; "
+                f"renumber this row and update every citation of it. A struck "
+                f"row still owns its number."
+            )
+        else:
+            seen[number] = lineno
+    return sorted(problems)
+
+
+# The checks this file runs, as data. How many there are is quoted in STATUS.md,
+# TASKS.md, the CI comment AND this file's own docstring, and the copy in
+# STATUS.md said Six on the very commit that added the seventh -- so the number
+# now has one source, and test_check_docs.py holds the quotes to it. The
+# docstring joined that list one round later, having gone stale in exactly the
+# way the sentence above describes while sitting six hundred lines above it.
+# Found in review, twice.
+CHECKS = (
+    ("Broken relative links", "check_links"),
+    ("Unclosed inline code spans", "check_code_spans"),
+    ("Duplicate task IDs", "check_task_ids"),
+    ("Duplicate owner-decision numbers", "check_decision_ids"),
+    ("Tasks with no body, or finished work outside DONE", "check_task_bodies"),
+    ("Unexpected files tracked at the repository root", "check_root_files"),
+    (
+        "Citations pointing at a blank line or past the end of a file",
+        "check_citation_lines",
+    ),
+    ("Duplicate open-question IDs", "check_question_ids"),
+)
+
+
 def main() -> int:
     root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
     failed = False
-    for title, problems in (
-        ("Broken relative links", check_links(root)),
-        ("Unclosed inline code spans", check_code_spans(root)),
-        ("Duplicate task IDs", check_task_ids(root)),
-        ("Tasks with no body, or finished work outside DONE", check_task_bodies(root)),
-        ("Unexpected files tracked at the repository root", check_root_files(root)),
-    ):
+    for title, function in CHECKS:
+        problems = globals()[function](root)
         if problems:
             failed = True
             print(f"{title}: {len(problems)}", file=sys.stderr)
