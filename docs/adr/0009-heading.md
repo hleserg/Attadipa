@@ -370,10 +370,43 @@ The invitation is in `position.h`'s own header — *"Ordered worst to best … s
 fold over several providers can take the best without a table"* — and nothing in
 the tree, or in this section, says the winner of that fold may not change
 silently. **So this ADR states the premise rather than leaving it implied: a
-`TrustEvaluator` sees one body's positions, and a change of primary provider
-invalidates the RATE BASELINES — `previous_position_`, `previous_altitude_mm_`
-and their timestamps — because a rate computed across two bodies is not a rate.**
-That is a constraint on `LocationService` when it is written.
+`TrustEvaluator` sees one body's positions, and a rate computed across two
+bodies is not a rate, so a change of primary provider must not be allowed to
+produce one.** That is a constraint on `LocationService` when it is written.
+
+**The constraint is on the computation and not on the stored coordinate, and
+the difference between the two is a weight-45 detector.** An earlier version of
+this paragraph stated it against the storage — *"invalidates the rate
+baselines: `previous_position_`, `previous_altitude_mm_` and their
+timestamps"* — which sounds like the narrower of the two and is the wider.
+`previous_position_` has a second consumer.
+`core/src/trust.cpp:515` "if (usable_for_rate && have_previous_) {" opens
+**one** block, and that block computes two things: `jumped`, which is a rate,
+and `moved_at_rest` (`core/src/trust.cpp:534` "moved_at_rest =") — which is not
+a rate at all. It is an absolute distance against `jump_while_still_mm`, and
+the tree says so in its own words directly above it: *"It needs no interval at
+all, which is exactly why gating it on `in_order` cost the most."* Clear
+`have_previous_` and `MotionDisagreement` (45) goes dark with `PositionJump`
+(40), because nothing separates them.
+
+On this section's own configuration that is not a conservative failure but a
+**false all-clear**. With the fold alternating at 1 Hz every observation
+follows a change of primary provider, so a storage-scoped constraint leaves
+`have_previous_` false at *every* `observe()`: neither detector ever evaluates,
+the score stays 0, and the device sits **`Trusted`** — the opposite of the
+`Untrusted` the reproduction below predicts for the premise being ignored. On a
+Waveshare board, where there is no local receiver and `NodeGnss` is the only
+position there is, any fold that alternates for any reason would take with it
+the one position detector this section establishes as live there at all.
+
+**So what may not cross bodies is the rate — `jumped` and `climbed_absurd` —
+and not the stored coordinate.** Whether `moved_at_rest` should *also* be gated
+on the source is a different question with a different answer available to it,
+and it is **T-141's** rather than this ADR's: a position from a body 300 m away
+that walks while this wrist is still is the OD-8 evidence, not the noise, and
+switching it off as a side effect of a rate constraint would be exactly the
+thing this section refuses at its head: *"An ADR does not get to switch off a
+trust signal in prose."*
 
 **The mechanism is deliberately not named here, and it is emphatically not
 `reset()`.** An earlier version of this paragraph said it was, and that was
@@ -390,8 +423,9 @@ state re-asserted `Trusted`, an `unconfirmed_` allegation converted into an
 all-clear, `has_last_trusted_` cleared so §5's growing-uncertainty fallback has
 nothing to draw, and the bounded transition log §7 requires for a field report
 wiped. A device that alternates providers could then never leave `Trusted` at
-all. **The constraint must cost the baselines and nothing else**, and no call
-with that scope exists today.
+all. **The constraint must cost the rate and nothing else**, and no call with
+that scope exists today — `reset()` is far too wide, and so, by the paragraphs
+above, is clearing `have_previous_`.
 
 Writing it is **T-141's**, beside the `PositionJump` source test its acceptance
 already offers — the two are the same decision seen from either end of the
@@ -464,17 +498,39 @@ what the screen may say a position is *about*. It is not an input to
 today**. It does not gate `compare_provider` or `moved_at_rest` — and that
 sentence is about *co-location*, not about whether those detectors should be
 gated by something: the motion work gates `moved_at_rest` on `SensorBody`,
-which is T-141's question and is not contradicted here. This paragraph read as though nothing
+which is T-141's question and is not contradicted here — nor is it contradicted
+by the rate premise above, which is precisely why that premise is stated against
+the *rate* and not against `previous_position_`. This paragraph read as though nothing
 should ever gate them, which was never the claim.
 
 **Who produces the value, because a state nothing can set is a constant.** A fix
 from this board's own receiver is co-located *by construction* — the receiver is
-strapped to the wrist the position is about — so a `LocalGnss` fix carries
+part of the device the position is about — so a `LocalGnss` fix carries
 `SameBody`. Everything else carries `Unknown`, because nothing on either board
 measures the separation between the wearer and whatever produced the fix, which
 is this section's own premise. There is deliberately no third producer and no
 way to promote `Unknown` to `SameBody` by inference: the promotion would be the
 confident number on an unobservable quantity that §3 exists to refuse.
+
+***On*, not *wearing*, and the distinction is the whole width of the claim.**
+`SameBody` says the instrument and this device are the same body. It does not
+say the *wearer* is that body, because neither board detects wear. A watch left
+on a bedside table — the state
+`core/src/gnss_power.cpp:113` "of a watch on a bedside table, and it is where the charge is saved."
+names in exactly those words — still produces `LocalGnss`, therefore
+`SameBody`, while the wearer is elsewhere with the node. That is today's
+behaviour and nothing here regresses it. What is being fixed is where the
+limit is written down: [ADR-0011](0011-gnss-integrity.md)'s register row
+already says *"On, not wearing: §3a's producer rule is about the instrument,
+and neither board detects wear"*, and it **delegates** the axis to this section — so the qualification was living in the document that defers and not
+in the one that decides. Where §3 above forbids showing an `Unknown` fix *"as
+the wearer's own instrument's fix"* — quoted rather than cited by line, because
+a citation into this same file drifts the moment this file is edited — the word
+carrying the rule is `Unknown`: `SameBody` buys the unhedged presentation on the
+strength of an *instrument* fact, and closing the remaining gap between the
+instrument and the wearer needs a wear detector neither board has. Naming that
+gap is not a licence to infer across it; **T-026**, which makes co-location a
+biconditional on `LocalGnss`, inherits it as a stated limit rather than a bug.
 
 **`PositionSource` has six enumerators and the *first* is the default.**
 `PositionSource::Unknown` ([`position.h`](../../core/include/attadipa/core/position.h))
@@ -805,7 +861,7 @@ writes one past the end of a member array. The reason-bit reading is the one
 (2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-17): a
 magnetometer is intended, external, on the watch, placement not yet chosen
 (T-109); **the *Attadipa* node will never carry one**, which is the scope §3
-insists in §3a above — OD-7 makes the companion any node, and whether a
+insists on in §3a above — OD-7 makes the companion any node, and whether a
 third party's carries a magnetometer is `UNKNOWN` rather than no. An earlier
 draft of this line said "the node" unqualified, so this ADR contradicted itself
 end to end. What remains open is whether `RemoteSensor` heading is worth

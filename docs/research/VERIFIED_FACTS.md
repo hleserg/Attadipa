@@ -732,13 +732,22 @@ still to take.
   ends of the board's left edge, both fitted.
 - **Source:** S9, confirming S6's "dual digital microphones" on the ES7210.
 
-### The speaker is an AAC part on wires, not a connector
+### The AAC part is on wires, not a connector — and whether it is a speaker is `CONFLICTING`
 
-- **Claim:** `AAC210602A1`, lot `15771`, a metal-can micro-speaker in the back
+- **Claim:** `AAC210602A1`, lot `15771`, a metal-can module in the back
   cover, its red/black pair soldered to `+`/`−` pads at the board's bottom-right.
   Impedance and rated power are not published for this part number — `UNKNOWN`.
+- **Not claimed:** that it is a speaker. The **marking, mounting and wiring** are
+  what S9 establishes; the **function** is `CONFLICTING` — a parallel reading of
+  the same unit calls it a haptic actuator, and AAC makes both, so the part
+  number does not decide it. Tracing the pads decides it, because a speaker sits
+  behind the ES8311/amplifier output and an actuator does not. **T-105**; the row
+  is [HARDWARE_MATRIX](HARDWARE_MATRIX.md)'s Speaker row, `CONFLICTING`. This
+  entry read *"the speaker"* unqualified until 2026-08-24, which put a
+  `CONFLICTING` function inside the file whose whole contract is that its
+  contents are verified.
 - **Source:** S9.
-- **Impact:** small and practical. Both the speaker and any future motor attach
+- **Impact:** small and practical. Both this part and any future motor attach
   by solder, so opening this watch twice means desoldering twice.
 
 ## Read off the silicon of that unit (S10)

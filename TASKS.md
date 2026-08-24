@@ -569,15 +569,29 @@ stale silently. The protocol is
   calls carrying positions from different bodies, which requires a
   `LocationService` that folds across providers and does not exist yet. That is
   why ADR-0009 §3a now states the premise — a `TrustEvaluator` sees one body's
-  positions, and a change of primary provider invalidates the **rate baselines**
-  — rather than leaving it to be discovered. **The premise is this task's to
-  build**, and §3a deliberately does not name the mechanism, because the only
-  existing call that clears `have_previous_` is `TrustEvaluator::reset()` and
-  `trust.h` says on that function that it throws away the local receiver's whole
-  evidence and asserts `Trusted` outright. So the choice this task makes is
-  between a narrower invalidation that costs the baselines and nothing else, and
-  **the source test in the detector instead**; if it takes the second, it says
-  why a constraint on the caller was not enough. What the premise buys is the OD-8 arithmetic staying
+  positions, and a rate computed across two bodies is not a rate, so a change of
+  primary provider must not be allowed to produce one — rather than leaving it
+  to be discovered. **The premise is this task's to build**, and §3a
+  deliberately does not name the mechanism, because the only existing call that
+  clears `have_previous_` is `TrustEvaluator::reset()` and `trust.h` says on
+  that function that it throws away the local receiver's whole evidence and
+  asserts `Trusted` outright. **Nor may the mechanism simply clear
+  `have_previous_`**, which is the same trap one level finer and the reason §3a
+  now states the constraint against the *computation* rather than against the
+  stored coordinate:
+  `core/src/trust.cpp:515` "if (usable_for_rate && have_previous_) {"
+  opens one block over both `jumped` and `moved_at_rest`
+  (`core/src/trust.cpp:534` "moved_at_rest ="), and `moved_at_rest` is an
+  absolute distance rather than a rate, so invalidating the baseline on every
+  provider change takes `MotionDisagreement` (45) down with `PositionJump` (40)
+  and leaves the OD-8 configuration below sitting **`Trusted`** — a false
+  all-clear, which is worse than the `Untrusted` an unhonoured premise produces.
+  So the choice this task makes is between a narrower invalidation that costs
+  the rate and nothing else, and **the source test in the detector instead**; if
+  it takes the second, it says why a constraint on the caller was not enough.
+  Either way `moved_at_rest`'s own gating is decided here on purpose rather than
+  inherited as a side effect.
+  What the premise buys is the OD-8 arithmetic staying
   where §3a puts it: without it, a wearer at a desk and a node 300 m away
   alternating at 1 Hz raise `PositionJump` (40) and `MotionDisagreement` (45)
   together, 85 clears `untrust_at` (60), and the device is `Untrusted` with no
@@ -736,8 +750,9 @@ stale silently. The protocol is
 - **Hardware required:** partly. The module pull-up question is a meter on the
   board or a vendor schematic; the blast-radius decision is a design decision and
   needs neither.
-- **ID note:** allocated as **T-130**, clear of the highest ID on `main` at the
-  time of writing and of every
+- **ID note:** allocated as **T-130**, clear of the highest ID on `main` when
+  this task was written — `main` has since moved past it, which does not
+  un-allocate the number — and of every
   number visible on an open branch, because four branches have already collided
   on `T-111`–`T-113`. **This file is one of the four**: the `T-111` below is
   this branch's claim on that number and `main` has since taken `T-112` and
@@ -2213,7 +2228,10 @@ stale silently. The protocol is
     citation it never touched**, and `pr-merge-sweep.yml`, which gates on the
     head commit's `statusCheckRollup`, stops sweeping all of them. One bullet's
     tripwire would stop the whole queue — the same shape as the stale parked
-    patch T-158 refused to make fatal for the same reason. The prose above says
+    patch [#180](https://github.com/hleserg/Attadipa/pull/180) refused to make
+    fatal for the same reason (that branch allocates the task number, which
+    therefore does not resolve from here, so the pull request is what is
+    cited). The prose above says
     in plain English what #112 must not leave behind, and prose is what a person
     reads; a citation whose failure mode is a repository-wide stall is not worth
     the guard. Found in the tenth review round of
@@ -2962,10 +2980,15 @@ A1's schematic-revision
   one in ([#83](https://github.com/hleserg/Attadipa/issues/83),
   [OD-17](docs/research/OWNER_DECISIONS.md#od-17--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)).
   **Those two epics are `BLOCKED`, not `NOT POSSIBLE` — and they are not blocked
-  on the same thing.** The audio/magnetometer one (G-09) has its
-  disturbing source on the unit — the speaker is `VERIFIED` at
-  `WAVESHARE_BOARD_RECEIVED` §1.8 — but it is **not gated on placement alone**,
-  which an earlier version of this bullet said. It also needs a **rail** (G-14,
+  on the same thing.** The audio/magnetometer one (G-09) has a candidate
+  disturbing source on the unit — `AAC210602A1` is `VERIFIED` as a **part** at
+  `WAVESHARE_BOARD_RECEIVED` §1.8 and `CONFLICTING` as a *function*, speaker or
+  haptic actuator (**T-105**), so whether there is a speaker to disturb anything
+  is itself open. This bullet said *"the speaker is `VERIFIED`"* until the
+  fourteenth review round of
+  [#94](https://github.com/hleserg/Attadipa/pull/94), which is the fifth place
+  that sentence had to be corrected. It is also **not gated on placement
+  alone**, which an earlier version of this bullet said. It also needs a **rail** (G-14,
   still open in the same table), the module pull-ups, and the seventh-device I2C
   hazard **T-130** settled: a sensor with no rail measures nothing, and one
   sharing a rail with the subsystem it is measuring returns a confounded number

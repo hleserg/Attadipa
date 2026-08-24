@@ -793,7 +793,7 @@ exactly as `latest_position_` is. It is conditional, needing consecutive
 missed: no `LocationService` exists to produce them yet. `position.h`'s own
 header invites the pattern — *"a fold over several providers can take the best
 without a table"* — and nothing said the winner of that fold may not change
-without a `reset()`. §3a now states that premise, which is a constraint on
+silently. §3a now states that premise, which is a constraint on
 `LocationService` when it is written, and T-141 may still decide it wants a
 source test in the detector instead. Without it the OD-8 configuration is worse
 than §3a predicted: a wearer at a desk and a node 300 m away alternating at 1 Hz
@@ -813,6 +813,42 @@ two states, and T-109 said otherwise; and ADR-0011 §2 no longer prescribes
 whether co-location is a stored field or an accessor over `PositionSource`,
 because a biconditional makes it derivable and T-026 is where that choice
 belongs.
+
+**The thirteenth round found that premise naming the wrong mechanism, and the
+fourteenth found the correction still one level too wide.** Round thirteen: §3a
+said a change of primary provider should call `TrustEvaluator::reset()`, which
+`trust.h` describes as throwing away the local receiver's entire evidence and
+asserting `Trusted` outright — so a fold flipping between a canopy-stale local
+fix and `NodeGnss` would have erased a live `ReceiverSpoofing` on every flip and
+a device that alternates providers could never leave `Trusted` at all. The ADR
+now says the mechanism is deliberately unnamed and emphatically not `reset()`.
+Round fourteen: the replacement scoped the constraint to *"the rate baselines —
+`previous_position_`, `previous_altitude_mm_` and their timestamps"*, which
+sounds narrower than `reset()` and, for the detector that matters most on
+Waveshare, is not narrow enough. `core/src/trust.cpp:515` opens **one** block on
+`have_previous_` over both `jumped`, a rate, and `moved_at_rest`, which is an
+absolute distance against `jump_while_still_mm` and needs no interval at all.
+Clear the baseline on every provider change and `MotionDisagreement` (45) goes
+dark with `PositionJump` (40); on §3a's own 1 Hz alternating configuration
+`have_previous_` is then false at every `observe()`, the score stays 0, and the
+device sits **`Trusted`** — a false all-clear, which is the opposite failure to
+the `Untrusted` an unhonoured premise gives. §3a and T-141 now state the
+constraint against the **computation** — `jumped` and `climbed_absurd` — and
+leave `moved_at_rest`'s own gating to T-141 as a decision rather than a side
+effect. **Three smaller ones from the same round.** The *"on, not wearing"*
+qualification lived in ADR-0011's register row, which **delegates** the
+co-location axis to §3a, and not in §3a, which decides it — a watch on a bedside
+table still produces `SameBody` while the wearer is elsewhere with the node, and
+that limit now sits in the deciding document. The *"the speaker is `VERIFIED`"*
+correction had reached four derived rows and stopped short of the two documents
+they cite, `WAVESHARE_BOARD_RECEIVED` §1.8 and `VERIFIED_FACTS`, which is the
+same shape this branch names five times over; both now say the **part** is
+`VERIFIED` and the **function** `CONFLICTING`, T-105. And a `TASKS.md` bullet
+cited `T-158`, a task number allocated on
+[#180](https://github.com/hleserg/Attadipa/pull/180)'s branch and resolving to
+nothing from here — no check catches that, because check 7 verifies `file:line`
+citations and the task-ID check finds duplicates, so it now cites the pull
+request.
 
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as

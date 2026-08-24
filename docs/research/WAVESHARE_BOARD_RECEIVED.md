@@ -233,17 +233,32 @@ production run populates it, and whether the product listing promises one are
 three separate questions and none is answered here. The owner has been asked to
 check the box. Filed as **T-097**.
 
-### 1.8 The speaker is an AAC part, wired rather than connectored. `VERIFIED`
+### 1.8 The AAC part is wired rather than connectored. The part is `VERIFIED`; what it *is* is `CONFLICTING`
 
-Mounted in the back cover: a metal-can micro-speaker marked **`AAC210602A1`**,
+Mounted in the back cover: a metal-can module marked **`AAC210602A1`**,
 lot `15771`, with a red/black wire pair on a short FPC tail. The wires land on a
-`+`/`−` pad pair at the bottom-right of the mainboard. AAC Technologies is a
-speaker manufacturer; the part number does not resolve to a public datasheet, so
-its impedance and rated power are `UNKNOWN` and matter only if somebody drives
-it near its limit.
+`+`/`−` pad pair at the bottom-right of the mainboard. The part number does not
+resolve to a public datasheet, so its impedance and rated power are `UNKNOWN`
+and matter only if somebody drives it near its limit.
 
-The relevant structural point is that the speaker, like the motor, connects by
-**solder pads and wires**, not by a connector. Opening this watch for any reason
+**What is `VERIFIED` here is the marking, the mounting and the wiring — not the
+function**, and this section said *"the speaker"* unqualified until the
+fourteenth review round of [#94](https://github.com/hleserg/Attadipa/pull/94),
+which is a problem because five other documents cite *this* section for the
+part. A parallel reading of the same unit calls it a **haptic actuator** rather
+than a speaker, and **AAC Technologies makes both**, so the marking does not
+decide it. Against the actuator reading: the case has a grille slot directly
+over it, the schematic carries a *separate* motor path on GPIO 18 → Q1 →
+`P1`/`P2`, and the factory demo ships `MusicPlayer`. The matrix therefore
+carries the row as `CONFLICTING`
+([HARDWARE_MATRIX](HARDWARE_MATRIX.md), Speaker row — S9 and S11), and it is
+resolved by **tracing the pads**: a speaker sits behind the ES8311/amplifier
+output and an actuator does not. Filed as **T-105**. Anything that depends on
+there being a speaker — G-09's interference test, C-08/C-09 — is gated on that
+tracing rather than on this section's title.
+
+The relevant structural point survives either reading: this part, like the
+motor, connects by **solder pads and wires**, not by a connector. Opening this watch for any reason
 means desoldering, and that is worth knowing before anyone plans a repeated
 teardown.
 
