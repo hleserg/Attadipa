@@ -610,11 +610,55 @@ stated contract and `kPositionValidityCount` assuming `Valid` is last, and
 `TrustReason::NotColocated` bit — is the dangerous one, because reason bits carry
 weight *toward* `Untrusted`, so every node-supplied fix on a board with no
 receiver of its own would take a permanent trust penalty. That is the product
-§3a exists to protect. Co-location now has a field of its own beside
-`PositionSource`, named as an **eleventh axis** under
+§3a exists to protect. Co-location is now a **required, explicitly carried
+state**, named as an **eleventh axis** under
 [ADR-0011](docs/adr/0011-gnss-integrity.md) §2, and it is in the ADR's
 **Committed to**, its **Testable** list and T-026's acceptance — it was in none
-of them, so nothing would have noticed it was never built.
+of them, so nothing would have noticed it was never built. **Whether it is a
+stored field or an accessor over `PositionSource` is T-026's**, and all four
+places now say that. They did not until the eleventh review round: §3a mandated
+a field four times over, ADR-0011 §2 retracted the mandate and argued for the
+accessor, and ADR-0011 then delegated the question **back to §3a by name** — so
+following its own pointer landed a reader on the mandate it had just withdrawn,
+and T-026 carried both answers twenty-eight lines apart in one acceptance
+bullet. Under-determined rather than ambiguous: an agent building the field
+would have been rejected for satisfying the ADR that defines the state, and
+building the accessor would have violated §3a's *Committed to*. **Two
+consequences fell out with it.** §3a's testable item *co-location costs a fix
+nothing in `TrustState`* is constructible under a stored field and not under an
+accessor — the two cannot vary independently once co-location is an accessor
+over `PositionSource` — so the item now says how each replay is built and why
+the biconditional is enforced at construction rather than in the type: a fixture
+must be able to build the forbidden pairing deliberately, and a type that makes
+it unrepresentable makes the assertion unwritable. And **the simulator can never
+exercise the co-located path at all**: an honestly-stamped simulator fix is
+`Simulated`, therefore `Unknown` under the producer rule, and stamping
+`LocalGnss` to reach `SameBody` costs the source label the sibling item asserts
+on. That is the rule holding, not a gap — the vehicle is the host trust suite,
+and both §3a and T-026 now say so rather than leaving an acceptance that implies
+a simulator assertion running over an empty set.
+
+**And the same axis is being answered on another branch under another name.**
+[#112](https://github.com/hleserg/Attadipa/pull/112) adds `SensorBody` in a new
+`core/motion.h`, `SensorBody body_of(PositionSource)` in `position.h`, and
+**ADR-0013 §3** to govern them, making motion disagreement inert unless the two
+readings are demonstrably the same object. §3a knew #112's *behaviour* and
+neither its type nor its ADR until this round. `body_of()` **is** the accessor
+ADR-0011 §2 recommends, so the contradiction above was also a flat collision
+with an open branch, and fixing the first removes the second. **Merge order,
+decided rather than left to whichever CI is green first: #94 first, then #112.**
+#112 writes the *same* §3a heading with a three-paragraph version of a section
+this branch developed over eleven rounds; it must renumber `T-111` and its
+owner-decision record regardless, since `main` already holds both; and its A5/A6
+record is byte-identical in heading to this branch's **OD-17**, so once this
+lands #112's copy is a **duplicate to delete**, not to renumber. What #112 still
+carries afterwards is everything §3a does not say. §3a's item *the two trust
+fixtures still pass unchanged* is now explicitly against the suite as it stands
+**when T-026 runs**, because #112 rewrites those fixtures on purpose and a
+pinned item would read a correct change as a regression. T-141's scope after
+#112 is the other two detectors plus whether ADR-0013's answer generalises —
+writing a fourth ADR to decide what ADR-0013 decided is the two-documents-one-
+axis failure that task's own history is about.
 
 *§3a sits next to two detectors already in the tree, and the second draft named
 one of them and tried to overrule it in prose.*

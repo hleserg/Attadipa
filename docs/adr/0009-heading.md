@@ -10,8 +10,16 @@ is that the condition it was written against is now settled.
 Amended: 2026-08-23 — §3a's operative sentence rewritten. It named
 `PositionValidity` / `TrustState` as the state's home; neither can hold it, and
 one of the three readings would have penalised every node-supplied fix on a
-board that has no receiver of its own. Co-location now has a field of its own.
-Found in review.
+board that has no receiver of its own. Found in review.
+Amended: 2026-08-24 — §3a states the axis and no longer states the
+representation. The 2026-08-23 amendment replaced three wrong homes with one
+mandated home, and ADR-0011 §2 then retracted that mandate and delegated the
+choice to T-026 while still pointing at this section for it. One question, two
+documents, opposite answers, and a P1 task told both. **T-026 chooses between a
+stored field and an accessor over `PositionSource`**; this section says only
+that the state is required, explicit, and not any of the three wrong homes.
+Found in the eleventh review round of
+[#94](https://github.com/hleserg/Attadipa/pull/94).
 
 ## Context
 
@@ -184,16 +192,34 @@ resting on an unobservable quantity, which is the failure §3 above exists to
 refuse, moved from heading to position. §3 gates orientation with four
 conditions and refuses otherwise. Cross-body position gets the same shape:
 
-> **Co-location is a required state, carried in a field of its own beside
-> [`PositionSource`](../../core/include/attadipa/core/position.h) — never an
-> assumption. It defaults to `Unknown`, and `Unknown` is the ordinary case
+> **Co-location is a required state, carried explicitly and readable from every
+> observation — never an assumption, and never folded into an axis that means
+> something else. It defaults to `Unknown`, and `Unknown` is the ordinary case
 > rather than a failure. What it withholds is the *claim*: a position whose
 > co-location is `Unknown` may be shown, and must be shown with its actual
 > source — never as the wearer's own instrument's fix.**
 
-**A field of its own, and the emphasis is load-bearing.** An earlier version of
-this section said the state was *"carried on `PositionValidity` / `TrustState`"*.
-Both are wrong, and review caught all three readings an implementer could take:
+**This section states the axis and does not choose the representation.** A
+stored field beside
+[`PositionSource`](../../core/include/attadipa/core/position.h) and an accessor
+over `PositionSource` both satisfy the rule above; **T-026 decides which**, and
+[ADR-0011](0011-gnss-integrity.md) §2 says the same in the same words. It had
+to, because the two documents said opposite things until the eleventh review
+round of [#94](https://github.com/hleserg/Attadipa/pull/94): this section
+mandated a field four times over, ADR-0011 §2 retracted the mandate and argued
+for the accessor — *"an accessor serves it at no risk, while a stored field buys
+a field that can be forgotten"* — and ADR-0011 then **delegated the question
+back here by name**. Follow that pointer and you land on the mandate ADR-0011
+had just withdrawn. An agent picking up T-026 would have built to the first
+line of its acceptance and been rejected for satisfying the ADR that defines the
+state. That is under-determined rather than ambiguous, and it is this branch's
+own *table-corrected-without-its-prose* failure applied to the delegating
+document and not the deciding one.
+
+**What does not move is which homes are wrong**, and that is the load-bearing
+half. An earlier version of this section said the state was *"carried on
+`PositionValidity` / `TrustState`"*. Both are wrong, and review caught all three
+readings an implementer could take:
 
 - [`PositionValidity`](../../core/include/attadipa/core/position.h) is
   `NoFix < Stale < Degraded < Valid`, and the file makes the order a contract —
@@ -348,10 +374,48 @@ which sharpens the point rather than closing it: this ADR must not read as
 settled-and-singular while another branch removes a case it does not mention.
 Found in review.
 
+**And #112 answers the same axis under another name, in another ADR, which is a
+merge-order question rather than a disagreement.** Named here rather than left
+for whoever merges second, because until the eleventh review round this section
+knew #112's *behaviour* and neither its **type** nor its **ADR**. #112 adds
+`SensorBody { Unknown, Watch, Node, Companion }` in a new `core/motion.h`, a
+free function `SensorBody body_of(PositionSource source);` in
+[`position.h`](../../core/include/attadipa/core/position.h), and
+**ADR-0013 §3** to govern them; it makes motion disagreement inert unless the
+two readings are demonstrably the same object. `body_of()` **is** an accessor
+over `PositionSource` — which is precisely the representation ADR-0011 §2
+recommends and which this section, as amended above, no longer forbids. Under
+the earlier wording the two branches were in flat contradiction: `:187` required
+a stored field for a value #112's tree computes. They are not any more, and
+T-026 may well find that the accessor it is asked to choose between is
+`body_of()` with a different question asked of it — co-location `SameBody` is
+`body_of(source) == SensorBody::Watch`, and the two names are worth reconciling
+rather than both existing.
+
+**The merge order, decided rather than left to whichever CI is green first.**
+#94 lands before #112. Three reasons, none of them about which is better: this
+section is the *same* §3a heading #112 also writes, developed through eleven
+review rounds against this branch's diff, so #112 rebasing onto it loses
+nothing while the reverse loses all of that; #112 must renumber `T-111` and its
+owner-decision record **regardless**, because `main` already holds `T-111` and
+`OD-16`; and #112's A5/A6 record is byte-identical in heading to this branch's
+**OD-17**, so once this lands #112's copy is a duplicate to be **deleted**, not
+renumbered — two records of one owner decision is the hazard the register exists
+to prevent. What #112 then still carries is everything this section does not
+say: `SensorBody`, `body_of()`, ADR-0013 and the motion half. Its Testable item
+**Three** below — *the two fixtures the trust suite already holds still pass
+unchanged* — is asserted against the suite as it stands **when T-026 runs**, not
+as of this ADR: #112 rewrites those fixtures on purpose, and an item that reads
+otherwise would make a correct change look like a regression.
+
 **So this section governs the claim, not the arithmetic.** Co-location decides
 what the screen may say a position is *about*. It is not an input to
-`TrustState`, it does not gate `compare_provider` or `moved_at_rest`, and it
-changes nothing in the two fixtures above.
+`TrustState`, and it changes nothing in the two fixtures above **as they stand
+today**. It does not gate `compare_provider` or `moved_at_rest` — and that
+sentence is about *co-location*, not about whether those detectors should be
+gated by something: #112 gates `moved_at_rest` on `SensorBody`, which is T-141's
+question and is not contradicted here. This paragraph read as though nothing
+should ever gate them, which was never the claim.
 
 **Who produces the value, because a state nothing can set is a constant.** A fix
 from this board's own receiver is co-located *by construction* — the receiver is
@@ -556,10 +620,13 @@ time the user stops walking.
 chosen. A calibration record that carries sensor identity, provider identity,
 axis mapping, version, timestamp and quality (final §27), and that is invalidated
 when the provider changes. A Navigator that is designed for the states it will
-actually be in. **Co-location as a field of its own beside `PositionSource`**
-(§3a), defaulting to `Unknown`, never folded into `PositionValidity`,
-`TrustState` or a `TrustReason` bit — an eleventh axis under ADR-0011 §2 and
-subject to that section's rule. **`SameBody` is produced by exactly one thing**:
+actually be in. **Co-location as a required, explicitly carried state** (§3a),
+defaulting to `Unknown`, never folded into `PositionValidity`, `TrustState` or a
+`TrustReason` bit — an eleventh axis under ADR-0011 §2 and subject to that
+section's rule. **Whether it is a stored field or an accessor over
+`PositionSource` is T-026's**, not this ADR's; this list said *a field of its
+own* until the eleventh review round of #94, which is the sentence that put this
+ADR and ADR-0011 §2 in contradiction. **`SameBody` is produced by exactly one thing**:
 this board's own receiver, for its own fixes. Everything arriving over the node
 link is `Unknown`, and nothing promotes it. **It is not an input to the trust
 engine** — `compare_provider` keeps the behaviour its tests describe, and
@@ -602,17 +669,54 @@ back the source the fix actually has, and the case that catches the wrong
 reading is the one where crediting a node is impossible. `Simulated` is the
 same assertion in the simulator — **once the rig stamps it**, which it does not
 today, so T-026 makes the fixture change first and the assertion second.
+**And that closes the co-located path to the simulator, deliberately.** The
+producer rule below gives `SameBody` to `LocalGnss` alone with *no way to
+promote `Unknown` by inference*, so an honestly-stamped simulator fix is
+`Simulated`, therefore `Unknown`, therefore the simulator can **never** exercise
+`SameBody` — and stamping `LocalGnss` to reach it costs the source label item
+One asserts against. That is not a defect to route around: it is the producer
+rule holding. **The vehicle for the co-located path is the host trust suite**,
+which constructs observations directly and is where items Two, Three and Four
+already live; the simulator's job on this axis is to prove the `Unknown` path
+renders honestly, which is item One. Nothing is broken today because `sim/`
+produces no `GnssObservation`s at all — but T-026's acceptance is what somebody
+builds to, and an acceptance that implies a simulator assertion over `SameBody`
+buys a test that runs over an empty set and passes having exercised nothing,
+which is the failure this section identifies one level down for `Simulated`.
+Found in the eleventh review round of
+[#94](https://github.com/hleserg/Attadipa/pull/94).
 **Two:**
 co-location costs a fix nothing in `TrustState` — take **one** fix, replay it
 with its co-location `SameBody` and with it `Unknown`, and assert the verdict
 and the reason bits are identical. Scoped to the fix's own weight on purpose:
 this is the assertion that fails if somebody re-implements the state as a
 `TrustReason` bit, and it says nothing about what a *pair* comparison does,
-because the pair rule is T-141's to decide and not this ADR's. **Three:** the
+because the pair rule is T-141's to decide and not this ADR's.
+**How the two replays are built depends on the representation, and T-026 says
+which in the same change that chooses it.** Under an **accessor** over
+`PositionSource` the two cannot vary independently at all: the fixture is one
+fix stamped `LocalGnss` and one stamped `NodeGnss`, and the assertion becomes
+*the source changing costs the fix nothing in `TrustState` beyond what
+`PositionSource` already costs it* — which is the same guard against a
+`TrustReason` bit and is constructible. Under a **stored field** the two replays
+vary the field directly, and one of them — `SameBody` with a non-`LocalGnss`
+source, or `Unknown` with `LocalGnss` — is a pairing the biconditional forbids,
+which is why T-026 requires that biconditional enforced **where the observation
+is constructed** rather than in the type: a fixture must be able to build the
+forbidden pairing on purpose to prove it is refused, and a type that makes it
+unrepresentable also makes this item unwritable. Stated because the eleventh
+review round found this item constructible under one representation and not the
+other, in a section that had stopped naming which. **Three:** the
 two fixtures the trust suite already holds still pass unchanged — a `NodeGnss`
 fix ~550 m out raises `ProviderDisagreement`, and a live bit is left standing by
 a comparison that could not be made. An implementation of §3a that reddens
-either has changed something §3a did not ask for. **Four:** the field is not
+either has changed something §3a did not ask for. **Against the suite as it
+stands when T-026 runs, not as of this ADR**:
+[#112](https://github.com/hleserg/Attadipa/pull/112) rewrites both fixtures on
+purpose — that is its subject — so an item pinned to today's file would make a
+correct change look like a regression. What is asserted is that *§3a* does not
+move them, not that nothing does. Stated in the eleventh review round of
+[#94](https://github.com/hleserg/Attadipa/pull/94). **Four:** the field is not
 `PositionValidity`, not `TrustState` and not a reason bit — and the guard for
 that is **the exhaustive `to_string` switch, not a count assertion**. An earlier
 version of this item specified *"a compile-time assertion that

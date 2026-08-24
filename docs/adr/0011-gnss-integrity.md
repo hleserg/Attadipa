@@ -113,8 +113,13 @@ under §3a's producer rule it is a function of
 gives `SameBody`, everything else `Unknown`), which is why T-026 asserts the two
 agree rather than letting them drift apart. It earns a field because the
 question it answers is proximity and `PositionSource`'s is provenance, and a
-reader should not have to infer one from the other. [ADR-0009](0009-heading.md) §3a decides where it lives and what it
-withholds; it is recorded here because this table is the register an
+reader should not have to infer one from the other. [ADR-0009](0009-heading.md) §3a decides what it means and what it
+withholds — **not where it lives**, which is T-026's and is said so in both
+documents since the eleventh review round of
+[#94](https://github.com/hleserg/Attadipa/pull/94); this sentence read *"decides
+where it lives"* while the paragraph below it retracted exactly that, so
+following the pointer landed a reader back on a mandate this ADR had just
+withdrawn. It is recorded here because this table is the register an
 implementer consults, and the three wrong homes §3a rules out —
 `PositionValidity`, **`TrustState`**, a `TrustReason` bit — are precisely what a
 reader of this section alone would reach for. An earlier version of this

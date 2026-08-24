@@ -343,7 +343,21 @@ stale silently. The protocol is
   another body's position, and the second is the one
   [#112](https://github.com/hleserg/Attadipa/pull/112) is already changing on
   the code side — so this ADR must read that branch rather than assume the
-  tree. Whatever it decides, it states what each reason bit then means under
+  tree. **And that branch has now written an ADR of its own, which this
+  acceptance has to reckon with rather than duplicate**:
+  [#112](https://github.com/hleserg/Attadipa/pull/112) adds
+  `docs/adr/0013-node-motion.md` §3 with `SensorBody { Unknown, Watch, Node,
+  Companion }` in a new `core/motion.h` and a free function `SensorBody
+  body_of(PositionSource source);`, and makes motion disagreement **inert unless
+  the two readings are demonstrably the same object** — which is one of the four
+  options above, taken, for one of the three detectors. So T-141's scope after
+  #112 lands is the *other two* plus whether ADR-0013's answer generalises;
+  writing a fourth ADR to decide what ADR-0013 has decided would be two
+  documents on one axis, which is the failure this task's own history is about.
+  Note the naming overlap that also has to be settled there or in T-026:
+  co-location `SameBody` is `body_of(source) == SensorBody::Watch`, so the tree
+  would otherwise carry two names for one distinction. Found in the eleventh
+  review round of [#94](https://github.com/hleserg/Attadipa/pull/94). Whatever it decides, it states what each reason bit then means under
   [ADR-0011](docs/adr/0011-gnss-integrity.md) §5, the section that requires a
   reason code to record *which* evidence moved the state. **Not §4**, which this
   acceptance cited until 2026-08-24: §4 is *"Differential corrections belong to a
@@ -1425,11 +1439,16 @@ stale silently. The protocol is
   state table from ADR-0009 §5 rendered, including *standing still* as a
   designed screen rather than a blank dial; **no configuration of inputs draws a
   wrist-relative arrow from a `NodeBody` or `CourseOverGround` source.**
-  From ADR-0009 §3a: **co-location carried in a field of its own beside
-  `PositionSource`**, defaulting to `Unknown`, and never in `PositionValidity`,
+  From ADR-0009 §3a: **co-location carried explicitly and readable from every
+  observation**, defaulting to `Unknown`, and never in `PositionValidity`,
   `TrustState` or a `TrustReason` bit — an eleventh axis under
-  [ADR-0011](docs/adr/0011-gnss-integrity.md) §2. `SameBody` is produced by one
-  thing only — this board's own receiver, for its own fixes; everything over the
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §2. **Whether it is a stored field
+  or an accessor over `PositionSource` is this task's to decide**, and both ADRs
+  now say so; this bullet mandated the field while the paragraph twenty-eight
+  lines below it said the choice was open, so the first line of the acceptance
+  and its own argument told an implementer opposite things. Corrected in the
+  eleventh review round of [#94](https://github.com/hleserg/Attadipa/pull/94).
+  `SameBody` is produced by one thing only — this board's own receiver, for its own fixes; everything over the
   node link is `Unknown` and nothing promotes it.
   **And because that makes co-location a function of `PositionSource`, the two
   fields are asserted to agree — in BOTH directions**: `SameBody` **if and only
@@ -1482,13 +1501,36 @@ stale silently. The protocol is
   assertion written against `Simulated` today runs over an empty set and passes
   having exercised nothing. Changing the simulator and replay fixtures to stamp
   it is part of this task, and the assertion comes second. Found in review.
+  **And stamping it honestly closes the co-located path to the simulator, which
+  is the producer rule holding rather than a gap to route around.** A `Simulated`
+  fix is `Unknown` by §3a's producer rule, and there is deliberately no way to
+  promote it — so the simulator can never exercise `SameBody`, and stamping
+  `LocalGnss` to reach it costs the source label the case above asserts on. **The
+  vehicle for the co-located path is the host trust suite**, which constructs
+  observations directly; the simulator's job on this axis is the `Unknown` path
+  rendering honestly. Say so rather than leaving an acceptance that implies a
+  simulator assertion over `SameBody` — that assertion is the empty-set failure
+  this bullet is about, one level up. Found in the eleventh review round of
+  [#94](https://github.com/hleserg/Attadipa/pull/94).
   Without this the
   Waveshare board, which has no receiver of its own, loses the only navigation
   story it has. **Co-location costs a fix nothing in `TrustState`**: take one
   fix, replay it with the state `SameBody` and with it `Unknown`, and assert an
   identical verdict and identical reason bits — scoped to the fix's own weight,
   which is the assertion that fails if somebody re-implements the state as a
-  reason bit.
+  reason bit. **How the two replays are constructed follows from the
+  representation this task chooses, and it says which.** Under an **accessor**
+  the two cannot vary independently at all, so the fixture varies
+  `PositionSource` instead — `LocalGnss` against `NodeGnss` — and the assertion
+  becomes *the source change costs nothing beyond what `PositionSource` already
+  costs*. Under a **stored field** the replays vary the field, and one of them is
+  a pairing the biconditional forbids; that is why the biconditional is enforced
+  **where the observation is constructed** rather than in the type, since a
+  fixture must be able to build the forbidden pairing deliberately — which this
+  acceptance already requires above — and a type that makes it unrepresentable
+  makes this assertion unwritable. Found in the eleventh review round of
+  [#94](https://github.com/hleserg/Attadipa/pull/94), which reproduced the item
+  as constructible under one representation and not the other.
   **It is not an input to either trust detector that fires on this
   configuration, and there are two.** `compare_provider` raises
   `ProviderDisagreement` past 250 m over a *pair* at weight 30; the heavier
