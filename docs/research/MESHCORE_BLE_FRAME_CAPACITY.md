@@ -313,9 +313,10 @@ Consequences only. Designs go in ADRs and tasks.
    (`link/include/attadipa/link/frame_codec.h:57-71`). The conclusion does not
    depend on settling that reading: 184 + 10 = 194 still exceeds 192.
 
-   So `kMaxFrame` is 192 + 7 = **199** (`frame_codec.h:51-71`), and at MTU 176
-   a BLE notification carries 173. **A maximum node-link frame does not fit one
-   notification.** ADR-0005 §8 already calls fragmentation mandatory and names BLE
+   So `kMaxFrame` is 192 + 7 = **199** (`frame_codec.h:51-71`). At a negotiated
+   MTU of 176 a BLE notification carries 173, so a 199-byte frame does not fit
+   that link. **The Attadipa node link's MTU is not established and must not be
+   inferred from MeshCore's configuration.** ADR-0005 §8 already calls fragmentation mandatory and names BLE
    as the presumed transport; what this document adds is the number it must be
    sized against — *the link's, not the buffer's*, which is the same mistake one
    layer down. Registered rather than closed.

@@ -3427,10 +3427,11 @@ A1's schematic-revision
   wrapper checks, `post` passes all 31.
 - **Vanilla at our pin cannot have that defect, and has a plainer one.**
   `maxFrameSize` does not exist in the tree at all. Four producers size against
-  the buffer: `logRxRaw` fills a frame to exactly 176, and three others guard at
+  the buffer: `logRxRaw` fills a frame to exactly 176, and two others guard at
   `sizeof(out_frame)` = 177 — one byte more than any transport accepts — so at
   exactly one input length (`payload_len` = 173) they build a frame that is
-  dropped with no message in a stock build.
+  dropped with no message in a stock build. `onTraceRecv` has a different
+  path-length guard; whether it reaches 177 remains [#142](https://github.com/hleserg/Attadipa/issues/142)'s parser-bounds question.
 - **The one that reaches the ceiling carries raw received LoRa bytes**, so a
   truncated frame reads as a radio fault. A client must rule out its own link
   before it says anything about the radio.
@@ -3439,7 +3440,9 @@ A1's schematic-revision
   nothing to converge yet — `main` is still our pin.
 - **No ADR.** ADR-0005 §8 already mandates fragmentation; this work corrects the
   link quantity it must use, not the architectural decision. `link/` is reached:
-  its 199-byte maximum frame does not fit a 173-byte BLE notification.
+  its 199-byte maximum frame must be compared with that link's negotiated MTU,
+  which has not been established; MeshCore's 173-byte observed BLE ceiling is
+  not Attadipa's link contract.
 - **Nothing measured here.** The field evidence is upstream's, on their boards
   and a different BLE stack. `NOT EXECUTED — HARDWARE REQUIRED` — the plan is
   §7 of the document, and its first three steps are folded into T-072a.

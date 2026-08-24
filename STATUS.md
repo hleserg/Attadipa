@@ -93,13 +93,14 @@ in both cases.
   transports overrode eight methods and not the capacity query. **Vanilla at our
   pin cannot have that defect — it has no capacity query at all**, and four of
   its producers size against the buffer: `logRxRaw` fills a frame to exactly 176,
-  and three others build 177 bytes at one input length, which every transport
-  refuses silently. The one that reaches the ceiling carries **raw received LoRa
+  and two others build 177 bytes at `payload_len` 173, which every transport
+  refuses silently; whether `onTraceRecv` can reach 177 remains [#142](https://github.com/hleserg/Attadipa/issues/142)'s
+  parser-bounds question. The one that reaches the ceiling carries **raw received LoRa
   bytes**, so a truncated frame reads as a radio fault. It also lands on
-  [ADR-0005](docs/adr/0005-node-protocol.md) §8: `link/`'s own `kMaxFrame` is 199
-  and does not fit one notification either, and its fragmentation — already
-  mandatory, not yet built — must be sized against the link rather than the
-  buffer. Nothing measured here; the field evidence is upstream's, on their
+  [ADR-0005](docs/adr/0005-node-protocol.md) §8: `link/`'s own `kMaxFrame` is 199,
+  but its negotiated BLE MTU is not established. Its fragmentation — already
+  mandatory, not yet built — must be sized against the negotiated link rather
+  than MeshCore's 173-byte observed ceiling or the buffer. Nothing measured here; the field evidence is upstream's, on their
   boards and a different BLE stack.
 - **T-042 — GNSS integrity — done**, in its architecture-only scope.
   [ADR-0011](docs/adr/0011-gnss-integrity.md): the observation keeps the
