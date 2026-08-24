@@ -13,7 +13,7 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
 > **Status: early implementation.** The host-testable layers exist and are
 > tested — the hardware inventory, the capability registry, the transport, the
-> GNSS trust evaluator, the design-token system, the desktop simulator, and 28
+> GNSS trust evaluator, the design-token system, the desktop simulator, and 30
 > host tests. One target board is now on the owner's desk and has been read over
 > its own USB port, which is the first evidence in this repository that came
 > from silicon rather than from a document. **No Attadipa firmware has run on
@@ -25,7 +25,7 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
 | | |
 |---|---|
-| **Builds and is tested on a host** | seven libraries and **28 tests** — **33** when the desktop simulator is built, which needs SDL2 and is off by default — under GCC and Clang, under `-Werror` and under ASan+UBSan. Two of them compile one fixture against two different libraries to prove an application still cannot include a hardware header |
+| **Builds and is tested on a host** | seven libraries and **30 tests** — **35** when the desktop simulator is built, which needs SDL2 and is off by default — under GCC and Clang, under `-Werror` and under ASan+UBSan. Two of them compile one fixture against two different libraries to prove an application still cannot include a hardware header |
 | **Can be looked at while it runs** | the interface can be screenshotted and driven from another process — tap, swipe, press a button, take another picture. Against the simulator today; the same protocol and the same tool will reach a device when there is firmware for one |
 | **Runs two geometries from one binary** | 240 × 240 and 410 × 502, selected at run time, fitting any of the five candidate T-Watch radios and a present-or-absent node without a rebuild |
 | **Draws through design tokens** | twelve colour roles across day and night themes with WCAG contrast arithmetic, plus a CI check that refuses a raw hex value or a pixel count back into screen code |

@@ -15,7 +15,7 @@ items closed plus one the review did not list
 ## Current implementation
 
 **Attadipa has code.** As of 2026-08-24 the repository builds seven libraries and
-**twenty-eight tests** — **thirty-three** with the desktop simulator, which is off
+**thirty tests** — **thirty-five** with the desktop simulator, which is off
 by default because it needs SDL2 — and has a font pipeline whose output has been
 compiled for the target and measured. Since 2026-08-23 it can also **drive its
 own interface and look at the result** — screenshot, inject a tap or a swipe or
@@ -751,7 +751,7 @@ firmware endpoint, the day there is firmware.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-eight tests** pass, locally and in CI on `main` since #12 merged — and **thirty-three** with `-DATTADIPA_BUILD_SIMULATOR=ON`, which is the *Simulator build and headless run* job and not this row: `CMakeLists.txt` defaults the option off and the host job configures without it, so a thirty-three here was counting another job's work — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
+| Host / native | builds; **thirty tests** pass, locally and in CI on `main` since #12 merged — and **thirty-five** with `-DATTADIPA_BUILD_SIMULATOR=ON`, which is the *Simulator build and headless run* job and not this row: `CMakeLists.txt` defaults the option off and the host job configures without it, so a thirty-five here was counting another job's work — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code, plus the three added on 2026-08-23 for the input layer, the
 debug wire format and the host tool -- the last of which holds an independent
