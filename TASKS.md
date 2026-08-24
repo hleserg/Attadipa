@@ -2832,7 +2832,7 @@ Recommended next action:
   [#135](https://github.com/hleserg/Attadipa/pull/135) unmerged on 2026-08-24
   and that `docs/automation/pending/README.md` exists for. The whole change is
   parked as `docs/automation/pending/129-report-path-claim-release.patch`, which
-  carries the workflow half, the test, and the four documents its landing
+  carries the workflow half, the test, and the five documents its landing
   forces. Three commands from a local session apply it; the patch's own header
   lists them and what to change in this file afterwards — including moving this
   entry to DONE. **Until then a run that ends on the `report` path still leaves
