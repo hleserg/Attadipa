@@ -825,14 +825,55 @@ four more things at no cost:
   one-step-per-hold and every policy weight are untouched. **What it costs is
   stated rather than discovered later:** a device that never hears another
   positive word does not climb back on its own, and the ways out are a detector
-  saying the condition is over or `reset()` **when the provider goes away** —
-  never a timer. That scope is part of the sentence: `reset()` asserts `Trusted`
+  saying the condition is over, `reset()`, or `stop_awaiting()` **when the
+  provider goes away**. Not *never a timer*, which is what an earlier version of
+  this said and what the code stopped honouring the moment `stop_awaiting()`
+  existed: after that call the recovery hold does run and the state does climb
+  on the clock, with nothing retracted. What makes it legitimate is narrower —
+  the allegation was about a **pair** and one of the pair is gone, so there is
+  no longer anything a retraction could come from. Silence from a detector that
+  is still there still buys nothing. The scope on `reset()` is part of the
+  sentence: `reset()` asserts `Trusted`
   immediately, discards the transition log and drops the remembered position, so
   it answers *a different provider is here now* and never *this one is still
   stuck* — and the pin most likely to be met comes from the device's **own**
   receiver, which does not detach. It is also **per boot**: nothing in `core/`
   persists trust state, so a pin lasts one session rather than for ever.
-  **Three review findings on the second pass, one of them blocking.**
+  **Three review findings on the second pass, one of them blocking**, and three
+  more on the third, two of them blocking. The third pass found that the answer
+  to the second had opened a narrower door in the same direction. `stop_awaiting()`
+  fired for **both** halves of the freshness gate, and only one of them is the
+  second source going quiet: the other is **our own** receiver duty-cycling off
+  while a present, fresh node keeps disagreeing. Reproduced with nothing exotic
+  — `gnss_power.h` exists to duty-cycle that receiver — the device reached
+  `Trusted` about twenty seconds later with the node still saying it was 550 m
+  out, and then stored the disputed coordinate as `last_trusted_position()`, the
+  fallback the interface falls back to. It now stops awaiting only when the
+  **other** side cannot answer. The same finding's other half ran the opposite
+  way: the early return for a relayed frame with no position, or one out of
+  range, sat *above* the call, so a node that went indoors — the ordinary way a
+  second source stops being one — left the device pinned exactly as before. The
+  fix had keyed on *an uncomparable frame arrived* where it had to key on *the
+  other side stopped being comparable*; both are one predicate now, and both
+  directions are mutation-checked. `provider_detached()` is added as the honest
+  hook for the case `compare_provider()` only approximates, and the case it
+  still approximates badly — a provider that is present and permanently late —
+  is **T-152** rather than a sentence nobody owns. **And the second blocking
+  finding was five sentences.** *"Recovery is earned from a retraction, never
+  from the clock"* appears in `trust.cpp`, `trust.h`, ADR-0011 §5.1, `STATUS.md`
+  and `TASKS.md`, and `stop_awaiting()` had made all five false: past that call
+  the recovery hold runs and the state climbs on the clock with nothing
+  retracted, which the ADR's own rejected alternatives call *"a timer wearing a
+  state machine's clothes"*. All five now say what is true — three exits, not
+  two — and say why the third is legitimate: the allegation was about a **pair**
+  and one of the pair is gone, so there is nothing left for a retraction to come
+  from. Silence from a detector that is still there still buys nothing. Three
+  smaller ones: the one-tick window where a snapshot reads not-`Trusted` with
+  both masks empty is written down beside the call that opens it; the diagnostic-
+  screen promise that rests on `TrustReason` strings `l10n/strings.toml` does not
+  have is a line in **T-062**; and `DiagnosticsSnapshot` needing a version, a
+  magic and a size before anything persists it is now in **T-046**'s acceptance,
+  its layout having changed twice with no reader able to tell.
   `ProviderDisagreement` was the one reason whose only retraction sits *behind*
   the freshness gate in `compare_provider()`, so once that gate closed the TTL
   moved the bit into `unconfirmed_` and nothing in the system could ever

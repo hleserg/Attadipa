@@ -232,6 +232,41 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-152 · A present provider that is permanently uncomparable still releases the hold
+- **Priority:** P2 — narrow, and it is the residual of a fix rather than a new
+  defect.
+- **Dependencies:** `core/src/trust.cpp` (**done**); `provider_detached()`
+  (**done**).
+- **Goal:** `compare_provider()` calls `stop_awaiting(ProviderDisagreement)`
+  when the second source cannot answer — no position, an out-of-range one, or a
+  measurement older than `provider_comparison_window`. The first two mean the
+  provider really has stopped being one. The third does not: a node relaying
+  fixes at 1 Hz whose measurement times are consistently 6 s old is **present,
+  is disagreeing, and stops being awaited anyway**, so the device climbs back to
+  `Trusted` in about twenty seconds with the node still saying it is 550 m out.
+  `14-a-relayed-fix-arrives-old.trace` records relayed ages of 2 s and 40 s over
+  *"a link that can queue, retry and reconnect"*, so a persistently late relay is
+  ordinary rather than exotic. Found in the second review round of
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which named it and did
+  not block on it.
+- **Acceptance:** it decides one of — a `TrustReason` meaning *a second source
+  is present and cannot be compared*, which is a live reason that holds the
+  state down and is retracted the moment one comparable frame arrives; or
+  `stop_awaiting()` on the stale path is removed entirely and the only exits
+  become an uncomparable-by-content frame and `provider_detached()`, with the
+  owner obliged to call it; or the release is kept and the bound is stated where
+  a reader meets it rather than only in this task. Whichever it picks,
+  `tests/test_trust.cpp`'s
+  `test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared`
+  is rewritten to assert the decision — it currently pins today's behaviour with
+  a deliberately disagreeing frame, so it will go red on purpose.
+- **What must not be assumed:** that a new enumerator is free. Every
+  `TrustReason` costs a bit in a mask that `DiagnosticsSnapshot` carries and a
+  weight in `policy()`, and a reason nothing can retract is the pin this whole
+  area exists to remove — the retraction has to be designed with it.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-034a · The mascot, at a size somebody drew
@@ -298,6 +333,17 @@ stale silently. The protocol is
   (the movement/altitude baseline, below) — and the rule from the research
   prompt applies: **do not stop after the first fix.** Issue #151 (recovery
   completing on silence alone, below) has since been closed the same way.
+  **And one finding is about text rather than code.** `trust.h` and
+  `diagnostics.h` both justify keeping a per-reason mask by what a diagnostic
+  screen will show — *"can name it rather than showing a device stuck for no
+  visible reason"* — and there is no `l10n/strings.toml` entry for any
+  `TrustReason` or `TrustState`. `to_string(TrustReason)` returns English
+  identifiers, which is right for a diagnostics dump and is not a sentence a
+  user reads, so the promise is currently kept by something that cannot keep it.
+  Either the strings exist, or the promise says *a support bundle* instead of *a
+  screen*. Pre-existing; made twice more by
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which is why it is
+  written down here rather than left to the next reader of a header.
 
 - **A state that cannot say "nobody has checked".** `GnssCapabilities`
   (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
@@ -411,8 +457,12 @@ stale silently. The protocol is
   sixteen checks and four trace expectations red. The rule is now written down
   as [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, including what it costs:
   a device that never hears another positive word does not climb back on its
-  own, and the ways out are a detector saying so or `reset()` **when the
-  provider goes away** — never a timer. The scope on `reset()` is load-bearing:
+  own, and the ways out are a detector saying so, `reset()`, or
+  `stop_awaiting()` **when the provider goes away** — three, not two, and not
+  *never a timer*: past `stop_awaiting()` the recovery hold runs and the state
+  climbs on the clock with nothing retracted, which is legitimate only because
+  the allegation was about a pair and one of the pair is gone. The scope on
+  `reset()` is load-bearing:
   it asserts `Trusted` immediately and skips both holds, so it answers *a
   different provider is here now*, and the pin most likely to be met comes from
   the device's own receiver, which never detaches. It is also per boot, nothing
@@ -952,7 +1002,16 @@ stale silently. The protocol is
 - **Acceptance:** no critical structure is ever overwritten in place; a migration
   never destroys its source; the ~2× storage headroom the pattern needs is
   checked rather than assumed; dirty state is flushed on every shutdown and
-  reboot path (#2627).
+  reboot path (#2627); **and `DiagnosticsSnapshot` carries a version, a magic
+  and its own size** before anything writes it anywhere. `tests/test_diagnostics.cpp`
+  pins a memcpy-into-RTC contract and the struct has no stamp of any kind, so a
+  snapshot written before an OTA and read after it is garbage with nothing to
+  detect it by. Latent today because nothing persists one; the layout has now
+  changed twice
+  ([#153](https://github.com/hleserg/Attadipa/pull/153),
+  [#163](https://github.com/hleserg/Attadipa/pull/163)) without a reader
+  noticing, which is exactly the condition for the defect. Found in review of
+  #153.
 - **Research status:** done —
   [meshcore-1.17-review §6](docs/upstream/meshcore-1.17-review.md)
 - **Implementation status:** not started

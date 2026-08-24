@@ -1173,17 +1173,27 @@ void test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared()
     CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
     CHECK(evaluator.engine().state() != TrustState::Trusted);
 
-    // The reproduction from the review, unchanged: the receiver keeps running
-    // at 1 Hz, the node never leaves, and every node fix agrees exactly -- but
-    // each was measured 8 s ago, so the comparison window refuses it.
+    // The reproduction from the review: the receiver keeps running at 1 Hz, the
+    // node never leaves, and each relayed frame was measured 8 s ago, so the
+    // comparison window refuses it.
+    //
+    // The relayed position is deliberately the DISAGREEING one, not an agreeing
+    // one. The second review round pointed out that an agreeing frame proves
+    // nothing here: the gate closes before `distance_mm()` is ever computed, so
+    // "every node fix agrees exactly" was a fact the code never learned and the
+    // test would have passed identically either way. Sending the far-away fix
+    // makes the assertion say what it actually means -- a frame outside the
+    // window is not evidence in EITHER direction, whatever it contains -- and
+    // states the bound this branch accepts: a node that is present and
+    // permanently uncomparable does stop being awaited. That bound is T-152.
     const std::uint64_t window = evaluator.engine().policy().provider_comparison_window.value;
     const std::uint64_t behind = window + 3000;
     for (std::uint64_t ms = 1000; ms <= 120000; ms += 1000) {
         evaluator.observe(good_fix(ms), PositionValidity::Valid, MotionEvidence{}, {}, at(ms));
         if (ms % 5000 == 0 && ms > behind) {
-            GnssObservation agreeing = good_fix(ms - behind, kLat);
-            agreeing.source          = PositionSource::NodeGnss;
-            evaluator.compare_provider(agreeing, at(ms));
+            GnssObservation too_old = good_fix(ms - behind, kLat + 50000);
+            too_old.source          = PositionSource::NodeGnss;
+            evaluator.compare_provider(too_old, at(ms));
         }
     }
 
@@ -1227,6 +1237,136 @@ void test_an_uncomparable_frame_does_not_withdraw_a_live_disagreement()
 
     CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
     CHECK(evaluator.engine().state() != TrustState::Trusted);
+}
+
+// The half of the gate that must NOT lift the pin, which the first version of
+// this branch did not distinguish. `stop_awaiting()` means the detector's
+// subject has gone; for `ProviderDisagreement` the subject is the second
+// source. A gate closed because OUR OWN receiver went quiet is the device
+// having stopped listening while a present, fresh, still-disagreeing node keeps
+// talking -- so lifting the pin there releases the state on the one input that
+// has not moved.
+//
+// The review's reproduction, followed to its end: duty-cycle the receiver off,
+// let the node keep relaying fresh disagreeing fixes at 1 Hz, and before the
+// fix the device reached `Trusted` about twenty seconds later and then stored
+// the disputed coordinate as `last_trusted_position()`. Nothing exotic --
+// duty-cycling the receiver is what `gnss_power.h` is for. Found in review of
+// #153, second round.
+void test_our_own_receiver_going_quiet_does_not_lift_a_node_s_allegation()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+    GnssObservation elsewhere = good_fix(0, kLat + 50000);
+    elsewhere.source          = PositionSource::NodeGnss;
+    evaluator.compare_provider(elsewhere, at(0));
+    CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+
+    // From here the receiver says nothing at all: no observe(), so
+    // `latest_position_at_` never advances. The node is fresh every second and
+    // still 550 m away.
+    //
+    // `refresh()` is passed `Valid` on purpose. A duty-cycled receiver's last
+    // fix classifies `Valid` for 30 s (`position.h`), and passing `Stale` would
+    // put `StalePosition` -- weight 20, above `recover_below` -- on the score,
+    // which holds the state down by itself and would make this test pass no
+    // matter what `compare_provider()` did. The point is that the ALLEGATION
+    // survives, so nothing else may be holding it up. It is `refresh()` rather
+    // than nothing at all because the TTL runs there: without it the bit never
+    // reaches `unconfirmed_` and the pin under test never forms.
+    for (std::uint64_t ms = 1000; ms <= 60000; ms += 1000) {
+        GnssObservation fresh_and_disagreeing = good_fix(ms, kLat + 50000);
+        fresh_and_disagreeing.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(fresh_and_disagreeing, at(ms));
+        evaluator.refresh(PositionValidity::Valid, at(ms));
+    }
+
+    // Never withdrawn: either still live, or lapsed and still awaited. And the
+    // device never climbs back, with no other reason available to hold it.
+    CHECK(evaluator.engine().awaiting_confirmation(TrustReason::ProviderDisagreement) ||
+          (evaluator.engine().reasons() & trust_reason_bit(TrustReason::ProviderDisagreement)) != 0);
+    CHECK(evaluator.engine().state() != TrustState::Trusted);
+}
+
+// The other half of the same finding: the pin must lift on the paths where the
+// second source really does stop being one, and the first version returned
+// before `stop_awaiting()` on both of them. A node that goes indoors relays
+// frames with no fix; one whose position is nonsense is refused by `in_range`.
+// Either way the retraction has become unreachable, and keying on "an
+// uncomparable frame arrived" instead of "the other side stopped being
+// comparable" left the device pinned for the rest of the boot. Found in review
+// of #153, second round.
+void test_a_node_that_stops_relaying_a_position_stops_being_awaited()
+{
+    const GnssObservation kNoFix    = []{ GnssObservation o = good_fix(0); o.position.reset(); return o; }();
+    const GnssObservation kOutOfRange = []{
+        GnssObservation o = good_fix(0);
+        o.position        = Position{1'000'000'000, 0};  // 100 degrees north
+        return o;
+    }();
+
+    for (int variant = 0; variant < 2; ++variant) {
+        TrustEvaluator evaluator;
+        evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+        GnssObservation elsewhere = good_fix(0, kLat + 50000);
+        elsewhere.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(elsewhere, at(0));
+        CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+
+        for (std::uint64_t ms = 1000; ms <= 120000; ms += 1000) {
+            evaluator.observe(good_fix(ms), PositionValidity::Valid, MotionEvidence{}, {}, at(ms));
+            if (ms % 5000 == 0) {
+                GnssObservation useless = variant == 0 ? kNoFix : kOutOfRange;
+                useless.source          = PositionSource::NodeGnss;
+                useless.observed_at     = at(ms);
+                evaluator.compare_provider(useless, at(ms));
+            }
+        }
+
+        CHECK(!evaluator.engine().awaiting_confirmation(TrustReason::ProviderDisagreement));
+        CHECK_NO_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+        CHECK(evaluator.engine().state() == TrustState::Trusted);
+    }
+}
+
+// `provider_detached()` is the call that says the subject actually went, rather
+// than inferring it from a frame that could not be compared. It lifts a lapsed
+// allegation and -- like every other path here -- leaves a live one strictly
+// alone, because a provider walking away is not a retraction.
+void test_a_detached_provider_stops_being_awaited_and_cannot_clear_a_live_reason()
+{
+    TrustEvaluator lapsed;
+    lapsed.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    GnssObservation elsewhere = good_fix(0, kLat + 50000);
+    elsewhere.source          = PositionSource::NodeGnss;
+    lapsed.compare_provider(elsewhere, at(0));
+    CHECK_REASON(lapsed.engine(), TrustReason::ProviderDisagreement);
+
+    // Past the TTL, so the bit has moved into `unconfirmed_` and the device is
+    // pinned with nothing live.
+    const std::uint64_t ttl = lapsed.engine().policy().evidence_ttl.value;
+    for (std::uint64_t ms = 1000; ms <= ttl + 5000; ms += 1000) {
+        lapsed.observe(good_fix(ms), PositionValidity::Valid, MotionEvidence{}, {}, at(ms));
+    }
+    CHECK(lapsed.engine().awaiting_confirmation(TrustReason::ProviderDisagreement));
+
+    lapsed.provider_detached();
+    CHECK(!lapsed.engine().awaiting_confirmation(TrustReason::ProviderDisagreement));
+    // Idempotent.
+    lapsed.provider_detached();
+    CHECK(!lapsed.engine().awaiting_confirmation(TrustReason::ProviderDisagreement));
+
+    TrustEvaluator live;
+    live.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    GnssObservation far = good_fix(0, kLat + 50000);
+    far.source          = PositionSource::NodeGnss;
+    live.compare_provider(far, at(0));
+    CHECK_REASON(live.engine(), TrustReason::ProviderDisagreement);
+    live.provider_detached();
+    CHECK_REASON(live.engine(), TrustReason::ProviderDisagreement);
+    CHECK(live.engine().state() != TrustState::Trusted);
 }
 
 // Disagreement between two providers is evidence about both of them and belongs
@@ -1347,6 +1487,9 @@ int main()
     test_two_providers_must_be_talking_about_the_same_moment();
     test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared();
     test_an_uncomparable_frame_does_not_withdraw_a_live_disagreement();
+    test_our_own_receiver_going_quiet_does_not_lift_a_node_s_allegation();
+    test_a_node_that_stops_relaying_a_position_stops_being_awaited();
+    test_a_detached_provider_stops_being_awaited_and_cannot_clear_a_live_reason();
     test_provider_disagreement_is_evidence_about_both();
     test_reset_leaves_nothing_behind();
     test_everything_has_a_name();

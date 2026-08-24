@@ -166,7 +166,9 @@ with all of:
 - **weighted evidence from several sources**, not one flag;
 - **hysteresis**, so a single bad epoch does not flip the state and a single
   good one does not clear it;
-- **recovery earned from a retraction, never from the clock** — §5.1 below;
+- **recovery earned from a retraction, never from the clock while the detector
+  is still there** — §5.1 below, including the one case where the detector's
+  subject leaves and the clock does then run;
 - **reason codes** — *which* evidence moved it, kept, not just the verdict;
 - **timestamps** on both the state and each piece of evidence;
 - **the last trusted position**, retained;
@@ -228,7 +230,21 @@ part of the sentence, because `reset()` sets `Trusted` immediately, discards the
 transition log and drops the remembered position, so it is the answer to *a
 different provider is here now* and never to *this one is still stuck*. The pin
 most likely to be met comes from the device's **own** receiver, which does not
-detach, and for that one the only exit is a detector speaking. Never a timer.
+detach, and for that one the only exit is a detector speaking.
+
+**Not "never a timer", which is what an earlier version of this paragraph
+said.** Bound 3 above describes `stop_awaiting()` and stops at *"stops
+awaiting it"*, never at the consequence: once the allegation stops being
+awaited the recovery hold runs and the state climbs one step per
+`recover_hold`, with nothing having been retracted. That is a timer, and the
+rejected alternatives at the end of this ADR call the shape *"a timer wearing
+a state machine's clothes"*. What makes it legitimate here is narrower and has
+to be said rather than implied: the allegation was about a **pair**, one of the
+pair is gone, and there is no longer anything a retraction could come from.
+Silence from a detector that is still present still buys nothing. Corrected in
+the second review round of
+[#153](https://github.com/hleserg/Attadipa/pull/153), which found the absolute
+claim in five places, honoured in none.
 ([ADR-0005](0005-node-protocol.md) §5 is the rule about a link going away; an
 earlier version of this paragraph cited ADR-0004 §3, which is *Availability is
 not validity — and a remote datum has two ages* and says nothing about

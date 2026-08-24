@@ -20,10 +20,16 @@
 //   * hysteresis, so one bad epoch does not flip the state and one good one
 //     does not clear it;
 //   * and the other half of that same rule: recovery is earned from a
-//     *retraction*, never from the clock. A score that fell to nothing because
-//     a detector said the condition was over and a score that fell to nothing
-//     because a detector stopped talking are not the same fact, and only the
-//     first may move the state upwards (OD-5 §4 and §8, and `clear()` below);
+//     *retraction*, never from the clock **while the detector is still there**.
+//     A score that fell to nothing because a detector said the condition was
+//     over and a score that fell to nothing because a detector stopped talking
+//     are not the same fact, and only the first may move the state upwards
+//     (OD-5 §4 and §8, and `clear()` below). The qualifier is not a softening:
+//     a detector whose SUBJECT has gone is a third case, it does let the state
+//     climb on the clock afterwards, and it is `stop_awaiting()` below --
+//     reachable by exactly one reason, for the reason written there. An earlier
+//     version of this list stated the rule absolutely and the code had already
+//     stopped honouring it;
 //   * reason codes, kept. A user-facing sentence, an application's decision to
 //     hide the compass, and a diagnostic screen are three consumers of the same
 //     evidence, and a collapsed verdict serves none of them;
@@ -216,6 +222,17 @@ public:
     // it. A permanent pin, by contrast, punishes the local receiver for the
     // second source's behaviour, for ever, with no way back that is not
     // `reset()`.
+    //
+    // It does not re-evaluate, and that leaves a **one-tick window** with
+    // exactly the shape `GnssStatus::trust_unconfirmed` was added to remove:
+    // between this call and the next `observe()` or `refresh()`, a snapshot
+    // reads `trust != Trusted`, `trust_reasons == 0` **and**
+    // `trust_unconfirmed == 0` — a device stuck with nothing on a screen to
+    // explain it. Not re-evaluating is deliberate: this path carries no new
+    // evidence, and running the TTL here would turn "the subject went away"
+    // into "and therefore the live allegation expired". The window is
+    // self-healing and bounded by the caller's own tick, so it is stated rather
+    // than closed. Found in review of #153.
     void stop_awaiting(TrustReason reason);
 
     // Expire stale evidence and re-evaluate. Safe and cheap to call often; the
@@ -359,6 +376,29 @@ public:
     // A second provider's position for the same moment. Kept separate because
     // disagreement is evidence about both of them and belongs to neither.
     void compare_provider(const GnssObservation& other, MonotonicTime now);
+
+    // The second source is gone — the node detached, the link dropped, the
+    // capability was withdrawn. Whoever owns the provider knows this; nothing
+    // inside the evaluator can.
+    //
+    // It exists because `compare_provider()` only *approximates* it. That path
+    // reaches `stop_awaiting()` when a frame arrives that cannot be compared,
+    // which is a decent proxy for a provider that has left and a poor one for a
+    // provider that is still there and merely stale: a node relaying fixes at
+    // 1 Hz whose measurement times are consistently older than
+    // `provider_comparison_window` is present, is disagreeing, and would still
+    // stop being awaited. Review of #153 named that gap and it is real; closing
+    // it inside `compare_provider()` would need a reason meaning "a second
+    // source is present and permanently uncomparable", which is a new
+    // enumerator and a decision — **T-152**. Until then this is the call that
+    // says the subject actually went, and it is the one to prefer wherever the
+    // owner can make it.
+    //
+    // Idempotent, and it does not re-evaluate: like the path it replaces, it
+    // carries no new evidence, so running the TTL here would turn "the provider
+    // left" into "and therefore the live allegation expired". A live
+    // `ProviderDisagreement` is left strictly alone — see `stop_awaiting()`.
+    void provider_detached();
 
     TrustEngine&       engine() { return engine_; }
     const TrustEngine& engine() const { return engine_; }
