@@ -211,6 +211,38 @@ jobs:
             exit 0
           fi
 
+          # How wide is the queue, checked HERE rather than by the agent that
+          # would be dispatched. CLAUDE.md's "The queue has a width, and it is
+          # two" stops new work at four or more open pull requests, and an agent
+          # that reads that rule and obeys it ends its run having opened
+          # nothing -- which handover-decision.sh reports as `done_nopr`, which
+          # relabels the issue `agent:review`. queue-scan.jq and
+          # stranded-failures.jq both exclude `agent:review`, so the task would
+          # sit in a review state with nothing to review, invisible to this
+          # watchdog AND to the stranded sweep, and the next tick would do the
+          # same to the next issue. Hourly. That is precisely the silent
+          # stranding this workflow exists to prevent.
+          #
+          # Not dispatching costs nothing and heals itself: the issue keeps
+          # `agent:ready`, nothing is relabelled, nothing is commented on, and
+          # it is picked up by the first tick after the queue comes back down.
+          WIDTH="$(bash .github/scripts/wip-limit.sh --count "$REPO" 2>/dev/null || echo '')"
+          case "$WIDTH" in
+            ''|*[!0-9]*)
+              # Same rule as the unreadable timeline above: a number that could
+              # not be read is not evidence in either direction, and refusing to
+              # dispatch on it would stop the whole queue over a bad minute at
+              # the API. Say so and carry on.
+              echo "::warning::Could not count the open pull requests, so the WIP limit was not applied to this tick."
+              ;;
+            *)
+              if [ "$WIDTH" -ge 4 ]; then
+                echo "::notice::$WIDTH open pull requests -- a queue incident under CLAUDE.md, \"The queue has a width, and it is two\". Not dispatching #$PICK; it keeps agent:ready and returns on the first tick after the queue is back to three or fewer."
+                exit 0
+              fi
+              ;;
+          esac
+
           # One task per tick, highest priority first. The agent workflow's own
           # concurrency group means a second one would queue behind this anyway,
           # and dispatching several would only make the queue harder to read.

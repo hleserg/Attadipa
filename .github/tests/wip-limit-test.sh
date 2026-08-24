@@ -81,6 +81,90 @@ else
   fail=$((fail + 1)); printf '  FAIL  the verdict carries the count it was reached on\n'
 fi
 
+
+echo
+echo "Counting: the query, and the shell it has to run in"
+
+# A stub `gh` on PATH, in the shape of gh-label-test.sh: it records the command
+# line it was given and answers with a fixed "<counted> <exempted>" pair. The
+# real filter runs inside `gh --jq` and cannot be executed here, so what is
+# asserted is that the right question is asked and that the answer is read from
+# the right field. Both of those have been wrong.
+stub=$(mktemp -d) || exit 1
+trap 'rm -rf "$stub"' EXIT
+cat > "$stub/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$ATTADIPA_GH_LOG"
+printf '%s\n' "${ATTADIPA_GH_ANSWER-5 2}"
+STUB
+chmod +x "$stub/gh"
+export ATTADIPA_GH_LOG="$stub/log"
+export ATTADIPA_GH_ANSWER="5 2"
+
+# count_says DESCRIPTION WANTED_STDOUT ARGS...
+# Runs the script with the stub on PATH and GITHUB_REPOSITORY removed, which is
+# the environment every document tells a person to type this in.
+count_says() {
+  local desc="$1" wanted="$2"; shift 2
+  local got rc
+  : > "$ATTADIPA_GH_LOG"
+  got=$(PATH="$stub:$PATH" env -u GITHUB_REPOSITORY bash "$script" "$@" 2>/dev/null); rc=$?
+  if [ "$rc" = "0" ] && [ "$got" = "$wanted" ]; then
+    pass=$((pass + 1)); printf '  ok    %s\n' "$desc"
+  else
+    fail=$((fail + 1)); printf '  FAIL  %s\n         wanted "%s" (exit 0), got "%s" (exit %s)\n' "$desc" "$wanted" "$got" "$rc"
+  fi
+}
+
+# asked DESCRIPTION SUBSTRING -- of the gh command line the script issued.
+asked() {
+  local desc="$1" needle="$2"
+  if grep -qF -- "$needle" "$ATTADIPA_GH_LOG"; then
+    pass=$((pass + 1)); printf '  ok    %s\n' "$desc"
+  else
+    fail=$((fail + 1)); printf '  FAIL  %s\n         no "%s" in: %s\n' "$desc" "$needle" "$(cat "$ATTADIPA_GH_LOG")"
+  fi
+}
+
+# The invocation the documents actually give. GITHUB_REPOSITORY exists only
+# inside GitHub Actions, and `${VAR:?}` under `set -euo pipefail` aborts a
+# non-interactive shell -- so this exact command printed an error to stderr,
+# nothing to stdout, and exited 1, while CLAUDE.md, AI_TASK_PROTOCOL.md step 0
+# and T-171's acceptance criterion all offered it as a working command.
+count_says "--count runs in a shell that has no GITHUB_REPOSITORY" "5" --count
+asked      "and asks gh for the open pull requests" "pr list --state open"
+
+if grep -qF -- "--repo " "$ATTADIPA_GH_LOG"; then
+  fail=$((fail + 1)); printf '  FAIL  no --repo is passed when none is known\n         got: %s\n' "$(cat "$ATTADIPA_GH_LOG")"
+else
+  pass=$((pass + 1)); printf '  ok    no --repo is passed when none is known, so gh infers it\n'
+fi
+
+count_says "--count takes an explicit owner/repo" "5" --count o/r
+asked      "and passes it through"                "--repo o/r"
+
+count_says "--exempt reports the subtraction, not the total" "2" --exempt
+
+# Finding 7 of the review of #193: the fork exclusion was stated in a YAML
+# comment and absent from the query, so three outside contributions would read
+# as a queue incident and stop this repository's own work.
+count_says "the query is issued" "5" --count o/r
+# The needle is the FILTER, not the field name: `isCrossRepository` also appears
+# in --json, so grepping for it alone passed with the exclusion deleted. A test
+# that cannot fail is not evidence.
+asked      "and excludes pull requests opened from a fork" "select(.isCrossRepository | not)"
+asked      "and names the parked exemption"                "queue:parked"
+asked      "and the emergency one"                         "queue:emergency"
+
+# A gh that answers nothing must reach the `unknown` band, not a wrong number.
+: > "$ATTADIPA_GH_LOG"
+empty=$(ATTADIPA_GH_ANSWER="" PATH="$stub:$PATH" env -u GITHUB_REPOSITORY bash "$script" --count 2>/dev/null)
+if [ -z "$empty" ] && [ "$(bash "$script" --verdict "$empty")" = "unknown " ]; then
+  pass=$((pass + 1)); printf '  ok    a count that came back empty becomes unknown, not a band\n'
+else
+  fail=$((fail + 1)); printf '  FAIL  a count that came back empty becomes unknown, not a band\n         got "%s"\n' "$empty"
+fi
+
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

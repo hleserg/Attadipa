@@ -37,14 +37,45 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
       pull-requests: write
       issues: write
-    # A fork's pull request cannot be counted against this repository's queue —
-    # it is not in it — and pull_request_target, which would give the token to
-    # do it anyway, is the pattern this repository refuses everywhere else.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Two conditions, and the kill switch is the first of them. Every other
+    # automation workflow here carries this gate, and CLAUDE_AUTOMATION.md opens
+    # by promising "one shared kill switch" — a workflow that keeps commenting
+    # and labelling after the switch is thrown makes that sentence false, model
+    # or no model.
+    #
+    # The second: a fork's pull request cannot be counted against this
+    # repository's queue — it is not in it — and pull_request_target, which
+    # would give the token to do it anyway, is the pattern this repository
+    # refuses everywhere else. That exclusion is applied to the number itself in
+    # wip-limit.sh; this half only stops the run.
+    if: >-
+      vars.CLAUDE_AUTOMATION_ENABLED != 'false' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      # Pinned to the default branch, and sparse, for the same reason the merge
+      # sweep's checkout is. On `pull_request`, GITHUB_REF is refs/pull/N/merge,
+      # so a bare checkout takes THE BRANCH UNDER REVIEW, and this job would
+      # then run that branch's copy of the rule while holding
+      # `pull-requests: write`. A pull request changing `-le 2` to `-le 20`
+      # would report itself compliant, and one with `exit 1` in the body would
+      # be green and silent for ever. The gate's rules come from `main` or from
+      # nowhere — CLAUDE_AUTOMATION.md says so three times, and this is one of
+      # the places that has to hold.
+      #
+      # refs/pull/N/merge also does not exist while a branch conflicts with
+      # `main`, so a bare checkout would fail on `reopened` for exactly the
+      # long-lived conflicted branches this guard exists to notice. The default
+      # branch is always there. `persist-credentials: false` keeps a
+      # write-scoped token out of `.git/config` beside it.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Count the open pull requests
         id: wip
@@ -64,6 +95,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           STATE: ${{ steps.wip.outputs.state }}
           COUNT: ${{ steps.wip.outputs.count }}
+          EXEMPT: ${{ steps.wip.outputs.exempt }}
         run: |
           set -euo pipefail
           body="$(bash .github/scripts/wip-limit.sh --say "$STATE" "$COUNT")"
@@ -71,7 +103,11 @@ jobs:
             echo "<!-- attadipa-wip-limit -->"
             echo "$body"
             echo
-            echo "Counted: every open pull request except those labelled \`queue:parked\` or \`queue:emergency\`. A draft counts."
+            echo "Counted: every open pull request of this repository's own, except those labelled \`queue:parked\` or \`queue:emergency\`. A draft counts. A fork's pull request does not."
+            if [ "${EXEMPT:-0}" != "0" ] && [ -n "${EXEMPT:-}" ] && [ "${EXEMPT}" != "unknown" ]; then
+              echo
+              echo "**\`$EXEMPT\` further pull request(s) were subtracted as exempt, and this guard took that on trust.** It reads the label and not the reason for it, and every agent here can apply one. If that number is not what you expected, the count above is not the queue."
+            fi
             echo
             echo "This does not block this pull request. It is the number the next agent is supposed to read before opening one."
           } > body.md

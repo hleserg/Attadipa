@@ -1,6 +1,6 @@
 # Claude in CI: what runs, what it may touch, and how to stop it
 
-Four workflows, one shared kill switch, and a security model that assumes the
+Six workflows, one shared kill switch, and a security model that assumes the
 repository is public — because it is, and anybody can open an issue on it.
 
 | Workflow | Trigger | Can it write code? |
@@ -10,6 +10,7 @@ repository is public — because it is, and anybody can open an issue on it.
 | [`claude-ci-repair.yml`](../../.github/workflows/claude-ci-repair.yml) | CI failing on a `claude/*` branch of this repository | **yes**, to that branch only |
 | [`agent-queue-watchdog.yml`](../../.github/workflows/agent-queue-watchdog.yml) | hourly | no — it dispatches the first one |
 | [`pr-merge-sweep.yml`](../../.github/workflows/pr-merge-sweep.yml) | every half hour | no — and it invokes no model at all. It merges pull requests other people's decisions have already finished, within the same path allowlist as the backstop routine |
+| [`pr-wip-limit.yml`](../../.github/workflows/pr-wip-limit.yml) | a pull request opened, reopened or marked ready | no — `contents: read`, and it invokes no model either. It counts what is open and says the number on the pull request that crossed the line; it refuses, closes and blocks nothing |
 
 ## The security model
 
@@ -280,7 +281,7 @@ as much as the first.
 
 | Control | Where |
 |---|---|
-| **Kill switch** — repository variable `CLAUDE_AUTOMATION_ENABLED=false` stops every Anthropic-billed step everywhere, leaving ordinary CI running | checked in all four workflows |
+| **Kill switch** — repository variable `CLAUDE_AUTOMATION_ENABLED=false` stops every Anthropic-billed step everywhere, leaving ordinary CI running | checked in all six workflows, including the two that bill nothing — the sweep and the WIP guard write to pull requests, and a switch that leaves half the automation writing is not one switch |
 | **Empty queue costs nothing** — the watchdog's scan is shell and one API call; Claude is invoked only when there is a task | `agent-queue-watchdog.yml` |
 | **One writer** — a concurrency group on the agent job, so writers queue instead of colliding. On the job and not on the workflow: a workflow-level group also holds the intake gate, and GitHub cancels a *pending* run when a newer one joins the group, so a burst of events loses everything but the last before anything reads it. Three tasks were queued and none started this way on 2026-08-22 | `claude-agent.yml` |
 | **Deduplication** — an issue already claimed is not picked up again | intake gate |
@@ -292,6 +293,7 @@ as much as the first.
 | **The verdict has to cover the head commit** — `ai-review:pass` records that a verdict was reached, not *which commit* it was reached on. A review that reaches no verdict at all — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, and nothing removes it. So the sweep dates the most recent `labeled ai-review:pass` event against the head commit and refuses when it is older, or when it cannot tell | `merge-candidate.sh` |
 | **The path allowlist above applies unchanged** — the sweep merges exactly what the backstop routine already may, on a schedule instead of on somebody remembering. Every `no` row is asserted in the test. Widening it reverses an owner decision of 2026-08-21 and is not the sweep's, or a reviewer's, to grant; a green pull request touching `core/` or `.github/` still waits for an orchestrator session | `merge-candidate.sh`, and CLAUDE_AUTOMATION.md's table above |
 | **A page is not a set — ⚠️ HALF LIVE, see below.** Every fact above arrives in a GraphQL connection, and a connection is a *page*. The sweep asked for `labels(first:50)`, `reviewThreads(first:100)` and `contexts(first:100)`, never asked whether there was another page, and computed on what came back as though it were everything: a pull request with 101 review threads whose hundred-and-first was unresolved reported **zero** unresolved threads, and zero is the value that merges. Past the fiftieth label the same shape hid `ai-review:blocking`, and past the hundredth context a failing check. `first: N` had become a silent *permitting* condition — the more there was to read, the less the gate could refuse on. Completeness is now proved from `pageInfo`, never from `nodes \| length`, and every unprovable shape holds | `merge-facts.graphql`, `merge-facts.jq`, `merge-facts.sh`, `merge-candidate.sh`, issue [#170](https://github.com/hleserg/Attadipa/issues/170) |
+| **Counting the queue costs nothing** — the WIP guard is one `gh pr list` and a `case`; no model is invoked on any path. It exists because the expensive thing is not the guard, it is thirty-five branches each needing another review after going stale | `pr-wip-limit.yml`, `.github/scripts/wip-limit.sh`, `.github/tests/wip-limit-test.sh` |
 | **Three merges per run** — the backstop's cap, for its reason: *"a backstop that empties the queue in one go is indistinguishable from one that has gone wrong"*. It also bounds the base-moved problem — a green tick is `refs/pull/N/merge` against `main` **as it was when the checks ran**, and a base move raises no `synchronize` | `pr-merge-sweep.yml` |
 | **A six-hour settling window** — measured on the head commit's `pushedDate`, falling back to `committedDate`. The question is when *code* last arrived, not what the git committer clock says, and never the pull request's `updatedAt`, which a label, a bot comment or the sweep's own note bumps | `merge-candidate.sh` |
 | **Undrafting is never a way to qualify** — every other condition holds first, and the sweep that undrafts merges nothing: the next one re-gathers every fact and asks again. It does **not** start a review, which the first version of this said it did — GitHub raises no workflow run from an event caused by `GITHUB_TOKEN`, and `claude-pr-review.yml` fires on `ready_for_review`. What protects the merge is the condition two rows above, which survives the undraft because undrafting changes no commit | `pr-merge-sweep.yml` |

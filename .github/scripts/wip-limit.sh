@@ -93,18 +93,67 @@ attadipa_wip_say() {
 # Everything below needs the network. Nothing above does, which is what lets
 # .github/tests/wip-limit-test.sh execute the decision itself rather than a
 # re-implementation of it.
+
+# One query, two numbers, printed as "<counted> <exempted>" on a single line.
+#
+# One query because two would be two populations: a pull request opened between
+# them lands in one and not the other, and the guard would then report a
+# subtraction that does not reconcile with the total printed beside it.
+#
+# `isCrossRepository` drops pull requests opened from a fork. Those are not in
+# this repository's queue, nobody here can finish one, and counting three
+# outside contributions as a queue incident would stop this repository's own
+# work over somebody else's. The workflow declines to *run* on a fork's pull
+# request; this is the same exclusion applied to the *number*, which is where it
+# actually decides anything.
+#
+# The filter runs inside `gh`, not through a `jq` binary, because this script is
+# also meant to be typed in an ordinary shell -- and a Windows checkout has `gh`
+# and no `jq`.
+ATTADIPA_WIP_JQ='
+  [ .[] | select(.isCrossRepository | not) ] as $ours
+  | ( [ $ours[] | select([ .labels[].name ]
+        | any(. == "queue:parked" or . == "queue:emergency")) ] | length ) as $exempt
+  | "\(($ours | length) - $exempt) \($exempt)"
+'
+
+attadipa_wip_pair() {
+  # No `--repo` when none was given, rather than an error. `gh` then takes the
+  # repository from the checkout, which is what an orchestrator session in a
+  # clone has and what a GitHub Actions runner does not -- and `--count` is a
+  # command CLAUDE.md, AI_TASK_PROTOCOL.md and T-171 all tell a person to type
+  # in a shell, where GITHUB_REPOSITORY has never been set.
+  local repo="${1-}"
+  if [ -n "$repo" ]; then
+    gh pr list --repo "$repo" --state open --limit 200       --json number,labels,isCrossRepository --jq "$ATTADIPA_WIP_JQ"
+  else
+    gh pr list --state open --limit 200       --json number,labels,isCrossRepository --jq "$ATTADIPA_WIP_JQ"
+  fi
+}
+
 attadipa_wip_count() {
-  local repo="$1"
-  gh pr list --repo "$repo" --state open --limit 200 \
-    --json number,labels \
-    --jq '[ .[] | select([.labels[].name] | any(. == "queue:parked" or . == "queue:emergency") | not) ] | length'
+  attadipa_wip_pair "${1-}" | cut -d' ' -f1
+}
+
+# How many were subtracted, reported rather than swallowed. Both exemption
+# labels are honoured on presence alone, and every agent here holds
+# `pull-requests: write` -- so a self-applied `queue:emergency` is one command
+# away. This guard cannot tell an exemption the owner agreed to from a
+# convenient one. So it says how many it took on trust and lets the reader
+# judge, which is the difference between a number that is wrong and a number
+# that is quietly misleading.
+attadipa_wip_exempt() {
+  attadipa_wip_pair "${1-}" | cut -d' ' -f2
 }
 
 # Sourced by the test, run by the workflow.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   case "${1-}" in
     --count)
-      attadipa_wip_count "${2:-${GITHUB_REPOSITORY:?repository not given}}"
+      attadipa_wip_count "${2:-${GITHUB_REPOSITORY:-}}"
+      ;;
+    --exempt)
+      attadipa_wip_exempt "${2:-${GITHUB_REPOSITORY:-}}"
       ;;
     --verdict)
       attadipa_wip_verdict "${2-}"
@@ -113,12 +162,17 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
       attadipa_wip_say "${2-}" "${3-}"
       ;;
     *)
-      repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}"
-      count="$(attadipa_wip_count "$repo" || echo '')"
-      read -r state n <<<"$(attadipa_wip_verdict "$count")"
-      printf '%s\n' "$(attadipa_wip_say "$state" "$n")"
-      printf 'state=%s\n' "$state" >> "${GITHUB_OUTPUT:-/dev/null}"
-      printf 'count=%s\n' "$n" >> "${GITHUB_OUTPUT:-/dev/null}"
+      pair="$(attadipa_wip_pair "${GITHUB_REPOSITORY:-}" || echo '')"
+      read -r count exempt <<<"$pair"
+      read -r state n <<<"$(attadipa_wip_verdict "${count:-}")"
+      printf '%s
+' "$(attadipa_wip_say "$state" "$n")"
+      printf 'state=%s
+' "$state" >> "${GITHUB_OUTPUT:-/dev/null}"
+      printf 'count=%s
+' "$n" >> "${GITHUB_OUTPUT:-/dev/null}"
+      printf 'exempt=%s
+' "${exempt:-unknown}" >> "${GITHUB_OUTPUT:-/dev/null}"
       ;;
   esac
 fi

@@ -240,6 +240,16 @@ version, add this pull request's own result to it, and merge. Do not preserve
 the branch's historical wording, and do not let a documentation conflict
 reopen a review of code that has not changed.
 
+`docs/research/OWNER_DECISIONS.md` is a third such file, and its conflict is
+not the same kind. The other two collect prose, so appending both sides loses
+nothing. This one is **numbered**, and every branch that appends an OD appends
+it at the same offset against the same last number — so two branches opened on
+the same day both become OD-17, and blind-appending them merges cleanly into a
+document with two of it. Resolve it by **re-numbering against `main`**, never by
+appending: read what `main`'s last OD is at the moment you merge, take the next
+number, and correct every reference to it in the branch. The same holds for
+`TASKS.md`'s T-numbers.
+
 **Blocked is not parked.** Work that cannot move because it needs the owner's
 hands, a delivered part, an external credential, a product decision or a
 measurement nobody can take today does not sit as an open pull request for

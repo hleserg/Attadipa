@@ -267,14 +267,41 @@ on drifts back to silence one edit at a time.
 ## What an agent does with a task
 
 0. **Count the open pull requests, before anything else.** `bash
-   .github/scripts/wip-limit.sh --count` prints the number the guard uses.
-   Two is the normal width of this project, three is a ceiling that forbids
-   starting anything new, and four or more is a queue incident in which no
-   feature, research or meta work begins until the queue is back down. The rule
-   and what it excludes are in `CLAUDE.md`, *"The queue has a width, and it is
-   two"* — owner decision **OD-23**. This step is numbered zero because it is
-   the one an agent skips: every pull request in the queue of thirty-five was a
-   reasonable next step on its own, and the count was nobody's step.
+   .github/scripts/wip-limit.sh --count` prints the number the guard uses — it
+   works in an ordinary shell and in a runner, and takes an optional
+   `owner/repo`. Two is the normal width of this project, three is a ceiling
+   that forbids starting anything new, and four or more is a queue incident.
+   The rule and what it excludes are in `CLAUDE.md`, *"The queue has a width,
+   and it is two"* — owner decision **OD-23**. This step is numbered zero
+   because it is the one an agent skips: every pull request in the queue of
+   thirty-five was a reasonable next step on its own, and the count was
+   nobody's step.
+
+   **What to do when it is four or more, said explicitly, because a rule with
+   no stated exit takes whichever one the code happens to have.** Do not
+   silently finish the run having opened nothing: that is `done_nopr`, which
+   relabels the issue `agent:review`, and both `queue-scan.jq` and
+   `stranded-failures.jq` exclude `agent:review` — the task would sit in a
+   review state with nothing to review, invisible to the watchdog and to the
+   stranded sweep at once. Instead:
+
+   - **Comment on the issue** saying the queue is at N, that this is OD-23's
+     incident band, and that the task was not started — so the next reader
+     sees a reason rather than a silence.
+   - **Leave the labels exactly as they were.** `agent:ready` is what brings
+     the task back by itself once the queue drains. Do not add `agent:blocked`
+     — nothing is wrong with the task — and do not add `needs-owner`: the
+     owner has no action here, the queue does.
+   - **Then do queue work instead**, if you are an orchestrator session rather
+     than a dispatched agent: finish, merge or close what is already open.
+     That is the only thing that clears the band.
+
+   A dispatched agent should rarely reach this, because
+   `agent-queue-watchdog.yml` counts before it dispatches and does not hand out
+   a task during an incident — the issue keeps `agent:ready` and nothing is
+   touched. The paragraph stands for the paths the watchdog is not on: a
+   `@claude` comment, a manual dispatch, and an orchestrator session.
+
 1. **Read before writing.** The issue and all its comments, `CLAUDE.md`,
    `docs/master-prompt-final.md`, `STATUS.md`, `TASKS.md`, the ADRs the task
    touches, and `docs/research/REUSE_LEDGER.md`.
