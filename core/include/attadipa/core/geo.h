@@ -28,6 +28,11 @@ namespace attadipa::core {
 // cos(latitude), scaled by 1024, one entry per whole degree. Generated, then
 // pasted, because a table of 91 constants in the binary is cheaper in both
 // flash and cycles than linking libm into a path that runs on every fix.
+//
+// One entry per degree is the resolution of the *table*, not of the answer.
+// `distance_mm()` interpolates between two entries by the fractional part of
+// the latitude; indexing by the truncated degree is a step function, and near
+// the pole a step is the whole value — see the error envelope in geo.cpp.
 inline constexpr std::uint16_t kCosTable1024[91] = {
     1024, 1024, 1023, 1023, 1022, 1020, 1018, 1016, 1014, 1011,   // 0
     1008, 1005, 1002,  998,  994,  989,  984,  979,  974,  968,   // 10
@@ -57,6 +62,19 @@ inline constexpr std::uint32_t kDistanceSaturated = 1000000000U;  // 1000 km in 
 // Returns kDistanceSaturated for anything far away or out of range rather than
 // failing: the callers all ask "is this further than X" for a small X, and for
 // them "further than you can measure" and "1000 km" are the same answer.
+//
+// Accuracy, so a caller choosing a threshold has a number rather than a hope:
+// within **0.9%** of a spherical reference at every latitude from the equator
+// to 89.999°, which is everywhere outside the last 111 metres to the pole.
+// Closer in than that the fixed-point cosine runs out of bits and the relative
+// error grows without limit — but a whole degree of longitude is under two
+// metres there and the absolute error stays under 20 mm. Both bounds are
+// measured by tests/test_position.cpp on every run rather than asserted here.
+//
+// That envelope is the arithmetic. It is not an estimate of how wrong the
+// *method* is: the equirectangular approximation and the single 111 320 m/deg
+// constant are worth a few tenths of a percent of their own, and neither is
+// improved by anything in here.
 std::uint32_t distance_mm(Position a, Position b);
 
 }  // namespace attadipa::core

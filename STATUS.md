@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-22
+Last updated: 2026-08-24
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -14,9 +14,13 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
-simulator and twenty-four tests, and has a font pipeline whose output has been
-compiled for the target and measured.
+**Attadipa has code.** As of 2026-08-24 the repository builds seven libraries and
+**twenty-eight tests** — **thirty-three** with the desktop simulator, which is off
+by default because it needs SDL2 — and has a font pipeline whose output has been
+compiled for the target and measured. Since 2026-08-23 it can also **drive its
+own interface and look at the result** — screenshot, inject a tap or a swipe or
+a button, screenshot again — over a debug channel the simulator serves today and
+a device will serve when there is firmware for one.
 
 | Library | What it is | Links |
 |---|---|---|
@@ -24,6 +28,7 @@ compiled for the target and measured.
 | `attadipa_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
 | `attadipa_apps` | `AppManifest` and the launcher gating rule | core only |
 | `attadipa_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
+| `attadipa_debug` | the development-time debug channel: the wire format and the device-side bridge behind `tools/watch_control.py`. A message class inside `attadipa_link`'s framing, not a second protocol | core, link |
 | `attadipa_ui` | the design tokens: `Dp` against a 160 dpi reference, twelve colour roles across two themes with WCAG contrast arithmetic, and the spacing, radius, motion, size and feedback scales | `attadipa_headers` only — **deliberately not platform** |
 | `attadipa_replay` | the deterministic navigation replay rig, in `tests/` | core |
 | `attadipa_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
@@ -97,6 +102,22 @@ in both cases.
   reported per asset. **Assets are named by pixels, never by board** — 39 px is
   `icon.size.lg` on one panel and `icon.size.md` on the other, one file, and a
   test asserts it.
+- **Both generated trees are bound to their own bytes now, not only to their
+  inputs — issue #69, and it was a real hole rather than a worry.** Each
+  `INPUTS.sha256` recorded what the tree was *made from* and the check then
+  counted filenames, so a hand-edited bitmap byte in a font and in an icon both
+  passed green; both were reproduced before anything was changed. The stamps now
+  carry a SHA-256 per committed file — one contract for both trees,
+  `tools/integrity/stamp.py` — and 45 mutation cases assert that each of the
+  fourteen outputs is actually checked and that the message names the right
+  fault. The fonts' `Opts:` provenance line no longer carries one developer's
+  absolute paths, which is what made a byte-for-byte comparison possible at all:
+  `tools/integrity/reproducibility.py` regenerates both trees from two different
+  checkout paths and compares all sixteen files against what is committed — run,
+  16 of 16, 3.6 s. The glyph and mask bytes did not move; only provenance did.
+  **The CI job that would run it on every push is written and not applied**: the
+  agent authenticates as a GitHub App that may not write `.github/workflows`, so
+  the block sits in `tools/integrity/README.md` ready to paste — **T-128**.
 - **T-043 … T-053** — the eleven the amendments produced, sitting in READY: the
   node link that is not a BLE link, resynchronisable framing, the `PowerState`
   taxonomy that cannot call a wake-on-LoRa sleep "hibernate", crash-safe
@@ -146,7 +167,15 @@ One to two steps ahead, per final §68 — not twenty.
 **not** taken — RLE and LZ4 both trade flash for decode time and a scratch buffer
 on a display bus nobody has timed, and nine masks are 14 kB. `RGB565A8` is
 present and unused: every asset so far is an `A8` mask, because an icon with a
-baked colour cannot follow a theme.
+baked colour cannot follow a theme. That also means **no asset in this repository
+has a byte order yet** — one byte per pixel — which is why D21, the panel's
+transfer byte order, blocks nothing today and blocks **the first line of display
+bring-up**. Not the first colour asset: an asset's byte order follows LVGL's
+colour-format contract and the framebuffer the software renderer writes into,
+and the wire order is absorbed once, at flush, by the display port's
+`swap_bytes` flag. Two earlier sentences here said the asset inherited the
+question, which is the half that is not real — and dropped the bring-up half,
+which is. Found in review.
 
 ## Long-running operations
 
@@ -185,15 +214,21 @@ REQUIRED`.**
 - **The main I2C bus has six devices, not four.** The ES8311 codec and the ES7210
   microphone ADC are I2C control slaves on the same wire; both were recorded here
   as "I2S", which is their data path. All six addresses are now in the matrix,
-  each cited — three datasheet-fixed, two schematic-strapped, one
-  driver-source-only, and one (`0x6A` vs `0x6B` on the IMU) in conflict between
-  datasheet revisions, where the revision Waveshare's own wiki links is the one
-  that disagrees.
+  each cited. The IMU's `0x6A` vs `0x6B` conflict between datasheet revisions
+  is **settled by measurement** since this was written — the bench scan on
+  2026-08-23 found `0x6B` and no answer at `0x6A`, so the revision Waveshare's
+  own wiki links is the one that disagrees with the silicon. Five answer on a
+  bare scan (`0x18`, `0x34`, `0x40`, `0x51`, `0x6B`); the sixth, touch at
+  `0x38`, answers only after its reset is pulsed on GPIO 9.
 - **The vendor BSP is not the existence proof it is taken for.** Its PSRAM
   draw-buffer configuration is dead code; what ships is one ~80 KiB partial
   buffer in internal SRAM. T-093.
-- **Its `esp_lcd_sh8601` fork drops an error check**, so a failed frame transfer
-  reports success. T-092.
+- **Its `esp_lcd_sh8601` leaves an error check off**, so a failed frame transfer
+  reports success. T-092. **Re-attributed 2026-08-23:** the unchecked
+  `tx_color()` came from upstream, not from the fork — upstream carried it until
+  `v2.0.1` (2025-12-10) and fixed it there — so the defect is inherited and the
+  "depend on upstream" conclusion is firmer, while the "two-line fork" count is
+  withdrawn until it is re-derived against the right base.
 - **Two questions went to the owner**: [A9](docs/research/OPEN_QUESTIONS.md) —
   does the day theme keep its near-white page on an emissive panel, where the
   rendered face draws an estimated 4.2× to 13.9× the night theme; and A10 — what
@@ -362,11 +397,28 @@ came off the unit the same day —
 - **The vendor bakes raw pixel buffers**, not encoded images, with no decoder on
   the device — and **T-103 has since decoded them.** Each image is exactly
   411 652 bytes: a 12-byte header (`u32` magic, `u16` width 410, `u16` height
-  502, `u32` stride 820) followed by **410 × 502 RGB565 little-endian**. The byte
-  order was settled by rendering, which is the only thing that could settle it —
-  little-endian gives coherent artwork, big-endian gives noise. The panel's pixel
-  format and byte order are now facts about the hardware rather than a preference
-  of T-034's.
+  502, `u32` stride 820) followed by **410 × 502 RGB565 little-endian on disk**.
+  The **stored** byte order was settled by rendering the file — little-endian
+  gives coherent artwork, big-endian gives noise.
+- **Half of that was overstated, and it was corrected 2026-08-23.** The record
+  went on to say the panel's byte order was a hardware fact. It is not: a host
+  render never crosses the display driver. Traced through pinned source, the one
+  complete display path for this board **swaps every pixel before transfer** —
+  `xiaozhi@bb9122ab lcd_display.cc:160,166` sets `.swap_bytes = 1`,
+  `esp-bsp@2f51931 esp_lvgl_port_disp.c:739-741` acts on it, and
+  `esp_lcd_sh8601.c:279-280` then transfers verbatim. The **pixel format** half
+  stands (`COLMOD 3Ah = 0x55`); the **transfer byte order is `UNKNOWN`**, now
+  **D21**, closable by the CO5300 datasheet or by a measurement. Nothing shipped
+  is wrong — every generated asset is an `A8` mask with no byte order — and what
+  inherits the question is **the first line of display bring-up**, not the first
+  colour asset: an asset's byte order is LVGL's, and the wire order is absorbed
+  at flush by the port's `swap_bytes` flag, which is a board fact belonging in
+  `boards/`/`platform/`. **And the swap is a per-frame cost nobody has priced**:
+  `lv_draw_sw_rgb565_swap()` is a software in-place pass over the flushed
+  region, so a Waveshare full frame is a second pass over 402 KiB, on
+  PSRAM-backed buffers, against the cache-coherency requirement already flagged
+  a few lines above — an input to **T-093**, the draw-buffer and frame-rate ADR,
+  and `UNKNOWN` in both necessity and cost. `NOT EXECUTED — HARDWARE REQUIRED`.
 - **And the partition holds six files, not three.** There is a `/music/`
   directory with three MP3 background tracks, two stereo, 112–128 kbps. That
   gives **T-105** a strong prior that `AAC210602A1` is the speaker rather than a
@@ -403,7 +455,23 @@ open question**, gated on three measurements only the owner can take: the
 closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
 the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
 280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
-need. **T-106** holds all three, and the register reads that go with them.
+need. **T-106** holds all three, and **all three are still untaken** — a caliper and
+a scale, the two instruments T-106 names, plus plasticine for the closed-case
+clearance, which is a squashed-thickness read and **not** something a feeler
+gauge can take through a closed cover. None of them has been used. The bus-scan
+half of T-106 is **done** — 2026-08-23, and `0x6A` is free after all, which is
+what the claim said before anybody could know it — and an earlier version of
+this paragraph let that stand in for the rest, listing *"what remains"* as the
+magnetometer modules and the register reads while silently dropping the
+clearance, the rectangle-and-diagonal and the mass. That is the one wrong
+sentence here that spends money: an owner reading it concludes the battery gate
+is clear and orders against the `ESTIMATED` 250–310 mAh tree without the mass —
+this paragraph's own lie detector — or the diagonal, which T-106 calls the
+measurement that gets forgotten. Found in review. **What remains under T-106 is
+M1, M2 and M3 — the clearance, the rectangle and its diagonal, and the mass —
+plus** confirming the magnetometer modules once they arrive
+([#83](https://github.com/hleserg/Attadipa/issues/83)), and the register reads
+that go with them.
 
 **Both inheritable charge currents are wrong for the real cell.** Waveshare's own
 demo sets 400 mA, which is 1.33C on ~300 mAh against a 1.0C class maximum, and
@@ -458,7 +526,11 @@ available on this board.
 - **T-010 board bring-up** — **half unblocked as of 2026-08-22.** A physical
   Waveshare `ESP32-S3-Touch-AMOLED-2.06` is on the desk; a T-Watch is not, and
   the T-Watch's variant question (which of five radios, which of two GNSS
-  modules) is exactly what nobody can answer without one. The Waveshare half is
+  modules) has an *answer* from the order listing — SX1262 at 868 MHz, and the
+  owner's recollection of MIA-M10Q — but not a *marking read*, which is the only
+  thing that moves `RadioChip::Unknown`, and needs the unit in hand. The GNSS
+  half has no enum to move: there is no `GnssModule` type in the tree, so its
+  gate is documentary where the radio's is in code. The Waveshare half is
   no longer blocked and is no longer being *done* either — see the section
   above; **nothing in this repository may say `PASS` until somebody runs a test
   on the board and writes down what came out.**
@@ -477,13 +549,44 @@ available on this board.
 
 | | Question | Why it matters |
 |---|---|---|
-| A1 | Is either board physically available, and which revision? | everything hardware |
-| A2 | If a T-Watch: which radio chip and which GNSS module? | decides whether the watch can join a MeshCore network at all — two of the five candidate radios cannot ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
-| A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
+| A11 | **Do one or two of the T114s carry GNSS?** ([#124](https://github.com/hleserg/Attadipa/issues/124)) The fleet table records one GNSS-capable node; the indoor-fix observation in OD-16 says "either unit" | nothing is blocked either way — no node here gets an indoor fix under either reading — but [#90](https://github.com/hleserg/Attadipa/issues/90) and [#91](https://github.com/hleserg/Attadipa/issues/91) both plan against that table |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
-None of these blocks M1. All of them block hardware work.
+None of these blocks M1, and the table says what each one *does* block rather
+than sharing one sentence: A6 blocks what "compass" is allowed to mean, D16
+blocks freezing the design tokens, and A11 blocks nothing either way — it is
+here because two planned tasks read a fleet table whose answer it changes, not
+because work stops without it. The blanket *"all of them block hardware work"*
+this line used to carry was written when the table held one kind of question,
+and by the time A11 was added it contradicted the row directly above it.
+
+**A1, A2 and A3 are answered as owner questions** — and A1 is off the table
+above because what is left of it is not an answer somebody owes us: the T-Watch
+half is the post arriving, and the Waveshare half is a loupe on a board already
+on the desk, now filed as `OPEN_QUESTIONS` **D20** rather than left live in a
+table whose rule is that every `A`-question is an open `needs-owner` issue —
+[#54](https://github.com/hleserg/Attadipa/issues/54), on 2026-08-22, recorded
+as
+[OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
+Waveshare is received and its **identity** is `VERIFIED` from the silkscreen —
+the board is the one schematic V1.0 describes. Its **revision** is not: the
+silkscreen carries the product name, whose `2.06` is the panel diagonal, and no
+revision field has been read off the unit, so V1.0-derived rows are confirmed
+against a document rather than against the board. What remains unread there
+is that revision (D20) and the display-FPC part marking (D19) — U2 and U3 were
+answered off the die itself, `WAVESHARE_EFUSE_READ` §1.2–1.3; T-Watch
+S3 Plus is `ORDERED`, not `PRESENT` — the T-010 blocker above is unchanged
+until it arrives and its radio marking is read off the physical part. A2:
+SX1262 at 868 MHz by order listing; MIA-M10Q from the owner's recollection,
+because the listing is silent on GNSS — the good outcome
+ADR-0003 flagged as possible but not guaranteed. A3: three MeshCore nodes
+(Heltec V4 companion, two Heltec T114s), not one. Two questions this answer
+raised are filed separately rather than folded in: T114 band
+([#89](https://github.com/hleserg/Attadipa/issues/89)) and the
+three-firmware-revision compatibility matrix
+([#90](https://github.com/hleserg/Attadipa/issues/90)); the indoor-GPS-fix
+constraint is filed as [#91](https://github.com/hleserg/Attadipa/issues/91).
 
 **A5 was answered on 2026-08-22** and is struck from the table above: an
 external magnetometer is intended, the owner has ordered a **CJMCU-9911
@@ -506,18 +609,170 @@ T-071 is not blocked, because "get me back on foot" is the one purpose that
 survives the physics. The three numbers the recording rule needs — threshold,
 hysteresis and dwell — are to be computed and shown, not chosen.
 
+## The interface can be looked at while it runs — 2026-08-23
+
+Owner request, filed as [#117](https://github.com/hleserg/Attadipa/issues/117):
+an agent should be able to drive the watch over USB the way a person does —
+screenshot, look at the picture, tap or swipe or press a button, wait,
+screenshot again, check, and fix.
+
+**It works, and the honest scope is: against the simulator.** There is no
+Attadipa firmware, so the vertical terminates in the desktop simulator — which
+is a real LVGL stack with a real framebuffer and a real input path, not a mock,
+but not a panel either. `tools/watch_control.py` prints the build it is talking
+to (`sim 0.0.1`) precisely so that no screenshot from it can be filed as a
+hardware result.
+
+What was built:
+
+- **The input layer this repository did not have.** Nothing under `core/`,
+  `platform/`, `ui/` or `apps/` modelled a press or a touch, because until now
+  the only thing driving the interface was a person in front of the simulator.
+  There is now one queue, and it reaches the interface through a real LVGL
+  input device, so a widget cannot tell an injected tap from a finger — which
+  is the whole point; a debug path that called screen handlers directly would
+  produce tests that pass against code no finger can reach. **The bridge is
+  that queue's only producer today**: the simulator's own mouse is LVGL's SDL
+  device and reaches LVGL separately, and `InputOrigin::Physical` is waiting for
+  T-114's touch controller. Recorded that way because the first version of this
+  entry said every source pushed into the queue, and the independent review of
+  [#121](https://github.com/hleserg/Attadipa/pull/121) was right that it did
+  not.
+- **A debug message class, not a second channel.** `link::frame_codec`'s framing
+  carries an [ADR-0005](docs/adr/0005-node-protocol.md) §4 envelope with a new
+  `class` value. `kMaxPayload` stays 192 and screenshots are chunked to fit,
+  because RESOURCE_BUDGET §4 requires the bound be declared rather than widened
+  for convenience. **Waiting on the owner, and deliberately not fixed here:**
+  ADR-0005 §4 lists six fields — `ver`, `class`, `req_id`, `op`, `body_len`,
+  `crc16` — which is ten bytes, and draws **twelve** column positions above
+  them. `debug/protocol.h:54-59` implements ten and argues why (a field list is
+  a specification; a column count is a picture), but that correction lives in a
+  comment in another module while the ADR still shows the diagram. ADRs are
+  outside the sweep allowlist and outside an agent's remit to amend, so this is
+  recorded rather than changed: **the diagram needs one edit or the field list
+  needs two more fields**, and only the owner can say which.
+- **A diagnostic test pattern** whose every element answers one way a screenshot
+  can be wrong while still looking like a picture — lettered corner markers for
+  rotation and mirror, an asymmetric F, pure primaries for a swapped channel, a
+  labelled grid for scale, the last button event **with its measured hold**, and
+  a touch trail. A swipe replayed as one artificial jump draws two dots; a real
+  `down → move… → up` draws a line, and the end-to-end test counts those pixels.
+  The trail is drawn by the queue drain, so it proves the **transport**; a
+  separate counter driven by LVGL's own click events proves the **interface**,
+  and the two are on the screen side by side because they genuinely came apart
+  — two rapid taps once reached the queue as four events and LVGL as one click,
+  and before that LVGL was receiving nothing at all because the test pattern's
+  own decorations were swallowing every press.
+- **`tools/watch_control.py`** — `info`, `screenshot` (single or a series),
+  `tap`, `long-tap`, `double-tap`, `swipe`, `drag`, `gesture`, `button`
+  press/release/click/hold, `input-reset`, `run <scenario>` and `live`.
+- **A rule in [CLAUDE.md](CLAUDE.md) and a skill agents read**, because a
+  mechanism nobody is told to use is a mechanism nobody uses. The skill's own
+  worked examples are held to the same standard as the code: making both
+  Waveshare buttons non-injectable turned three of its commands into `exit 1`
+  on the board its first section starts, which nothing in `check_docs.py` can
+  see — it checks links, task IDs, decision numbers and citations, never
+  whether a documented command is one the tool will run. Found in review.
+- **Two answers that had to stop being one number each.** `wait_stable` used to
+  ask only what LVGL had already *processed*, so a tap that had reached the
+  device and not yet the interface — a window one 33 ms read period wide,
+  against a 5 ms loop — was reported as a settled screen, and the next
+  screenshot showed the frame from before it. It now asks three things: the
+  device's own input queue, the transitions pumped but unread, and only then
+  LVGL's idle timer and animations. Proved by the end-to-end test, which counts
+  LVGL's own clicks after a bare tap and goes red on either half being removed.
+  And `input-reset` — the escape hatch for a stalled interface — answered with a
+  count that was least trustworthy exactly where it was most needed: the device
+  releases an input only if the release reaches the queue, so `0` meant both
+  "nothing was stuck" and "the queue is full and everything still is". It now
+  answers `released N, still_held M` and exits non-zero on `M`.
+
+Two limits are stated rather than worked around. **Single touch** — LVGL's
+pointer device carries one point, so nothing above the input layer could consume
+a second finger; the wire format keeps a `touch_id` and refuses a second point
+rather than merging it, and what the FT3168 itself can do stays UNKNOWN (T-113).
+**The Waveshare's buttons are `button-1` and `button-2`** — the owner counted
+two by pressing them, and which named input each reaches is open question D5, so
+naming one "power" would be inventing the answer. `info` prints
+`role NOT established` beside both, **and now `not simulated` as well.** The
+profile said `injectable = true` for both, which was the one board fact on it
+asserted permissively and unargued, on the board where the question is open:
+`HARDWARE_MATRIX` calls its key list "a floor, not a census" and says `Key1` may
+never be brought out at all. It is `false` for both until D5 closes, so the
+button step of the diagnostic tour runs on the T-Watch and prints `skip` on the
+Waveshare — coverage that did not happen, counted separately by the scenario
+runner and the end-to-end test and never as a pass. Flipping it green by
+asserting the flag would have been this repository's own named failure, one
+board over from `boot`, which carries the same flag because its role **is**
+established.
+
+**And a screenshot that never finishes now ends.** The deadline `screenshot()`
+computes was handed to each individual wait and read by nothing else, so a
+device that trickled chunks kept the collect loop alive indefinitely — every
+wait answered inside its own tenth of a second, the transfer itself unbounded.
+Unreachable over a Unix socket that never blocks; on `SerialTransport` at T-114
+it is the ordinary case. The host self-test now holds it: 0.7 s with the check,
+20.5 s and red without.
+
+**And a gesture now takes the time it was asked for.** `duration` was the one
+number in the input path that nothing measured. The wait hung off the
+*intermediate* points and came after each was sent, so an `N`-point path waited
+`N - 2` times instead of `N - 1`, its first segment had no length at all, and a
+**two-point** gesture — which has no intermediate points — went `PointerDown`,
+`PointerUp`, back to back, however slow it was asked to be. The shipped
+`tests/ui/gestures/example.json` declares 0.6 s and spent 0.45 s of it. A
+recogniser reads speed, so the effect is a swipe arriving as a flick while the
+run reports it asked for neither — the one failure a debug input path exists to
+make impossible. The deadlines are now absolute, from one `time.monotonic()` at
+the `PointerDown`, so round trips come out of the intervals they happened in
+rather than lengthening the path; a negative, infinite or NaN duration is
+refused *before* the press goes out, so a mistyped gesture file cannot leave a
+finger down; `duration: 0` stays legal and means as fast as the connection
+manages. Three host self-test groups pin the schedule on a fake clock — the
+two-point case, the five-point case, and the shipped file resolved at **both**
+board geometries — and all three fail on `fc69c26`. The end-to-end test adds the
+coarse version with the real clock and the real socket in it: **0.602 s** on the
+Waveshare geometry and **0.601 s** on the T-Watch for a file declaring 0.6.
+Reported as [#186](https://github.com/hleserg/Attadipa/issues/186), and the
+semantics `duration` now has are written down in
+[WATCH_CONTROL](docs/testing/WATCH_CONTROL.md#what-duration-measures) because
+nothing had ever stated them. Verified with `ctest --test-dir build` (28/28) and
+`ctest --test-dir build-sim` (33/33, `-DATTADIPA_BUILD_SIMULATOR=ON`), and by
+looking at the diagnostic screen's touch trail on both geometries after running
+the shipped file. `swipe()` has a smaller relative of the same defect — `steps`
+intervals, `steps - 1` sleeps, the first of length zero, so it runs
+`1/steps` short — left alone here rather than folded into an unrelated diff.
+
+[WATCH_CONTROL](docs/testing/WATCH_CONTROL.md) ·
+[REUSE_LEDGER](docs/research/REUSE_LEDGER.md) · **T-114** is what remains: the
+firmware endpoint, the day there is firmware.
+
 ## Build and test state
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **twenty-eight tests** pass, locally and in CI on `main` since #12 merged — and **thirty-three** with `-DATTADIPA_BUILD_SIMULATOR=ON`, which is the *Simulator build and headless run* job and not this row: `CMakeLists.txt` defaults the option off and the host job configures without it, so a thirty-three here was counting another job's work — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
-of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
-| Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
+of screen code, plus the three added on 2026-08-23 for the input layer, the
+debug wire format and the host tool -- the last of which holds an independent
+Python implementation of the format against the same fixed byte literals the C++
+suite asserts, so the two cannot drift into agreeing on a mistake. **For a while
+that sentence over-claimed and it now does not:** the shared literals were the
+`link::frame_codec` framing only, while the 10-byte envelope, the four bodies
+and the `Opcode`/`ErrorCode` numbering were round-tripped on each side and
+compared nowhere — pinned to each other, which is the one thing a fixed literal
+exists to rule out. A whole `HelloOk`, a whole `ScreenInfo` and a whole
+`InputEvent` are now literals both suites assert, and both numbering tables are
+spelled out on both sides. Proved by two mutations: swapping `QueueFull` and
+`CaptureFailed` used to leave everything green while an operator read *"the
+renderer could not produce a frame"* for a swipe point the input queue dropped;
+transposing `op` and `body_len` at both ends of the envelope used to pass every
+round trip. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+| Simulator | **builds and runs**, and now also **serves the debug channel** so the interface can be screenshotted and driven from another process (`--debug-socket`, off by default). The end-to-end test starts it, injects input over a real socket and checks the resulting pictures. on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
-| Agent automation | **live — and the unattended half of it had never once worked.** The hourly watchdog hands a task over with `gh workflow run claude-agent.yml` under `GH_TOKEN: ${{ github.token }}` (`agent-queue-watchdog.yml:51,:85`), so the dispatching actor is `github-actions[bot]`. `claude-agent.yml` passed `allowed_bots: ""` to `anthropics/claude-code-action`, which refuses a non-User actor absent from that list: *"Workflow initiated by non-human actor: github-actions (type: Bot)."* Five seconds, no execution log written, and the hand-over could only report `no conclusion`. Every autonomous run since the watchdog was added died there; #27, #28, #67 and #69 were written off as unexplained model deaths and **T-107 was opened to investigate the reading list, which was the leading theory and was wrong**. The only successes were runs a *person* started by commenting — which is invisible unless the actor of each run is lined up against its outcome. Fixed by naming the dispatcher: `allowed_bots: "github-actions"`, which is strictly narrower than `'*'` (that would let any installed GitHub App drive a write-capable agent, and a test now refuses it) and is **not** a producer grant — `queue-scan.jq` still refuses `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so this repository's own output still cannot enqueue a billable writer. Both halves were defensible alone and only the *pair* was wrong, which no single file's review could ever show, so it is a test rather than a comment: `.github/tests/bot-actor-test.sh`, 19 assertions, reimplementing `isAllowedBot` in shell and asserting the watchdog still dispatches with the built-in token — proven to fail against the pre-fix tree, in both places. Found only because #81's `failure-reason.sh` replaced *"the cause is in the run log"* with *"no execution log was written — the agent step did not get far enough to leave one"*, which pointed at the step instead of the model. **And the same defect was in the reviewer, where it hid better.** `claude-pr-review.yml`'s `if:` deliberately admits `claude[bot]` — a blanket bot guard had skipped the review on the agent's own pull requests, the ones it exists for — and then handed the action `allowed_bots: ""`, the one list that does not contain `claude`. Runs `32597016812` (#95), `32596445164` (#94), `32595947792` (#92) and `32595273274` (#88): five, five, five and four seconds, byte-identical *"Workflow initiated by non-human actor: claude (type: Bot)"*, no execution log. **No agent-authored pull request had ever been reviewed**, and every one of those jobs reported **success**, because the `Review` step carries `continue-on-error` — which is right for its own reason and turned a refusal into a green tick. The workflow's own "the review did not run" comment listed five candidate causes and this was not among them; it is now cause 1. Fixed as `allowed_bots: "claude"`, and the test now asserts the *rule* — a workflow that admits a bot in its `if:` must name it, and none may name `'*'` — over all three agent workflows, so a fourth is checked the day it grows an exemption. **And the writer's turn ceiling was the same day's most expensive defect.** Six runs on 2026-08-22 — #71 three times, #67, #75, #78 — were accepted, posted an accurate plan about three minutes in, and died at turn 61 of a 60 ceiling with nothing on the branch: `error_max_turns`, `num_turns: 61`, **$3.00 each**, after 8 min 49 s of real work (run `32587675386`). An accurate report over an empty branch is the one outcome nobody can act on. The identical incident had already happened to the *reviewer* the same day and been fixed — 40 → 100, with the reasoning written down — and the writer, which does strictly more, was left at 60. Now 200; spend stays bounded by `timeout-minutes: 60`, which is what is actually billed. **Raising it exposed the failure underneath**: the next run of #67 died in ninety seconds instead of nine minutes with `subtype: success`, `is_error: true`, `num_turns: 20`, `permission_denials_count: 0` (run `32589375744`) — a real session that ended badly under a name reserved for one that did not, naming no cause, and `permission_denials_count: 0` rules out the tool-list failure. The published log holds the SDK options, an init line and that object, because `show_full_output` is off and that is correct — so the outcome comment was telling people the cause was in a log emptied of the cause on purpose. `.github/scripts/failure-reason.sh` now reads the *unpublished* execution log on the runner and puts one line on the issue, chosen by a whitelist of error grammars (an API status, a context refusal, a credit balance, an expired token) with everything else reported as `unclassified` plus structural facts only. The whitelist is the security model: that log holds every tool result, and the test puts an API key, a token and a private key beside a real error to prove only the error comes out. **And for its first day the whitelist recognised safely and disclosed unsafely, which are not the same act** — [#106](https://github.com/hleserg/Attadipa/issues/106). Eleven of the thirteen patterns were written as a prefix plus `[^"]{0,NNN}`, and the *whole match* was printed: `API Error: 500 GH_TOKEN=ghp_…` in the result string published the token, so did a nested `error.message`, and because the patterns were grepped over the raw file rather than over the record that holds the verdict, an error prefix quoted in unrelated tool output became the run's stated cause. Reproduced on `f2b6853`, ten commits after the finding was made. Nothing from the log is copied out now: the log decides *which sentence of the script* to print, and every line is literal text plus captures from a bounded alphabet — a three-digit status, a digit group, or a name from a closed list of error types. A secret cannot be spelled in three digits, so **widening what is recognised no longer widens what is disclosed**, which is what made T-108 a security review rather than an afternoon's typing. Recognition is **ordered, not scoped** — and the first version of this branch got that wrong, which the independent review caught and blocked. The detectors read `.result` and `.error` of the last `result` record first, because that record is the verdict and a tool result is not; if nothing there matches, the whole file is read after all. Scoping to the record alone would have gone silent on run `32589375744` itself, whose result record has neither field — and `show_full_output: false` publishes that record and withholds everything else, so a reader told nothing about the rest is being sent to a log already emptied. Each line now carries what it stood on: `(found outside the result record)`, or `(no status code or error type beside it)` when only the words matched, because `.result` is model output and an agent that dies writing about this file leaves `Credit balance is too low` in its final message. The status and the error type are taken from one bounded window, so two unrelated errors cannot be spliced into a third; the field alphabets moved **inside** the jq, where the `|`-joined frame is built, so a hostile `subtype` can no longer shift `is_error` and turn a failed run into a clean one. 96 assertions, of which the 69 new ones are **red against `5fd2738` and green after**, run that way rather than asserted: `ATTADIPA_REASON_SH=/tmp/old.sh bash .github/tests/failure-reason-test.sh` reports 32 failures on the pre-fix copy. **Why #67 died is now known — it is the `allowed_bots` refusal above**, and the whitelisted line was what pointed at it. The 500 KB reading order the prompt mandates, `TASKS.md` alone 149 KB before the agent opens a file of its own, was the suspected cause and was not it; it survives as T-110 on its own merits rather than as an explanation for anything. **live and exercised in production.** Seven workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all seven with shellcheck integration, `shellcheck` clean over every script, the intake gate's 49-case hostile-input test and the watchdog filter's 37-case test pass. **Three defects fixed on 2026-08-22, all silent and all found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all; and the hand-over step's pull-request lookup asked GraphQL for `issue(number:)`, which does not resolve pull requests, so an agent started from a comment **on a pull request** got a `NOT_FOUND` document that `gh` had already written to stdout — `|| echo ""` does not undo that — and the outcome comment on #71 went out as ``### Done — pull request #{"data":{"repository":{"issue":null}}…``. `issueOrPullRequest` answers for both, and — the review's finding on the first fix — *pushed to this pull request* now requires the head to have actually moved, because a pull request is open before the agent starts and open after whatever it does; a clean run that pushed nothing says so instead. And the *before* head is read inside the writer queue rather than at event time — the gate fires the instant an event arrives while the agent job waits in `attadipa-agent-writer` for up to an hour, so a gate-time snapshot would have credited this run with a push made by whoever moved the branch in that window. A run that pushed a commit and then died says both things: work landed, and it may be half of it. And a cross-reference is evidence only if it was made **during** the run: #75 cites #71 five times, so filing #75 created that reference before any agent started, and the step announced *"Done — pull request #71"* for a run that produced nothing — then labelled the issue `agent:review`, so nothing would re-queue it. A `Fixes #N` still needs no timestamp; a bare mention does. **And a bare cross-reference is not an answer at all** — the fourth defect in this one step, reported as [#76](https://github.com/hleserg/Attadipa/issues/76) by the producing agent an hour after the third was merged. The step's second question was *which open pull request mentions this issue at all*, and a mention is created by any pull request naming it: #75 cites #71 five times as evidence, so filing #75 made that reference before any agent existed, and a run that produced nothing announced *"Done — pull request #71"*. Filtering mentions by time proved only that one appeared **during** the run, never that this run **caused** it — correlation standing in for ownership. The question is now gone rather than qualified again, and the reason it could go is in the prompt: a research pull request is required to carry `Fixes #N` in the same words as an implementation one, so nothing compliant needed the fallback. A closing reference also no longer launders a failed run into a success — a pull request that exists over a run that died says both things. A cut-off run is also told, in words, that **nothing automated will come back for the unfinished part**: the watchdog scans issues, not pull requests, so no label on a pull request queues anything — the first version added `agent:ready` there and review pointed out the label was promising something that could not happen. The whole decision moved into `.github/scripts/handover-decision.sh` with a 37-case test, because every defect this step has had lived in shell embedded in a workflow where nothing could execute it. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. **And nobody had ever recorded which model was answering.** The action has no `model:` input, so the model is a string inside `claude_args` — and an absent string is not an error, it is a silent fall back to the CLI default. All three agent workflows had run that way since the day they were built, which makes every past result unattributable and any comparison between two runs meaningless. Now `--model claude-opus-5 --effort max` in the writer, the reviewer and the CI repairer, with the flags read off `claude --help` rather than guessed (`--effort` takes one of `low, medium, high, xhigh, max`; there is no `ultracode` level, and the test rejects one). The full model name is pinned rather than the `opus` alias so that a new Opus cannot quietly change what this loop is. Owner decision, 2026-08-22; `bot-actor-test.sh` now holds it, and fails both when a pin is missing and when the level is not one the CLI accepts. **And the last link in the queue had no automation in it at all.** An agent opens a pull request, CI goes green, the reviewer sets `ai-review:pass` — and then nothing happens, because [CLAUDE.md](CLAUDE.md) makes the merge an *orchestrator* act and an orchestrator is a live session. On 2026-08-22 six finished pull requests (#88, #92, #94, #95, #97, #103) sat green for hours, each carrying `Fixes #N`, and the six issues behind them stayed open — which is what the owner actually complained about, one link downstream of the cause. Two defects fed it: five of the six had been left as **drafts**, and nothing merges a draft (`claude-agent.yml`'s Hand over step now runs `gh pr ready` on the two outcome kinds that carry a pull request the run actually moved, and never `--undo`); and the unattended backstop merges `docs/` only, three per run, so a green pull request touching `core/` was waiting for a human-shaped event the design never scheduled. **`pr-merge-sweep.yml`** closes it, every half hour, on the same conditions the owner had already approved for the backstop — transcribed rather than reinvented, **including the path allowlist**. It invokes no model and costs nothing from Anthropic. **Not** GitHub's native auto-merge, which cannot read a label: `ai-review:blocking` is a label on purpose, because a verdict is a judgement and a red tick is a fact, so arming native auto-merge would merge exactly the pull requests the reviewer stopped. The decision is a file rather than shell inside a workflow — `.github/scripts/merge-candidate.sh`, 80 assertions in `.github/tests/merge-candidate-test.sh`, every condition asserted in both directions plus the *order* of two of them, proven to fail against four distinct real defects. **The first version of this dropped three conditions, all in the widening direction, and review caught every one.** It had no path condition at all, so it merged over `core/`, `.github/` and `docs/automation/` — an agent could have opened a pull request replacing this very rule and had the sweep merge it, and a gate that can widen itself is not a gate. It read `ai-review:pass` as present-or-absent, when the label records that a verdict was reached and never *which commit* it was reached on: a review that reaches no verdict — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, so the next commit would have merged reviewed by nothing. And it had no per-run cap. All three now hold, plus a `timeout-minutes`, a Codex condition that no longer counts a bot's own comment as an answer, and an API failure that no longer prints the same line as an empty queue. It also claimed undrafting starts a fresh review: it does not — GitHub raises no workflow run from a `GITHUB_TOKEN` event, and saying a second opinion was obtained when none was is worse than not splitting the passes at all. What guards the merge is the head-commit condition, which survives an undraft because undrafting changes no commit. **So a green pull request touching `core/` still waits for an orchestrator session**, exactly as [CLAUDE.md](CLAUDE.md) says: widening that is the owner's decision, not this rule's. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
+| Agent automation | **live — and the unattended half of it had never once worked.** The hourly watchdog hands a task over with `gh workflow run claude-agent.yml` under `GH_TOKEN: ${{ github.token }}` (`agent-queue-watchdog.yml:54` "GH_TOKEN: ${{ github.token }}", `:218` "gh workflow run claude-agent.yml"), so the dispatching actor is `github-actions[bot]`. `claude-agent.yml` passed `allowed_bots: ""` to `anthropics/claude-code-action`, which refuses a non-User actor absent from that list: *"Workflow initiated by non-human actor: github-actions (type: Bot)."* Five seconds, no execution log written, and the hand-over could only report `no conclusion`. Every autonomous run since the watchdog was added died there; #27, #28, #67 and #69 were written off as unexplained model deaths and **T-107 was opened to investigate the reading list, which was the leading theory and was wrong**. The only successes were runs a *person* started by commenting — which is invisible unless the actor of each run is lined up against its outcome. Fixed by naming the dispatcher: `allowed_bots: "github-actions"`, which is strictly narrower than `'*'` (that would let any installed GitHub App drive a write-capable agent, and a test now refuses it) and is **not** a producer grant — `queue-scan.jq` still refuses `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so this repository's own output still cannot enqueue a billable writer. Both halves were defensible alone and only the *pair* was wrong, which no single file's review could ever show, so it is a test rather than a comment: `.github/tests/bot-actor-test.sh`, 19 assertions, reimplementing `isAllowedBot` in shell and asserting the watchdog still dispatches with the built-in token — proven to fail against the pre-fix tree, in both places. Found only because #81's `failure-reason.sh` replaced *"the cause is in the run log"* with *"no execution log was written — the agent step did not get far enough to leave one"*, which pointed at the step instead of the model. **And the same defect was in the reviewer, where it hid better.** `claude-pr-review.yml`'s `if:` deliberately admits `claude[bot]` — a blanket bot guard had skipped the review on the agent's own pull requests, the ones it exists for — and then handed the action `allowed_bots: ""`, the one list that does not contain `claude`. Runs `32597016812` (#95), `32596445164` (#94), `32595947792` (#92) and `32595273274` (#88): five, five, five and four seconds, byte-identical *"Workflow initiated by non-human actor: claude (type: Bot)"*, no execution log. **No agent-authored pull request had ever been reviewed**, and every one of those jobs reported **success**, because the `Review` step carries `continue-on-error` — which is right for its own reason and turned a refusal into a green tick. The workflow's own "the review did not run" comment listed five candidate causes and this was not among them; it is now cause 1. Fixed as `allowed_bots: "claude"`, and the test now asserts the *rule* — a workflow that admits a bot in its `if:` must name it, and none may name `'*'` — over all three agent workflows, so a fourth is checked the day it grows an exemption. **And the writer's turn ceiling was the same day's most expensive defect.** Six runs on 2026-08-22 — #71 three times, #67, #75, #78 — were accepted, posted an accurate plan about three minutes in, and died at turn 61 of a 60 ceiling with nothing on the branch: `error_max_turns`, `num_turns: 61`, **$3.00 each**, after 8 min 49 s of real work (run `32587675386`). An accurate report over an empty branch is the one outcome nobody can act on. The identical incident had already happened to the *reviewer* the same day and been fixed — 40 → 100, with the reasoning written down — and the writer, which does strictly more, was left at 60. Now 200; spend stays bounded by `timeout-minutes: 60`, which is what is actually billed. **Raising it exposed the failure underneath**: the next run of #67 died in ninety seconds instead of nine minutes with `subtype: success`, `is_error: true`, `num_turns: 20`, `permission_denials_count: 0` (run `32589375744`) — a real session that ended badly under a name reserved for one that did not, naming no cause, and `permission_denials_count: 0` rules out the tool-list failure. The published log holds the SDK options, an init line and that object, because `show_full_output` is off and that is correct — so the outcome comment was telling people the cause was in a log emptied of the cause on purpose. `.github/scripts/failure-reason.sh` now reads the *unpublished* execution log on the runner and puts one line on the issue, chosen by a whitelist of error grammars (an API status, a context refusal, a credit balance, an expired token) with everything else reported as `unclassified` plus structural facts only. The whitelist is the security model: that log holds every tool result, and the 27-case test puts an API key, a token and a private key beside a real error to prove only the error comes out. **And for its first day the whitelist recognised safely and disclosed unsafely, which are not the same act** — [#106](https://github.com/hleserg/Attadipa/issues/106). Eleven of the thirteen patterns were written as a prefix plus `[^"]{0,NNN}`, and the *whole match* was printed: `API Error: 500 GH_TOKEN=ghp_…` in the result string published the token, so did a nested `error.message`, and because the patterns were grepped over the raw file rather than over the record that holds the verdict, an error prefix quoted in unrelated tool output became the run's stated cause. Reproduced on `f2b6853`, ten commits after the finding was made. Nothing from the log is copied out now: the log decides *which sentence of the script* to print, and every line is literal text plus captures from a bounded alphabet — a three-digit status, a digit group, or a name from a closed list of error types. A secret cannot be spelled in three digits, so **widening what is recognised no longer widens what is disclosed**, which is what made T-108 a security review rather than an afternoon's typing. Recognition is **ordered, not scoped** — and the first version of this branch got that wrong, which the independent review caught and blocked. The detectors read `.result` and `.error` of the last `result` record first, because that record is the verdict and a tool result is not; if nothing there matches, the whole file is read after all. Scoping to the record alone would have gone silent on run `32589375744` itself, whose result record has neither field — and `show_full_output: false` publishes that record and withholds everything else, so a reader told nothing about the rest is being sent to a log already emptied. Each line now carries what it stood on: `(found outside the result record)`, or `(no status code or error type beside it)` when only the words matched, because `.result` is model output and an agent that dies writing about this file leaves `Credit balance is too low` in its final message. The status and the error type are taken from one bounded window, so two unrelated errors cannot be spliced into a third; the field alphabets moved **inside** the jq, where the `|`-joined frame is built, so a hostile `subtype` can no longer shift `is_error` and turn a failed run into a clean one. 96 assertions, of which the 69 new ones are **red against `5fd2738` and green after**, run that way rather than asserted: `ATTADIPA_REASON_SH=/tmp/old.sh bash .github/tests/failure-reason-test.sh` reports 32 failures on the pre-fix copy. **Why #67 died is now known — it is the `allowed_bots` refusal above**, and the whitelisted line was what pointed at it. The 500 KB reading order the prompt mandates, `TASKS.md` alone 149 KB before the agent opens a file of its own, was the suspected cause and was not it; it survives as T-110 on its own merits rather than as an explanation for anything. **live and exercised in production.** Seven workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all seven with shellcheck integration, `shellcheck` clean over every script, the intake gate's 49-case hostile-input test and the watchdog filter's 37-case test pass. **Three defects fixed on 2026-08-22, all silent and all found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all; and the hand-over step's pull-request lookup asked GraphQL for `issue(number:)`, which does not resolve pull requests, so an agent started from a comment **on a pull request** got a `NOT_FOUND` document that `gh` had already written to stdout — `|| echo ""` does not undo that — and the outcome comment on #71 went out as ``### Done — pull request #{"data":{"repository":{"issue":null}}…``. `issueOrPullRequest` answers for both, and — the review's finding on the first fix — *pushed to this pull request* now requires the head to have actually moved, because a pull request is open before the agent starts and open after whatever it does; a clean run that pushed nothing says so instead. And the *before* head is read inside the writer queue rather than at event time — the gate fires the instant an event arrives while the agent job waits in `attadipa-agent-writer` for up to an hour, so a gate-time snapshot would have credited this run with a push made by whoever moved the branch in that window. A run that pushed a commit and then died says both things: work landed, and it may be half of it. And a cross-reference is evidence only if it was made **during** the run: #75 cites #71 five times, so filing #75 created that reference before any agent started, and the step announced *"Done — pull request #71"* for a run that produced nothing — then labelled the issue `agent:review`, so nothing would re-queue it. A `Fixes #N` still needs no timestamp; a bare mention does. **And a bare cross-reference is not an answer at all** — the fourth defect in this one step, reported as [#76](https://github.com/hleserg/Attadipa/issues/76) by the producing agent an hour after the third was merged. The step's second question was *which open pull request mentions this issue at all*, and a mention is created by any pull request naming it: #75 cites #71 five times as evidence, so filing #75 made that reference before any agent existed, and a run that produced nothing announced *"Done — pull request #71"*. Filtering mentions by time proved only that one appeared **during** the run, never that this run **caused** it — correlation standing in for ownership. The question is now gone rather than qualified again, and the reason it could go is in the prompt: a research pull request is required to carry `Fixes #N` in the same words as an implementation one, so nothing compliant needed the fallback. A closing reference also no longer launders a failed run into a success — a pull request that exists over a run that died says both things. A cut-off run is also told, in words, that **nothing automated will come back for the unfinished part**: the watchdog scans issues, not pull requests, so no label on a pull request queues anything — the first version added `agent:ready` there and review pointed out the label was promising something that could not happen. The whole decision moved into `.github/scripts/handover-decision.sh` with a 37-case test, because every defect this step has had lived in shell embedded in a workflow where nothing could execute it. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. **And nobody had ever recorded which model was answering.** The action has no `model:` input, so the model is a string inside `claude_args` — and an absent string is not an error, it is a silent fall back to the CLI default. All three agent workflows had run that way since the day they were built, which makes every past result unattributable and any comparison between two runs meaningless. Now `--model claude-opus-5 --effort max` in the writer, the reviewer and the CI repairer, with the flags read off `claude --help` rather than guessed (`--effort` takes one of `low, medium, high, xhigh, max`; there is no `ultracode` level, and the test rejects one). The full model name is pinned rather than the `opus` alias so that a new Opus cannot quietly change what this loop is. Owner decision, 2026-08-22; `bot-actor-test.sh` now holds it, and fails both when a pin is missing and when the level is not one the CLI accepts. **And the last link in the queue had no automation in it at all.** An agent opens a pull request, CI goes green, the reviewer sets `ai-review:pass` — and then nothing happens, because [CLAUDE.md](CLAUDE.md) makes the merge an *orchestrator* act and an orchestrator is a live session. On 2026-08-22 six finished pull requests (#88, #92, #94, #95, #97, #103) sat green for hours, each carrying `Fixes #N`, and the six issues behind them stayed open — which is what the owner actually complained about, one link downstream of the cause. Two defects fed it: five of the six had been left as **drafts**, and nothing merges a draft (`claude-agent.yml`'s Hand over step now runs `gh pr ready` on the two outcome kinds that carry a pull request the run actually moved, and never `--undo`); and the unattended backstop merges `docs/` only, three per run, so a green pull request touching `core/` was waiting for a human-shaped event the design never scheduled. **`pr-merge-sweep.yml`** closes it, every half hour, on the same conditions the owner had already approved for the backstop — transcribed rather than reinvented, **including the path allowlist**. It invokes no model and costs nothing from Anthropic. **Not** GitHub's native auto-merge, which cannot read a label: `ai-review:blocking` is a label on purpose, because a verdict is a judgement and a red tick is a fact, so arming native auto-merge would merge exactly the pull requests the reviewer stopped. The decision is a file rather than shell inside a workflow — `.github/scripts/merge-candidate.sh`, 135 assertions in `.github/tests/merge-candidate-test.sh`, every condition asserted in both directions plus the *order* of two of them, proven to fail against four distinct real defects. **The first version of this dropped three conditions, all in the widening direction, and review caught every one.** It had no path condition at all, so it merged over `core/`, `.github/` and `docs/automation/` — an agent could have opened a pull request replacing this very rule and had the sweep merge it, and a gate that can widen itself is not a gate. It read `ai-review:pass` as present-or-absent, when the label records that a verdict was reached and never *which commit* it was reached on: a review that reaches no verdict — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, so the next commit would have merged reviewed by nothing. And it had no per-run cap. All three now hold, plus a `timeout-minutes`, a Codex condition that no longer counts a bot's own comment as an answer, and an API failure that no longer prints the same line as an empty queue. It also claimed undrafting starts a fresh review: it does not — GitHub raises no workflow run from a `GITHUB_TOKEN` event, and saying a second opinion was obtained when none was is worse than not splitting the passes at all. What guards the merge is the head-commit condition, which survives an undraft because undrafting changes no commit. **So a green pull request touching `core/` still waits for an orchestrator session**, exactly as [CLAUDE.md](CLAUDE.md) says: widening that is the owner's decision, not this rule's. **And a fifth widening was found on 2026-08-23: a commit status is not a check run.** GitHub returns both in one `statusCheckRollup` and the sweep flattened them, so a third-party app's green commit status counted toward "some check ran". The app in question is Devin, whose status on every head commit here reads *"Devin Review · success · Full review skipped: trial expired and no credits remaining"* — a green tick for a review that did not happen, and on a head whose own workflows were still `action_required`, the **only** context present, which made the combined state `success` over a pull request nothing had looked at. Statuses are now tagged `status:` in the query: a red or pending one still holds the merge, because a red third party is information, but a green one can no longer satisfy the condition that CI ran at all. Owner asked on 2026-08-23 for Devin to be removed as a reviewer outright and **uninstalled the app on 2026-08-24**, so it posts nothing further; the rule stays, because the next third-party app to be installed will not be announced either. **And the agent's own pushes were never running CI, which nothing could see because nothing was red.** [#75](https://github.com/hleserg/Attadipa/issues/75). Both runs for #71's head `488be1e` — CI `32581052659` and the review `32581052664` — were created and completed **in the same second** with `conclusion: action_required` and **zero jobs**; `get_check_runs` returned `total_count: 0`, so no check ever appeared on the pull request. The agent then reported it was waiting on CI, which was true and would have stayed true forever, while the orchestrator's *merge once CI is green* had no verdict to read and `agent:review` said the work was with the reviewers. **The issue named four candidate settings and the answer is that none of them applies**: attempt 1 records `head_repository == repository`, so this was a branch here and not a fork, and all three *Approval for running fork pull request workflows from contributors* options — first-time-contributors-new-to-GitHub, first-time contributors, all external contributors — gate **fork** pull requests only; changing any of them would have fixed nothing and removed a real protection from a public repository. The fourth candidate, the pull request's author being an app, is contradicted by the issue's own table: head `31c2c39` had the same `claude[bot]` author and ran. The rule is documented and is about the **token that created the event**, not a setting: *"When a pull request is created or updated by a workflow using `GITHUB_TOKEN`, `pull_request` events with the `opened`, `synchronize`, or `reopened` activity types create workflow runs that require approval"* — [Events that trigger workflows § `pull_request`](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request), read 2026-08-23. **There is no repository setting that disables it**; GitHub's own remedy is a different credential. Note the sibling behaviour and the difference between them, because it is easy to read one as the other: for every *other* event a `GITHUB_TOKEN` push creates **no run at all** — which is what the undraft sentence above says, and it is still correct, `ready_for_review` not being one of the three activity types — while for these three it creates **a run record that never starts**, and a run record looks like something happened. **Where this repository produces it was traced rather than assumed.** The commit's git author and committer are `claude[bot]`, because the action sets the git identity; the run's `actor` is `github-actions[bot]`, because that is the identity the push was *authenticated* with, and those two disagreeing is the fingerprint. `claude-agent.yml`'s writer checkout took `actions/checkout`'s defaults — `token: ${{ github.token }}`, `persist-credentials: true` — so the remote was left authenticated as the built-in token and **every `git push` the agent ran in a shell of its own went out as `github-actions[bot]`**, which is the normal path for an agent fixing its own pull request after a review. The file already knew the rule and had applied it to the wrong half: `:795-804` explains at length why `claude-code-action` is deliberately not handed `secrets.GITHUB_TOKEN`, so the *action's* push path was fixed and the *agent's* was never looked at. The other two checkouts in the same file set `persist-credentials: false`; the only one that writes did not. Now `token: ${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}` — written that way deliberately, because that secret is allowed to be empty and an unset secret is a falsy empty string, so the line changes nothing until the owner sets it and the two halves can land in either order. **Setting the secret was already necessary and was never sufficient**, which is why this sat unfixed while looking configured. **The rule is on `main`; the job that calls it and the `token:` line itself are NOT** — GitHub refuses to let a GitHub App update anything under `.github/workflows/` without the `workflows` permission, which `claude[bot]` does not hold, so the push is rejected outright and both wait as `docs/automation/pending/75-approval-stall.patch` (the same wall #74 hit). Until somebody applies it — three commands from a local session — this stall is still silent and the fix is still not in place. `.github/scripts/approval-stall-decision.sh` plus the watchdog's `approvals` job end the silence once it lands: a run that concluded `action_required` with zero jobs is commented on once **per head commit**, and one with jobs is called an environment gate instead, because that is a different cause and one message for both would be wrong for one of them. An unreadable job count or head is skipped for the tick rather than resolved in either direction — guessing *stalled* accuses every pull request the moment the API has a bad minute, hourly and forever, which is #82's shape. 51 cases in `.github/tests/approval-stall-decision-test.sh`, including both real runs with the values the API actually returned — and two that **lift the field split out of the patch file and run it**, because review found that split reading its records with `IFS=$'\t'`. A tab is IFS whitespace, so bash collapses adjacent tabs and a record whose `conclusion` is null arrives a field short: the head SHA lands in `CONCLUSION`, the workflow name in `RUN_SHA`, and the decision script rejects `CI` as a non-hexadecimal head and answers `quiet|unreadable`. That killed the `action_required`-as-a-**status** branch — the one that arrives with an empty conclusion, and the branch the guard argues hardest for — in the one direction with no symptom: after the shift field 3 is always a SHA, so no false positive was reachable, only the missed stall. It is now `join("|")` read with `IFS='|'`, the idiom already used twice here, and the two new cases extract the line from the patch with `sed` rather than copying it, so a copy cannot drift and a patch that stops containing a recognisable `while IFS=` goes red. Nothing could have caught it otherwise: the loop lives in `pending/`, which `ci.yml`'s `actionlint` and `shellcheck` globs do not reach, so it would have been applied by hand, unlinted. **It does not re-run anything** and the job deliberately holds no `actions: write`: whether a `GITHUB_TOKEN` re-run clears an approval requirement that a `GITHUB_TOKEN` push created is **UNKNOWN** — only a *person's* re-run was ever observed to — and a retry loop that does not clear it is an hourly bill for the same answer. The sources, the evidence and each option's cost are in [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md); the one owner action fills `ATTADIPA_AGENT_TOKEN`, and **which credential fills it is now Option B — a second GitHub App — unless the PAT already exists**, because a fine-grained PAT costs a security condition and an App does not; taking A instead means landing **T-145** before the secret is used rather than after. If A is taken, the PAT is scoped to this repository, with *Contents*, *Pull requests* **and *Issues*** at read-write and **without** `Workflows` — the issue permission because that secret is what the action posts its report and sets its labels with, and an earlier version of this instruction listed only the first two. This sentence recommended the PAT flatly until the fifth review round of #128, in a cell whose next sentence already said an App was preferable. **And Option A has a price the same document had denied**: a fine-grained PAT belongs to a user, so the agent's own output carries `author_association: OWNER`, which `queue-scan.jq` accepts *before* the `claude`/`github-actions` login test is ever reached — the anti-recursion guard does not get bypassed, it becomes unreachable, and no login list can fix that. A separate GitHub App keeps a distinct bot login and is now preferable for that reason rather than only for attribution; either way the recursion bound has to stop depending on who wrote the issue — **T-145**. **Two further prices are recorded rather than dismissed**, both found in review and both filed instead of fixed inside a patch that is already blocked on one owner action: `actions/checkout` defaults `persist-credentials` to `true`, so with the PAT set a *long-lived* credential sits in `.git/config` as an `http.extraheader` in the one job where the model holds `Bash` — and it cannot simply be turned off, because the agent pushes with `git push` from that same shell, so removing the exposure means a different push path (**T-146**); and `claude-ci-repair.yml` becomes *reachable* the moment the agent's pushes actually run CI, so a red one calls a second billable writer at two attempts and `timeout-minutes: 60`, which the risk list had priced at nothing. Related and also filed: the watchdog's orphan sweep ages `agent:working` tasks by `updated_at` over `repos/$REPO/issues`, an endpoint that returns pull requests too, so anything commenting on a pull-request-shaped task every tick keeps it permanently out of the two-hour sweep — `merge-candidate.sh` documents that hazard for itself and uses head `committedDate` instead (**T-147**). **Round three found the patch did not apply at all.** All three hunk headers carried the line counts of an earlier draft — the first said `+289,155` over a body of 228 added lines — so `git apply` answered *corrupt patch at line 234* and stopped. Command one of the three-command landing procedure in [`pending/README.md`](docs/automation/pending/README.md) failed outright, which nothing could see: `pending/` is outside every `actionlint`, `shellcheck` and test glob in `ci.yml`, and that is the whole reason the directory exists. The headers are recomputed and `git apply --check` passes; the landing commit is now simulated end to end — apply, `git rm` the patch, run the suite — rather than reasoned about. **That simulation is what the same round's blocking finding was about.** The two cases that lift the field split out of the patch read a path that the landing commit deletes, in the same commit that first runs them, so `main` would have gone red on the owner's own commit saying *the delimiter regressed* about a patch applied correctly. They now read the patch **or** the landed `agent-queue-watchdog.yml`, one `sed` expression over both because a patch's `+` and a workflow's leading space are one character class; neither containing it is still a hard `FAIL`, so the guard is retired deliberately or not at all. Both directions were run: 51/51 after a simulated landing, `47 passed, 3 failed` with the workflow removed. Three more from the same round: the tick is capped at **three comments**, the bound `pr-merge-sweep.yml` already puts on itself — without it the first tick after landing comments on every open pull request with a stalled head at once, which is both the T-147 hazard at its worst and the thing the test file's own header warns about; the two calls that could silence the whole guard now announce their own failure, the sharper being `OUT=""` from the decision script, which yields a `DECISION` that is neither `say` nor `quiet|unreadable`, so the job walked every pull request, emitted nothing and exited green — no answer wearing the shape of no problem; and **two facts that had lived only in a pull-request comment are now in the file**: `POST /actions/runs/{id}/approve` answered **403 Resource not accessible by integration** for `claude[bot]`, so an agent cannot approve its own stalled run and no self-granted permission changes that, and `gh pr close` followed by `gh pr reopen` re-queued all three runs on the head — a second observed remedy, recorded because it works and explicitly not recommended as a loop. **Round four found the landing commit red again, in the documentation this time.** The patch inserts 43 lines into `claude-agent.yml` and 11 into `ci.yml`, and four fingerprinted citations sit below those points — so applying it moves three citations in `APPROVAL_STALLS.md` down by 43 lines and two in `WAVESHARE_ARRIVAL.md` down by 11 — deliberately written here without the `path:line` syntax, because a record of where a citation used to point is not itself a citation and writing it as one would make this paragraph four more numbers to keep in step. Before the fix `check_docs.py` failed the owner's own commit naming `docs/research/WAVESHARE_ARRIVAL.md`, a board bring-up document, for a change to a GitHub Actions workflow. Confirmed by running it rather than by arithmetic: apply, then `python3 tools/docs/check_docs.py .`, four problems and exit 1. The patch now carries those edits itself, plus the retirement of its own row in [`pending/README.md`](docs/automation/pending/README.md), so the three documented commands still produce one green commit; the landing is simulated end to end each round. **The same round exposed a defect the fingerprints were supposed to have closed.** `tools/docs/check_docs.py:498` "FINGERPRINT.match(line[match.end()" reads a fingerprint from the remainder of the citation's own physical line, so a citation whose quoted snippet **wraps** has no fingerprint as far as the checker is concerned and silently falls back to the blank-line test — protected in appearance only. Two were found in review; a third was found only by re-counting the file's citations with the checker's own `CITATION` and `FINGERPRINT` patterns instead of by eye, which also showed the file's prose claiming six where there were eight, one of them carrying a snippet with a `"` in it that `FINGERPRINT`'s `"([^"]{3,80})"` could never have matched. All three are reflowed and the count is right, but a defect found three times by hand in one file is a missing check rather than three mistakes — **T-153**, deliberately not folded into this pull request, which is about approval stalls and would otherwise collide with `check_docs.py` work already in flight. Also this round: the stalled bullet reported a hardcoded `conclusion: action_required` for the shape whose conclusion is **empty** — the exact record the whole `join("|")` rewrite exists to keep reachable, sending a maintainer to look for a field the run does not have — and now prints `$STATUS` and `$CONCLUSION` as read; the pull-request listing sorts `created` **ascending**, because the REST default is descending and the three-comment cap would then serve the three newest stalled heads every tick and never reach the one stalled longest, which is #75's own failure mode at a slower cadence; and the extraction test now reads the deployed workflow **before** the patch, so that in the window where both exist the retired copy cannot answer for the live one — mutation-proved in both directions, 51/51 with the old order and 50/51 with the new one when the deployed loop's `IFS` is broken. **Round five: the owner was handed one action priced at a quarter of its cost, in the file `CLAUDE.md` sends an agent to first.** `TASKS.md` still said *the cost being accepted is attribution* and *the alternative without the attribution cost is a separate GitHub App* — both sentences this branch had corrected in three other files. The list in `APPROVAL_STALLS.md` counted **three** costs while the same document argued a **fourth** at length under *What this does not cover*, and that fourth is not a trade-off but a condition: the anti-recursion guard becomes unreachable, so the guard's own document recommended **A** while establishing why **B** is preferable. All four artefacts now say the same thing — **B unless the PAT already exists, and A only with T-145 landed first** — and the cost list counts four. **And the repeat bound came off on the one path that needed it most.** The unreadable-job-count path withheld the marker and commented anyway, so the body's own closing line *This is said once per head commit* was false exactly there, and with the ascending sort and the three-comment cap three heads stuck in that state consume the whole tick budget every tick and a newly stalled head is never reported — #75's failure mode inside the guard written to end it. There are now **two** markers: a full one that finishes a head, and a `-partial` one that bounds the incomplete report to once while leaving the head eligible for a complete one, because the per-run repeat bound reads only the full marker. The choice is in the decision script with eight cases of its own rather than inline in a `run:` block. **And nothing asserted the two lines that actually fix #75.** Every case was about the *rule*; the `token:` on the writer checkout and the existence of the `approvals` job were unguarded, in a repository that has lost a workflow line silently twice. Three cases now read them out of whichever of the patch and the deployed workflow holds them — including that the secret is named **before** the `github.token` fallback, since `${{ A || B }}` takes A and the reversed order is a silent no-op of exactly #75's shape. Mutation-proved: dropping the line, reversing it, and renaming the job each redden one case and only that one. Two smaller ones with them: the input is now bounded as well as the output, at 40 pull requests a tick with the number dropped announced rather than truncated silently — the arithmetic is ~4 API calls per pull request against a 1,000/hour budget shared with `pr-merge-sweep.yml`, so ~120 an hour here and nowhere near it, and exhausting it would produce precisely the unreadable counts that silence the guard; and the partial-marker warning is emitted before the comment body starts rather than from inside the block on stderr, because whether the runner parses workflow commands off stderr is not established anywhere here. **And a sixth, on 2026-08-24, was not a widening but a blind spot: a page is not a set.** Every fact the gate refuses on arrives in a GraphQL connection, the query asked for `labels(first:50)` and `reviewThreads(first:100)` and never asked whether another page existed, and the summary it computed carried no trace of how much had been read — 101 review threads with the unresolved one hundred-and-first answered *zero unresolved*, which is the value that merges. Completeness is now proved from `pageInfo` (never `nodes | length`, and never `totalCount`, which does not count a filtered set) and passed to the rule as a fail-closed tenth argument. **The caller half is parked — `claude[bot]` holds no `workflows` permission — so the sweep currently merges nothing and says which patch to apply: T-144, issue #170.** See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
@@ -663,6 +918,336 @@ four more things at no cost:
 
 ## Recently completed
 
+- **A node walking out of range was reported as the watch's own hardware.**
+  [#174](https://github.com/hleserg/Attadipa/issues/174). Capability source
+  selection existed twice in `core/src/capability_registry.cpp`:
+  `availability()` chose between the local and node sources by `remedy_rank`,
+  and `provider()` re-derived the same choice with a condition of its own —
+  default `Origin::Local`, reaching `Node` only when the node was already
+  `Ready`. So on the Waveshare board, which has no GNSS receiver at all,
+  `Position` went from `Ready`/`node` to `Unreachable`/**`local`** when a bound
+  node walked out of range: the same unchanged provider, reported as the
+  opposite side of the device. The same for `Incompatible`, and for a paired
+  node that does not offer the capability. That contradicts
+  [ADR-0004](docs/adr/0004-capability-sources.md) §2's invariant —
+  `Unprovisioned`, `Unreachable` and `Incompatible` imply a remote provider —
+  and it broke it precisely in the degraded states the origin axis exists to
+  serve: dispatch, the rail service and the coexistence coordinator all need to
+  know a part is not on this device, and Settings would have offered *service
+  the receiver* for a receiver this board does not have. **Nothing shipped was
+  wrong**, because nothing consumes `provider()` yet outside the tests — which
+  is the cheap moment to fix it, and the same argument ADR-0004 §2a makes about
+  Meshtastic widening an enum two years late. Fixed by making it one decision:
+  `CapabilityRegistry::source()` returns a `CapabilitySource` carrying both
+  halves, and `availability()` and `provider()` are readers of it, so the two
+  cannot disagree again. **`availability()` answers do not move** — only the
+  origin does. Mutation-checked: restoring the old `provider()` body turns 79
+  checks red across five of the nine new tests, 48 of them in the ADR-0004 §2
+  sweep over every capability on three board configurations and five node
+  states. The other four new tests are green both before and after on purpose —
+  they are what says the fix moved nothing else: a working local source still
+  wins over an attached node, a local part that is `Off` or `Failed` is still
+  reported as ours, and `Unsupported` is still terminal. Two things recorded
+  rather than fixed, both deliberately. `Origin` still has two values and none
+  of them means *nobody*, so a capability nothing can provide answers `Local`;
+  the case is now a named branch in `source()` with `Availability::Unsupported`
+  documented as the discriminator that says the field is not an answer, and
+  whether the axis grows a third value is T-111's ADR question, not an
+  implementation detail. And ADR-0004 §2's invariant is **not true as written**:
+  `CompanionLink` and `NotificationRelay` sit in `Unprovisioned` and
+  `Unreachable` with `Origin::Local`, because the sentence was written about
+  nodes while a second remote peer — a phone — exists and has no value on the
+  axis. That pair is named in the sweep rather than skipped, so a third one
+  arriving is a test failure, and it is noted under T-111 as the same shape.
+- **A degree of longitude at 89.9°N measured 1.96 km instead of 194 m, and it
+  got worse the closer you stood to the pole.**
+  [#28](https://github.com/hleserg/Attadipa/issues/28). `lon_e7_to_mm`
+  (`core/src/geo.cpp`) took the mean latitude, divided it by 1e7 to get a whole
+  degree, and used that as the index into `kCosTable1024` — so the fractional
+  part was discarded and every latitude in [89.0°, 90.0°) was scaled by
+  `cos 89°`. The overstatement is unbounded rather than merely large: inside
+  that last degree the true longitude scale falls from 0.01745 to zero while a
+  step function holds 0.01745, which is ten times over at 89.9° and a thousand
+  times over at 89.999°. **Below 89° the same defect is not sub-percent, and an
+  earlier version of this paragraph said it was — wrong by 100× at the very
+  boundary it named.** The worst error inside `[d, d+1)` sits at the top of the
+  interval and reads straight off the table: **+1.0%** at 29–30°, **+2.1%** at
+  50–51°, **+5.0%** at 70–71°, **+14.6%** at 82–83°, **+24.6%** at 85–86° and
+  **+101%** at 88–89° — so at 88.999°, one thousandth of a degree below the
+  stated boundary, the distance was already doubled. At **82.5°N — Alert,
+  Nunavut, the northernmost permanently inhabited place on earth** — the
+  overstatement was **+7.0%**, and this fix cuts the reported distance there by
+  6.3%. *Sub-percent* is true only below about **29°**. The movement is toward
+  truth, so nothing on a device is worse for it; what the wrong sentence cost
+  was the next person tuning `jump_while_still_mm` or auditing Arctic
+  behaviour, who would have read the blast radius as the last degree when it
+  was every latitude above ~29°. Found in review.
+  **What it would have cost:** ADR-0011 §6 makes implied speed and motion
+  disagreement evidence against a fix, and `TrustEvaluator::observe` computes
+  the first by dividing exactly this distance by an interval. A stationary
+  device at a high latitude, whose longitude wanders by the metre as any
+  receiver's does, would have produced kilometre-scale movement against an
+  accelerometer saying the wrist never moved — `PositionJump` and degraded
+  trust, for being at a high latitude, which is not a fault. **The fix** is
+  linear interpolation between the two bracketing table entries at the full
+  1e-7-degree resolution: integers throughout, no new table, no floating point
+  in the hot path, `kCosTable1024` and the `distance_mm()` contract untouched,
+  and every product bounded in the source — the widest is 2.0e10 × 2^24 ≈
+  3.4e17, a factor of 27 below the top of the type. Two details are load-bearing
+  and both are commented: the interpolation is written as a weighted mean rather
+  than the algebraically identical `lower + (upper − lower) · frac`, because the
+  latter subtracts two nearly equal numbers in the last degree and loses three
+  digits of a four-digit value; and the cosine is carried at 2^24 rather than the
+  table's 1024, because at 1024 the interpolated factor inside the last degree
+  rounds to *zero* — the same defect pointed the other way, and the direction
+  that silently passes a `distance > threshold` test.
+  **The envelope is measured, not claimed.** `tests/test_position.cpp` now
+  re-derives it on every run against an independent haversine reference — a
+  different method, no cosine table, no mean-latitude reduction, no
+  antimeridian case, because `sin(dlon/2)` is periodic and wraps for free.
+  Within **0.9%** from the equator to 89.999°, worst case 0.76%, flat rather
+  than growing towards the pole; inside the last 111 m the fixed-point quantum
+  takes over and the relative error eventually reaches 100%, where a whole
+  degree of longitude is a third of a millimetre — so what is bounded there is
+  the absolute error, under 20 mm, and the test says so instead of widening a
+  tolerance. The residual 0.7% is *not* the interpolation: it is
+  `kCosTable1024[89] = 18` against a true 17.871, and it is smaller than the
+  equirectangular approximation's own error at the same latitude, so a finer
+  table would buy nothing that survives the method it feeds.
+  Regression matrix covering 0°/45°/80°/89°/89.5°/89.9°/89.99°/89.999° in both
+  hemispheres, a swept envelope, the antimeridian at 89.9°N as well as at the
+  equator, the grid corners, coincident points, symmetry and saturation. **10 017 assertions fail
+  against the pre-fix code — but that is a count of failing assertions, not of
+  discriminating checks, and an earlier version of this sentence said "every new
+  check" when twenty-one new check sites are green against it.** Two whole new
+  test functions are among them: all eleven `CHECK`s of
+  `test_the_grid_boundaries_are_answers`, none of which reaches the cosine index
+  at all (zero deltas, a wrap to zero, pole-to-pole saturation, and coordinates
+  `in_range` rejects before any arithmetic), and all three invariants of
+  `test_the_longitude_scale_is_monotonic_symmetric_and_bounded`, which hold for
+  a step function as readily as for an interpolated one. They are worth keeping
+  — a boundary that is an answer rather than a crash is a property — but they
+  are not evidence that this defect existed. Meanwhile every **pre-existing**
+  distance test passed against the pre-fix code, which is exactly why the suite
+  could not see this: they only ever asked whole degrees. Found in review. Host, strict
+  warnings (`-Werror -Wconversion -Wsign-conversion -Wold-style-cast`), Clang,
+  ASan+UBSan with `-fno-sanitize-recover=all`, and the simulator build all
+  clean. **No hardware involved and none needed** — the defect and its fix are
+  entirely host-reproducible arithmetic.
+
+- **Silence after a GNSS alarm restored `Trusted` on its own.**
+  [#151](https://github.com/hleserg/Attadipa/issues/151), the T-062 finding
+  *"recovery can complete with no observation at all"*, reproduced on
+  `f2b6853` — the tip of `main` when it was filed and still the tip when it was
+  implemented. `TrustEngine::update()` (`core/src/trust.cpp`) drops evidence
+  that has passed its time-to-live, and `evaluate()` then read the resulting
+  `score_ == 0` as a clean bill of health and started the recovery hold on it.
+  Nothing recorded *how* the score had become clean, so a detector saying "the
+  condition is over" and a detector saying nothing at all were the same input.
+  With the default policy the whole path is deterministic and needs no
+  attacker: a spoofing alarm at `t=0` reaches `Untrusted`, the TTL takes it out
+  of the score at 15 s, the hold starts on that zero, and at 20 s and 25 s the
+  state climbs to `Degraded` and then `Trusted` — twenty-five seconds of
+  complete silence, with no observation, no `clear()` and no evidence of any
+  kind, and the device announces the position is fit to navigate by. Jamming
+  reaches the same place in twenty. That is the failure mode
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) exists to prevent, arrived at
+  through the one door left open, and it fires precisely when the receiver has
+  stopped talking — which is when it is least true.
+  **Fixed by making a retraction different from a lapse.** `TrustEngine` now
+  keeps a second per-reason mask beside `live_`: reasons that left it by the
+  TTL rather than by `clear()`. `report()` and `clear()` both take a reason out
+  of it, only the expiry loop puts one in, and `evaluate()` refuses to start or
+  advance the clean hold while any bit is set — so the score still decays, and
+  the *state* does not move on a decay. When a retraction does arrive the hold
+  is anchored to it, so time spent hearing nothing buys no part of the five
+  seconds. Per reason rather than one flag, so a diagnostic screen can name
+  which detector is being waited on (`unconfirmed_reasons()`,
+  `awaiting_confirmation()`); `reset()` clears it, because an allegation from a
+  provider that has detached must not pin the next one. Descent, hysteresis,
+  one-step-per-hold and every policy weight are untouched. **What it costs is
+  stated rather than discovered later:** a device that never hears another
+  positive word does not climb back on its own, and the ways out are a detector
+  saying the condition is over, `reset()`, or `stop_awaiting()` **when the
+  provider goes away**. Not *never a timer*, which is what an earlier version of
+  this said and what the code stopped honouring the moment `stop_awaiting()`
+  existed: after that call the recovery hold does run and the state does climb
+  on the clock, with nothing retracted. What makes it legitimate is narrower —
+  the allegation was about a **pair** and one of the pair is gone, so there is
+  no longer anything a retraction could come from. Silence from a detector that
+  is still there still buys nothing. The scope on `reset()` is part of the
+  sentence: `reset()` asserts `Trusted`
+  immediately, discards the transition log and drops the remembered position, so
+  it answers *a different provider is here now* and never *this one is still
+  stuck* — and the pin most likely to be met comes from the device's **own**
+  receiver, which does not detach. It is also **per boot**: nothing in `core/`
+  persists trust state, so a pin lasts one session rather than for ever.
+  **Three review findings on the second pass, one of them blocking**, and three
+  more on the third, two of them blocking. The third pass found that the answer
+  to the second had opened a narrower door in the same direction. `stop_awaiting()`
+  fired for **both** halves of the freshness gate, and only one of them is the
+  second source going quiet: the other is **our own** receiver duty-cycling off
+  while a present, fresh node keeps disagreeing. Reproduced with nothing exotic
+  — `gnss_power.h` exists to duty-cycle that receiver — the device reached
+  `Trusted` about twenty seconds later with the node still saying it was 550 m
+  out, and then stored the disputed coordinate as `last_trusted_position()`, the
+  fallback the interface falls back to. It now stops awaiting only when the
+  **other** side cannot answer. The same finding's other half ran the opposite
+  way: the early return for a relayed frame with no position, or one out of
+  range, sat *above* the call, so a node that went indoors — the ordinary way a
+  second source stops being one — left the device pinned exactly as before. The
+  fix had keyed on *an uncomparable frame arrived* where it had to key on *the
+  other side stopped being comparable*; both are one predicate now, and both
+  directions are mutation-checked. `provider_detached()` is added as the honest
+  hook for the case `compare_provider()` only approximates, and the case it
+  still approximates badly — a provider that is present and permanently late —
+  is **T-152** rather than a sentence nobody owns. **And the second blocking
+  finding was five sentences.** *"Recovery is earned from a retraction, never
+  from the clock"* appears in `trust.cpp`, `trust.h`, ADR-0011 §5.1, `STATUS.md`
+  and `TASKS.md`, and `stop_awaiting()` had made all five false: past that call
+  the recovery hold runs and the state climbs on the clock with nothing
+  retracted, which the ADR's own rejected alternatives call *"a timer wearing a
+  state machine's clothes"*. All five now say what is true — three exits, not
+  two — and say why the third is legitimate: the allegation was about a **pair**
+  and one of the pair is gone, so there is nothing left for a retraction to come
+  from. Silence from a detector that is still there still buys nothing. Three
+  smaller ones: the one-tick window where a snapshot reads not-`Trusted` with
+  both masks empty is written down beside the call that opens it; the diagnostic-
+  screen promise that rests on `TrustReason` strings `l10n/strings.toml` does not
+  have is a line in **T-062**; and `DiagnosticsSnapshot` needing a version, a
+  magic and a size before anything persists it is now in **T-046**'s acceptance,
+  its layout having changed twice with no reader able to tell.
+  `ProviderDisagreement` was the one reason whose only retraction sits *behind*
+  the freshness gate in `compare_provider()`, so once that gate closed the TTL
+  moved the bit into `unconfirmed_` and nothing in the system could ever
+  withdraw it: `Degraded`, `score() == 0`, `reasons() == 0`, no exit but
+  `reset()`, for the rest of the boot. Neither half of the gate is exotic —
+  `latest_position_at_` advances only inside `observe()`, and a duty-cycled
+  receiver is what `gnss_power.h` is for; `other.observed_at` is a relayed fix's
+  *measurement* time, which `14-a-relayed-fix-arrives-old.trace` records at 40 s
+  for a stalled link delivering a backlog. Fixed with a third verb,
+  `stop_awaiting()`, which touches `unconfirmed_` **only**: an allegation whose
+  evidence has not expired is still current evidence, so an uncomparable frame
+  cannot talk the device out of a live one, and a node that goes uncomparable
+  gains nothing but ceasing to contradict the local receiver. Both directions
+  are mutation-checked. `DiagnosticsSnapshot` also could not express the state
+  that decides the verdict — `trust.h` promises the per-reason mask exists so a
+  screen "can name it rather than showing a device stuck for no visible reason",
+  and `GnssStatus` carried only `live_`, so a pinned device reported exactly the
+  shape that comment forbids; there is now a `trust_unconfirmed` field beside
+  it. And the claim that in the `TrustEvaluator` path **only**
+  `ReceiverSpoofing`, `ReceiverJamming` and `ProviderDisagreement` can reach the
+  mask was false, in three documents: it holds only while `observe()` runs at
+  least once per `evidence_ttl`, and the call for when it does not is
+  `refresh()`, which touches `FixLost` and `StalePosition` and nothing else — so
+  in any observation gap every other live reason lapses unretracted too. The
+  defaults size it: `evidence_ttl` 15 s against `stale_after` 30 s means a
+  reason live at t=10 s lapses at t=25 s while `classify()` still says `Valid`
+  and `StalePosition` does not go live until t=40 s. Fifteen seconds of
+  `Degraded` with nothing to show for it; it self-heals on the next `observe()`,
+  so no code change — but the sentence does not stand. Recorded with it: a pin
+  freezes `remember()`, so the fallback position stops updating while its
+  uncertainty grows at 1500 mm/s, and that freeze used to be bounded by the very
+  defect this branch removes. Six regression tests in `tests/test_trust.cpp`
+  and a new replay trace, `16-silence-does-not-restore-trust.trace`, which runs
+  trace 05's rule past the TTL on a receiver reporting `unknown` — the LS550G's
+  actual state, not a hypothetical part — with good fixes throughout, so the
+  score is a genuine zero and nothing but the alarm is holding the state down.
+  Mutation-checked: removing the new gate and nothing else turns sixteen checks
+  and four trace expectations red. Twenty-four host tests pass under GCC and
+  Clang, under `-Werror -Wshadow -Wconversion -Wsign-conversion
+  -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`;
+  both documentation checks pass. Simulator `NOT EXECUTED` — no SDL2 here and
+  the change touches no UI code. Hardware `NOT EXECUTED — HARDWARE REQUIRED`,
+  and every duration in the policy remains `ESTIMATED`: nobody has walked
+  anywhere with one of these boards, and no receiver has been powered on.
+  The rule is now written down where the next reader will find it —
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, with the rejected
+  alternative beside it. **Round four: closing the freshness half opened the
+  content half, and it was the worse of the two.** `stop_awaiting()` fired on a
+  single frame the other side could not fill in — so a node whose receiver went
+  under canopy and kept relaying fix-less frames at 1 Hz was read as a node that
+  had *gone*. The allegation nobody withdrew was lifted, `Trusted` followed
+  about five seconds later, and `remember()` then committed the very coordinate
+  the node was disputing, 550 m out, as `last_trusted_position()`. No attacker,
+  no hardware, our own receiver healthy at 1 Hz throughout — and the branch's
+  own test ran that exact sequence and asserted the outcome was correct, which
+  is the caveat the previous round ended on: mutation-checking proves a test
+  notices the code, not that it asserts the right thing. A receiver losing its
+  fix is the most **transient** of the three conditions the record calls a
+  departure, not the most permanent — a doorway, a canopy, the node's own duty
+  cycle — and on that path the retraction was never unreachable, only deferred,
+  which is verbatim the argument this same commit uses to protect the *local*
+  half. The two halves had been given opposite treatments. The lift now needs
+  the other side to have been unable to answer for `provider_departure_grace`
+  (**`ESTIMATED`**, 120 s, and measuring it is part of T-152), and the test that
+  asserted the wrong thing is two tests: one pinning that a node under cover
+  keeps being awaited — including that `remember()` ran exactly once, at t=0,
+  read off the uncertainty rather than the position — and one pinning that a
+  source uncomparable past the grace does stop being awaited. **And
+  `provider_detached()` was a no-op at the exact moment it is documented to be
+  called.** At a detach edge a disagreement reported inside `evidence_ttl` is
+  `live_`, which `stop_awaiting()` deliberately does not touch, so the call did
+  nothing; fifteen seconds later the TTL moved the bit into `unconfirmed_` and
+  nothing called again, because the node had already gone. Pinned `Degraded`
+  for the rest of the boot — the pin this branch exists to remove, reached
+  through the branch's own new hook — and whether it happened depended on
+  whether the link-loss timeout exceeded `evidence_ttl`, two constants in two
+  subsystems coupled by accident and documented in neither. It latches now:
+  `abandoned_`, consulted in `update()`'s TTL loop so an allegation whose
+  subject has gone ends with its evidence instead of being remembered as
+  unanswered forever, and cleared the moment anything reports that reason again,
+  because a node that comes back is a subject again. All three mutations run
+  red and were checked in both directions. Two smaller ones from the same round:
+  `reset()` and `provider_detached()` documented the same trigger, and the first
+  discards this device's own history and asserts `Trusted` outright — whoever
+  writes `LocationService` would have picked by name, so each now says what the
+  other is for; and ADR-0011 §5.1 bound 2 still said those fifteen seconds have
+  *no reason to show*, which `unconfirmed_reasons()` and
+  `GnssStatus::trust_unconfirmed` — added in this same branch — had already
+  stopped being true.
+- **A faulted link answered an attach with the one word that is never counted.**
+  [#158](https://github.com/hleserg/Attadipa/issues/158), a T-062 bullet.
+  `LinkState::apply()` classified `Attach` with a single negative guard —
+  `phase_ != Absent -> Redundant` — so `Attached`, `Connecting`, `Ready`,
+  `Suspended` and `Faulted` all received the same answer, and `Redundant` is
+  precisely the outcome the machine does **not** count. The visible half is that
+  a controller retrying an attach against a transport that needs a
+  `SubsystemRestart` was told the attach had already succeeded. The expensive
+  half is quieter: `ignored_events()` exists because "a callback arrived in a
+  state where it makes no sense" is a diagnostic signal, and this one route
+  produced none, so a retry storm and a healthy link read identically in the
+  field. `Attach` is now decided per phase — `Absent` applies it;
+  `Attached`, `Connecting` and `Ready` answer `Redundant`, because the
+  peripheral genuinely is there and the two live phases are downstream of the
+  state being asked for; `Faulted` and `Suspended` answer `Ignored` and are
+  counted. **`Suspended` was a contract nobody had written down**, and it is
+  written down now: a quiesced link carries nothing, so the attach is refused
+  rather than satisfied, and `Resume` stays the only way back — an `Attach`
+  honoured there would let a lifecycle owner that had not noticed the suspend
+  route around it in silence. A phase added to `TransportPhase` later falls to
+  `Ignored` rather than `Redundant` in `link_state.cpp` — the safe default of
+  the two, and deliberately not compile-time guarded, so a new phase compiles
+  and behaves sanely. The guard is in **the test**: a `constexpr` coverage check
+  over `kTransportPhaseCount` refuses to build unless the phase table names
+  every phase by value, so the suite stops until somebody has decided what
+  `Attach` should do about it.
+  `Fault`, the epoch and session accounting, and `reset()` are untouched, and
+  the `Detach`-hardcodes-`PeerClosed` bullet from the same audit was left alone
+  so that one finding stays one change. Three tests in `tests/test_link.cpp`: a
+  table over every phase, five consecutive refusals in `Faulted` followed by a
+  restart that makes an attach real work again, and a suspended link that an
+  attach does not resurrect. **Mutation-verified** — restoring the old guard
+  turns 13 checks red, and leaves the `Attached`/`Connecting`/`Ready` rows
+  green, which is the evidence that only the two intended phases moved. Host
+  suite 24/24 under GCC, under Clang, under `-Werror` with `-Wshadow
+  -Wconversion -Wsign-conversion -Wcast-qual -Wold-style-cast`, and under
+  ASan+UBSan with `-fno-sanitize-recover=all`; both documentation checks clean.
+  No hardware: `NOT EXECUTED — HARDWARE REQUIRED` for the thing this change is
+  ultimately about, which is how often a real BLE or USB stack re-fires an
+  attach callback after a subsystem failure — that is a measurement, nobody has
+  taken it, and the fix does not depend on the number.
+
 - **Recognising an error and disclosing the text around it were one act.**
   [#106](https://github.com/hleserg/Attadipa/issues/106).
   `failure-reason.sh` exists so a failed agent run names itself on the issue
@@ -783,6 +1368,48 @@ four more things at no cost:
   as it was. The general lesson is the one that produced this: **dispatch a new
   scheduled workflow once by hand instead of waiting for its cron**, because
   reading it had already passed it.
+
+- **The same sweep was reading the first page of a pull request and deciding on
+  it as though it were the whole one.** Issue #170, filed by the producing
+  agent and confirmed against `main`. Every fact the merge gate refuses on
+  arrives in a GraphQL connection, and a connection is a *page*: the query
+  asked for `labels(first:50)`, `reviewThreads(first:100)`, `files(first:100)`
+  and `contexts(first:100)`, never asked whether another page existed, and
+  computed on what came back. A pull request with 101 review threads whose
+  hundred-and-first was unresolved answered
+  `[ .nodes[] | select(.isResolved | not) ] | length` with **zero**, and zero is
+  the value that merges. Past the fiftieth label the same shape hid
+  `ai-review:blocking`; past the hundredth context, a failing check. `first: N`
+  had become a silent *permitting* condition — the more there was to read, the
+  less the gate could refuse on — and `merge-candidate.sh` could not have caught
+  it from its own arguments, because every one of them is a summary carrying no
+  trace of how much was read before summarising. The fail-open was at the
+  boundary, not in the decision.
+
+  Completeness is now proved from `pageInfo`, and it is a fail-closed **input**
+  to the rule rather than an assumption behind it: `merge-facts.graphql` asks
+  every connection whether it has a next page, `merge-facts.jq` refuses on any
+  answer it cannot read — missing, null, not an object, no `hasNextPage`, a
+  `hasNextPage` that is a string — and `merge-candidate.sh` takes the verdict as
+  a tenth argument. Never `nodes | length`, which cannot tell a full page from a
+  truncated one; and never `totalCount`, which **does not count the filtered
+  set** — `timelineItems(itemTypes:[LABELED_EVENT])` answered `totalCount: 15`
+  beside a single node on #173, so a count-based rule would have held every pull
+  request in the repository forever. Observed against the live API, not assumed.
+  85 assertions became 135, including the finding reproduced end to end: the old
+  extraction quoted verbatim answering `0` over the fixture, and the shipped rule
+  refusing the same document.
+
+  **Half of it is parked, and the merge sweep merges nothing until that changes.**
+  Agents run as `claude[bot]`, whose installation token holds no `workflows`
+  permission, so the four edits pointing the sweep at the rule are in
+  `docs/automation/pending/170-merge-sweep-completeness.patch` — T-144, which
+  also carries #154's identical blocker. `merge-candidate.sh` refuses the
+  pre-#170 nine-argument caller **by arity**, so the live sweep now holds every
+  pull request and logs the file to apply, once each per run. That is the
+  fail-closed state and not the finished one: a gate that cannot prove it read
+  the whole pull request must not merge it, and orchestrator sessions are
+  unaffected.
 
 - **The hourly watchdog had never started an agent, and nothing said so.**
   T-107. `agent-queue-watchdog.yml` dispatches `claude-agent.yml` with the
@@ -908,9 +1535,45 @@ four more things at no cost:
 
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
-  job. **Five** checks: relative links resolve, inline code spans close, task
-  IDs are unique, a live task has a body while finished work is filed under
-  `## DONE`, and nothing unexpected is tracked at the repository root. The last two exist because the review of
+  job. **Eight** checks: relative links resolve **and their `#anchor` lands on a
+  real heading**, inline code spans close, task
+  IDs are unique, **one OD number names one owner decision**, a live task has a
+  body while finished work is filed under `## DONE`, nothing unexpected is
+  tracked at the repository root, **a `file:line` citation lands where it
+  says it does** — meaning it is inside the file, on a line that is not blank,
+  over a range that reads first-to-last — and **one open-question ID names one
+  question**. That gloss belongs to the citation check and had been spliced in
+  behind the eighth, where it read as a description of the wrong item; found in
+  the third review round of #152. A citation that lands on a real but
+  *wrong* line is invisible to that, which is what happened to two citations
+  into `HARDWARE_MATRIX.md`: both were thirteen lines out, both pointed at a
+  real row, and nothing went red for weeks. So a citation may now carry a
+  **fingerprint** — `EXAMPLE.md:357 "Display FPC"` — and where one is
+  written the check reads the cited line and reports where the text actually
+  went. That example uses `EXAMPLE.md` deliberately: a fingerprint is an
+  assertion, so an illustration written with a real path is one too, and this
+  paragraph would otherwise be asserting a line number in a document it is not
+  about. `EXAMPLE.md` is the reserved spelling that resolves to nothing, and
+  the check reports the day a file by that name appears. It is opt-in: adding a fingerprint is a promise the check then keeps,
+  and the citations this repository has been burned by are the ones to add it
+  to first. The count said Six on the commit that added the seventh, so
+  it is no longer typed: `check_docs.py` holds its checks as a list, the suite
+  holds this sentence to `len(CHECKS)`, and the same guard holds the case count
+  in this file, in `TASKS.md` and in the CI comment. The decision check was added 2026-08-23 for a
+  failure that was in flight rather than shipped: four open pull requests each
+  inserted `## OD-16` into `OWNER_DECISIONS.md` at the same line, for four
+  different decisions. Git conflicts on that, and a person resolves it — which is
+  the problem, not the safeguard. *Keep both* is the obvious resolution and is
+  right for the prose; it leaves the register people read to find out what the
+  owner decided carrying two OD-16 headings with two ambiguous anchors, CI green.
+  A first version of this entry said the branches shared no file and merged
+  silently; review refuted it with one counterexample, and the corrected model is
+  worse rather than better — a conflict a human resolves is a decision point
+  nothing checks. The task-ID check is TASKS.md-only and could
+  not see it. The other half — that a link's `#anchor` is captured and then
+  never verified, so a citation survives its heading being renumbered — is
+  **T-127**, deliberately not folded in here because its first run will find
+  pre-existing breakage. The two body checks exist because the review of
   [#65](https://github.com/hleserg/Attadipa/pull/65) found the pull request had
   spliced a `### T-102` heading into the middle of an unclosed code span in
   T-100's first bullet — T-100 lost its whole field list to T-102, and **the two
@@ -923,8 +1586,155 @@ four more things at no cost:
   the #48 review established for T-064 and T-073; all four are now under
   `## DONE`. Under `## BLOCKED` the body is the `BLOCKED:` block CLAUDE.md
   specifies rather than a priority, so T-010 and T-011 are correct and not
-  flagged. Twenty-five mutation tests, thirteen of which assert the checker does
-  *not* fire.
+  flagged.
+
+  **An eighth check landed 2026-08-24, and the failure it is for was a merge
+  nobody could have seen.** A branch filed the panel's wire byte order as `D19`
+  in `OPEN_QUESTIONS.md` while `main`, independently, took `D19` for the
+  display-FPC part marking. The branch merged `main` afterwards; nothing
+  re-checks a number, so two unrelated questions shared one ID across nineteen
+  citations in eight files — including `OWNER_DECISIONS.md`, the file
+  [CLAUDE.md](CLAUDE.md) calls not ours to overturn — with every check green,
+  because the rows sit in different tables and neither is a heading, a task or a
+  link. Check 4 does exactly this for OD numbers and stopped at that file; check
+  8 does it for `OPEN_QUESTIONS.md`, which carries about four times as many
+  identifiers. Struck rows count: `~~D12~~` is spent, not free, and reusing it
+  sends a reader to a question marked RESOLVED and tells them their own subject
+  is settled. Six new cases, and the coverage guard below is what noticed the
+  check had none. Found in review of
+  [#152](https://github.com/hleserg/Attadipa/pull/152).
+
+  **And the third round found the same failure inside the checker itself.** The
+  docstring opened *"Seven checks"* above an enumeration running 1 to 8 and a
+  `CHECKS` tuple with eight entries — on the very commit that made it eight,
+  which is the failure this file is proudest of catching, recurring one file
+  further in. The count guard read `STATUS.md`, `TASKS.md` and the CI comment;
+  the copy inside the tool was a fourth quote nothing looked at, so the three
+  guarded ones were dragged to Eight and the unguarded one stayed. `check_docs.py`
+  is now a `CLAIM_FILES` entry, its docstring opens with the colon the cue
+  requires, and reverting the word alone exits 1 with *"states Seven checks, and
+  this tree has 8"*. Three more from the round. The docstring's own numbering
+  had disagreed with the tuple's order since before the tuple existed — 4 and 5
+  swapped — which stayed invisible until prose began citing the numbers, at
+  which point `TASKS.md` said *Check 4* for OD numbers and `STATUS.md` said
+  *Check 5*, one of them wrong and neither checkable; both are now the tuple's
+  order, which is what the tool prints, and **T-157** files the reconciliation
+  because fixing the instance is not fixing the mechanism. Check 8's **four**
+  bounds are written into its docstring rather than left to be discovered: it is
+  bound to a **path**, so a rename removes the guard silently and green; it is
+  bound to a **table shape**, so a future cross-reference table repeating
+  register IDs would redden CI on a correct document; it reads **undecorated
+  IDs only**, so a bolded or backticked row leaves the register without a word;
+  and it does **not** check that a `D<NN>` cited elsewhere resolves to a live
+  row — the half that cost the nineteen hand-edits, exactly as invisible now as
+  the collision was. This sentence said *three* until the fifth review round, on
+  the commit that made it four, forty lines above the sentence announcing the
+  fourth. And the
+  two LVGL files carrying the byte-order correction are hashed like the other
+  five in that entry, with the route stated plainly: they came out of the
+  simulator's own `FetchContent` checkout at `85aa60d1` rather than by raw URL,
+  which is the same bytes by a different road and worth saying so in a
+  provenance note whose whole subject is not glossing over how something was
+  read.
+
+  **Round four found the check drifting on a commit that had already landed.**
+  `tools/assets/generate_images.py:134` was the `--cf A8` line when three
+  documents cited it, and [#139](https://github.com/hleserg/Attadipa/pull/139)
+  inserted 34 lines above it on `main` — true when written, false in the tree
+  that merges, and green, because a citation with no fingerprint is only checked
+  for existing. All three now cite `:168` **with** `"--cf"` on the citation's own
+  line, and moving the number by two reddens all three. Two fingerprints in
+  `RESOURCE_BUDGET.md` had wrapped onto the following line, which makes them
+  invisible — the T-153 shape again, in a fourth file — and are reflowed; the
+  suite now carries a case asserting that current behaviour explicitly, so the
+  day T-153 lands the case goes red and is rewritten deliberately rather than
+  the gap being forgotten. **`.cmake` was not a citable suffix at all**, so
+  `cmake/AttadipaLvgl.cmake:62` was never matched; it is one now, and moving that
+  number reddens CI. **And a version claim the correction called an inference was
+  still standing as a read**: the unchecked `tx_color()` is recorded at the two
+  revisions actually read rather than *"present in 1.0.2 … as well as in 2.0.0"*,
+  because two of the four commits in that window are unread and the version
+  strings do not identify whose versioning they are. Two absolutes in the icon
+  test — *the branch that does break things* and *never a pre-swapped variant* —
+  are replaced by the general rule they are consequences of: an asset's byte
+  order follows the framebuffer the renderer writes into, whichever T-093
+  decides, and `RESOURCE_BUDGET.md`'s own Avoidability row keeps the swapped
+  destination live. The slip that came with them is withdrawn too: turning the
+  port's swap off does not *match* a pre-swapped asset, because LVGL has
+  un-swapped it into native order by the time it is in the framebuffer — there is
+  no configuration that leaves the asset right and only the glyphs wrong. Also:
+  `check_docs.py` compiled with a `SyntaxWarning` on every run, from a `\d` in a
+  non-raw docstring; `ci.yml` described **seven** checks in a step name and
+  **four** failures in a comment, neither catchable because the count guard needs
+  a paragraph to *name* the checker and both only describe it — filed onto
+  **T-157**; and check 8 has a **fourth** bound, undecorated IDs, so a bolded or
+  backticked row silently leaves the register.
+
+  **This branch then broke the parked #75 patch and nothing noticed, which is
+  the strongest evidence the parked-patch guard has.** Round five moved the
+  `ci.yml:499` citation to `:500` — correctly, because a comment above it grew
+  by a line — and `docs/automation/pending/75-approval-stall.patch` *removes*
+  that exact line at two sites. `git apply` matches removed lines byte-exactly,
+  with no fuzz, and is all-or-nothing, so the whole 34 KB patch stopped
+  applying, **including the three `.github/workflows/` hunks that are the only
+  reason the directory exists**. The `+` side had gone wrong the same way: the
+  patch inserts 11 lines above the citation, so the landing number moved 510 →
+  511 and a hand-resolved landing would have left two fingerprinted citations
+  one line short — `check_docs.py` reddening the landing commit and naming
+  `WAVESHARE_ARRIVAL.md` rather than the workflow that moved it. Both sides are
+  corrected here, verified by landing the patch into a scratch copy of the tree
+  and running `check_docs.py` on the result rather than by reading it. **The
+  guard that would have caught it is #180**, which is not merged; and this is
+  also exactly why #180 makes the apply check a *warning* — the drift was
+  caused by work CI itself demanded, so a fatal check would have blocked the
+  fix for the very reason the fix was needed.
+
+  `tools/docs/test_check_docs.py` holds **74 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
+  sub-heading is not a second decision, a range straddling a blank line is
+  how a table is cited, and a line number in somebody else's tree is not
+  ours to verify. The
+  suite prints its own count, because the three documents quoting it were all
+  stale within a day of the last time cases were added.
+
+  **A re-review found the count load-bearing and the coverage behind it
+  missing**: `check_root_files` had no case at all, so six of seven checks were
+  covered while three documents quoted the number as the evidence that a
+  checker which passes everything is worse than none. The suite now wraps every
+  function in `CHECKS` and reports any that no case calls — coverage recorded
+  rather than annotated, because an annotation is a second thing to keep in
+  step. Four cases for that check followed. The same round found the mechanism
+  reddening CI for true sentences twice over: the citation separator accepted
+  whitespace, so a sentence of the shape *"`EXAMPLE.md:843` - 26 lines below"*
+  parsed as a descending range — and the sentence that actually did it named
+  this file, from inside this file, which is the same defect one paragraph
+  further on — and a fingerprint written to **illustrate** the syntax was a live
+  assertion about a third document — the two files CLAUDE.md tells the next
+  agent to read first were both making one. The separator is closed up now, and
+  `EXAMPLE.md` is the reserved placeholder an illustration is written with; a
+  file by that name appearing is itself reported, because it would turn every
+  illustration in the repository live.
+
+  **A third round found the checker's own reach short of what three documents
+  claimed for it**, in two places that had never matched anything. A citation
+  into a dot-directory — `.github/workflows/ci.yml:281` — matched at no position
+  at all: the path pattern admitted `./` and `../` and nothing else, and the
+  word-boundary look-behind is there precisely to refuse a start inside a path.
+  And a bare basename resolved only beside the citing document or at the
+  repository root, so a citation from `docs/research/` into
+  `docs/architecture/ARCHITECTURE.md` was skipped as somebody else's tree —
+  one of them pointing at a `HardwareFeature` enum member while claiming to cite
+  the section about `has()`. Both are fixed, and the immediate effect is the
+  count in T-140: **twenty-three bare citations became forty-nine**, because the
+  scan that produced twenty-three had been written to imitate the checker and
+  imitated its blind spots too. It now imports the checker instead. The same
+  round closed **T-127**, the anchor half of check 1: a link's `#anchor` had
+  always been captured and never looked at, which is what lets an OD-number
+  collision survive a merge with CI green. The first run over the whole
+  repository found exactly one broken anchor — and one illustration. The record
+  closing T-127 wrote the link syntax in backticks and the new check read it as
+  a link, which is the `EXAMPLE.md` defect one check over, so `check_links` now
+  blanks inline code spans first: GitHub renders a code span as characters, not
+  as a link.
 
 - **T-070 research — the watch as a tracker detector, and the honest limit is
   now sourced rather than deferred.**
