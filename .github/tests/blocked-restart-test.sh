@@ -596,7 +596,7 @@ echo "  4. the trusted exit: a person clears it, and the pull request is eligibl
 # permanent one.
 green_verdict() {
   attadipa_merge_candidate "success success" "$1" 0 0 clean false 30000 \
-    "docs/research/REUSE_LEDGER.md" true
+    "docs/research/REUSE_LEDGER.md" true true 0123456789abcdef0123456789abcdef01234567
 }
 ESCALATED=$(printf 'agent:claude\nci:failed\nagent:blocked\nai-review:pass\n')
 is "before the reset, the sweep holds on the stale blocker" \
