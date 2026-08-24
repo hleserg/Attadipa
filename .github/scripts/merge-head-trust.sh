@@ -139,4 +139,3 @@ attadipa_merge_head_trust() {
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   attadipa_merge_head_trust "$@"
 fi
-
