@@ -67,15 +67,22 @@ human and matched a different one.
                          describe a sweep that merges three per run, become
                          true again the moment this lands.
     docs/automation/CLAUDE_AUTOMATION.md
-                         FOUR places, and the third is the one a reader of
-                         this list misses: the "HALF LIVE" banner and the table
-                         under it, including "It merges nothing at all" and the
-                         row answering "Who can finish it?"; fourteen lines
-                         ABOVE the banner, the row in the conditions table
-                         beginning "A page is not a set -- HALF LIVE, see
-                         below"; and, four rows below that one, the row
-                         beginning "A six-hour settling window -- HALF LIVE",
-                         which #199 added and which carries the same pointer.
+                         THREE places, and the two in the conditions table are
+                         the ones a reader of this list misses, because the
+                         banner is the only one that looks like a banner:
+                           - the section opening "### (warning) Two protections
+                             are half live, and this is which half", and the
+                             whole table under it, including "It merges nothing
+                             at all" and the row answering "Who can finish
+                             it?";
+                           - fourteen lines ABOVE that heading, the conditions
+                             row opening "**A page is not a set -- (warning)
+                             HALF LIVE, see below.**";
+                           - two rows below that one, the conditions row
+                             opening "**A six-hour settling window, on a clock
+                             the author does not hold -- (warning) HALF LIVE,
+                             see below.**", which #199 added and which carries
+                             the same pointer.
                          Leave either row and a fully live protection still says
                          half, pointing `see below` at a section that is gone.
     STATUS.md            the "Agent automation" row's closing sentence, which
