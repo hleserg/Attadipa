@@ -621,10 +621,11 @@ them. They were recovered by **rendering** the sheet, and then re-derived the
 same day, in a second context, by **extracting the PDF's vector paths** — where
 wires are line segments and junction dots are filled curves, so connectivity
 comes out as coordinates rather than as a judgement about a picture. All three
-readings agree, and the third is the strongest. **It has not been tried on `D3`,
-`D5` or `D13`**, which are connectivity questions of exactly the same shape and
-are currently waiting on a board. That is a cheaper next move than a meter, and
-nothing about it needs hardware —
+readings agree, and the third is the strongest. **It has not been tried on `D5`
+or `D13`** — the two questions still open against that file, and connectivity
+questions of exactly the same shape. `D13`'s own recorded next action is *"read
+the schematic sheets visually"*, which is the weaker method. That is a cheaper
+next move than a meter and none of it needs hardware —
 [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §4.3.1.
 
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on

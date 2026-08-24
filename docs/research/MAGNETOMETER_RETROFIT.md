@@ -592,14 +592,30 @@ dots — see M7 — and a third reading recovered the same wires as coordinates
 Three methods on one file, in increasing strength: text gives designators and
 values; a render gives a picture of the wires; the vector paths give the wires
 themselves. S6 has been read only the first way for everything except this bus,
-and several questions still open against it are exactly connectivity questions —
-`VCC3V3`'s source rail ([OPEN_QUESTIONS](OPEN_QUESTIONS.md) **D13**), what the
-display flex carries (**D3**), and which of `Key1`/`Key3`/`PWRON` reaches a
-finger (**D5**). None of those is answered here and none should be assumed to
-fall out; but **the method that answered this one has not been tried on them**,
-and that is a cheaper next move than a meter on a board. Recorded so the next
-agent does not conclude from S6's "partially recoverable" that the file has been
-exhausted.
+and the two questions still open against it are exactly connectivity questions:
+
+- **D13** — which loads sit on `ALDO1`, `ALDO2` and `ALDO3`, and what runs on the
+  1.8 V `ALDO4` rail. [OPEN_QUESTIONS](OPEN_QUESTIONS.md) records its next action
+  as *"read the schematic sheets visually"*, and **that is exactly the method the
+  vector paths improve on**: a rail-to-load question is a connectivity question,
+  and the live register state already read from the powered board says what each
+  rail is *set to* while saying nothing about what hangs off it.
+- **D5** — which of `Key1`, `Key3` and `PWRON` reaches each of the two buttons
+  the owner counted, and whether `PWRON` is under a finger at all. That row says
+  in as many words that the schematic list is a floor rather than a census
+  *because* the extraction's pin-to-net adjacency is only partly recoverable.
+
+Neither is answered here and neither should be assumed to fall out — those
+regions have not been looked at. But **the method that answered this one has not
+been tried on them**, all three sheets carry vector paths in quantity, and it is
+a cheaper next move than a meter on a board. Recorded so the next agent does not
+conclude from S6's "partially recoverable" that the file has been exhausted.
+
+**D3 is deliberately not in that list**, though an earlier draft of this
+paragraph had it there. It is `CLOSED — mis-stated`: there is no expansion
+connector, `J3` is the display FPC. Its surviving finding — that the touch half
+of the main I²C bus leaves the mainboard over a flex — is what §4.3.4 cites it
+for, and that needs no re-reading.
 
 #### 4.3.2 What the specification actually requires
 
