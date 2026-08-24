@@ -52,7 +52,12 @@ stale silently. The protocol is
   push bought another independent review at roughly $7.50. One branch reached
   round sixteen. The queue was costing more than the development in it, and two
   reviews that day published a verdict and had it thrown away by a turn ceiling.
-- **Acceptance:** `bash .github/scripts/wip-limit.sh --count` reports 3 or
+- **Acceptance:** the three `queue:` labels exist in the repository. Nothing
+  runs `.github/scripts/setup-labels.sh` automatically, and until somebody
+  does, all three fail label resolution — the guard writes
+  `queue:over-limit`, and `queue:parked` and `queue:emergency` are the
+  rule's only two exits. Run on 2026-08-24. Then:
+  `bash .github/scripts/wip-limit.sh --count` reports 3 or
   fewer; every pull request that was open on 2026-08-24 has reached `MERGED`,
   `CLOSED AS STALE`, `SUPERSEDED`, or an issue with no open pull request; and
   [`pr-wip-limit.yml`](.github/workflows/pr-wip-limit.yml) says the number on

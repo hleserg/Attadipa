@@ -126,11 +126,17 @@ attadipa_wip_pair() {
   # clone has and what a GitHub Actions runner does not -- and `--count` is a
   # command CLAUDE.md, AI_TASK_PROTOCOL.md and T-171 all tell a person to type
   # in a shell, where GITHUB_REPOSITORY has never been set.
+  # --limit 1000, not 200. `gh` paginates internally up to this number, and 200
+  # was a page presented as a set -- in the change that adds a row to the control
+  # table naming that exact hazard. The BAND was never at risk (anything at or
+  # over the cap is an incident either way, which is the same verdict), but the
+  # printed COUNT would have been low, and that number is what T-171's
+  # acceptance criterion is read against and what the comment shows a person.
   local repo="${1-}"
   if [ -n "$repo" ]; then
-    gh pr list --repo "$repo" --state open --limit 200       --json number,labels,isCrossRepository --jq "$ATTADIPA_WIP_JQ"
+    gh pr list --repo "$repo" --state open --limit 1000       --json number,labels,isCrossRepository --jq "$ATTADIPA_WIP_JQ"
   else
-    gh pr list --state open --limit 200       --json number,labels,isCrossRepository --jq "$ATTADIPA_WIP_JQ"
+    gh pr list --state open --limit 1000       --json number,labels,isCrossRepository --jq "$ATTADIPA_WIP_JQ"
   fi
 }
 

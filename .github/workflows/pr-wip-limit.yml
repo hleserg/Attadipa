@@ -84,11 +84,19 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: bash .github/scripts/wip-limit.sh
 
-      # Only when it is over. A comment on every pull request saying the queue
-      # is fine is how a signal becomes something people filter out, and this
-      # one has to still be readable the day it says thirty-five.
+      # Only when it is over, or when it could not be read at all. A comment on
+      # every pull request saying the queue is fine is how a signal becomes
+      # something people filter out, and this one has to still be readable the
+      # day it says thirty-five. But `unknown` is not `ok`: an API failure and a
+      # healthy queue must not produce the same silence, which is the rule
+      # pr-merge-sweep.yml states as "an API failure and an empty repository
+      # must not print the same line". Without this, a `gh` that fails leaves a
+      # green check and nothing said anywhere a reader looks.
       - name: Say so on the pull request
-        if: steps.wip.outputs.state == 'full' || steps.wip.outputs.state == 'incident'
+        if: >-
+          steps.wip.outputs.state == 'full' ||
+          steps.wip.outputs.state == 'incident' ||
+          steps.wip.outputs.state == 'unknown'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -111,8 +119,30 @@ jobs:
             echo
             echo "This does not block this pull request. It is the number the next agent is supposed to read before opening one."
           } > body.md
-          gh pr comment "$PR" --repo "$REPO" --body-file body.md
-          gh pr edit "$PR" --repo "$REPO" --add-label queue:over-limit || true
+
+          # Once per pull request, not once per event. The triggers include
+          # `reopened` and `ready_for_review`, so a draft opened during an
+          # incident and later marked ready by a person would otherwise carry
+          # two identical walls of text, and a reopen three. The marker written
+          # at the top of the body is what bounds it -- the same idiom
+          # approval-stall-decision.sh uses.
+          said="$(gh pr view "$PR" --repo "$REPO" --json comments                     --jq '[ .comments[].body ] | any(contains("<!-- attadipa-wip-limit -->"))'                   2>/dev/null || echo "false")"
+          if [ "$said" = "true" ]; then
+            echo "::notice::Already said on this pull request; not repeating it."
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file body.md
+          fi
+
+          # The label is for having crossed the line, so an unreadable count
+          # must not apply it -- that would record a verdict never reached.
+          # Reported rather than swallowed: `|| true` alone is how a label that
+          # does not exist becomes a guard that silently marks nothing, which is
+          # what happened before setup-labels.sh was run for the queue: set.
+          if [ "$STATE" = "full" ] || [ "$STATE" = "incident" ]; then
+            if ! gh pr edit "$PR" --repo "$REPO" --add-label queue:over-limit; then
+              echo "::warning::Could not apply queue:over-limit to #$PR. If the label is missing, run .github/scripts/setup-labels.sh."
+            fi
+          fi
 
       - name: Summary
         if: always()

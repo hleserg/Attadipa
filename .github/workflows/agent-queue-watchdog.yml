@@ -217,16 +217,21 @@ jobs:
           # that reads that rule and obeys it ends its run having opened
           # nothing -- which handover-decision.sh reports as `done_nopr`, which
           # relabels the issue `agent:review`. queue-scan.jq and
-          # stranded-failures.jq both exclude `agent:review`, so the task would
-          # sit in a review state with nothing to review, invisible to this
-          # watchdog AND to the stranded sweep, and the next tick would do the
-          # same to the next issue. Hourly. That is precisely the silent
-          # stranding this workflow exists to prevent.
+          # stranded-failures.jq both exclude `agent:review`, and the `stuck` job
+          # ages `agent:working` only -- so the task would sit in a review state
+          # with nothing to review, invisible to all three recovery paths, and
+          # the next tick would do the same to the next issue. Hourly.
           #
           # Not dispatching costs nothing and heals itself: the issue keeps
-          # `agent:ready`, nothing is relabelled, nothing is commented on, and
-          # it is picked up by the first tick after the queue comes back down.
+          # whatever labels it has, nothing is rewritten, and it is picked up by
+          # the first tick after the queue comes back down.
           WIDTH="$(bash .github/scripts/wip-limit.sh --count "$REPO" 2>/dev/null || echo '')"
+          # Reported beside it, never subtracted silently. Both exemption labels
+          # are honoured on presence alone and every agent holds
+          # `pull-requests: write`, so enough of them quietly restores dispatch.
+          # This is the log that decides whether a billable run starts, so it is
+          # the log that has to carry the caveat.
+          EXEMPT="$(bash .github/scripts/wip-limit.sh --exempt "$REPO" 2>/dev/null || echo '?')"
           case "$WIDTH" in
             ''|*[!0-9]*)
               # Same rule as the unreadable timeline above: a number that could
@@ -236,9 +241,45 @@ jobs:
               echo "::warning::Could not count the open pull requests, so the WIP limit was not applied to this tick."
               ;;
             *)
+              echo "::notice::Open pull requests: $WIDTH counted, $EXEMPT exempt and taken on trust."
               if [ "$WIDTH" -ge 4 ]; then
-                echo "::notice::$WIDTH open pull requests -- a queue incident under CLAUDE.md, \"The queue has a width, and it is two\". Not dispatching #$PICK; it keeps agent:ready and returns on the first tick after the queue is back to three or fewer."
-                exit 0
+                # The halt is narrower than "stop everything". CLAUDE.md names
+                # four cases that may exist over the limit -- security, data
+                # loss, broken CI or merge infrastructure, a critical regression
+                # in `main` -- and both exemption labels live on PULL REQUESTS,
+                # which an agent cannot open without first being dispatched. So
+                # the four cases the rule protects would be the four the
+                # enforcement cannot serve. The exemption is read off the ISSUE
+                # instead: `priority:P0`, which queue-scan.jq already ranks
+                # first, or `queue:emergency`. Broken merge infrastructure is
+                # also the state most likely to coincide with an incident,
+                # because it is what causes one.
+                URGENT=$(jq -r --arg n "$PICK" \
+                  '[ .[] | select((.number | tostring) == $n) | .labels[].name ]
+                   | any(. == "priority:P0" or . == "queue:emergency")' \
+                  /tmp/open.json 2>/dev/null || echo "false")
+                if [ "$URGENT" = "true" ]; then
+                  echo "::notice::$WIDTH open pull requests, but #$PICK carries priority:P0 or queue:emergency -- one of the cases CLAUDE.md allows over the limit. Dispatching it."
+                else
+                  echo "::notice::$WIDTH open pull requests -- a queue incident under CLAUDE.md, the queue has a width and it is two. Not dispatching #$PICK; it keeps its labels and returns on the first tick after the queue is back to three or fewer."
+                  # Once per issue, not once per tick. An hourly comment on the
+                  # same issue for as long as the queue is wide is #82's shape,
+                  # and the bound is the marker -- the idiom
+                  # approval-stall-decision.sh already uses. Said at all because
+                  # AI_TASK_PROTOCOL.md requires an agent in this position to
+                  # leave a reason rather than a silence, and the dispatcher is
+                  # now the one standing in it.
+                  SAID=$(gh issue view "$PICK" --repo "$REPO" --json comments \
+                           --jq '[ .comments[].body ] | any(contains("<!-- attadipa-wip-hold -->"))' \
+                         2>/dev/null || echo "true")
+                  if [ "$SAID" != "true" ]; then
+                    gh issue comment "$PICK" --repo "$REPO" --body "$(printf '%s\n\n%s\n\n%s' \
+                      "<!-- attadipa-wip-hold -->**Not started yet: the pull request queue is at \`$WIDTH\`.**" \
+                      "CLAUDE.md, the queue has a width and it is two (owner decision OD-23), treats four or more open pull requests as a queue incident. This task keeps its labels and is picked up automatically by the first hourly tick after the queue is back to three or fewer -- nothing needs to be done to it." \
+                      "To start it anyway, label it \`priority:P0\` or \`queue:emergency\`, which this check honours, or comment \`@claude\`. Said once, not every hour.")" || true
+                  fi
+                  exit 0
+                fi
               fi
               ;;
           esac

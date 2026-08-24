@@ -277,30 +277,32 @@ on drifts back to silence one edit at a time.
    thirty-five was a reasonable next step on its own, and the count was
    nobody's step.
 
-   **What to do when it is four or more, said explicitly, because a rule with
-   no stated exit takes whichever one the code happens to have.** Do not
-   silently finish the run having opened nothing: that is `done_nopr`, which
-   relabels the issue `agent:review`, and both `queue-scan.jq` and
-   `stranded-failures.jq` exclude `agent:review` — the task would sit in a
-   review state with nothing to review, invisible to the watchdog and to the
-   stranded sweep at once. Instead:
+   **What to do when it is four or more depends on who you are, and the honest
+   answer for a dispatched agent is: carry on.** The width is enforced where it
+   can be enforced without stranding anything — in
+   `agent-queue-watchdog.yml`, which counts before it hands a task over and
+   declines to dispatch during an incident, leaving the issue's labels exactly
+   as it found them and saying so on the issue once. `priority:P0` and
+   `queue:emergency` on the issue are honoured there, because CLAUDE.md's four
+   allowed-over-the-limit cases are pull-request labels an undispatched agent
+   could never apply.
 
-   - **Comment on the issue** saying the queue is at N, that this is OD-23's
-     incident band, and that the task was not started — so the next reader
-     sees a reason rather than a silence.
-   - **Leave the labels exactly as they were.** `agent:ready` is what brings
-     the task back by itself once the queue drains. Do not add `agent:blocked`
-     — nothing is wrong with the task — and do not add `needs-owner`: the
-     owner has no action here, the queue does.
-   - **Then do queue work instead**, if you are an orchestrator session rather
-     than a dispatched agent: finish, merge or close what is already open.
-     That is the only thing that clears the band.
+   So if you are a dispatched agent reading this, the count has already been
+   made on your behalf and you were started anyway. That means one of three
+   things, and all three are deliberate: a `@claude` comment, a manual
+   dispatch, or an exempt issue. **Do the task.** Do not stop and do not try to
+   leave the issue in some safer state — you cannot. `claude-agent.yml`
+   strips `agent:ready` at claim time and the hand-over writes `agent:review`
+   for a clean run that opened no pull request, and `queue-scan.jq`,
+   `stranded-failures.jq` and the `stuck` job all ignore `agent:review`. An
+   agent that "obeys the limit" by finishing quietly therefore strands its own
+   issue where no recovery path can see it. Obeying the rule that way breaks it.
 
-   A dispatched agent should rarely reach this, because
-   `agent-queue-watchdog.yml` counts before it dispatches and does not hand out
-   a task during an incident — the issue keeps `agent:ready` and nothing is
-   touched. The paragraph stands for the paths the watchdog is not on: a
-   `@claude` comment, a manual dispatch, and an orchestrator session.
+   **If you are an orchestrator session, the answer is the opposite:** you hold
+   no issue and can strand nothing, so stop starting new work and drain the
+   queue instead — finish, merge or close what is already open, and return
+   anything externally blocked to an issue. That is the only thing that clears
+   the band, and no automation can do it.
 
 1. **Read before writing.** The issue and all its comments, `CLAUDE.md`,
    `docs/master-prompt-final.md`, `STATUS.md`, `TASKS.md`, the ADRs the task
