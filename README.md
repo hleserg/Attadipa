@@ -13,7 +13,7 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
 > **Status: early implementation.** The host-testable layers exist and are
 > tested — the hardware inventory, the capability registry, the transport, the
-> GNSS trust evaluator, the design-token system, the desktop simulator, and 24
+> GNSS trust evaluator, the design-token system, the desktop simulator, and 26
 > host tests. One target board is now on the owner's desk and has been read over
 > its own USB port, which is the first evidence in this repository that came
 > from silicon rather than from a document. **No Attadipa firmware has run on
@@ -25,7 +25,7 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
 | | |
 |---|---|
-| **Builds and is tested on a host** | six libraries, the desktop simulator and **24 tests**, under GCC and Clang, under `-Werror` and under ASan+UBSan. Two of them compile one fixture against two different libraries to prove an application still cannot include a hardware header |
+| **Builds and is tested on a host** | six libraries, the desktop simulator and **26 tests**, under GCC and Clang, under `-Werror` and under ASan+UBSan. Three pairs of them compile one fixture twice and require the second build to fail: two prove an application still cannot include a hardware header, and the third proves a receiver capability cannot be written as a `bool`, so "proven absent" and "never checked" stay different values |
 | **Runs two geometries from one binary** | 240 × 240 and 410 × 502, selected at run time, fitting any of the five candidate T-Watch radios and a present-or-absent node without a rebuild |
 | **Draws through design tokens** | twelve colour roles across day and night themes with WCAG contrast arithmetic, plus a CI check that refuses a raw hex value or a pixel count back into screen code |
 | **Renders every character it claims to** | four generated Montserrat subsets covering all 181 codepoints of the charset; an undrawable codepoint **fails the run** rather than printing a warning |
@@ -163,7 +163,7 @@ ui/assets/                     source art, the generated LVGL masks, and the one
 assets/fonts/                  the generated Montserrat subsets, with their provenance
 apps/                          applications; links core and cannot reach platform
 sim/                           the desktop simulator, and its LVGL configuration
-tests/                         host tests, including the two that check the layer boundary
+tests/                         host tests, including three where a fixture must fail to build
 tests/replay/                  the deterministic navigation rig, and its recorded traces
 tools/                         the font subsetter, the image pipeline, and the checks CI runs
 cmake/                         the pinned LVGL dependency

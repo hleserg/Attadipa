@@ -229,14 +229,24 @@ stale silently. The protocol is
   (the movement/altitude baseline, below) — and the rule from the research
   prompt applies: **do not stop after the first fix.**
 
-- **A state that cannot say "nobody has checked".** `GnssCapabilities`
-  (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
-  to `false`, so "this receiver has no backup domain" and "nobody has read the
-  datasheet yet" are the same value. T-051 and T-052 exist precisely because
-  those answers are not yet known, and the type cannot hold the state the
-  project is actually in. Compare `ReceiverIndication`, which gets this right
-  with `Unknown` and `Unsupported` as distinct values, and OD-5, which is the
-  decision saying they must be.
+- **A state that cannot say "nobody has checked" — fixed, issue #166.**
+  `GnssCapabilities` was four plain `bool`s defaulting to `false`, so "this
+  receiver has no backup domain" and "nobody has read the datasheet yet" were
+  the same value. T-051 and T-052 exist precisely because those answers are not
+  yet known, and the type could not hold the state the project is actually in.
+  The four fields are now `SupportState` — `Unknown` · `Unsupported` ·
+  `Supported`, defaulting to `Unknown` — which is what
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §3 had already decided for the
+  receiver capability descriptor and what `ReceiverIndication` and OD-5 apply
+  elsewhere. `is_supported()` gates the three planner decisions, so `Unknown`
+  stays fail-safe: no `Backup`, no `PowerSave`, no warm start promised. The
+  provenance survives the decision rather than being flattened into it —
+  `is_established()` and `fully_established()` are how "T-051 is finished"
+  becomes a check a machine makes instead of a field somebody remembers, and
+  `to_string(SupportState)` keeps `Unknown` sayable on a diagnostics screen. A
+  scoped enum also means `GnssCapabilities{false, false, false, false}` no
+  longer compiles, and `tests/CMakeLists.txt` pins that with a compile-fail test
+  beside the two layer boundaries, so the collision cannot return quietly.
 
 - **A default-constructed snapshot claims to be trusted.** `GnssStatus::trust`
   (`core/include/attadipa/core/diagnostics.h:116`) defaults to
@@ -690,6 +700,13 @@ stale silently. The protocol is
 - **Acceptance:** every descriptor entry is `SUPPORTED`, `UNSUPPORTED` or
   `UNKNOWN`, each with the document and section it came from. `UNKNOWN` is a
   valid answer and an unsourced `SUPPORTED` is not.
+- **Four of those entries already have a runtime home.** Since issue #166,
+  `GnssCapabilities` holds `backup_domain`, `power_save_mode`, `assistance` and
+  `orbit_prediction` as `SupportState`, all four `Unknown` today, and
+  `fully_established()` is the mechanical check that this task actually closed
+  them — a profile with a gap fails it. Backup and hot start are the two the
+  power model reads, so answering them changes behaviour rather than only a
+  document.
 - **Research status:** not started
 - **Implementation status:** not started — no code comes out of this task
 - **Tests:** none. It produces a research record in `docs/research/`.
@@ -708,6 +725,9 @@ stale silently. The protocol is
   not a source. The two rails this variant needs (DC4 at 850 mV *and* BLDO1) are
   re-confirmed against the datasheet, because getting that wrong means GNSS
   silently never starts.
+- **Same four runtime entries as T-051**, and the same `fully_established()`
+  check. This variant is where an unsourced `Supported` would be most tempting,
+  which is exactly why `Unknown` is a value the type can hold.
 - **Research status:** not started
 - **Implementation status:** not started
 - **Tests:** none — a research record.
