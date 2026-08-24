@@ -115,11 +115,18 @@ int main()
         // not executable for RGB565A8 (the vendored converter has no swapped
         // variant) and pointless for RGB565: LVGL un-swaps a swapped source
         // while blending it into a native framebuffer, so a pre-swapped asset
-        // renders correctly and merely pays a conversion per blend. Matching
-        // the asset by turning the PORT's swap off instead breaks every glyph,
-        // arc and A8 icon LVGL renders into the same framebuffer. An earlier
-        // version of this comment said RGB565 was wrong in either direction;
-        // that was over-stated and is withdrawn.
+        // renders correctly and merely pays a conversion per blend. Turning
+        // the PORT's swap off instead breaks every glyph, arc and A8 icon LVGL
+        // renders into the same framebuffer -- AND THE ASSET WITH THEM, because
+        // LVGL has already un-swapped it into native order by the time it is in
+        // the framebuffer. There is no configuration that leaves the asset
+        // right and only the glyphs wrong. An earlier version of this comment
+        // said RGB565 was wrong in either direction; that was over-stated and
+        // is withdrawn. A later one said turning the port's swap off "matches"
+        // the asset, which is the same over-statement wearing a verb: the
+        // withdrawal reached three documents and not this one, and this comment
+        // is the one that declares itself the record. Found in review of #152,
+        // fifth round.
         //
         // BOTH OF THOSE HOLD ONLY WHILE THE LVGL DESTINATION IS NATIVE-ORDER,
         // and that is an open question rather than a constant.

@@ -365,17 +365,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Eight failures (said FOUR until 2026-08-24; T-157) that have all
-      # already happened here, and none of which anything else catches. A relative link that 404s reads exactly like one
-      # that works until somebody clicks it, and these documents cite each other
-      # constantly — a rename with a stale reference behind it is the normal way
-      # it breaks. A stray backtick turns everything after it into code until
-      # the next one, so a heading that lands inside the span stops being a
-      # heading. A duplicate task ID means two tasks answer to one name, so an
-      # agent handed "T-054" cannot tell which it was handed; four pairs had
-      # accumulated before this job existed. And a live task with no body cannot
-      # be picked up at all, while a finished one left in a live section reads
-      # as work waiting — four records were sitting like that.
+      # Eight failures. SEVEN shipped here; the eighth -- a duplicate OD number
+      # -- was caught in flight, four open pull requests deep, and STATUS.md says so. Nothing else catches any of them.
+      # A relative link that 404s reads exactly like one that works until
+      # somebody clicks it, and these documents cite each other constantly. A
+      # stray backtick turns everything after it into code until the next one,
+      # so a heading inside the span stops being a heading. A duplicate task ID
+      # means two tasks answer to one name; four pairs had accumulated before
+      # this job existed. A live task with no body cannot be picked up, and a
+      # finished one in a live section reads as work waiting. A duplicate
+      # open-question ID splits one question in two. A stray file at the root is
+      # somebody's copyright. And a citation drifts onto a live line that says
+      # something else. This said FOUR, and described four, until T-157.
       #
       # Headings inside a `<details>` block are excluded on purpose: TASKS.md
       # keeps a rejected task's original scope in one, and that is a record

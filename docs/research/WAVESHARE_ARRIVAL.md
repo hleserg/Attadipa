@@ -119,9 +119,9 @@ Whatever is decided, wrapping the BSP does not cover the board.
 
 **The ESP-IDF mechanics were already constrained by an undecided version.** T1 is
 "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
-([TASKS.md:1023](../../TASKS.md)), and CI prints
+([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
 `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
-([`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+([`.github/workflows/ci.yml:500`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
 What exists
 is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
 installed is not decided.
@@ -283,8 +283,12 @@ second thing this paragraph named is not a difference at all: at `:280`, inside
 `panel_sh8601_draw_bitmap`, `tx_color(...)` is
 called bare and the function then returns `ESP_OK` unconditionally. **A failed
 frame transfer is reported as success.** It is present at the **two revisions
-actually read** — `694ece03` (2023-11-03), where the bare call appears, and
-`5d75f3f0`, where it is still bare — and fixed by `e5b9295a` (2025-12-10). Which
+whose source was actually read** — `694ece03` (2023-11-03), where the bare call
+appears, and `5d75f3f0`, where it is still bare. A third, `e5b9295a`
+(2025-12-10), **fixes it according to the changelog**, sourced in the correction
+block below; its source was not read, and the sentence read as though all three
+had been until the fifth review round of
+[#152](https://github.com/hleserg/Attadipa/pull/152). Which
 released component versions those revisions correspond to **is not derived**:
 the sentence used to say *"present in 1.0.2, the version the published demo
 pins, as well as in 2.0.0"*, which is the same inference-from-commit-count the
@@ -746,7 +750,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+    [`.github/workflows/ci.yml:500`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more
