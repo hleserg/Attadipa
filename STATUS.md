@@ -15,7 +15,7 @@ items closed plus one the review did not list
 ## Current implementation
 
 **Attadipa has code.** As of 2026-08-24 the repository builds seven libraries and
-**twenty-eight tests** — **thirty-three** with the desktop simulator, which is off
+**thirty tests** — **thirty-five** with the desktop simulator, which is off
 by default because it needs SDL2 — and has a font pipeline whose output has been
 compiled for the target and measured. Since 2026-08-23 it can also **drive its
 own interface and look at the result** — screenshot, inject a tap or a swipe or
@@ -36,7 +36,10 @@ a device will serve when there is firmware for one.
 The `PRIVATE` in the second row is the enforcement mechanism for
 [ADR-0007](docs/adr/0007-two-capability-layers.md) §5, and two tests compile one
 fixture against two different libraries to prove an application still cannot
-include a hardware header.
+include a hardware header. There are now three such pairs: the third compiles
+one fixture with and without a `bool` in a `GnssCapabilities` initializer, so
+the rule that "proven absent" and "never checked" cannot be written as the same
+value is enforced by the compiler rather than by review.
 
 The simulator renders at 240 × 240 and 410 × 502 from one binary, selected by
 `--board`, and fits any of the five candidate T-Watch radios with `--radio`
@@ -734,11 +737,21 @@ the `PointerDown`, so round trips come out of the intervals they happened in
 rather than lengthening the path; a negative, infinite or NaN duration is
 refused *before* the press goes out, so a mistyped gesture file cannot leave a
 finger down; `duration: 0` stays legal and means as fast as the connection
-manages. Three host self-test groups pin the schedule on a fake clock — the
-two-point case, the five-point case, and the shipped file resolved at **both**
-board geometries — and all three fail on `fc69c26`. The end-to-end test adds the
-coarse version with the real clock and the real socket in it: **0.602 s** on the
-Waveshare geometry and **0.601 s** on the T-Watch for a file declaring 0.6.
+manages. **And a gesture longer than the device's own `max_hold_ms` is refused
+in a sentence**, because holding the pointer down for the whole duration made
+that bound reachable for the first time: past it the bridge expires the hold,
+the interface takes a click nobody asked for, and the real release is then
+refused as impossible from the current state. `button_hold` has refused for
+that reason since it was written. Read from the capabilities, never hardcoded —
+a T-114 firmware choosing a tighter limit than the simulator's 30 s is the case
+a number in the host would get wrong. Five host self-test groups pin the
+schedule on a fake clock — the two-point case, the five-point case, the shipped
+file resolved at **both** board geometries, the hold bound, and one that gives
+the wire a price so that **absolute** deadlines can be told from a `sleep(gap)`
+loop at all, which the first four could not. All five fail on `fc69c26`. The
+end-to-end test adds the coarse version with the real clock and the real socket
+in it: **0.602 s** on the Waveshare geometry and **0.601 s** on the T-Watch for
+a file declaring 0.6.
 Reported as [#186](https://github.com/hleserg/Attadipa/issues/186), and the
 semantics `duration` now has are written down in
 [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md#what-duration-measures) because
@@ -757,7 +770,7 @@ firmware endpoint, the day there is firmware.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-eight tests** pass, locally and in CI on `main` since #12 merged — and **thirty-three** with `-DATTADIPA_BUILD_SIMULATOR=ON`, which is the *Simulator build and headless run* job and not this row: `CMakeLists.txt` defaults the option off and the host job configures without it, so a thirty-three here was counting another job's work — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
+| Host / native | builds; **thirty tests** pass, locally and in CI on `main` since #12 merged — and **thirty-five** with `-DATTADIPA_BUILD_SIMULATOR=ON`, which is the *Simulator build and headless run* job and not this row: `CMakeLists.txt` defaults the option off and the host job configures without it, so a thirty-five here was counting another job's work — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code, plus the three added on 2026-08-23 for the input layer, the
 debug wire format and the host tool -- the last of which holds an independent
@@ -865,6 +878,25 @@ the unit is byte-identical to the T-099 backup with `verify-flash` over all
   Attadipa: every app partition on this board lives below 16 MB**, unless somebody
   proves ESP-IDF's experimental `BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH` on it,
   which nobody has.
+
+  **And the upper half is not "for data" either, which took a second look to
+  establish.** That measurement is of the *bootloader's* read. An application has
+  four flash paths of its own and none of them has ever been run above the line;
+  a source trace of ESP-IDF v5.5.5 finds that exactly one — `esp_partition_mmap`
+  — refuses, and that it has only refused **since v5.5.5** (the vendor's own
+  v5.5.1 build has no such check). Read, write and erase emit four-byte-address
+  commands with no guard in front of them, and the capability gate that might
+  have stopped them is passed by this part's JEDEC ID `0xC8 0x4019`. So an erase
+  at `0x1600000` would return `ESP_OK` whether or not the sector it hit was the
+  one intended. **Nothing of ours goes at or above `0x1000000` until somebody
+  measures it**, and `ctest` now enforces that on every partition table in the
+  tree — **of which there are currently none.** The check is real and passes
+  vacuously until a firmware project puts a CSV here, which is the same shape as
+  the defect #132 was filed about: a caveat kept honestly in the tool and
+  dropped by the summary quoting it. Both boards still boot a table this
+  repository does not own —
+  [FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md),
+  which carries the reversible plan that would settle it, and #132.
 - **A `PURE_RAM_APP` runs fine — if the serial port is never closed.** Four
   earlier attempts reset within milliseconds and were written up as proof the
   board refuses RAM images. They were not: the kernel drops DTR and RTS on the
@@ -1253,6 +1285,124 @@ four more things at no cost:
   ultimately about, which is how often a real BLE or USB stack re-fires an
   attach callback after a subsystem failure — that is a measurement, nobody has
   taken it, and the fix does not depend on the number.
+- **A snapshot nobody had filled in reported the most confident verdict there
+  is.** [#164](https://github.com/hleserg/Attadipa/issues/164), a T-062 finding.
+  `GnssStatus::trust` (`core/include/attadipa/core/diagnostics.h`) defaulted to
+  `TrustState::Trusted`, one line below a `validity` that correctly defaults to
+  `NoFix`. So `DiagnosticsSnapshot{}` — which is what exists at boot, in a panic
+  handler before anything has run, and on the Waveshare board, which has no GNSS
+  receiver at all — simultaneously said *no receiver*, *off*, *no fix*, *source
+  unknown* and *trusted*. The cause is a type doing a job it cannot do:
+  `TrustState`'s three values are all verdicts somebody reached after weighing
+  evidence, and none of them can say the evaluator has not run. `Trusted` is the
+  right initial state for a live `TrustEngine`, where it has a lifecycle around
+  it; carried into a detached aggregate it became an assertion about nothing.
+  The field is now `std::optional<TrustState>` — the idiom that header already
+  uses for every fact nobody produced, and the same instinct as
+  `ReceiverIndication::Unknown` under OD-5. **`Untrusted` was weighed and
+  rejected** rather than not considered: it is the safe default and the wrong
+  sentence, because it says a verdict was reached and it was bad, which anything
+  counting integrity alarms across support bundles would believe. A fourth
+  `TrustState` was rejected too — the enum is ordered, and thresholds, recovery
+  and the transition log all compare its values. `trust_reasons` now moves with
+  the verdict through `record_trust()` / `forget_trust()`, so evidence cannot
+  outlive the evaluation that weighed it, and `to_string(std::optional<
+  TrustState>)` gives a log, a replay trace or a support bundle the word
+  `NotEvaluated` instead of leaving each to invent a blank or an enum zero — a
+  diagnostic identifier, not a screen string, because ADR-0010 §4 still binds
+  and core does not speak English. There
+  is no renderer, serializer or other producer of this field anywhere in the
+  tree — `DiagnosticsSnapshot` appears only in its own header and in
+  `tests/test_diagnostics.cpp` — so nothing downstream needed changing and no
+  persisted format could break.
+
+  **The independent review found the type right and three of the comments around
+  it wrong, which is worth recording because it is the same defect one layer
+  out.** With no consumer in the tree those header comments *are* the forward
+  interface, and two of them stated guarantees the code does not give. A
+  `std::optional<TrustState>` does not stop a comparison against a bare
+  `TrustState` from compiling, and several of those comparisons answer unsafely:
+  `!= Untrusted` is **true** while empty, so
+  `if (trust != TrustState::Untrusted) draw_the_arrow()` — which reads correctly
+  in English — draws a confident arrow from a position no evaluator has seen,
+  reachable today in the Waveshare board's permanent state; `< Degraded` is true
+  as well, sorting "nobody looked" below the worst verdict there is. A stored
+  verdict is now read through `trust_or(stored, when_not_evaluated)`, which makes
+  the caller name what absence means before any comparison can answer for it, and
+  the unsafe readings are pinned in a test rather than left as a warning.
+  Deliberately **not** a `may_navigate()` boolean: whether a `Degraded` fix is
+  good enough depends on whether the user is reading a map or recording a track,
+  and collapsing three states into one answer inside core is the
+  policy-in-the-detector mistake ADR-0011 §5 opens by refusing.
+  `record_trust()`/`forget_trust()` now say they are a call-site discipline and
+  **not** atomic — two stores are two instructions, and a panic landing between
+  them writes the one pairing the comment claimed impossible; making them
+  indivisible means packing the verdict into the mask's two spare bits, filed in
+  `TASKS.md` rather than assumed. And `forget_trust()` says plainly that it
+  clears the verdict and nothing else: `NotEvaluated` beside a `present`, a
+  `Valid` and a `fix_age` that has stopped advancing describes a healthy fix from
+  a receiver that has gone, which is worse than the bug being fixed. The
+  round-trip test also stopped depending on `default_trust_policy()`'s weights —
+  they are `ESTIMATED` and named as the first numbers to change, and a
+  snapshot-layout test that reddens when the trust policy is tuned gets edited
+  until it passes rather than read.
+
+  Eight regression tests, including all three real
+  verdicts round-tripping through the panic-handler `memcpy` with their reason
+  masks, and a disengaged one arriving still disengaged. Both candidate defaults
+  were re-applied as mutants and turn the suite red — nine failures for
+  `Trusted`, eight for `Untrusted`; the pre-existing
+  `test_nothing_defaults_to_a_confident_answer` did **not** move under either,
+  which is why it had stayed green while contradicting its own name. The
+  structure did not grow *on the branch*: the extra byte fitted existing
+  padding, and `GnssStatus` was 40 bytes there. It is **44 on `main`**, and the
+  four bytes are not this change's — `trust_unconfirmed` (#153) landed while
+  this branch was open, and the two spend from the same padding without either
+  knowing about the other. `tests/test_diagnostics.cpp` records the measurement
+  and bounds it at 44. `DiagnosticsSnapshot` is 384 throughout, against a 1 KiB
+  budget. Host suite clean under GCC, under GCC with `-Werror -Wshadow
+  -Wconversion -Wsign-conversion -Wcast-qual -Wold-style-cast`, under Clang and
+  under ASan+UBSan with `-fno-sanitize-recover=all`. Recorded as an amendment to
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5, which is where a future reader
+  of "three states" needs to meet the fourth reading.
+- **A capability nobody had checked was stored as one the hardware does not
+  have.** [#166](https://github.com/hleserg/Attadipa/issues/166), the first of
+  T-062's remaining findings. `GnssCapabilities` was four plain `bool`s
+  defaulting to `false`, and three call sites read that `false` as *the part
+  cannot do this*: `start_kind()` refused a warm start, and
+  `transition_is_legal()` and `next_state()` refused `Backup` and `PowerSave`.
+  All three refusals are correct and none of them was the problem — **the
+  problem is that they are also the answer for a receiver nobody has looked up
+  yet**, which is the state both candidate parts are genuinely in until T-051
+  and T-052 land. So a board profile with a field somebody forgot to fill in was
+  indistinguishable from one where the datasheet had been read and said no, and
+  after the research closed there would have been no way to check mechanically
+  that every capability had actually been given a verdict. The header's own
+  comment claimed `false` meant "not established"; the type and every consumer
+  disagreed with the comment.
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §3 had already decided the fix —
+  *"every entry starts as `UNKNOWN` and becomes `SUPPORTED` or `UNSUPPORTED`
+  only from a primary source"* — so this is a decision that was never
+  implemented rather than a new one, and no ADR was written. The four fields are
+  now `SupportState{Unknown, Unsupported, Supported}` defaulting to `Unknown`,
+  the three call sites gate on `is_supported()` so `Unknown` stays fail-safe,
+  and `is_established()` / `fully_established()` keep the provenance readable
+  after the decision is made — a profile with a gap fails
+  `fully_established()`, which is how T-051 and T-052 become checkable instead
+  of remembered. `to_string(SupportState)` keeps `Unknown` sayable on a
+  diagnostics screen rather than rendering as `Unsupported`, which is where a
+  fixed collision usually reappears. Two proofs rather than an assertion: the
+  behavioural one — making `is_supported()` treat `Unknown` as supported turns
+  eight checks red across all three call sites — and the structural one, that
+  the old `bool` model does not merely fail the new tests but **fails to
+  compile** them. A scoped enum is what makes the second true, so
+  `GnssCapabilities{false, false, false, false}` is now a build error, pinned by
+  a compile-fail test in the same family as the two layer boundaries and
+  verified against both compilers' refusals (GCC and Clang word it differently
+  and the check matches either). `expect_build_failure.cmake` gained a
+  per-caller `EXPLAIN` so a third rule does not report itself as ADR-0007.
+  Nothing here is a hardware claim: every capability is still `Unknown`, and
+  that is now visible in the type instead of hidden in a `false`.
 
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).

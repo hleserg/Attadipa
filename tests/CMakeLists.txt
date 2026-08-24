@@ -46,6 +46,7 @@ add_test(NAME boundary_apps_cannot_see_platform
                  -DTARGET=boundary_negative
                  -DCONFIG=$<CONFIG>
                  "-DEXPECT_MATCHES=hardware_feature\\.h.*(No such file|file not found|Cannot open)"
+                 "-DEXPLAIN=The layer boundary is gone: an application-layer target can now reach a hardware header. Check the linkage of attadipa_core against attadipa_platform — it has to stay PRIVATE (ADR-0007 section 5)."
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_build_failure.cmake)
 set_tests_properties(boundary_apps_cannot_see_platform PROPERTIES
     LABELS architecture)
@@ -73,6 +74,7 @@ add_test(NAME boundary_core_cannot_speak
                  -DTARGET=l10n_boundary_negative
                  -DCONFIG=$<CONFIG>
                  "-DEXPECT_MATCHES=tr\\.h.*(No such file|file not found|Cannot open)"
+                 "-DEXPLAIN=The other boundary is gone: attadipa_core can now reach the translation table, so the core has learned which language will be read (ADR-0010 section 4)."
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_build_failure.cmake)
 set_tests_properties(boundary_core_cannot_speak PROPERTIES LABELS architecture)
 
@@ -150,6 +152,33 @@ if(Python3_Interpreter_FOUND)
                          ui_generated_outputs_reject_mutations
                          PROPERTIES LABELS design)
 
+    # The 16 MB flash addressing ceiling
+    # (docs/research/FLASH_ADDRESSING_LIMITS.md).
+    #
+    # `ota_1` on the Waveshare sits at exactly 0x1000000 and the vendor's own
+    # bootloader reads 0x0 when it asks for it — measured, on the unit. What a
+    # *running* application does up there was never measured, and of the four
+    # runtime paths exactly one (esp_partition_mmap, and only since ESP-IDF
+    # v5.5.5) refuses rather than aliasing. So no partition of ours goes at or
+    # above that line until somebody measures it.
+    #
+    # Registered here rather than left to review for the same reason as the
+    # boundary compiles above: a rule nobody executes is a rule until the first
+    # hurried afternoon. It currently checks zero tables, because there is no
+    # ESP-IDF project in this repository yet (issue #127) — which is why the
+    # self-test beside it is not optional. It is the only thing proving the
+    # checker works at all, and it runs the vendor's own shipped table through
+    # it and demands the refusal.
+    add_test(NAME flash_partitions_below_ceiling
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/partition_check.py)
+    add_test(NAME flash_partition_check_rejects_mistakes
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/selftest.py)
+    set_tests_properties(flash_partitions_below_ceiling
+                         flash_partition_check_rejects_mistakes
+                         PROPERTIES LABELS flash)
+
     # The other two asset checks have to *draw* something to know whether the
     # drawing changed, so they need Pillow — which the digest check above
     # deliberately does not, so that the primary staleness gate never depends on
@@ -190,6 +219,9 @@ else()
     add_test(NAME ui_checks_unavailable
              COMMAND ${CMAKE_COMMAND} -E false)
     set_tests_properties(ui_checks_unavailable PROPERTIES LABELS design)
+    add_test(NAME flash_checks_unavailable
+             COMMAND ${CMAKE_COMMAND} -E false)
+    set_tests_properties(flash_checks_unavailable PROPERTIES LABELS flash)
     message(WARNING
         "Python 3.11+ was not found, so the three localization checks "
         "(ADR-0010 section 3) cannot run. A deliberately failing test is "
@@ -359,6 +391,34 @@ add_executable(test_power test_power.cpp)
 target_link_libraries(test_power PRIVATE attadipa_core)
 add_test(NAME power COMMAND test_power)
 set_tests_properties(power PROPERTIES LABELS power)
+
+# The third compile boundary, and the same argument as the two above.
+#
+# `GnssCapabilities` was four `bool`s, so `{false, false, false, false}` said
+# "this receiver has no backup domain" and "nobody has read the datasheet yet"
+# with one value (issue #166). `SupportState` separates them — but only while a
+# `bool` cannot get back in through an aggregate initializer, and that is a
+# property of the type rather than of anything test_power.cpp can call. So the
+# fixture is compiled twice: honestly, where it must build, and from booleans,
+# where the compiler must refuse it and say which type it refused.
+add_executable(gnss_capability_positive boundary/receiver_capability_from_a_bool.cpp)
+target_link_libraries(gnss_capability_positive PRIVATE attadipa_core)
+add_test(NAME gnss_capability_takes_verdicts COMMAND gnss_capability_positive)
+set_tests_properties(gnss_capability_takes_verdicts PROPERTIES LABELS power)
+
+add_executable(gnss_capability_negative EXCLUDE_FROM_ALL
+               boundary/receiver_capability_from_a_bool.cpp)
+target_link_libraries(gnss_capability_negative PRIVATE attadipa_core)
+target_compile_definitions(gnss_capability_negative PRIVATE ATTADIPA_EXPECT_BOOL_REJECTED)
+add_test(NAME gnss_capability_refuses_a_bool
+         COMMAND ${CMAKE_COMMAND}
+                 -DBUILD_DIR=${CMAKE_BINARY_DIR}
+                 -DTARGET=gnss_capability_negative
+                 -DCONFIG=$<CONFIG>
+                 "-DEXPECT_MATCHES=(bool.*SupportState|SupportState.*bool)"
+                 "-DEXPLAIN=GnssCapabilities accepted a bool again, so 'proven absent' and 'never checked' can be written as the same value — the collision issue #166 removed. Check that every field is a SupportState and that nothing has added an implicit conversion to it (ADR-0011 section 3)."
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_build_failure.cmake)
+set_tests_properties(gnss_capability_refuses_a_bool PROPERTIES LABELS power)
 
 # ---------------------------------------------------------------------------
 # The position observation, the validity classifier and integer distance.

@@ -117,6 +117,17 @@ and render performance.
 - **Constraint:** must be a supported release that LVGL 9.5.0 and both board
   BSPs work with. The version named in the superseded
   [`../master-prompt.md`](../master-prompt.md) is explicitly not a requirement.
+- **A floor, and it is a safety property rather than a preference: not below
+  `v5.5.5`.** `spi_flash_mmap` refuses to map flash at or above `0x1000000`
+  unless the experimental 32-bit cache option is on — and that refusal was
+  **added in v5.5.5**. `v5.5.4`, `v5.5.3`, `v5.5.2`, `v5.5.1`, `v5.4.2` and
+  `v5.3.3` were each checked and none of them contains the constant; they map an
+  address that aliases to the low half of the flash and report success. On the
+  Waveshare's 32 MB part that is the difference between a loud
+  `ESP_ERR_INVALID_ARG` and silently reading the wrong sixteen megabytes.
+  **Waveshare's own shipped firmware is built with v5.5.1**, so lifting a
+  configuration or a BSP example from it inherits the version without the guard.
+  [FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) §4.1.
 - **Blocks:** all embedded work. It does **not** block M1, which is the
   simulator.
 

@@ -165,7 +165,24 @@ stale silently. The protocol is
     points, `steps - 1` sleeps, the first of them zero — so it runs `1/steps`
     short of the duration asked for and begins with a zero-length segment,
     where the gesture defect was categorical. Bounded and not urgent; it wants
-    its own change and its own test rather than a widened diff.
+    its own change and its own test rather than a widened diff. Two things go
+    with it when it is picked up: `watch_control.py`'s `swipe`/`drag` print the
+    *requested* duration (`"drag … in 1.2s"`) whatever was achieved, which is
+    the misleading half; and `long_tap`, `button_click` and `swipe` still pass
+    a duration straight to `time.sleep`, so a negative one surfaces as a
+    `ValueError` from inside the standard library after the press has gone out.
+    `gesture` refuses ahead of the press through `_duration_seconds`; the other
+    three do not. Raised in review of
+    [#187](https://github.com/hleserg/Attadipa/pull/187).
+  - **A slow wire is silent, and that is a T-114 question.** `gesture` sends a
+    point that is already overdue immediately rather than sleeping backwards,
+    and says nothing about having done so. Over a Unix socket it never
+    happens; over `SerialTransport` a five-point path at `duration: 0.05`
+    gives a 12.5 ms budget per round trip and every point goes out late.
+    Covered by a host test today (`a gesture absorbs its round trips rather
+    than adding them`) but not *reported* to the operator — decide with the
+    transport, where the achieved duration is worth printing beside the
+    requested one.
 - **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
   task after that point is supposed to end with a real screenshot, and this is
   what makes one possible.
@@ -646,6 +663,45 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-154 · A node's own retained coordinate is still a comparable side
+- **Priority:** P2 — the mirror of a defect already fixed on the local half, and
+  reachable by the same ordinary event: a receiver losing its fix.
+- **Dependencies:** `core/src/trust.cpp` — the local half is
+  [#178](https://github.com/hleserg/Attadipa/issues/178) (**done**), and
+  ADR-0011 §5.2 is the rule it established.
+- **Goal:** `compare_provider()` decides whether the second source can answer
+  from `other.position.has_value()`, `in_range()` and the measurement age.
+  **None of those separates a coordinate a node's receiver solved for from the
+  one it kept in the field after losing its fix** — which is exactly the
+  distinction #178 drew for this device's own receiver, and it was drawn on one
+  side only. A node under canopy relaying at 1 Hz therefore keeps disagreeing
+  with the last place it knew about; or, worse, keeps *agreeing* with it, and an
+  agreement reaches `clear()`, which is the only retraction this design has.
+- **Why it is not simply "do the same thing again."** The local side has a
+  `PositionValidity` because `observe()` is handed one. `compare_provider()` is
+  handed a bare `GnssObservation`, and validity is a verdict `classify()`
+  reaches with a `ValidityPolicy` — which the evaluator does not hold, and
+  arguably should not, because how quickly a *node's* fix goes stale is the
+  node link's question and not this receiver's.
+- **Acceptance:** it decides one of — take the validity as a parameter, as
+  `observe()` does, and leave the classifying to whoever owns the link; or give
+  the evaluator a `ValidityPolicy` and classify inside, which is a new piece of
+  policy and needs a reason; or read `other.fix_type`, which is already in the
+  frame and answers a narrower question honestly (`NoFix` and `TimeOnly` cannot
+  carry a solved position, `Unknown` means the receiver has not said). Whichever
+  it picks, a retained coordinate from a node must not become a fresh side of
+  the comparison.
+- **What must not be assumed:** that refusing the frame is the same as calling
+  the node gone. It is not, and
+  `test_a_node_under_cover_is_not_a_node_that_has_gone` must stay green under
+  any answer here — `provider_departure_grace` still bounds how long
+  uncomparable may last before it means departed, and that is T-152, which this
+  does not close. Nor that `fix_type` is free of consequences: a caller that
+  leaves it at its default `Unknown` would start being refused, so whatever is
+  chosen has to be stated where a caller of `compare_provider()` will meet it.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-128 · The generated-asset reproducibility job is written and cannot be pushed
@@ -771,10 +827,11 @@ stale silently. The protocol is
 - **Dependencies:** none
 - **Goal:** close, or consciously decline with reasons, each finding below.
   Every one of them was read in the source before being written here; none is a
-  report taken on trust. Five from the same audit are already fixed —
+  report taken on trust. Six from the same audit are already fixed —
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
-  evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
-  (the movement/altitude baseline, below) — and the rule from the research
+  evaluator), `7e4c4f9` (the replay rig could not produce Stale), issue #26
+  (the movement/altitude baseline, below) and issue #164 (the snapshot that
+  claimed to be trusted, below) — and the rule from the research
   prompt applies: **do not stop after the first fix.** Issue #151 (recovery
   completing on silence alone, below) has since been closed the same way.
   **And one finding is about text rather than code.** `trust.h` and
@@ -789,21 +846,66 @@ stale silently. The protocol is
   [#153](https://github.com/hleserg/Attadipa/pull/153), which is why it is
   written down here rather than left to the next reader of a header.
 
-- **A state that cannot say "nobody has checked".** `GnssCapabilities`
-  (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
-  to `false`, so "this receiver has no backup domain" and "nobody has read the
-  datasheet yet" are the same value. T-051 and T-052 exist precisely because
-  those answers are not yet known, and the type cannot hold the state the
-  project is actually in. Compare `ReceiverIndication`, which gets this right
-  with `Unknown` and `Unsupported` as distinct values, and OD-5, which is the
-  decision saying they must be.
+- **A state that cannot say "nobody has checked" — fixed, issue #166.**
+  `GnssCapabilities` was four plain `bool`s defaulting to `false`, so "this
+  receiver has no backup domain" and "nobody has read the datasheet yet" were
+  the same value. T-051 and T-052 exist precisely because those answers are not
+  yet known, and the type could not hold the state the project is actually in.
+  The four fields are now `SupportState` — `Unknown` · `Unsupported` ·
+  `Supported`, defaulting to `Unknown` — which is what
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §3 had already decided for the
+  receiver capability descriptor and what `ReceiverIndication` and OD-5 apply
+  elsewhere. `is_supported()` gates the three planner decisions, so `Unknown`
+  stays fail-safe: no `Backup`, no `PowerSave`, no warm start promised. The
+  provenance survives the decision rather than being flattened into it —
+  `is_established()` and `fully_established()` are how "T-051 is finished"
+  becomes a check a machine makes instead of a field somebody remembers, and
+  `to_string(SupportState)` keeps `Unknown` sayable on a diagnostics screen. A
+  scoped enum also means `GnssCapabilities{false, false, false, false}` no
+  longer compiles, and `tests/CMakeLists.txt` pins that with a compile-fail test
+  beside the two layer boundaries, so the collision cannot return quietly.
 
-- **A default-constructed snapshot claims to be trusted.** `GnssStatus::trust`
-  (`core/include/attadipa/core/diagnostics.h:116`) defaults to
-  `TrustState::Trusted`. A snapshot nobody filled in therefore reports the most
-  reassuring answer available. `validity` on the line above defaults to `NoFix`,
-  which is the right instinct; `trust` should be `Untrusted` for the same
-  reason, or the field should be optional so that "not evaluated" is sayable.
+- **A default-constructed snapshot claimed to be trusted — fixed, issue #164.**
+  `GnssStatus::trust` (`core/include/attadipa/core/diagnostics.h`) defaulted to
+  `TrustState::Trusted`, so a snapshot nobody filled in reported the most
+  reassuring answer available — at boot, in a panic handler, and on a board that
+  has no receiver at all. `validity` on the line above defaults to `NoFix`,
+  which was the right instinct. The field is now
+  `std::optional<TrustState>`, empty by default, which is the idiom the rest of
+  that header already uses for facts nobody has produced; the two candidate
+  answers in the original finding were both weighed and **`Untrusted` was
+  rejected**, because it asserts that a verdict was reached and was bad, which
+  is a different claim from "no verdict" and one that anything counting
+  integrity alarms would believe. Not a fourth `TrustState` either: that enum is
+  ordered and compared against thresholds throughout `trust.cpp`.
+  `trust_reasons` moves with the verdict through `record_trust()` /
+  `forget_trust()`, so a mask cannot outlive the evaluation that produced it,
+  and `to_string(std::optional<TrustState>)` gives a log or a support bundle the
+  word `NotEvaluated` rather than a blank or an enum zero — a diagnostic
+  identifier, not a screen string (ADR-0010 §4). A stored verdict is read
+  through `trust_or(stored, when_not_evaluated)`, because the optional's
+  comparisons against a bare `TrustState` compile and `!= Untrusted` is *true*
+  while empty, which is a navigation guard failing open. Eight
+  regression tests in `tests/test_diagnostics.cpp`, including the round trip
+  through the panic-handler `memcpy` for all three real verdicts; restoring
+  either candidate default turns them red. Recorded as an amendment to
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5. The snapshot did not grow:
+  the extra byte fits existing padding, so `GnssStatus` is 40 bytes and
+  `DiagnosticsSnapshot` 384 before and after.
+
+- **Still open, raised by the review of that fix: the verdict and its reason
+  mask are paired by discipline, not indivisibly.** `record_trust()` and
+  `forget_trust()` (`core/include/attadipa/core/diagnostics.h`) are two stores
+  each, and the consumer this snapshot exists for is a panic handler — an
+  exception context that can land between any two instructions of the task
+  filling it in. The result is the one pairing the header says cannot happen: an
+  empty verdict beside a live reason mask, in the artefact somebody reads after
+  a crash. Nothing single-threaded can reach it and no store order avoids both
+  interleavings. Making it indivisible means packing the verdict into spare bits
+  of `trust_reasons` — there are 15 reasons and the mask is 32 bits, so two bits
+  are free — which changes the shape of the field and should be decided when
+  something actually writes a snapshot from a panic path, not before. Filed so
+  that the assumption is written down rather than inherited.
 
 - **Rates for a relayed fix were divided by the wrong interval — fixed,
   issue #26.** `TrustEvaluator::observe` used to set `previous_position_at_
@@ -1346,6 +1448,13 @@ stale silently. The protocol is
 - **Acceptance:** every descriptor entry is `SUPPORTED`, `UNSUPPORTED` or
   `UNKNOWN`, each with the document and section it came from. `UNKNOWN` is a
   valid answer and an unsourced `SUPPORTED` is not.
+- **Four of those entries already have a runtime home.** Since issue #166,
+  `GnssCapabilities` holds `backup_domain`, `power_save_mode`, `assistance` and
+  `orbit_prediction` as `SupportState`, all four `Unknown` today, and
+  `fully_established()` is the mechanical check that this task actually closed
+  them — a profile with a gap fails it. Backup and hot start are the two the
+  power model reads, so answering them changes behaviour rather than only a
+  document.
 - **Research status:** not started
 - **Implementation status:** not started — no code comes out of this task
 - **Tests:** none. It produces a research record in `docs/research/`.
@@ -1364,6 +1473,9 @@ stale silently. The protocol is
   not a source. The two rails this variant needs (DC4 at 850 mV *and* BLDO1) are
   re-confirmed against the datasheet, because getting that wrong means GNSS
   silently never starts.
+- **Same four runtime entries as T-051**, and the same `fully_established()`
+  check. This variant is where an unsourced `Supported` would be most tempting,
+  which is exactly why `Unknown` is a value the type can hold.
 - **Research status:** not started
 - **Implementation status:** not started
 - **Tests:** none — a research record.
@@ -2523,6 +2635,60 @@ stale silently. The protocol is
   frame is silkscreened; the case rotation is not, and one is useless without the
   other.
 - **Hardware required:** yes — the owner's unit, and a person.
+
+### T-172 · The upper 16 MB: measure it, or keep leaving it alone
+- **Priority:** P3 today, **P1 the moment a layout wants the upper half.**
+  Nothing needs it yet — but not because there is room. The vendor did **not**
+  fit its table into the low 16 MB. `tools/flash/fixtures/waveshare-vendor-factory.csv`,
+  transcribed from the received unit, is contiguous from `0x9000` to exactly
+  `0x1000000` with a zero-byte gap — bootloader areas, a 952K voice model, a
+  **9 MB** `factory` and one 6 MB OTA slot — and its remaining two rows are the
+  ones above the line: `ota_1` at `0x1000000`, which is provably dead, and 6 MB
+  of UI assets at `0x1600000`. Three app partitions, not two, and no room to
+  spare; that overflow is what this task exists about.
+
+  What Attadipa needs is **UNKNOWN** and cannot be labelled otherwise until an
+  image exists to measure. The quantity that matters is not one app slot but
+  *two OTA slots plus assets inside 16 MB*, which is the sum the vendor could
+  not make — 9M + 6M + 6M is why `ota_1` is where it is.
+  `docs/master-prompt-final.md` puts it as *"OTA is not the first MVP blocker.
+  But storage/partition decisions must not make it impossible later."* The first
+  thing that would force the question is
+  [#127](https://github.com/hleserg/Attadipa/issues/127)'s `models` partition.
+- **Dependencies:** the rule and its enforcement are already in place —
+  `tools/flash/partition_check.py`, run by `ctest` as
+  `flash_partitions_below_ceiling`. This task is only the measurement that would
+  lift it. Stages 2 and 3 need the owner's unit; stage 3 needs the owner's
+  authorisation as well.
+- **Why now:** it is written down rather than done, so that whoever wants the
+  upper half finds a plan instead of a temptation. The research is complete:
+  [FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md) traces all
+  six flash access paths through ESP-IDF v5.5.5 and gives each a VERIFIED or
+  UNKNOWN status. Its finding is that **only `esp_partition_mmap` fails closed**,
+  and only since v5.5.5; read, write and erase emit four-byte-address commands
+  with no guard, and this part's JEDEC ID `0xC8 0x4019` passes the capability
+  gate that might otherwise have stopped them. So the hazard #132 named is real
+  and unguarded, and the mitigation is the layout rule rather than the driver.
+- **Goal:** move rows 4–7 of that document's table from UNKNOWN to MEASURED, or
+  decide out loud that the upper half is not worth the bench time and close this.
+- **Acceptance:** §6 of that document run in order, its results written back into
+  the same table, and the unit `verify-flash`-clean against the T-099 backup
+  afterwards. Stage 2 (read-only, `PURE_RAM_APP`, no flash writes) settles the
+  read path and the `mmap` refusal on its own and is worth doing on any bench
+  visit. Stage 3 is the only part that writes.
+- **What must not be assumed:** that the stub flasher's success above 16 MB
+  settles it. The stub runs on this SoC and carries its own SPI routines, so it
+  is evidence about the die and the peripheral and not about ESP-IDF's driver —
+  the bootloader read `0x0` from an address the stub had just written correctly.
+- **The one thing that needs saying before anybody starts stage 3:** there is no
+  canary above the line whose 24-bit alias is harmless, because the vendor's
+  table is contiguous from `0x9000` to `0x1000000`. The plan picks the least
+  valuable alias there is — `0x1FFF000`, whose alias `0x0FFF000` lies 786 KB past
+  the end of the image in `ota_0` — and leans on the whole-part backup, which has
+  already been used successfully once.
+- **Hardware required:** yes for stages 2 and 3. **Stage 3 additionally requires
+  a separate owner authorisation**, and must not be run on the strength of any
+  earlier one.
 
 ### T-113 · Touch needs a reset pulse, and the part number is still a guess
 - **Priority:** P2 — the behaviour is understood, which is the part that blocked

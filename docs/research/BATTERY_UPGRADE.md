@@ -5,6 +5,45 @@ blocked on four measurements only the owner can take.** Raised by the owner
 2026-08-22. Decision tracked as [#64](https://github.com/hleserg/Attadipa/issues/64);
 [OPEN_QUESTIONS](OPEN_QUESTIONS.md) D2.
 
+> ## PAUSED — 2026-08-22, owner's decision
+>
+> **Calipers are on order and have not arrived**, so none of §4's measurements
+> can be taken yet. The owner has also ordered a **magnetometer** to solder onto
+> this unit, and wants its size known before the cell is chosen — because
+> whatever the magnetometer occupies comes out of the same cavity. **The two
+> questions are now coupled and the battery is downstream of the magnetometer** —
+> [#83](https://github.com/hleserg/Attadipa/issues/83), and this issue is
+> [#64](https://github.com/hleserg/Attadipa/issues/64).
+>
+> **One thing the owner did establish, by handling the unit** — recorded as
+> `OBSERVED`, not `MEASURED`, because it is a judgement by eye and hand and not a
+> caliper reading:
+>
+> > *"место под крышкой есть, текущие 400 mAh не упираются ни по толщине, ни по
+> > ширине, ни по длине. Просто китайцы сэкономили."*
+>
+> There is room under the cover, and the fitted cell butts against nothing in any
+> of the three axes. **That is a real finding and it moves the odds by exactly
+> one step**: the case §5 describes as *below* Row A — M1 under 4.4 mm, where the
+> fitted cell is already outside its own swell margin — is now the unlikely one,
+> and "Row A or better" is the expectation. It does **not** make Row A itself
+> unlikely. Row A *is* the 4.4–5.1 mm band, and 5.1 mm is where Row B starts, so
+> telling Row A from Row B is telling 0.1 mm of clearance from 1.1 mm — which is
+> precisely what an eye and a hand cannot do. It does **not** substitute for M1
+> for a second reason as well: this was judged with the cover off, and T-106's M1
+> is *closed-case* clearance, because a cell chosen against the recess depth fits
+> until the case is closed on it. Nothing in §5 has been promoted on the strength
+> of it.
+>
+> **What this note does not settle, and does not try to.** `TASKS.md` T-106 says
+> *"M1 through M3 are the gate, they wait on nothing"*. That sentence is about
+> M4's `0x0C`/`0x0D` legs — I²C addresses waiting on a module in the post — and
+> this note is about the cavity the cell and the magnetometer would share. The
+> two are not the same claim and neither refutes the other, but whether the
+> **cell choice** is downstream of the magnetometer's **size** is the owner's,
+> and T-106's acceptance is deliberately left as it stands until they say. Filed
+> rather than decided here.
+
 ## 0. What this note is
 
 Four source fan-outs fed it — the Waveshare schematic and wiki, the AXP2101

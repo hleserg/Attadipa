@@ -98,6 +98,44 @@ constexpr std::uint32_t trust_reason_bit(TrustReason reason)
 const char* to_string(TrustState state);
 const char* to_string(TrustReason reason);
 
+// And the name for "no verdict has been reached", which is a state a stored
+// verdict can be in even though it is not a `TrustState`
+// (`GnssStatus::trust`, diagnostics.h).
+//
+// Like both overloads above it, this is a **diagnostic identifier** — for a
+// log line, a replay trace, a support bundle — and not a string anybody is
+// shown. Core does not speak English and neither external protocol may carry
+// display text (ADR-0010 §4): a screen showing this state goes through `l10n`,
+// which is where its Russian lives. What the identifier buys is that a reader
+// of a bundle meets a word rather than a blank, a zero or the first enumerator,
+// each of which prints a confidence nobody has.
+const char* to_string(std::optional<TrustState> state);
+
+// Read a stored verdict, saying at the call site what its absence means.
+//
+// This exists because `std::optional`'s comparisons against a bare `TrustState`
+// all compile and several of them fail *open*. Checked, not assumed — for an
+// empty optional, `== Untrusted` is false, so a guard that refuses on
+// `Untrusted` does not fire; `!= Untrusted` is true, so a guard that permits on
+// anything-but-`Untrusted` does; and `< Degraded` is true, sorting "nobody
+// looked" below the worst verdict there is. None of those orderings was
+// decided by anyone, and the most natural-reading guard of the set —
+// `if (trust != TrustState::Untrusted) draw_the_arrow();` — points a confident
+// arrow using a position no evaluator has seen. That is reachable today, in the
+// permanent state of a board with no receiver.
+//
+// So absence is resolved before any comparison, and the caller supplies the
+// answer rather than inheriting one. Deliberately **not** a `may_navigate()`
+// boolean: whether a `Degraded` fix is good enough depends on whether the user
+// is reading a map or recording a track, and collapsing three states into one
+// answer here would move the policy back into the detector, which is the first
+// thing ADR-0011 §5 refuses.
+constexpr TrustState trust_or(std::optional<TrustState> stored,
+                              TrustState                when_not_evaluated)
+{
+    return stored.value_or(when_not_evaluated);
+}
+
 // The numbers that turn evidence into a verdict.
 //
 // Policy, deliberately: none of this is physics, and a wrist in a forest and a
@@ -517,9 +555,40 @@ private:
     bool        have_previous_in_view_ = false;
     std::uint8_t previous_in_view_     = 0;
 
-    bool          have_latest_position_ = false;
-    Position      latest_position_{};
-    MonotonicTime latest_position_at_{};
+    // The local side of `compare_provider()`: a coordinate this receiver
+    // MEASURED, and the instant it measured it.
+    //
+    // Not "the last position field that arrived", which is what stood here and
+    // is a different fact. A receiver that loses its fix keeps sending the
+    // coordinate it last solved for, with a `PositionValidity` of `NoFix`
+    // beside it saying there is no position at all — the shape the rate
+    // baselines above already refuse, and which `tests/test_trust.cpp` already
+    // reproduces. Stored unconditionally and stamped with ARRIVAL time, one
+    // such frame per second kept this side of the comparison permanently
+    // "fresh": a node reporting the place the wearer had actually walked to was
+    // measured against a coordinate the local receiver had disowned, and the
+    // difference was reported as `ProviderDisagreement` — 30 points, which
+    // reaches `degrade_at` unaided — refreshed for as long as the dropout
+    // lasted. The evaluator had two models of the same observation's fitness,
+    // and only one of them read `validity`. Found by the review of
+    // `6965191..8d757a7`, issue #178.
+    //
+    // So the invariant is the name. This is present only while the local
+    // receiver has produced a comparable measurement, and `measured_at` is
+    // `observation.observed_at` and never `now` — the same discipline as the
+    // baselines above and for the same reason, so that a comparison is between
+    // two measurement ages rather than between one measurement and one arrival.
+    //
+    // It advances in lockstep with `previous_position_` and is deliberately
+    // still its own field: the two answer different questions — the fix a rate
+    // is computed FROM, and this device's current answer to *where are you* —
+    // and collapsing them would make any later change to one silently change
+    // the other.
+    struct ComparablePosition {
+        Position      position{};
+        MonotonicTime measured_at{};
+    };
+    std::optional<ComparablePosition> local_comparable_;
 
     // When the second source last produced a frame this device could compare
     // against — the anchor `provider_departure_grace` is measured from. Not
