@@ -37,11 +37,19 @@ documents asserting the opposite of the truth, which is the defect
 CLAUDE_AUTOMATION.md calls blocking on #154, mirrored. The list was three for
 three rounds, and the two it was missing were the README that states the rule
 and the file CLAUDE.md sends every agent to first. Before committing, run all
-three of `grep -rn 170-merge-sweep-completeness`, `grep -rn 'merges nothing'`
-and `grep -rn 'HALF LIVE'` -- what those find between them is the list. The
-third one is not redundant: the conditions-table row above the banner contains
-neither of the other two strings, and `merges nothing` hits an unrelated
-undrafting row in the same file, so two greps look like they covered it.
+four of `grep -rn 170-merge-sweep-completeness`, `grep -rn 'merges nothing'`,
+`grep -rn 'HALF LIVE'` and `grep -rn 'pr-merge-sweep.yml' docs/`. Not one of
+them is redundant, and each was added after the list came up short without it:
+the conditions-table row above the banner contains neither of the first two
+strings; `merges nothing` hits an unrelated undrafting row in the same file;
+and the README paragraph that says THIS is the one patch editing the sweep
+names neither the patch nor any of those phrases -- it says *this one*. Three
+greps looked like they had covered the file three rounds running.
+
+The list below is what those four find, checked against the file rather than
+remembered. Where a paragraph is named, it is named BY THE WORDS IT OPENS WITH:
+two rounds were lost to entries that described a paragraph well enough for a
+human and matched a different one.
 
     CLAUDE.md            the paragraph beginning "The half-hourly sweep merges
                          nothing, from this change until the parked patch
@@ -61,15 +69,25 @@ undrafting row in the same file, so two greps look like they covered it.
     STATUS.md            the "Agent automation" row's closing sentence, which
                          names this file as parked.
     docs/automation/pending/README.md
-                         this patch's row in "Waiting now" -- the row is the
-                         worked example :31-33 gives for the very rule this
-                         block quotes, and a row for a file that is gone
-                         advertises a patch nobody can apply. Also the
-                         "Verified before it was parked" paragraph about this
-                         patch, and the "Two patches now edit
-                         `pr-merge-sweep.yml`" note, which is a statement
-                         about two parked patches and survives only while
-                         both are.
+                         THREE things, and each is named here by the words it
+                         actually opens with, because the last two rounds got
+                         this wrong by describing them instead:
+                           - this patch's row in "Waiting now". The row is the
+                             worked example :31-33 gives for the very rule this
+                             block quotes, and a row for a file that is gone
+                             advertises a patch nobody can apply.
+                           - the paragraph opening "For
+                             `170-merge-sweep-completeness.patch`:" -- NOT the
+                             one opening "Verified before it was parked", which
+                             is #128's record about `75-approval-stall.patch`
+                             and the only place its verification is written
+                             down. Deleting that one is the accident this line
+                             exists to prevent.
+                           - the paragraph opening "One patch in this directory
+                             edits `pr-merge-sweep.yml`". It is unconditional
+                             and about this patch, so it goes whole; it is not
+                             the "Two patches now edit" sentence, which was
+                             replaced and no longer exists.
     TASKS.md             T-144 stays open for #154's patch, so it is edited
                          rather than closed. Its Impact says the sweep
                          "merges NOTHING" because the arity refusal holds

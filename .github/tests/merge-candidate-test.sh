@@ -332,13 +332,33 @@ case "$got" in
 esac
 
 # The redirect above is deliberate, and so is this. `ci.yml` runs this suite as
-# a plain `run:` step, and the runner scans a step's stderr for workflow
-# commands -- so an unredirected fixture prints `::warning::the merge sweep is
-# holding every pull request` on every CI run of every pull request, and keeps
-# printing it after the patch lands and the state is no longer true. The one
-# signal that separates a disabled sweep from an idle one would be buried in
-# its own noise long before the day it matters. Discarding it there means
-# asserting it here, or the remedy is inert and nothing would say so.
+# a plain `run:` step, so an unredirected fixture prints `::warning::the merge
+# sweep is holding every pull request` into the log of every CI run of every
+# pull request, and keeps printing it after the patch lands and the state is no
+# longer true. The one signal that separates a disabled sweep from an idle one
+# would be buried in its own noise long before the day it matters. Discarding it
+# there means asserting it here, or the remedy is inert and nothing would say so.
+#
+# WHETHER THE RUNNER PARSES A WORKFLOW COMMAND OFF STDERR IS **NOT ESTABLISHED**
+# in this repository, and an earlier version of this comment stated that it does
+# as though it were a fact. `75-approval-stall.patch`, parked in the same
+# directory, says the opposite in as many words -- "whether the runner parses
+# workflow commands off stderr at all is not established anywhere in this
+# repository" -- and moved a warning to stdout rather than rest a diagnostic on
+# it, in the fifth review round of #128.
+#
+# Nothing here needs it decided, and the two files are not actually in conflict
+# about what to DO. #128 had somewhere else to put its warning: its block's
+# stdout is a comment body, so it emitted the line earlier, outside the block.
+# `merge-candidate.sh` has no such place -- its stdout IS the verdict the caller
+# captures, so a workflow command written there corrupts the value the gate is
+# computed from. stderr is the only stream left, and the assertion below holds
+# either way: if the runner does parse it, the line is an annotation; if it does
+# not, the line still reaches the log as text and the caller re-emits it as a
+# `::notice::`. What is at stake is the SEVERITY, not the information.
+#
+# One `workflow_dispatch` of the sweep after the patch lands settles it, and
+# whoever lands it should look: `merge-candidate.sh` has never run on `main`.
 warned="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>&1 >/dev/null)"
 case "$warned" in
   *"::warning::"*"merge sweep is holding every pull request"*)

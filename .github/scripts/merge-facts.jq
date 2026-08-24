@@ -49,6 +49,14 @@ def incomplete($what; $hides; $conn):
        or ($conn.pageInfo.hasNextPage | type) != "boolean" then
     "\($what) came back with no usable hasNextPage, so its completeness is unproven"
   elif $conn.pageInfo.hasNextPage then
+    # `totalCount` IS THE CONNECTION'S OWN COUNT AND DOES NOT RESPECT `itemTypes`
+    # -- established by the live read against #173, and recorded in
+    # REUSE_LEDGER.md. On a filtered connection the "of N" is therefore an upper
+    # bound on the set, not its size, and a message could read "truncated at 1
+    # of 15" about a page holding every labelling there is. Only `timelineItems`
+    # is filtered, and its branch cannot fire (see below), so nothing prints
+    # this today; it is written here because the next filtered connection added
+    # would inherit the wording silently.
     ( ($conn.nodes | length) as $read
       | if ($conn.totalCount | type) == "number" and $conn.totalCount > $read then
           "\($what) is truncated at \($read) of \($conn.totalCount), so \($hides) cannot be ruled out"
