@@ -23,7 +23,9 @@ TO APPLY, from a session whose token may write workflows:
     git apply docs/automation/pending/170-merge-sweep-completeness.patch
     git rm docs/automation/pending/170-merge-sweep-completeness.patch
     #  This file only. `git rm -r docs/automation/pending` would also delete
-    #  #154's parked patch and the directory's README -- see T-144.
+    #  `75-approval-stall.patch` -- 34 kB parked by #128, on `main` today and
+    #  not yet applied -- the directory's README, and #154's patch when it
+    #  lands. See T-144.
     bash .github/tests/merge-candidate-test.sh   # 134 assertions, and the last
                                                  # two flip to the applied state
     git commit -am "The merge sweep asks whether it read all of the pull request"
