@@ -79,6 +79,21 @@ Two things checked rather than assumed, on 2026-08-21:
 | The whole fetch-and-verify path works from nothing | **OBSERVED** in CI on 2026-08-21, cold cache, no LVGL on the machine: `-- LVGL: cloning v9.5.0` → `-- LVGL commit verified: 85aa60d1…` → build → 6/6 tests → a screenshot per geometry, in 2 min 2 s for the whole job. The commit check is therefore known to fire on a real clone and not only on a tree that was already right |
 | `GIT_SHALLOW TRUE` is **not** a small download | CMake 3.28's generated `lvgl-populate-gitclone.cmake` runs `clone --no-checkout --depth 1 --no-single-branch --progress` and then `checkout "v9.5.0" --`. One commit off *every* ref, not off one branch. **MEASURED** on a GitHub runner with a cold cache (run `32462413273`): the clone takes **22.8 s** and leaves a `_deps` tree that caches at **366 761 925 B — 350 MiB**. Recorded because the opposite is the natural reading of `GIT_SHALLOW`, and preventing exactly that is what this file is for |
 
+**What a bump has to revisit, beyond the two geometries.**
+`tools/ui/check_raw_values.py` carries a written-out inventory of which LVGL
+entry points take a pixel length, a duration or a colour, and at which argument
+position. It was read out of this pin's own headers — `lv_obj_style_gen.h`,
+`lv_style_gen.h`, `lv_obj_style.h`, `lv_obj_pos.h`, `lv_obj_scroll.h`,
+`lv_anim.h` and `lv_api_map_v9_1.h` — rather than remembered, and it is a list
+rather than a parse because `ui_no_raw_values` runs in every CI job while LVGL
+itself is behind `ATTADIPA_BUILD_SIMULATOR`, which is **OFF** by default. A
+checker that needed the headers would silently stop checking on four of the five
+jobs. The cost of that choice is this line: **a version bump re-derives the
+inventory from the new tree**, because a setter LVGL adds is a setter the
+checker will not know about, and it will not say so. The reasoning is in
+[REUSE_LEDGER](REUSE_LEDGER.md) under *Reading a C++ call expression well enough
+to police it*.
+
 **Since answered (T-032):** the subset is 181 codepoints, `lv_font_conv` is
 pinned at 1.5.3 under MIT, and a Latin + Cyrillic subset has been generated and
 compiled with the ESP32-S3 toolchain at seven sizes and three bit depths —

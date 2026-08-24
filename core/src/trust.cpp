@@ -86,16 +86,45 @@ void TrustEngine::report(TrustReason reason, MonotonicTime at)
 {
     evidence_at_[index_of(reason)] = at;
     live_ |= trust_reason_bit(reason);
+    // The allegation is standing again, so it is no longer one that lapsed
+    // unanswered. Which of the two doors it leaves by is decided when it
+    // leaves, not now.
+    unconfirmed_ &= ~trust_reason_bit(reason);
+    // And there is a subject again -- something is making this allegation now,
+    // so a previous departure stops applying to it.
+    abandoned_ &= ~trust_reason_bit(reason);
 }
 
 void TrustEngine::clear(TrustReason reason)
 {
     live_ &= ~trust_reason_bit(reason);
+    // The retraction, and the only one there is. Everything that separates an
+    // all-clear from silence in this class comes down to which of these two
+    // lines cleared the bit.
+    unconfirmed_ &= ~trust_reason_bit(reason);
+    abandoned_ &= ~trust_reason_bit(reason);
+}
+
+void TrustEngine::stop_awaiting(TrustReason reason)
+{
+    // `unconfirmed_` only. Deliberately not `live_`: an allegation whose
+    // evidence has not expired is still current evidence, and this call is
+    // about a subject that has gone, not about a condition that has ended.
+    // The two masks are disjoint by construction, so this is a no-op on
+    // anything live -- which is exactly why the latch below exists rather than
+    // this being a one-shot. See `abandoned_`.
+    unconfirmed_ &= ~trust_reason_bit(reason);
+    abandoned_ |= trust_reason_bit(reason);
 }
 
 bool TrustEngine::holds(TrustReason reason) const
 {
     return (live_ & trust_reason_bit(reason)) != 0;
+}
+
+bool TrustEngine::awaiting_confirmation(TrustReason reason) const
+{
+    return (unconfirmed_ & trust_reason_bit(reason)) != 0;
 }
 
 void TrustEngine::update(MonotonicTime now)
@@ -104,10 +133,21 @@ void TrustEngine::update(MonotonicTime now)
     // suspect" either — a device that walks out of an interference source would
     // never recover. Evidence therefore decays, and a detector that wants a
     // condition to persist has to keep saying so.
+    //
+    // What decays is the *score*. The allegation itself is remembered as one
+    // nobody withdrew, because those two are exactly what the first sentence
+    // above distinguishes and the code used to collapse them one line later.
     for (std::uint8_t i = 0; i < kTrustReasonCount; ++i) {
         const std::uint32_t bit = 1u << i;
         if ((live_ & bit) != 0 && elapsed(evidence_at_[i], now) >= policy_.evidence_ttl) {
             live_ &= ~bit;
+            // Unless the subject has gone. "Nobody withdrew it" is a statement
+            // about someone who could have; when there is no longer anyone to
+            // withdraw it, the allegation ends with its evidence instead of
+            // being remembered as unanswered forever.
+            if ((abandoned_ & bit) == 0) {
+                unconfirmed_ |= bit;
+            }
         }
     }
 
@@ -145,6 +185,45 @@ void TrustEngine::evaluate(MonotonicTime now)
     // band between recover_below and degrade_at is the hysteresis, and a state
     // sitting inside it does not move in either direction.
     if (score_ > policy_.recover_below) {
+        clean_since_valid_ = false;
+        return;
+    }
+
+    // And a clean score has to be clean for a reason.
+    //
+    // This is the other half of "up is earned", and it was missing in the
+    // direction that costs. The TTL above takes an allegation out of the score
+    // without anybody having withdrawn it, so fifteen seconds of a spoofing
+    // alarm followed by nothing at all left `score_` at zero — and this code
+    // read that zero as a detector's all-clear, started the hold on it, and
+    // walked Untrusted → Degraded → Trusted over the next ten seconds. No
+    // observation, no clear(), no evidence of any kind arrived in that window:
+    // the device announced the position was fit to navigate by at precisely the
+    // moment its receiver had stopped talking. OD-5 §4 (*do not collapse the
+    // states*) and §8 (*the receiver's own verdict is strong evidence, not
+    // truth*) are the rule, `clear()` is the contract, and this line is where
+    // both were being lost. NOT §2, which an earlier version of this comment
+    // cited: §2 is about the LS550G's anti-spoofing CAPABILITY being `UNKNOWN`
+    // rather than `SUPPORTED` — a datasheet claim about a part, not a per-epoch
+    // indication from a running one. Found in review.
+    //
+    // The anchor is dropped rather than frozen, so when a retraction does
+    // arrive the hold is measured from *it* and not from the silence in front
+    // of it. And the consequence is stated rather than discovered later: a
+    // device that never hears another positive word does not climb on the clock
+    // alone. There are exactly three ways out and the list is exhaustive: a
+    // detector retracting (`clear()`), `reset()`, and `stop_awaiting()` for the
+    // one reason whose subject can leave. **The third is a real third**, and an
+    // earlier version of this comment said "never a timer" as though it were
+    // not: after `stop_awaiting()` the hold does run and the state does climb on
+    // the clock, with the allegation never withdrawn. What makes that legitimate
+    // is not that no timer runs -- one does -- but that the allegation was
+    // about a PAIR and one of the pair is gone, so there is nothing left for a
+    // retraction to come from. Silence from a detector that is still there
+    // still buys nothing, which is the whole of OD-5 §4 and §8. Corrected in
+    // the second review round of #153, where the absolute claim was found in
+    // five places and honoured in none.
+    if (unconfirmed_ != 0) {
         clean_since_valid_ = false;
         return;
     }
@@ -239,6 +318,8 @@ void TrustEngine::reset()
 {
     state_             = TrustState::Trusted;
     live_              = 0;
+    unconfirmed_       = 0;
+    abandoned_         = 0;
     score_             = 0;
     clean_since_valid_ = false;
     has_last_trusted_  = false;
@@ -517,19 +598,101 @@ void TrustEvaluator::refresh(PositionValidity validity, MonotonicTime now)
 
 void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTime now)
 {
-    if (!have_latest_position_ || !other.position.has_value() || !in_range(*other.position)) {
-        return;
-    }
-
     // Only a comparison of two roughly simultaneous answers means anything. If
     // either side is older than the window, this is not evidence of
     // disagreement and must not be recorded as such — but neither is it
     // evidence of agreement, so any live reason is left standing rather than
     // cleared. Silence, not an all-clear: the same rule OD-5 applies to a
     // receiver that stops reporting.
+    //
+    // WHICH SIDE WENT QUIET DECIDES WHETHER THE ALLEGATION IS STILL AWAITED,
+    // and the first version of this branch did not ask. `stop_awaiting()` means
+    // *the detector's subject has gone* — for `ProviderDisagreement` the
+    // subject is the second source, so only that side's silence may lift it.
+    // A gate closed by OUR OWN receiver going quiet is a device that stopped
+    // listening while a present, fresh, still-disagreeing node kept talking:
+    // lifting the pin there releases the state on the one input that has not
+    // moved. Review of #153 reproduced it with nothing exotic — a duty-cycled
+    // receiver, which is what `gnss_power.h` is for — and the device reached
+    // `Trusted` about twenty seconds later with the node still saying it was
+    // 550 m out, then stored the disputed coordinate as
+    // `last_trusted_position()`. Nothing is needed on that half anyway: any
+    // `observe()` with an in-range coordinate advances `latest_position_at_`,
+    // `NoFix` included, so one wake reopens the gate; and a receiver that never
+    // comes back weighs `FixLost`/`StalePosition` at 20 against `recover_below`
+    // 15, so a live reason holds the state down without help.
     const Millis window = engine_.policy().provider_comparison_window;
-    if (elapsed(latest_position_at_, now) > window ||
-        elapsed(other.observed_at, now) > window) {
+
+    // Everything that means "the second source cannot answer this allegation",
+    // in one predicate rather than split across an early return and a gate. The
+    // early return used to sit above this comment and cover the first two, so a
+    // node that went indoors and relayed fix-less frames — the ordinary way a
+    // second source stops being one — left the bit pinned exactly as before.
+    // The fix keyed on "an uncomparable frame arrived" where it had to key on
+    // "the other side stopped being comparable". Found in review of #153.
+    const bool other_can_answer_now = other.position.has_value() &&
+                                      in_range(*other.position) &&
+                                      elapsed(other.observed_at, now) <= window;
+    if (other_can_answer_now) {
+        have_other_comparable_    = true;
+        other_last_comparable_at_ = now;
+    }
+
+    // A DURATION, not a frame -- and the fourth review round is why. Keyed on
+    // the single frame above, one fix-less relay from a node under canopy lifted
+    // an allegation the node had never withdrawn: at 1 Hz the very next frame
+    // after the TTL moved the bit into `unconfirmed_` cleared it, the device
+    // reached `Trusted` about five seconds later, and `remember()` then stored
+    // the disputed coordinate as `last_trusted_position()`. No attacker, no
+    // hardware, our own receiver healthy throughout -- and the branch's own test
+    // ran exactly that sequence and asserted `Trusted`, calling the node *gone*
+    // while it was still sending. A node's receiver losing its fix is the most
+    // TRANSIENT of the three conditions the record calls a departure, not the
+    // most permanent: a doorway, a canopy, the node's own duty cycle.
+    //
+    // So the lift now needs the other side to have been unable to answer for
+    // longer than a retraction could plausibly take. `have_other_comparable_`
+    // false means it has never answered in this evaluator's life, which is not
+    // a departure either -- there is nothing to depart from -- so that case
+    // waits too. The immediate exit for a node that really has gone is
+    // `provider_detached()`, which is an edge somebody reports rather than a
+    // silence we interpret.
+    const bool other_has_gone_quiet =
+        have_other_comparable_ &&
+        elapsed(other_last_comparable_at_, now) > engine_.policy().provider_departure_grace;
+    if (!other_can_answer_now) {
+        if (!other_has_gone_quiet) {
+            // Uncomparable, but not for long enough to call it a departure.
+            // Nothing happens: the allegation keeps standing if it is live and
+            // keeps being awaited if it lapsed, which is what "silence is not
+            // an all-clear" means applied to the OTHER side for once. Falling
+            // through would also dereference an empty `other.position` below.
+            return;
+        }
+        // `ProviderDisagreement` is the one reason whose only retraction lives
+        // past this gate, so once it closes and the TTL has moved the bit into
+        // `unconfirmed_`, nothing in the system can ever withdraw it — the
+        // device is pinned for the rest of the boot with `score() == 0`,
+        // `reasons() == 0` and no exit but `reset()`. `other.observed_at` is a
+        // relayed fix's MEASUREMENT time, which
+        // `tests/replay/scenarios/14-a-relayed-fix-arrives-old.trace` records at
+        // 40 s when a stalled link delivers its backlog, so this is the ordinary
+        // path and not the pathological one. See `stop_awaiting()` for why it is
+        // not the all-clear rule returning, and `provider_detached()` for the
+        // case this one only approximates.
+        engine_.stop_awaiting(TrustReason::ProviderDisagreement);
+        // No `update()` here, and that is deliberate. This path carries no new
+        // evidence, and `update()` would run the TTL -- turning "the comparison
+        // could not be made" into "and therefore the live allegation expired",
+        // which is the collapse the whole branch removes. The next `observe()`
+        // or `refresh()` re-evaluates; nothing waits on this call to do it.
+        return;
+    }
+
+    // Our own half. Silence here is silence, and it withdraws nothing: a live
+    // allegation keeps standing and a lapsed one keeps being awaited, because
+    // the source that could retract it is still there.
+    if (!have_latest_position_ || elapsed(latest_position_at_, now) > window) {
         return;
     }
 
@@ -539,6 +702,11 @@ void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTim
     engine_.update(now);
 }
 
+void TrustEvaluator::provider_detached()
+{
+    engine_.stop_awaiting(TrustReason::ProviderDisagreement);
+}
+
 void TrustEvaluator::reset()
 {
     engine_.reset();
@@ -546,6 +714,7 @@ void TrustEvaluator::reset()
     have_previous_altitude_ = false;
     have_previous_in_view_  = false;
     have_latest_position_   = false;
+    have_other_comparable_  = false;
 }
 
 // ---------------------------------------------------------------------------
