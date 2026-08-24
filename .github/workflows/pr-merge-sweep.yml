@@ -68,7 +68,7 @@ jobs:
       # applies comes from `main` or from nowhere. A schedule event already runs
       # from the default branch; saying so here means a future trigger cannot
       # quietly change that.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
