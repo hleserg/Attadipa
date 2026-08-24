@@ -232,6 +232,62 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-152 · A present provider that is permanently uncomparable still releases the hold
+- **Priority:** P2 — narrow, and it is the residual of a fix rather than a new
+  defect.
+- **Dependencies:** `core/src/trust.cpp` (**done**); `provider_detached()`
+  (**done**).
+- **Goal:** `compare_provider()` calls `stop_awaiting(ProviderDisagreement)`
+  when the second source cannot answer — no position, an out-of-range one, or a
+  measurement older than `provider_comparison_window`. The first two mean the
+  provider really has stopped being one. The third does not: a node relaying
+  fixes at 1 Hz whose measurement times are consistently 6 s old is **present,
+  is disagreeing, and stops being awaited anyway**, so the device climbs back to
+  `Trusted` in about twenty seconds with the node still saying it is 550 m out.
+  `14-a-relayed-fix-arrives-old.trace` records relayed ages of 2 s and 40 s over
+  *"a link that can queue, retry and reconnect"*, so a persistently late relay is
+  ordinary rather than exotic. Found in the second review round of
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which named it and did
+  not block on it.
+- **Acceptance:** it decides one of — a `TrustReason` meaning *a second source
+  is present and cannot be compared*, which is a live reason that holds the
+  state down and is retracted the moment one comparable frame arrives; or
+  `stop_awaiting()` on the stale path is removed entirely and the only exits
+  become an uncomparable-by-content frame and `provider_detached()`, with the
+  owner obliged to call it; or the release is kept and the bound is stated where
+  a reader meets it rather than only in this task. Whichever it picks,
+  `tests/test_trust.cpp`'s
+  `test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared`
+  is rewritten to assert the decision — it currently pins today's behaviour with
+  a deliberately disagreeing frame, so it will go red on purpose. Its two
+  siblings are `test_a_node_under_cover_is_not_a_node_that_has_gone`, which
+  pins that the grace is honoured, and
+  `test_a_node_uncomparable_past_the_grace_stops_being_awaited`, which pins that
+  it eventually expires; the first must stay green under any decision here, and
+  the second is the one a new enumerator replaces.
+- **What the fourth review round already settled, so this task starts from it.**
+  The lift no longer keys on one uncomparable frame: it needs the other side to
+  have been unable to answer for `provider_departure_grace`, and
+  `provider_detached()` latches so that a detach is not silently timed against
+  `evidence_ttl`. That closes the reachable half of the defect — a node under
+  canopy, relaying fix-less frames at 1 Hz, was being read as a node that had
+  gone, lifting the allegation about five seconds later and letting `remember()`
+  commit the disputed coordinate as the fallback. What remains for this task is
+  the *permanently* uncomparable present node, where the grace does eventually
+  expire and the release is a bound rather than a bug.
+- **And the grace is `ESTIMATED`, which is part of this task.** 120 s is chosen
+  to sit above an ordinary urban dropout and below a boot; nobody has measured
+  how long a node's receiver stays fix-less under cover, and the second source's
+  duty cycle is not ours to know. Being generous costs a pinned `Degraded` for a
+  node that vanishes without telling us; being stingy costs a false all-clear.
+  It is a number to measure, not to argue about.
+- **What must not be assumed:** that a new enumerator is free. Every
+  `TrustReason` costs a bit in a mask that `DiagnosticsSnapshot` carries and a
+  weight in `policy()`, and a reason nothing can retract is the pin this whole
+  area exists to remove — the retraction has to be designed with it.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-128 · The generated-asset reproducibility job is written and cannot be pushed
@@ -329,7 +385,19 @@ stale silently. The protocol is
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
   evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
   (the movement/altitude baseline, below) — and the rule from the research
-  prompt applies: **do not stop after the first fix.**
+  prompt applies: **do not stop after the first fix.** Issue #151 (recovery
+  completing on silence alone, below) has since been closed the same way.
+  **And one finding is about text rather than code.** `trust.h` and
+  `diagnostics.h` both justify keeping a per-reason mask by what a diagnostic
+  screen will show — *"can name it rather than showing a device stuck for no
+  visible reason"* — and there is no `l10n/strings.toml` entry for any
+  `TrustReason` or `TrustState`. `to_string(TrustReason)` returns English
+  identifiers, which is right for a diagnostics dump and is not a sentence a
+  user reads, so the promise is currently kept by something that cannot keep it.
+  Either the strings exist, or the promise says *a support bundle* instead of *a
+  screen*. Pre-existing; made twice more by
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which is why it is
+  written down here rather than left to the next reader of a header.
 
 - **A state that cannot say "nobody has checked".** `GnssCapabilities`
   (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
@@ -443,10 +511,49 @@ stale silently. The protocol is
   recorded as one the peer initiated. That is the field-report evidence for the
   most common question about a node link — who let go first.
 
-- **Recovery can complete with no observation at all.** The clean-hold window
-  can elapse while nothing whatever has been reported, so silence promotes the
-  state. OD-5's rule is that silence is not an all-clear; this is the one place
-  the code still treats it as one.
+- **Recovery could complete with no observation at all — fixed, issue #151.**
+  The clean-hold window could elapse while nothing whatever had been reported,
+  so silence promoted the state. With the default policy the whole path was
+  deterministic: `report(ReceiverSpoofing, t=0)` reached `Untrusted`, the TTL
+  took the alarm out of the score at 15 s, `evaluate()` read the resulting zero
+  as a detector's all-clear and started the clean hold on it, and twenty-five
+  seconds after the alarm the device announced `Trusted` again — no observation,
+  no `clear()`, no evidence of any kind in between. OD-5's rule is that silence
+  is not an all-clear, and this was the one place the code still treated it as
+  one. `TrustEngine` now remembers, per reason, whether an allegation left
+  `live_` by `clear()` or by the TTL, and refuses to start or advance the
+  recovery hold while any of them stands unretracted
+  (`TrustEngine::unconfirmed_reasons()`); when a retraction does arrive the hold
+  is measured from it rather than from the silence in front of it. Descent,
+  hysteresis and one-step-per-hold are unchanged. Six regression tests in
+  `tests/test_trust.cpp` and replay trace
+  `16-silence-does-not-restore-trust.trace`; removing the gate alone turns
+  sixteen checks and four trace expectations red. The rule is now written down
+  as [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, including what it costs:
+  a device that never hears another positive word does not climb back on its
+  own, and the ways out are a detector saying so, `reset()`, or
+  `stop_awaiting()` **when the provider goes away** — three, not two, and not
+  *never a timer*: past `stop_awaiting()` the recovery hold runs and the state
+  climbs on the clock with nothing retracted, which is legitimate only because
+  the allegation was about a pair and one of the pair is gone. The scope on
+  `reset()` is load-bearing:
+  it asserts `Trusted` immediately and skips both holds, so it answers *a
+  different provider is here now*, and the pin most likely to be met comes from
+  the device's own receiver, which never detaches. It is also per boot, nothing
+  in `core/` persisting trust state. **Three further findings on the second
+  review pass**, one blocking: `ProviderDisagreement`'s only retraction sat
+  behind `compare_provider()`'s freshness gate, so a duty-cycled receiver or a
+  relayed fix measured outside the window pinned the device for the rest of the
+  boot with no live reason and no exit — fixed with `stop_awaiting()`, which
+  clears the *awaiting* bit without touching a live allegation, mutation-checked
+  in both directions; `DiagnosticsSnapshot` could not carry the mask that
+  decides the verdict, so a stuck device could not say why on the one screen
+  meant to explain it, and `GnssStatus` gained `trust_unconfirmed`; and the
+  claim that only three reasons can reach the mask is **false** whenever
+  `observe()` does not run inside `evidence_ttl`, because `refresh()` retracts
+  only `FixLost` and `StalePosition` — with the shipped defaults that is a
+  fifteen-second window of `Degraded` with `score() == 0`, self-healing on the
+  next observation, so a corrected sentence rather than a code change.
 
 - **`FixLost` and `StalePosition` both weigh 20 against a `degrade_at` of 30.**
   So neither, alone, moves trust. That may be the intended two-axis design —
@@ -464,11 +571,13 @@ stale silently. The protocol is
   — mutation-verified, as the four already closed were — or declined in writing
   with the reason. A silent decline is not one.
 - **Research status:** n/a
-- **Implementation status:** in progress. The `Attach`-while-`Faulted` refusal
-  is closed (issue #158); every other bullet above is still open, and the two
-  that live in the same file as it — `Detach` hardcoding `PeerClosed`, and zero
-  meaning two things in the decoder — were deliberately left alone so that one
-  finding is one change.
+- **Implementation status:** in progress — the items marked *fixed* above are
+  closed, each with a mutation-verified test, and the rest are open with this
+  task. Closed so far: the `Attach`-while-`Faulted` refusal (issue #158), and
+  silence after a GNSS alarm restoring `Trusted` on its own (issue #151). The
+  remaining bullet in the same file as the first — zero meaning two things in
+  the decoder — was deliberately left alone, so that one finding stays one
+  change.
 - **Tests:** host, per item
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.
@@ -971,7 +1080,16 @@ stale silently. The protocol is
 - **Acceptance:** no critical structure is ever overwritten in place; a migration
   never destroys its source; the ~2× storage headroom the pattern needs is
   checked rather than assumed; dirty state is flushed on every shutdown and
-  reboot path (#2627).
+  reboot path (#2627); **and `DiagnosticsSnapshot` carries a version, a magic
+  and its own size** before anything writes it anywhere. `tests/test_diagnostics.cpp`
+  pins a memcpy-into-RTC contract and the struct has no stamp of any kind, so a
+  snapshot written before an OTA and read after it is garbage with nothing to
+  detect it by. Latent today because nothing persists one; the layout has now
+  changed twice
+  ([#153](https://github.com/hleserg/Attadipa/pull/153),
+  [#163](https://github.com/hleserg/Attadipa/pull/163)) without a reader
+  noticing, which is exactly the condition for the defect. Found in review of
+  #153.
 - **Research status:** done —
   [meshcore-1.17-review §6](docs/upstream/meshcore-1.17-review.md)
 - **Implementation status:** not started

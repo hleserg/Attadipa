@@ -1025,7 +1025,16 @@ receiver's own verdict enters the model as the heaviest single input, and OD-5
 is why `Unknown` and `Unsupported` are distinct from `None`.
 
 **Tests required, and present:** `tests/test_trust.cpp`, mutation-checked
-against four real regressions, plus the twelve replay traces.
+against five real regressions, plus the replay traces — sixteen fixtures, of
+which fifteen are replayed and one is deliberately broken for the rig's own
+test.
+
+**Nothing was taken for the 2026-08-23 recovery fix either, and the decision
+above is why.** The defect — silence completing a recovery hold, issue #151 —
+is a defect in *policy*, in a state machine whose whole reason for existing is
+that the policy is ours and explicit. There is no library to reach for and
+reaching for one would have been the mistake this entry already rejected.
+`REIMPLEMENT` stands, unchanged.
 
 ---
 

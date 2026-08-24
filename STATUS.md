@@ -579,7 +579,7 @@ hysteresis and dwell — are to be computed and shown, not chosen.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its fifteen traces, plus the
+| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
@@ -808,6 +808,177 @@ four more things at no cost:
   clean. **No hardware involved and none needed** — the defect and its fix are
   entirely host-reproducible arithmetic.
 
+- **Silence after a GNSS alarm restored `Trusted` on its own.**
+  [#151](https://github.com/hleserg/Attadipa/issues/151), the T-062 finding
+  *"recovery can complete with no observation at all"*, reproduced on
+  `f2b6853` — the tip of `main` when it was filed and still the tip when it was
+  implemented. `TrustEngine::update()` (`core/src/trust.cpp`) drops evidence
+  that has passed its time-to-live, and `evaluate()` then read the resulting
+  `score_ == 0` as a clean bill of health and started the recovery hold on it.
+  Nothing recorded *how* the score had become clean, so a detector saying "the
+  condition is over" and a detector saying nothing at all were the same input.
+  With the default policy the whole path is deterministic and needs no
+  attacker: a spoofing alarm at `t=0` reaches `Untrusted`, the TTL takes it out
+  of the score at 15 s, the hold starts on that zero, and at 20 s and 25 s the
+  state climbs to `Degraded` and then `Trusted` — twenty-five seconds of
+  complete silence, with no observation, no `clear()` and no evidence of any
+  kind, and the device announces the position is fit to navigate by. Jamming
+  reaches the same place in twenty. That is the failure mode
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) exists to prevent, arrived at
+  through the one door left open, and it fires precisely when the receiver has
+  stopped talking — which is when it is least true.
+  **Fixed by making a retraction different from a lapse.** `TrustEngine` now
+  keeps a second per-reason mask beside `live_`: reasons that left it by the
+  TTL rather than by `clear()`. `report()` and `clear()` both take a reason out
+  of it, only the expiry loop puts one in, and `evaluate()` refuses to start or
+  advance the clean hold while any bit is set — so the score still decays, and
+  the *state* does not move on a decay. When a retraction does arrive the hold
+  is anchored to it, so time spent hearing nothing buys no part of the five
+  seconds. Per reason rather than one flag, so a diagnostic screen can name
+  which detector is being waited on (`unconfirmed_reasons()`,
+  `awaiting_confirmation()`); `reset()` clears it, because an allegation from a
+  provider that has detached must not pin the next one. Descent, hysteresis,
+  one-step-per-hold and every policy weight are untouched. **What it costs is
+  stated rather than discovered later:** a device that never hears another
+  positive word does not climb back on its own, and the ways out are a detector
+  saying the condition is over, `reset()`, or `stop_awaiting()` **when the
+  provider goes away**. Not *never a timer*, which is what an earlier version of
+  this said and what the code stopped honouring the moment `stop_awaiting()`
+  existed: after that call the recovery hold does run and the state does climb
+  on the clock, with nothing retracted. What makes it legitimate is narrower —
+  the allegation was about a **pair** and one of the pair is gone, so there is
+  no longer anything a retraction could come from. Silence from a detector that
+  is still there still buys nothing. The scope on `reset()` is part of the
+  sentence: `reset()` asserts `Trusted`
+  immediately, discards the transition log and drops the remembered position, so
+  it answers *a different provider is here now* and never *this one is still
+  stuck* — and the pin most likely to be met comes from the device's **own**
+  receiver, which does not detach. It is also **per boot**: nothing in `core/`
+  persists trust state, so a pin lasts one session rather than for ever.
+  **Three review findings on the second pass, one of them blocking**, and three
+  more on the third, two of them blocking. The third pass found that the answer
+  to the second had opened a narrower door in the same direction. `stop_awaiting()`
+  fired for **both** halves of the freshness gate, and only one of them is the
+  second source going quiet: the other is **our own** receiver duty-cycling off
+  while a present, fresh node keeps disagreeing. Reproduced with nothing exotic
+  — `gnss_power.h` exists to duty-cycle that receiver — the device reached
+  `Trusted` about twenty seconds later with the node still saying it was 550 m
+  out, and then stored the disputed coordinate as `last_trusted_position()`, the
+  fallback the interface falls back to. It now stops awaiting only when the
+  **other** side cannot answer. The same finding's other half ran the opposite
+  way: the early return for a relayed frame with no position, or one out of
+  range, sat *above* the call, so a node that went indoors — the ordinary way a
+  second source stops being one — left the device pinned exactly as before. The
+  fix had keyed on *an uncomparable frame arrived* where it had to key on *the
+  other side stopped being comparable*; both are one predicate now, and both
+  directions are mutation-checked. `provider_detached()` is added as the honest
+  hook for the case `compare_provider()` only approximates, and the case it
+  still approximates badly — a provider that is present and permanently late —
+  is **T-152** rather than a sentence nobody owns. **And the second blocking
+  finding was five sentences.** *"Recovery is earned from a retraction, never
+  from the clock"* appears in `trust.cpp`, `trust.h`, ADR-0011 §5.1, `STATUS.md`
+  and `TASKS.md`, and `stop_awaiting()` had made all five false: past that call
+  the recovery hold runs and the state climbs on the clock with nothing
+  retracted, which the ADR's own rejected alternatives call *"a timer wearing a
+  state machine's clothes"*. All five now say what is true — three exits, not
+  two — and say why the third is legitimate: the allegation was about a **pair**
+  and one of the pair is gone, so there is nothing left for a retraction to come
+  from. Silence from a detector that is still there still buys nothing. Three
+  smaller ones: the one-tick window where a snapshot reads not-`Trusted` with
+  both masks empty is written down beside the call that opens it; the diagnostic-
+  screen promise that rests on `TrustReason` strings `l10n/strings.toml` does not
+  have is a line in **T-062**; and `DiagnosticsSnapshot` needing a version, a
+  magic and a size before anything persists it is now in **T-046**'s acceptance,
+  its layout having changed twice with no reader able to tell.
+  `ProviderDisagreement` was the one reason whose only retraction sits *behind*
+  the freshness gate in `compare_provider()`, so once that gate closed the TTL
+  moved the bit into `unconfirmed_` and nothing in the system could ever
+  withdraw it: `Degraded`, `score() == 0`, `reasons() == 0`, no exit but
+  `reset()`, for the rest of the boot. Neither half of the gate is exotic —
+  `latest_position_at_` advances only inside `observe()`, and a duty-cycled
+  receiver is what `gnss_power.h` is for; `other.observed_at` is a relayed fix's
+  *measurement* time, which `14-a-relayed-fix-arrives-old.trace` records at 40 s
+  for a stalled link delivering a backlog. Fixed with a third verb,
+  `stop_awaiting()`, which touches `unconfirmed_` **only**: an allegation whose
+  evidence has not expired is still current evidence, so an uncomparable frame
+  cannot talk the device out of a live one, and a node that goes uncomparable
+  gains nothing but ceasing to contradict the local receiver. Both directions
+  are mutation-checked. `DiagnosticsSnapshot` also could not express the state
+  that decides the verdict — `trust.h` promises the per-reason mask exists so a
+  screen "can name it rather than showing a device stuck for no visible reason",
+  and `GnssStatus` carried only `live_`, so a pinned device reported exactly the
+  shape that comment forbids; there is now a `trust_unconfirmed` field beside
+  it. And the claim that in the `TrustEvaluator` path **only**
+  `ReceiverSpoofing`, `ReceiverJamming` and `ProviderDisagreement` can reach the
+  mask was false, in three documents: it holds only while `observe()` runs at
+  least once per `evidence_ttl`, and the call for when it does not is
+  `refresh()`, which touches `FixLost` and `StalePosition` and nothing else — so
+  in any observation gap every other live reason lapses unretracted too. The
+  defaults size it: `evidence_ttl` 15 s against `stale_after` 30 s means a
+  reason live at t=10 s lapses at t=25 s while `classify()` still says `Valid`
+  and `StalePosition` does not go live until t=40 s. Fifteen seconds of
+  `Degraded` with nothing to show for it; it self-heals on the next `observe()`,
+  so no code change — but the sentence does not stand. Recorded with it: a pin
+  freezes `remember()`, so the fallback position stops updating while its
+  uncertainty grows at 1500 mm/s, and that freeze used to be bounded by the very
+  defect this branch removes. Six regression tests in `tests/test_trust.cpp`
+  and a new replay trace, `16-silence-does-not-restore-trust.trace`, which runs
+  trace 05's rule past the TTL on a receiver reporting `unknown` — the LS550G's
+  actual state, not a hypothetical part — with good fixes throughout, so the
+  score is a genuine zero and nothing but the alarm is holding the state down.
+  Mutation-checked: removing the new gate and nothing else turns sixteen checks
+  and four trace expectations red. Twenty-four host tests pass under GCC and
+  Clang, under `-Werror -Wshadow -Wconversion -Wsign-conversion
+  -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`;
+  both documentation checks pass. Simulator `NOT EXECUTED` — no SDL2 here and
+  the change touches no UI code. Hardware `NOT EXECUTED — HARDWARE REQUIRED`,
+  and every duration in the policy remains `ESTIMATED`: nobody has walked
+  anywhere with one of these boards, and no receiver has been powered on.
+  The rule is now written down where the next reader will find it —
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, with the rejected
+  alternative beside it. **Round four: closing the freshness half opened the
+  content half, and it was the worse of the two.** `stop_awaiting()` fired on a
+  single frame the other side could not fill in — so a node whose receiver went
+  under canopy and kept relaying fix-less frames at 1 Hz was read as a node that
+  had *gone*. The allegation nobody withdrew was lifted, `Trusted` followed
+  about five seconds later, and `remember()` then committed the very coordinate
+  the node was disputing, 550 m out, as `last_trusted_position()`. No attacker,
+  no hardware, our own receiver healthy at 1 Hz throughout — and the branch's
+  own test ran that exact sequence and asserted the outcome was correct, which
+  is the caveat the previous round ended on: mutation-checking proves a test
+  notices the code, not that it asserts the right thing. A receiver losing its
+  fix is the most **transient** of the three conditions the record calls a
+  departure, not the most permanent — a doorway, a canopy, the node's own duty
+  cycle — and on that path the retraction was never unreachable, only deferred,
+  which is verbatim the argument this same commit uses to protect the *local*
+  half. The two halves had been given opposite treatments. The lift now needs
+  the other side to have been unable to answer for `provider_departure_grace`
+  (**`ESTIMATED`**, 120 s, and measuring it is part of T-152), and the test that
+  asserted the wrong thing is two tests: one pinning that a node under cover
+  keeps being awaited — including that `remember()` ran exactly once, at t=0,
+  read off the uncertainty rather than the position — and one pinning that a
+  source uncomparable past the grace does stop being awaited. **And
+  `provider_detached()` was a no-op at the exact moment it is documented to be
+  called.** At a detach edge a disagreement reported inside `evidence_ttl` is
+  `live_`, which `stop_awaiting()` deliberately does not touch, so the call did
+  nothing; fifteen seconds later the TTL moved the bit into `unconfirmed_` and
+  nothing called again, because the node had already gone. Pinned `Degraded`
+  for the rest of the boot — the pin this branch exists to remove, reached
+  through the branch's own new hook — and whether it happened depended on
+  whether the link-loss timeout exceeded `evidence_ttl`, two constants in two
+  subsystems coupled by accident and documented in neither. It latches now:
+  `abandoned_`, consulted in `update()`'s TTL loop so an allegation whose
+  subject has gone ends with its evidence instead of being remembered as
+  unanswered forever, and cleared the moment anything reports that reason again,
+  because a node that comes back is a subject again. All three mutations run
+  red and were checked in both directions. Two smaller ones from the same round:
+  `reset()` and `provider_detached()` documented the same trigger, and the first
+  discards this device's own history and asserts `Trusted` outright — whoever
+  writes `LocationService` would have picked by name, so each now says what the
+  other is for; and ADR-0011 §5.1 bound 2 still said those fifteen seconds have
+  *no reason to show*, which `unconfirmed_reasons()` and
+  `GnssStatus::trust_unconfirmed` — added in this same branch — had already
+  stopped being true.
 - **A faulted link answered an attach with the one word that is never counted.**
   [#158](https://github.com/hleserg/Attadipa/issues/158), a T-062 bullet.
   `LinkState::apply()` classified `Attach` with a single negative guard —
