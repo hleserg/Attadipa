@@ -367,8 +367,15 @@ stale silently. The protocol is
   [#112](https://github.com/hleserg/Attadipa/pull/112) is already changing on
   the code side — so this ADR must read that branch rather than assume the
   tree. Whatever it decides, it states what each reason bit then means under
-  [ADR-0011](docs/adr/0011-gnss-integrity.md) §4 (*evidence about both providers,
-  belonging to neither*), and it rewrites or keeps
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5, the section that requires a
+  reason code to record *which* evidence moved the state. **Not §4**, which this
+  acceptance cited until 2026-08-24: §4 is *"Differential corrections belong to a
+  provider, not to GNSS"* — RTCM — and an implementer who opened it found a rule
+  about correction entry points and nothing to write against. The phrase that
+  travelled with the wrong number, *"disagreement is evidence about both of them
+  and belongs to neither"*, is the comment on `compare_provider` in
+  [`trust.h`](core/include/attadipa/core/trust.h), not an ADR sentence. Found in
+  review. It rewrites or keeps
   `tests/test_trust.cpp`'s two fixtures **deliberately** — the ~550 m
   `NodeGnss` disagreement and the live-bit-left-standing case — rather than
   discovering them when the build goes red. A change that clears a live bit is
@@ -1350,7 +1357,18 @@ stale silently. The protocol is
   `TrustState` or a `TrustReason` bit — an eleventh axis under
   [ADR-0011](docs/adr/0011-gnss-integrity.md) §2. `SameBody` is produced by one
   thing only — this board's own receiver, for its own fixes; everything over the
-  node link is `Unknown` and nothing promotes it. A node-supplied fix whose
+  node link is `Unknown` and nothing promotes it.
+  **And because that makes co-location a function of `PositionSource`, the two
+  fields are asserted to agree**: `SameBody` implies
+  `source == PositionSource::LocalGnss`, checked where the observation is
+  constructed and covered by a test that constructs the invalid pairing
+  deliberately. Without it a driver, a fixture or a new trace can stamp
+  `SameBody` on a `NodeGnss` observation and every other assertion in this task
+  still passes — two fields that must agree, no invariant. Note this does not
+  make the field redundant: the invariant is what keeps a *derived* value from
+  drifting away from the thing it is derived from, and ADR-0009 §3a wants the
+  question answerable without a reader inferring it from an enumerator whose
+  meaning is provenance rather than proximity. Found in review. A node-supplied fix whose
   co-location is `Unknown` reaches the screen labelled with the source it
   actually has, and the label is `LocationService`'s rather than an
   application's, per
@@ -1367,8 +1385,15 @@ stale silently. The protocol is
   with a `Manual` fix on a board with no node attached**, because `Unknown`
   co-location is not a synonym for *the node's*: `Companion`, `Manual` and
   `Simulated` all carry it, and a screen that credits a node for a position the
-  user typed is a false provenance claim — worse in the simulator, where every
-  scripted fix is `Simulated`. Found in review. Without this the
+  user typed is a false provenance claim — worse in the simulator, where a
+  scripted fix is *meant* to carry `Simulated`. **Meant to, so this task stamps
+  it before it asserts on it**: outside `position.cpp`'s `to_string` arm the
+  enumerator is produced by nothing, `tests/replay/replay.cpp` stamps `NodeGnss`
+  and every other path keeps the `PositionSource::Unknown` initialiser — an
+  assertion written against `Simulated` today runs over an empty set and passes
+  having exercised nothing. Changing the simulator and replay fixtures to stamp
+  it is part of this task, and the assertion comes second. Found in review.
+  Without this the
   Waveshare board, which has no receiver of its own, loses the only navigation
   story it has. **Co-location costs a fix nothing in `TrustState`**: take one
   fix, replay it with the state `SameBody` and with it `Unknown`, and assert an
@@ -1389,6 +1414,17 @@ stale silently. The protocol is
   of this task that reddens either has changed something nobody asked it to.
   Whether that behaviour *should* change, given that a node in a bag by the door
   is the configuration OD-8 asks for, is **T-141** and not this task.
+  **T-141 is P2 and this is P1, so the ordering is stated rather than left to
+  chance**: this task may ship first, and if it does, the Waveshare user sees a
+  fix marked `Degraded` for a reason the Definition of Done requires to be in
+  human language — *"the device moved while the accelerometer says it did not"*
+  is not that, and on this board it is not even true of the wearer. So shipping
+  T-026 before T-141 requires the degraded state to carry a sentence that is
+  honest about which body was measured (*"this position comes from the node, and
+  the watch did not move"*), and T-141 remains the task that decides whether the
+  bit should be raised at all. Naming T-141 a hard dependency would put a P1
+  power-and-navigation feature behind a P2 ADR, which is the wrong trade; naming
+  nothing leaves the user with a false sentence. Found in review.
 - **Research status:** done
 - **Implementation status:** not started
 - **Tests:** host tests over recorded NMEA including stationary traces; a
@@ -1673,7 +1709,20 @@ stale silently. The protocol is
     presenting a position nobody observed;
   - every current and every start time is `MEASURED` or labelled `ESTIMATED`.
     This whole feature is a claim about a specific module's low-power behaviour,
-    so an unsourced number is the failure mode.
+    so an unsourced number is the failure mode;
+  - **the gate names which body's stillness it read.**
+    [OD-10](docs/research/OWNER_DECISIONS.md#od-10--a-standing-person-does-not-need-a-new-fix)
+    sources stillness to the **wearer's** accelerometer (OD-6's always-on watch
+    IMU). On Waveshare the receiver being gated sits on the **node**, and the
+    node in a bag by the door does not stop moving because the wrist did — so a
+    rate reduction driven by wrist stillness ages the board's only position
+    exactly while the thing holding it moves. The cross-body configuration is
+    either excluded from the gate or justified against a measurement, and it is
+    not resolved by co-location: a node fix carries `Unknown`
+    ([ADR-0009](docs/adr/0009-heading.md) §3a), which says the separation is
+    unmeasured, not that it is zero. Added 2026-08-24; ADR-0009 §3a had been
+    observing this case in passing and attributing the observation to this
+    task, which did not contain it. Found in review.
 - **Composes with:** T-071 (dead reckoning covers the interval this opens) and
   T-077 (assistance held ready is the other half of avoiding the cold start).
 - **Hardware required:** yes, for every number in it
@@ -2201,7 +2250,13 @@ stale silently. The protocol is
   closes it. Until one of them lands, the survey may be *taken* and recorded —
   motor-idle numbers are still worth having — but the part **is not chosen from
   it**, and the record says `NOT MEASURABLE ON CURRENT HARDWARE` for the driven
-  half rather than leaving a blank that reads as zero.
+  half rather than leaving a blank that reads as zero. That phrase is a value in
+  a **survey record**, for one half of one measurement; it is not
+  [`INTERFERENCE_MATRIX`](docs/hardware/INTERFERENCE_MATRIX.md)'s row status
+  `BLOCKED`, which is a whole pair with a named blocker. The two arrived in the
+  same commit and a reader may take them for one state, so: a `BLOCKED` row has
+  nothing to record yet, a `NOT MEASURABLE` field is a record with a hole in it
+  that is labelled rather than left blank.
 - **Acceptance:** the `CAD` strap fitted and **verified low** before any address
   is written down, and each module scanned on its own so the ACK is unambiguous;
   both module footprints recorded as `MEASURED` with the caliper

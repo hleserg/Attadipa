@@ -520,10 +520,18 @@ available on this board.
 | Q2 | **Is the compass a feature of the product, or of one modified device?** ([#138](https://github.com/hleserg/Attadipa/issues/138)) | not A5, which asked only whether a sensor is intended. No stock board has a magnetometer or ever will, so this decides whether the retrofit is a bench instrument or a product path — and how much of `MAGNETOMETER_BACKLOG` is product work |
 
 None of these blocks M1, and the table says what each one *does* block rather
-than sharing one sentence: A6 blocks what "compass" is allowed to mean, D16
-blocks freezing the design tokens, and A11 blocks nothing either way — it is
+than sharing one sentence: **Q2** decides whether the compass is a product path
+or a bench instrument, and with it how much of
+[`MAGNETOMETER_BACKLOG`](docs/hardware/MAGNETOMETER_BACKLOG.md) is product work;
+D16 blocks freezing the design tokens; and A11 blocks nothing either way — it is
 here because two planned tasks read a fleet table whose answer it changes, not
-because work stops without it. The blanket *"all of them block hardware work"*
+because work stops without it. This sentence named **A6** until 2026-08-24,
+after A6 had been struck from the table above and answered as
+[OD-17](docs/research/OWNER_DECISIONS.md) thirty-four lines below it, and it
+skipped the one row that is genuinely open. Found in review — the same
+table-corrected-without-its-prose split this branch spent six rounds removing
+elsewhere, landing in the file `CLAUDE.md` ranks second only to the
+specification. The blanket *"all of them block hardware work"*
 this line used to carry was written when the table held one kind of question,
 and by the time A11 was added it contradicted the row directly above it.
 
@@ -632,8 +640,11 @@ said a position whose co-location is `Unknown` *"must be shown as the node's
 fix"* — but `PositionSource` has six enumerators, and `Companion`, `Manual` and
 `Simulated` carry `Unknown` too. On a Waveshare with no node attached and a
 position typed in Settings, the screen would have credited a node that is not
-there; in the simulator, where every scripted fix is `Simulated`, every fix
-would have been the node's. The rule is now *shown with its actual source, never
+there; in the simulator, where a scripted fix is *meant* to carry `Simulated`,
+every fix would have been the node's. **Meant to** — the enumerator is produced
+by nothing in the tree today (the replay rig stamps `NodeGnss`, everything else
+keeps the `Unknown` initialiser), so stamping it is a requirement T-026 carries
+rather than a property to assert against. Found in the eighth review pass. The rule is now *shown with its actual source, never
 as this body's own instrument's*, and T-026's acceptance gained the `Manual`
 case, which is the one where crediting a node is impossible. The same pass
 found the eleventh axis declared in ADR-0009 and never entered in ADR-0011 §2's

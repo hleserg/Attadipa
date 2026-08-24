@@ -87,13 +87,19 @@ These are separate, and no two of them may be stored in the same field:
 | interference | is the band jammed, and is the receiver mitigating |
 | spoofing suspicion | does anything believe these signals are fabricated |
 | trust | the fused verdict, §5 below |
-| co-location | is this position about the body wearing this device, or about a different one — [ADR-0009](0009-heading.md) §3a, a field of its own beside [`PositionSource`](../../core/include/attadipa/core/position.h), defaulting to `Unknown` |
+| co-location | is this position about **the body this device is on**, or about a different one — [ADR-0009](0009-heading.md) §3a, a field of its own beside [`PositionSource`](../../core/include/attadipa/core/position.h), defaulting to `Unknown`. *On*, not *wearing*: §3a's producer rule is about the instrument, and neither board detects wear |
 
 **Eleven, and the last one arrived from the other side.** A position can be
 fresh, accurate, high-integrity and unspoofed and still be about a node in a bag
 by the door rather than about the wearer — a quantity none of the ten above can
 express, and one that no receiver reports because it is not a property of the
-receiver. [ADR-0009](0009-heading.md) §3a decides where it lives and what it
+receiver. It is not, however, independent of everything else on the observation:
+under §3a's producer rule it is a function of
+[`PositionSource`](../../core/include/attadipa/core/position.h) (`LocalGnss`
+gives `SameBody`, everything else `Unknown`), which is why T-026 asserts the two
+agree rather than letting them drift apart. It earns a field because the
+question it answers is proximity and `PositionSource`'s is provenance, and a
+reader should not have to infer one from the other. [ADR-0009](0009-heading.md) §3a decides where it lives and what it
 withholds; it is recorded here because this table is the register an
 implementer consults, and the three wrong homes §3a rules out —
 `PositionValidity`, **`TrustState`**, a `TrustReason` bit — are precisely what a

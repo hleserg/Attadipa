@@ -343,8 +343,16 @@ enumerators rather than two: `Companion` (a phone — ADR-0002's subject),
 `Manual` (the user typed it) and `Simulated` all carry `Unknown` as well. On a
 Waveshare with no node attached and a position typed in Settings, that sentence
 made the screen credit a node that is not there — a false provenance claim on a
-navigation screen, and worse in the simulator, where every scripted fix is
-`Simulated` and every fix would therefore be labelled the node's. It also
+navigation screen, and worse in the simulator, where every scripted fix **is
+meant to carry** `Simulated` and every fix would therefore be labelled the
+node's. *Meant to*, because nothing produces the enumerator today: outside its
+`to_string` arm in [`position.cpp`](../../core/src/position.cpp) it occurs
+nowhere, the replay rig stamps `NodeGnss`
+([`tests/replay/replay.cpp`](../../tests/replay/replay.cpp)) and every other
+path keeps the `PositionSource::Unknown` initialiser. That makes stamping it a
+**requirement T-026 carries**, not a property to assert against — an assertion
+written today runs over an empty set and passes having exercised nothing. Found
+in review. It also
 contradicted OD-8 item 2, quoted verbatim in this same section, which names
 **three** claims rather than two. The rule is therefore about *the actual
 source*, whatever it is; what it forbids is passing an `Unknown`-co-location fix
@@ -357,8 +365,14 @@ for by name. Whether the comparison should be scoped by co-location, whether the
 disagreement should be reported without costing trust, or whether it should be
 left exactly as it is, is a **trust-engine decision with its own tests**: it
 changes what `ProviderDisagreement` means under
-[ADR-0011](0011-gnss-integrity.md) §4 — *evidence about both providers, belonging
-to neither* — and it invalidates two shipped regression tests. That is an ADR of
+[ADR-0011](0011-gnss-integrity.md) §5, the section that requires reason codes to
+record *which* evidence moved the state, and it invalidates two shipped
+regression tests. **§4 is not that section** — it is *"Differential corrections
+belong to a provider, not to GNSS"*, about RTCM, and two earlier drafts cited it
+here and in T-141's acceptance. The phrase that went with the wrong number,
+*"disagreement is evidence about both of them and belongs to neither"*, is not
+an ADR sentence at all: it is the comment on `compare_provider` in
+[`trust.h`](../../core/include/attadipa/core/trust.h). Found in review. That is an ADR of
 its own, filed as **T-141**. Until it is answered the tree's behaviour stands
 unchanged, and this section says so instead of quietly overruling it. Found in
 review, twice: the first version put the state on the wrong field, the second put
@@ -392,11 +406,26 @@ is the cross-body case, not the same-body one.** An earlier draft cited it here
 in support, which was wrong and worth correcting rather than quietly dropping:
 OD-10 gates a receiver on **the wearer's** stillness, read from **the watch's**
 accelerometer (OD-10 sources it to OD-6's always-on watch IMU) — and on
-Waveshare that receiver sits on the *node*. Two bodies. It is allowed under the
-bound above, not under the same-body clause, and `TASKS.md`'s own wording for
-T-080 says why the distinction has to survive: **the node standing still is not
-the wearer standing still.** A wearer sitting at a desk with the node in a bag
-by the door is still, and the node is stiller.
+Waveshare that receiver sits on the *node*. Two bodies. Co-location neither
+licenses that gate nor forbids it: the value on a node fix is `Unknown` by the
+producer rule above, and `Unknown` says the separation is **unmeasured**, never
+that it is zero.
+
+**The node standing still is not the wearer standing still** — and that sentence
+is this ADR's conclusion, not a quotation. An earlier version of this paragraph
+attributed it to *"`TASKS.md`'s own wording for T-080"*; T-080 does not contain
+it. [T-080](../../TASKS.md#t-080--a-standing-person-does-not-need-a-new-fix) is
+written entirely about the **wearer** and mentions no node, no second body and
+no cross-body gate. Found in review, and the attribution is dropped rather than
+quietly repaired, because the reader who follows it finds nothing there.
+
+**So T-080 carries the case now, rather than this ADR observing it in passing.**
+A wearer sitting at a desk with the node in a bag by the door is still, and the
+node is not. T-080 is P1 and *"the largest continuous draw on a watch that has
+GNSS"*; on Waveshare, which has no receiver of its own, a duty-cycle gate driven
+by the wrist's stillness slows the **node's** receiver, so the board's only
+position ages exactly while the thing holding it moves. T-080's acceptance now
+requires the gate to name which body's stillness it read. Found in review.
 
 ### 4. Course over ground needs motion, and standing still is a designed state
 
@@ -535,7 +564,8 @@ case again with a `Manual` fix on a board with no node attached**, because
 `Unknown` co-location is not a synonym for *the node's*: the label must read
 back the source the fix actually has, and the case that catches the wrong
 reading is the one where crediting a node is impossible. `Simulated` is the
-same assertion in the simulator, where every scripted fix has that source.
+same assertion in the simulator — **once the rig stamps it**, which it does not
+today, so T-026 makes the fixture change first and the assertion second.
 **Two:**
 co-location costs a fix nothing in `TrustState` — take **one** fix, replay it
 with its co-location `SameBody` and with it `Unknown`, and assert the verdict
