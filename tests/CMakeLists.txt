@@ -108,11 +108,14 @@ if(Python3_Interpreter_FOUND)
     # property of the source tree rather than of any one screen. Its self-test
     # is registered beside it because a checker nobody has ever seen fail is a
     # checker nobody has tested.
-    # The generated fonts are committed, so something has to notice when their
-    # inputs change. `--check` with no Node and no configured build compares a
-    # digest of charset.py, the size list and the source TTF's hash — which
-    # catches the case that actually happens: somebody adds a codepoint and
-    # forgets that four .c files were built from the old list.
+    # The generated fonts are committed, so something has to notice when they or
+    # their inputs change. `--check` with no Node and no configured build
+    # compares a digest of charset.py, the size list, the source TTF's hash and
+    # the converter pin — and then the SHA-256 of every committed .c file
+    # against the stamp. The first half catches somebody adding a codepoint and
+    # forgetting that four .c files were built from the old list; the second
+    # catches an edited or corrupted glyph, which for as long as only the first
+    # existed went through green.
     add_test(NAME ui_fonts_are_current
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/font/generate_ui_fonts.py --check)
@@ -131,8 +134,20 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME ui_images_are_current
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/assets/generate_images.py --check)
+
+    # And the check that those two checks work. Both of them once passed a
+    # hand-edited font byte and a hand-edited icon byte — verified reproducers,
+    # not a worry — because they compared inputs and then counted filenames.
+    # This mutates each of the fourteen committed outputs in turn, in a copy of
+    # the tree, and fails if either tool accepted one. It needs neither Node nor
+    # Pillow, so it runs in the same job as the gate it is about; the half that
+    # does need them, reproducibility across checkout paths, is its own CI job.
+    add_test(NAME ui_generated_outputs_reject_mutations
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/integrity/selftest.py)
     set_tests_properties(ui_no_raw_values ui_check_rejects_mistakes
                          ui_fonts_are_current ui_images_are_current
+                         ui_generated_outputs_reject_mutations
                          PROPERTIES LABELS design)
 
     # The other two asset checks have to *draw* something to know whether the
