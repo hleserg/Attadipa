@@ -33,8 +33,14 @@ board is the **Waveshare**, because it is the only board in the building —
 bring-up is unblocked and merely undone. The one open technical unknown on the
 path is **D21**, the CO5300's wire byte order, which blocks the first line of
 display bring-up and is a probe to run early rather than a reason to wait.
-**No agent flashes a board**, so every hardware step ends at a reproducible
-build, a written procedure and `NOT EXECUTED — HARDWARE REQUIRED`.
+**A session with the board on its desk flashes it and runs the firmware** —
+the owner struck the opposite rule on 2026-08-24, on the grounds that the
+screenshot-and-input tooling exists precisely so a session can look at what the
+watch is really doing. The factory image is backed up and byte-verified (T-099),
+and `PURE_RAM_APP` writes nothing at all, so probes are cheap to undo. eFuses,
+secure boot and flash encryption stay the owner's, every time. A session
+*without* the board still writes `NOT EXECUTED — HARDWARE REQUIRED`, because
+that line is about evidence rather than permission.
 
 ## Current implementation
 

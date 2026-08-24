@@ -120,19 +120,41 @@ measurement — a known asymmetric pattern written with the swap off, and a
 photograph. It blocks the first line of display bring-up and nothing before it,
 so it is a probe to run *early* rather than a reason to delay the skeleton.
 
-## What no agent may do, and the owner must
+## What a session with the board may do, and what stays the owner's
 
-**No agent flashes a physical device.** That is `CLAUDE.md`'s rule and this
-milestone does not bend it. Every hardware step therefore ends at:
+**An earlier draft of this section said that no agent flashes a physical device,
+and that every hardware step therefore ends at `NOT EXECUTED — HARDWARE
+REQUIRED`. The owner struck that on 2026-08-24**, and the reason is worth keeping
+with the rule: the screenshot-and-input tooling was built precisely so that a
+session could run this firmware on a watch and look at the result. A milestone
+whose every step stops one command short of the board defeats the tool built to
+finish it.
 
-- a build that is reproducible from a clean checkout;
-- a flash procedure written down well enough to follow without improvising;
-- and a line that says `NOT EXECUTED — HARDWARE REQUIRED`, never `PASS`.
+**A session with the board physically on its desk flashes it, runs the firmware,
+drives the screen and reports what happened.** Those results are `MEASURED`, and
+they are the point of M2 rather than a bonus at the end of it. Two things make
+that safe rather than brave, and both already exist:
 
-The `PASS` arrives when the owner — or a session with the board physically on
-its desk — runs the procedure and reports what happened. That hand-off is part
-of the milestone, not an afterthought to it, and the procedure is the
-deliverable that makes it cheap.
+- the factory image is backed up and was verified byte-for-byte (T-099), so a bad
+  flash is recoverable rather than terminal;
+- and there is a route that writes **nothing at all** —
+  `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` loaded over USB-Serial/JTAG, established on
+  this exact unit in
+  [WAVESHARE_RUNNING_OUR_CODE](research/WAVESHARE_RUNNING_OUR_CODE.md). Prefer it
+  for probes, because it costs nothing to undo.
+
+**What is still the owner's, and not as a formality.** These cannot be undone by
+re-flashing, so each one waits for an explicit request every time, however
+convenient it would be in the moment:
+
+- burning eFuses — the revision, download-mode and JTAG-disable fuses included;
+- enabling secure boot or flash encryption;
+- writing production secrets, or destroying keys.
+
+**A session without the board still writes `NOT EXECUTED — HARDWARE REQUIRED`,**
+because that line is a statement about evidence and not about permission. Nothing
+here lets a simulator screenshot, a datasheet figure or an upstream measurement
+be reported as a measurement taken from this board.
 
 ## Use the hardware earlier, not at the end
 

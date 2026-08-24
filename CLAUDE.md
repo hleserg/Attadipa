@@ -66,10 +66,17 @@ Never write `PASS` for a test that did not run on a physical board. Write
 
 ## Never irreversible without being asked
 
-No eFuse burning, no irreversible secure boot or flash encryption, no flashing
-a physical device, no production secrets, no destroying keys. Preparing the
-config, writing the instructions and generating dev keys are all fine. Never
-commit private keys.
+No eFuse burning, no irreversible secure boot or flash encryption, no production
+secrets, no destroying keys. Preparing the config, writing the instructions and
+generating dev keys are all fine. Never commit private keys.
+
+**Flashing was on that list and is not any more** — owner decision **OD-19**,
+2026-08-24. A session with the board physically on its desk flashes it, runs the
+firmware and tests on it; that is what the watch-control tooling was built for.
+The reason it can move is that it is *reversible* here: the factory image is
+backed up and byte-verified (T-099), and `PURE_RAM_APP` writes nothing at all.
+The items still on the list cannot be undone by re-flashing, which is exactly
+what puts them there.
 
 ## Architecture in one paragraph
 

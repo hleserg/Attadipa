@@ -87,11 +87,13 @@ blocks it or is a correctness, security or queue-stalling defect.
 - **Research status:** done for the toolchain — T-004 records
   `v5.5.5-496-gc197d718bcc` installed and a trivial `esp32s3` build passing.
 - **Implementation status:** not started.
-- **Tests:** a CI target build. Everything past `idf.py build` is
-  **NOT EXECUTED — HARDWARE REQUIRED** and stays that way here: no agent flashes
-  a physical device, and this task hands over a procedure rather than a result.
-- **Hardware required:** no to build; yes to prove, and the proof belongs to
-  whoever has the board.
+- **Tests:** a CI target build, plus the boot log off the real part. Everything
+  past `idf.py build` is **NOT EXECUTED — HARDWARE REQUIRED** until a session
+  with the board runs it — and since 2026-08-24 that session flashes the board
+  rather than handing over a procedure, so this task is expected to finish with a
+  result and not only with instructions.
+- **Hardware required:** no to build; yes to prove. The proof belongs to whoever
+  has the board, and the board is on a desk.
 - **Number:** `T-158`–`T-164` are allocated on open branches and not on `main`.
   Check the open pull requests before allocating another.
 

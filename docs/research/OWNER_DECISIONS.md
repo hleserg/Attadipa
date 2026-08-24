@@ -1263,3 +1263,52 @@ separately from its firmware, which cellular module the node will carry, and
 which tower database may lawfully be shipped in a product. The first is research
 and is filed; the last two are the owner's.
 
+---
+
+## OD-19 — An agent with the board on its desk flashes it, and tests on it
+
+**Decided:** 2026-08-24, in session, in response to the *"What no agent may do"*
+section of the first draft of [`docs/ROADMAP.md`](../ROADMAP.md).
+
+**Number:** `OD-17` is allocated on [#94](https://github.com/hleserg/Attadipa/pull/94)
+and `OD-18` on [#134](https://github.com/hleserg/Attadipa/pull/134), neither of
+them merged when this was written. If either is abandoned, this record keeps its
+number rather than sliding down — a decision's number is a citation, not a
+position in a queue.
+
+**As stated:**
+
+> *"И там у тебя какое-то тупое правило про то что ни один агент не прошивает
+> плату в roadmap — оно нахрена? Ты должен прошивать плату тестить систему на ней
+> и т.д. и т.п. Мы за этим делали тебе возможность делать скрины и управлять
+> часами вообще."*
+
+**In English:** the rule in the roadmap that no agent flashes the board is
+pointless. An agent is *supposed* to flash the board and test the system on it —
+that is what the screenshot and watch-control tooling was built for in the first
+place.
+
+**What this decides.** A session with the board physically present flashes it,
+runs Attadipa's own firmware on it, drives the screen and reports what it saw.
+Results obtained that way are `MEASURED`. The draft rule was written by the cloud
+session, which stated in its own hand-off that it had **not read**
+[`WAVESHARE_RUNNING_OUR_CODE`](WAVESHARE_RUNNING_OUR_CODE.md) — the document
+establishing that an owner-authorised bench session had *already* run our code on
+this unit, over a route that writes nothing to flash. So the rule was stricter
+than both the owner's intent and the project's own record.
+
+**What this does not decide, and the distinction is the whole point.** Flashing
+is reversible here: the factory image is backed up and was verified byte-for-byte
+against the part (T-099), and `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` does not write
+at all. The following are **not** reversible by re-flashing, and each still waits
+for an explicit request, every time:
+
+- burning eFuses, including the revision, download-mode and JTAG-disable fuses;
+- enabling secure boot or flash encryption;
+- writing production secrets, or destroying keys.
+
+**And one thing that does not change.** `NOT EXECUTED — HARDWARE REQUIRED` is a
+statement about evidence, not about permission. A session without the board still
+writes it, and no simulator screenshot, datasheet figure or upstream measurement
+becomes a measurement from this unit because flashing is now allowed.
+
