@@ -154,4 +154,3 @@ says "agent:workings does not read as a claim" \
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
-

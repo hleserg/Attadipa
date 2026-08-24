@@ -147,4 +147,3 @@ attadipa_pr_conflict_decision() {
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   attadipa_pr_conflict_decision "${1:-}" "${2:-}" "${3:-}" "${4:-}"
 fi
-
