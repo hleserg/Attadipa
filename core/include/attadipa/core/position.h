@@ -4,6 +4,7 @@
 #include <optional>
 
 #include "attadipa/core/clock.h"
+#include "attadipa/core/motion.h"
 
 // A position, and everything the receiver said about how much it is worth.
 //
@@ -215,6 +216,7 @@ PositionValidity classify(const GnssObservation& observation, MonotonicTime now,
 
 const char* to_string(FixType type);
 const char* to_string(PositionSource source);
+SensorBody body_of(PositionSource source);
 const char* to_string(ReceiverIndication indication);
 const char* to_string(PositionValidity validity);
 

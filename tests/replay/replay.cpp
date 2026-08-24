@@ -46,6 +46,14 @@ bool to_i64(const std::string& text, std::int64_t& out)
     return true;
 }
 
+bool sensor_body(const std::string& text, SensorBody& out)
+{
+    if (text == "watch") { out = SensorBody::Watch; return true; }
+    if (text == "node") { out = SensorBody::Node; return true; }
+    if (text == "companion") { out = SensorBody::Companion; return true; }
+    return false;
+}
+
 bool indication(const std::string& text, ReceiverIndication& out)
 {
     if (text == "unknown")     { out = ReceiverIndication::Unknown;     return true; }
@@ -336,11 +344,17 @@ bool load(const std::string& path, Scenario& out, std::string& error)
             step.device_time = WallTime{seconds};
         } else if (keyword == "motion") {
             std::string what;
-            if (!word(what)) { parser.fail("`motion` needs unknown still or moving"); error = parser.error; return false; }
-            if (what == "unknown")      { step.motion = MotionEvidence{false, false}; }
-            else if (what == "still")   { step.motion = MotionEvidence{true, false}; }
-            else if (what == "moving")  { step.motion = MotionEvidence{true, true}; }
-            else { parser.fail("`motion` needs unknown still or moving"); error = parser.error; return false; }
+            if (!word(what)) { parser.fail("`motion` needs unknown, or still|moving and a body"); error = parser.error; return false; }
+            if (what == "unknown") {
+                step.motion = MotionEvidence{};
+            } else if (what == "still" || what == "moving") {
+                std::string whose;
+                SensorBody body = SensorBody::Unknown;
+                if (!word(whose) || !sensor_body(whose, body)) {
+                    parser.fail("`motion still|moving` needs watch, node or companion"); error = parser.error; return false;
+                }
+                step.motion = MotionEvidence{body, true, what == "moving"};
+            } else { parser.fail("`motion` needs unknown, or still|moving and a body"); error = parser.error; return false; }
         } else if (keyword == "provider") {
             std::string what;
             if (!word(what) || what != "other") {

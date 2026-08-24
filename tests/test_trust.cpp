@@ -189,7 +189,7 @@ void test_the_interval_is_taken_before_it_is_overwritten()
 void test_a_fix_dropout_is_not_a_teleport()
 {
     TrustEvaluator evaluator;
-    const MotionEvidence walking{true, true};
+    const MotionEvidence walking{SensorBody::Watch, true, true};
 
     evaluator.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
 
@@ -323,7 +323,7 @@ void test_altitude_rate_is_measured_not_by_arrival_time()
 void test_retained_coordinate_no_fix_does_not_move_the_baseline()
 {
     TrustEvaluator evaluator;
-    const MotionEvidence walking{true, true};
+    const MotionEvidence walking{SensorBody::Watch, true, true};
     evaluator.observe(good_fix(0), PositionValidity::Valid, walking, {}, at(0));
 
     // A no-fix sample that keeps last known coordinate on the wire.
@@ -457,7 +457,7 @@ void test_a_future_dated_observation_is_rejected_without_freezing_the_baseline()
 // would pass against an implementation that reopened the freeze.
 void test_a_reordered_sample_is_still_checked_against_the_standing_baseline()
 {
-    const MotionEvidence still{true, false};
+    const MotionEvidence still{SensorBody::Watch, true, false};
 
     TrustEvaluator evaluator;
     evaluator.observe(good_fix(10000), PositionValidity::Valid, still, {}, at(10000));
@@ -483,7 +483,7 @@ void test_a_reordered_sample_is_still_checked_against_the_standing_baseline()
 // future-dated test walks with motion unknown and therefore cannot see.
 void test_a_future_dated_sample_is_checked_as_well_as_refused()
 {
-    const MotionEvidence still{true, false};
+    const MotionEvidence still{SensorBody::Watch, true, false};
 
     TrustEvaluator evaluator;
     evaluator.observe(good_fix(0), PositionValidity::Valid, still, {}, at(0));
@@ -555,7 +555,7 @@ void test_a_future_dated_altitude_is_checked_as_well_as_refused()
 // as an answer.
 void test_a_still_wrist_is_evidence_and_an_unasked_one_is_not()
 {
-    const MotionEvidence still{true, false};
+    const MotionEvidence still{SensorBody::Watch, true, false};
     const MotionEvidence unasked{};
 
     {
@@ -576,6 +576,33 @@ void test_a_still_wrist_is_evidence_and_an_unasked_one_is_not()
         CHECK_NO_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
         CHECK_STATE(evaluator.state(), TrustState::Trusted);
     }
+}
+
+// A watch IMU says nothing about a node GNSS receiver. Both instruments can be
+// correct while the two physical bodies move differently.
+void test_motion_evidence_is_scoped_to_the_position_body()
+{
+    GnssObservation first = good_fix(0);
+    first.source = PositionSource::NodeGnss;
+    GnssObservation later = good_fix(600000, kLat + 45000);
+    later.source = PositionSource::NodeGnss;
+
+    TrustEvaluator wrist_evidence;
+    const MotionEvidence wrist_still{SensorBody::Watch, true, false};
+    wrist_evidence.observe(first, PositionValidity::Valid, wrist_still, {}, at(0));
+    wrist_evidence.observe(later, PositionValidity::Valid, wrist_still, {}, at(600000));
+    CHECK_NO_REASON(wrist_evidence.engine(), TrustReason::MotionDisagreement);
+
+    TrustEvaluator node_evidence;
+    const MotionEvidence node_still{SensorBody::Node, true, false};
+    node_evidence.observe(first, PositionValidity::Valid, node_still, {}, at(0));
+    node_evidence.observe(later, PositionValidity::Valid, node_still, {}, at(600000));
+    CHECK_REASON(node_evidence.engine(), TrustReason::MotionDisagreement);
+
+    CHECK(body_of(PositionSource::LocalGnss) == SensorBody::Watch);
+    CHECK(body_of(PositionSource::NodeGnss) == SensorBody::Node);
+    CHECK(body_of(PositionSource::Companion) == SensorBody::Companion);
+    CHECK(body_of(PositionSource::Manual) == SensorBody::Unknown);
 }
 
 // A receiver using more satellites than it can see has not made a marginal
@@ -1902,6 +1929,7 @@ int main()
     test_a_future_dated_sample_is_checked_as_well_as_refused();
     test_a_future_dated_altitude_is_checked_as_well_as_refused();
     test_a_still_wrist_is_evidence_and_an_unasked_one_is_not();
+    test_motion_evidence_is_scoped_to_the_position_body();
     test_satellites_used_cannot_exceed_satellites_in_view();
     test_receiver_time_is_compared_against_device_time();
     test_a_hostile_receiver_time_is_still_a_disagreement();

@@ -20,7 +20,7 @@ at 0
   sats 12 15
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect validity valid
   expect trust trusted
 
@@ -44,7 +44,7 @@ at 60000
   alt 42000
   acc 3000
   sats 12 15
-  motion moving
+  motion moving watch
   expect validity valid
   expect no-reason position-jump
   expect trust trusted
