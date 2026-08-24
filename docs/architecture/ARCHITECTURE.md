@@ -261,6 +261,17 @@ the larger.
 [ADR-0004](../adr/0004-capability-sources.md) §2a, and it is centrally owned:
 no component mutates availability on its own.
 
+**The state and the origin are one answer, not two.** `source()` returns both —
+`CapabilitySource { Availability, ProviderRef }` — and `availability()` and
+`provider()` read it rather than deciding anything. That is a correctness
+property and not tidiness: while the two were derived separately, `provider()`
+defaulted to `Origin::Local` and only reached `Node` for a node that was already
+`Ready`, so a bound node going out of range reported itself as the watch's own
+hardware ([#174](https://github.com/hleserg/Attadipa/issues/174)) — breaking
+ADR-0004 §2's invariant in exactly the degraded states the axis exists for. The
+origin is meaningful only when the state is not `Unsupported`: nothing provides
+an unsupported capability, and `Origin` has no value that says so.
+
 ### 3.4 The mapping is many-to-many and nobody above the service sees it
 
 | Capability | Providers, in preference order |
