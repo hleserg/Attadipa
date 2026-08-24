@@ -189,6 +189,40 @@ first, because it looks like it considered something.
 compass, and a diagnostic screen are three different consumers of the same
 evidence, and a collapsed boolean serves none of them.
 
+> **Amended, 2026-08-23 — issue #164.** The state machine has exactly these
+> three states and gains no fourth. But every one of them is a *verdict*, and a
+> field that stores a verdict has a reading none of them covers: **nobody has
+> evaluated anything yet.** `GnssStatus::trust`
+> ([`core/include/attadipa/core/diagnostics.h`](../../core/include/attadipa/core/diagnostics.h))
+> defaulted to `Trusted`, so a snapshot taken at boot, in a panic handler, or on
+> a board with no receiver at all asserted the most reassuring answer in the set
+> about a position that did not exist.
+>
+> The decision: **a stored verdict is `std::optional<TrustState>`, and empty
+> means not evaluated** — the same idiom the snapshot already uses for every
+> number nobody measured, and the same three-state instinct as
+> `ReceiverIndication::Unknown` ([OD-5](../research/OWNER_DECISIONS.md#od-5--gnss-integrity-and-the-receivers-own-protection-comes-first)).
+> Not a fourth enumerator: this enum is *ordered*, and thresholds, recovery and
+> the transition log all compare its values, so a member with no place in the
+> order would need one invented at every comparison site. Not `Untrusted` as a
+> safe default either: that says a verdict was reached and it was bad, which
+> anything counting integrity alarms across a fleet of support bundles would
+> believe.
+>
+> Two consequences, both found by the review of that change rather than
+> designed in. `to_string(std::optional<TrustState>)` names the empty case
+> `NotEvaluated` — a **diagnostic identifier** for a log, a replay trace or a
+> support bundle, not a screen string; [ADR-0010](0010-localization.md) §4 still
+> binds, and a user-facing version of this state is an `l10n` key. And a stored
+> verdict is read through `trust_or(stored, when_not_evaluated)`, because
+> `std::optional`'s comparisons against a bare `TrustState` compile and answer
+> unsafely: `!= Untrusted` is *true* while empty, so the most natural-reading
+> guard a navigation consumer would write permits a position no evaluator has
+> seen. `trust_or` makes the caller name what absence means before any
+> comparison can answer for it — and is deliberately not a `may_navigate()`
+> boolean, which would move the policy back into the detector that §5 above
+> refuses to put it in.
+
 ### 5.1 An allegation is retracted, not merely dropped
 
 > **Added 2026-08-23**, after the implementation was found to be doing the

@@ -810,10 +810,11 @@ stale silently. The protocol is
 - **Dependencies:** none
 - **Goal:** close, or consciously decline with reasons, each finding below.
   Every one of them was read in the source before being written here; none is a
-  report taken on trust. Five from the same audit are already fixed —
+  report taken on trust. Six from the same audit are already fixed —
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
-  evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
-  (the movement/altitude baseline, below) — and the rule from the research
+  evaluator), `7e4c4f9` (the replay rig could not produce Stale), issue #26
+  (the movement/altitude baseline, below) and issue #164 (the snapshot that
+  claimed to be trusted, below) — and the rule from the research
   prompt applies: **do not stop after the first fix.** Issue #151 (recovery
   completing on silence alone, below) has since been closed the same way.
   **And one finding is about text rather than code.** `trust.h` and
@@ -837,12 +838,47 @@ stale silently. The protocol is
   with `Unknown` and `Unsupported` as distinct values, and OD-5, which is the
   decision saying they must be.
 
-- **A default-constructed snapshot claims to be trusted.** `GnssStatus::trust`
-  (`core/include/attadipa/core/diagnostics.h:116`) defaults to
-  `TrustState::Trusted`. A snapshot nobody filled in therefore reports the most
-  reassuring answer available. `validity` on the line above defaults to `NoFix`,
-  which is the right instinct; `trust` should be `Untrusted` for the same
-  reason, or the field should be optional so that "not evaluated" is sayable.
+- **A default-constructed snapshot claimed to be trusted — fixed, issue #164.**
+  `GnssStatus::trust` (`core/include/attadipa/core/diagnostics.h`) defaulted to
+  `TrustState::Trusted`, so a snapshot nobody filled in reported the most
+  reassuring answer available — at boot, in a panic handler, and on a board that
+  has no receiver at all. `validity` on the line above defaults to `NoFix`,
+  which was the right instinct. The field is now
+  `std::optional<TrustState>`, empty by default, which is the idiom the rest of
+  that header already uses for facts nobody has produced; the two candidate
+  answers in the original finding were both weighed and **`Untrusted` was
+  rejected**, because it asserts that a verdict was reached and was bad, which
+  is a different claim from "no verdict" and one that anything counting
+  integrity alarms would believe. Not a fourth `TrustState` either: that enum is
+  ordered and compared against thresholds throughout `trust.cpp`.
+  `trust_reasons` moves with the verdict through `record_trust()` /
+  `forget_trust()`, so a mask cannot outlive the evaluation that produced it,
+  and `to_string(std::optional<TrustState>)` gives a log or a support bundle the
+  word `NotEvaluated` rather than a blank or an enum zero — a diagnostic
+  identifier, not a screen string (ADR-0010 §4). A stored verdict is read
+  through `trust_or(stored, when_not_evaluated)`, because the optional's
+  comparisons against a bare `TrustState` compile and `!= Untrusted` is *true*
+  while empty, which is a navigation guard failing open. Eight
+  regression tests in `tests/test_diagnostics.cpp`, including the round trip
+  through the panic-handler `memcpy` for all three real verdicts; restoring
+  either candidate default turns them red. Recorded as an amendment to
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5. The snapshot did not grow:
+  the extra byte fits existing padding, so `GnssStatus` is 40 bytes and
+  `DiagnosticsSnapshot` 384 before and after.
+
+- **Still open, raised by the review of that fix: the verdict and its reason
+  mask are paired by discipline, not indivisibly.** `record_trust()` and
+  `forget_trust()` (`core/include/attadipa/core/diagnostics.h`) are two stores
+  each, and the consumer this snapshot exists for is a panic handler — an
+  exception context that can land between any two instructions of the task
+  filling it in. The result is the one pairing the header says cannot happen: an
+  empty verdict beside a live reason mask, in the artefact somebody reads after
+  a crash. Nothing single-threaded can reach it and no store order avoids both
+  interleavings. Making it indivisible means packing the verdict into spare bits
+  of `trust_reasons` — there are 15 reasons and the mask is 32 bits, so two bits
+  are free — which changes the shape of the field and should be decided when
+  something actually writes a snapshot from a panic path, not before. Filed so
+  that the assumption is written down rather than inherited.
 
 - **Rates for a relayed fix were divided by the wrong interval — fixed,
   issue #26.** `TrustEvaluator::observe` used to set `previous_position_at_

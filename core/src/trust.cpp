@@ -767,6 +767,11 @@ const char* to_string(TrustState state)
     return "?";
 }
 
+const char* to_string(std::optional<TrustState> state)
+{
+    return state.has_value() ? to_string(*state) : "NotEvaluated";
+}
+
 const char* to_string(TrustReason reason)
 {
     switch (reason) {
