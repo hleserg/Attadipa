@@ -3,7 +3,7 @@
 set -uo pipefail
 
 attadipa_wip_decide() {
-  local payload="${1-}" count exempt
+  local payload="${1-}" count
   count="$(printf '%s' "$payload" | jq -r '
     if type != "array" then error("not an array") else . end
     | map(select(.head.repo.full_name == .base.repo.full_name)
