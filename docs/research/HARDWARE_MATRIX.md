@@ -75,7 +75,8 @@ dated Friday 8 January 2021 — a 2020-era title block the vendor never updated.
 The contents are unambiguously S3-class (`ESP32-S3-R8`, `W25Q128JW`), so the
 drawing is the right board with the wrong nameplate. **Cite the filename for
 provenance, never the title block for revision.** Board revision of a *physical*
-unit is still unknown — see OPEN_QUESTIONS A1.
+unit is still unknown — see OPEN_QUESTIONS **D20**. (Not A1: A1 is struck and
+marked ANSWERED, and the revision half of it was carved out into D20.)
 
 ### Core
 
@@ -134,7 +135,14 @@ from RadioLib's drivers and MeshCore's build configuration, not from the TI and
 Silicon Labs datasheets, which refused automated retrieval. Confirming them from
 primary sources is open question **R1**. The schematic itself fits an
 SX1262-class module (HPD16B3), so the most likely fitted part is also the one
-that works — but "most likely" is not A2 answered.
+that works.
+
+**A2 is answered as of 2026-08-22** — SX1262 at 868 MHz, from the order listing
+(`OWNER_DECISIONS.md`, A1–A3, issue #54). It is answered in the *record*, and
+that is the whole distinction this section has to keep: a seller's listing is
+not a marking read off the part, so `RadioChip::Unknown` does not move and
+nothing here is upgraded from PARTIAL. Reading the marking off the fitted chip,
+once the watch arrives, is what closes both.
 
 ### AXP2101 rail map
 
@@ -301,8 +309,15 @@ as a target to reproduce — not as evidence about Attadipa's own firmware.
 
 ## Waveshare ESP32-S3-Touch-AMOLED-2.06
 
-Revision: schematic `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**,
-3 sheets; pin map from vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0.
+Revision: **of the document, not of the unit.** Schematic
+`ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**, 3 sheets; pin map from
+vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0. The received board's
+own revision is unread: its silkscreen carries the product name, whose `2.06` is
+the panel diagonal, and a V1.1 unit would carry the same string. This section's
+own rule above — *cite the filename for provenance, never the title block for
+revision* — is written under the T-Watch and applies here identically. See
+OPEN_QUESTIONS **D20**, which is the revision question itself; A1 is struck and
+answered, and sends a reader nowhere.
 Where the two differ, the schematic wins on *what exists* and the BSP wins on
 *which pin firmware should use* — the BSP was demonstrably written to a subset
 of the board.
@@ -312,7 +327,7 @@ of the board.
 | Item | Value | Status |
 |---|---|---|
 | SoC | **ESP32-S3R8** — bare chip, not a module. `ESP32-S3 (QFN56)`, **revision v0.2**; 40 MHz crystal; ADC and temperature calibration fuses burned. A build must keep `CONFIG_ESP32S3_REV_MIN` at 0 or the bootloader refuses the chip. **All eight errata in sheet v1.3 apply to v0.2**, seven permanently, and no later revision exists — [ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md) | VERIFIED — S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1 |
-| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3). JEDEC read back `0xC8 0x4019` = GigaDevice, 2^25 bytes; eFuse `FLASH_TYPE = 4 data lines`, rail forced to 3.3 V by `VDD_SPI_TIEH`, and `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` all unprogrammed — **no in-package flash**. Booted **QIO at 80 MHz**, the bootloader agreeing the part is 32 MB. **Only the low 16 MB is bootable**: the ROM and the second-stage bootloader address flash with 24 bits, so `0x1000000` aliases to `0x0` — any app partition at or above 16 MB is dead, and the vendor ships one | VERIFIED — S6, S10 and S13, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.3, [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §1 |
+| Flash | **GD25Q256EYIGR**, 256 Mbit = **32 MB**, quad SPI, external (U3). JEDEC read back `0xC8 0x4019` = GigaDevice, 2^25 bytes; eFuse `FLASH_TYPE = 4 data lines`, rail forced to 3.3 V by `VDD_SPI_TIEH`, and `FLASH_CAP`/`FLASH_TEMP`/`FLASH_VENDOR` all unprogrammed — **no in-package flash**. Booted **QIO at 80 MHz**, the bootloader agreeing the part is 32 MB. **Only the low 16 MB is bootable**: the ROM and the second-stage bootloader address flash with 24 bits, so `0x1000000` aliases to `0x0` — any app partition at or above 16 MB is dead, and the vendor ships one. **And the upper half is not settled for data either** — what a running application does above the line is `UNKNOWN`; of its four flash paths only `esp_partition_mmap` refuses, and only since ESP-IDF v5.5.5. The JEDEC ID above is what grants ESP-IDF the 32 MB capability, so nothing upstream stops an erase up there. [FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) | VERIFIED — S6, S10 and S13, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.3, [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §1 |
 | PSRAM | 8 MB **octal** — ESP32-S3 Series Datasheet v2.2 Table 1-1 lists `ESP32-S3R8` as `8 MB (Octal SPI)` and the table contains no 8 MB quad in-package variant. Corroborated by five vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y`, and by GPIO33–37 — octal's DQ4–DQ7 and DQS — sitting unrouted on the schematic. **The die's own fuses now agree**: `PSRAM_CAP = 8M`, `PSRAM_VENDOR = AP_3v3` — so `R8`, not the 1.8 V `R8V` — and `PIN_POWER_SELECTION = VDD_SPI` puts GPIO33–37 on the memory rail, which is where octal's DQ4–DQ7 and DQS go. The eFuse states capacity and rail, not bus width; the step to *octal* remains Table 1-1's, and is sound because no 8 MB quad in-package part exists. D12a | VERIFIED — S6 and S10, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.2 |
 | Battery | **Marked 400 mAh, 3.7 V — and the marking is the thing in doubt.** `VERIFIED` here means the label was read correctly, not that the cell holds it: 400 mAh in `402728`'s 3.024 cm³ implies 132.3 mAh/cm³ against an 87–102 band across 51 datasheet cells, so the honest expectation is **250–310 mAh, `ESTIMATED`** — [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §1, settled by weighing the cell (T-106 M3). Cell `402728` (4.0 × 27 × 28 mm), on connector `BAT1` via the AXP2101 charge path. The cell is **not soldered**: red/black leads into a white 2-pin plug, identified from a photograph as **MX1.25 / PicoBlade, 1.25 mm — `LIKELY`, not measured**. A photograph without a scale reference does not establish a pitch, and this decides what plugs in | VERIFIED — read off the cell of a received unit, 2026-08-22, [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.2 |
 
@@ -349,9 +364,12 @@ The `Power rail` column reads `D13` where the load is known to be on a PMU rail
 but which rail is unresolved — all three of ALDO1, ALDO2 and ALDO3 are 3.3 V and
 the schematic extraction did not separate them. Addresses are from
 [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.2, which cites each one; three
-are datasheet-fixed, two are schematic-strapped, one is driver-source-only and
-one is in conflict between datasheet revisions. A bus scan settles the last two
-in a second — §5 step 5.
+are datasheet-fixed, two are schematic-strapped and one is driver-source-only.
+The IMU's was **in conflict between datasheet revisions and is not any more**:
+the bus scan of 2026-08-23 got no answer at `0x6A` and an ACK at `0x6B`
+([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1), which is
+what the IMU row nineteen lines above and the `Main I2C bus` row both already
+record. Nothing on this bus is waiting on a scan.
 
 ### AXP2101 rail map
 
@@ -481,4 +499,7 @@ a typed descriptor rather than a flag.
 
 | S13 | **the received unit itself, on 2026-08-23, by two methods.** *Running:* an owner-authorised bench session — the vendor bootloader's and factory application's boot log captured from 62 ms, a diagnostic written into the free OTA slot, and a `PURE_RAM_APP` loaded over USB. The flash route is closed (`ota_1` aliases to `0x0`); **the RAM route works** and the whole bench sequence ran from it, writing nothing — the flash was restored and re-verified byte-for-byte against the T-099 backup. [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md). *Under a hand:* the buttons counted by pressing them. A distinct method from S9, which is defined as silkscreen and populated-or-not only — how many protrusions are *pressable* is tactile, and none of the four S9 frames is a side view of the case. Reported by the owner on [#99](https://github.com/hleserg/Attadipa/issues/99); no separate write-up, and that row is the record |
 
-S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22; S13 on 2026-08-23.
+| S14 | **four upstream repositories read at pinned revisions**, 2026-08-23, tracing one display path for this board end to end: `78/xiaozhi-esp32` @ `bb9122ab08c3083eeb4f67b3974b7afe771723b8` (MIT), `espressif/esp-bsp` @ `2f519317d5375f7bbb0190b29a4988c2ea2453e2` (Apache-2.0), `lvgl/lvgl` @ `v9.5.0` = `85aa60d18b3d5e5588d7b247abf90198f07c8a63` (MIT) and `espressif/esp-iot-solution` @ `5d75f3f0dc499d9ed4b69284a3741187c2b75a70` (Apache-2.0). **This is software, not silicon** — it is evidence about what a program does, and it is not a datasheet, a schematic or a measurement. Per-file sha256 in [VERIFIED_FACTS](VERIFIED_FACTS.md), "The panel driver does not swap pixel bytes" |
+
+S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22; S13 and S14 on
+2026-08-23.

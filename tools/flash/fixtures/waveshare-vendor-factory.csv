@@ -1,0 +1,23 @@
+# The partition table Waveshare ships on the ESP32-S3-Touch-AMOLED-2.06.
+#
+# NOT ours, and not a template. It is here because two of its rows are above the
+# 16 MB addressing ceiling and one of them is provably dead: `ota_1` sits at
+# exactly 0x1000000, and the vendor's own second-stage bootloader read the
+# bootloader back when it tried to boot it. tools/flash/selftest.py asserts that
+# partition_check.py refuses this file, so the rule is regression-tested against
+# a real table rather than against a hand-made example.
+#
+# Transcribed from the dump of 0x8000 on the received unit, recorded in
+# docs/research/WAVESHARE_FLASH_LAYOUT.md section 2. Offsets are written out
+# rather than left implicit, which is what partition_check.py requires and what
+# the dump gives anyway.
+#
+# Name,     Type, SubType,  Offset,     Size
+nvs,        data, nvs,      0x9000,     24K
+otadata,    data, ota,      0xf000,     8K
+phy_init,   data, phy,      0x11000,    4K
+model,      data, spiffs,   0x12000,    952K
+factory,    app,  factory,  0x100000,   9M
+ota_0,      app,  ota_0,    0xa00000,   6M
+ota_1,      app,  ota_1,    0x1000000,  6M
+storage,    data, spiffs,   0x1600000,  6M

@@ -536,7 +536,8 @@ is sourced to the drawing itself.
 - **Impact:** the contents are unambiguously S3-class, so this is a stale
   nameplate rather than the wrong document. But it means the drawing cannot be
   used to establish which board revision anything applies to. Revision still
-  comes from inspecting a physical unit — OPEN_QUESTIONS A1.
+  comes from inspecting a physical unit — OPEN_QUESTIONS **D20**, the row that
+  question was carved into. A1 is struck and marked ANSWERED.
 
 ---
 
@@ -889,7 +890,7 @@ facts that change what may be written are here.
   undo. Recorded as a baseline: a future reading that differs from this one means
   something was burned, and this file says when it was not.
 
-### The panel's native asset format, decoded from the vendor's own files
+### The vendor's stored asset format, decoded from the vendor's own files
 
 - **Claim:** the three `/image/*.bin` files in the Waveshare `storage` partition
   are each **exactly 411 652 bytes**, being a **12-byte header** followed by
@@ -901,15 +902,177 @@ facts that change what may be written are here.
   `tools/flash/spiffs_extract.py`.
 - **Board revision:** `ESP32-S3-Touch-AMOLED-2.06`, unit received 2026-08-22.
 - **Was:** `LIKELY` RGB565 — an inference from "raw binary on a QSPI AMOLED".
-- **How the byte order was settled, because it is the part an argument cannot
-  settle.** Decoded little-endian the files are coherent artwork. Decoded
-  big-endian they are noise. That is the whole test.
-- **Impact:** T-034's target format is no longer a preference. The panel's native
-  pixel format and byte order are facts about the hardware; the vendor's *header*
-  is not, and is worth noticing rather than copying — it carries width, height
-  and stride but no format field, which is the field needed the moment a second
-  format exists. Also: three full frames cost 1.18 MB, which is what an
-  uncompressed full-screen asset costs on this panel.
+- **What "little-endian" means here, exactly, because the scope is the whole
+  fact.** Decoded as a little-endian `uint16_t` array the files are coherent
+  artwork; decoded big-endian they are noise. That test ran on a host, over the
+  bytes of a file. **It establishes the order the bytes sit in on disk and
+  nothing beyond that** — the renderer was Python, not the panel.
+- **Was, and this is the correction:** until 2026-08-23 this entry ended *"the
+  panel's native pixel format and byte order are facts about the hardware"*. The
+  **pixel format** half survives (below). The **byte order** half did not: a host
+  render never crosses the display driver, and a driver that byte-swaps on the
+  way out makes the same stored file correct for the opposite bus order. See the
+  next entry, which traces a real path on this board that **does** swap.
+- **Impact:** T-034's target *format* is no longer a preference — 16 bits per
+  pixel, RGB565, is what the controller is put into (next entry, `COLMOD` `3Ah`
+  = `0x55`). The **transfer byte order is a separate fact and is `UNKNOWN`** —
+  D21. The vendor's *header* is not a hardware fact at all, and is worth noticing
+  rather than copying: it carries width, height and stride but no format field,
+  which is the field needed the moment a second format exists. Also: three full
+  frames cost 1.18 MB, which is what an uncompressed full-screen asset costs on
+  this panel.
+
+---
+
+## Read from upstream source at pinned revisions (S14)
+
+Software, not silicon. Everything in this section is a fact about what a program
+does, established by reading it at a named commit. It is admissible here — this
+file's own preamble ends its list with *"or the upstream source itself"* — and it
+is **weaker than a datasheet about the same subject**: it says what one
+implementation does, not what the part requires. Where the two would answer the
+same question, the datasheet wins and the entry says so.
+
+### The panel driver does not swap pixel bytes — the layer above it does
+
+- **Claim, and it is a claim about software rather than silicon:** on the one
+  complete display path for this exact board that is readable in pinned source, a
+  **software byte swap is applied to every RGB565 pixel between the LVGL
+  framebuffer and the panel**, and nothing below that point swaps again. So the
+  bytes that reach the CO5300 are in the **opposite** order to the host-native
+  `uint16_t` the file holds. The controller is put into 16-bit mode by `COLMOD`
+  (`3Ah`) `= 0x55`.
+- **Source:** S14 — four upstream sources, read at pinned revisions on
+  2026-08-23, in the order the pixel travels:
+
+  | Step | Where | What it does |
+  |---|---|---|
+  | 1 | `78/xiaozhi-esp32` @ `bb9122ab`, `main/display/lcd_display.cc:160,166` | `SpiLcdDisplay` — the class this board's file subclasses (`main/boards/waveshare/esp32-s3-touch-amoled-2.06/esp32-s3-touch-amoled-2.06.cc:77,104`) — configures `esp_lvgl_port` with `.color_format = LV_COLOR_FORMAT_RGB565` **and** `.flags.swap_bytes = 1` |
+  | 2 | `espressif/esp-bsp` @ `2f51931`, `components/esp_lvgl_port/src/lvgl9/esp_lvgl_port_disp.c:739-741` | the flush callback calls `lv_draw_sw_rgb565_swap(color_map, len)` when that flag is set |
+  | 3 | `lvgl/lvgl` @ `v9.5.0` (`85aa60d1`), `src/draw/sw/lv_draw_sw_utils.c:149-171` | that function is a plain in-place 16-bit byte swap: `((x & 0xff00) >> 8) \| ((x & 0x00ff) << 8)` |
+  | 4 | `espressif/esp-iot-solution` @ `5d75f3f0`, `components/display/lcd/esp_lcd_sh8601/esp_lcd_sh8601.c:279-280` | `panel_sh8601_draw_bitmap` passes `color_data` **verbatim** into `esp_lcd_panel_io_tx_color(io, LCD_CMD_RAMWR, …)`. No transform. `esp_lcd_co5300_spi.c:291-292` is identical. *Verbatim* is about the **buffer**, and it is compatible with [`WAVESHARE_ARRIVAL`](WAVESHARE_ARRIVAL.md) **§3.3**'s note that the bare `tx_color()` at this same line was wrapped in an error check at `e5b9295a`, before this revision: that change is about the **return value**. Neither transforms a pixel. Spelled out because a reader should not have to infer it across two documents, which is this entry's whole subject |
+  | — | same file, `:86-89` (and `esp_lcd_co5300_spi.c:88-91`) | `bits_per_pixel == 16` → `colmod_val = 0x55`, written to `LCD_CMD_COLMOD` = `0x3A` (ESP-IDF `v5.5.1 esp_lcd_panel_commands.h:40`) |
+
+  Fetched by raw URL at those revisions and hashed, so a later reader can tell
+  whether they are looking at the same bytes: `esp_lcd_sh8601.c`
+  `9f2dacb388c2c3d67d791fd4f5be0d724e826a9cbf74766427639996ddbe1d51`,
+  `esp_lcd_co5300_spi.c`
+  `c415dadcc75d4c3c90defe6ffa61db1587eefd7575cd7fdddd6ac7df02907aa5`,
+  `lcd_display.cc`
+  `57cc3591789a2d42a3302b69c931ad9226abe604a75e602d70a77e16b8d5ab9c`,
+  `esp32-s3-touch-amoled-2.06.cc`
+  `caad7b6a48ca344f1ee0ee5f1a12d6111a4be611e009c267a3955eddb4e841f2`,
+  `esp_lvgl_port_disp.c`
+  `4a1bcfd9088b6216ff33509dfc15c86886426d545012568e2f21f77239c3b0f0`.
+  None of them is committed here.
+
+  **The two LVGL files, hashed the same way and by a different route.** They
+  were omitted in the first two rounds, which left the only claims in this
+  entry without the section's own provenance mechanism sitting on LVGL — and
+  one of those is the *correction* to a finding whose whole substance was that
+  an unread mechanism had been stated as fact here. Found in the third review
+  round of [#152](https://github.com/hleserg/Attadipa/pull/152). At
+  `lvgl/lvgl@85aa60d18b3d5e5588d7b247abf90198f07c8a63` (the commit `v9.5.0`
+  points at): `src/draw/sw/lv_draw_sw_utils.c`
+  `9fcad9796d421f99a88ceae4c498d9e23042c82e809a67df90370b2b44874a5b`,
+  `src/draw/sw/blend/lv_draw_sw_blend_to_rgb565.c`
+  `b25dfda8103b8c5844b06d705fafc341533bcf82f7b87c069f6d53e775580c5b`.
+
+  **Route stated, because it is not the same one.** The five above were fetched
+  by raw URL. These two were hashed out of the `FetchContent` checkout this
+  repository's own simulator build produces, whose `git rev-parse HEAD` is that
+  same commit — so the bytes are pinned to a revision either way, but a reader
+  reproducing them fetches where the other five were fetched and gets the same
+  digest, or the tag has moved and that is itself the finding. Said rather than
+  glossed: a provenance note that describes a route it did not take is the
+  defect this whole mechanism exists to prevent.
+- **Checked:** 2026-08-23.
+- **Board revision:** `ESP32-S3-Touch-AMOLED-2.06` — step 1 is that board's own
+  upstream file, not a sibling's. Note the trap
+  [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) records: the same tree carries an
+  `esp32-c6-touch-amoled-2.06` directory, three characters different and a
+  different SoC. This is the S3 one.
+- **What this does and does not settle.** It settles that **"stored
+  little-endian" does not imply "transferred little-endian"** on this hardware,
+  by exhibiting a path where it is false. It does **not** settle the controller's
+  own transfer order as a hardware fact: that would need the CO5300 datasheet on
+  `3Ah`/`2Ch` bit packing (D7 has never been read) or a measurement. And it is
+  **software**, read from a repository — not a datasheet, not a schematic, and
+  not run here. `NOT EXECUTED — HARDWARE REQUIRED`.
+- **And the file that carries those pixels was rendered by an app this trace does
+  not cover.** `otadata` is blank, so the bootloader falls through to `factory`,
+  which is `phone_s3_box_3 v0.4.2-92-g5c6be6c-dirty` — Waveshare's port of
+  `espressif/esp-brookesia`, 92 commits past a tag and built from a modified
+  tree, unpublished. `xiaozhi` 1.8.5 sits in `ota_0` and has never been selected
+  ([WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §2.1). So the trace above
+  is a **real path on this board**, and it is **not the path that drew those
+  three wallpapers**. What that app's `swap_bytes` was is not readable, which is
+  why D21 is `UNKNOWN` rather than resolved in either direction.
+- **Impact:** nothing in this repository is mis-encoded today — T-034 emits
+  `LV_COLOR_FORMAT_A8` masks (`tools/assets/generate_images.py:168` "--cf"), one byte
+  per pixel, which have no byte order to get wrong. The cost lands on **the
+  first line of display bring-up**, which must take the swap setting from a
+  measurement or from the datasheet and must not take it from this file's
+  sibling entry above.
+
+  **D21 does not reach `ui/assets/`.** An asset's byte order is not a fact about
+the panel: it is fixed by LVGL's colour-format contract and has to match the
+framebuffer the software renderer writes into, and the wire order is absorbed
+exactly once, at flush, by the display port's `swap_bytes` flag — which is what
+the four-step trace above demonstrates. An earlier version of this entry told the
+first colour asset to take its setting from a measurement or the datasheet, which
+replaced one boundary-crossing inference with another, one layer up. Two
+consequences, both checkable in this repository: for `RGB565A8`, the format
+[`DEPENDENCIES.md`](DEPENDENCIES.md) names as *"what the mascot art needs"*, the
+instruction is **not executable** — the vendored converter packs it
+`uint16_t(color)` in host order and offers no swapped variant, `--cf` having
+`RGB565_SWAPPED` but no `RGB565A8_SWAPPED`; and for plain `RGB565` it is
+**pointless rather than wrong**, which is a correction — an earlier version of
+this entry said it *"produces wrong colours either way"* because emitting
+`RGB565_SWAPPED` against a port that also swaps *"mangles red and blue"*. **It
+does not, and this was read rather than reasoned.** LVGL declares the format in
+the descriptor's own header (`LVGLImage.py:124` "RGB565_SWAPPED = 0x1B"), and at
+the pinned `lvgl@85aa60d1` (v9.5.0, [`REUSE_LEDGER`](REUSE_LEDGER.md))
+`src/draw/sw/blend/lv_draw_sw_blend_to_rgb565.c:409-412` dispatches a
+`LV_COLOR_FORMAT_RGB565_SWAPPED` **source** to `rgb565_swapped_image_blend()`
+at `:935`, which un-swaps as it blends — `:966` mixes
+`lv_color_swap_16(src_buf_u16[x])` into a native destination, and the opaque
+fast path at `:955-956` copies the line and then runs
+`lv_draw_sw_rgb565_swap()` over it. `sim/lv_conf_simulator.h:216` compiles that
+path in. So a pre-swapped asset renders correctly and merely pays a conversion
+per blend that a native-order one does not — which is a reason not to emit one,
+not a colour bug. The other half of the old claim stands and needed no
+correction: turning the **port's** swap off breaks everything LVGL draws itself
+— text, arcs, the watch face, and every `A8` icon — because the `ColorRole`
+colour a mask is blended with lands in the same framebuffer as native-order
+`lv_color16_t`. **It does not "match" a pre-swapped asset either**, which this
+sentence said until the fourth review round of
+[#152](https://github.com/hleserg/Attadipa/pull/152): by the time the asset is
+in the framebuffer LVGL has un-swapped it into native order along with
+everything else, so it breaks with everything else. There is no configuration
+that leaves the asset right and only the glyphs wrong. So: **the colour asset's
+byte order follows LVGL's framebuffer format. D21 governs one board-level knob
+in the display port and nothing under `ui/assets/`** — and because that knob is
+a board fact it belongs in `boards/`/`platform/`, not in settings and not in a
+build flag. Found in review. **Which framebuffer format that is, is T-093's**:
+`RESOURCE_BUDGET.md`'s Avoidability row keeps a swapped destination live as an
+open input, and on that branch a pre-swapped asset is the free one. The rule
+survives the decision either way; the two absolutes above do not, which is why
+they are stated as consequences of today's configuration rather than as
+constants.
+- **And it is a per-frame cost, not only a correctness question.** On the one
+  readable path every pixel goes through `lv_draw_sw_rgb565_swap()` on the LVGL
+  flush path — software, in place, over the flushed region. A Waveshare full
+  frame is 205 820 px / 411 640 B
+  ([`RESOURCE_BUDGET.md`](../architecture/RESOURCE_BUDGET.md) §3), so on
+  PSRAM-backed buffers that is a second full pass over 402 KiB against the same
+  cache-coherency requirement `ESP32S3_ERRATA_V02` already flags, and per-frame
+  CPU time is battery. **Whether this device needs the swap at all is `UNKNOWN`
+  (that is D21), and what it costs when it is needed is `UNKNOWN` too** — neither
+  is measured and neither may be assumed away. It is an input to **T-093**, the
+  draw-buffer and frame-rate ADR, which is the decision a mandatory full-buffer
+  software swap would change the answer to. Recorded because the trace found it
+  and filed it only as a correctness question. Found in review.
 
 ### The Waveshare `storage` partition holds six files, not three, and three are music
 

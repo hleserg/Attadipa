@@ -1,0 +1,119 @@
+scenario a receiver that stops asserting does not recover by the clock
+describe Trace 05 is the same rule over three epochs; this one runs it past the
+describe evidence TTL, which is where the rule used to stop holding.
+describe
+describe The receiver alarms, then reports `unknown` about spoofing for the rest
+describe of the session — the LS550G's state per OWNER_DECISIONS OD-5 section 2,
+describe not a hypothetical part. `unknown` is left alone rather than cleared, so
+describe the alarm stays live until the TTL takes it out of the score at 15 s.
+describe
+describe Every fix here is a good one, so validity never leaves `valid` and no
+describe other reason weighs anything: from 15 s the score is a genuine zero.
+describe That zero used to start the clean hold, and the device walked back up
+describe through Degraded to Trusted by 26 s with no all-clear anywhere in the
+describe trace. The steps at 21 s and 26 s are what that looked like.
+describe
+describe Recovery arrives when the receiver says so and not before, and the hold
+describe is measured from the all-clear rather than from the silence in front of
+describe it — which is what the last three steps pin.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof critical
+  expect trust untrusted
+  expect reason receiver-spoofing
+  expect validity valid              # the fix is still a fix; it is not trusted
+
+# The receiver stops saying anything about spoofing. The alarm stands.
+at 5000
+  fix 3d
+  pos 5000010 10000010
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof unknown
+  expect trust untrusted
+  expect reason receiver-spoofing
+
+# One second before the TTL, and it is still counted.
+at 14000
+  fix 3d
+  pos 5000020 10000020
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof unknown
+  expect trust untrusted
+  expect reason receiver-spoofing
+
+# And past it. The allegation stops counting towards the score — and does not
+# thereby become an all-clear.
+at 16000
+  fix 3d
+  pos 5000030 10000030
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof unknown
+  expect no-reason receiver-spoofing
+  expect validity valid
+  expect trust untrusted
+
+at 21000
+  fix 3d
+  pos 5000040 10000040
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof unknown
+  expect trust untrusted            # the old code showed Degraded here
+
+at 26000
+  fix 3d
+  pos 5000050 10000050
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof unknown
+  expect trust untrusted            # ...and Trusted here
+
+# The receiver says it positively. Recovery starts now, not thirty seconds ago.
+at 30000
+  fix 3d
+  pos 5000060 10000060
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  expect trust untrusted
+
+at 35000
+  fix 3d
+  pos 5000070 10000070
+  alt 42000
+  acc 3500
+  sats 12 15
+  jam none
+  spoof none
+  expect trust degraded
+
+at 40000
+  fix 3d
+  pos 5000080 10000080
+  alt 42000
+  acc 3400
+  sats 12 15
+  jam none
+  spoof none
+  expect trust trusted
