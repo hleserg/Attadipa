@@ -111,6 +111,21 @@ set -uo pipefail
 #                      not being passed at all, is a caller that cannot say.
 #                      Only `true` merges.
 #
+#                      AND ITS REACH IS THE GRAPHQL DOCUMENT, WHICH IS NARROWER
+#                      THAN THAT SENTENCE SOUNDS. `merge-facts.sh` sees one
+#                      reply and answers about the five connections in it.
+#                      CODEX_UNANSWERED is computed in the caller from two REST
+#                      reads the filter never sees (pr-merge-sweep.yml around
+#                      :268-291), so a `true` beside it is a statement about the
+#                      GraphQL half only. That is safe TODAY -- both are
+#                      `--paginate --slurp`, and an error on either holds -- and
+#                      it is written here because this repository has already
+#                      shipped exactly one silent `first: N` ceiling, and the
+#                      next `?per_page=100` added there would arrive underneath
+#                      a `true` that reads as having ruled it out. If a REST
+#                      read here ever stops paginating, this argument stops
+#                      covering it and something else has to.
+#
 #                      WHY THE CALLER HAS TO PROVE THIS, AND WHY NO CONDITION
 #                      ON THE OTHER ARGUMENTS COULD HAVE. Every one of them is
 #                      a summary: `UNRESOLVED` is a count, `LABELS` is a list,

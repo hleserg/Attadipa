@@ -26,7 +26,7 @@ TO APPLY, from a session whose token may write workflows:
     #  `75-approval-stall.patch` -- 34 kB parked by #128, on `main` today and
     #  not yet applied -- the directory's README, and #154's patch when it
     #  lands. See T-144.
-    bash .github/tests/merge-candidate-test.sh   # 133 assertions, and the last
+    bash .github/tests/merge-candidate-test.sh   # 135 assertions, and the last
                                                  # two flip to the applied state
 
 THEN THE FIVE DOCUMENTS THAT DESCRIBE THE PARKED STATE, in the same commit.
@@ -36,9 +36,12 @@ sentences about it are true. Applying the patch without these leaves five
 documents asserting the opposite of the truth, which is the defect
 CLAUDE_AUTOMATION.md calls blocking on #154, mirrored. The list was three for
 three rounds, and the two it was missing were the README that states the rule
-and the file CLAUDE.md sends every agent to first. Before committing, `grep -rn
-170-merge-sweep-completeness` and `grep -rn 'merges nothing'` -- what those find
-is the list.
+and the file CLAUDE.md sends every agent to first. Before committing, run all
+three of `grep -rn 170-merge-sweep-completeness`, `grep -rn 'merges nothing'`
+and `grep -rn 'HALF LIVE'` -- what those find between them is the list. The
+third one is not redundant: the conditions-table row above the banner contains
+neither of the other two strings, and `merges nothing` hits an unrelated
+undrafting row in the same file, so two greps look like they covered it.
 
     CLAUDE.md            the paragraph beginning "The half-hourly sweep merges
                          nothing, from this change until the parked patch
@@ -46,10 +49,15 @@ is the list.
                          describe a sweep that merges three per run, become
                          true again the moment this lands.
     docs/automation/CLAUDE_AUTOMATION.md
-                         the "HALF LIVE" banner and the table under it,
-                         including "It merges nothing at all" and the row
-                         answering "Who can finish it?" -- the caller half is
-                         no longer half.
+                         THREE places, and the third is the one a reader of
+                         this list misses: the "HALF LIVE" banner and the table
+                         under it, including "It merges nothing at all" and the
+                         row answering "Who can finish it?" -- and, fourteen
+                         lines ABOVE the banner, the row in the conditions table
+                         beginning "A page is not a set -- HALF LIVE, see
+                         below". Leave that one and a fully live protection
+                         still says half, pointing `see below` at a section
+                         that is gone.
     STATUS.md            the "Agent automation" row's closing sentence, which
                          names this file as parked.
     docs/automation/pending/README.md

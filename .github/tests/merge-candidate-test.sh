@@ -628,13 +628,37 @@ echo "A rule nothing calls, and nothing tracks, is the state this must never be 
 # caller, and nothing on disk that remembers the two are meant to meet.
 SWEEP=.github/workflows/pr-merge-sweep.yml
 PENDING=docs/automation/pending/170-merge-sweep-completeness.patch
-if grep -q 'merge-facts.sh' "$SWEEP" 2>/dev/null; then
+# COMMENT LINES ARE DROPPED FIRST, for the reason the query scan above gives and
+# for one more concrete than a principle: hunk 1 of the parked patch inserts
+# `# is .github/scripts/merge-facts.jq, driven by .github/scripts/merge-facts.sh,`
+# into the workflow's own header comment. A scan that reads the whole file is
+# therefore satisfied by the patch's own prose, so the third state this block
+# exists to refuse -- rule tested, caller unchanged, patch gone -- passed both
+# assertions. Match a CALL, not a mention.
+SWEEP_BODY="$(grep -vE '^[[:space:]]*#' "$SWEEP" 2>/dev/null)"
+# The verdict call itself, from the line naming the script to the first line that
+# does not continue. Its ARITY is the one line everything here depends on and
+# nothing read: nine arguments is the pre-#170 caller, which merge-candidate.sh
+# now refuses outright, and ten is the caller that passes "$COMPLETE". A hand
+# resolution that drops that hunk while keeping the header comment is how the two
+# permitted states quietly become the forbidden one.
+VERDICT_CALL="$(printf '%s\n' "$SWEEP_BODY" | awk '
+  /merge-candidate[.]sh/ { inside = 1 }
+  inside { print; if ($0 ~ /[)]"[[:space:]]*$/) exit }')"
+VERDICT_ARGC="$(printf '%s\n' "$VERDICT_CALL" | grep -oE '"\$[A-Za-z_][A-Za-z0-9_]*"' | wc -l | tr -d ' ')"
+if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-facts.sh'; then
   printf '  ok    the sweep calls the rule that has a test\n'; pass=$((pass + 1))
   if [ -e "$PENDING" ]; then
     printf '  FAIL  the sweep calls the rule, so %s has landed and should be deleted\n' "$PENDING"
     fail=$((fail + 1))
   else
     printf '  ok    and the pending patch has been cleared away\n'; pass=$((pass + 1))
+  fi
+  if [ "$VERDICT_ARGC" = "10" ]; then
+    printf '  ok    and the verdict call passes the completeness argument\n'; pass=$((pass + 1))
+  else
+    printf '  FAIL  the sweep calls merge-facts.sh but hands merge-candidate.sh %s arguments, not 10\n' "$VERDICT_ARGC"
+    fail=$((fail + 1))
   fi
 elif [ -f "$PENDING" ]; then
   printf '  ok    the sweep does not call the rule yet, and %s says so\n' "$PENDING"
@@ -645,8 +669,44 @@ elif [ -f "$PENDING" ]; then
     printf '  FAIL  %s no longer applies; the parked half has rotted\n' "$PENDING"
     fail=$((fail + 1))
   fi
+  if [ "$VERDICT_ARGC" = "9" ]; then
+    printf '  ok    and the caller is still the nine-argument one the patch replaces\n'; pass=$((pass + 1))
+  else
+    printf '  FAIL  the patch is still parked but the caller passes %s arguments, not 9\n' "$VERDICT_ARGC"
+    fail=$((fail + 1))
+  fi
 else
   printf '  FAIL  merge-facts.sh is tested but nothing calls it and no patch is pending\n'
+  fail=$((fail + 1))
+fi
+
+echo
+echo "Every patch parked in pending/ still applies"
+# THE ASSERTION ABOVE PROTECTED ONLY THE PATCH THAT WROTE IT. 75-approval-stall.patch
+# had been parked since #128 and nothing checked it, so an edit to a table one of
+# its hunks deleted as a contiguous block broke it silently -- and it carries
+# three workflow edits that would have gone down with the README hunk, because
+# `git apply` is all-or-nothing. A directory whose whole purpose is holding work
+# a person has to finish later is exactly where rot is invisible.
+# ONE ASSERTION, NOT ONE PER PATCH, on purpose: parking a patch must not change
+# how many assertions this suite reports. Six documents quote that number, and a
+# count that moves when somebody adds a file to a directory is a count nobody
+# can keep true. The names go in the failure message instead, which is where
+# they are actually needed.
+rotted=""
+found_patch=0
+for patch in docs/automation/pending/*.patch; do
+  [ -f "$patch" ] || continue
+  found_patch=$((found_patch + 1))
+  git --no-pager apply --check "$patch" >/dev/null 2>&1 || rotted="$rotted $patch"
+done
+if [ -z "$rotted" ]; then
+  printf '  ok    all %d of them apply to this tree\n' "$found_patch"; pass=$((pass + 1))
+else
+  printf '  FAIL  these parked patches no longer apply:%s\n' "$rotted"
+  printf '        a rotted patch is work nobody can finish, and git apply is all-or-nothing,\n'
+  printf '        so one stale hunk takes its workflow edits down with it. Refresh it, or\n'
+  printf '        turn the hunk that broke into an instruction in its header.\n'
   fail=$((fail + 1))
 fi
 
