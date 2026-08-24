@@ -710,7 +710,16 @@ already uses where it names `provider_disagreement_mm = 250000` and links
 `tests/test_trust.cpp`, and the form `TASKS.md`'s own `gnss_power.cpp` bullet
 chose deliberately for this exact reason. It survives any insertion, and
 `check_docs.py`'s check 7 has nothing to bind to a line. `trust.cpp:515` keeps
-its fingerprint: #112 inserts below it. The obligation is here rather than in
+its fingerprint: #112 inserts below it.
+
+**And the paragraph written to remove those four armed a fifth**, found in round
+sixteen — a `trust.h:112` fingerprint on `degrade_at`, in the qualifier added to
+answer round fifteen. #112 adds one `#include` line to that header and shifts
+everything below it by one, so the snippet would have been at `:113` on the
+landing commit. The lesson is narrower than "remove the tripwires": **the
+fingerprint form is the default a writer reaches for**, so removing four of them
+in one commit does not stop the fifth being written in the same commit. It is now
+in the same no-line-number form as the rest. The obligation is here rather than in
 the ADR because round thirteen took the merge order out of an accepted ADR, on
 the grounds that process in an ADR is archaeology the day it is followed. What #112 still
 carries afterwards is everything §3a does not say. §3a's item *the two trust

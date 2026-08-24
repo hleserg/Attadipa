@@ -418,8 +418,8 @@ contradicts the unqualified sentence.** Where nothing calls `compare_provider`,
 the score really is 0 and the device really does sit **`Trusted`** — the false
 all-clear in its pure form. Where `compare_provider` *is* called, and §1 above
 establishes that it fires on exactly this configuration, its bit is raised
-independently of `have_previous_`: 30, and `degrade_at` is 30
-(`core/include/attadipa/core/trust.h:112` "degrade_at"), so the device sits
+independently of `have_previous_`: 30, and the `degrade_at` field in
+[`trust.h`](../../core/include/attadipa/core/trust.h) is 30, so the device sits
 **`Degraded` with a live reason bit** rather than `Trusted`. That is a materially
 better outcome than the all-clear, and it does not rescue the section's point:
 `Degraded` reached by a *third-party* detector while the two this section is
