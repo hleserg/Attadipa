@@ -513,8 +513,23 @@ if [ -f "$patch_file" ]; then
   contains "the findings query filters on the author, not just on the marker"            'select(.user.login == env.ATTADIPA_REVIEW_ACTOR)' "$(cat "$patch_file")"
   contains "the trusted account is named in the workflow, not inside the query"            'ATTADIPA_REVIEW_ACTOR: claude[bot]' "$(cat "$patch_file")"
   contains "and the block is matched from its start, not anywhere in the body"            'startswith("<!-- attadipa-review-findings")' "$(cat "$patch_file")"
+
+  # The three above read the patch as text, which a patch keeps being long
+  # after it has stopped being appliable: edit a hunk body without correcting
+  # its `@@` counts and every `contains` still passes while `git apply`
+  # refuses. That is the rot #177 found in the other parked patch, so check
+  # the thing itself rather than its spelling.
+  if git -C "$here/../.." apply --check "$patch_file" 2>/dev/null; then
+    pass=$((pass + 1)); printf '  ok    the parked patch still applies to this tree
+'
+  else
+    fail=$((fail + 1))
+    printf '  FAIL  the parked patch no longer applies to this tree
+         run: git apply --check %s
+' "$patch_file"
+  fi
 else
-  pass=$((pass + 3))
+  pass=$((pass + 4))
   printf '  ok    the patch is applied; these assertions moved with it
 '
 fi

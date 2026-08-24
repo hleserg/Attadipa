@@ -96,7 +96,7 @@ index 76e171b..a21c204 100644
        # What actually went wrong, read from the action's own execution log
        # rather than guessed at.
        #
-@@ -347,6 +400,224 @@ jobs:
+@@ -347,6 +400,246 @@ jobs:
              echo "::warning::The review step reported success and never reached the model — see the note on the pull request."
            fi
  
