@@ -98,7 +98,33 @@ int main()
     for (const Listed& l : listed()) {
         CHECK(l.dsc != nullptr);
         CHECK(l.dsc->header.magic == LV_IMAGE_HEADER_MAGIC);
-        CHECK(l.dsc->header.cf == LV_COLOR_FORMAT_A8);
+        // FORMAT, and deliberately not byte order -- the two are different
+        // questions and only one of them has a subject yet.
+        //
+        // Every asset here is an A8 mask: one byte per pixel, nothing to get
+        // the wrong way round. The first COLOUR asset is the first thing in
+        // this repository whose bytes have an order, and this assertion is what
+        // stops one arriving unnoticed. What it does NOT do is check that
+        // order, because there is nothing yet to check it against -- so the
+        // decision is recorded here, where the next person to trip this line
+        // will read it: an asset's byte order follows LVGL's colour-format
+        // contract and the framebuffer the software renderer writes into. It is
+        // NOT read off D19. D19 is the panel's WIRE order, absorbed exactly
+        // once at flush by the display port's `swap_bytes` flag, which is a
+        // board fact living in `boards/`/`platform/`. Taking it from D19 is
+        // not executable for RGB565A8 (the vendored converter has no swapped
+        // variant) and produces wrong colours for RGB565 in either direction --
+        // double-swapped against a port that also swaps, or matched by turning
+        // the port's swap off and breaking every glyph, arc and A8 icon LVGL
+        // renders into the same framebuffer.
+        //
+        // So when this line is relaxed to admit a colour format, the assertion
+        // that replaces it is that the format is LVGL's NATIVE one, never a
+        // pre-swapped variant. Found in review of #152.
+        check(l.dsc->header.cf == LV_COLOR_FORMAT_A8,
+              "every linked asset is an A8 mask; a colour asset takes its byte "
+              "order from LVGL's framebuffer format, never from D19",
+              __LINE__);
         CHECK(static_cast<int>(l.dsc->header.w) == l.pixels);
         CHECK(static_cast<int>(l.dsc->header.h) == l.pixels);
         CHECK(static_cast<int>(l.dsc->header.stride) == l.pixels);

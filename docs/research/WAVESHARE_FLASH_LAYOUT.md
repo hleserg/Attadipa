@@ -434,8 +434,14 @@ exactly the field you need the moment a second format exists.
 **Nothing T-034 has shipped is affected.** The pipeline emits
 `LV_COLOR_FORMAT_A8` masks only (`tools/assets/generate_images.py:134`,
 `--cf A8`) — one byte per pixel, no byte order to get wrong. The cost of §4.1a
-lands on the **first colour asset** and on the first line of display bring-up,
-neither of which exists yet.
+lands on **the first line of display bring-up**, which does not exist yet. It
+does **not** land on the first colour asset: an asset's byte order follows
+LVGL's colour-format contract and the framebuffer the software renderer writes
+into, and the wire order is absorbed once, at flush, by the port's `swap_bytes`
+flag — which is exactly what §4.1a's own four-step trace shows. An earlier
+version of this paragraph named the asset too, and following it was not possible
+for `RGB565A8` (the vendored converter has no swapped variant of that format) and
+wrong for `RGB565` in either direction. Found in review.
 
 ### 4.3 The music settles an argument two sections down
 
@@ -540,9 +546,11 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
      it `MEASURED`. Anything short of a photograph of that pattern is not an
      answer to this question.
 
-  Until one of those runs, the first colour asset and the first line of display
-  bring-up must treat the swap as a **configurable** with an `UNKNOWN` default,
-  not as a constant read off §4.1.
+  Until one of those runs, the first line of display bring-up must treat the
+  swap as a **configurable** with an `UNKNOWN` default, not as a constant read
+  off §4.1 — and *configurable* here means a **board fact**, so it lives in
+  `boards/`/`platform/` rather than in settings or a build flag. It is not the
+  first colour asset's question at all: see §4.2. Found in review.
 - **Check `xiaozhi-esp32`'s licence** before reading it for the audio path, and
   record the decision in the ledger either way.
 - **Run the `octal_psram` boot-log check** in §1 and close D12a against silicon

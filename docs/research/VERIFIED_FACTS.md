@@ -883,7 +883,7 @@ same question, the datasheet wins and the entry says so.
   | 1 | `78/xiaozhi-esp32` @ `bb9122ab`, `main/display/lcd_display.cc:160,166` | `SpiLcdDisplay` — the class this board's file subclasses (`main/boards/waveshare/esp32-s3-touch-amoled-2.06/esp32-s3-touch-amoled-2.06.cc:77,104`) — configures `esp_lvgl_port` with `.color_format = LV_COLOR_FORMAT_RGB565` **and** `.flags.swap_bytes = 1` |
   | 2 | `espressif/esp-bsp` @ `2f51931`, `components/esp_lvgl_port/src/lvgl9/esp_lvgl_port_disp.c:739-741` | the flush callback calls `lv_draw_sw_rgb565_swap(color_map, len)` when that flag is set |
   | 3 | `lvgl/lvgl` @ `v9.5.0` (`85aa60d1`), `src/draw/sw/lv_draw_sw_utils.c:149-171` | that function is a plain in-place 16-bit byte swap: `((x & 0xff00) >> 8) \| ((x & 0x00ff) << 8)` |
-  | 4 | `espressif/esp-iot-solution` @ `5d75f3f0`, `components/display/lcd/esp_lcd_sh8601/esp_lcd_sh8601.c:279-280` | `panel_sh8601_draw_bitmap` passes `color_data` **verbatim** into `esp_lcd_panel_io_tx_color(io, LCD_CMD_RAMWR, …)`. No transform. `esp_lcd_co5300_spi.c:291-292` is identical |
+  | 4 | `espressif/esp-iot-solution` @ `5d75f3f0`, `components/display/lcd/esp_lcd_sh8601/esp_lcd_sh8601.c:279-280` | `panel_sh8601_draw_bitmap` passes `color_data` **verbatim** into `esp_lcd_panel_io_tx_color(io, LCD_CMD_RAMWR, …)`. No transform. `esp_lcd_co5300_spi.c:291-292` is identical. *Verbatim* is about the **buffer**, and it is compatible with `WAVESHARE_ARRIVAL` §S14's note that the bare `tx_color()` at this same line was wrapped in an error check at `e5b9295a`, before this revision: that change is about the **return value**. Neither transforms a pixel. Spelled out because a reader should not have to infer it across two documents, which is this entry's whole subject |
   | — | same file, `:86-89` (and `esp_lcd_co5300_spi.c:88-91`) | `bits_per_pixel == 16` → `colmod_val = 0x55`, written to `LCD_CMD_COLMOD` = `0x3A` (ESP-IDF `v5.5.1 esp_lcd_panel_commands.h:40`) |
 
   Fetched by raw URL at those revisions and hashed, so a later reader can tell
@@ -922,10 +922,45 @@ same question, the datasheet wins and the entry says so.
   why D19 is `UNKNOWN` rather than resolved in either direction.
 - **Impact:** nothing in this repository is mis-encoded today — T-034 emits
   `LV_COLOR_FORMAT_A8` masks (`tools/assets/generate_images.py:134`), one byte
-  per pixel, which have no byte order to get wrong. The cost lands on the
-  **next** format: the first colour asset, and the first line of display
-  bring-up, must take the swap setting from a measurement or from the datasheet,
-  and must not take it from this file's sibling entry above.
+  per pixel, which have no byte order to get wrong. The cost lands on **the
+  first line of display bring-up**, which must take the swap setting from a
+  measurement or from the datasheet and must not take it from this file's
+  sibling entry above.
+
+  **D19 does not reach `ui/assets/`.** An asset's byte order is not a fact about
+the panel: it is fixed by LVGL's colour-format contract and has to match the
+framebuffer the software renderer writes into, and the wire order is absorbed
+exactly once, at flush, by the display port's `swap_bytes` flag — which is what
+the four-step trace above demonstrates. An earlier version of this entry told the
+first colour asset to take its setting from a measurement or the datasheet, which
+replaced one boundary-crossing inference with another, one layer up. Two
+consequences, both checkable in this repository: for `RGB565A8`, the format
+[`DEPENDENCIES.md`](DEPENDENCIES.md) names as *"what the mascot art needs"*, the
+instruction is **not executable** — the vendored converter packs it
+`uint16_t(color)` in host order and offers no swapped variant, `--cf` having
+`RGB565_SWAPPED` but no `RGB565A8_SWAPPED`; and for plain `RGB565` it produces
+**wrong colours** either way, since emitting `RGB565_SWAPPED` against a port that
+also swaps mangles red and blue, while turning the port's swap off to match
+breaks everything LVGL draws itself — text, arcs, the watch face, and every `A8`
+icon, because the `ColorRole` colour a mask is blended with lands in the same
+framebuffer as native-order `lv_color16_t`. So: **the colour asset's byte order
+is settled today and follows LVGL's framebuffer format. D19 governs one
+board-level knob in the display port and nothing under `ui/assets/`** — and
+because that knob is a board fact it belongs in `boards/`/`platform/`, not in
+settings and not in a build flag. Found in review.
+- **And it is a per-frame cost, not only a correctness question.** On the one
+  readable path every pixel goes through `lv_draw_sw_rgb565_swap()` on the LVGL
+  flush path — software, in place, over the flushed region. A Waveshare full
+  frame is 205 820 px / 411 640 B
+  ([`RESOURCE_BUDGET.md`](../architecture/RESOURCE_BUDGET.md) §3), so on
+  PSRAM-backed buffers that is a second full pass over 402 KiB against the same
+  cache-coherency requirement `ESP32S3_ERRATA_V02` already flags, and per-frame
+  CPU time is battery. **Whether this device needs the swap at all is `UNKNOWN`
+  (that is D19), and what it costs when it is needed is `UNKNOWN` too** — neither
+  is measured and neither may be assumed away. It is an input to **T-093**, the
+  draw-buffer and frame-rate ADR, which is the decision a mandatory full-buffer
+  software swap would change the answer to. Recorded because the trace found it
+  and filed it only as a correctness question. Found in review.
 
 ### The Waveshare `storage` partition holds six files, not three, and three are music
 

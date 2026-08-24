@@ -285,8 +285,16 @@ upstream."
 > matters. Upstream's own `esp_lcd_sh8601.c` carried the bare call at the
 > identical line 280 from `694ece03` (2023-11-03) until `e5b9295a` (2025-12-10),
 > and the changelog dates the fix to **`v2.0.1`** — *"Fix draw_bitmap not
-> propagating tx_color errors."* Only four commits have ever touched that file,
-> so nothing changed in it across 1.0.0, 1.0.2 and 2.0.0. **The check the fork was
+> propagating tx_color errors."* Four commits have ever touched that file, and
+> the two bounding this window are the two named above; what lies **between**
+> those two dates was not read commit-by-commit against the tag dates, so
+> *"nothing changed across 1.0.0, 1.0.2 and 2.0.0"* is an inference from the
+> commit count rather than a read, and an earlier version of this paragraph
+> stated it as a read — inside the section whose subject is exactly that
+> mistake. The version numbers are **`esp-iot-solution`'s component versions**,
+> not upstream LVGL's or the fork's own; the fork pins `==1.0.2` and upstream
+> has a `1.0.2` too, so the string alone does not identify which. What is
+> **read** is the state at the two revisions named. Found in review. **The check the fork was
 > said to have dropped did not exist upstream to drop**, over exactly the period
 > the comparison was about. Read at `espressif/esp-iot-solution@5d75f3f0` and
 > `@694ece03`, source **S14** — and note that upstream is `esp-iot-solution`, not

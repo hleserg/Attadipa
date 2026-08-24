@@ -100,6 +100,28 @@ bandwidth and add a cache-coherency requirement for DMA; partial buffers trade
 tearing behaviour and redraw complexity. **That is an ADR, not a default**, and
 it is listed as a pending decision in [TASKS.md](../../TASKS.md).
 
+**And a third cost belongs in that ADR, in time rather than in bytes.** The one
+complete display path readable in pinned source sets `swap_bytes` and therefore
+runs `lv_draw_sw_rgb565_swap()` on every flush — a software, in-place pass over
+the flushed region, on the CPU. At full frame that is a second traversal of the
+402 KiB above, and on PSRAM-backed buffers it is a second traversal *of PSRAM*,
+against the cache-coherency requirement in the same sentence. Per-frame CPU time
+is also battery.
+
+Two things about it are **`UNKNOWN`** and neither may be assumed away:
+
+| | Question | Where it is tracked |
+|---|---|---|
+| Necessity | does *this* panel need the swap at all — the CO5300's wire byte order | **D19**, [`OPEN_QUESTIONS`](../research/OPEN_QUESTIONS.md); closable by the datasheet or by a photographed pattern |
+| Cost | what the pass costs per frame, internal SRAM versus PSRAM | not measured; belongs in §4's table when somebody measures it |
+
+Recorded because the source trace that established the swap filed it as a
+correctness question only, and the draw-buffer ADR would otherwise be written
+against a frame time with a mandatory full-buffer software pass missing from it —
+the swap then resurfacing later as an unexplained regression on the one board
+that cannot afford it. Found in review of
+[#152](https://github.com/hleserg/Attadipa/pull/152).
+
 The T-Watch numbers are comfortable enough that the same strategy will fit
 whatever the Waveshare board forces. Design for the harder board.
 

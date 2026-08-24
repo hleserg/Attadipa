@@ -182,15 +182,21 @@ stale silently. The protocol is
 - **Acceptance:** either a committed source asset with its provenance recorded,
   or a written decision that the mascot is redrawn and by whom. Not a scaled
   crop committed quietly.
-- **Carries D19, because it is likely the first colour asset.** Every asset the
-  pipeline emits today is `A8` — a mask, one byte per pixel, no byte order. A
-  mascot in `RGB565A8` is two bytes per pixel and the first thing in this
-  repository whose bytes have an order. **The panel's transfer byte order is
-  `UNKNOWN`** ([OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) D19): the vendor
-  files prove only their own on-disk order, and the one readable display path
-  swaps. Take the setting from the CO5300 datasheet or from a measurement — not
-  from T-103. Nothing here is blocked *by* it: the pipeline and the owner
-  decision both proceed, and only the swap flag waits.
+- **Does NOT carry D19, and an earlier version of this bullet said it did.**
+  A mascot in `RGB565A8` is the first asset in this repository whose bytes have
+  an order — true — but that order is not a fact about the panel. It is fixed by
+  LVGL's colour-format contract and must match the framebuffer the software
+  renderer writes into; the wire order is absorbed once, at flush, by the
+  display port's `swap_bytes` flag. So **this task emits the asset in LVGL's
+  format and reads nothing off D19**. Following the old instruction was not even
+  possible for `RGB565A8`: the vendored converter packs it `uint16_t(color)` in
+  host order and has no swapped variant to select — `--cf` offers
+  `RGB565_SWAPPED` and no `RGB565A8_SWAPPED`. And for plain `RGB565` it would
+  have produced wrong colours in both directions, either double-swapping against
+  a port that also swaps, or matching the asset by turning the port's swap off
+  and breaking every glyph, arc and `A8` icon LVGL renders into the same
+  framebuffer. D19 governs one board-level knob, in `boards/`/`platform/`, and
+  the first line of display bring-up. Found in review.
 - **Hardware required:** no. **Owner required:** yes.
 
 ### T-037 · The first Clock
@@ -1963,7 +1969,10 @@ Recommended next action:
   two routes to close it in
   [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §7. Nothing
   shipped is wrong — T-034 emits `A8` masks, which have no byte order — but the
-  first colour asset must not read its answer off this task. Issue
+  first line of display bring-up must not read its answer off this task. (Nor
+  must the first colour **asset** read it off D19: an asset's byte order follows
+  LVGL's framebuffer format, and the wire order is absorbed at flush. Corrected
+  in review; see VERIFIED_FACTS.) Issue
   [#109](https://github.com/hleserg/Attadipa/issues/109).
 - **Two findings outside the task's scope**, both recorded in
   [VERIFIED_FACTS](docs/research/VERIFIED_FACTS.md): the music gives T-105 a

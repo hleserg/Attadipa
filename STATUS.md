@@ -148,7 +148,13 @@ on a display bus nobody has timed, and nine masks are 14 kB. `RGB565A8` is
 present and unused: every asset so far is an `A8` mask, because an icon with a
 baked colour cannot follow a theme. That also means **no asset in this repository
 has a byte order yet** — one byte per pixel — which is why D19, the panel's
-transfer byte order, blocks nothing today and blocks the first colour asset.
+transfer byte order, blocks nothing today and blocks **the first line of display
+bring-up**. Not the first colour asset: an asset's byte order follows LVGL's
+colour-format contract and the framebuffer the software renderer writes into,
+and the wire order is absorbed once, at flush, by the display port's
+`swap_bytes` flag. Two earlier sentences here said the asset inherited the
+question, which is the half that is not real — and dropped the bring-up half,
+which is. Found in review.
 
 ## Long-running operations
 
@@ -380,8 +386,16 @@ came off the unit the same day —
   `esp_lcd_sh8601.c:279-280` then transfers verbatim. The **pixel format** half
   stands (`COLMOD 3Ah = 0x55`); the **transfer byte order is `UNKNOWN`**, now
   **D19**, closable by the CO5300 datasheet or by a measurement. Nothing shipped
-  is wrong — every generated asset is an `A8` mask with no byte order — and the
-  first colour asset inherits the question. `NOT EXECUTED — HARDWARE REQUIRED`.
+  is wrong — every generated asset is an `A8` mask with no byte order — and what
+  inherits the question is **the first line of display bring-up**, not the first
+  colour asset: an asset's byte order is LVGL's, and the wire order is absorbed
+  at flush by the port's `swap_bytes` flag, which is a board fact belonging in
+  `boards/`/`platform/`. **And the swap is a per-frame cost nobody has priced**:
+  `lv_draw_sw_rgb565_swap()` is a software in-place pass over the flushed
+  region, so a Waveshare full frame is a second pass over 402 KiB, on
+  PSRAM-backed buffers, against the cache-coherency requirement already flagged
+  a few lines above — an input to **T-093**, the draw-buffer and frame-rate ADR,
+  and `UNKNOWN` in both necessity and cost. `NOT EXECUTED — HARDWARE REQUIRED`.
 - **And the partition holds six files, not three.** There is a `/music/`
   directory with three MP3 background tracks, two stereo, 112–128 kbps. That
   gives **T-105** a strong prior that `AAC210602A1` is the speaker rather than a
