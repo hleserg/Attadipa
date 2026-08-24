@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Is the snapshot the unattended merge sweep is about to decide on COMPLETE?
 #
+# SIX CONNECTIONS SINCE #199, not five: `checkSuites` on the head commit joined
+# them when the settling window and the verdict binding stopped being derived
+# from `committedDate` and started being derived from GitHub's own stamp on the
+# runs it started for that object id. A truncated suite page hides the NEWEST
+# run, which makes the head look older than it is -- the merging direction.
+#
 # WHY THIS EXISTS. `pr-merge-sweep.yml` asks GitHub for the facts about a pull
 # request in one GraphQL round trip, and a GraphQL connection is a PAGE. Until
 # 2026-08-24 the sweep asked for `labels(first:50)`, `reviewThreads(first:100)`,
@@ -43,7 +49,10 @@
 # Prints exactly one line, and the vocabulary is merge-candidate.sh's on purpose
 # so the caller can pass either straight through to its own log:
 #
-#   COMPLETE        every decision-critical connection proved it has no next page
+#   COMPLETE        every decision-critical connection proved it has no next
+#                   page. It says nothing about WHICH commit the snapshot is
+#                   of, or when that commit arrived -- that is
+#                   .github/scripts/merge-head-trust.sh, over the same document
 #   HOLD <reason>   one did not, or could not say -- <reason> names which
 #
 # There is no third answer, and no path through this file that prints nothing.

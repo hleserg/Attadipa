@@ -50,7 +50,8 @@ set -uo pipefail
 
 # attadipa_merge_candidate CHECKS LABELS UNRESOLVED CODEX_UNANSWERED \
 #                          MERGEABLE_STATE IS_DRAFT HEAD_AGE_SECONDS \
-#                          CHANGED_PATHS PASS_AFTER_HEAD FACTS_COMPLETE
+#                          CHANGED_PATHS PASS_AFTER_HEAD FACTS_COMPLETE \
+#                          HEAD_OID
 #
 # CHECKS               one token per check run on the head commit, space
 #                      separated, each the run's conclusion lowercased:
@@ -82,15 +83,38 @@ set -uo pipefail
 #                      no reply after them, review thread or not.
 # MERGEABLE_STATE      GitHub's mergeStateStatus, lowercased.
 # IS_DRAFT             `true` or `false`.
-# HEAD_AGE_SECONDS     now minus the head commit's committedDate, in seconds.
+# HEAD_AGE_SECONDS     how long ago GITHUB saw this head arrive, in seconds.
+#
+#                      NOT `committedDate`, AND THE DIFFERENCE IS THE WHOLE
+#                      POINT. Until #199 this was `(.pushedDate //
+#                      .committedDate)` -- and `pushedDate` is deprecated and
+#                      answers `null` for every commit this repository has, so
+#                      the fallback was the only branch taken and the settling
+#                      window was measured on the git committer clock. A commit
+#                      made with `GIT_COMMITTER_DATE` six hours in the past
+#                      cleared the window at the moment it was created. The
+#                      caller now derives this from
+#                      `workflowRun.createdAt` on the head commit's own check
+#                      suites -- see .github/scripts/merge-head-trust.jq -- and
+#                      holds outright where GitHub has stamped nothing.
 # CHANGED_PATHS        every path the pull request touches, ONE PER LINE,
 #                      repository-relative. EMPTY means the caller could not
 #                      read them, which holds -- an unknown change set is not a
 #                      permitted one.
 # PASS_AFTER_HEAD      `true` when the most recent `labeled ai-review:pass`
-#                      event is not older than the head commit; `false` when it
-#                      is older; `unknown` when the caller could not tell. Only
-#                      `true` merges.
+#                      event is not older than GITHUB'S OWN RECORD of this head
+#                      arriving; `false` when it is older; `unknown` when the
+#                      caller could not tell. Only `true` merges.
+#
+#                      "Not older than the head commit" was the first wording
+#                      and it hid the defect in #199: the head commit's date is
+#                      whatever its committer put there, so a backdated commit
+#                      B made the previous head's label look like a verdict
+#                      about B. Both sides of the comparison are now GitHub's
+#                      own -- a `LabeledEvent.createdAt` against a
+#                      `workflowRun.createdAt` on that object id -- so a change
+#                      of head invalidates the previous verdict whatever date
+#                      the new commit carries.
 #
 #                      WHY THIS IS A CONDITION AND NOT AN ASSUMPTION. The label
 #                      records that a verdict was reached, not WHICH COMMIT it
@@ -113,7 +137,7 @@ set -uo pipefail
 #
 #                      AND ITS REACH IS THE GRAPHQL DOCUMENT, WHICH IS NARROWER
 #                      THAN THAT SENTENCE SOUNDS. `merge-facts.sh` sees one
-#                      reply and answers about the five connections in it.
+#                      reply and answers about the six connections in it.
 #                      CODEX_UNANSWERED is computed in the caller from two REST
 #                      reads the filter never sees (pr-merge-sweep.yml around
 #                      :268-291), so a `true` beside it is a statement about the
@@ -142,6 +166,23 @@ set -uo pipefail
 #                      Issue #170. `.github/scripts/merge-facts.sh` is what
 #                      establishes it, out of `pageInfo` rather than out of the
 #                      length of whatever came back.
+#
+# HEAD_OID             the object id of the commit this decision is about, as
+#                      GitHub named it in the same snapshot the arguments above
+#                      came from. Forty (or sixty-four) lowercase hex digits;
+#                      anything else, including an empty string, holds.
+#
+#                      WHY A RULE WITH NO REPOSITORY ACCESS IS GIVEN A SHA. It
+#                      cannot verify one, and it is not asked to. What it can do
+#                      is refuse a caller that reached this point without ever
+#                      establishing WHICH COMMIT it was about -- and that is a
+#                      caller whose `PASS_AFTER_HEAD` was computed against
+#                      nothing. #199 is the shape: two security properties were
+#                      derived from a date the commit carried rather than from
+#                      the commit's identity, and no argument in the list above
+#                      made that visible, because a boolean carries no trace of
+#                      what it was a boolean ABOUT. The log line naming the
+#                      merged commit is the smaller half of the reason.
 #
 # Prints exactly one line:
 #   MERGE                      every condition holds; merge it
@@ -216,6 +257,7 @@ attadipa_merge_candidate() {
   local checks="${1-}" labels="${2-}" unresolved="${3-}" codex="${4-}"
   local mergeable="${5-}" is_draft="${6-}" head_age="${7-}"
   local paths="${8-}" pass_after_head="${9-}" facts_complete="${10-}"
+  local head_oid="${11-}"
 
   # -- did the caller read all of it? ------------------------------------------
   # BEFORE EVERYTHING ELSE, because every condition below is computed from the
@@ -232,7 +274,13 @@ attadipa_merge_candidate() {
   # a caller that predates the condition entirely, and the two deserve
   # different sentences in the log. The message names the fix because this line
   # is what a reader will see 48 times a day until somebody applies it.
-  if [ "$argc" -lt 10 ]; then
+  #
+  # ELEVEN SINCE #199, AND STILL ONE PATCH AND ONE TRANSITION. That fix parked
+  # its caller edits in the same file rather than beside it, precisely so that
+  # this number moves once. The live sweep passes nine today and eleven the
+  # moment the patch lands; there is no state in between, and no second "apply
+  # this one first" to reconcile. T-144.
+  if [ "$argc" -lt 11 ]; then
     # Also to **stderr**, as a workflow warning. The caller turns every HOLD
     # into a `::notice::` and carries on, so the job stays green and reads
     # "sweep finished, 0 merged" -- the same line a sweep with nothing to do
@@ -249,6 +297,20 @@ attadipa_merge_candidate() {
     true) : ;;
     false) echo "HOLD the facts read about this pull request were truncated"; return 0 ;;
     *)     echo "HOLD could not tell whether the facts read about this pull request are complete"; return 0 ;;
+  esac
+
+  # -- and WHICH COMMIT is this a decision about? -------------------------------
+  # Beside the completeness question and for the same reason: a rule that cannot
+  # name the commit it is deciding on cannot have bound anything to it. See
+  # HEAD_OID above and issue #199. Shape only -- nothing here can verify a SHA,
+  # and the caller that establishes it is
+  # .github/scripts/merge-head-trust.sh.
+  case "${head_oid:-}" in
+    *[!0-9a-f]*|"") echo "HOLD the head commit could not be identified"; return 0 ;;
+  esac
+  case "${#head_oid}" in
+    40|64) : ;;
+    *) echo "HOLD the head commit could not be identified"; return 0 ;;
   esac
 
   # -- the reviewer's verdict, first, because it is the only judgement here ----
@@ -332,10 +394,15 @@ EOF
   fi
 
   # -- how old is the code -----------------------------------------------------
-  # `committedDate` on the head, never the pull request's `updatedAt`. This
-  # establishes that no session is still pushing, and `updatedAt` cannot answer
-  # that: a label, a bot comment or this workflow's own note bumps it. What
-  # matters is when code last arrived.
+  # WHEN GITHUB SAW THE HEAD ARRIVE, which is neither of the two things this
+  # comment used to offer. Not the pull request's `updatedAt`, which a label, a
+  # bot comment or this workflow's own undrafting bumps -- that answers "has
+  # anything happened here", not "has code arrived". And no longer
+  # `committedDate` either: that is the git committer clock, an input, and
+  # `GIT_COMMITTER_DATE=2020-01-01` cleared this window at the moment the commit
+  # was made. Both properties that depended on it are now derived from
+  # `workflowRun.createdAt` on the head's own check suites, which GitHub writes.
+  # Issue #199.
   case "${head_age:-}" in
     ''|*[!0-9]*) echo "HOLD head commit age unknown"; return 0 ;;
   esac

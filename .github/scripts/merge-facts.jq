@@ -73,7 +73,7 @@ def incomplete($what; $hides; $conn):
   else
     ( try ($pr.commits.nodes[0].commit) catch null ) as $head
     | [
-        # THE WORST OF THE FIVE, and it is the labels. It is the only one whose
+        # THE WORST OF THE SIX, and it is the labels. It is the only one whose
         # truncation turns a refusal into a MERGE rather than into a hold:
         # `ai-review:blocking`, `agent:blocked` and `needs-owner` are read by
         # their presence, so a page that does not reach them says they are not
@@ -106,6 +106,23 @@ def incomplete($what; $hides; $conn):
         # covers the head commit". Refusing on it would hold every pull request
         # with a hundred label events and prove nothing extra.
         incomplete("the label timeline"; "a newer ai-review:pass event"; $pr.timelineItems),
+
+        # THE CONNECTION THAT TIMES THE HEAD'S ARRIVAL, added with #199. The
+        # sweep no longer reads `committedDate`: the settling window and the
+        # verdict binding both come from the newest `pull_request`
+        # `workflowRun.createdAt` on the head commit, which is GitHub's own
+        # stamp against that object id. A truncated suite page can hide the
+        # NEWEST run, and hiding the newest run makes the head look older and
+        # makes an older `ai-review:pass` look like it covers it -- both in the
+        # merging direction, which is why this is a refusal and not a note.
+        ( if $head == null or ($head | type) != "object" then
+            # Already reported by the entry below, in the words that say what is
+            # actually wrong. Two lines about one missing commit would be one
+            # line of information and one of noise.
+            empty
+          else
+            incomplete("the check-suite list"; "a newer run timing this head's arrival"; $head.checkSuites)
+          end ),
 
         ( if $head == null or ($head | type) != "object" then
             "the head commit is missing from the response"
