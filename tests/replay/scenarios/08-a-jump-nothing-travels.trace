@@ -11,7 +11,7 @@ at 0
   sats 11 14
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect trust trusted
 
 at 1000
@@ -22,7 +22,7 @@ at 1000
   sats 11 14
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect reason position-jump
   expect trust degraded
 
@@ -37,7 +37,7 @@ at 2000
   speed 5400000
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect reason position-jump
   expect reason implausible-speed
   expect trust untrusted

@@ -466,7 +466,8 @@ void test_assistance_is_never_required()
                                     context.capabilities.assistance       = assistance;
                                     context.capabilities.orbit_prediction = orbit;
                                     context.device_power                  = power;
-                                    context.device_moving                 = moving != 0;
+                                    context.receiver_body                 = SensorBody::Watch;
+                                    context.motion = MotionEvidence{SensorBody::Watch, true, moving != 0};
                                     context.fresh_fix_requested           = wanted != 0;
                                     context.assistance_available          = available != 0;
 
@@ -524,6 +525,28 @@ void test_the_device_state_outranks_the_receiver()
     CHECK(next_state(GnssState::Tracking, unchecked) == GnssState::Off);
 }
 
+void test_motion_evidence_is_scoped_to_the_receiver_body()
+{
+    GnssContext node;
+    node.capabilities = kFull;
+    node.receiver_body = SensorBody::Node;
+    node.motion = MotionEvidence{SensorBody::Watch, true, false};
+    CHECK(next_state(GnssState::Tracking, node) == GnssState::Tracking);
+
+    node.motion = MotionEvidence{SensorBody::Node, true, false};
+    CHECK(next_state(GnssState::Tracking, node) == GnssState::PowerSave);
+    node.motion = MotionEvidence{SensorBody::Watch, true, true};
+    CHECK(next_state(GnssState::PowerSave, node) == GnssState::PowerSave);
+    node.motion = MotionEvidence{SensorBody::Node, true, true};
+    CHECK(next_state(GnssState::PowerSave, node) == GnssState::Acquiring);
+
+    GnssContext unknown;
+    unknown.capabilities = kFull;
+    CHECK(next_state(GnssState::Tracking, unknown) == GnssState::Tracking);
+    const MotionEvidence incoherent{SensorBody::Unknown, true, false};
+    CHECK(!incoherent.is_coherent());
+}
+
 // A receiver that is already off has nothing for a backup domain to keep, so
 // the device going to sleep must leave it off rather than powering a domain to
 // retain nothing. Found by the exhaustive cross-check below; kept here on its
@@ -577,7 +600,8 @@ void test_next_state_never_proposes_an_illegal_move()
                             GnssContext context;
                             context.capabilities        = caps;
                             context.device_power        = power;
-                            context.device_moving       = moving != 0;
+                            context.receiver_body        = SensorBody::Watch;
+                            context.motion = MotionEvidence{SensorBody::Watch, true, moving != 0};
                             context.fresh_fix_requested = wanted != 0;
                             context.ephemeris_retained  = retained != 0;
                             context.since_last_fix      = Millis{retained != 0 ? 1000u : 0u};
@@ -626,6 +650,7 @@ int main()
     test_the_start_kind_follows_what_was_retained();
     test_assistance_is_never_required();
     test_the_device_state_outranks_the_receiver();
+    test_motion_evidence_is_scoped_to_the_receiver_body();
     test_an_off_receiver_does_not_enter_backup();
     test_next_state_never_proposes_an_illegal_move();
     test_every_gnss_name_is_readable();

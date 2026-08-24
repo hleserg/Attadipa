@@ -13,6 +13,7 @@ add_library(attadipa_core
     src/geo.cpp
     src/gnss_power.cpp
     src/input.cpp
+    src/motion.cpp
     src/position.cpp
     src/power_state.cpp
     src/trust.cpp

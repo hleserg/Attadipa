@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "attadipa/core/clock.h"
+#include "attadipa/core/motion.h"
 #include "attadipa/core/power_state.h"
 
 // What the GNSS receiver is doing, and what it costs to ask it for a position.
@@ -115,11 +116,24 @@ struct GnssContext {
     // warm start there is promising a fix in thirty seconds that arrives in
     // several minutes.
     bool             backup_retained = false;
-    bool             device_moving      = false;
+    // A receiver may be power-gated only from motion evidence measured on its
+    // own body. Unknown or other-body evidence is deliberately neutral.
+    SensorBody       receiver_body = SensorBody::Unknown;
+    MotionEvidence   motion{};
     bool             fresh_fix_requested = false;  // an application is waiting
     PowerState       device_power = PowerState::Active;
     GnssCapabilities capabilities{};
     bool             assistance_available = false;  // optional, never required
+
+    constexpr bool own_body_at_rest() const
+    {
+        return motion.says_at_rest(receiver_body);
+    }
+
+    constexpr bool own_body_in_motion() const
+    {
+        return motion.says_in_motion(receiver_body);
+    }
 };
 
 // Which start a transition from this state, with this context, would be.

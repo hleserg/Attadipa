@@ -541,8 +541,8 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
             // walks away from a stationary device is evidence in a way it would
             // not be on a device that cannot tell. It needs no interval at all,
             // which is exactly why gating it on `in_order` cost the most.
-            moved_at_rest =
-                motion.known && !motion.moving && moved > policy.jump_while_still_mm;
+            moved_at_rest = motion.says_at_rest(body_of(observation.source)) &&
+                            moved > policy.jump_while_still_mm;
         }
 
         // ADOPTING IS ONE DECISION WITH TWO CONSUMERS, and the condition is the

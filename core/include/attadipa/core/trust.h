@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "attadipa/core/clock.h"
+#include "attadipa/core/motion.h"
 #include "attadipa/core/position.h"
 
 // Whether the position is worth navigating by, and — kept, not discarded — why.
@@ -415,19 +416,6 @@ private:
 
     Transition  log_[kLogCapacity] = {};
     std::size_t recorded_          = 0;
-};
-
-// What the accelerometer has to say. Three states, not two: "the device is not
-// moving" and "nobody asked the accelerometer" are different facts, and only
-// the first is evidence.
-//
-// The T-Watch's BMA423 is an accelerometer — no gyroscope, no magnetometer. It
-// is exactly the right part for this one question and it is not an inertial
-// navigation system; nothing here may quietly become dead reckoning
-// (ADR-0009, ADR-0011 §6).
-struct MotionEvidence {
-    bool known  = false;
-    bool moving = false;
 };
 
 // The detectors, and the previous observation they need.

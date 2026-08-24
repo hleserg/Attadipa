@@ -117,9 +117,9 @@ GnssState next_state(GnssState current, const GnssContext& context)
         return current;
     }
 
-    // Nobody is asking, and the wrist is not moving. This is the ordinary state
-    // of a watch on a bedside table, and it is where the charge is saved.
-    if (!context.device_moving && current == GnssState::Tracking) {
+    // Only a known, same-body rest sample may save power. An absent sample is
+    // not evidence that a receiver is still.
+    if (context.own_body_at_rest() && current == GnssState::Tracking) {
         if (is_supported(can.power_save_mode)) {
             return GnssState::PowerSave;
         }
@@ -131,7 +131,7 @@ GnssState next_state(GnssState current, const GnssContext& context)
 
     // Moving again after a rest. Retained ephemeris is what makes this cheap,
     // and start_kind() is where that shows up as a shorter expected wait.
-    if (context.device_moving &&
+    if (context.own_body_in_motion() &&
         (current == GnssState::PowerSave || current == GnssState::Backup)) {
         return GnssState::Acquiring;
     }
