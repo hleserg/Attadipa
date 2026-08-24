@@ -38,9 +38,21 @@ and any fingerprinted citation that the insertion pushes down the file, which
 that holds the citation rather than the workflow that moved it. `git apply`
 then `python3 tools/docs/check_docs.py .` before parking a patch says which.
 
-Check it before trusting it. `git apply --check` says whether it still applies;
-a patch written against a `main` that has since moved may need `git apply -3`,
-and one whose target job has been rewritten needs reading rather than applying.
+**CI checks that it still applies**, on every push, in
+`.github/tests/gh-api-usage-test.sh` (`ci.yml:360`) — `git apply --check` over
+every `*.patch` in this directory. Until T-158 that sentence read *"check it
+before trusting it"* and nothing did, which is the shape of every defect this
+directory's own patches were written to fix. The same suite also reads the
+shell a parked patch would **add** for the `gh api --slurp` with `--jq` pair
+that `gh` rejects before making a request: three of those shipped in
+`pr-merge-sweep.yml`, and the scan that catches them globbed
+`.github/workflows/` only, so it could not see this directory at all.
+
+What CI still cannot judge: a patch that applies cleanly onto a job that has
+been rewritten underneath it. `--check` says the context matches, not that the
+change still makes sense; and a patch written against a `main` that has since
+moved may need `git apply -3`. Read a red apply check as *rebuild it against
+the current tree* rather than as *hand-edit the hunk headers*.
 
 This directory being empty is the normal state. If it is not empty, something is
 waiting on a person.

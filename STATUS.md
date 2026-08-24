@@ -1075,9 +1075,16 @@ four more things at no cost:
   workflow only runs on a schedule. Fixed by piping into a separate `jq`, which
   is what `agent-queue-watchdog.yml` already did and is why the watchdog was
   unaffected, plus `.github/tests/gh-api-usage-test.sh` — a scan over every
-  workflow, with seven fixtures proving the scan itself catches the shape and
-  leaves the recommended one alone, verified to flag all three lines on the tree
-  as it was. The general lesson is the one that produced this: **dispatch a new
+  workflow, with fixtures proving the scan itself catches the shape and leaves
+  the recommended one alone, verified to flag all three lines on the tree as it
+  was. **Widened on 2026-08-24 to the parked patches too** (T-158): workflow
+  changes an agent cannot write land under `docs/automation/pending/`, and no
+  guard in the repository reached that directory, so a parked patch could
+  redeploy this exact defect and stay green until the day somebody applied it.
+  The same suite now reads what a parked patch would *add* and runs
+  `git apply --check` over each one, which nothing did while
+  `pending/README.md` told a person to. 15 cases, both new halves
+  mutation-verified against the real parked patch. The general lesson is the one that produced this: **dispatch a new
   scheduled workflow once by hand instead of waiting for its cron**, because
   reading it had already passed it.
 

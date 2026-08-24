@@ -2461,6 +2461,51 @@ A1's schematic-revision
 
 ## DONE
 
+### T-158 · Parked workflow patches were invisible to every guard — **DONE** 2026-08-24
+- **Priority:** P2
+- **Dependencies:** none.
+- **Goal:** an agent token cannot write under `.github/workflows/`, so workflow
+  changes are parked as reviewed patches under `docs/automation/pending/` and
+  applied by a person later. [#128](https://github.com/hleserg/Attadipa/pull/128)
+  parked 516 lines of workflow shell that way. Three guards existed and none
+  reached that directory — actionlint globs `.github/workflows/`, shellcheck
+  globs `.github/scripts` and `.github/tests`, and
+  `.github/tests/gh-api-usage-test.sh` globbed the same as actionlint. So a
+  parked patch could reintroduce the `gh api --slurp` with `--jq` pair that
+  shipped three times in `pr-merge-sweep.yml` — twice swallowed into *"could not
+  read its comments, leaving it alone"* — and every check in the repository
+  would stay green until the day somebody applied it. Second half: a parked
+  patch is pinned to context in the workflow files this work edits constantly,
+  `pending/README.md` told a human to check that it still applies, and nothing
+  checked. Raised by the reviewer on #128 as its finding 2, non-blocking there
+  because nothing in #128 executes on `main`, and filed as
+  [#179](https://github.com/hleserg/Attadipa/issues/179).
+- **Acceptance:** both halves guarded, both mutation-verified, neither needing
+  the owner or a `workflows` permission.
+- **Research status:** n/a
+- **Implementation status:** done. Both checks live in
+  `.github/tests/gh-api-usage-test.sh`, which CI already runs at `ci.yml:360` —
+  a new script would have needed a line in `ci.yml`, which is the file an agent
+  cannot write, which is the whole reason patches are parked in the first place.
+  The `gh api` scan now also reads `docs/automation/pending/*.patch`, **added
+  lines only**, because a patch that *removes* a bad call is the fix and a scan
+  that flagged it would teach the next person to route around the guard. And
+  `git apply --check` runs over every parked patch, which writes nothing and
+  needs no repository. An empty pending directory is a pass with its own line,
+  not a skip.
+- **Tests:** the suite goes 7 → 15 cases. Five are new: the patch scan catching
+  an added offender, leaving a removed one alone, leaving a good one alone, and
+  the apply check passing a patch that fits and failing one whose context has
+  moved. Mutation-verified against the **real** parked patch in both
+  directions: inserting a `--slurp`/`--jq` line into it reddens the scan, and
+  shifting one context line reddens the apply check; restored, 15/15.
+- **Hardware required:** no.
+- **Known gap, recorded rather than fixed:** `ci.yml:359`'s step name still
+  reads *"The gh calls in the workflows are ones gh accepts"*, which is now
+  narrower than what the step runs. The failure messages name the parked patch,
+  so an operator is not sent to the wrong file, and correcting the name needs a
+  write under `.github/workflows/`.
+
 ### T-127 · A link's `#anchor` is captured and then never checked — **DONE** 2026-08-23
 - **Priority:** P3
 - **Dependencies:** none.
