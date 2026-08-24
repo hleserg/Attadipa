@@ -14,8 +14,8 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
-simulator and twenty-four tests, and has a font pipeline whose output has been
+**Attadipa has code.** As of 2026-08-23 the repository builds six libraries, a
+simulator and twenty-five tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -97,6 +97,22 @@ in both cases.
   reported per asset. **Assets are named by pixels, never by board** — 39 px is
   `icon.size.lg` on one panel and `icon.size.md` on the other, one file, and a
   test asserts it.
+- **Both generated trees are bound to their own bytes now, not only to their
+  inputs — issue #69, and it was a real hole rather than a worry.** Each
+  `INPUTS.sha256` recorded what the tree was *made from* and the check then
+  counted filenames, so a hand-edited bitmap byte in a font and in an icon both
+  passed green; both were reproduced before anything was changed. The stamps now
+  carry a SHA-256 per committed file — one contract for both trees,
+  `tools/integrity/stamp.py` — and 45 mutation cases assert that each of the
+  fourteen outputs is actually checked and that the message names the right
+  fault. The fonts' `Opts:` provenance line no longer carries one developer's
+  absolute paths, which is what made a byte-for-byte comparison possible at all:
+  `tools/integrity/reproducibility.py` regenerates both trees from two different
+  checkout paths and compares all sixteen files against what is committed — run,
+  16 of 16, 3.6 s. The glyph and mask bytes did not move; only provenance did.
+  **The CI job that would run it on every push is written and not applied**: the
+  agent authenticates as a GitHub App that may not write `.github/workflows`, so
+  the block sits in `tools/integrity/README.md` ready to paste — **T-128**.
 - **T-043 … T-053** — the eleven the amendments produced, sitting in READY: the
   node link that is not a BLE link, resynchronisable framing, the `PowerState`
   taxonomy that cannot call a wake-on-LoRa sleep "hibernate", crash-safe
