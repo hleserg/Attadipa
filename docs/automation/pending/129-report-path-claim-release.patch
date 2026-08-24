@@ -49,7 +49,13 @@ THEN, IN THE SAME COMMIT:
                          patch. If the table ends up with no rows at all, then
                          and only then say "Nothing -- the normal state
                          described above".
-    STATUS.md, TASKS.md  T-173 says the fix is parked. Say it is deployed.
+    TASKS.md             move T-173 out of ## BLOCKED and into ## DONE, drop
+                         its `BLOCKED:` block and its first bullet, and retitle
+                         it "-- **DONE** <date>". Take its bullet out of T-144's
+                         evidence list and put that heading back to "two fixes"
+                         if #129 is the only one landing.
+    STATUS.md            the automation row says this is written and not
+                         deployed. Say it is deployed.
 
 VERIFY, ALL OF WHICH WAS RUN BEFORE THIS WAS PARKED:
 
