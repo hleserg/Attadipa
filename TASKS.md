@@ -1994,6 +1994,16 @@ stale silently. The protocol is
   confirmation must not be written up as a whole one.
 - **Answer first, because it is free:** which transport that node actually has.
   §1's trap is that the build name does not tell you.
+- **Added 2026-08-23 by T-127** — two more things this exchange should settle,
+  and one of them it gets nearly for free:
+  - `RESP_CODE_DEVICE_INFO` should be **82** bytes, not the 81 the document
+    carried until now. One frame answers it.
+  - **The frame boundary, if the node is reachable over BLE** — M15 and M16 in
+    [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md). Record the negotiated ATT
+    MTU from both ends, then exchange payloads at 172, 173, 174, 175 and 176
+    bytes and compare the exact received **length and content**, not that a
+    command answered. Over TCP or USB this measures nothing — the boundary is
+    BLE's — so if that node is a LAN companion, this half stays open and says so.
 - **Hardware required:** yes, but not *our* hardware — this needs a MeshCore
   node, not a T-Watch. That is why it can happen now.
 
@@ -3393,6 +3403,50 @@ A1's schematic-revision
 - **Original brief, kept:** *"Прям нормальный дип ресерч. А по результатам уже
   назначишь задание себе че делать че не делать."*
 
+### T-127 · What a companion frame fits over BLE — **DONE** 2026-08-23
+- Research only, from issue [#143](https://github.com/hleserg/Attadipa/issues/143).
+  [MESHCORE_BLE_FRAME_CAPACITY](docs/research/MESHCORE_BLE_FRAME_CAPACITY.md),
+  with the executable half in `docs/research/meshcore-ble-frame-capacity/`.
+- **One number was doing the work of four.** 176 is the protocol and buffer
+  maximum; an ATT notification carries the negotiated MTU minus 3; the effective
+  ceiling is the smaller of those, taken across the sinks a write actually
+  reaches; a chunk payload is that minus the builder's own header. On an ESP32 at
+  MTU 176 they are **176, 173, 173** and — for a **vanilla** node, which has no
+  chunked-download command and so no builder header — **173** again. The 171 that
+  runs through the upstream evidence is a *derivative's* number, 173 less its
+  2-byte chunk header. T-072's *"176 bytes is the frame budget"* was the first of
+  the four presented as all of them.
+- **Why the number is 3 short and not by chance:** `begin()` requests exactly
+  `MAX_FRAME_SIZE` as the MTU, so the buffer size becomes the MTU and the ATT
+  header is then taken out of it.
+- **The upstream defect is a wrapper, not arithmetic.** A MeshCore derivative
+  merged four fixes to code its own firmware never called: the wrapper holding
+  the transports overrode eight methods and not the capacity query, so the
+  MTU-aware leaf was unreachable and its tests passed anyway. Reproduced here by
+  compiling their headers either side of the fix — `pre` fails exactly the four
+  wrapper checks, `post` passes all 31.
+- **Vanilla at our pin cannot have that defect, and has a plainer one.**
+  `maxFrameSize` does not exist in the tree at all. Four producers size against
+  the buffer: `logRxRaw` fills a frame to exactly 176, and two others guard at
+  `sizeof(out_frame)` = 177 — one byte more than any transport accepts — so at
+  exactly one input length (`payload_len` = 173) they build a frame that is
+  dropped with no message in a stock build. `onTraceRecv` has a different
+  path-length guard; whether it reaches 177 remains [#142](https://github.com/hleserg/Attadipa/issues/142)'s parser-bounds question.
+- **The one that reaches the ceiling carries raw received LoRa bytes**, so a
+  truncated frame reads as a radio fault. A client must rule out its own link
+  before it says anything about the radio.
+- Reuse ledger: **ADAPT** two invariants and port two MIT test suites as
+  specifications; **do not** adopt the fork; **MONITOR** vanilla, which has
+  nothing to converge yet — `main` is still our pin.
+- **No ADR.** ADR-0005 §8 already mandates fragmentation; this work corrects the
+  link quantity it must use, not the architectural decision. `link/` is reached:
+  its 199-byte maximum frame must be compared with that link's negotiated MTU,
+  which has not been established; MeshCore's 173-byte observed BLE ceiling is
+  not Attadipa's link contract.
+- **Nothing measured here.** The field evidence is upstream's, on their boards
+  and a different BLE stack. `NOT EXECUTED — HARDWARE REQUIRED` — the plan is
+  §7 of the document, and its first three steps are folded into T-072a.
+
 ### T-072 · What a vanilla MeshCore node actually exposes — **DONE** 2026-08-22
 - §1 of [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
   is answered, and the detail it summarises is
@@ -3403,6 +3457,8 @@ A1's schematic-revision
   port 5000 by default, one client at a time. That makes a host-side client the
   cheapest possible bring-up.
 - **176 bytes is the frame budget** and it cannot be raised by a build flag.
+  *Corrected by T-127, 2026-08-23:* it is the **buffer and protocol** budget, and
+  not what a BLE link delivers, which at MTU 176 is 173.
 - **The finding that outranks the rest:** a position from a vanilla node carries
   **no fix flag, no satellite count, no timestamp and no HDOP**, and `node_lat`
   is one slot shared by the GNSS loop, saved prefs and the client app. A receiver

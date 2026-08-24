@@ -31,6 +31,74 @@ An entry that cannot name its source does not belong here. It belongs in
   memory requirements, LoRa abstraction, or the companion protocol. None of
   these have been read from source yet.
 
+### A MeshCore companion frame does not fit one BLE notification at MTU 176
+
+- **Claim, arithmetic:** on a link whose negotiated ATT MTU is 176, one Handle
+  Value Notification carries **173** bytes, because the PDU spends 3 octets on
+  its opcode and handle. MeshCore's frame buffer is `MAX_FRAME_SIZE` = **176**,
+  and its ESP32 BLE interface requests exactly that as the MTU. So a full frame
+  is **3 bytes larger than the link it asked for**. **173 is the number for a
+  vanilla node**, which has no chunked-download command and so subtracts no
+  builder header; the **171** that appears throughout the upstream evidence is
+  173 minus a 2-byte chunk header belonging to a derivative's `caplog` and config
+  stream, and it is not a fact about this protocol.
+- **Source:** the `− 3` is the Bluetooth Core specification's, not either
+  project's. `MAX_FRAME_SIZE` is `src/helpers/BaseSerialInterface.h:5` and the
+  request is `BLEDevice::setMTU(MAX_FRAME_SIZE)` at
+  `src/helpers/esp32/SerialBLEInterface.cpp:29`, both at
+  `d92964352441e53b93e8667b802e04f6e072b39e`. The arithmetic is re-derived and
+  executed in [`meshcore-ble-frame-capacity/`](meshcore-ble-frame-capacity/),
+  which compiles the upstream sizing header itself rather than restating it.
+- **Checked:** 2026-08-23.
+- **Scope, and it is the important part.** The *loss* this implies was measured
+  by **`OffbandMesh/meshcore-firmware`**, a MeshCore derivative, on **their**
+  Heltec V4.3 boards and on **NimBLE** — three field reports each short by a
+  whole number of full frames × 3 bytes (147, 222, 249), and a bench capture of
+  `83 × 171 + 1 × 53`. Vanilla MeshCore at our pin is on the Arduino core's
+  **Bluedroid**, and nobody has measured it. On Attadipa hardware:
+  **`NOT EXECUTED — HARDWARE REQUIRED`.**
+- **Full reading:**
+  [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md).
+
+### Vanilla MeshCore has no MTU-aware frame sizing anywhere
+
+- **Claim:** at `d92964352441e53b93e8667b802e04f6e072b39e` the identifier
+  `maxFrameSize` does not exist in the tree. `BaseSerialInterface` declares no
+  such method, nothing calls one, and `onMtuChanged()` only prints
+  (`src/helpers/esp32/SerialBLEInterface.cpp:100-101`). Every producer sizes
+  against `MAX_FRAME_SIZE` directly.
+- **Consequence, read from source:** four companion producers size against the
+  buffer. `logRxRaw` → `PUSH_CODE_LOG_RX_DATA` is bounded at *exactly* 176 by
+  `len + 3 <= MAX_FRAME_SIZE` (`examples/companion_radio/MyMesh.cpp:287`) and is
+  called for every received raw packet (`src/Dispatcher.cpp:199`). Two others
+  guard against `sizeof(out_frame)` = `MAX_FRAME_SIZE + 1` = 177 — one byte more
+  than any `writeFrame()` accepts. Their `payload_len` guard admits `payload_len
+  <= 173` while `writeFrame()` accepts 176, so **exactly one value drops**:
+  `payload_len` of precisely 173, building a 177-byte frame. `onTraceRecv` has a
+  different path-length guard; whether it can reach 177 is unresolved in #142.
+  The two `payload_len` frames are **dropped**, on every transport
+  and silently: `ArduinoSerialInterface.cpp:25-28` returns
+  0 with no message, and `MESH_DEBUG_PRINTLN` is `{}` unless `MESH_DEBUG` is
+  defined (`src/MeshCore.h:29-32`), which the root `platformio.ini` does not.
+- **Source:** the files and lines above, read at the pinned revision.
+- **Checked:** 2026-08-23.
+- **Not verified:** that any of it behaves this way on a board.
+  `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### Our MeshCore pin is upstream's `main` tip, not a lagging one
+
+- **Claim:** `d92964352441e53b93e8667b802e04f6e072b39e` is simultaneously the
+  revision this project pinned and the newest commit on `meshcore-dev/MeshCore`
+  `main`, dated 2026-08-14. There is no superseding upstream fix for the frame
+  sizing above, because vanilla has no such concept to fix.
+- **Source:** GitHub API, `repos/meshcore-dev/MeshCore/commits?per_page=1`
+  against the default branch `main`.
+- **Checked:** 2026-08-23. Independently observed the same day by the
+  [#142](https://github.com/hleserg/Attadipa/issues/142) parser-bounds research,
+  which needed the same fact for a different reason.
+- **Note:** `pushed_at` is more recent because it counts pushes to any branch.
+  It is not a claim about `main`.
+
 ---
 
 ## Toolchain / host environment
