@@ -48,6 +48,9 @@ compete, the one that gets a real watch closer to booting wins unless the other
 blocks it or is a correctness, security or queue-stalling defect.
 
 ### T-165 · There is no ESP-IDF project, and every device task waits behind that
+- **Filed as [#189](https://github.com/hleserg/Attadipa/issues/189).** Not `agent:ready` yet, deliberately: eighteen
+  open pull requests are conflicted against `main`, and adding a writer to that
+  is how a correction becomes chaos.
 - **Priority:** P0 — item 2 on [`docs/ROADMAP.md`](docs/ROADMAP.md)'s critical
   path, and the one that unblocks the rest of it.
 - **Dependencies:** T-004, which is a decision record rather than work.
@@ -95,6 +98,7 @@ blocks it or is a correctness, security or queue-stalling defect.
 ---
 
 ### T-166 · One board driven vertically: display, touch, PMU and RTC on the Waveshare
+- **Filed as [#190](https://github.com/hleserg/Attadipa/issues/190)**, blocked on T-165.
 - **Priority:** P0 after T-165 — item 3 on the roadmap's critical path.
 - **Dependencies:** T-165. **D21** blocks the first line of display bring-up and
   nothing before it.
@@ -132,6 +136,7 @@ blocks it or is a correctness, security or queue-stalling defect.
 ---
 
 ### T-167 · Sleep, wake, and a lifecycle that survives both
+- **Filed as [#191](https://github.com/hleserg/Attadipa/issues/191)**, blocked on T-166.
 - **Priority:** P1 — item 6 on the roadmap's critical path, and part of the
   first vertical result rather than polish after it. A watch that cannot sleep
   is not a watch.

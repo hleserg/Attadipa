@@ -98,11 +98,16 @@ behind it has not been tested, only asserted.
 | # | Task | What it delivers | Real blocker |
 |---|---|---|---|
 | 1 | **T-004** | the ESP-IDF pin as a decision, not an installation | none — it is one row in [DEPENDENCIES](research/DEPENDENCIES.md) away from done |
-| 2 | **T-165** | an ESP-IDF project that builds: `main/`, `sdkconfig.defaults`, a partition table, a boot path, serial diagnostics, a reproducible build, a documented flash procedure | T-004 |
-| 3 | **T-166** | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC | T-165; **D21** on the first line of display bring-up |
-| 4 | **T-114** | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel | T-165, T-166 |
+| 2 | **T-165** ([#189](https://github.com/hleserg/Attadipa/issues/189)) | an ESP-IDF project that builds: `main/`, `sdkconfig.defaults`, a partition table, a boot path, serial diagnostics, a reproducible build, a documented flash procedure | T-004 |
+| 3 | **T-166** ([#190](https://github.com/hleserg/Attadipa/issues/190)) | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC | T-165; **D21** on the first line of display bring-up |
+| 4 | **T-114** ([#117](https://github.com/hleserg/Attadipa/issues/117)) | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel | T-165, T-166 |
 | 5 | **T-037** | the first Clock, running on the watch, on real input, with the real tokens and fonts | T-166 |
-| 6 | **T-167** | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | T-166; T-068 |
+| 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | T-166; T-068 |
+
+None of the three new ones is `agent:ready` yet, and that is deliberate:
+eighteen open pull requests are conflicted against `main` as this is written, and
+adding a writer to that is how a course correction turns into chaos. Draining
+the queue is the step before starting the slice, not a competitor to it.
 
 Steps 4 and 5 do not strictly order against each other. Step 4 first is the
 better bet, because it is the instrument that makes step 5 checkable — which is
