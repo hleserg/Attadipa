@@ -144,7 +144,7 @@ Two things make it converge rather than merely look as though it does:
   verdict.
 
 That rule is [`.github/scripts/review-verdict.sh`](../../.github/scripts/review-verdict.sh),
-with 87 assertions in `.github/tests/review-verdict-test.sh` behind it, proven to
+with 97 assertions in `.github/tests/review-verdict-test.sh` behind it, proven to
 fail against six deliberate defects including the literal reading of #169 above.
 It is executable rather than a paragraph in the prompt for the same reason the
 intake gate is a script: a rule that has never been run against a hostile input

@@ -755,7 +755,7 @@ four more things at no cost:
   `.github/workflows/`, probed and rejected on this branch, so it is
   `docs/automation/pending/169-review-convergence.patch` and every round is still
   a first round until a local session applies it.
-  **Tests:** 96 assertions, offline, proven to fail against six deliberate
+  **Tests:** 97 assertions, offline, proven to fail against six deliberate
   defects — the literal `carry-over` reading (15 failed), an unknown kind
   defaulting to `normal` (2), model-supplied dating (4), silence closing a
   finding (3), an unknown state read as `fixed` (1), a category downgrade (1),

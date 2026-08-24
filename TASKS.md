@@ -148,7 +148,7 @@ stale silently. The protocol is
   it has three halves** ([#169](https://github.com/hleserg/Attadipa/issues/169),
   filed after `main` did not move for 25 hours with 39 open pull requests):
   - **A convergence rule for the reviewer — written, tested, not deployed.**
-    `.github/scripts/review-verdict.sh` with 87 assertions. The floor is round 4
+    `.github/scripts/review-verdict.sh` with 97 assertions. The floor is round 4
     and it is an owner-movable number rather than a default. The workflow half is
     `docs/automation/pending/169-review-convergence.patch`, because a GitHub App
     cannot push `.github/workflows/`; **until a local session applies it every
