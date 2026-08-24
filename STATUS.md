@@ -36,7 +36,10 @@ a device will serve when there is firmware for one.
 The `PRIVATE` in the second row is the enforcement mechanism for
 [ADR-0007](docs/adr/0007-two-capability-layers.md) §5, and two tests compile one
 fixture against two different libraries to prove an application still cannot
-include a hardware header.
+include a hardware header. There are now three such pairs: the third compiles
+one fixture with and without a `bool` in a `GnssCapabilities` initializer, so
+the rule that "proven absent" and "never checked" cannot be written as the same
+value is enforced by the compiler rather than by review.
 
 The simulator renders at 240 × 240 and 410 × 502 from one binary, selected by
 `--board`, and fits any of the five candidate T-Watch radios with `--radio`
@@ -1345,13 +1348,55 @@ four more things at no cost:
   `Trusted`, eight for `Untrusted`; the pre-existing
   `test_nothing_defaults_to_a_confident_answer` did **not** move under either,
   which is why it had stayed green while contradicting its own name. The
-  structure did not grow: the extra byte fits existing padding, so `GnssStatus`
-  is 40 bytes and `DiagnosticsSnapshot` 384 both before and after, against a
-  1 KiB budget. Host suite clean under GCC, under GCC with `-Werror -Wshadow
+  structure did not grow *on the branch*: the extra byte fitted existing
+  padding, and `GnssStatus` was 40 bytes there. It is **44 on `main`**, and the
+  four bytes are not this change's — `trust_unconfirmed` (#153) landed while
+  this branch was open, and the two spend from the same padding without either
+  knowing about the other. `tests/test_diagnostics.cpp` records the measurement
+  and bounds it at 44. `DiagnosticsSnapshot` is 384 throughout, against a 1 KiB
+  budget. Host suite clean under GCC, under GCC with `-Werror -Wshadow
   -Wconversion -Wsign-conversion -Wcast-qual -Wold-style-cast`, under Clang and
   under ASan+UBSan with `-fno-sanitize-recover=all`. Recorded as an amendment to
   [ADR-0011](docs/adr/0011-gnss-integrity.md) §5, which is where a future reader
   of "three states" needs to meet the fourth reading.
+- **A capability nobody had checked was stored as one the hardware does not
+  have.** [#166](https://github.com/hleserg/Attadipa/issues/166), the first of
+  T-062's remaining findings. `GnssCapabilities` was four plain `bool`s
+  defaulting to `false`, and three call sites read that `false` as *the part
+  cannot do this*: `start_kind()` refused a warm start, and
+  `transition_is_legal()` and `next_state()` refused `Backup` and `PowerSave`.
+  All three refusals are correct and none of them was the problem — **the
+  problem is that they are also the answer for a receiver nobody has looked up
+  yet**, which is the state both candidate parts are genuinely in until T-051
+  and T-052 land. So a board profile with a field somebody forgot to fill in was
+  indistinguishable from one where the datasheet had been read and said no, and
+  after the research closed there would have been no way to check mechanically
+  that every capability had actually been given a verdict. The header's own
+  comment claimed `false` meant "not established"; the type and every consumer
+  disagreed with the comment.
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §3 had already decided the fix —
+  *"every entry starts as `UNKNOWN` and becomes `SUPPORTED` or `UNSUPPORTED`
+  only from a primary source"* — so this is a decision that was never
+  implemented rather than a new one, and no ADR was written. The four fields are
+  now `SupportState{Unknown, Unsupported, Supported}` defaulting to `Unknown`,
+  the three call sites gate on `is_supported()` so `Unknown` stays fail-safe,
+  and `is_established()` / `fully_established()` keep the provenance readable
+  after the decision is made — a profile with a gap fails
+  `fully_established()`, which is how T-051 and T-052 become checkable instead
+  of remembered. `to_string(SupportState)` keeps `Unknown` sayable on a
+  diagnostics screen rather than rendering as `Unsupported`, which is where a
+  fixed collision usually reappears. Two proofs rather than an assertion: the
+  behavioural one — making `is_supported()` treat `Unknown` as supported turns
+  eight checks red across all three call sites — and the structural one, that
+  the old `bool` model does not merely fail the new tests but **fails to
+  compile** them. A scoped enum is what makes the second true, so
+  `GnssCapabilities{false, false, false, false}` is now a build error, pinned by
+  a compile-fail test in the same family as the two layer boundaries and
+  verified against both compilers' refusals (GCC and Clang word it differently
+  and the check matches either). `expect_build_failure.cmake` gained a
+  per-caller `EXPLAIN` so a third rule does not report itself as ADR-0007.
+  Nothing here is a hardware claim: every capability is still `Unknown`, and
+  that is now visible in the type instead of hidden in a `false`.
 
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
