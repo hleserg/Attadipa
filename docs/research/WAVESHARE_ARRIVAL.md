@@ -463,7 +463,7 @@ Recorded here because it is the part of §1 that has an architectural answer, an
 it is small.
 
 `platform::PanelTechnology` already exists and the Waveshare profile already sets
-`Amoled` ([`platform/src/board_profiles.cpp:109`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
+`Amoled` ([`platform/src/board_profiles.cpp:124`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
 **Nothing reads it.** A grep across `platform/`, `core/`, `ui/` and `apps/`
 returns the two assignments and no consumers, so no code in this project can
 behave differently on an emissive panel today, whatever is decided.
