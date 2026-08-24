@@ -65,6 +65,7 @@ void test_a_snapshot_can_be_saved_from_a_panic_handler()
     original.gnss.record_trust(TrustState::Degraded,
                                trust_reason_bit(TrustReason::ReceiverJamming) |
                                    trust_reason_bit(TrustReason::AccuracyPoor));
+    original.gnss.trust_unconfirmed = trust_reason_bit(TrustReason::ReceiverSpoofing);
     original.transport_count = 2;
 
     unsigned char buffer[sizeof(DiagnosticsSnapshot)];
@@ -78,6 +79,7 @@ void test_a_snapshot_can_be_saved_from_a_panic_handler()
     CHECK(restored.power_state == PowerState::Idle);
     CHECK(restored.gnss.trust == TrustState::Degraded);
     CHECK(restored.gnss.trust_reasons == original.gnss.trust_reasons);
+    CHECK(restored.gnss.trust_unconfirmed == original.gnss.trust_unconfirmed);
     CHECK(restored.transport_count == 2);
 }
 
@@ -191,11 +193,18 @@ void test_the_snapshot_is_small_enough_to_keep()
     // The GNSS block has its own bound, because making "not evaluated" sayable
     // cost a byte and the next honest-default fix will want another. A budget
     // is only a budget if it is checked where the spending happens, and only if
-    // it is set at what is actually being spent: this is 40 on the host and,
+    // it is set at what is actually being spent: this is 44 on the host and,
     // every member being a `uint8_t`-backed enum or a `uint32_t`, on the target
     // too. Slack here would let the next field in unremarked, which is the
     // whole failure this number exists to prevent.
-    CHECK(sizeof(GnssStatus) <= 40);
+    //
+    // 40 until this branch met `main`, and the four bytes are named rather than
+    // absorbed: `trust_unconfirmed` (#153) landed on `main` while this change
+    // was open, and the two spend from the same budget without either knowing
+    // about the other. Measured, not chosen — `sizeof(GnssStatus)` is 44 with
+    // both, 40 with only this branch's `std::optional<TrustState>`. That is the
+    // whole of the increase, and the next field still has to argue for itself.
+    CHECK(sizeof(GnssStatus) <= 44);
 }
 
 // §14 of the brief, checked structurally. A std::string anywhere in this
@@ -428,6 +437,43 @@ void test_the_reason_mask_carries_the_whole_set()
     CHECK(kTrustReasonCount <= 32);
 }
 
+// THE STATE THAT DECIDES THE VERDICT HAS TO BE EXPRESSIBLE IN THE STRUCT A
+// SCREEN READS. `trust_reasons` alone cannot describe a device held below
+// `Trusted` by an allegation nobody withdrew: nothing is currently alleged, the
+// mask is empty, and the state still will not climb. That is the one case
+// `trust.h` promises the per-reason mask exists to explain -- "so a diagnostic
+// screen can name it rather than showing a device stuck for no visible reason"
+// -- and until `trust_unconfirmed` existed the promise was kept by an accessor
+// no snapshot could carry. Found in review of #153.
+void test_a_snapshot_can_say_why_a_device_is_stuck_with_no_live_reason()
+{
+    TrustEngine engine;
+    engine.report(TrustReason::ReceiverJamming, MonotonicTime{0});
+    engine.update(MonotonicTime{0});
+
+    // Let the evidence lapse without anybody retracting it.
+    const TrustPolicy& policy = engine.policy();
+    engine.update(MonotonicTime{policy.evidence_ttl.value + 1});
+
+    GnssStatus status;
+    status.trust             = engine.state();
+    status.trust_reasons     = engine.reasons();
+    status.trust_unconfirmed = engine.unconfirmed_reasons();
+
+    // This is the shape a screen has to be able to render: not Trusted, and no
+    // live reason to show for it.
+    CHECK(status.trust != TrustState::Trusted);
+    CHECK(status.trust_reasons == 0);
+
+    // And the snapshot names the detector being waited on.
+    CHECK((status.trust_unconfirmed & trust_reason_bit(TrustReason::ReceiverJamming)) != 0);
+    CHECK((status.trust_unconfirmed & trust_reason_bit(TrustReason::ReceiverSpoofing)) == 0);
+
+    // The two masks are disjoint, so a screen can render them as one list
+    // without a reason appearing twice under two different words.
+    CHECK((status.trust_reasons & status.trust_unconfirmed) == 0);
+}
+
 // A support engineer reading a snapshot must not meet a bare integer. Every
 // enum in it prints.
 void test_every_enum_in_a_snapshot_prints()
@@ -473,6 +519,7 @@ int main()
     test_an_unevaluated_trust_renders_as_itself();
     test_reasons_never_outlive_their_verdict();
     test_the_reason_mask_carries_the_whole_set();
+    test_a_snapshot_can_say_why_a_device_is_stuck_with_no_live_reason();
     test_every_enum_in_a_snapshot_prints();
 
     if (failures != 0) {

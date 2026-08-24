@@ -6,15 +6,20 @@ find_package(SDL2 REQUIRED)
 
 add_executable(attadipa_sim
     boot_screen.cpp
+    debug_server.cpp
+    diagnostic_screen.cpp
     main.cpp
     labels.cpp
     options.cpp
     png_writer.cpp
+    remote_input.cpp
+    screen_source.cpp
 )
 
 target_link_libraries(attadipa_sim PRIVATE
     attadipa_platform
     attadipa_core
+    attadipa_debug
     attadipa_apps
     attadipa_l10n
     attadipa_ui

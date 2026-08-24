@@ -16,7 +16,7 @@ datasheet is a promise, not a measurement.
 note that Bosch's own site refuses to serve. They are answered now, and not
 from the application note: **Bosch deleted the material from the datasheet
 between revisions, and the earlier revision is still mirrored.** See
-[§1.2](#12-the-behaviour-is-documented--in-a-revision-bosch-withdrew) for the
+[§1.2](#12-the-behaviour-is-documented--in-a-revision-bosch-withdrew-supported) for the
 provenance, and [VERIFIED_FACTS](VERIFIED_FACTS.md) for the fact itself. Every
 BMA423 claim below now says which **revision** it came from, because for this
 part that is not a formality.

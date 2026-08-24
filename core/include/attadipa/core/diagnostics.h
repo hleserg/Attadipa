@@ -152,6 +152,18 @@ struct GnssStatus {
     // different situation from either alone (ADR-0011 §5).
     std::uint32_t                 trust_reasons = 0;
 
+    // The allegations that lapsed and were never withdrawn --
+    // `TrustEngine::unconfirmed_reasons()`. A separate field because it answers
+    // a different question from `trust_reasons`, and a screen that shows only
+    // the first can show a device that is not `Trusted` with an empty reason
+    // set: nothing is currently alleged, and the state still cannot climb
+    // because a detector stopped talking without ever saying the condition had
+    // ended. `trust.h` promises that the per-reason mask exists so a diagnostic
+    // screen "can name it rather than showing a device stuck for no visible
+    // reason", and until this field existed the struct such a screen reads
+    // could not carry it -- the promise was kept by an accessor nothing outside
+    // the tests could see. Found in review of #153.
+    std::uint32_t                 trust_unconfirmed = 0;
     PositionSource                source     = PositionSource::Unknown;
     std::optional<std::uint8_t>   satellites_used;
     std::optional<std::uint8_t>   satellites_in_view;

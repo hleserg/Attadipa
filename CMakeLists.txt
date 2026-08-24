@@ -23,6 +23,7 @@ target_include_directories(attadipa_headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR
 #   attadipa_platform   chips, pins, rails, buses      — apps/ does not link it
 #   attadipa_core       services and the capability registry
 #   attadipa_link       framing, queues and link state — below core, links core
+#   attadipa_debug      the development-time debug channel — links core and link
 #   attadipa_l10n       the string catalogues          — core does not link it
 #   attadipa_apps       applications                   — links core and l10n
 #
@@ -34,6 +35,7 @@ target_include_directories(attadipa_headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR
 add_subdirectory(platform)
 add_subdirectory(core)
 add_subdirectory(link)
+add_subdirectory(debug)
 add_subdirectory(l10n)
 add_subdirectory(ui)
 add_subdirectory(apps)

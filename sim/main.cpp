@@ -8,9 +8,16 @@
 #include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/version.h"
 
+#include "attadipa/core/input.h"
+#include "attadipa/debug/bridge.h"
+
 #include "boot_screen.h"
+#include "debug_server.h"
+#include "diagnostic_screen.h"
 #include "options.h"
 #include "png_writer.h"
+#include "remote_input.h"
+#include "screen_source.h"
 
 // The Attadipa desktop simulator.
 //
@@ -174,7 +181,15 @@ int main(int argc, char** argv)
     l10n::set_locale(options.locale);
 
     attadipa::sim::set_theme(options.theme);
-    attadipa::sim::build_boot_screen(inventory, caps);
+    if (options.diagnostic_screen) {
+        // The test pattern replaces the capability screen rather than sitting
+        // beside it: what a screenshot has to show is the whole panel, and a
+        // pattern in half of it cannot reveal a crop.
+        l10n::set_locale_changed_handler(attadipa::sim::rebuild_diagnostic_screen);
+        attadipa::sim::build_diagnostic_screen(options.board);
+    } else {
+        attadipa::sim::build_boot_screen(inventory, caps);
+    }
 
     // A box on a screen is a defect, and this is where it is refused.
     //
@@ -212,6 +227,38 @@ int main(int argc, char** argv)
         }
     }
 
+    // The input layer, and the debug channel above it.
+    //
+    // Created here because this is the composition root: it is the one place
+    // allowed to see both the board and the services, exactly as main() is on a
+    // device. The frame buffer is sized from the board's panel and lives here
+    // rather than inside the bridge, so a build that does not ask for the debug
+    // channel does not carry it -- which is the whole argument in section 9 of
+    // the request, and the reason RESOURCE_BUDGET wants pools declared where
+    // somebody can see them.
+    core::InputQueue           input_queue;
+    core::InputState           input_state;
+    attadipa::sim::LvglScreenSource screen_source(options.board);
+    std::vector<std::uint8_t>  frame_buffer;
+    attadipa::sim::DebugServer debug_server;
+
+    attadipa::sim::remote_input_attach(input_queue);
+    if (options.diagnostic_screen) {
+        attadipa::sim::remote_input_set_button_listener(attadipa::sim::diagnostic_screen_on_button);
+        attadipa::sim::remote_input_set_pointer_listener(attadipa::sim::diagnostic_screen_on_pointer);
+    }
+
+    if (options.debug_socket != nullptr) {
+        frame_buffer.resize(screen_source.frame_bytes());
+    }
+    debug::Bridge bridge(input_queue, input_state, screen_source,
+                         frame_buffer.empty() ? nullptr : frame_buffer.data(),
+                         frame_buffer.size());
+
+    if (options.debug_socket != nullptr && !debug_server.listen(options.debug_socket)) {
+        return 1;
+    }
+
     if (options.screenshot != nullptr) {
         // One handler pass first, so layout and the theme have run. A snapshot
         // of an unlaid-out screen is a picture of nothing, and it is not
@@ -222,15 +269,32 @@ int main(int argc, char** argv)
         }
     }
 
+    // `remote_input_pump` before `lv_timer_handler`, always. LVGL's read timer
+    // fires inside the handler, so an event delivered after it waits for the
+    // next one -- and that is 33 ms (`LV_DEF_REFR_PERIOD`), not one iteration
+    // of this loop. The pump therefore hands LVGL a *queue* of transitions
+    // rather than a single state; see the long note in `sim/remote_input.cpp`
+    // for why a single one silently merged two taps into one click.
+    //
+    // The debug server is polled after, so that a screenshot taken this frame
+    // is of what was just drawn rather than of the frame before.
     if (options.frames == 0) {
         for (;;) {
+            attadipa::sim::remote_input_pump();
             const std::uint32_t next = lv_timer_handler();
-            lv_delay_ms(next == LV_NO_TIMER_READY ? 5 : (next > 50 ? 50 : next));
+            debug_server.poll(lv_tick_get(), bridge);
+            // A connected client is served promptly; an idle simulator still
+            // idles. Polling at the interface's own pace while a transfer is
+            // running would make a 600 kB screenshot take a minute.
+            const std::uint32_t cap = debug_server.has_client() ? 5u : 50u;
+            lv_delay_ms(next == LV_NO_TIMER_READY ? 5 : (next > cap ? cap : next));
         }
     }
 
     for (std::uint32_t frame = 0; frame < options.frames; ++frame) {
+        attadipa::sim::remote_input_pump();
         lv_timer_handler();
+        debug_server.poll(lv_tick_get(), bridge);
         lv_delay_ms(5);
     }
     std::printf("rendered %u frames, exiting\n", options.frames);
