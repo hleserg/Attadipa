@@ -814,6 +814,79 @@ in C++, that every linked descriptor is `A8` with `stride == width` and carries
 a drawing rather than a blank rectangle.
 ---
 
+### Binding a committed generated tree to the bytes in it
+
+**Problem:** two asset trees are generated and committed —
+`assets/fonts/generated/` and `ui/assets/generated/` — so that a build needs
+neither Node nor Pillow. Something then has to fail when the committed bytes
+stop being what the sources produce, on a machine with nothing installed, and it
+has to distinguish "the inputs moved", "an output was edited" and "the record
+itself is damaged", because those need three different repairs.
+
+**Projects investigated:** `sha256sum` and its `-c` verify mode (coreutils, the
+obvious answer) · `git hash-object` and `git diff --exit-code` after a
+regeneration · `pre-commit` with `check-added-large-files`-style hooks ·
+content-addressed build systems, Bazel and DVC, which solve exactly this and
+several other problems nobody here has · the existing `INPUTS.sha256` mechanism
+in both pipelines, which is what had to be extended.
+
+**Useful implementation:** `sha256sum -c` is a real candidate and was close.
+It reads a `SHA256SUMS` file, verifies every listed file, exits non-zero on any
+mismatch, and is on every machine that already has coreutils.
+
+**License:** n/a — nothing was taken. `hashlib` is the Python standard library.
+
+**Strengths of the candidate:** universally available, universally understood, a
+format anyone can read and re-verify by hand.
+
+**Weaknesses:** three, and together they decide it. It verifies only the files
+it lists, so deleting an asset and leaving a stale line passes for every file
+still there while a *newly generated* file nobody stamped is invisible —
+the check has to compare both directions, and `-c` compares one. It has nowhere
+to put the inputs digest, so a tree would need two files that must agree and can
+be updated separately, which is the same class of defect one file down. And its
+failure output is `FAILED` per line, with nothing about which of the three
+faults occurred or what command repairs it; both pipelines already compute an
+inputs digest in Python, so wrapping a second process to get a worse message
+costs more code than not doing it.
+
+**Decision:** `REIMPLEMENT` — `tools/integrity/stamp.py`, about 200 lines of
+standard library, shared by both pipelines rather than copied into each.
+
+**Reason.** The thing being written is not "hash some files": it is a small
+format with a strict parser and three distinguishable verdicts, whose whole
+value is that it refuses ambiguity. A `SHA256SUMS` beside an `INPUTS.sha256`
+would be two records that must agree, maintained by two code paths, which is the
+shape the finding in issue #69 was already about. One file, one writer, one
+parse — and a deliberate absence of any "re-stamp what is on disk" command,
+because a tool that blesses whatever bytes it finds reopens the hole while
+looking like maintenance.
+
+**Source revision:** n/a. The two things it is pinned against are recorded
+elsewhere and stay there: `lv_font_conv` **1.5.3** and LVGL **v9.5.0** at
+`85aa60d18b3d5e5588d7b247abf90198f07c8a63`, both in
+[DEPENDENCIES](DEPENDENCIES.md), and the vendored `LVGLImage.py` hash in
+`tools/assets/vendor/README.md`. The font generator now refuses a converter
+whose `--version` is not the pinned one, so the pin is enforced rather than
+documented.
+
+**Attadipa integration:** `tools/integrity/stamp.py`, used by
+`tools/font/generate_ui_fonts.py` and `tools/assets/generate_images.py`.
+
+**Tests required, and present:** `tools/integrity/selftest.py` — forty-five
+cases, registered as `ui_generated_outputs_reject_mutations`. Each of the
+fourteen committed outputs is mutated in turn in a copy of the tree and the real
+check must reject it and name it; so are a deleted output, a changed input, a
+doctored hash, a dropped line, a stamp with no inputs line, a stamp naming a
+file nobody generates, and a deleted stamp. A control case at each end asserts
+an untouched tree passes, which is what catches a harness that has broken the
+sandbox and is therefore rejecting everything for free. Reproducibility across
+checkout paths is `tools/integrity/reproducibility.py` rather than this file,
+because it needs the pinned converter; it has been run and its CI job is written
+and waiting on a permission (T-128).
+
+---
+
 ### Speaking the vanilla MeshCore companion protocol
 
 **Problem:** a watch must talk to a MeshCore node that is running **stock**

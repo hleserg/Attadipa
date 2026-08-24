@@ -290,6 +290,39 @@ stale silently. The protocol is
 
 ## NEXT
 
+### T-128 · The generated-asset reproducibility job is written and cannot be pushed
+- **Priority:** P2
+- **Dependencies:** T-149 (**done**) — the script it runs is committed.
+- **Goal:** add the `generated-assets` job to `.github/workflows/ci.yml`. It
+  regenerates both committed asset trees from two different absolute paths with
+  the pinned `lv_font_conv` and compares all sixteen files against what is
+  committed — the one thing a stamp cannot do, because a stamp written beside a
+  wrong file records the wrong file faithfully. The block is in
+  [`tools/integrity/README.md`](tools/integrity/README.md), written against
+  `actionlint 1.7.7` and passing it, together with the two one-line edits to the
+  `evidence` job that go with it.
+- **Why it is not already there, and it is not a decision:** the agent that
+  wrote it authenticates as a GitHub App whose installation may not write
+  `.github/workflows`, so the push was refused server-side — *"refusing to allow
+  a GitHub App to create or update workflow `.github/workflows/ci.yml` without
+  `workflows` permission"*. Working around that would mean smuggling a workflow
+  change past a permission boundary somebody set on purpose.
+- **Acceptance:** the job runs on a pull request and reaches `reproducible: 16
+  generated file(s) are identical across two checkout paths and identical to
+  what is committed`, and `evidence` lists it. Run ID recorded here.
+- **Two ways to close it, and the owner picks:** paste the block in an
+  orchestrator session whose token may write workflows, or grant the App
+  installation `workflows: write` and hand this back to the queue. The first is
+  one commit and changes no permissions; the second unblocks every future
+  workflow fix an agent finds, and widens what an agent may push. **Recommended:
+  the first**, because nothing else in the current backlog needs the second and
+  a permission granted to close one task is a permission nobody revisits.
+- **Watch for:** the job installs `pypng` and `lz4` from pip inside a venv —
+  they are `LVGLImage.py`'s module-scope imports and are needed even with
+  compression off. Pillow comes from apt, as it does in the other jobs.
+- **Hardware required:** no. **Owner required:** yes, for the permission or the
+  paste.
+
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
 - **Dependencies:** T-034 (**done**)
@@ -450,9 +483,29 @@ stale silently. The protocol is
   `encode()` accepts it and the round-trip tests cover it — so a caller
   draining until zero silently drops one.
 
-- **`Attach` while `Faulted` reports the wrong refusal.** It returns `Redundant`
-  where `Ignored` is the truth: nothing about a faulted link makes a new attach
-  redundant, and the two words tell an operator different things.
+- **`Attach` while `Faulted` reported the wrong refusal — fixed, issue #158.**
+  It returned `Redundant` where `Ignored` is the truth: nothing about a faulted
+  link makes a new attach redundant, and the two words tell an operator
+  different things. The cause was one guard, `phase_ != Absent -> Redundant`,
+  answering for five phases at once, and the diagnostic cost was the larger
+  half — `Redundant` is not counted, so a controller retrying an attach against
+  broken hardware left nothing in `ignored_events()` to find. `Attach` is now
+  classified per phase: `Absent` applies it, `Attached`/`Connecting`/`Ready`
+  answer `Redundant` because the peripheral genuinely is there, and `Faulted`
+  and `Suspended` answer `Ignored` and are counted. **`Suspended` is the
+  contract that had never been decided**, and it is decided here: a quiesced
+  link carries nothing, so an attach is refused rather than satisfied and the
+  way back stays `Resume` — otherwise a lifecycle owner that had not noticed
+  the suspend could route around it silently. A phase added to the enum later
+  falls to `Ignored` rather than `Redundant` in `link_state.cpp`, which is the
+  safe half of the two and is deliberately not compile-time guarded; the guard
+  is in **the test**, where a `constexpr` coverage check over
+  `kTransportPhaseCount` fails to build if the phase table does not name every
+  phase. So a new phase compiles and behaves safely, and the suite refuses to
+  build until somebody has decided what it *should* do.
+  Mutation-verified: restoring the old guard turns 13 checks red across the
+  three new tests, and leaves the `Attached`/`Connecting`/`Ready` rows green,
+  which is the evidence that only the two intended phases moved.
 
 - **`Detach` hardcodes `PeerClosed`.** A detach the *device* initiated is
   recorded as one the peer initiated. That is the field-report evidence for the
@@ -519,8 +572,12 @@ stale silently. The protocol is
   with the reason. A silent decline is not one.
 - **Research status:** n/a
 - **Implementation status:** in progress — the items marked *fixed* above are
-  closed, each with a mutation-verified test; the rest are open and this task
-  stays open with them.
+  closed, each with a mutation-verified test, and the rest are open with this
+  task. Closed so far: the `Attach`-while-`Faulted` refusal (issue #158), and
+  silence after a GNSS alarm restoring `Trusted` on its own (issue #151). The
+  remaining bullet in the same file as the first — zero meaning two things in
+  the decoder — was deliberately left alone, so that one finding stays one
+  change.
 - **Tests:** host, per item
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.
@@ -2255,6 +2312,61 @@ A1's schematic-revision
   looking for links. Two more cases: an illustration stays quiet, a real link
   after a code span on the same line is still read.
 
+### T-149 · The generated asset checks never looked at the generated bytes — **DONE** 2026-08-23
+- **This task was filed as T-127 and renumbered on merge.** `main` took its
+  own T-127 — *a link's `#anchor` is captured and then never checked* — while
+  this branch was open, so two unrelated tasks arrived at one ID. `main`'s
+  keeps the number because it landed first; every reference here to the
+  *anchor* half still reads T-127 and is correct. `check_docs.py`'s duplicate
+  task-ID check would have caught the collision at merge, which is what it is
+  for; it is recorded here so the next reader does not read the two as one.
+- **The finding, reproduced before it was fixed** (issue #69). Both committed
+  asset trees were guarded by a stamp of their *inputs* and then a count of
+  filenames. Editing a line of a generated font left
+  `generate_ui_fonts.py --check` at exit 0 saying *"fonts: inputs unchanged, 4
+  generated file(s) present"*; changing the first A8 bitmap byte of
+  `attadipa_icon_mesh_33.c` left `generate_images.py --check` at exit 0 saying
+  the same about ten. Missing glyphs, altered masks and corrupted descriptors
+  could all reach firmware behind a green CI run.
+- **The second half was worse, and is the reason the first was never caught.**
+  `lv_font_conv` writes its own argv into an `Opts:` comment, so all four
+  committed fonts carried `/mnt/e/projects/firefly/...` — one machine's absolute
+  paths. A fresh generation anywhere else differed in bytes while being
+  identical in every glyph, so the only byte-for-byte gate available reported
+  **all four files as differing** and could never be turned on. MEASURED here
+  before the fix: four false positives, and the diff was one line per file.
+- **One contract for both trees**, `tools/integrity/stamp.py`: `inputs` plus a
+  `output <sha256> <name>` line per committed file, strict parser, three
+  distinguishable verdicts — inputs moved, a file changed, the stamp itself is
+  damaged — because those need three different repairs. Written atomically and
+  **only by a generator**; there is deliberately no "re-stamp what is on disk"
+  mode, since a tool that blesses whatever bytes it finds is the same hole
+  wearing a maintenance hat. Reuse considered and recorded: `sha256sum -c` was
+  the close candidate and is in [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
+- **The provenance line is normalized** to logical paths, and now says something
+  a reader can check: every generated font banner carries the source TTF's
+  SHA-256 and the pinned converter version, and the generator **refuses a
+  converter whose `--version` is not 1.5.3** rather than trusting whatever npm
+  left on PATH. The glyph bytes did not move — verified by comparing the bodies
+  past the header, all four identical.
+- **45 mutation cases**, `ui_generated_outputs_reject_mutations`, needing neither
+  Node nor Pillow so they run in the same host job as the gate they are about.
+  Each of the fourteen outputs is corrupted in turn in a copy of the tree; so is
+  each input, and the stamp in six different ways. A control case at each end
+  asserts an untouched tree still passes — that is what caught a harness bug
+  where CPython reused bytecode from a mutation because the restored source had
+  the same size and the same mtime to the second.
+- **The expensive half is a script that is run and not yet automated** —
+  `tools/integrity/reproducibility.py`, T-128 for the CI job: fetch Montserrat
+  from the pinned LVGL commit (one 243 kB file, hash-checked, instead of the
+  350 MiB clone), install `lv_font_conv@1.5.3`, regenerate **both** trees from
+  two different absolute paths and compare all sixteen files against what is
+  committed. Host jobs stay Node-free, which is the whole reason the outputs are
+  committed. Run here before the job existed: 16/16 identical, 3.6 s.
+- **Not hardware.** Whether the glyphs and masks look right on a panel is
+  `NOT EXECUTED — HARDWARE REQUIRED` and belongs to a HIL task; this is about
+  the bytes being the bytes that were generated.
+
 ### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
 - **The cause was not the model, the context or the turn ceiling.** It was
   `allowed_bots: ""` in `claude-agent.yml`. The hourly watchdog hands a task
@@ -2466,7 +2578,9 @@ A1's schematic-revision
 - **The staleness gate covers the converter as well as the art.** An encoder
   that changes its output *is* the asset changing, so its SHA-256 is inside
   `INPUTS.sha256` and a bump fails `ui_images_are_current` until the tree is
-  regenerated.
+  regenerated. What it did **not** cover was the generated bytes themselves, so
+  a hand-edited mask passed — **T-149** closed that, and `INPUTS.sha256` now
+  records a hash per output as well.
 - **Three refusals, each with a test that triggers it:** a source over 512 px
   (the 1440-pixel concept sheets, §41); a source under `docs/` or `pics/`; and a
   pixel size with no drawing behind it — which is final §86 made mechanical

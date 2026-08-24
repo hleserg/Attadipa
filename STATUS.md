@@ -14,8 +14,8 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Attadipa has code.** As of 2026-08-22 the repository builds six libraries, a
-simulator and twenty-four tests, and has a font pipeline whose output has been
+**Attadipa has code.** As of 2026-08-23 the repository builds six libraries, a
+simulator and twenty-five tests, and has a font pipeline whose output has been
 compiled for the target and measured.
 
 | Library | What it is | Links |
@@ -97,6 +97,22 @@ in both cases.
   reported per asset. **Assets are named by pixels, never by board** — 39 px is
   `icon.size.lg` on one panel and `icon.size.md` on the other, one file, and a
   test asserts it.
+- **Both generated trees are bound to their own bytes now, not only to their
+  inputs — issue #69, and it was a real hole rather than a worry.** Each
+  `INPUTS.sha256` recorded what the tree was *made from* and the check then
+  counted filenames, so a hand-edited bitmap byte in a font and in an icon both
+  passed green; both were reproduced before anything was changed. The stamps now
+  carry a SHA-256 per committed file — one contract for both trees,
+  `tools/integrity/stamp.py` — and 45 mutation cases assert that each of the
+  fourteen outputs is actually checked and that the message names the right
+  fault. The fonts' `Opts:` provenance line no longer carries one developer's
+  absolute paths, which is what made a byte-for-byte comparison possible at all:
+  `tools/integrity/reproducibility.py` regenerates both trees from two different
+  checkout paths and compares all sixteen files against what is committed — run,
+  16 of 16, 3.6 s. The glyph and mask bytes did not move; only provenance did.
+  **The CI job that would run it on every push is written and not applied**: the
+  agent authenticates as a GitHub App that may not write `.github/workflows`, so
+  the block sits in `tools/integrity/README.md` ready to paste — **T-128**.
 - **T-043 … T-053** — the eleven the amendments produced, sitting in READY: the
   node link that is not a BLE link, resynchronisable framing, the `PowerState`
   taxonomy that cannot call a wake-on-LoRa sleep "hibernate", crash-safe
@@ -963,6 +979,47 @@ four more things at no cost:
   *no reason to show*, which `unconfirmed_reasons()` and
   `GnssStatus::trust_unconfirmed` — added in this same branch — had already
   stopped being true.
+- **A faulted link answered an attach with the one word that is never counted.**
+  [#158](https://github.com/hleserg/Attadipa/issues/158), a T-062 bullet.
+  `LinkState::apply()` classified `Attach` with a single negative guard —
+  `phase_ != Absent -> Redundant` — so `Attached`, `Connecting`, `Ready`,
+  `Suspended` and `Faulted` all received the same answer, and `Redundant` is
+  precisely the outcome the machine does **not** count. The visible half is that
+  a controller retrying an attach against a transport that needs a
+  `SubsystemRestart` was told the attach had already succeeded. The expensive
+  half is quieter: `ignored_events()` exists because "a callback arrived in a
+  state where it makes no sense" is a diagnostic signal, and this one route
+  produced none, so a retry storm and a healthy link read identically in the
+  field. `Attach` is now decided per phase — `Absent` applies it;
+  `Attached`, `Connecting` and `Ready` answer `Redundant`, because the
+  peripheral genuinely is there and the two live phases are downstream of the
+  state being asked for; `Faulted` and `Suspended` answer `Ignored` and are
+  counted. **`Suspended` was a contract nobody had written down**, and it is
+  written down now: a quiesced link carries nothing, so the attach is refused
+  rather than satisfied, and `Resume` stays the only way back — an `Attach`
+  honoured there would let a lifecycle owner that had not noticed the suspend
+  route around it in silence. A phase added to `TransportPhase` later falls to
+  `Ignored` rather than `Redundant` in `link_state.cpp` — the safe default of
+  the two, and deliberately not compile-time guarded, so a new phase compiles
+  and behaves sanely. The guard is in **the test**: a `constexpr` coverage check
+  over `kTransportPhaseCount` refuses to build unless the phase table names
+  every phase by value, so the suite stops until somebody has decided what
+  `Attach` should do about it.
+  `Fault`, the epoch and session accounting, and `reset()` are untouched, and
+  the `Detach`-hardcodes-`PeerClosed` bullet from the same audit was left alone
+  so that one finding stays one change. Three tests in `tests/test_link.cpp`: a
+  table over every phase, five consecutive refusals in `Faulted` followed by a
+  restart that makes an attach real work again, and a suspended link that an
+  attach does not resurrect. **Mutation-verified** — restoring the old guard
+  turns 13 checks red, and leaves the `Attached`/`Connecting`/`Ready` rows
+  green, which is the evidence that only the two intended phases moved. Host
+  suite 24/24 under GCC, under Clang, under `-Werror` with `-Wshadow
+  -Wconversion -Wsign-conversion -Wcast-qual -Wold-style-cast`, and under
+  ASan+UBSan with `-fno-sanitize-recover=all`; both documentation checks clean.
+  No hardware: `NOT EXECUTED — HARDWARE REQUIRED` for the thing this change is
+  ultimately about, which is how often a real BLE or USB stack re-fires an
+  attach callback after a subsystem failure — that is a measurement, nobody has
+  taken it, and the fix does not depend on the number.
 
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
