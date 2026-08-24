@@ -90,6 +90,9 @@ void TrustEngine::report(TrustReason reason, MonotonicTime at)
     // unanswered. Which of the two doors it leaves by is decided when it
     // leaves, not now.
     unconfirmed_ &= ~trust_reason_bit(reason);
+    // And there is a subject again -- something is making this allegation now,
+    // so a previous departure stops applying to it.
+    abandoned_ &= ~trust_reason_bit(reason);
 }
 
 void TrustEngine::clear(TrustReason reason)
@@ -99,6 +102,7 @@ void TrustEngine::clear(TrustReason reason)
     // all-clear from silence in this class comes down to which of these two
     // lines cleared the bit.
     unconfirmed_ &= ~trust_reason_bit(reason);
+    abandoned_ &= ~trust_reason_bit(reason);
 }
 
 void TrustEngine::stop_awaiting(TrustReason reason)
@@ -107,8 +111,10 @@ void TrustEngine::stop_awaiting(TrustReason reason)
     // evidence has not expired is still current evidence, and this call is
     // about a subject that has gone, not about a condition that has ended.
     // The two masks are disjoint by construction, so this is a no-op on
-    // anything live.
+    // anything live -- which is exactly why the latch below exists rather than
+    // this being a one-shot. See `abandoned_`.
     unconfirmed_ &= ~trust_reason_bit(reason);
+    abandoned_ |= trust_reason_bit(reason);
 }
 
 bool TrustEngine::holds(TrustReason reason) const
@@ -135,7 +141,13 @@ void TrustEngine::update(MonotonicTime now)
         const std::uint32_t bit = 1u << i;
         if ((live_ & bit) != 0 && elapsed(evidence_at_[i], now) >= policy_.evidence_ttl) {
             live_ &= ~bit;
-            unconfirmed_ |= bit;
+            // Unless the subject has gone. "Nobody withdrew it" is a statement
+            // about someone who could have; when there is no longer anyone to
+            // withdraw it, the allegation ends with its evidence instead of
+            // being remembered as unanswered forever.
+            if ((abandoned_ & bit) == 0) {
+                unconfirmed_ |= bit;
+            }
         }
     }
 
@@ -307,6 +319,7 @@ void TrustEngine::reset()
     state_             = TrustState::Trusted;
     live_              = 0;
     unconfirmed_       = 0;
+    abandoned_         = 0;
     score_             = 0;
     clean_since_valid_ = false;
     has_last_trusted_  = false;
@@ -617,9 +630,45 @@ void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTim
     // second source stops being one — left the bit pinned exactly as before.
     // The fix keyed on "an uncomparable frame arrived" where it had to key on
     // "the other side stopped being comparable". Found in review of #153.
-    const bool other_can_answer = other.position.has_value() && in_range(*other.position) &&
-                                  elapsed(other.observed_at, now) <= window;
-    if (!other_can_answer) {
+    const bool other_can_answer_now = other.position.has_value() &&
+                                      in_range(*other.position) &&
+                                      elapsed(other.observed_at, now) <= window;
+    if (other_can_answer_now) {
+        have_other_comparable_    = true;
+        other_last_comparable_at_ = now;
+    }
+
+    // A DURATION, not a frame -- and the fourth review round is why. Keyed on
+    // the single frame above, one fix-less relay from a node under canopy lifted
+    // an allegation the node had never withdrawn: at 1 Hz the very next frame
+    // after the TTL moved the bit into `unconfirmed_` cleared it, the device
+    // reached `Trusted` about five seconds later, and `remember()` then stored
+    // the disputed coordinate as `last_trusted_position()`. No attacker, no
+    // hardware, our own receiver healthy throughout -- and the branch's own test
+    // ran exactly that sequence and asserted `Trusted`, calling the node *gone*
+    // while it was still sending. A node's receiver losing its fix is the most
+    // TRANSIENT of the three conditions the record calls a departure, not the
+    // most permanent: a doorway, a canopy, the node's own duty cycle.
+    //
+    // So the lift now needs the other side to have been unable to answer for
+    // longer than a retraction could plausibly take. `have_other_comparable_`
+    // false means it has never answered in this evaluator's life, which is not
+    // a departure either -- there is nothing to depart from -- so that case
+    // waits too. The immediate exit for a node that really has gone is
+    // `provider_detached()`, which is an edge somebody reports rather than a
+    // silence we interpret.
+    const bool other_has_gone_quiet =
+        have_other_comparable_ &&
+        elapsed(other_last_comparable_at_, now) > engine_.policy().provider_departure_grace;
+    if (!other_can_answer_now) {
+        if (!other_has_gone_quiet) {
+            // Uncomparable, but not for long enough to call it a departure.
+            // Nothing happens: the allegation keeps standing if it is live and
+            // keeps being awaited if it lapsed, which is what "silence is not
+            // an all-clear" means applied to the OTHER side for once. Falling
+            // through would also dereference an empty `other.position` below.
+            return;
+        }
         // `ProviderDisagreement` is the one reason whose only retraction lives
         // past this gate, so once it closes and the TTL has moved the bit into
         // `unconfirmed_`, nothing in the system can ever withdraw it — the
@@ -665,6 +714,7 @@ void TrustEvaluator::reset()
     have_previous_altitude_ = false;
     have_previous_in_view_  = false;
     have_latest_position_   = false;
+    have_other_comparable_  = false;
 }
 
 // ---------------------------------------------------------------------------

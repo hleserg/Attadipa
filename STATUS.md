@@ -920,7 +920,49 @@ four more things at no cost:
   anywhere with one of these boards, and no receiver has been powered on.
   The rule is now written down where the next reader will find it —
   [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, with the rejected
-  alternative beside it.
+  alternative beside it. **Round four: closing the freshness half opened the
+  content half, and it was the worse of the two.** `stop_awaiting()` fired on a
+  single frame the other side could not fill in — so a node whose receiver went
+  under canopy and kept relaying fix-less frames at 1 Hz was read as a node that
+  had *gone*. The allegation nobody withdrew was lifted, `Trusted` followed
+  about five seconds later, and `remember()` then committed the very coordinate
+  the node was disputing, 550 m out, as `last_trusted_position()`. No attacker,
+  no hardware, our own receiver healthy at 1 Hz throughout — and the branch's
+  own test ran that exact sequence and asserted the outcome was correct, which
+  is the caveat the previous round ended on: mutation-checking proves a test
+  notices the code, not that it asserts the right thing. A receiver losing its
+  fix is the most **transient** of the three conditions the record calls a
+  departure, not the most permanent — a doorway, a canopy, the node's own duty
+  cycle — and on that path the retraction was never unreachable, only deferred,
+  which is verbatim the argument this same commit uses to protect the *local*
+  half. The two halves had been given opposite treatments. The lift now needs
+  the other side to have been unable to answer for `provider_departure_grace`
+  (**`ESTIMATED`**, 120 s, and measuring it is part of T-152), and the test that
+  asserted the wrong thing is two tests: one pinning that a node under cover
+  keeps being awaited — including that `remember()` ran exactly once, at t=0,
+  read off the uncertainty rather than the position — and one pinning that a
+  source uncomparable past the grace does stop being awaited. **And
+  `provider_detached()` was a no-op at the exact moment it is documented to be
+  called.** At a detach edge a disagreement reported inside `evidence_ttl` is
+  `live_`, which `stop_awaiting()` deliberately does not touch, so the call did
+  nothing; fifteen seconds later the TTL moved the bit into `unconfirmed_` and
+  nothing called again, because the node had already gone. Pinned `Degraded`
+  for the rest of the boot — the pin this branch exists to remove, reached
+  through the branch's own new hook — and whether it happened depended on
+  whether the link-loss timeout exceeded `evidence_ttl`, two constants in two
+  subsystems coupled by accident and documented in neither. It latches now:
+  `abandoned_`, consulted in `update()`'s TTL loop so an allegation whose
+  subject has gone ends with its evidence instead of being remembered as
+  unanswered forever, and cleared the moment anything reports that reason again,
+  because a node that comes back is a subject again. All three mutations run
+  red and were checked in both directions. Two smaller ones from the same round:
+  `reset()` and `provider_detached()` documented the same trigger, and the first
+  discards this device's own history and asserts `Trusted` outright — whoever
+  writes `LocationService` would have picked by name, so each now says what the
+  other is for; and ADR-0011 §5.1 bound 2 still said those fifteen seconds have
+  *no reason to show*, which `unconfirmed_reasons()` and
+  `GnssStatus::trust_unconfirmed` — added in this same branch — had already
+  stopped being true.
 
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).

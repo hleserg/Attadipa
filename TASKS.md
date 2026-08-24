@@ -259,7 +259,28 @@ stale silently. The protocol is
   `tests/test_trust.cpp`'s
   `test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared`
   is rewritten to assert the decision — it currently pins today's behaviour with
-  a deliberately disagreeing frame, so it will go red on purpose.
+  a deliberately disagreeing frame, so it will go red on purpose. Its two
+  siblings are `test_a_node_under_cover_is_not_a_node_that_has_gone`, which
+  pins that the grace is honoured, and
+  `test_a_node_uncomparable_past_the_grace_stops_being_awaited`, which pins that
+  it eventually expires; the first must stay green under any decision here, and
+  the second is the one a new enumerator replaces.
+- **What the fourth review round already settled, so this task starts from it.**
+  The lift no longer keys on one uncomparable frame: it needs the other side to
+  have been unable to answer for `provider_departure_grace`, and
+  `provider_detached()` latches so that a detach is not silently timed against
+  `evidence_ttl`. That closes the reachable half of the defect — a node under
+  canopy, relaying fix-less frames at 1 Hz, was being read as a node that had
+  gone, lifting the allegation about five seconds later and letting `remember()`
+  commit the disputed coordinate as the fallback. What remains for this task is
+  the *permanently* uncomparable present node, where the grace does eventually
+  expire and the release is a bound rather than a bug.
+- **And the grace is `ESTIMATED`, which is part of this task.** 120 s is chosen
+  to sit above an ordinary urban dropout and below a boot; nobody has measured
+  how long a node's receiver stays fix-less under cover, and the second source's
+  duty cycle is not ours to know. Being generous costs a pinned `Degraded` for a
+  node that vanishes without telling us; being stingy costs a false all-clear.
+  It is a number to measure, not to argue about.
 - **What must not be assumed:** that a new enumerator is free. Every
   `TrustReason` costs a bit in a mask that `DiagnosticsSnapshot` carries and a
   weight in `policy()`, and a reason nothing can retract is the pin this whole

@@ -168,7 +168,12 @@ with all of:
   good one does not clear it;
 - **recovery earned from a retraction, never from the clock while the detector
   is still there** — §5.1 below, including the one case where the detector's
-  subject leaves and the clock does then run;
+  subject leaves and the clock does then run. *"Still there" is itself measured
+  in time*, and that is deliberate rather than a loophole reopening: a second
+  source is judged gone only after `provider_departure_grace` of being unable to
+  answer, where the first version of the rule judged it gone on a single
+  uncomparable frame. The clock decides **whether there is still anyone who
+  could retract**, never whether the allegation was retracted;
 - **reason codes** — *which* evidence moved it, kept, not just the verdict;
 - **timestamps** on both the state and each piece of evidence;
 - **the last trusted position**, retained;
@@ -267,8 +272,15 @@ not validity — and a remote datum has two ages* and says nothing about
    so in the prescribed `refresh(classify(retained, now), now)` pattern a
    reason live at t=10 s lapses at t=25 s while `classify()` still returns
    `Valid` and `StalePosition` does not go live until t=40 s — fifteen seconds
-   of `Degraded` with `score() == 0` and no reason to show. It self-heals on the
-   next `observe()`, so no code changes here; the claim does not stand.
+   of `Degraded` with `score() == 0` and **nothing in `reasons()` to show**. It
+   self-heals on the next `observe()`, so no code changes here; the claim does
+   not stand. *Half-stale as written, and corrected in the fourth review round
+   of #153:* there is something to show now. The same change added
+   `unconfirmed_reasons()` and `GnssStatus::trust_unconfirmed`, so those fifteen
+   seconds are nameable on a screen — a lapsed allegation nobody withdrew, which
+   is what they are. `reasons()` is still empty, and that is correct: the
+   evidence really has expired. What was missing was a second field, not a
+   different verdict.
 3. **An allegation about a pair stops being awaited when the pair stops being
    comparable.** `ProviderDisagreement` is the one reason whose retraction is
    unreachable once its own freshness gate closes, and both halves of that gate
@@ -281,6 +293,23 @@ not validity — and a remote datum has two ages* and says nothing about
    and what a second source gains by going uncomparable is only that it stops
    contradicting the local receiver — never that its own position is believed.
    Found in review of [#153](https://github.com/hleserg/Attadipa/pull/153).
+
+   **And "stops being comparable" is a duration, not a frame** — the fourth
+   review round, and the correction matters more than the bound. Keyed on one
+   uncomparable frame, a node whose receiver went under canopy and kept relaying
+   fix-less frames at 1 Hz was read as a node that had gone: the allegation was
+   lifted about five seconds later, `Trusted` followed, and `remember()`
+   committed the very coordinate the node was disputing as the fallback. No
+   attacker, no hardware, the local receiver healthy throughout. A receiver
+   losing its fix is the most **transient** of the three conditions this bound
+   calls a departure — a doorway, a canopy, the node's own duty cycle — and on
+   that path the retraction is not unreachable, only deferred: one frame with a
+   fix and the comparison resumes. That is verbatim the argument §5.1 already
+   uses to protect the *local* half, and the two halves had been given opposite
+   treatments. The lift now requires the other side to have been unable to
+   answer for longer than `provider_departure_grace` (`ESTIMATED`, 120 s), and
+   the immediate exit for a node that really has left is `provider_detached()`,
+   which is an edge somebody reports rather than a silence anybody interprets.
 
 **And a pin freezes the fallback.** `remember()` runs only while `Trusted`, so a
 pinned device stops updating its last trusted position while the uncertainty
