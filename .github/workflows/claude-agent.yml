@@ -1230,7 +1230,7 @@ jobs:
           BLOCKED_OUTCOME=$(bash .github/scripts/blocked-outcome.sh \
             "$LABELS" "${ATTADIPA_BLOCKED_AT_CLAIM:-unknown}" 2>/dev/null) || BLOCKED_OUTCOME=report
           case "$BLOCKED_OUTCOME" in
-            normal|silent|report) ;;
+            silent|report|normal) ;;
             *) BLOCKED_OUTCOME=report ;;
           esac
           if [ "$BLOCKED_OUTCOME" = "silent" ]; then
