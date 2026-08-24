@@ -29,7 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     if: vars.CLAUDE_AUTOMATION_ENABLED != 'false'
     permissions:
-      issues: read
+      # write, not read: a candidate that has used up its one automatic retry
+      # is relabelled and commented on here, rather than left for a person to
+      # notice by accident. See the bounded-retry block below and #82.
+      issues: write
       actions: write
       contents: read
     steps:
@@ -46,7 +49,7 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - name: Look for a stranded task
+      - name: Look for a task waiting in the queue
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -60,21 +63,151 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Everything open, with its labels and its author's association. One
-          # request, and the whole decision is made locally.
-          gh api "repos/$REPO/issues?state=open&per_page=100" --paginate > /tmp/open.json
+          # Everything open, with its labels and its author's association.
+          #
+          # --paginate ALONE writes one JSON array per page, back to back, and
+          # `jq -f` then runs the whole filter once per page -- so only the
+          # first page's pick is ever read and a P0 on page 2 loses to a P2 on
+          # page 1, forever, with everything green. Latent at 15 open issues,
+          # real past 100. --slurp collects the pages into one outer array;
+          # `add` concatenates them into the flat array every filter here
+          # expects. The length/type guard means this is also correct if a
+          # future gh returns the flat array directly, rather than depending on
+          # a shape nothing in this repository can test.
+          gh api "repos/$REPO/issues?state=open&per_page=100" --paginate --slurp \
+            | jq 'if (length > 0 and (.[0] | type) == "array") then add else . end' > /tmp/open.json
 
           # A task is waiting if it is a real issue (not a pull request), it was
           # filed by somebody trusted, it carries a task marker or the
           # agent:ready label, and no state label says somebody already has it.
           # The filter lives in .github/scripts/queue-scan.jq so it can be run
           # against fixtures. See the header of that file for why.
-          jq -r --arg trusted "${TRUSTED_PRODUCERS:-}" \
-             -f .github/scripts/queue-scan.jq /tmp/open.json > /tmp/pick
+          #
+          # agent:ready BESIDE agent:failed now passes that filter. The
+          # hand-over writes the pair on a generic failure so the task comes
+          # back, and the outcome comment says so in words -- a filter that
+          # dropped it anyway made that promise false every time, which is the
+          # defect #82 found. What the comment does not promise is an UNBOUNDED
+          # retry, so a pick carrying agent:failed gets one more question asked
+          # of it here: has it failed more than once since a PERSON last put it
+          # in the queue? If so the cause did not go away between runs, and
+          # retrying it hourly is buying the same answer on a bill -- six runs
+          # on 2026-08-22 were exactly that. It goes to a person instead, and
+          # the loop moves to the next candidate rather than dispatching
+          # nothing this tick.
+          #
+          # The count is .github/scripts/failure-count.jq rather than inline
+          # shell, because its first version counted an issue's whole history
+          # instead of the history since somebody intervened -- found in review
+          # against #27, #28 and #69's real timelines -- and untested shell
+          # embedded in a workflow is exactly how that survives. This job's
+          # hand-over sibling has already taught this repository that lesson
+          # four times.
+          EXCLUDE=""
+          PICK=""
+          # A bounded loop, not `while :`. Nothing here should spin, but the
+          # only thing standing between "should not" and a 360-minute job
+          # burning timeline API calls is this number. Ten over-bound
+          # candidates in one tick is already pathological; the eleventh can
+          # wait an hour.
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if ! jq -r --arg trusted "${TRUSTED_PRODUCERS:-}" --arg exclude "$EXCLUDE" \
+                   -f .github/scripts/queue-scan.jq /tmp/open.json > /tmp/pick; then
+              echo "::error::queue-scan.jq failed against /tmp/open.json. Not guessing at a pick."
+              exit 1
+            fi
 
-          PICK=$(cat /tmp/pick)
+            # Initialised before the read, and the read is guarded: process
+            # substitution and `set -e` together turn a jq error into a bare
+            # "read failed" that names the wrong thing. An empty queue is an
+            # empty LINE, which read consumes happily; no line at all means
+            # something upstream went wrong.
+            CANDIDATE=""
+            FAILED=""
+            read -r CANDIDATE FAILED < /tmp/pick || true
+
+            if [ -z "$CANDIDATE" ]; then
+              break
+            fi
+
+            # One field where two were promised means the filter and this shell
+            # disagree about the output contract -- the skew that a split merge
+            # would cause. Loud, because the quiet version of this silently
+            # disables the bound and restores the unbounded hourly retry.
+            if [ -z "$FAILED" ]; then
+              echo "::error::queue-scan.jq returned '$CANDIDATE' with no failed flag. The filter and this workflow disagree about the output contract; refusing to dispatch."
+              exit 1
+            fi
+
+            if [ "$FAILED" = "0" ]; then
+              PICK="$CANDIDATE"
+              break
+            fi
+
+            # per_page=100 because the timeline default is 30 and comments are
+            # timeline events: pagination is the common case here, not the rare
+            # one, and a reset event on page 2 that page 1 cannot see would
+            # silently deny a genuinely-fixed task its retry.
+            COUNT=""
+            if TIMELINE=$(gh api "repos/$REPO/issues/$CANDIDATE/timeline?per_page=100" \
+                            --paginate --slurp 2>/tmp/timeline-err); then
+              COUNT=$(printf '%s' "$TIMELINE" \
+                        | jq 'if (length > 0 and (.[0] | type) == "array") then add else . end' \
+                        | jq -r -f .github/scripts/failure-count.jq 2>>/tmp/timeline-err) || COUNT=""
+            fi
+
+            # Neither direction is safe to guess. Dispatching on an unreadable
+            # count restores the unbounded retry the moment the API is having a
+            # bad minute; escalating on it hands a person a task that is not
+            # actually stuck. So the candidate is skipped for THIS tick and
+            # looked at again in an hour, which costs nothing and heals itself.
+            case "$COUNT" in
+              ''|*[!0-9]*)
+                echo "::warning::Could not read #$CANDIDATE's timeline ($(cat /tmp/timeline-err 2>/dev/null)); skipping it this tick rather than guessing in either direction."
+                EXCLUDE="${EXCLUDE:+$EXCLUDE,}$CANDIDATE"
+                continue
+                ;;
+            esac
+
+            if [ "$COUNT" -le 1 ]; then
+              PICK="$CANDIDATE"
+              break
+            fi
+
+            echo "::notice::#$CANDIDATE has failed $COUNT times since a person last queued it; handing it to a person instead of retrying again."
+            # agent:blocked, not needs-owner alone. queue-scan.jq never reads
+            # needs-owner, and removing agent:ready is not enough on its own:
+            # an issue whose body carries the task marker and @claude is
+            # re-selected by the marker branch of the filter regardless of its
+            # labels. agent:blocked is the one label every path respects.
+            # Without it this issue is re-picked hourly, re-bounced hourly, and
+            # the comments pile up -- a new #82.
+            if gh issue edit "$CANDIDATE" --repo "$REPO" \
+                 --add-label agent:blocked --add-label needs-owner \
+                 --remove-label agent:ready --remove-label agent:failed; then
+              # printf, not a plain "..." --body. The body has paragraphs in
+              # it, and a \n inside a double-quoted shell string is a literal
+              # backslash-n: the reader would have got the right words joined
+              # into one wall with \n printed between them. A heredoc would
+              # also work in shell and not here -- its body has to start at
+              # column 0, which ends the YAML block scalar this script lives
+              # in. printf keeps the newlines real and the indentation legal.
+              gh issue comment "$CANDIDATE" --repo "$REPO" --body "$(printf '%s\n\n%s\n\n%s\n\n%s' \
+                "This has failed \`$COUNT\` times since a person last put it in the queue, so the automatic retry stops here rather than buying the same answer every hour -- the bound #82 asked for. Read the reason on the failure comment above, and fix or close what is causing it." \
+                "**To start it again, comment \`@claude\`.** That works as it stands and needs no label surgery: a comment event skips the claimed-state check by design." \
+                "**If you would rather use labels, it takes two of them IN THIS ORDER: remove \`agent:blocked\` FIRST, then add \`agent:ready\`.** The order is not cosmetic. Add \`agent:ready\` first and \`.github/scripts/intake-decision.sh\` rejects that \`labeled\` event as already claimed; removing \`agent:blocked\` afterwards raises \`unlabeled\`, which nothing listens for -- so nothing starts, nothing says so, and only the next hourly tick recovers it. Adding \`agent:ready\` on its own does nothing at all: \`.github/scripts/queue-scan.jq\` drops anything carrying \`agent:blocked\` before it ever reads the ready/failed pairing, so the issue sits with three labels and no way through, which is the exact shape #82 was opened about. \`needs-owner\` is left for you to remove or keep -- nothing here removes it, and nothing reads it." \
+                "The label route is also the one that resets the retry budget. A \`@claude\` comment starts a run without resetting the count, so if it fails again it escalates straight back here.")" || true
+            else
+              echo "::warning::Could not relabel #$CANDIDATE; leaving it as it was rather than commenting on a change that did not happen."
+            fi
+            # Outside the `if` on purpose: a failed relabel must still take the
+            # candidate out of this round, or the next iteration picks the same
+            # issue and the loop spins until the cap.
+            EXCLUDE="${EXCLUDE:+$EXCLUDE,}$CANDIDATE"
+          done
+
           if [ -z "$PICK" ]; then
-            echo "::notice::Queue is empty. Nothing to do, nothing spent."
+            echo "::notice::Nothing waiting that is inside its retry bound. Nothing to do, nothing spent."
             exit 0
           fi
 
@@ -83,6 +216,78 @@ jobs:
           # and dispatching several would only make the queue harder to read.
           echo "::notice::Handing issue #$PICK to the agent workflow."
           gh workflow run claude-agent.yml --repo "$REPO" -f "issue_number=$PICK"
+
+  stranded:
+    name: Anything stranded
+    runs-on: ubuntu-latest
+    if: vars.CLAUDE_AUTOMATION_ENABLED != 'false'
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      # A job of its own rather than a step inside "scan": a failure here must
+      # not cost the tick its actual dispatch, which is the thing with a turn
+      # limit and a bill behind it.
+      - name: Fetch the scan filter from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Put stranded failures back in the queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # The same variable the scan job reads, and for the same reason: this
+          # sweep must agree with queue-scan.jq about whose issues are picked
+          # up, or it re-queues issues the scan will never take and comments
+          # that something will happen. Found in review of #85.
+          TRUSTED_PRODUCERS: ${{ vars.ATTADIPA_TRUSTED_PRODUCERS }}
+        run: |
+          set -euo pipefail
+
+          # agent:failed with no agent:ready beside it is a task nothing was
+          # ever going to pick up, with nothing on the issue saying so. The
+          # hand-over pairs the two deliberately, but only since 2026-08-22;
+          # before that a generic failure left agent:failed alone, and #27 and
+          # #28 sat in exactly that state. The shape can still recur from an
+          # interrupted run or a `gh issue edit` that errors halfway, so this
+          # is a guard rather than a repair -- it matches nothing in this
+          # repository today.
+          #
+          # It RE-QUEUES; it does not escalate. A run that died is not a
+          # decision somebody has to make, and needs-owner means a decision
+          # only the owner can make -- which hardware exists, which cell to
+          # order. "A run died, press the button again" is the message-bus
+          # role the queue was built to remove. Owner direction on #82.
+          #
+          # agent:failed deliberately STAYS. The bounded-retry check in the
+          # scan job reads it, and this label pair is exactly what that check
+          # is for: put it back in the queue, and let the count decide whether
+          # it runs or goes to a person. Note that the agent:ready added here
+          # is added by github-actions[bot], which failure-count.jq does not
+          # treat as a reset -- if it did, this sweep would mint an unlimited
+          # retry budget for precisely the issues that keep stranding.
+          gh api "repos/$REPO/issues?state=open&per_page=100" --paginate --slurp \
+            | jq 'if (length > 0 and (.[0] | type) == "array") then add else . end' > /tmp/open.json
+          jq -r --arg trusted "${TRUSTED_PRODUCERS:-}" \
+            -f .github/scripts/stranded-failures.jq /tmp/open.json > /tmp/stranded
+
+          while read -r n; do
+            [ -n "$n" ] || continue
+            # Relabel first, comment only if that worked: a comment asserting a
+            # state change that did not happen is worse than no comment, and one
+            # issue failing here must not stop the rest of the sweep.
+            if gh issue edit "$n" --repo "$REPO" --add-label agent:ready; then
+              echo "::warning::#$n carried agent:failed with nothing that said what happens next; put back in the queue."
+              gh issue comment "$n" --repo "$REPO" --body \
+                "This carried \`agent:failed\` with no \`agent:ready\` beside it, so nothing was going to queue it again and nothing said so. The hand-over writes those two labels together on a failure; this issue has only the first, which means a run ended without completing that hand-over. Putting \`agent:ready\` back. **What happens next is not a promise:** the next watchdog tick reads this issue's timeline and decides. Inside its retry bound, it runs. Past it, it gets \`agent:blocked\` and \`needs-owner\` with a comment saying so, rather than being retried every hour. Neither outcome is silent, and neither is this one." || true
+            else
+              echo "::warning::Could not relabel #$n; leaving it for the next run rather than commenting on a change that did not happen."
+            fi
+          done < /tmp/stranded
 
   stuck:
     name: Anything stuck

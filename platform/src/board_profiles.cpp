@@ -83,11 +83,31 @@ BoardProfile make_twatch()
     p.display.diagonal_milli_inch = 1300;
     p.display.technology          = PanelTechnology::Ips;
     p.present_mask                = kTWatchFeatures;
-    // Unknown, and deliberately so. The chip is chosen at purchase and open
-    // question A2 records that nobody has told us which one this project has.
-    // Every capability derived from the radio therefore comes out "we cannot
-    // say", which is the truth. Override it with --radio in the simulator.
+    // Unknown, and deliberately so -- but no longer because nobody has said.
+    // A2 was ANSWERED on 2026-08-22 (OWNER_DECISIONS.md, A1-A3, issue #54 --
+    // by question, not by OD number; see radio_info.cpp): the order
+    // listing names SX1262 at 868 MHz. A listing is a seller's claim, not a
+    // marking read off the part, and this value is what the firmware bets a
+    // radio on, so it stays Unknown until the watch is in hand and the marking
+    // is read -- ADR-0003's rule, not a doubt about the owner. Every capability
+    // derived from the radio therefore comes out "we cannot say", which is
+    // still the truth. Override it with --radio in the simulator.
     p.radio = radio_info_for(RadioChip::Unknown);
+
+    // Traced, not recalled: HARDWARE_MATRIX ':112'. PWR is SW7 and wires to the
+    // AXP2101's `PWRON` pin -- it **never reaches a GPIO**, so every press
+    // arrives as a PMU interrupt. BOOT and RST both sit on the GNSS
+    // daughterboard and reach the main board over the FPC, which is why a unit
+    // without that daughterboard has no reset button and no way into download
+    // mode at all.
+    //
+    // RST is not listed. It resets the SoC; there is no software event to
+    // deliver and nothing for a debug channel to simulate. BOOT is listed and
+    // marked not injectable for the same reason in weaker form: it is a
+    // boot-mode strap read at reset, not an interface control.
+    p.buttons[0] = ButtonSpec{"power", /*role_known=*/true, /*injectable=*/true};
+    p.buttons[1] = ButtonSpec{"boot", /*role_known=*/true, /*injectable=*/false};
+    p.button_count = 2;
     return p;
 }
 
@@ -102,6 +122,39 @@ BoardProfile make_waveshare()
     p.display.technology          = PanelTechnology::Amoled;
     p.present_mask                = kWaveshareFeatures;
     p.radio                       = {};  // no radio is fitted; the struct is meaningless
+
+    // **Two, counted by the owner pressing them** on the assembled case,
+    // 2026-08-23 (source S13). What that does not settle is which named input
+    // each one reaches: the schematic lists `Key1`, `Key3` and `PWRON`, a key
+    // may sit on `PWRON` *and* a GPIO at once, and `PWRON` may reach neither --
+    // on the T-Watch it wires to SW7 with no GPIO at all. That is open question
+    // D5, and until it closes these are numbered rather than named.
+    //
+    // Numbering them is not a placeholder to be tidied up later. A profile that
+    // said "power" and "back" would put a guess about wiring where an
+    // application would read it as a fact, which is the failure ADR-0003 is
+    // about. `role_known = false` is the honest field, and the debug tool
+    // prints it.
+    //
+    // **And `injectable` is `false` for both, for the same reason `role_known`
+    // is.** It was `true` with nothing behind it -- the one board fact on this
+    // profile asserted permissively and unargued, on the board where the
+    // question is open. `HARDWARE_MATRIX` names the candidates as `Key1`, `Key3`
+    // and `PWRON`, says `Key1` is adjacent to `BOOT` and **may never be brought
+    // out at all**, and calls that list "a floor, not a census"; D5 leaves both
+    // the GPIO assignment and whether either press reaches the PMU unresolved.
+    // Under most readings a `PWRON` press is a PMU interrupt a host could
+    // synthesise -- and "most readings" is what this project spells `UNKNOWN`.
+    //
+    // The cost of the permissive default lands after T-114, not now: the
+    // diagnostic tour's `first-injectable` step resolves to `button-1` and
+    // passes green against an input that, on one live reading of D5, no finger
+    // can produce -- the exact failure `boot` is marked `injectable = false` to
+    // avoid, one board over. Flip either to `true` when D5 closes, with the
+    // evidence beside it.
+    p.buttons[0] = ButtonSpec{"button-1", /*role_known=*/false, /*injectable=*/false};
+    p.buttons[1] = ButtonSpec{"button-2", /*role_known=*/false, /*injectable=*/false};
+    p.button_count = 2;
     return p;
 }
 
