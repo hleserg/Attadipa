@@ -646,6 +646,45 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-154 · A node's own retained coordinate is still a comparable side
+- **Priority:** P2 — the mirror of a defect already fixed on the local half, and
+  reachable by the same ordinary event: a receiver losing its fix.
+- **Dependencies:** `core/src/trust.cpp` — the local half is
+  [#178](https://github.com/hleserg/Attadipa/issues/178) (**done**), and
+  ADR-0011 §5.2 is the rule it established.
+- **Goal:** `compare_provider()` decides whether the second source can answer
+  from `other.position.has_value()`, `in_range()` and the measurement age.
+  **None of those separates a coordinate a node's receiver solved for from the
+  one it kept in the field after losing its fix** — which is exactly the
+  distinction #178 drew for this device's own receiver, and it was drawn on one
+  side only. A node under canopy relaying at 1 Hz therefore keeps disagreeing
+  with the last place it knew about; or, worse, keeps *agreeing* with it, and an
+  agreement reaches `clear()`, which is the only retraction this design has.
+- **Why it is not simply "do the same thing again."** The local side has a
+  `PositionValidity` because `observe()` is handed one. `compare_provider()` is
+  handed a bare `GnssObservation`, and validity is a verdict `classify()`
+  reaches with a `ValidityPolicy` — which the evaluator does not hold, and
+  arguably should not, because how quickly a *node's* fix goes stale is the
+  node link's question and not this receiver's.
+- **Acceptance:** it decides one of — take the validity as a parameter, as
+  `observe()` does, and leave the classifying to whoever owns the link; or give
+  the evaluator a `ValidityPolicy` and classify inside, which is a new piece of
+  policy and needs a reason; or read `other.fix_type`, which is already in the
+  frame and answers a narrower question honestly (`NoFix` and `TimeOnly` cannot
+  carry a solved position, `Unknown` means the receiver has not said). Whichever
+  it picks, a retained coordinate from a node must not become a fresh side of
+  the comparison.
+- **What must not be assumed:** that refusing the frame is the same as calling
+  the node gone. It is not, and
+  `test_a_node_under_cover_is_not_a_node_that_has_gone` must stay green under
+  any answer here — `provider_departure_grace` still bounds how long
+  uncomparable may last before it means departed, and that is T-152, which this
+  does not close. Nor that `fix_type` is free of consequences: a caller that
+  leaves it at its default `Unknown` would start being refused, so whatever is
+  chosen has to be stated where a caller of `compare_provider()` will meet it.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-128 · The generated-asset reproducibility job is written and cannot be pushed

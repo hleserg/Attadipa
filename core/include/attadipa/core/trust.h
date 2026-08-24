@@ -517,9 +517,40 @@ private:
     bool        have_previous_in_view_ = false;
     std::uint8_t previous_in_view_     = 0;
 
-    bool          have_latest_position_ = false;
-    Position      latest_position_{};
-    MonotonicTime latest_position_at_{};
+    // The local side of `compare_provider()`: a coordinate this receiver
+    // MEASURED, and the instant it measured it.
+    //
+    // Not "the last position field that arrived", which is what stood here and
+    // is a different fact. A receiver that loses its fix keeps sending the
+    // coordinate it last solved for, with a `PositionValidity` of `NoFix`
+    // beside it saying there is no position at all — the shape the rate
+    // baselines above already refuse, and which `tests/test_trust.cpp` already
+    // reproduces. Stored unconditionally and stamped with ARRIVAL time, one
+    // such frame per second kept this side of the comparison permanently
+    // "fresh": a node reporting the place the wearer had actually walked to was
+    // measured against a coordinate the local receiver had disowned, and the
+    // difference was reported as `ProviderDisagreement` — 30 points, which
+    // reaches `degrade_at` unaided — refreshed for as long as the dropout
+    // lasted. The evaluator had two models of the same observation's fitness,
+    // and only one of them read `validity`. Found by the review of
+    // `6965191..8d757a7`, issue #178.
+    //
+    // So the invariant is the name. This is present only while the local
+    // receiver has produced a comparable measurement, and `measured_at` is
+    // `observation.observed_at` and never `now` — the same discipline as the
+    // baselines above and for the same reason, so that a comparison is between
+    // two measurement ages rather than between one measurement and one arrival.
+    //
+    // It advances in lockstep with `previous_position_` and is deliberately
+    // still its own field: the two answer different questions — the fix a rate
+    // is computed FROM, and this device's current answer to *where are you* —
+    // and collapsing them would make any later change to one silently change
+    // the other.
+    struct ComparablePosition {
+        Position      position{};
+        MonotonicTime measured_at{};
+    };
+    std::optional<ComparablePosition> local_comparable_;
 
     // When the second source last produced a frame this device could compare
     // against — the anchor `provider_departure_grace` is measured from. Not
