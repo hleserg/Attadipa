@@ -2481,7 +2481,8 @@ A1's schematic-revision
   because nothing in #128 executes on `main`, and filed as
   [#179](https://github.com/hleserg/Attadipa/issues/179).
 - **Acceptance:** both halves guarded, both mutation-verified, neither needing
-  the owner or a `workflows` permission.
+  the owner or a `workflows` permission, and neither able to red a pull request
+  that did not cause the problem.
 - **Research status:** n/a
 - **Implementation status:** done. Both checks live in
   `.github/tests/gh-api-usage-test.sh`, which CI already runs at `ci.yml:360` —
@@ -2501,31 +2502,53 @@ A1's schematic-revision
   being reported for breaking it.
 
   `git apply --check` runs over every parked patch, which writes nothing and
-  needs no repository. **It is a warning, not a failure**, and that is the
-  decision worth recording: a parked patch goes stale because of work
-  elsewhere, often work CI itself demands, so a fatal check would red `main`
-  and every open pull request over a file none of them touched — one stale
-  patch stopping the whole queue. It emits an `::warning file=` annotation and
-  a `$GITHUB_STEP_SUMMARY` line naming the remedy (`git rm` if it has landed,
-  rebuild if it has not). Making it fatal safely needs a job gated on
-  `paths: docs/automation/pending/**`, which is a write under
-  `.github/workflows/` and therefore parked work itself. An empty pending
+  needs no repository. **Its severity is split by half**, and that is the
+  decision worth recording. Failing on any drift stops the queue: a parked
+  patch goes stale because of work elsewhere, often work CI itself demands, so
+  a fatal check reds `main` and every open pull request over a file none of
+  them touched. Warning on any drift removes the teeth #179 asked for. But the
+  blast radius is not a property of the check — it is a property of *which
+  half* of the patch moved, and
+  `git apply --check --include='.github/*'` separates them with no history and
+  no `fetch-depth`, in the shallow checkout `ci.yml` makes:
+
+  | what moved | verdict | why |
+  |---|---|---|
+  | a hunk under `.github/` | **fails** | only an owner edit or another patch landing can move that context, and a stale workflow hunk means the parked change itself is now wrong |
+  | anything else the patch carries | **warns** — `::warning file=` plus a `$GITHUB_STEP_SUMMARY` line, naming the file that moved and the remedy | those pins move under ordinary work, by people who did not choose to and cannot rebuild a workflow patch |
+
+  This supersedes the first answer to review finding 1, which made drift a
+  warning in both halves and recorded that a safe fatal arm would need a job
+  gated on `paths: docs/automation/pending/**` — a write under
+  `.github/workflows/`, and so parked work itself. It does not: `--include`
+  reaches the same audience from inside a test script. An empty pending
   directory is a pass with its own line, not a skip; an unreadable patch is a
   failure, not a clean read.
-- **Tests:** the suite goes 7 → 24 cases. The patch scan is covered in both
+- **Tests:** the suite goes 7 → 29 cases. The patch scan is covered in both
   directions and over the shape this repository actually writes: an added
   offender on one line, an added offender split across a continuation, a
   *removed* offender, a good call, and a Markdown patch that documents the rule
   in prose. Three cases pin the reported line number — it is the patch line the
   invocation *starts* on, which is a line an operator can open, and not the
   n-th added line, which is what it printed before. The apply loops are driven
-  through four fixture trees (empty, fits, drifted, offends) with `PENDING_DIR`
-  pointed at each, because calling `git apply --check` directly tests git and
-  exercises no branch of the shipping code — review of #180 found that
-  inverting a condition in those loops left every case green. Mutation-verified
+  through seven fixture trees with `PENDING_DIR` pointed at each, because
+  calling `git apply --check` directly tests git and exercises no branch of the
+  shipping code — review of #180 found that inverting a condition in those
+  loops left every case green. Three of the seven exist only for the split: a
+  patch whose docs half moved (warns), one whose `.github/` half moved (fails),
+  and one aimed at a workflow that no longer exists (fails); two more assert
+  that both messages name the file `git` actually refused. Mutation-verified
   against the **real** parked patch in both directions: inserting a
-  `--slurp`/`--jq` line into it reddens the scan, and shifting one context line
-  raises the warning; restored, 24/24.
+  `--slurp`/`--jq` line reddens the scan, so does a `--jq` appended to the
+  second line of the watchdog's continued call — reported at that call's own
+  line, 522 — and shifting one `.github/` context line reddens the apply check.
+  The reviewer's own scenario was run for real: insert a line in `ci.yml`,
+  watch `check_docs.py` demand `WAVESHARE_ARRIVAL.md`'s citation move to
+  `:500`, apply it, and the parked patch stops applying — the suite stays
+  **green** with a warning naming `docs/research/WAVESHARE_ARRIVAL.md`.
+  Mutation-verified against the shipping code too: dropping the
+  `.github/`-only precheck fails four cases, inverting the stale condition
+  fails six. Restored, 29/29.
 - **Hardware required:** no.
 - **Known gap, recorded rather than fixed:** `ci.yml:359`'s step name still
   reads *"The gh calls in the workflows are ones gh accepts"*, which is now

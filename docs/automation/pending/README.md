@@ -44,17 +44,21 @@ every `*.patch` in this directory. Until T-158 that sentence read *"check it
 before trusting it"* and nothing did, which is the shape of every defect this
 directory's own patches were written to fix.
 
-**It reports as a warning, not a failure** — a job-summary line and a
-`::warning file=` annotation on the patch. That is deliberate. A parked patch
-goes stale because of work somewhere else, sometimes work CI itself demands:
-`check_docs.py` enforces the `ci.yml` citation fingerprints, so inserting a
-line into `ci.yml` forces a citation edit that moves this patch's own pinned
-context. A fatal check would then red `main` and every open pull request over a
-file none of them touched, and one stale patch would stop the whole queue.
-Making it fatal safely needs a job gated on `paths: docs/automation/pending/**`
-— a write under `.github/workflows/`, which is to say parked work itself.
+**It is loud in two different ways, and which one depends on the half of the
+patch that moved.** A patch has two, and they rot for different reasons.
 
-**A warning here has exactly two answers, and doing nothing is not one.** If
+| what moved | CI | why |
+|---|---|---|
+| a hunk under `.github/` | **fails** | nobody but the owner or another landing patch can move that context, and a stale workflow hunk means the parked change itself is now wrong |
+| anything else the patch carries | **warns** — a job-summary line and a `::warning file=` annotation, naming the file that moved | those pins move under ordinary work, by people who did not choose to and cannot rebuild a workflow patch either |
+
+The second row is not caution, it is arithmetic. `check_docs.py` enforces the
+`ci.yml` citation fingerprints, so inserting a line into `ci.yml` *forces* a
+citation edit that moves this patch's own pinned context. Fail on that and the
+red lands on `main` and every open pull request over a file none of them
+touched, and one stale patch stops the whole queue.
+
+**Either way there are exactly two answers, and doing nothing is not one.** If
 the patch has already been landed, it is a leftover copy: `git rm` it, which is
 the same rule as *delete the patch in the same commit that applies it*, one
 commit late. If it has not been landed, rebuild it against the current tree —

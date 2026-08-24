@@ -120,14 +120,34 @@ patch_offenders() {
   '
 }
 
-# Every parked patch in DIR that no longer applies to TREE. Prints one path per
-# line; silent when they all apply.
-stale_patches() {
-  local dir=$1 tree=$2 patch
+# Which files `git apply` named in its refusal, deduplicated onto one line.
+# This only enriches a message and never decides anything, so a `git` that
+# words its errors differently costs a file name rather than a verdict.
+refused_files() {
+  sed -n 's/^error: \(.*\): patch does not apply$/\1/p;
+          s/^error: \(.*\): No such file or directory$/\1/p' \
+    | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//'
+}
+
+# Every parked patch in DIR that no longer applies to TREE, one per line as
+#
+#   <state><TAB><patch><TAB><the files git refused>
+#
+# where <state> is `stale-workflow` or `drifted`. Silent when they all apply.
+#
+# The two states exist because a parked patch has two halves that rot for
+# different reasons, and only one of them belongs to whoever is standing there
+# when it breaks -- see 1c.
+patch_apply_states() {
+  local dir=$1 tree=$2 patch err
   [ -d "$dir" ] || return 0
   for patch in "$dir"/*.patch; do
     [ -e "$patch" ] || continue
-    git -C "$tree" apply --check "$patch" 2>/dev/null || printf '%s\n' "$patch"
+    if ! err=$(git -C "$tree" apply --check --include='.github/*' -- "$patch" 2>&1); then
+      printf 'stale-workflow\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | refused_files)"
+    elif ! err=$(git -C "$tree" apply --check -- "$patch" 2>&1); then
+      printf 'drifted\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | refused_files)"
+    fi
   done
 }
 
@@ -171,45 +191,71 @@ check_parked_shell() {
   fi
 }
 
-# 1c. And whether each parked patch still applies.
+# 1c. And whether each parked patch still applies. THE SEVERITY IS SPLIT BY
+#     HALF, and this is the interesting decision in the file.
 #
-#     A WARNING AND NOT A FAILURE, deliberately, and this is the interesting
-#     decision in the file. A parked patch goes stale because of work somewhere
-#     else -- often work CI itself demands: `check_docs.py` enforces the
-#     fingerprint on `WAVESHARE_ARRIVAL.md`'s citation of `ci.yml:499`, so
-#     inserting a line in `ci.yml` above it forces an edit that moves the very
-#     context the parked patch pins. Fail the build on that and the red lands on
-#     `main` and, on their next run, on every open pull request at once, none of
-#     which touched the patch -- and CLAUDE.md has both the orchestrator and the
-#     merge sweep gated on green. One stale patch would stop the whole queue,
-#     and the only way out would be rebuilding a 516-line patch against files an
-#     agent token cannot write. Found in review of #180, which shipped it fatal.
+#     Failing on any drift stops the queue. A parked patch goes stale because of
+#     work somewhere else -- often work CI itself demands: `check_docs.py`
+#     enforces the fingerprint on `WAVESHARE_ARRIVAL.md`'s citation of
+#     `ci.yml:499`, so inserting a line in `ci.yml` above it forces an edit that
+#     moves the very context the parked patch pins. Fail the build on that and
+#     the red lands on `main` and, on their next run, on every open pull request
+#     at once, none of which touched the patch -- and CLAUDE.md has both the
+#     orchestrator and the merge sweep gated on green. One stale patch would
+#     stop the whole queue, and the only way out would be rebuilding a 516-line
+#     patch against files an agent token cannot write. Found in review of #180,
+#     which shipped it fatal, and reproduced end to end before this was written.
 #
-#     So it is loud instead: a `::warning::` annotation, a line in the job
-#     summary, and a named remedy. Making it fatal safely needs a job of its own
-#     with `paths: docs/automation/pending/**`, which is a write under
-#     `.github/workflows/` -- recorded in T-158 rather than faked here.
+#     Warning on any drift removes the teeth #179 asked for. But the two are not
+#     the only options, because the blast radius is not a property of the check
+#     -- it is a property of WHICH HALF of the patch moved:
+#
+#       * the hunks under `.github/` can only be moved by an owner edit or by
+#         another patch landing, since no agent token can write those files.
+#         Small audience, and a stale workflow hunk means the parked change
+#         itself is now wrong. FATAL.
+#       * everything else a patch carries -- the docs edits its own landing
+#         forces, per `pending/README.md` -- moves under ordinary work, by
+#         people who did not choose to and cannot rebuild a workflow patch.
+#         WARNING: a `::warning::` annotation, a job-summary line, and a named
+#         remedy.
+#
+#     `git apply --check --include='.github/*'` separates them, needs no history
+#     and no `fetch-depth`, and works in the shallow checkout `ci.yml` makes.
 check_parked_applies() {
-  local dir=$1 tree=$2 stale patch
-  stale=$(stale_patches "$dir" "$tree")
+  local dir=$1 tree=$2 states stale drifted patch refused
+  states=$(patch_apply_states "$dir" "$tree")
   if [ ! -d "$dir" ] || [ -z "$(find "$dir" -name '*.patch' 2>/dev/null)" ]; then
     ok "no patches parked under ${dir#"$root/"}"
     return
   fi
-  if [ -z "$stale" ]; then
+  stale=$(printf '%s\n' "$states" | grep '^stale-workflow')
+  drifted=$(printf '%s\n' "$states" | grep '^drifted')
+  if [ -n "$stale" ]; then
+    bad "a parked patch no longer applies under .github/ -- the workflow half it would land has moved:"
+    printf '%s\n' "$stale" \
+      | awk -F'\t' '{ printf "       %s\n         git refused: %s\n", $2, $3 }'
+    printf '       already landed? git rm it -- pending/README.md says a patch is deleted in\n'
+    printf '       the commit that applies it. Not landed? rebuild it against the current\n'
+    printf '       tree; do not hand-edit the hunk headers.\n'
+  elif [ -z "$drifted" ]; then
     ok "every parked patch still applies to the tree"
     return
+  else
+    ok "every parked patch still applies under .github/, the half nobody here can rebuild"
   fi
-  ok "parked patches read; $(printf '%s\n' "$stale" | wc -l | tr -d ' ') no longer apply (warning, not a failure)"
-  printf '%s\n' "$stale" | while IFS= read -r patch; do
+  [ -n "$drifted" ] || return
+  ok "$(printf '%s\n' "$drifted" | wc -l | tr -d ' ') no longer apply in full (warning, not a failure)"
+  printf '%s\n' "$drifted" | while IFS=$'\t' read -r _ patch refused; do
     [ -n "$patch" ] || continue
-    printf '::warning file=%s::this parked patch no longer applies. If it has already been landed, git rm it -- pending/README.md says a patch is deleted in the commit that applies it. If it has not, rebuild it against the current tree; do not hand-edit the hunk headers.\n' "$patch"
+    printf '::warning file=%s::this parked patch still applies under .github/ but not in full: %s moved under it. If it has already been landed, git rm it -- pending/README.md says a patch is deleted in the commit that applies it. If it has not, update that hunk, or land it with git apply -3 from a full clone.\n' \
+      "$patch" "${refused:-something it also edits}"
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       # shellcheck disable=SC2016  # the backticks are Markdown code spans in
       # the job summary, not command substitution; single quotes are what keeps
       # them literal.
-      printf -- '- **stale parked patch**: `%s` no longer applies. Landed already? `git rm` it. Not landed? Rebuild it against the current tree.\n' \
-        "$patch" >> "$GITHUB_STEP_SUMMARY"
+      printf -- '- **drifted parked patch**: `%s` still applies under `.github/`, but `%s` moved under it. Landed already? `git rm` it. Not landed? Update that hunk, or `git apply -3`.\n' \
+        "$patch" "${refused:-something it also edits}" >> "$GITHUB_STEP_SUMMARY"
     fi
   done
 }
@@ -374,7 +420,10 @@ tree=$(mktemp -d) || exit 1
 trap 'rm -rf "$probe" "$tree"' EXIT
 git -C "$tree" init -q .
 printf 'alpha\nbeta\ngamma\n' > "$tree/target.txt"
-mkdir -p "$tree/empty" "$tree/fits" "$tree/drifted" "$tree/offends"
+mkdir -p "$tree/.github/workflows"
+printf 'alpha\nbeta\ngamma\n' > "$tree/.github/workflows/w.yml"
+mkdir -p "$tree/empty" "$tree/fits" "$tree/drifted" "$tree/offends" \
+         "$tree/both-halves" "$tree/workflow-drifted" "$tree/workflow-gone"
 cat > "$tree/fits/a.patch" <<'FIXTURE'
 --- a/target.txt
 +++ b/target.txt
@@ -386,6 +435,58 @@ cat > "$tree/fits/a.patch" <<'FIXTURE'
 FIXTURE
 sed 's/^ beta$/ BETA-RENAMED/' "$tree/fits/a.patch" > "$tree/drifted/a.patch"
 cp "$probe/adds-bad.patch" "$tree/offends/a.patch"
+
+# The two halves, in one patch, as every real parked patch has them: a workflow
+# hunk, and a docs hunk it carries because its own landing forces it. Written
+# out rather than derived from each other -- which half moved is the whole
+# point of these three, so it should be readable at a glance.
+#
+# both-halves: the docs half has moved, the workflow half has not. This is the
+# reviewer's scenario and the case that must NOT fail the build.
+cat > "$tree/both-halves/a.patch" <<'FIXTURE'
+--- a/.github/workflows/w.yml
++++ b/.github/workflows/w.yml
+@@ -1,3 +1,4 @@
+ alpha
+ beta
++delta
+ gamma
+--- a/target.txt
++++ b/target.txt
+@@ -1,3 +1,4 @@
+ alpha
+ BETA-RENAMED
++delta
+ gamma
+FIXTURE
+# workflow-drifted: the other way round. Only an owner edit or another landing
+# patch can do this, and it means the parked change itself is now wrong.
+cat > "$tree/workflow-drifted/a.patch" <<'FIXTURE'
+--- a/.github/workflows/w.yml
++++ b/.github/workflows/w.yml
+@@ -1,3 +1,4 @@
+ alpha
+ BETA-RENAMED
++delta
+ gamma
+--- a/target.txt
++++ b/target.txt
+@@ -1,3 +1,4 @@
+ alpha
+ beta
++delta
+ gamma
+FIXTURE
+# workflow-gone: the workflow it targets no longer exists at all.
+cat > "$tree/workflow-gone/a.patch" <<'FIXTURE'
+--- a/.github/workflows/deleted.yml
++++ b/.github/workflows/deleted.yml
+@@ -1,3 +1,4 @@
+ alpha
+ beta
++delta
+ gamma
+FIXTURE
 
 expect() {  # $1 = what, $2 = expected substring, rest = command
   local what=$1 want=$2; shift 2
@@ -408,6 +509,26 @@ expect "a parked patch adding a forbidden call fails the suite" \
   "would deploy an invocation gh rejects" check_parked_shell "$tree/offends"
 expect "a clean pending directory passes the shell scan" \
   "no parked patch would deploy" check_parked_shell "$tree/fits"
+
+# And the split itself, which is the reason 1c is not simply one verdict. Each
+# of these asserts on the FIRST line of the output, because "warning" and
+# "failure" are told apart by which of `ok`/`bad` was called and nothing else.
+verdict() {  # $1 = what, $2 = ok|FAIL, $3 = fixture dir
+  local out first
+  out=$(check_parked_applies "$tree/$3" "$tree" 2>&1)
+  first=${out%%$'\n'*}
+  case "$first" in
+    "$2"*) ok "$1" ;;
+    *) bad "$1 -- the verdict line was: $first" ;;
+  esac
+}
+verdict "a docs hunk moving under a patch is a warning, not a failure" ok both-halves
+verdict "a .github/ hunk moving under a patch IS a failure" FAIL workflow-drifted
+verdict "a patch aimed at a workflow that no longer exists IS a failure" FAIL workflow-gone
+expect "the warning names the file that actually moved, not just the patch" \
+  "target.txt moved under it" check_parked_applies "$tree/both-halves" "$tree"
+expect "the failure names the file that actually moved, not just the patch" \
+  "git refused: .github/workflows/w.yml" check_parked_applies "$tree/workflow-drifted" "$tree"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

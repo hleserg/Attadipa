@@ -1087,12 +1087,15 @@ four more things at no cost:
   Added-lines-only was the first read and it was blind to the shape every
   `--slurp` call here uses, `gh api` on one line and its flags on the next: edit
   the flag line alone and the added lines hold no `gh api` at all. The apply
-  half is a **warning, not a failure**, because a parked patch goes stale from
-  work elsewhere — often work CI itself demands — and one stale patch must not
-  red `main` and every open pull request; making it fatal safely needs a job
-  gated on `paths: docs/automation/pending/**`, which is itself a write an agent
-  cannot make. 24 cases, both new halves mutation-verified against the real
-  parked patch. The general lesson is the one that produced this: **dispatch a new
+  half **fails on a `.github/` hunk and warns on everything else the patch
+  carries**, because those two rot for different reasons: nobody but the owner
+  can move workflow context, while the docs a patch pins move under ordinary
+  work — often work CI itself demands — and one stale patch must not red `main`
+  and every open pull request. `git apply --check --include='.github/*'`
+  separates them without a `fetch-depth` or a workflow write. 29 cases, both
+  halves mutation-verified against the real parked patch, and the queue-stopping
+  scenario reproduced end to end before the split was written.
+  The general lesson is the one that produced this: **dispatch a new
   scheduled workflow once by hand instead of waiting for its cron**, because
   reading it had already passed it.
 
