@@ -235,6 +235,26 @@ high-water mark is never sampled is an unbudgeted task.
 | Per-task high-water mark | `uxTaskGetStackHighWaterMark()` after a soak run |
 | Headroom policy | to be decided — a stack sized to its exact high-water mark is a crash waiting for a deeper call path |
 
+**One figure is already known, before any task exists — and the first version of
+this paragraph priced the smaller half of it.** `Bridge::handle` into a message
+decode and out through a reply is about **1 KB of zero-initialised locals**. But
+that is not the deepest path: it is called from inside a **4 KB receive buffer**.
+`sim/debug_server.cpp:432` puts `chunk[4096]` on the stack and calls
+`dispatch_ready` from within its scope, which adds `payload[link::kMaxPayload]`
+and, under `emit`, `queue`'s `frame[link::kMaxFrame]`. The whole chain is about
+**5 KB**, `ESTIMATED` by reading the frames rather than measured, because there
+is no firmware to measure on.
+
+That changes what the row means rather than merely making it bigger. The task
+that services the interface is, on ESP-IDF, routinely created with 4 KB — so the
+chain as written on the desktop does not fit in the default at all, where a
+quarter of it looked like a sizing question. The 4 KB buffer is the part to
+revisit on a device: a smaller `recv` chunk, or one owned by the task rather
+than the frame, costs a few more `recv` calls and is not a protocol change.
+Whoever writes that `xTaskCreate` (**T-114**) owns the number; this line exists
+so they do not meet it for the first time in a stack overflow — which is why it
+is a defect for it to have been scoped to the inner call.
+
 ### Mesh state and message history
 
 The parts of the budget that grow with use rather than with the build. These are

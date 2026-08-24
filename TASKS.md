@@ -146,6 +146,133 @@ stale silently. The protocol is
   removed from the loop.
 
 
+### T-114 · The debug channel needs a firmware end
+- **Filed as [#117](https://github.com/hleserg/Attadipa/issues/117)**, whose
+  transport-independent half is done: the protocol, the input layer, the bridge,
+  the host tool, the diagnostic screen, the tests and the agent skill all exist
+  and run against the simulator.
+  - **Corrections to that half are this task, not a new one.**
+    [#186](https://github.com/hleserg/Attadipa/issues/186) is the first:
+    `gesture --file` did not spend the `duration` it was given — an `N`-point
+    path waited `N - 2` intervals instead of `N - 1` and a two-point one waited
+    none at all, so the shipped example spent 0.45 s of its declared 0.6 and a
+    two-point gesture was a press and a release back to back. Fixed on absolute
+    deadlines, pinned by three host groups on a fake clock and by a wall-clock
+    bound in the end-to-end test; the semantics are now stated in
+    [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md#what-duration-measures).
+  - **Still open, and deliberately not folded into that fix:** `swipe()` has
+    the same shape of error one order smaller — `steps` intervals between its
+    points, `steps - 1` sleeps, the first of them zero — so it runs `1/steps`
+    short of the duration asked for and begins with a zero-length segment,
+    where the gesture defect was categorical. Bounded and not urgent; it wants
+    its own change and its own test rather than a widened diff.
+- **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
+  task after that point is supposed to end with a real screenshot, and this is
+  what makes one possible.
+- **Dependencies:** an ESP-IDF firmware project. There is none — `README.md`
+  says so — which is why this is a task rather than an omission.
+- **Why it is separate:** the vertical
+  `agent → host tool → protocol → input layer → UI → framebuffer → PNG` is
+  complete except for the transport at the device end. `attadipa_debug` is a
+  plain host-testable library precisely so the day the firmware exists it links
+  the same code rather than growing a second implementation that drifts.
+- **What is left, and it is small:**
+  1. A transport that reads and writes framed bytes over **USB-Serial/JTAG**.
+     `sim/debug_server.cpp` is the model, including the watermark: pump the
+     screenshot only while the outgoing buffer has room, so the transport sets
+     the pace and the interface keeps running. A transfer that blocked until the
+     last of thousands of chunks had gone is a watchdog reset with extra steps.
+  2. A `ScreenSource` over the real display. `lv_snapshot_take` again, for the
+     same reason — one internally consistent frame. **Do not read pixels back
+     out of the panel**: the AMOLED is behind QSPI and the CO5300's read path is
+     not established (D7 has not settled even its init sequence).
+  3. A frame buffer sized for the panel, behind the same config option, so a
+     release build does not carry 617 kB it will never use. **The gate is about
+     that 617 kB and not about who may look:** nothing here says the channel
+     must be unreachable on a shipped watch, where it reads the screen and
+     injects taps, and final §49 and the Definition of Done both point at it as
+     a development instrument. Whether a released build carries it — and behind
+     what — is a product decision nobody has taken, and it is not taken here by
+     a config option chosen for RAM. Report **RGB565**
+     with the byte order the driver actually produces — the wire format
+     distinguishes `Rgb565Le` from `Rgb565Be` because guessing is how a
+     screenshot comes back looking almost right.
+  4. Report the driver's **orientation**. The field means *the rotation the host
+     must apply, clockwise*; that direction is defined in
+     `debug/protocol.h` rather than derived, and a driver that reports the
+     opposite convention produces an upside-down image in half the cases.
+  5. Route the real touch controller and the real buttons into
+     `core::InputQueue` with `InputOrigin::Physical`. That is what makes remote
+     and physical input coexist, and it is not extra work for this task — it is
+     how the drivers should push events anyway.
+  6. **Measure the capture pause, and fix the peak allocation.** Two numbers
+     this milestone could not produce.
+     - The pause is **3.6 ms** on a desktop for a 617 kB frame and `UNKNOWN` on
+       a board, and the reason it cannot be scaled is in
+       [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md): the frame must live in
+       PSRAM, which is octal at 80 MHz with a 10-cycle latency here (D12a), and
+       a byte-at-a-time CRC over that is a different machine. Measure it. If it
+       is over ~50 ms, take the CRC and/or the copy off the interface thread, or
+       run the CRC block by block between frames.
+     - `lv_snapshot_take` allocates **a second full frame** before the row copy,
+       so the peak is ~1.24 MB rather than 617 kB. On a desktop that is
+       invisible; on a board with 8 MB of PSRAM and a draw buffer already in it,
+       it is a number to have decided about rather than discovered. Snapshot
+       into the bridge's own buffer, or size the budget for two.
+  7. **Three things the simulator gets away with and a device will not.** All
+     were raised in review on
+     [#121](https://github.com/hleserg/Attadipa/pull/121) and deliberately left
+     here rather than fixed there, because each is an answer the firmware end
+     has to give and none has a right answer on a host socket.
+     - **Bound the injected coordinates at the device.** `_check_point` in
+       `tools/watch/client.py:640` refuses a point outside the panel, and that
+       is the *host* being polite. `Bridge::handle_input` validates the event
+       type, the button index, the rate and the hold, and never looks at `x`
+       and `y` — a client that does not use this tool, or a resync landing
+       mid-body, injects a pointer wherever it likes. On the simulator LVGL
+       clamps and nothing shows; on a device the coordinate reaches a driver.
+       The device is the only end that knows the panel, so the check belongs
+       there whatever the host does.
+     - **Design the queue between the two tasks.** `core::InputQueue` is owned
+       by one thread: `push` and `pop` read-modify-write a single plain
+       `count_` from both ends, with no atomics, and `stats_` likewise. That is
+       correct and cheap on the simulator, which is single-threaded, and it is
+       what `bridge.h` implicitly promises to the device arrangement it
+       describes — *a queue in front of it rather than a mutex inside it* —
+       where the transport task and the interface task are different tasks. Two
+       tasks on this queue lose an update: a lost increment strands an event
+       while the `pushed == popped + flushed + size()` identity stops holding,
+       and a lost decrement tears a five-field event across two taps. Either
+       make it a real SPSC ring — separate head and tail, one writer each,
+       release/acquire — or hand the crossing to an RTOS queue and leave this
+       one behind the interface task. The header now says one thread owns it;
+       this is where that stops being enough.
+     - **Decide the poll cadence rather than inherit it.** `sim/main.cpp:289`
+       runs the loop at 5 ms with a client attached and 50 ms without. Those
+       two numbers were chosen so a 600 kB screenshot over a Unix socket does
+       not take a minute, and they are a *desktop* answer: on ESP-IDF the
+       interface task has a priority, a watchdog and a tick rate, and the
+       transport is USB-Serial/JTAG rather than a socket that never blocks.
+       Copying the numbers across is the failure this file keeps naming — a
+       host measurement worn as a device fact. Pick the pacing from the
+       watchdog and the transport's own back-pressure, and write down which.
+
+- **Acceptance:** `tools/watch_control.py info` answers over a port **resolved
+  from the unit's USB serial and not named on the command line** — `ttyACM0` is
+  not an identity on this host and T-116 is the resolver — a
+  screenshot of the real panel is written and **looked at**, the diagnostic
+  screen shows the corners and colours where they belong, and a swipe leaves a
+  trail rather than two dots. `tools/watch/e2e_test.py` is the model for what to
+  check; it will need a variant that talks to a port instead of starting a
+  simulator.
+- **What must not be assumed:** that `SerialTransport` in
+  `tools/watch/client.py` works. It is written and **has never spoken to a
+  device**, because there has been no device to speak to. It is marked
+  `NOT EXECUTED` in its own docstring and must stay so until it has run.
+- **Hardware required:** yes, and **flashing needs the owner's authorisation**
+  ([CLAUDE.md](CLAUDE.md)). The received Waveshare currently runs the vendor's
+  own firmware and is byte-identical to the T-099 backup.
+
 ### T-110 · The mandated reading list is 500 KB before the agent opens a file
 - **Priority:** P2
 - **Dependencies:** none. Spun out of T-107, which measured this while looking
@@ -1630,8 +1757,16 @@ stale silently. The protocol is
   states, and a model that collapses them reports a position the device does not
   have.
 - **Research status:** n/a
-- **Implementation status:** not started — the six adversarial agents allocated
-  to this terminated on an account spend limit and returned nothing
+- **Implementation status:** not started as a task — the six adversarial agents
+  allocated to this terminated on an account spend limit and returned nothing.
+  Two of its scenarios have since been resolved from the outside, by
+  [#174](https://github.com/hleserg/Attadipa/issues/174): *the link drops
+  mid-navigation* and *the node's firmware is too old to speak our version* both
+  produced a wrong answer, and it was the kind this task is looking for rather
+  than an omission — `provider()` reported a node that had merely gone out of
+  range as the local device. Fixed, and both are now host tests in
+  `tests/test_capability_registry.cpp`. The remaining scenarios are untouched,
+  and the sharpest one below is still open.
 - **Tests:** each scenario becomes a host test
 - **Hardware required:** no
 
@@ -2239,14 +2374,35 @@ stale silently. The protocol is
   `Unsupported` and that an I2C probe finding nothing is indistinguishable from
   a cold solder joint. "Probe at boot" is not by itself an answer to how a
   soldered-on source announces itself.
+- **Two more instances of the same shape, both found by
+  [#174](https://github.com/hleserg/Attadipa/issues/174) and neither an argument
+  on its own for widening the axis — they are here so the ADR has the full set
+  in front of it rather than deciding on the magnetometer alone.** First, `Origin`
+  has no value meaning *nobody*: a capability neither the board nor a node can
+  provide answers `Origin::Local`, which is the only thing two values allow and
+  is not what is true. `source()` names that case explicitly and
+  `Availability::Unsupported` is documented as the discriminator that says the
+  field is not an answer, which is as far as it can be taken without this
+  decision. Second, and sharper because it makes an ADR sentence false rather
+  than merely coarse: **the phone is already a third source in everything but
+  name.** `CompanionLink` and `NotificationRelay` reach `Unprovisioned` and
+  `Unreachable` — states ADR-0004 §2's invariant says imply a *remote* provider
+  — while reporting `Origin::Local`, because the invariant was written about
+  nodes. Which half is wrong is genuinely open: ADR-0002 forbids a phone from
+  *providing* a capability, so on that reading the provider is the on-board BLE
+  radio and `Local` is right and the invariant is over-stated; on the other
+  reading the axis is simply missing a value. `tests/test_capability_registry.cpp`
+  names the pair as an exception rather than skipping the states, so a third
+  capability entering them is a test failure and lands here.
 - **Acceptance:** an ADR, accepted or explicitly deferred with a reason, that
   says whether a third source class exists, what state a per-device (not
   per-board-type) capability is in before that specific unit has been probed,
-  and how [ADR-0004](docs/adr/0004-capability-sources.md) and
+  what a capability with **no** provider on any side reports, whether the phone
+  is on the axis, and how [ADR-0004](docs/adr/0004-capability-sources.md) and
   [ADR-0009](docs/adr/0009-heading.md) are superseded or amended once it does —
-  ADR-0004 because the two-source model and the terminal `Unsupported` state
-  are its, ADR-0009 because it is the document that assumes heading has no
-  on-board source on either board.
+  ADR-0004 because the two-source model, the terminal `Unsupported` state and
+  the remote-provider invariant are its, ADR-0009 because it is the document
+  that assumes heading has no on-board source on either board.
 - **Hardware required:** no.
 
 ### T-112 · The pedometer has a datasheet now; it still needs someone to walk
@@ -2499,6 +2655,75 @@ Recommended next action:
 - **On the Waveshare unit it stays doubly blocked**, for a second and unrelated
   reason: that unit has **no vibration motor fitted**, so there is nothing to
   interfere with the compass even once the compass exists.
+
+### T-144 · An agent cannot land a change to `.github/workflows/`, and two fixes are parked behind it
+- **Priority:** P1
+- **Dependencies:** none. This is a token permission, not a design problem.
+- **Goal:** let a fix that has to touch a workflow file actually reach `main`.
+```
+BLOCKED:
+Reason:         Agents here run as `claude[bot]` through the Claude GitHub App
+                (`ATTADIPA_AGENT_TOKEN` unset — the documented default,
+                CLAUDE_AUTOMATION.md), and that installation token holds no
+                `workflows` permission. Every push touching
+                `.github/workflows/` is refused by the remote, so any finding
+                whose fix lives in a workflow can be written, tested and
+                reviewed here, and cannot be delivered.
+Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
+                  ! [remote rejected] probe/wf-push-170 -> probe/wf-push-170
+                    (refusing to allow a GitHub App to create or update
+                     workflow `.github/workflows/pr-merge-sweep.yml` without
+                     `workflows` permission)
+                Two fixes are parked on it, both against the same file:
+                  · #170 — docs/automation/pending/170-merge-sweep-completeness.patch
+                    (the merge sweep proving it read the whole pull request)
+                  · #130 — docs/automation/pending/130-merge-sweep-caller.patch
+                    on pull request #154, which files this same blocker as
+                    "T-127" — a number already taken by the anchor check in
+                    DONE. Whichever of the two lands second should fold its
+                    entry into this one rather than leave three numbers for
+                    one problem.
+                Apply both **in one commit**, not in either order: they edit the
+                same workflow. `merge-candidate-test.sh` hard-fails CI for every
+                open pull request if #154's patch lands first — but **not** in the
+                other direction: its state machine keys on the 170 patch, and
+                #154's is on that pull request rather than in `pending/`, so
+                landing 170 alone goes green while leaving #154's patch stale.
+                The order this entry recommends is the unguarded one. Each `git rm`s only its own file, so neither deletes the
+                other's while it is still parked.
+Impact:         #170 is closed fail-closed rather than fixed: until the patch
+                lands, `merge-candidate.sh` refuses the pre-#170 nine-argument
+                caller by arity, so the sweep merges NOTHING and logs the file
+                to apply once per open pull request per run. Correct, and not
+                finished. Everything still merges through an orchestrator
+                session, which is unaffected.
+                The two patches touch the same file and will conflict with
+                each other, not with `main`.
+Possible options:
+                1. An orchestrator session applies both patches in one
+                   commit, resolving the one overlap by hand, and `git rm`s
+                   the two patch files it applied — not the directory, which
+                   also holds README.md, the target of three links in
+                   APPROVAL_STALLS.md. Costs one live session.
+                2. Owner grants the Claude GitHub App `workflows: write` on
+                   this installation. Fixes the class, not just these two —
+                   and widens what an agent may change to include the files
+                   that decide what agents may do.
+                3. Owner sets `ATTADIPA_AGENT_TOKEN` to a fine-grained PAT
+                   carrying `workflows`. Same reach as 2, and it also changes
+                   the author of every agent commit to the token's owner.
+                4. Leave both parked. The merge sweep stays a no-op, and the
+                   next workflow-level finding parks behind these two.
+Recommended next action:
+                Option 1 for these two, then decide 2 or 3 at leisure. It
+                needs no permission change and no new trust boundary, and the
+                sweep is back the same day. Options 2 and 3 hand an agent
+                write access to the workflows that constrain agents, which is
+                exactly the "a gate that can widen itself is not a gate"
+                argument CLAUDE_AUTOMATION.md makes about `docs/automation/`
+                — worth doing deliberately, not as a side effect of clearing
+                a queue.
+```
 
 ---
 
