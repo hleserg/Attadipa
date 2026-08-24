@@ -503,6 +503,16 @@ def scenarios_load() -> None:
     # the refusal names the coordinate instead of silently moving it.
     check(scenario.resolve_point("120%,0", screen)[0] == 288,
           "and a percentage past 100 resolves out of bounds rather than clamping")
+    # A float is a fraction whatever its value. Bounding that to [0.0, 1.0]
+    # sent everything outside down the pixel path, where `int()` truncated
+    # `1.5` to pixel 1 and `-0.5` to pixel 0 -- both on the panel, so the tap
+    # landed, the screen changed and every check downstream agreed.
+    check(scenario.resolve_point([1.5, 0.0], screen)[0] == 360,
+          "a fraction past 1.0 resolves out of bounds rather than truncating")
+    check(scenario.resolve_point([-0.5, 0.0], screen)[0] < 0,
+          "and a negative fraction stays negative rather than becoming pixel 0")
+    check(scenario.resolve_point([1, 1], screen) == (1, 1),
+          "while whole numbers are still pixels, which is what keeps the two apart")
     check_raises(WatchError, "a coordinate that is not a number says so",
                  lambda: scenario.resolve_point(["a", "b"], screen))
 

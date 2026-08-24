@@ -54,12 +54,19 @@ inline constexpr std::size_t kOverheadBytes = kHeaderBytes + kTrailerBytes;
 
 // The largest payload one frame may carry.
 //
-// Derived, not copied. ADR-0005 §4's envelope is 10 bytes, and MeshCore's
+// Derived, not copied. ADR-0005 §4's envelope is read here as 10 bytes, and MeshCore's
 // companion frames cap at 176 — so 192 carries a full companion frame inside a
 // Attadipa envelope with room left, and is a round number of cache lines' worth
 // on the part. RESOURCE_BUDGET §4 requires that any pool be sized to the
 // maximum payload and that the bound be declared; this is that declaration, and
 // it is one constant rather than a number repeated in six files.
+//
+// The 10 is the field list, not the diagram: ADR-0005 lists ten bytes' worth of
+// fields and draws twelve column positions above them. `STATUS.md` records the
+// discrepancy as the owner's to settle -- the diagram needs one edit or the
+// field list needs two more fields -- so this comment states a reading rather
+// than a fact. `kMaxPayload` survives either answer, which is why the constant
+// did not wait for it; the missing hedge did.
 inline constexpr std::size_t kMaxPayload = 192;
 inline constexpr std::size_t kMaxFrame   = kMaxPayload + kOverheadBytes;
 

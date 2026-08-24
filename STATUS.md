@@ -638,7 +638,12 @@ What was built:
   `tap`, `long-tap`, `double-tap`, `swipe`, `drag`, `gesture`, `button`
   press/release/click/hold, `input-reset`, `run <scenario>` and `live`.
 - **A rule in [CLAUDE.md](CLAUDE.md) and a skill agents read**, because a
-  mechanism nobody is told to use is a mechanism nobody uses.
+  mechanism nobody is told to use is a mechanism nobody uses. The skill's own
+  worked examples are held to the same standard as the code: making both
+  Waveshare buttons non-injectable turned three of its commands into `exit 1`
+  on the board its first section starts, which nothing in `check_docs.py` can
+  see — it checks links, task IDs, decision numbers and citations, never
+  whether a documented command is one the tool will run. Found in review.
 - **Two answers that had to stop being one number each.** `wait_stable` used to
   ask only what LVGL had already *processed*, so a tap that had reached the
   device and not yet the interface — a window one 33 ms read period wide,

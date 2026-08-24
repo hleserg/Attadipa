@@ -56,9 +56,9 @@ Definition of Done says so and 240×240 breaks layouts that 410×502 does not.
 **Give the second board its own socket path.** Two simulators cannot share one:
 the second is refused now, with a message saying which path is taken. Run it on
 `/tmp/attadipa-tw.sock` and pass `--socket /tmp/attadipa-tw.sock` to the tool —
-the default search covers `/tmp/attadipa-sim.sock` only. A path that exists and
-is not a socket is refused too; `--debug-socket` used to delete whatever was
-there.
+the default search covers `./.attadipa-sim.sock` and `/tmp/attadipa-sim.sock`,
+in that order, and nothing else. A path that exists and is not a socket is
+refused too; `--debug-socket` used to delete whatever was there.
 
 The simulator listens **only** when given `--debug-socket`. That is deliberate:
 the feature is off unless asked for.
@@ -76,7 +76,10 @@ Two things it will tell you that matter:
 - **`role NOT established`** beside a button. On the Waveshare the owner counted
   two pressable buttons and **which named input each one reaches is open
   question D5**. They are called `button-1` and `button-2` because naming one
-  "power" would be inventing the answer. Press them and observe; do not assume.
+  "power" would be inventing the answer. **The harness will not synthesise
+  either press** — both are `injectable = false` while D5 is open, so
+  `button button-1 click` is refused host-side, before anything reaches the
+  device. Observe them on real hardware; the simulator cannot answer this one.
 
 ## 3. Look before you touch
 
@@ -99,8 +102,10 @@ python3 tools/watch_control.py long-tap --x 205 --y 250 --duration 1.0
 python3 tools/watch_control.py swipe --from 350,120 --to 60,420 --duration 0.5
 #   those are Waveshare pixels; `info` prints the size of the board you are on
 python3 tools/watch_control.py drag  --from 60,420  --to 350,420 --duration 1.2
-python3 tools/watch_control.py button button-1 click
-python3 tools/watch_control.py button button-1 hold --duration 1.5
+python3 tools/watch_control.py button power click        # T-Watch
+python3 tools/watch_control.py button power hold --duration 1.5
+#   the Waveshare declares no button it will simulate -- `info` says so, and
+#   section 2 says why; on that board these two exit 1 rather than press
 python3 tools/watch_control.py gesture --file tests/ui/gestures/example.json
 #   fractions of the panel, so this one is board-independent -- it used to be
 #   Waveshare pixels and refused outright on a 240x240 T-Watch
@@ -177,6 +182,14 @@ passes either way. Weak on purpose: a pixel-exact expectation against a live
 renderer fails on an antialiased glyph and gets switched off within a week.
 **The strong check is you, opening the PNGs.**
 
+**A step has three outcomes, not two** — `ok`, `FAIL` and `skip`. A step this
+board cannot run is skipped: today that is the `button` step of
+`diagnostic_tour.yaml`, on the Waveshare, which declares no button it will
+simulate while D5 is open. The summary line and `--json` count it apart from
+the passes and never as one. Read it as coverage that did not happen, because a
+skipped step reading as green is exactly how a scenario reports coverage it
+never had.
+
 Images land in `artifacts/watch/<scenario>/` and every path is printed. The run
 stops at the first failure with everything written so far kept.
 
@@ -186,7 +199,8 @@ stops at the first failure with everything written so far kept.
 python3 tools/watch_control.py live --screenshot-after
 ```
 
-Then `tap 120 180`, `swipe 200 180 40 180`, `click button-1`, `shot`,
+Then `tap 120 180`, `swipe 200 180 40 180`, `click power` (T-Watch; the
+Waveshare refuses it, see section 2), `shot`,
 `series 5 0.2`, `reset`, `help`, `quit`. One handshake, no reconnect per action,
 so a `press` and a much later `release` genuinely test a hold.
 
@@ -197,6 +211,7 @@ so a `press` and a much later `release` genuinely test a hold.
 | `no watch found` | nothing is listening | start the simulator with `--debug-socket` |
 | `the device did not answer within 10.0s` | it is wedged, or something else is connected | check the simulator is alive; only one client is served at a time |
 | `the device refused: that input is impossible…` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info`. **If you ran `press` in one command and `release` in the next, this is the expected answer, not a fault** — see section 4 |
+| `'button-1' has no established role on this board and is not simulated` | the harness refuses it host-side; on the Waveshare both buttons are `injectable = false` while D5 is open | not a fault and not fixable from here — use the T-Watch's `power`, or press the real board by hand |
 | `the device refused: this stack is single-touch` | you asked for a second finger | there is no multitouch; use one-point gestures |
 | `the device refused: a screenshot is already in progress` | two overlapping requests | let the first finish |
 | `the device refused: the device could not produce a frame at all…` | the renderer is out of memory | **retrying will not fix it.** A 410 × 502 screenshot asks LVGL's 1 MiB pool for 617 kB over the widget tree; simplify the screen or look at what is holding memory. It used to answer `nothing has been rendered yet`, which sent you to wait for a frame that was already drawn |

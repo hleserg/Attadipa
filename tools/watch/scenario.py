@@ -194,7 +194,15 @@ def _axis(value, watch: Watch | None, axis: str) -> int:
     # changed, and every check downstream passed. The type keeps the two
     # meanings apart on its own: YAML `1` is an `int` and stays a pixel, `1.0`
     # is a `float` and is the edge.
-    if percent or (isinstance(value, float) and 0.0 <= value <= 1.0):
+    #
+    # A `float` is a fraction whatever its value, and that is the whole test.
+    # Bounding the branch to [0.0, 1.0] instead sent `1.5` and `-0.5` down the
+    # pixel path, where `int()` truncated them to pixel 1 and pixel 0 -- both
+    # inside the panel, so `_check_point` passed, the tap landed, the screen
+    # changed and `expect_screen_changed` agreed. The PNG then showed an edge
+    # dot with nothing to say it was not asked for. Out of range now resolves
+    # out of bounds and is refused by name, the same answer `"120%"` gets.
+    if percent or isinstance(value, float):
         if watch is None:
             raise WatchError(
                 f"a fractional coordinate ({value}) needs the device's screen size, "
@@ -351,7 +359,7 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
             else:
                 result.ok = False
                 result.detail = f"unknown action '{step.get('action')}'"
-        except (WatchError, ProtocolError, KeyError, ValueError) as exc:
+        except (WatchError, ProtocolError, KeyError, ValueError, TypeError) as exc:
             # `ProtocolError` is a typed refusal from the device -- BadInput,
             # RateLimited, QueueFull. It is a `RuntimeError`, not a
             # `WatchError`, so it used to escape `run()` entirely: past the
@@ -359,6 +367,12 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
             # `input_reset` cleanup. A scenario that deletes its own evidence
             # on failure is useless exactly when it matters, which is what
             # this file promises at the top.
+            #
+            # `TypeError` is here for the same reason and was found the same
+            # way. A key present but empty is `None` in YAML and in JSON, and
+            # `None` reaches `float()`/`int()` as a `TypeError` rather than the
+            # `ValueError` a malformed string gives -- so `x:` with nothing
+            # after it took the whole report down instead of failing one step.
             result.ok = False
             result.detail = str(exc)
 

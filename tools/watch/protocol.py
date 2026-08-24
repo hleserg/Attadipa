@@ -348,8 +348,14 @@ class Hello:
 @dataclass
 class Button:
     id: str = ""
-    injectable: bool = True
-    role_known: bool = True
+    # Both default to the *restrictive* answer, matching `ButtonSpec` on the
+    # device (`platform/include/attadipa/platform/board_profile.h`). A button
+    # nobody has described is not one the harness may press: the permissive
+    # default is how an unexamined board profile quietly acquires a synthetic
+    # press it cannot deliver. `Capabilities.decode` always sets both, so this
+    # is a floor rather than a value anything reads today.
+    injectable: bool = False
+    role_known: bool = False
 
 
 @dataclass
