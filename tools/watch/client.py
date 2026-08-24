@@ -755,6 +755,14 @@ class Watch:
         # the *device's*, read from its capabilities: a firmware with a
         # tighter one than the simulator's 30 s is exactly the case a
         # hardcoded number here would get wrong. Found in review of #187.
+        #
+        # The falsy test is this tool declining to enforce a bound it was
+        # not given -- NOT a reading of what the device means by 0. The
+        # bridge treats 0 as expire-immediately (bridge.cpp:597 compares
+        # with `>`), so a firmware wanting an unbounded hold must raise
+        # the limit rather than zero it. Refusing every gesture against a
+        # device that answered 0 would be worse and would not make the
+        # device's behaviour any different. Found in review of #192.
         if caps.max_hold_ms and seconds * 1000 > caps.max_hold_ms:
             raise WatchError(
                 f"the device releases anything held longer than {caps.max_hold_ms} ms, "

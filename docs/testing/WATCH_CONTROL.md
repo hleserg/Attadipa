@@ -135,7 +135,20 @@ whatever is underneath, and then refuse the real release as *impossible from
 the current state* — a message about the wrong subsystem, after the fact. It
 is refused up front instead, in a sentence naming the limit, the same way
 `hold --duration` has always been. The number is read from the capabilities
-rather than assumed here, and a device declaring `0` is declaring no limit.
+rather than assumed here.
+
+**`0` is a host convention and not a device declaration, and the two do not
+agree.** A device that advertises `0` has given the tool no bound to enforce,
+so the tool does not invent one and lets the gesture through. The bridge reads
+the same `0` as *expire immediately*: `debug/src/bridge.cpp:597` releases when
+`now_ms - pointer_down_at_ > limits_.max_hold_ms`, which is already true one
+millisecond after the `PointerDown`, and `:583` does the same for buttons.
+`info` says so out loud — it prints `hold released after 0 ms`. So `0` is not a
+way to ask for an unbounded hold; a firmware that wants one has to raise the
+limit, not zero it. The default is `30000`
+(`debug/include/attadipa/debug/bridge.h:148`), and `bridge.cpp:210` copies the
+enforced limit into the capabilities verbatim, so what is advertised and what
+is enforced are one number.
 
 This was not true before, which is why it is written down rather than assumed:
 the wait hung off the *intermediate* points and came after each was sent, so a

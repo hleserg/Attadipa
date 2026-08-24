@@ -1031,13 +1031,16 @@ def a_gesture_longer_than_the_device_will_hold_is_refused() -> None:
         client_module.time = real
     check(device.events == [], f"leaving nothing held ({len(device.events)} event(s) sent)")
 
-    # At the bound and under it, nothing changes. `max_hold_ms = 0` means the
-    # device declared no limit, and a check that fired on that would refuse
-    # every gesture against a device that had not answered the question.
+    # At the bound and under it, nothing changes. `max_hold_ms = 0` is the
+    # host declining to enforce a bound it was not given: a check that fired
+    # on it would refuse every gesture against a device that had not answered
+    # the question. It is NOT the device promising an unbounded hold -- the
+    # bridge reads 0 as expire-immediately (bridge.cpp:597) -- so the
+    # assertion below is about this tool and says so.
     events, _ = _gesture_schedule([(10, 10), (60, 80)], 2.0, max_hold_ms=2000)
     check(len(events) == 2, "a gesture exactly at the bound still runs")
     events, _ = _gesture_schedule([(10, 10), (60, 80)], 90.0, max_hold_ms=0)
-    check(len(events) == 2, "and a device that declares no limit is not given one")
+    check(len(events) == 2, "and a device that gave no bound is not given an invented one")
 
 
 def a_gesture_that_cannot_be_timed_is_refused_before_the_finger_lands() -> None:
