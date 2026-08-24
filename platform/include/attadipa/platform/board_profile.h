@@ -8,6 +8,30 @@
 
 namespace attadipa::platform {
 
+// One pressable button, as a board fact.
+//
+// Here rather than in the input layer because which keys exist is a property of
+// the board, and core/ is not allowed to hold a table of board facts. The
+// interesting field is `role_known`: on the Waveshare the owner counted **two**
+// pressable buttons on the assembled case, and which named input each one
+// reaches -- `Key1`, `Key3` or the PMU's `PWRON` -- is open question D5. A
+// profile that named them "power" and "back" would be inventing the answer, so
+// they are numbered and flagged, and anything that displays them can say so.
+struct ButtonSpec {
+    const char* id         = "";     // stable, lowercase; what a tool names on the command line
+    bool        role_known = false;  // false: it is pressable, and what it does is not established
+    // false: this key cannot be simulated -- either it is a service key a debug
+    // channel must not touch, or nothing establishes that a press reaches
+    // software at all. The default is the *restrictive* direction on purpose:
+    // it used to be `true`, so a new profile inherited "a host may synthesise
+    // this press" by saying nothing, and a board whose wiring is an open
+    // question would answer for it by omission. `role_known` next door already
+    // defaults to the honest side; this now matches.
+    bool        injectable = false;
+};
+
+inline constexpr std::uint8_t kMaxBoardButtons = 3;
+
 // Everything the hardware layer knows about a board, as data rather than as
 // #ifdefs. One reason it is data: the simulator must be able to present a
 // configuration it was not compiled for (docs/adr/0001-capability-model.md
@@ -22,6 +46,9 @@ struct BoardProfile {
     DisplayInfo   display      = {};
     std::uint32_t present_mask = 0;        // bit per HardwareFeature
     RadioInfo     radio        = {};       // meaningless unless present(Radio)
+
+    ButtonSpec   buttons[kMaxBoardButtons] = {};
+    std::uint8_t button_count              = 0;
 
     bool present(HardwareFeature feature) const
     {
