@@ -23,7 +23,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: bash .github/scripts/wip-limit.sh
+        run: |
+          # The first pull request that introduces this trusted rule cannot run
+          # a file which is intentionally absent from main until that PR merges.
+          if [ ! -f .github/scripts/wip-limit.sh ]; then
+            echo "state=bootstrap" >> "$GITHUB_OUTPUT"
+            echo "count=unknown" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bash .github/scripts/wip-limit.sh
       - name: Report an over-limit queue
         if: steps.wip.outputs.state == 'full' || steps.wip.outputs.state == 'incident' || steps.wip.outputs.state == 'unknown'
         env:
