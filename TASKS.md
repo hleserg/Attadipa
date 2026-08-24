@@ -260,7 +260,96 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-152 · A present provider that is permanently uncomparable still releases the hold
+- **Priority:** P2 — narrow, and it is the residual of a fix rather than a new
+  defect.
+- **Dependencies:** `core/src/trust.cpp` (**done**); `provider_detached()`
+  (**done**).
+- **Goal:** `compare_provider()` calls `stop_awaiting(ProviderDisagreement)`
+  when the second source cannot answer — no position, an out-of-range one, or a
+  measurement older than `provider_comparison_window`. The first two mean the
+  provider really has stopped being one. The third does not: a node relaying
+  fixes at 1 Hz whose measurement times are consistently 6 s old is **present,
+  is disagreeing, and stops being awaited anyway**, so the device climbs back to
+  `Trusted` in about twenty seconds with the node still saying it is 550 m out.
+  `14-a-relayed-fix-arrives-old.trace` records relayed ages of 2 s and 40 s over
+  *"a link that can queue, retry and reconnect"*, so a persistently late relay is
+  ordinary rather than exotic. Found in the second review round of
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which named it and did
+  not block on it.
+- **Acceptance:** it decides one of — a `TrustReason` meaning *a second source
+  is present and cannot be compared*, which is a live reason that holds the
+  state down and is retracted the moment one comparable frame arrives; or
+  `stop_awaiting()` on the stale path is removed entirely and the only exits
+  become an uncomparable-by-content frame and `provider_detached()`, with the
+  owner obliged to call it; or the release is kept and the bound is stated where
+  a reader meets it rather than only in this task. Whichever it picks,
+  `tests/test_trust.cpp`'s
+  `test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared`
+  is rewritten to assert the decision — it currently pins today's behaviour with
+  a deliberately disagreeing frame, so it will go red on purpose. Its two
+  siblings are `test_a_node_under_cover_is_not_a_node_that_has_gone`, which
+  pins that the grace is honoured, and
+  `test_a_node_uncomparable_past_the_grace_stops_being_awaited`, which pins that
+  it eventually expires; the first must stay green under any decision here, and
+  the second is the one a new enumerator replaces.
+- **What the fourth review round already settled, so this task starts from it.**
+  The lift no longer keys on one uncomparable frame: it needs the other side to
+  have been unable to answer for `provider_departure_grace`, and
+  `provider_detached()` latches so that a detach is not silently timed against
+  `evidence_ttl`. That closes the reachable half of the defect — a node under
+  canopy, relaying fix-less frames at 1 Hz, was being read as a node that had
+  gone, lifting the allegation about five seconds later and letting `remember()`
+  commit the disputed coordinate as the fallback. What remains for this task is
+  the *permanently* uncomparable present node, where the grace does eventually
+  expire and the release is a bound rather than a bug.
+- **And the grace is `ESTIMATED`, which is part of this task.** 120 s is chosen
+  to sit above an ordinary urban dropout and below a boot; nobody has measured
+  how long a node's receiver stays fix-less under cover, and the second source's
+  duty cycle is not ours to know. Being generous costs a pinned `Degraded` for a
+  node that vanishes without telling us; being stingy costs a false all-clear.
+  It is a number to measure, not to argue about.
+- **What must not be assumed:** that a new enumerator is free. Every
+  `TrustReason` costs a bit in a mask that `DiagnosticsSnapshot` carries and a
+  weight in `policy()`, and a reason nothing can retract is the pin this whole
+  area exists to remove — the retraction has to be designed with it.
+- **Hardware required:** no.
+
+
 ## NEXT
+
+### T-128 · The generated-asset reproducibility job is written and cannot be pushed
+- **Priority:** P2
+- **Dependencies:** T-149 (**done**) — the script it runs is committed.
+- **Goal:** add the `generated-assets` job to `.github/workflows/ci.yml`. It
+  regenerates both committed asset trees from two different absolute paths with
+  the pinned `lv_font_conv` and compares all sixteen files against what is
+  committed — the one thing a stamp cannot do, because a stamp written beside a
+  wrong file records the wrong file faithfully. The block is in
+  [`tools/integrity/README.md`](tools/integrity/README.md), written against
+  `actionlint 1.7.7` and passing it, together with the two one-line edits to the
+  `evidence` job that go with it.
+- **Why it is not already there, and it is not a decision:** the agent that
+  wrote it authenticates as a GitHub App whose installation may not write
+  `.github/workflows`, so the push was refused server-side — *"refusing to allow
+  a GitHub App to create or update workflow `.github/workflows/ci.yml` without
+  `workflows` permission"*. Working around that would mean smuggling a workflow
+  change past a permission boundary somebody set on purpose.
+- **Acceptance:** the job runs on a pull request and reaches `reproducible: 16
+  generated file(s) are identical across two checkout paths and identical to
+  what is committed`, and `evidence` lists it. Run ID recorded here.
+- **Two ways to close it, and the owner picks:** paste the block in an
+  orchestrator session whose token may write workflows, or grant the App
+  installation `workflows: write` and hand this back to the queue. The first is
+  one commit and changes no permissions; the second unblocks every future
+  workflow fix an agent finds, and widens what an agent may push. **Recommended:
+  the first**, because nothing else in the current backlog needs the second and
+  a permission granted to close one task is a permission nobody revisits.
+- **Watch for:** the job installs `pypng` and `lz4` from pip inside a venv —
+  they are `LVGLImage.py`'s module-scope imports and are needed even with
+  compression off. Pillow comes from apt, as it does in the other jobs.
+- **Hardware required:** no. **Owner required:** yes, for the permission or the
+  paste.
 
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
@@ -344,7 +433,19 @@ stale silently. The protocol is
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
   evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
   (the movement/altitude baseline, below) — and the rule from the research
-  prompt applies: **do not stop after the first fix.**
+  prompt applies: **do not stop after the first fix.** Issue #151 (recovery
+  completing on silence alone, below) has since been closed the same way.
+  **And one finding is about text rather than code.** `trust.h` and
+  `diagnostics.h` both justify keeping a per-reason mask by what a diagnostic
+  screen will show — *"can name it rather than showing a device stuck for no
+  visible reason"* — and there is no `l10n/strings.toml` entry for any
+  `TrustReason` or `TrustState`. `to_string(TrustReason)` returns English
+  identifiers, which is right for a diagnostics dump and is not a sentence a
+  user reads, so the promise is currently kept by something that cannot keep it.
+  Either the strings exist, or the promise says *a support bundle* instead of *a
+  screen*. Pre-existing; made twice more by
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which is why it is
+  written down here rather than left to the next reader of a header.
 
 - **A state that cannot say "nobody has checked".** `GnssCapabilities`
   (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
@@ -430,18 +531,77 @@ stale silently. The protocol is
   `encode()` accepts it and the round-trip tests cover it — so a caller
   draining until zero silently drops one.
 
-- **`Attach` while `Faulted` reports the wrong refusal.** It returns `Redundant`
-  where `Ignored` is the truth: nothing about a faulted link makes a new attach
-  redundant, and the two words tell an operator different things.
+- **`Attach` while `Faulted` reported the wrong refusal — fixed, issue #158.**
+  It returned `Redundant` where `Ignored` is the truth: nothing about a faulted
+  link makes a new attach redundant, and the two words tell an operator
+  different things. The cause was one guard, `phase_ != Absent -> Redundant`,
+  answering for five phases at once, and the diagnostic cost was the larger
+  half — `Redundant` is not counted, so a controller retrying an attach against
+  broken hardware left nothing in `ignored_events()` to find. `Attach` is now
+  classified per phase: `Absent` applies it, `Attached`/`Connecting`/`Ready`
+  answer `Redundant` because the peripheral genuinely is there, and `Faulted`
+  and `Suspended` answer `Ignored` and are counted. **`Suspended` is the
+  contract that had never been decided**, and it is decided here: a quiesced
+  link carries nothing, so an attach is refused rather than satisfied and the
+  way back stays `Resume` — otherwise a lifecycle owner that had not noticed
+  the suspend could route around it silently. A phase added to the enum later
+  falls to `Ignored` rather than `Redundant` in `link_state.cpp`, which is the
+  safe half of the two and is deliberately not compile-time guarded; the guard
+  is in **the test**, where a `constexpr` coverage check over
+  `kTransportPhaseCount` fails to build if the phase table does not name every
+  phase. So a new phase compiles and behaves safely, and the suite refuses to
+  build until somebody has decided what it *should* do.
+  Mutation-verified: restoring the old guard turns 13 checks red across the
+  three new tests, and leaves the `Attached`/`Connecting`/`Ready` rows green,
+  which is the evidence that only the two intended phases moved.
 
 - **`Detach` hardcodes `PeerClosed`.** A detach the *device* initiated is
   recorded as one the peer initiated. That is the field-report evidence for the
   most common question about a node link — who let go first.
 
-- **Recovery can complete with no observation at all.** The clean-hold window
-  can elapse while nothing whatever has been reported, so silence promotes the
-  state. OD-5's rule is that silence is not an all-clear; this is the one place
-  the code still treats it as one.
+- **Recovery could complete with no observation at all — fixed, issue #151.**
+  The clean-hold window could elapse while nothing whatever had been reported,
+  so silence promoted the state. With the default policy the whole path was
+  deterministic: `report(ReceiverSpoofing, t=0)` reached `Untrusted`, the TTL
+  took the alarm out of the score at 15 s, `evaluate()` read the resulting zero
+  as a detector's all-clear and started the clean hold on it, and twenty-five
+  seconds after the alarm the device announced `Trusted` again — no observation,
+  no `clear()`, no evidence of any kind in between. OD-5's rule is that silence
+  is not an all-clear, and this was the one place the code still treated it as
+  one. `TrustEngine` now remembers, per reason, whether an allegation left
+  `live_` by `clear()` or by the TTL, and refuses to start or advance the
+  recovery hold while any of them stands unretracted
+  (`TrustEngine::unconfirmed_reasons()`); when a retraction does arrive the hold
+  is measured from it rather than from the silence in front of it. Descent,
+  hysteresis and one-step-per-hold are unchanged. Six regression tests in
+  `tests/test_trust.cpp` and replay trace
+  `16-silence-does-not-restore-trust.trace`; removing the gate alone turns
+  sixteen checks and four trace expectations red. The rule is now written down
+  as [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, including what it costs:
+  a device that never hears another positive word does not climb back on its
+  own, and the ways out are a detector saying so, `reset()`, or
+  `stop_awaiting()` **when the provider goes away** — three, not two, and not
+  *never a timer*: past `stop_awaiting()` the recovery hold runs and the state
+  climbs on the clock with nothing retracted, which is legitimate only because
+  the allegation was about a pair and one of the pair is gone. The scope on
+  `reset()` is load-bearing:
+  it asserts `Trusted` immediately and skips both holds, so it answers *a
+  different provider is here now*, and the pin most likely to be met comes from
+  the device's own receiver, which never detaches. It is also per boot, nothing
+  in `core/` persisting trust state. **Three further findings on the second
+  review pass**, one blocking: `ProviderDisagreement`'s only retraction sat
+  behind `compare_provider()`'s freshness gate, so a duty-cycled receiver or a
+  relayed fix measured outside the window pinned the device for the rest of the
+  boot with no live reason and no exit — fixed with `stop_awaiting()`, which
+  clears the *awaiting* bit without touching a live allegation, mutation-checked
+  in both directions; `DiagnosticsSnapshot` could not carry the mask that
+  decides the verdict, so a stuck device could not say why on the one screen
+  meant to explain it, and `GnssStatus` gained `trust_unconfirmed`; and the
+  claim that only three reasons can reach the mask is **false** whenever
+  `observe()` does not run inside `evidence_ttl`, because `refresh()` retracts
+  only `FixLost` and `StalePosition` — with the shipped defaults that is a
+  fifteen-second window of `Degraded` with `score() == 0`, self-healing on the
+  next observation, so a corrected sentence rather than a code change.
 
 - **`FixLost` and `StalePosition` both weigh 20 against a `degrade_at` of 30.**
   So neither, alone, moves trust. That may be the intended two-axis design —
@@ -459,7 +619,13 @@ stale silently. The protocol is
   — mutation-verified, as the four already closed were — or declined in writing
   with the reason. A silent decline is not one.
 - **Research status:** n/a
-- **Implementation status:** not started
+- **Implementation status:** in progress — the items marked *fixed* above are
+  closed, each with a mutation-verified test, and the rest are open with this
+  task. Closed so far: the `Attach`-while-`Faulted` refusal (issue #158), and
+  silence after a GNSS alarm restoring `Trusted` on its own (issue #151). The
+  remaining bullet in the same file as the first — zero meaning two things in
+  the decoder — was deliberately left alone, so that one finding stays one
+  change.
 - **Tests:** host, per item
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.
@@ -962,7 +1128,16 @@ stale silently. The protocol is
 - **Acceptance:** no critical structure is ever overwritten in place; a migration
   never destroys its source; the ~2× storage headroom the pattern needs is
   checked rather than assumed; dirty state is flushed on every shutdown and
-  reboot path (#2627).
+  reboot path (#2627); **and `DiagnosticsSnapshot` carries a version, a magic
+  and its own size** before anything writes it anywhere. `tests/test_diagnostics.cpp`
+  pins a memcpy-into-RTC contract and the struct has no stamp of any kind, so a
+  snapshot written before an OTA and read after it is garbage with nothing to
+  detect it by. Latent today because nothing persists one; the layout has now
+  changed twice
+  ([#153](https://github.com/hleserg/Attadipa/pull/153),
+  [#163](https://github.com/hleserg/Attadipa/pull/163)) without a reader
+  noticing, which is exactly the condition for the defect. Found in review of
+  #153.
 - **Research status:** done —
   [meshcore-1.17-review §6](docs/upstream/meshcore-1.17-review.md)
 - **Implementation status:** not started
@@ -2185,6 +2360,61 @@ A1's schematic-revision
   looking for links. Two more cases: an illustration stays quiet, a real link
   after a code span on the same line is still read.
 
+### T-149 · The generated asset checks never looked at the generated bytes — **DONE** 2026-08-23
+- **This task was filed as T-127 and renumbered on merge.** `main` took its
+  own T-127 — *a link's `#anchor` is captured and then never checked* — while
+  this branch was open, so two unrelated tasks arrived at one ID. `main`'s
+  keeps the number because it landed first; every reference here to the
+  *anchor* half still reads T-127 and is correct. `check_docs.py`'s duplicate
+  task-ID check would have caught the collision at merge, which is what it is
+  for; it is recorded here so the next reader does not read the two as one.
+- **The finding, reproduced before it was fixed** (issue #69). Both committed
+  asset trees were guarded by a stamp of their *inputs* and then a count of
+  filenames. Editing a line of a generated font left
+  `generate_ui_fonts.py --check` at exit 0 saying *"fonts: inputs unchanged, 4
+  generated file(s) present"*; changing the first A8 bitmap byte of
+  `attadipa_icon_mesh_33.c` left `generate_images.py --check` at exit 0 saying
+  the same about ten. Missing glyphs, altered masks and corrupted descriptors
+  could all reach firmware behind a green CI run.
+- **The second half was worse, and is the reason the first was never caught.**
+  `lv_font_conv` writes its own argv into an `Opts:` comment, so all four
+  committed fonts carried `/mnt/e/projects/firefly/...` — one machine's absolute
+  paths. A fresh generation anywhere else differed in bytes while being
+  identical in every glyph, so the only byte-for-byte gate available reported
+  **all four files as differing** and could never be turned on. MEASURED here
+  before the fix: four false positives, and the diff was one line per file.
+- **One contract for both trees**, `tools/integrity/stamp.py`: `inputs` plus a
+  `output <sha256> <name>` line per committed file, strict parser, three
+  distinguishable verdicts — inputs moved, a file changed, the stamp itself is
+  damaged — because those need three different repairs. Written atomically and
+  **only by a generator**; there is deliberately no "re-stamp what is on disk"
+  mode, since a tool that blesses whatever bytes it finds is the same hole
+  wearing a maintenance hat. Reuse considered and recorded: `sha256sum -c` was
+  the close candidate and is in [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
+- **The provenance line is normalized** to logical paths, and now says something
+  a reader can check: every generated font banner carries the source TTF's
+  SHA-256 and the pinned converter version, and the generator **refuses a
+  converter whose `--version` is not 1.5.3** rather than trusting whatever npm
+  left on PATH. The glyph bytes did not move — verified by comparing the bodies
+  past the header, all four identical.
+- **45 mutation cases**, `ui_generated_outputs_reject_mutations`, needing neither
+  Node nor Pillow so they run in the same host job as the gate they are about.
+  Each of the fourteen outputs is corrupted in turn in a copy of the tree; so is
+  each input, and the stamp in six different ways. A control case at each end
+  asserts an untouched tree still passes — that is what caught a harness bug
+  where CPython reused bytecode from a mutation because the restored source had
+  the same size and the same mtime to the second.
+- **The expensive half is a script that is run and not yet automated** —
+  `tools/integrity/reproducibility.py`, T-128 for the CI job: fetch Montserrat
+  from the pinned LVGL commit (one 243 kB file, hash-checked, instead of the
+  350 MiB clone), install `lv_font_conv@1.5.3`, regenerate **both** trees from
+  two different absolute paths and compare all sixteen files against what is
+  committed. Host jobs stay Node-free, which is the whole reason the outputs are
+  committed. Run here before the job existed: 16/16 identical, 3.6 s.
+- **Not hardware.** Whether the glyphs and masks look right on a panel is
+  `NOT EXECUTED — HARDWARE REQUIRED` and belongs to a HIL task; this is about
+  the bytes being the bytes that were generated.
+
 ### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
 - **The cause was not the model, the context or the turn ceiling.** It was
   `allowed_bots: ""` in `claude-agent.yml`. The hourly watchdog hands a task
@@ -2421,7 +2651,9 @@ A1's schematic-revision
 - **The staleness gate covers the converter as well as the art.** An encoder
   that changes its output *is* the asset changing, so its SHA-256 is inside
   `INPUTS.sha256` and a bump fails `ui_images_are_current` until the tree is
-  regenerated.
+  regenerated. What it did **not** cover was the generated bytes themselves, so
+  a hand-edited mask passed — **T-149** closed that, and `INPUTS.sha256` now
+  records a hash per output as well.
 - **Three refusals, each with a test that triggers it:** a source over 512 px
   (the 1440-pixel concept sheets, §41); a source under `docs/` or `pics/`; and a
   pixel size with no drawing behind it — which is final §86 made mechanical

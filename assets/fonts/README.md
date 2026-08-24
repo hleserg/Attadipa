@@ -10,7 +10,15 @@ The alternative is running `lv_font_conv` during the build, which puts Node.js
 between a contributor and a green build for output that changes about as often as
 somebody edits `charset.py`. The localization catalogue already made this trade
 and this follows it: the output is committed and a test fails when it drifts —
-`ui_fonts_are_current`, which compares a digest of the inputs.
+`ui_fonts_are_current`, which compares a digest of the inputs **and** the
+SHA-256 of each of these four files against `INPUTS.sha256`. The second half
+arrived with issue #69: until then a hand-edited byte in one of them passed the
+check green, because the check compared inputs and then counted filenames.
+
+`INPUTS.sha256` therefore records more than its name says, and the name is kept
+because several documents cite it. Its first line says what it actually holds.
+Only `generate_ui_fonts.py` writes it; editing a hash there to make a check pass
+repairs nothing.
 
 ## Provenance
 
@@ -57,5 +65,12 @@ Regenerate:
 
 ```bash
 npm install --no-save lv_font_conv@1.5.3
-python3 tools/font/generate_ui_fonts.py
+python3 tools/font/fetch_ttf.py --out /tmp/Montserrat-Medium.ttf
+python3 tools/font/generate_ui_fonts.py \
+        --ttf /tmp/Montserrat-Medium.ttf --converter ./node_modules/.bin/lv_font_conv
 ```
+
+Without `--ttf` it looks for the font inside whatever LVGL tree a simulator
+build fetched, which is the right default once you have one and a 350 MiB clone
+if you do not. Either way the file's SHA-256 must match the table above and the
+converter must report `1.5.3`, or nothing is generated.

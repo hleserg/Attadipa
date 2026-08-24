@@ -1,3 +1,18 @@
-# What the generated fonts were built from. Compared by --check on a
-# machine with no Node and no configured build, which is most of them.
-a1d76753e9ed82b8ce5d05098a94184920400c68d5c54c8c1deeebff491ea1fe
+# What the generated fonts were built from, and what was built. The file is still
+# called INPUTS.sha256 because several documents cite it by name; it has recorded
+# outputs as well since issue #69, and this line is here so that nobody has to
+# infer that from the name.
+#
+# `inputs` covers the charset, the sizes, the bit depth, the source TTF's hash,
+# the pinned converter version and the exact banner text. Each `output` line is
+# the SHA-256 of a committed file, so a hand-edited bitmap, a corrupted glyph
+# descriptor or a deleted size fails `--check` on a machine with neither Node nor
+# a configured build — which is most of them, and every host CI job.
+#
+# Written only by tools/font/generate_ui_fonts.py. Editing a line here to make a
+# check pass is the one repair that fixes nothing.
+inputs  801f3731e634b21fa18907ef3acb1eae095f0cb04b55a10eff33b2957c1567ff
+output  d6deb8d18516af4cd5985695cbd26f5aa82306c72aac5906e8b6bd1b8e15dce2  attadipa_montserrat_14.c
+output  9645d6506c80b4cab6daf10057b8359b9aae1c799e25afa7fb832c081b7ce9f2  attadipa_montserrat_16.c
+output  c6ea2025276b9e56e300b3e78de7039b62e903d807d2038248cf6ed0301c04dd  attadipa_montserrat_20.c
+output  6223fd6f3caf6f9291bf75ef5e7c5e5b4a198a5c15617e59a7153e002a004faa  attadipa_montserrat_28.c
