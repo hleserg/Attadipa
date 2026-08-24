@@ -239,7 +239,7 @@ omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
 `github_token:` for `claude-code-action` — one citation per line, because the
 checker reads a fingerprint only from the citation's own physical line:
 `claude-agent.yml:804` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
-`claude-pr-review.yml:111` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+`claude-pr-review.yml:112` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
 `claude-ci-repair.yml:237` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
 `display_report: "true"` posts the agent's summary **on the triggering issue**
 over it, and the

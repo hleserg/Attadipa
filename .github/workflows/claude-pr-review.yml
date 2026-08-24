@@ -65,6 +65,7 @@ jobs:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.CLAUDE_AUTOMATION_ENABLED != 'false' &&
+      vars.CLAUDE_PR_REVIEW_ENABLED != 'false' &&
       (!endsWith(github.actor, '[bot]') || github.actor == 'claude[bot]')
     steps:
       - name: Check that an Anthropic credential exists
@@ -222,9 +223,10 @@ jobs:
           # silently change what this loop is: the cost of that choice is that
           # somebody must come here to move it, which is the intended cost.
           #
-          # Owner decision, 2026-08-22: Opus 5 at the top effort level.
+          # Automated semantic reviews use xhigh by default. Max is reserved
+          # for an explicit owner-requested exceptional review.
           claude_args: |
-            --model claude-opus-5 --effort max --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git blame:*),Bash(git ls-files:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(wc:*),Bash(sort:*),Bash(uniq:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
+            --model claude-opus-5 --effort xhigh --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git blame:*),Bash(git ls-files:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(wc:*),Bash(sort:*),Bash(uniq:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }}
             in ${{ github.repository }}. You did not write this code. Read the
