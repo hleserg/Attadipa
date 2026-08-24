@@ -2363,7 +2363,8 @@ stale silently. The protocol is
       **T-109** already owns the modules, the `CAD` decision and both
       footprints, so if this half slips, it goes there rather than holding a
       P1 battery task open. M1 through M3 do not wait on any of it.
-- **And eight registers, on the board, whenever convenient:** `0x62` (charge
+- **And eight registers, on the board — the cell-safety three now owed rather
+  than convenient:** `0x62` (charge
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
   `0x12` and `0x69`, at I²C address `0x34` — **and `0x64` (CV target),
@@ -2386,9 +2387,18 @@ stale silently. The protocol is
   bench that costs the panel's brightness `UNKNOWN`.
 
   The pair was raised in `BENCH_HANDLING` and cited to a task number that did
-  not exist, so until now the question had no owner in this file at all. Reading
+  not exist, so until then the question had no owner in this file at all. Reading
   any of them is a read, not a write, and needs no permission beyond having the
   unit.
+
+  **The owner was asked and answered: read them** (2026-08-24, recorded under
+  OD-18 in [OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md)). That answer
+  changes the standing of these three and of nothing else in this task: the five
+  eFuse-defaulted registers keep the *whenever convenient* standing they have
+  always had, and `0x61`, `0x63` and `0x64` are now owed on the next trip to the
+  bench. It does **not** advance the acceptance below by a single line — an
+  answered question is not a measurement, and every one of the eight stays
+  `UNKNOWN` until the burst is actually taken and written down as `MEASURED`.
 - **Acceptance — and it does not include the magnetometer.** M1, M2, M3, M4's
   `0x6A` leg and **all eight** register values, each recorded as `MEASURED` with
   the instrument named — the eight including `0x61`, `0x63` and `0x64`, which are

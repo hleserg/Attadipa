@@ -371,7 +371,7 @@ Caliper across the **crimp centres** of the two contacts, not across the
 housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
 `LIKELY` and `STATUS.md` lists as `CONFLICTING`.
 
-### On the powered board, whenever convenient
+### On the powered board — five whenever convenient, three owed
 
 - **One I²C read burst at `0x34`** covering `0x62`, `0x50`, `0x58`, `0x12`,
   `0x69` — the five eFuse-defaulted registers of §1.3. Until then every
@@ -389,6 +389,15 @@ housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
   repository's cell-safety questions, and this burst is the only route from
   `UNKNOWN` to read. **Do not close T-106 with five, and do not close it with
   seven.**
+
+  **These three are owed, not optional.** The owner was asked on 2026-08-24
+  whether he wanted the charger's registers read on the next bench trip and
+  said yes — recorded under OD-18 in
+  [OWNER_DECISIONS](OWNER_DECISIONS.md). The five above keep the standing this
+  heading gives them; these three do not. Reading them still establishes only
+  what the running image left behind: it does not establish that leaving the
+  unit plugged in is kind to the cell, and nothing written from the result
+  should read as if it did.
 
   The three are not equally urgent, and the difference is worth writing down
   rather than flattening. **`0x64` and `0x63[4]` are the pair OD-18 makes live**

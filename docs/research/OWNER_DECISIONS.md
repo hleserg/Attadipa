@@ -1423,7 +1423,7 @@ reason to reopen the decision — the owner chose availability knowingly and tha
 choice stands. It is here so that the decision is not read as having weighed a
 question it was never asked.
 
-**Waiting on the owner: the second consumable, `needs-owner`.** Recording it in
+**Answered by the owner: the second consumable.** Recording it in
 `docs/` and closing the paragraph is what round 15 of #134 called wrong, and it
 is right: a fact nobody was asked about does not become weighed by being written
 down. No recommendation is offered and none is possible — neither state is
@@ -1451,23 +1451,46 @@ established as kinder — so this is one question and not a proposal.
 > `UNKNOWN` со стороны ячейки?** Это чтение, ничего не подаётся, стоит одну
 > сессию. «Нет» — полный ответ и закрывает вопрос.
 
-Raised 2026-08-24; no answer yet, and nothing is being changed while there is
-none. Like the item below it, this is written into the register rather than into
-a pull request comment because a squash merge keeps the file and discards the
-comment.
+Raised 2026-08-24. **Answered the same day: read them.** The owner chose the
+read, so the cell-safety registers stop being something a bench session might
+have room for and become something the next trip to the bench owes. No new task
+was filed, because the read already had an owner: `T-106`'s eight-register leg
+carries `0x61`, `0x62`, `0x63` and `0x64` at I²C `0x34`, and that bullet is
+where the answer is recorded as a promise rather than a convenience. **Nothing
+about OD-18 changes** — the unit stays powered and attached, by the owner's
+decision, and the read does not reopen it. What the read closes is narrower than
+the question that prompted it: it establishes what the running image left in
+those registers, which is the cell half of *"stays powered and attached"*; it
+does not establish that either state is kinder, and no reading of it should be
+written as if it had. Until the burst is actually taken every figure stays
+`UNKNOWN`: an answered question is not a measurement. Like the item below it,
+this is written into the register rather than into a pull request comment because
+a squash merge keeps the file and discards the comment.
 
-**Waiting on the owner: this register is published.** `docs/` is the GitHub Pages
-root for this repository — `docs/.nojekyll`, `docs/robots.txt` with `Allow: /` —
-so every file here, including this one, is served from
-`https://hleserg.github.io/Attadipa/`. That means the owner's own words above,
-quoted verbatim as this register's convention requires and as OD-1 already does,
-are on the project's public website. **Verbatim is the right convention and
-changing the owner's words is not an agent's call; neither is deciding what the
-site publishes.** It is recorded here rather than left in a pull request comment
-because a squash merge keeps the file and discards the comment, and because this
-is the register the unattended sweep is denied — which is the point of putting an
-owner-facing question in it. Raised 2026-08-23; no answer yet, and nothing is
-being changed while there is none.
+**Answered by the owner: this register is published, and its convention has
+changed.** `docs/` is the GitHub Pages root for this repository —
+`docs/.nojekyll`, `docs/robots.txt` with `Allow: /` — so every file here,
+including this one, is served from `https://hleserg.github.io/Attadipa/`. That
+means the owner's own words, quoted verbatim as this register's convention used
+to require and as OD-1 still does, were on the project's public website. Raised
+2026-08-23; **answered 2026-08-24**, and the answer was the third of the three
+options put to him: keep the register published, keep the decisions in it, and
+carry his words as **paraphrase** rather than quotation.
+
+So the convention has changed, and the change is his rather than an editorial
+preference of ours: **a decision records what the owner decided, in this
+repository's own words. It does not reproduce how he said it.** Retrofitting the
+register to that convention is a **separate pull request, opened on top of this
+branch** — it touches every quoted decision from OD-1 down, and this branch is
+fifteen review rounds deep on an unrelated subject. Two categories are outside
+it, because neither is quotation of chat: the owner's own authored documents
+checked into the tree (`docs/master-prompt-final.md`, `docs/master-prompt.md`,
+`docs/development-addendum.md`, `docs/ideas/`), which are his text and not our
+record of it, and Russian prose that merely uses guillemets rhetorically. It is
+recorded here rather than left in a pull request comment because a squash merge
+keeps the file and discards the comment, and because this is the register the
+unattended sweep is denied — which is the point of putting an owner-facing
+question in it.
 
 **A known asymmetry, recorded rather than worked around.** This decision lives in
 this register, which

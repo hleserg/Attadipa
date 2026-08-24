@@ -304,7 +304,12 @@ Two consequences follow, both from facts this repository already holds at
 
 **And that is where it stops.** Nothing here says the cell is being harmed:
 those registers have not been read, and reading them means running our code on
-the unit — **T-106**, whose register list now carries `0x63`, `0x64` and `0x61`
+the unit. **The owner was asked whether he wanted them read and said yes**
+(2026-08-24, under OD-18 in
+[`../research/OWNER_DECISIONS.md`](../research/OWNER_DECISIONS.md)), so the read
+is owed on the next bench trip rather than merely available — which changes when
+these `UNKNOWN`s get an answer and changes none of them today. The task is
+**T-106**, whose register list now carries `0x63`, `0x64` and `0x61`
 for exactly this reason: three cell-safety registers, not one question and not a
 pair, and one burst reads all three. An earlier version of this sentence handed it to `T-114`,
 which has no heading in `TASKS.md` on `main` or on this branch — so at the time

@@ -1000,6 +1000,29 @@ far in:
   argued away** — the un-ignored screenshot directory is under a published,
   sweep-mergeable prefix and nothing looks at bytes, filed as **T-163**.
 
+**Both owner questions were answered on 2026-08-24, and neither answer is a
+measurement.**
+
+- **The charger's registers: read them.** So `T-106`'s cell-safety three —
+  `0x61`, `0x63[4]`, `0x64` at I²C `0x34` — stop being *whenever convenient* and
+  become owed on the next bench trip, in `TASKS.md`, in `BATTERY_UPGRADE` and in
+  `BENCH_HANDLING`. The five eFuse-defaulted registers keep the standing they
+  had. **Nothing in T-106's acceptance advances**: all eight stay `UNKNOWN` until
+  the burst is taken, and the read establishes what the running image left
+  behind, not that either state is kinder to the cell. OD-18 itself is
+  unchanged — the unit stays powered and attached, by the owner's decision.
+- **The register is published, and its convention changes to paraphrase.**
+  `docs/` is the Pages root, so the owner's own words in `OWNER_DECISIONS.md`
+  were on the public site; he chose the third option offered — keep it published,
+  keep the decisions, carry his words as paraphrase. **That is a convention
+  change, not an editorial preference**: a decision records what he decided in
+  this repository's words, not how he said it. The retrofit is a separate pull
+  request stacked on this branch, because it touches every quoted decision from
+  OD-1 down and this one is fifteen rounds deep on another subject. His own
+  authored documents in the tree (`master-prompt-final.md`, `master-prompt.md`,
+  `development-addendum.md`, `docs/ideas/`) are outside it — they are his text,
+  not our record of it.
+
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing
 needed to be flashed** — the bench sequence ran out of RAM, wrote nothing, and
