@@ -20,7 +20,7 @@ index 1414c2b..990315c 100644
      name: Documentation consistency
      runs-on: ubuntu-latest
 diff --git a/.github/workflows/claude-pr-review.yml b/.github/workflows/claude-pr-review.yml
-index 76e171b..8501054 100644
+index 76e171b..a21c204 100644
 --- a/.github/workflows/claude-pr-review.yml
 +++ b/.github/workflows/claude-pr-review.yml
 @@ -279,6 +279,22 @@ jobs:
@@ -96,7 +96,7 @@ index 76e171b..8501054 100644
        # What actually went wrong, read from the action's own execution log
        # rather than guessed at.
        #
-@@ -347,6 +400,210 @@ jobs:
+@@ -347,6 +400,224 @@ jobs:
              echo "::warning::The review step reported success and never reached the model — see the note on the pull request."
            fi
  
@@ -150,8 +150,15 @@ index 76e171b..8501054 100644
 +          # last id is the shape that survives that.
 +          # .github/tests/gh-api-usage-test.sh is about exactly this class of
 +          # call.
++          # `startswith`, NOT `contains`, and the difference is a comment this
++          # step would otherwise overwrite. The prompt above names this marker
++          # to the reviewer, so a reviewer explaining what it read can reproduce
++          # the marker inside its OWN comment -- which `contains` would then
++          # match, `tail -1` would prefer as the newer of the two, and the PATCH
++          # below would overwrite the review with the ledger. The ledger's body
++          # begins with the marker; a quotation of it never does.
 +          ledger_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-+            --jq '.[] | select(.body | contains("<!-- attadipa-review-ledger -->")) | .id' \
++            --jq '.[] | select(.body | startswith("<!-- attadipa-review-ledger -->")) | .id' \
 +            | tail -1)
 +          if [ -n "$ledger_id" ]; then
 +            gh api "repos/$REPO/issues/comments/$ledger_id" --jq '.body' \
@@ -163,8 +170,15 @@ index 76e171b..8501054 100644
 +          # as this round's. That is harmless and not worth guarding: re-applying
 +          # last round's statements reconciles to the same state, which is what
 +          # carrying forward already does when there is no block at all.
++          # `contains` here is correct -- the block is at the END of the
++          # reviewer's comment -- but the ledger is excluded by name, so a
++          # future ledger that quotes the findings marker cannot be read as a
++          # round's findings.
 +          find_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-+            --jq '.[] | select(.body | contains("<!-- attadipa-review-findings")) | .id' \
++            --jq '.[]
++                  | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not)
++                  | select(.body | contains("<!-- attadipa-review-findings"))
++                  | .id' \
 +            | tail -1)
 +          if [ -n "$find_id" ]; then
 +            gh api "repos/$REPO/issues/comments/$find_id" --jq '.body' \

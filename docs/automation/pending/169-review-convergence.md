@@ -88,6 +88,18 @@ One residual: if `gh issue create` succeeds and the `sed` that records its numbe
 does not, the next round with deferred findings files a second follow-up issue.
 A duplicate note, not a wrong verdict.
 
+## Two markers, and why one is matched differently from the other
+
+The ledger comment is found with `startswith`, the reviewer's findings block
+with `contains`. That asymmetry is deliberate. The prompt names the ledger marker
+**to the reviewer**, so a reviewer explaining what it read can reproduce
+`<!-- attadipa-review-ledger -->` inside its own comment — `contains` would then
+match the review, `tail -1` would prefer it as the newer of the two, and the
+`PATCH` that rewrites the ledger would overwrite the review with it. The ledger's
+body *begins* with its marker; a quotation of it never does. The findings block
+sits at the end of the reviewer's comment, so it has to be `contains` — and the
+ledger is excluded by name there for the mirror-image reason.
+
 ## The one thing to check on the first real run
 
 **Does the reviewer actually emit the findings block?** The rule degrades safely

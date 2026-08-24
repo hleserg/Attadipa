@@ -1612,3 +1612,67 @@ mutation-checked three ways: disabling the comment/string blanking, loosening
 the colour rule back to where it would read `Rgb make_colour()\n{...}` as a
 colour literal, and dropping the zero exemption each turn it red. No hardware —
 this is a source-tree checker and touches no board.
+
+---
+
+### Bounding an AI reviewer's rounds: `review-verdict.sh`
+
+**Problem:** `claude-pr-review.yml` reviews the head commit, so answering every
+finding produces a new head, a new diff and therefore new findings. Four
+branches reached rounds five, eight, ten and two with `ai-review:blocking` never
+coming off ([#169](https://github.com/hleserg/Attadipa/issues/169)). Bounding
+that needs three things a per-run reviewer does not have: a round number, a
+record of which findings were raised in which round, and a severity floor that
+separates what must block at any round from what may be deferred.
+
+**Projects investigated:** `chdsbd/kodiak` and Mergify, the two GitHub
+merge-automation bots, plus `danger/danger-js` as the closest thing to a
+rule-engine over a pull request. Facts read from the GitHub API on 2026-08-24
+rather than from documentation or recollection:
+
+| | What it is | Licence |
+|---|---|---|
+| `chdsbd/kodiak` | *"A bot to automatically update and merge GitHub PRs"* — active, last pushed 2026-08-06, 1107 stars | **AGPL-3.0** (`repos/chdsbd/kodiak/license`) |
+| Mergify | hosted service; `Mergifyio/mergify` on GitHub is *"Mergify Community Issue Tracker"*, not the product | Apache-2.0 on that tracker; the product is SaaS |
+| `danger/danger-js` | runs rules over a pull request's diff and comments the result | **MIT** (`repos/danger/danger-js/license`) |
+
+**Useful implementation:** none for this problem. All three evaluate **the
+current state of a pull request**: Kodiak and Mergify on branch and check
+status, Danger on the diff in front of it. None of them carries a finding across
+pushes with the round it was first seen, because none of them has a reviewer
+that re-derives its own findings from a moving head — that shape only exists
+once the reviewer is a model. What was searched is recorded rather than implied:
+a web search for bounded review rounds, severity floors and findings carried
+across pushes returned merge-queue and stale-label material and nothing about
+finding-level state.
+
+**Decision:** `WRITE OUR OWN`.
+
+**Reason:** the rule is about this repository's own labels, its own reviewer's
+own findings, and a floor list — an unsourced hardware fact, a `PASS` for a test
+that did not run, an application-layer hardware access, an architecture-boundary
+violation — that is `CLAUDE.md`'s and nobody else's. There is no third-party
+component for that, and the two things worth copying were already here: the
+arguments-in, lines-out, no-network shape of `promote-decision.sh` and
+`handover-decision.sh`, and the exact-token matching of `queue-scan.jq`.
+
+**Kodiak is a real candidate for a different task, and its licence is the
+question to settle first.** [#171](https://github.com/hleserg/Attadipa/issues/171)
+— nothing keeps an open pull request current — is exactly *"automatically update
+GitHub PRs"*, which is Kodiak's own description of itself. **AGPL-3.0 against
+this repository's MIT** is the thing to think about before that task starts, and
+the two readings are not the same: running Kodiak as a bot against this
+repository is *use*, which AGPL does not restrict, while vendoring or porting
+its code into an MIT repository is not. Recorded here so #171 begins from a
+licence fact rather than from a search, and deliberately **not decided** — the
+choice between a self-hosted AGPL bot, the hosted service, and the workflow
+#169 sketches is the owner's.
+
+**Tests required:** none from upstream, since nothing is taken.
+`.github/tests/review-verdict-test.sh` holds 87 assertions and is proven to fail
+against six deliberate defects, including the literal reading of #169's own
+"carry-over only" phrasing.
+
+**Attadipa integration:** `.github/scripts/review-verdict.sh`, called from
+`claude-pr-review.yml`. No hardware — this is a repository-automation rule and
+touches no board.
