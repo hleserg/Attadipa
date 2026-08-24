@@ -311,7 +311,25 @@ stale silently. The protocol is
   sixteen checks and four trace expectations red. The rule is now written down
   as [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, including what it costs:
   a device that never hears another positive word does not climb back on its
-  own, and the ways out are a detector saying so or `reset()` — never a timer.
+  own, and the ways out are a detector saying so or `reset()` **when the
+  provider goes away** — never a timer. The scope on `reset()` is load-bearing:
+  it asserts `Trusted` immediately and skips both holds, so it answers *a
+  different provider is here now*, and the pin most likely to be met comes from
+  the device's own receiver, which never detaches. It is also per boot, nothing
+  in `core/` persisting trust state. **Three further findings on the second
+  review pass**, one blocking: `ProviderDisagreement`'s only retraction sat
+  behind `compare_provider()`'s freshness gate, so a duty-cycled receiver or a
+  relayed fix measured outside the window pinned the device for the rest of the
+  boot with no live reason and no exit — fixed with `stop_awaiting()`, which
+  clears the *awaiting* bit without touching a live allegation, mutation-checked
+  in both directions; `DiagnosticsSnapshot` could not carry the mask that
+  decides the verdict, so a stuck device could not say why on the one screen
+  meant to explain it, and `GnssStatus` gained `trust_unconfirmed`; and the
+  claim that only three reasons can reach the mask is **false** whenever
+  `observe()` does not run inside `evidence_ttl`, because `refresh()` retracts
+  only `FixLost` and `StalePosition` — with the shipped defaults that is a
+  fifteen-second window of `Degraded` with `score() == 0`, self-healing on the
+  next observation, so a corrected sentence rather than a code change.
 
 - **`FixLost` and `StalePosition` both weigh 20 against a `degrade_at` of 30.**
   So neither, alone, moves trust. That may be the intended two-axis design —

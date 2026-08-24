@@ -23,7 +23,7 @@
 //     *retraction*, never from the clock. A score that fell to nothing because
 //     a detector said the condition was over and a score that fell to nothing
 //     because a detector stopped talking are not the same fact, and only the
-//     first may move the state upwards (OD-5 §2, and `clear()` below);
+//     first may move the state upwards (OD-5 §4 and §8, and `clear()` below);
 //   * reason codes, kept. A user-facing sentence, an application's decision to
 //     hide the compass, and a diagnostic screen are three consumers of the same
 //     evidence, and a collapsed verdict serves none of them;
@@ -187,6 +187,37 @@ public:
     // lets the state climb again — see `unconfirmed_reasons()`.
     void clear(TrustReason reason);
 
+    // A third thing, and it is neither of the two above: the allegation is no
+    // longer ABOUT anything, so nobody can either repeat it or withdraw it.
+    //
+    // `report()` says the condition is on, `clear()` says a detector looked and
+    // it is off. This says the detector's subject has gone: the reason stops
+    // being awaited without ever having been retracted, and a live one is left
+    // strictly alone — if the evidence is still fresh it still counts, and this
+    // call cannot be used to talk a device out of a current allegation.
+    //
+    // It exists for exactly one shape, and adding a second use is a decision,
+    // not a convenience. `ProviderDisagreement` is evidence about a **pair**,
+    // and only `compare_provider()` can produce or withdraw it. When the two
+    // sides stop being comparable — one of them is older than the comparison
+    // window, which happens whenever the receiver is duty-cycled or the node
+    // link delivers a backlog — the retraction becomes unreachable while the
+    // TTL has already moved the bit into `unconfirmed_`. Left as it was, the
+    // device is pinned below `Trusted` for the rest of the boot with
+    // `score() == 0` and `reasons() == 0`: no timer, no exit, and nothing on a
+    // screen to explain it. Found in review of #153.
+    //
+    // This is NOT the silence-is-an-all-clear rule coming back. A reason whose
+    // detector is still there and merely quiet keeps waiting, which is the whole
+    // of that rule; and refusing to be compared is not the same as being
+    // exonerated. What a node gains by going uncomparable is only that it stops
+    // *contradicting* the local receiver — never that its own position is
+    // believed, because a fix's own trust comes from the detectors that ran on
+    // it. A permanent pin, by contrast, punishes the local receiver for the
+    // second source's behaviour, for ever, with no way back that is not
+    // `reset()`.
+    void stop_awaiting(TrustReason reason);
+
     // Expire stale evidence and re-evaluate. Safe and cheap to call often; the
     // state only moves when the score crosses a threshold or a hold completes.
     //
@@ -242,7 +273,10 @@ public:
     const TrustPolicy& policy() const { return policy_; }
 
     // Everything back to boot state, including the log. Used when a provider
-    // detaches or the link resets — ADR-0004 §3: no state survives implicitly.
+    // detaches or the link resets — ADR-0005 §5: "the epoch is reset
+    // unconditionally on link loss — no state survives a reconnect
+    // implicitly". Not ADR-0004 §3, which an earlier version cited and which is
+    // *Availability is not validity — and a remote datum has two ages*.
     void reset();
 
 private:

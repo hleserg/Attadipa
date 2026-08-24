@@ -1146,8 +1146,94 @@ void test_two_providers_must_be_talking_about_the_same_moment()
     CHECK_REASON(standing.engine(), TrustReason::ProviderDisagreement);
 }
 
+// AND THE ALLEGATION MUST NOT OUTLIVE EVERYTHING THAT COULD WITHDRAW IT.
+//
+// The test above passes only because it never calls `update()` between the two
+// comparisons, so the TTL never runs and the reason stays LIVE. Run the clock
+// and it lapses into `unconfirmed_` -- and `ProviderDisagreement` is the one
+// reason whose only retraction sits BEHIND the freshness gate, so once that
+// gate is closed nothing in the system can ever reach the `clear()`. The device
+// is pinned below `Trusted` for the rest of the boot with `score() == 0`,
+// `reasons() == 0` and no exit but a full `reset()`, which asserts `Trusted`
+// outright and skips both holds.
+//
+// Neither half of the gate is exotic: `latest_position_at_` advances only
+// inside `observe()`, and a duty-cycled receiver is what `gnss_power.h` is for;
+// `other.observed_at` is a relayed fix's MEASUREMENT time, which
+// `tests/replay/scenarios/14-a-relayed-fix-arrives-old.trace` records at 40 s
+// when a stalled link delivers its backlog. Found in review of #153.
+void test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+    GnssObservation elsewhere = good_fix(0, kLat + 50000);
+    elsewhere.source          = PositionSource::NodeGnss;
+    evaluator.compare_provider(elsewhere, at(0));
+    CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    CHECK(evaluator.engine().state() != TrustState::Trusted);
+
+    // The reproduction from the review, unchanged: the receiver keeps running
+    // at 1 Hz, the node never leaves, and every node fix agrees exactly -- but
+    // each was measured 8 s ago, so the comparison window refuses it.
+    const std::uint64_t window = evaluator.engine().policy().provider_comparison_window.value;
+    const std::uint64_t behind = window + 3000;
+    for (std::uint64_t ms = 1000; ms <= 120000; ms += 1000) {
+        evaluator.observe(good_fix(ms), PositionValidity::Valid, MotionEvidence{}, {}, at(ms));
+        if (ms % 5000 == 0 && ms > behind) {
+            GnssObservation agreeing = good_fix(ms - behind, kLat);
+            agreeing.source          = PositionSource::NodeGnss;
+            evaluator.compare_provider(agreeing, at(ms));
+        }
+    }
+
+    // Before this change the end state was Degraded with score 0, reasons 0 and
+    // ProviderDisagreement awaited for ever -- a stuck device with nothing on a
+    // screen to explain it.
+    CHECK(!evaluator.engine().awaiting_confirmation(TrustReason::ProviderDisagreement));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    CHECK(evaluator.engine().state() == TrustState::Trusted);
+}
+
+// The narrowness of that is the whole of its safety, so it is asserted rather
+// than described. `stop_awaiting()` touches `unconfirmed_` alone: a LIVE
+// allegation, whose evidence has not expired, is current evidence and an
+// uncomparable frame must not talk the device out of it. Otherwise a node could
+// disagree once and then clear itself by going uncomparable, which is the
+// silence-is-an-all-clear bug this whole branch exists to remove.
+void test_an_uncomparable_frame_does_not_withdraw_a_live_disagreement()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+    GnssObservation elsewhere = good_fix(0, kLat + 50000);
+    elsewhere.source          = PositionSource::NodeGnss;
+    evaluator.compare_provider(elsewhere, at(0));
+    CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+
+    // Well inside the evidence TTL, so the reason is still live -- and an
+    // uncomparable frame arrives. The node's fix agrees exactly; it is simply
+    // too old to be evidence of anything, which is precisely the frame a node
+    // that wanted to clear itself would send.
+    const std::uint64_t window = evaluator.engine().policy().provider_comparison_window.value;
+    const std::uint64_t soon   = window + 3000;
+    CHECK(soon < evaluator.engine().policy().evidence_ttl.value);
+    evaluator.observe(good_fix(soon), PositionValidity::Valid, MotionEvidence{}, {}, at(soon));
+
+    GnssObservation uncomparable = good_fix(0, kLat);
+    uncomparable.source          = PositionSource::NodeGnss;
+    CHECK(soon > window);  // the frame really is outside the window
+    evaluator.compare_provider(uncomparable, at(soon));
+
+    CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    CHECK(evaluator.engine().state() != TrustState::Trusted);
+}
+
 // Disagreement between two providers is evidence about both of them and belongs
-// to neither — ADR-0011 §4.
+// to neither — the comment on `compare_provider` in `trust.h`. What ADR-0011
+// governs here is §5, which requires a reason code to record *which* evidence
+// moved the state; §4 is *Differential corrections belong to a provider, not to
+// GNSS* and an earlier version of this comment cited it.
 void test_provider_disagreement_is_evidence_about_both()
 {
     TrustEvaluator evaluator;
@@ -1168,7 +1254,8 @@ void test_provider_disagreement_is_evidence_about_both()
     CHECK_NO_REASON(agreeing.engine(), TrustReason::ProviderDisagreement);
 }
 
-// ADR-0004 §3: no state survives implicitly. When a provider detaches, what it
+// ADR-0005 §5: no state survives a reconnect implicitly. When a provider
+// detaches, what it
 // told us goes with it — including the fallback position, which would otherwise
 // be a stranger's idea of where this device is.
 void test_reset_leaves_nothing_behind()
@@ -1258,6 +1345,8 @@ int main()
     test_no_remembered_position_is_not_a_precise_one();
     test_only_a_trusted_and_valid_fix_is_remembered();
     test_two_providers_must_be_talking_about_the_same_moment();
+    test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared();
+    test_an_uncomparable_frame_does_not_withdraw_a_live_disagreement();
     test_provider_disagreement_is_evidence_about_both();
     test_reset_leaves_nothing_behind();
     test_everything_has_a_name();

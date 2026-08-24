@@ -101,6 +101,16 @@ void TrustEngine::clear(TrustReason reason)
     unconfirmed_ &= ~trust_reason_bit(reason);
 }
 
+void TrustEngine::stop_awaiting(TrustReason reason)
+{
+    // `unconfirmed_` only. Deliberately not `live_`: an allegation whose
+    // evidence has not expired is still current evidence, and this call is
+    // about a subject that has gone, not about a condition that has ended.
+    // The two masks are disjoint by construction, so this is a no-op on
+    // anything live.
+    unconfirmed_ &= ~trust_reason_bit(reason);
+}
+
 bool TrustEngine::holds(TrustReason reason) const
 {
     return (live_ & trust_reason_bit(reason)) != 0;
@@ -177,8 +187,13 @@ void TrustEngine::evaluate(MonotonicTime now)
     // walked Untrusted → Degraded → Trusted over the next ten seconds. No
     // observation, no clear(), no evidence of any kind arrived in that window:
     // the device announced the position was fit to navigate by at precisely the
-    // moment its receiver had stopped talking. OD-5 §2 is the rule, `clear()`
-    // is the contract, and this line is where both were being lost.
+    // moment its receiver had stopped talking. OD-5 §4 (*do not collapse the
+    // states*) and §8 (*the receiver's own verdict is strong evidence, not
+    // truth*) are the rule, `clear()` is the contract, and this line is where
+    // both were being lost. NOT §2, which an earlier version of this comment
+    // cited: §2 is about the LS550G's anti-spoofing CAPABILITY being `UNKNOWN`
+    // rather than `SUPPORTED` — a datasheet claim about a part, not a per-epoch
+    // indication from a running one. Found in review.
     //
     // The anchor is dropped rather than frozen, so when a retraction does
     // arrive the hold is measured from *it* and not from the silence in front
@@ -570,9 +585,29 @@ void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTim
     // evidence of agreement, so any live reason is left standing rather than
     // cleared. Silence, not an all-clear: the same rule OD-5 applies to a
     // receiver that stops reporting.
+    //
+    // What it does do is stop *awaiting* a retraction that has become
+    // unreachable. `ProviderDisagreement` is the one reason whose only
+    // retraction lives past this gate, so once the gate closes and the TTL has
+    // moved the bit into `unconfirmed_`, nothing in the system can ever
+    // withdraw it — the device is pinned for the rest of the boot with
+    // `score() == 0`, `reasons() == 0` and no exit but `reset()`. Both halves
+    // of the gate close in ordinary operation: `latest_position_at_` advances
+    // only inside `observe()`, and a duty-cycled receiver is the point of
+    // `gnss_power.h`; and `other.observed_at` is a relayed fix's MEASUREMENT
+    // time, which `tests/replay/scenarios/14-a-relayed-fix-arrives-old.trace`
+    // records at 40 s when a stalled link delivers its backlog. So this is the
+    // ordinary path, not the pathological one. Found in review of #153; see
+    // `stop_awaiting()` for why it is not the all-clear rule returning.
     const Millis window = engine_.policy().provider_comparison_window;
     if (elapsed(latest_position_at_, now) > window ||
         elapsed(other.observed_at, now) > window) {
+        engine_.stop_awaiting(TrustReason::ProviderDisagreement);
+        // No `update()` here, and that is deliberate. This path carries no new
+        // evidence, and `update()` would run the TTL -- turning "the comparison
+        // could not be made" into "and therefore the live allegation expired",
+        // which is the collapse the whole branch removes. The next `observe()`
+        // or `refresh()` re-evaluates; nothing waits on this call to do it.
         return;
     }
 

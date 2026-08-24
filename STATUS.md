@@ -696,11 +696,46 @@ four more things at no cost:
   one-step-per-hold and every policy weight are untouched. **What it costs is
   stated rather than discovered later:** a device that never hears another
   positive word does not climb back on its own, and the ways out are a detector
-  saying the condition is over or `reset()` — never a timer. In the
-  `TrustEvaluator` path only `ReceiverSpoofing`, `ReceiverJamming` and
-  `ProviderDisagreement` can reach the mask at all, because every other reason
-  is `set()` on each `observe()` and is therefore always retracted explicitly —
-  which is the OD-5 set exactly. Six regression tests in `tests/test_trust.cpp`
+  saying the condition is over or `reset()` **when the provider goes away** —
+  never a timer. That scope is part of the sentence: `reset()` asserts `Trusted`
+  immediately, discards the transition log and drops the remembered position, so
+  it answers *a different provider is here now* and never *this one is still
+  stuck* — and the pin most likely to be met comes from the device's **own**
+  receiver, which does not detach. It is also **per boot**: nothing in `core/`
+  persists trust state, so a pin lasts one session rather than for ever.
+  **Three review findings on the second pass, one of them blocking.**
+  `ProviderDisagreement` was the one reason whose only retraction sits *behind*
+  the freshness gate in `compare_provider()`, so once that gate closed the TTL
+  moved the bit into `unconfirmed_` and nothing in the system could ever
+  withdraw it: `Degraded`, `score() == 0`, `reasons() == 0`, no exit but
+  `reset()`, for the rest of the boot. Neither half of the gate is exotic —
+  `latest_position_at_` advances only inside `observe()`, and a duty-cycled
+  receiver is what `gnss_power.h` is for; `other.observed_at` is a relayed fix's
+  *measurement* time, which `14-a-relayed-fix-arrives-old.trace` records at 40 s
+  for a stalled link delivering a backlog. Fixed with a third verb,
+  `stop_awaiting()`, which touches `unconfirmed_` **only**: an allegation whose
+  evidence has not expired is still current evidence, so an uncomparable frame
+  cannot talk the device out of a live one, and a node that goes uncomparable
+  gains nothing but ceasing to contradict the local receiver. Both directions
+  are mutation-checked. `DiagnosticsSnapshot` also could not express the state
+  that decides the verdict — `trust.h` promises the per-reason mask exists so a
+  screen "can name it rather than showing a device stuck for no visible reason",
+  and `GnssStatus` carried only `live_`, so a pinned device reported exactly the
+  shape that comment forbids; there is now a `trust_unconfirmed` field beside
+  it. And the claim that in the `TrustEvaluator` path **only**
+  `ReceiverSpoofing`, `ReceiverJamming` and `ProviderDisagreement` can reach the
+  mask was false, in three documents: it holds only while `observe()` runs at
+  least once per `evidence_ttl`, and the call for when it does not is
+  `refresh()`, which touches `FixLost` and `StalePosition` and nothing else — so
+  in any observation gap every other live reason lapses unretracted too. The
+  defaults size it: `evidence_ttl` 15 s against `stale_after` 30 s means a
+  reason live at t=10 s lapses at t=25 s while `classify()` still says `Valid`
+  and `StalePosition` does not go live until t=40 s. Fifteen seconds of
+  `Degraded` with nothing to show for it; it self-heals on the next `observe()`,
+  so no code change — but the sentence does not stand. Recorded with it: a pin
+  freezes `remember()`, so the fallback position stops updating while its
+  uncertainty grows at 1500 mm/s, and that freeze used to be bounded by the very
+  defect this branch removes. Six regression tests in `tests/test_trust.cpp`
   and a new replay trace, `16-silence-does-not-restore-trust.trace`, which runs
   trace 05's rule past the TTL on a receiver reporting `unknown` — the LS550G's
   actual state, not a hypothetical part — with good fixes throughout, so the

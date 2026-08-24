@@ -185,8 +185,12 @@ evidence, and a collapsed boolean serves none of them.
 ### 5.1 An allegation is retracted, not merely dropped
 
 > **Added 2026-08-23**, after the implementation was found to be doing the
-> opposite. OD-5 §2 already said this about a receiver's `Unknown`; what was
-> missing was that the *same* rule governs the passage of time.
+> opposite. OD-5 §4 and §8 already said this about a receiver's `Unknown`; what
+> was missing was that the *same* rule governs the passage of time. (Not §2,
+> which an earlier version of this note cited: §2 is about the LS550G's
+> anti-spoofing **capability** being `UNKNOWN` rather than `SUPPORTED` — a
+> datasheet claim about a part, not a per-epoch indication from a running
+> receiver. Found in review.)
 
 Evidence has to decay, or a device that walks out of an interference source
 stays suspect for ever. So a piece of evidence stops counting after a time-to-
@@ -219,8 +223,56 @@ ADR exists to prevent, reached by the one door still open.
 **What this costs, stated rather than discovered later.** A device that never
 hears another positive word does not climb back on its own. That is deliberate:
 the alternative is the behaviour above. The ways out are a detector saying the
-condition is over, or `reset()` when the provider goes away (ADR-0004 §3) — and
-never a timer.
+condition is over, or `reset()` **when the provider goes away** — the scope is
+part of the sentence, because `reset()` sets `Trusted` immediately, discards the
+transition log and drops the remembered position, so it is the answer to *a
+different provider is here now* and never to *this one is still stuck*. The pin
+most likely to be met comes from the device's **own** receiver, which does not
+detach, and for that one the only exit is a detector speaking. Never a timer.
+([ADR-0005](0005-node-protocol.md) §5 is the rule about a link going away; an
+earlier version of this paragraph cited ADR-0004 §3, which is *Availability is
+not validity — and a remote datum has two ages* and says nothing about
+`reset()`.)
+
+**Three bounds on that, each of which was overstated somewhere before review.**
+
+1. **It is per boot, not for ever.** Nothing in `core/` persists trust state, so
+   a pin lasts exactly one session. That is probably right — an allegation is
+   evidence about a moment, and carrying it across a reboot would need a story
+   about how it is ever retired — but it is a property of there being no
+   persistence rather than a decision, and it should be recorded as one.
+2. **Any reason can reach the mask, not only three.** It was written that only
+   `ReceiverSpoofing`, `ReceiverJamming` and `ProviderDisagreement` can, because
+   every other reason is `set()` on each `observe()`. True only while `observe()`
+   runs at least once per `evidence_ttl`. The call for when it does not is
+   `refresh()`, which touches `FixLost` and `StalePosition` and nothing else, so
+   in any observation gap every other live reason lapses unretracted too. The
+   defaults size the window: `evidence_ttl` is 15 s and `stale_after` is 30 s,
+   so in the prescribed `refresh(classify(retained, now), now)` pattern a
+   reason live at t=10 s lapses at t=25 s while `classify()` still returns
+   `Valid` and `StalePosition` does not go live until t=40 s — fifteen seconds
+   of `Degraded` with `score() == 0` and no reason to show. It self-heals on the
+   next `observe()`, so no code changes here; the claim does not stand.
+3. **An allegation about a pair stops being awaited when the pair stops being
+   comparable.** `ProviderDisagreement` is the one reason whose retraction is
+   unreachable once its own freshness gate closes, and both halves of that gate
+   close in ordinary operation — a duty-cycled receiver, or a relayed fix whose
+   *measurement* time is older than the window, which this repository's own
+   replay trace records at 40 s for a stalled link delivering a backlog. Left
+   alone it is a permanent, invisible pin with no exit but `reset()`. So the
+   evaluator now stops **awaiting** it when the comparison cannot be made,
+   without touching a live one: refusing to be compared is not being exonerated,
+   and what a second source gains by going uncomparable is only that it stops
+   contradicting the local receiver — never that its own position is believed.
+   Found in review of [#153](https://github.com/hleserg/Attadipa/pull/153).
+
+**And a pin freezes the fallback.** `remember()` runs only while `Trusted`, so a
+pinned device stops updating its last trusted position while the uncertainty
+around it grows at the configured rate — 1500 mm/s by default, 5.4 km per hour,
+saturating rather than overflowing. That freeze used to be bounded by the 25 s
+silent recovery, which is to say it was bounded by the defect. Nothing consumes
+the value yet; when something does, it must read `has_last_trusted()` and the
+uncertainty together rather than the position alone.
 
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 
