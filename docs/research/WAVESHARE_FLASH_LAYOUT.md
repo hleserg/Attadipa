@@ -320,7 +320,7 @@ licence has to be checked before anything is taken from it.
 Nothing here is a decision to ship a wake word. This repository has no such
 requirement and adding one would be a product change.
 
-## 4. `storage` — extracted, and the format is settled
+## 4. `storage` — extracted, and the stored format is settled
 
 SPIFFS, not littlefs. Extracted with `tools/flash/spiffs_extract.py`, which was
 written for this because `mkspiffs -u` needs a toolchain nobody had to hand and
@@ -356,28 +356,97 @@ twelve bytes are a header, and it decodes cleanly:
 `12 + width × height × 2` equals the file length exactly, for all three files.
 Pixels follow the header, row-major, no row padding.
 
-**The byte order is little-endian, and this was settled by rendering rather than
-by argument.** Decoded as little-endian RGB565 the files are coherent artwork —
-a neon figure, a bird over a synthwave skyline, a third scene. Decoded
-big-endian they are noise. That is the whole test and it is not ambiguous.
+**The on-disk byte order is little-endian, and this was settled by rendering
+rather than by argument.** Decoded as little-endian RGB565 the files are coherent
+artwork — a neon figure, a bird over a synthwave skyline, a third scene. Decoded
+big-endian they are noise. That is the whole test and it is not ambiguous —
+**about the file.**
 
-So the format is: **a 12-byte header, then 410 × 502 RGB565 little-endian, no
-compression, no palette, no alpha.**
+So the stored format is: **a 12-byte header, then 410 × 502 RGB565
+little-endian, no compression, no palette, no alpha.**
+
+**And that is a fact about a file, not about a panel — §4.1a.** Until 2026-08-23
+this section continued into §4.2 with *"what it does establish beyond argument is
+the panel's native pixel format and byte order"*. The pixel *format* half holds.
+The byte *order* half was an inference across a boundary the test never crossed,
+and it is now known to be the wrong way round on at least one real path.
+
+### 4.1a The panel's transfer byte order is a different fact, and it is UNKNOWN
+
+A host render sees the bytes of a file. It does not run the display driver, and a
+driver that byte-swaps on the way out makes **the same stored file correct for
+the opposite bus order**. So "little-endian on disk" and "little-endian on the
+wire" are two claims, and §4.1 proves only the first.
+
+This is not a theoretical gap. Traced through pinned source on 2026-08-23 —
+source **S14**, and the table is in
+[VERIFIED_FACTS](VERIFIED_FACTS.md#the-panel-driver-does-not-swap-pixel-bytes--the-layer-above-it-does):
+
+1. `78/xiaozhi-esp32` @ `bb9122ab`, `main/display/lcd_display.cc:160,166` —
+   `SpiLcdDisplay`, the class **this board's** file subclasses, configures
+   `esp_lvgl_port` with `.color_format = LV_COLOR_FORMAT_RGB565` **and**
+   `.flags.swap_bytes = 1`;
+2. `espressif/esp-bsp` @ `2f51931`, `esp_lvgl_port_disp.c:739-741` — that flag
+   makes the flush callback call `lv_draw_sw_rgb565_swap(color_map, len)`;
+3. `lvgl/lvgl` @ `v9.5.0`, `src/draw/sw/lv_draw_sw_utils.c:149-171` — which is a
+   plain in-place 16-bit byte swap;
+4. `espressif/esp-iot-solution` @ `5d75f3f0`,
+   `esp_lcd_sh8601.c:279-280` — `panel_sh8601_draw_bitmap` then hands the buffer
+   to `esp_lcd_panel_io_tx_color()` **verbatim**. Nothing below swaps back.
+   `esp_lcd_co5300_spi.c:291-292` is the same code.
+
+So on that path the CO5300 receives the **opposite** order to the host-native
+`uint16_t`, and the §4.1 inference points the wrong way.
+
+**Two things stay open, and they are not the same one.**
+
+- **What the controller natively expects** is a hardware fact and needs the
+  CO5300 datasheet on `3Ah`/`2Ch` bit packing — which nobody has read; that is
+  **D7** — or a measurement. What *is* traced is only that
+  `bits_per_pixel == 16` writes `COLMOD` (`3Ah`) `= 0x55`
+  (`esp_lcd_sh8601.c:86-89`).
+- **What produced these particular files** is not the path above. `otadata` is
+  blank, so the running app is `phone_s3_box_3` in `factory` (§2.1), Waveshare's
+  port of `espressif/esp-brookesia` at `v0.4.2-92-g5c6be6c-dirty` — 92 commits
+  past a tag, built from a modified tree, unpublished. `xiaozhi` sits in `ota_0`
+  and has never been selected. Its `swap_bytes` is not readable, so whether the
+  producer of these bytes swapped is `UNKNOWN`.
+
+Registered as **D21** in [OPEN_QUESTIONS](OPEN_QUESTIONS.md). §7 below gives the
+bench step that would close it, and it is `NOT EXECUTED — HARDWARE REQUIRED`.
 
 ### 4.2 What it means for T-034
 
-The vendor bakes **full-frame, uncompressed, panel-native pixel buffers** and
+The vendor bakes **full-frame, uncompressed, unconverted pixel buffers** and
 ships **no image decoder on the device**. Three full frames cost 1.18 MB of the
 6 MB partition.
 
 That corroborates where the asset pipeline was already heading — raw
 `RGB565`/`RGB565A8` blobs baked at build time rather than a PNG decoder — and it
 is corroboration rather than proof: the vendor had different constraints and only
-needed three wallpapers. What it does establish beyond argument is the panel's
-native pixel format and byte order, which is a fact about the hardware and not
-about their taste. Their header is worth *noticing* and not worth *copying*: it
-carries width, height and stride but no format field, which is exactly the field
-you need the moment a second format exists.
+needed three wallpapers. What it establishes beyond argument is that **16 bits
+per pixel is enough for this vendor's own artwork on this panel**, which is a
+fact about the format and about their taste both. It does **not** establish the
+transfer byte order — §4.1a. Their header is worth *noticing* and not worth
+*copying*: it carries width, height and stride but no format field, which is
+exactly the field you need the moment a second format exists.
+
+**Nothing T-034 has shipped is affected.** The pipeline emits
+`LV_COLOR_FORMAT_A8` masks only (`tools/assets/generate_images.py:168` "--cf",
+`--cf A8`) — one byte per pixel, no byte order to get wrong. The cost of §4.1a
+lands on **the first line of display bring-up**, which does not exist yet. It
+does **not** land on the first colour asset: an asset's byte order follows
+LVGL's colour-format contract and the framebuffer the software renderer writes
+into, and the wire order is absorbed once, at flush, by the port's `swap_bytes`
+flag — which is exactly what §4.1a's own four-step trace shows. An earlier
+version of this paragraph named the asset too, and following it was not possible
+for `RGB565A8` (the vendored converter has no swapped variant of that format) and
+merely pointless for `RGB565` — a pre-swapped source renders correctly, LVGL
+un-swapping it while blending into a native framebuffer, and only pays a
+conversion the native-order asset does not. An earlier version of this sentence
+said *"wrong for `RGB565` in either direction"*, which was over-stated and is
+withdrawn; see [VERIFIED_FACTS](VERIFIED_FACTS.md) for the traced version. Found
+in review.
 
 ### 4.3 The music settles an argument two sections down
 
@@ -422,7 +491,8 @@ committed is the extractor and the measurements.
 | Partition table as parsed | **VERIFIED** — §2, parsed from the raw entries |
 | `factory` cannot be restored by OTA | **VERIFIED** — 9 MB image, 6 MB slots |
 | `model` is ESP-SR / xiaozhi | **VERIFIED** — the two model names are in the container |
-| `storage` is SPIFFS holding three raw images | **Superseded.** It holds **six** files — three images and three MP3s. The image format is now **VERIFIED**: a 12-byte header, then 410 × 502 RGB565 **little-endian**, confirmed by rendering. §4 |
+| `storage` is SPIFFS holding three raw images | **Superseded.** It holds **six** files — three images and three MP3s. The **stored** format is **VERIFIED**: a 12-byte header, then 410 × 502 RGB565 **little-endian on disk**, confirmed by rendering the file. §4.1 |
+| Those files prove the panel's native byte order | **Withdrawn 2026-08-23** — §4.1a. A host render never crosses the display driver, and the one path readable in pinned source **swaps every pixel** before transfer. The transfer order is `UNKNOWN`, registered as D21 |
 | `AAC210602A1` is a haptic module | **CONFLICTING** — §6 |
 | The battery connector is MX1.25 | **LIKELY**, photo-derived — §6 |
 
@@ -463,6 +533,45 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
 ## 7. Still open
 
 - ~~Confirm the image format~~ — **done**, §4. `tools/flash/spiffs_extract.py` did it without mkspiffs.
+- **Settle the panel's transfer byte order — D21, §4.1a.** `NOT EXECUTED —
+  HARDWARE REQUIRED`. Two routes, and the cheap one is not the conclusive one:
+
+  1. **Read the CO5300 datasheet** on `3Ah` (`COLMOD`) and `2Ch` (`RAMWR`) 16-bit
+     bit packing — which byte of the pair carries `R[4:0]`. That answers the
+     controller half without a board and also closes half of **D7**. The
+     datasheet is not published anywhere reachable so far; asking Waveshare or
+     Chipone for it is the action.
+  2. **Measure it, which is the answer that counts.** On the bench unit, from a
+     `PURE_RAM_APP` (the route S13 established: it writes nothing to flash),
+     write a **known asymmetric pattern** — pure red `0xF800` and pure blue
+     `0x001F` in adjacent halves — straight to `RAMWR` with the swap **off**, and
+     photograph the panel. Red rendering as blue-ish green means the wire wanted
+     the other order. Record firmware revision, the exact `esp_lcd_sh8601`
+     version, `COLMOD`, `MADCTL`, the pattern and the observed result, and label
+     it `MEASURED`. Anything short of a photograph of that pattern is not an
+     answer to this question.
+
+  Until one of those runs, the first line of display bring-up must treat the
+  swap as a **configurable whose correct value is `UNKNOWN`** — not as a
+  constant read off §4.1. A boolean has no unknown default, and an earlier
+  version of this sentence said *"a configurable with an `UNKNOWN` default"*,
+  which leaves the next person to invent one. **Start it at `swap_bytes = true`
+  and say why in the code**: that is the setting on the one complete path
+  readable in pinned source (§4.1a's four-step trace), so it is the value with
+  evidence behind it rather than the value that reads as neutral. **That reason
+  stands alone, and an earlier version of this sentence propped it up with a
+  second one that is not true**: it claimed being wrong this way is *loud* while
+  starting from `false` on a panel that wants the swap is *"the same wrongness
+  with a plausible-looking screen in front of it"*. Both directions put
+  byte-swapped RGB565 on the wire — `0xF800` arrives as `0x00F8` either way, a
+  saturated blue with a trace of green — so there is no direction in which the
+  mistake is quieter. Withdrawn in the third review round of
+  [#152](https://github.com/hleserg/Attadipa/pull/152), in a paragraph that has
+  just finished saying anything short of a photograph of that pattern is not an
+  answer to this question. And
+  *configurable* here means a **board fact**, so it lives in
+  `boards/`/`platform/` rather than in settings or a build flag. It is not the
+  first colour asset's question at all: see §4.2. Found in review.
 - **Check `xiaozhi-esp32`'s licence** before reading it for the audio path, and
   record the decision in the ledger either way.
 - **Run the `octal_psram` boot-log check** in §1 and close D12a against silicon

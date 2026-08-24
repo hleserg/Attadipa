@@ -135,6 +135,18 @@ If you are working from an issue:
   those will sweep it up — it is waiting for an orchestrator session to look at
   it. Widening that list is the owner's decision, not an agent's and not a
   reviewer's.
+
+  **The half-hourly sweep merges nothing, from this change until the parked
+  patch lands.** Its caller cannot prove it read the whole pull request — a
+  GraphQL connection is a page, not a set — so the rule refuses it by arity and
+  every run holds. The fix is parked as
+  `docs/automation/pending/170-merge-sweep-completeness.patch`, named here as a
+  code span rather than linked because the procedure that applies it deletes
+  the file, and a link to a deleted file reddens `main`. Until it lands, the
+  daily backstop routine is the only thing merging unattended, so a finished
+  documentation pull request waits a day rather than half an hour.
+  [`CLAUDE_AUTOMATION.md`](docs/automation/CLAUDE_AUTOMATION.md) is the long
+  version.
 - **Hardware facts are verified or they are `UNKNOWN`.** Never a `PASS` for a
   test that did not run on a board — the rule above, and it does not relax
   because a workflow is watching.
@@ -154,11 +166,42 @@ Everything about the workflows themselves — security model, authentication,
 cost control and the kill switch — is in
 [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md).
 
+## Look at the screen you changed
+
+A UI change that compiles has not been checked. `tools/watch_control.py` takes a
+picture of what is actually on the screen, presses buttons, taps and swipes, and
+takes another picture — against the simulator today and against a device when
+there is firmware for one.
+
+**After a substantive change to screens, navigation, themes, fonts, widgets,
+system dialogs, lock, touch handling or buttons: build it, open the screen, take
+a real screenshot, and look at the image.** Check for clipped text, overlaps,
+collapsed padding, unreadable contrast, wrong colours, corrupted regions,
+animations caught halfway, touch targets that are invisible or too small, a tap
+that fires twice, and a UI that is wedged after a series of actions. Fix what
+you find and repeat.
+
+Not after every keystroke — at logical checkpoints and before finishing a task
+that touched the interface. And **never compute tap coordinates from the source
+and fire at them**: that tests your arithmetic. Look at the frame first, find the
+element in it, then tap.
+
+Two rules do not relax here. A screenshot from the simulator is evidence about
+layout, colour and geometry and about **nothing physical** — the tool prints
+`sim` in its build string so that cannot be claimed by accident. And "it built"
+is not "it works": *"Compiles"* is the first item in the Definition of Done, not
+the last.
+
+[`.claude/skills/watch-ui-testing/SKILL.md`](.claude/skills/watch-ui-testing/SKILL.md)
+is the procedure. [`docs/testing/WATCH_CONTROL.md`](docs/testing/WATCH_CONTROL.md)
+is the longer version, including what the feature costs and how it works.
+
 ## Definition of Done
 
 Compiles for every supported target · host tests pass, hardware tests honestly
-marked · no application-layer hardware access · simulator tested · reviewed at
-both geometries · day and night themes checked · Child Mode considered · power
+marked · no application-layer hardware access · simulator tested · **a real
+screenshot taken and looked at, if the interface changed** · reviewed at both
+geometries · day and night themes checked · Child Mode considered · power
 and coexistence implications considered · errors handled in human language ·
 loading, empty, offline and error states exist · docs and `STATUS.md` updated.
 
