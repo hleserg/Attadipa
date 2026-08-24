@@ -579,7 +579,7 @@ hysteresis and dwell — are to be computed and shown, not chosen.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
+| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its seventeen traces — sixteen replayed and one deliberately broken, for the rig's own test — plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
@@ -731,6 +731,63 @@ four more things at no cost:
   names no address; the bus scan above settles `0x6B` by measurement instead.
 
 ## Recently completed
+
+- **A receiver that had lost its fix went on answering a node with the
+  coordinate it last knew, and the node was told it was wrong.**
+  [#178](https://github.com/hleserg/Attadipa/issues/178). A GNSS frame's
+  position field is not emptied when the solution goes away: the receiver keeps
+  sending the last coordinate it solved for, with `NoFix` in the same frame
+  saying there is no position at all. `TrustEvaluator` held **two models of the
+  same observation's fitness**. The rate baselines read the validity and refused
+  retained state — that is issue #26, fixed — and three lines below that refusal
+  the local side of `compare_provider()` took the last in-range position field
+  **unconditionally**, stamped with the moment the frame was *processed* rather
+  than measured. So at 1 Hz a fix-less receiver kept its side of the comparison
+  permanently fresh, a node that still had a fix and was reporting where the
+  wearer actually was got measured against a coordinate this device had
+  disowned, and the difference was reported as `ProviderDisagreement`: **30
+  points, which reaches `degrade_at` unaided**, renewed every second for the
+  whole dropout rather than for one epoch. `Degraded` with a diagnostic naming a
+  conflict between two providers only one of which had a position — and the
+  allegation outlives the dropout: `remember()` runs only while `Trusted`, so
+  the fallback position is not updated again the moment the receiver recovers,
+  and if the node leaves in the meantime without anybody calling
+  `provider_detached()`, the fabricated allegation lapses into `unconfirmed_`
+  where nothing can withdraw it. That is the per-boot pin #153 removed for real
+  allegations, reached through one that was never true. **The other direction
+  was worse and was not fail-safe.** A node
+  reporting that same retained coordinate *agrees* with it, and an agreement
+  reaches `clear()` — the only retraction this design has, and the one thing
+  that lets the state climb — so a coordinate nobody was asserting could
+  withdraw a live allegation from a node that was still making it. Fixed by
+  making the local side an explicit `ComparablePosition`: adopted only for
+  `Valid` or `Degraded`, in range, in order and not future-dated, under the same
+  gate and in the same lines as the movement baseline, and carrying
+  `observation.observed_at` so that a comparison is between two **measurement**
+  ages against one window rather than between a measurement and an arrival.
+  Not being able to compare withdraws nothing and asserts nothing; the next real
+  fix reopens the comparison and reports or clears in the ordinary way.
+  **The document had said so and the code had not.** ADR-0011 §5.1 defends the
+  node's half with *"one frame with a fix and the comparison resumes"*, and
+  `trust.cpp` defended ours with *"any `observe()` with an in-range coordinate
+  advances `latest_position_at_`, `NoFix` included"* — the same sentence with
+  the load-bearing word removed, written as a consolation and true as a defect.
+  ADR-0011 **§5.2** is now the rule for both sides. Six regression tests and
+  `17-a-lost-fix-keeps-its-last-coordinate.trace`, all proven against the
+  pre-fix code by three separate mutations: the code as it was fails 9 checks
+  and 9 trace steps; removing only the validity gate fails 7; keeping the gate
+  and stamping with arrival time fails 1, which is the test that exists for it.
+  The positive control — a `Valid` **and** a `Degraded` fix still answering, and
+  a real disagreement still reported — stays green under all three, so the fix
+  is not a gate welded shut. GCC, GCC `-Werror` strict, Clang, ASan+UBSan with
+  `-fno-sanitize-recover=all`, and both documentation checkers: clean.
+  **What it does not close, deliberately: T-153.** The second provider's frame
+  arrives as a bare `GnssObservation`, which carries no `PositionValidity`, so a
+  *node* relaying its own retained coordinate is still comparable — the same
+  defect on the far side of the same function, needing a decision about where
+  that verdict comes from rather than a three-line change. **T-152 is untouched
+  and still open.** `NOT EXECUTED — HARDWARE REQUIRED`: no receiver has produced
+  one of these frames here, and the fixtures are synthetic.
 
 - **A degree of longitude at 89.9°N measured 1.96 km instead of 194 m, and it
   got worse the closer you stood to the pole.**

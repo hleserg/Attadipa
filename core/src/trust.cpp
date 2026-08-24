@@ -480,11 +480,20 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
     bool moved_at_rest  = false;
     bool climbed_absurd = false;
 
-    // Only a fix good enough to navigate by may seed or advance a rate
-    // baseline. `NoFix` and `Stale` are excluded even when they carry a
-    // coordinate, because that coordinate is retained state, not a new
-    // measurement.
-    const bool usable_for_rate =
+    // Whether the coordinate in this observation is something the receiver
+    // measured for this epoch, or a field it left as it was. `NoFix` and
+    // `Stale` both carry a coordinate and both say the same thing about it:
+    // retained state, not a new answer.
+    //
+    // ONE QUESTION, TWO CONSUMERS, and it used to be answered for only one of
+    // them. A rate baseline may not advance on retained state, or a dropout
+    // reads as a teleport; and the local side of `compare_provider()` may not
+    // be seeded from it either, for a reason that is the same sentence — a
+    // coordinate the receiver has disowned is not this device's answer to where
+    // it is. Named `usable_for_rate`, it read as a fact about one detector
+    // rather than about the observation, and the second consumer three lines
+    // below simply did not consult it (#178).
+    const bool position_is_a_measurement =
         validity == PositionValidity::Valid || validity == PositionValidity::Degraded;
 
     if (observation.position.has_value() && in_range(*observation.position)) {
@@ -494,7 +503,8 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
         // DETECTING AND ADOPTING ARE TWO DECISIONS, NOT ONE.
         //
         // They were one, and it was wrong in the direction that matters. Both
-        // sat inside `usable_for_rate && in_order`, so a sample that arrived
+        // sat inside the adoption gate below — `usable_for_rate && in_order`,
+        // as the first of those was called then — so a sample that arrived
         // out of order, or claimed to be measured in the future, skipped the
         // detectors entirely — it was neither adopted NOR checked. That made
         // the refusal above worse than useless against the case it exists for:
@@ -512,7 +522,7 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
         // needs no guard of its own — `elapsed()` saturates `to <= from` to
         // zero and the `dt.value > 0` test below already skips it, so an
         // out-of-order sample yields no rate rather than a fabricated one.
-        if (usable_for_rate && have_previous_) {
+        if (position_is_a_measurement && have_previous_) {
             const Millis dt = elapsed(previous_position_at_, observation.observed_at);
             const std::uint32_t moved =
                 distance_mm(*observation.position, previous_position_);
@@ -535,15 +545,24 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
                 motion.known && !motion.moving && moved > policy.jump_while_still_mm;
         }
 
-        if (usable_for_rate && in_order) {
+        // ADOPTING IS ONE DECISION WITH TWO CONSUMERS, and the condition is the
+        // same for both: only a measured, in-order coordinate may become either
+        // the baseline a rate is computed from or this device's own answer in a
+        // cross-provider comparison.
+        if (position_is_a_measurement && in_order) {
             previous_position_    = *observation.position;
             previous_position_at_ = observation.observed_at;
             have_previous_        = true;
-        }
 
-        latest_position_      = *observation.position;
-        latest_position_at_   = now;
-        have_latest_position_ = true;
+            // The same coordinate and the same measurement time, kept as a
+            // second field on purpose — see `ComparablePosition` in trust.h.
+            // What stood here instead was an unconditional store stamped with
+            // `now`, three lines below this gate and outside it, so
+            // `compare_provider()` answered with a coordinate this very block
+            // had just refused, and answered with it for as long as the
+            // receiver kept retaining it (#178).
+            local_comparable_ = ComparablePosition{*observation.position, observation.observed_at};
+        }
     }
 
     if (observation.altitude_msl_mm.has_value()) {
@@ -551,7 +570,7 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
             (!have_previous_altitude_ || observation.observed_at >= previous_altitude_at_);
 
         // Same split, same reason — see the position block above.
-        if (usable_for_rate && have_previous_altitude_) {
+        if (position_is_a_measurement && have_previous_altitude_) {
             const Millis dt = elapsed(previous_altitude_at_, observation.observed_at);
             if (dt.value > 0) {
                 std::int64_t delta = static_cast<std::int64_t>(*observation.altitude_msl_mm) -
@@ -565,7 +584,7 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
             }
         }
 
-        if (usable_for_rate && in_order) {
+        if (position_is_a_measurement && in_order) {
             previous_altitude_mm_   = *observation.altitude_msl_mm;
             previous_altitude_at_   = observation.observed_at;
             have_previous_altitude_ = true;
@@ -616,11 +635,20 @@ void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTim
     // receiver, which is what `gnss_power.h` is for — and the device reached
     // `Trusted` about twenty seconds later with the node still saying it was
     // 550 m out, then stored the disputed coordinate as
-    // `last_trusted_position()`. Nothing is needed on that half anyway: any
-    // `observe()` with an in-range coordinate advances `latest_position_at_`,
-    // `NoFix` included, so one wake reopens the gate; and a receiver that never
-    // comes back weighs `FixLost`/`StalePosition` at 20 against `recover_below`
-    // 15, so a live reason holds the state down without help.
+    // `last_trusted_position()`. Nothing is needed on that half anyway: the
+    // local receiver is the one source this device can always ask again, so the
+    // gate reopens the moment it solves another fix; and while it solves none,
+    // `FixLost`/`StalePosition` weigh 20 against `recover_below` 15, so a live
+    // reason holds the state down without help.
+    //
+    // AN EARLIER VERSION OF THAT SENTENCE SAID THE GATE REOPENED ON ANY
+    // IN-RANGE COORDINATE, `NoFix` INCLUDED — and that was not the consolation
+    // it was written as, it was the defect. A receiver that has lost its fix
+    // keeps the last coordinate it solved in the position field; read that way
+    // it does not reopen the gate, it never lets it close, and this device
+    // answers a node for ever with a place it has already disowned. See
+    // `ComparablePosition` in trust.h. Found by the review of
+    // `6965191..8d757a7`, issue #178.
     const Millis window = engine_.policy().provider_comparison_window;
 
     // Everything that means "the second source cannot answer this allegation",
@@ -689,14 +717,24 @@ void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTim
         return;
     }
 
-    // Our own half. Silence here is silence, and it withdraws nothing: a live
-    // allegation keeps standing and a lapsed one keeps being awaited, because
-    // the source that could retract it is still there.
-    if (!have_latest_position_ || elapsed(latest_position_at_, now) > window) {
+    // Our own half, and it is now the same question of the same clock: has THIS
+    // device measured a position recently enough to be talking about the same
+    // moment. `local_comparable_` exists only for a fix the receiver actually
+    // solved and carries the instant it solved it, so a receiver that has lost
+    // its fix stops answering rather than answering with the coordinate it last
+    // knew — and a local observation delayed in flight is judged by when it was
+    // measured, not by when it turned up.
+    //
+    // Silence here is silence, and it withdraws nothing: a live allegation
+    // keeps standing and a lapsed one keeps being awaited, because the source
+    // that could retract it is still there. Not being able to compare is not
+    // agreement — the same rule this function applies to the other side.
+    if (!local_comparable_.has_value() ||
+        elapsed(local_comparable_->measured_at, now) > window) {
         return;
     }
 
-    const std::uint32_t apart = distance_mm(latest_position_, *other.position);
+    const std::uint32_t apart = distance_mm(local_comparable_->position, *other.position);
     set(engine_, TrustReason::ProviderDisagreement,
         apart > engine_.policy().provider_disagreement_mm, now);
     engine_.update(now);
@@ -713,7 +751,7 @@ void TrustEvaluator::reset()
     have_previous_          = false;
     have_previous_altitude_ = false;
     have_previous_in_view_  = false;
-    have_latest_position_   = false;
+    local_comparable_.reset();
     have_other_comparable_  = false;
 }
 

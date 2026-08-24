@@ -319,6 +319,62 @@ silent recovery, which is to say it was bounded by the defect. Nothing consumes
 the value yet; when something does, it must read `has_last_trusted()` and the
 uncertainty together rather than the position alone.
 
+### 5.2 A side of a cross-provider comparison is a measurement, or it is nothing
+
+> **Added 2026-08-24**, after the review of `6965191..8d757a7`
+> ([#178](https://github.com/hleserg/Attadipa/issues/178)) found the local half
+> of the comparison answering with a coordinate the local receiver had already
+> disowned.
+
+`ProviderDisagreement` is evidence about a **pair**, so it means something only
+when both sides are answers to the same question. An answer is a *measurement*:
+a coordinate the receiver solved for, and the instant it solved it. It is not
+"the last thing that was in the position field".
+
+**Those are different, and a receiver makes them different once a minute.** A
+GNSS frame's position field is not emptied when the solution goes away — the
+receiver keeps sending the coordinate it last solved for, with a fix type of
+`NoFix` in the same frame saying there is no position at all. §2 above is the
+rule that lets this be seen: the states do not collapse, so `PositionValidity`
+is beside the coordinate rather than folded into it. The evaluator then held
+**two models of the same observation's fitness**. The rate baselines read the
+validity and refused retained state (issue #26); the local side of
+`compare_provider()` took the last in-range position field unconditionally and
+stamped it with the moment the frame was *processed*.
+
+So at 1 Hz a receiver with no fix kept that side permanently fresh, and a node
+that still had a fix — reporting the place the wearer had actually walked to —
+was measured against a coordinate this device was no longer standing behind. The
+difference was reported as `ProviderDisagreement`: 30 points, which reaches
+`degrade_at` unaided, renewed for the whole dropout rather than for one epoch,
+naming a conflict between two providers only one of which had a position. And
+because `remember()` runs only while `Trusted`, the fallback position stopped
+being updated for as long as it lasted while the circle around it grew.
+
+**One direction of it was not fail-safe at all.** A node reporting the same
+retained coordinate *agrees* with it — and agreement reaches `clear()`, which is
+the only retraction this design has and the one thing that lets the state climb.
+A coordinate nobody was asserting could therefore withdraw a live allegation
+from a node that was still making it.
+
+The rule, and it is symmetrical: **only `Valid` or `Degraded` may seed either
+side, both sides are judged by measurement age against the same window, and
+being unable to compare withdraws nothing and asserts nothing.** A local
+receiver that loses its fix stops answering; the next real fix reopens the
+comparison and reports or clears in the ordinary way, which is exactly what §5.1
+bound 3 already promised for the *other* side in the words *"one frame with a
+fix and the comparison resumes"*. The code had read that as *any frame with a
+coordinate*, which is the same failure as the one §5.1 records: a document
+describing the intended behaviour beside an implementation that had only half of
+it.
+
+**What this does not close, so that it is a task rather than a silence.** The
+second provider's frame arrives as a bare `GnssObservation`, which carries no
+`PositionValidity` — that is a `classify()` verdict a caller reaches with a
+policy — so a *node* relaying its own retained coordinate is still comparable,
+and the fix above is one-sided until the call learns the other side's verdict.
+`fix_type` is present in the frame and is not the same question. **T-153.**
+
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 
 Priority order, as OD-5 gives it: **receiver-native mechanisms → Attadipa's own
