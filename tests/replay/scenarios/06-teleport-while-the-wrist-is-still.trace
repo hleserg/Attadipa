@@ -13,6 +13,7 @@ at 0
   hdop 90
   jam none
   spoof none
+  source local
   motion still watch
   expect trust trusted
 
@@ -25,6 +26,7 @@ at 60000
   hdop 90
   jam none
   spoof none
+  source local
   motion still watch
   expect trust trusted             # about 10 m; within the noise of a fix
 
@@ -40,6 +42,7 @@ at 180000
   hdop 90
   jam none
   spoof none
+  source local
   motion still watch
   expect trust degraded
   expect reason motion-disagreement

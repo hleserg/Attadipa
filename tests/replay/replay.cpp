@@ -54,6 +54,17 @@ bool sensor_body(const std::string& text, SensorBody& out)
     return false;
 }
 
+bool position_source(const std::string& text, PositionSource& out)
+{
+    if (text == "local") { out = PositionSource::LocalGnss; return true; }
+    if (text == "node") { out = PositionSource::NodeGnss; return true; }
+    if (text == "companion") { out = PositionSource::Companion; return true; }
+    if (text == "manual") { out = PositionSource::Manual; return true; }
+    if (text == "simulated") { out = PositionSource::Simulated; return true; }
+    if (text == "unknown") { out = PositionSource::Unknown; return true; }
+    return false;
+}
+
 bool indication(const std::string& text, ReceiverIndication& out)
 {
     if (text == "unknown")     { out = ReceiverIndication::Unknown;     return true; }
@@ -355,6 +366,11 @@ bool load(const std::string& path, Scenario& out, std::string& error)
                 }
                 step.motion = MotionEvidence{body, true, what == "moving"};
             } else { parser.fail("`motion` needs unknown, or still|moving and a body"); error = parser.error; return false; }
+        } else if (keyword == "source") {
+            std::string what;
+            if (!word(what) || !position_source(what, o.source)) {
+                parser.fail("`source` needs local, node, companion, manual, simulated or unknown"); error = parser.error; return false;
+            }
         } else if (keyword == "provider") {
             std::string what;
             if (!word(what) || what != "other") {
