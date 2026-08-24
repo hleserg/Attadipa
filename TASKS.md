@@ -65,9 +65,72 @@ stale silently. The protocol is
 - **Implementation status:** live. Seven workflows, an hourly watchdog, a
   half-hourly merge sweep applying the backstop's own path allowlist, and a
   daily backstop routine scoped to what a workflow cannot detect about itself.
+  A second watchdog scan is written, tested and **not deployed**:
+  [#75](https://github.com/hleserg/Attadipa/issues/75) — a run that completes
+  `action_required` with **zero jobs** put no check on the pull request at all,
+  so the orchestrator's *merge once CI is green* has no verdict to read and the
+  agent's own "waiting on CI" is true forever. The `approvals` job comments once
+  per head commit and deliberately does not re-run anything.
+
+  **What blocks it is not the work**, and it is the same wall
+  [#74](https://github.com/hleserg/Attadipa/issues/74) hit: GitHub refuses to
+  let a GitHub App update anything under `.github/workflows/` without the
+  `workflows` permission, which `claude[bot]` does not hold. The job, the
+  `token:` line that is the actual fix, and the test's line in `ci.yml` all wait
+  as `docs/automation/pending/75-approval-stall.patch`; landing it is three
+  commands from a local session. Until then the stall is still silent **and
+  still happening**.
+- **One owner action is outstanding, and it is the fix rather than the guard.**
+  The cause is the writer checkout leaving `actions/checkout`'s defaults, so the
+  agent's own `git push` authenticates as `github-actions[bot]` and GitHub
+  creates the resulting `pull_request` run in an approval-required state — a
+  documented rule about the *token*, not a setting, and **no repository setting
+  disables it**. The checkout now reads
+  `${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}`, which changes nothing
+  until that secret exists. **Create a fine-grained PAT scoped to this
+  repository — *Contents: Read and write*, *Pull requests: Read and write*,
+  ***Issues: Read and write***, and `Workflows` deliberately NOT granted — and
+  set it as `ATTADIPA_AGENT_TOKEN`.** The issue permission is **not optional**:
+  this secret is `github_token:` for `claude-code-action`, which posts the
+  agent's report on the triggering issue and does its own labelling through
+  `gh`. Without it the next issue-driven run 403s on the issue write, leaves no
+  `agent:review`, and the watchdog re-queues a billable writer hourly with every
+  run green. An earlier version of this bullet listed two permissions; the
+  working scope in `CLAUDE_AUTOMATION.md` has always been three. Found in
+  review.
+  **Four costs are being accepted, and this bullet used to name one.** They are
+  listed in full in
+  [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md); in short: attribution
+  (agent commits carry the PAT owner's name rather than `claude[bot]`); a
+  long-lived credential in `.git/config` in the one job the model holds `Bash`
+  in (**T-146**); `claude-ci-repair.yml` becoming reachable, so a red run calls
+  a second billable writer; and — the one that is not a trade-off but a
+  condition — **the anti-recursion guard becomes unreachable** (**T-145**, P1). A
+  fine-grained PAT belongs to a *user*, so the agent's own output carries
+  `author_association: OWNER`, which `queue-scan.jq` accepts *before* the
+  `claude`/`github-actions` login test is ever evaluated. Granting `Workflows`
+  too would retire `docs/automation/pending/`, which is convenient and is exactly
+  the widening that lets an agent rewrite the gate governing it.
+  **So the recommendation is now B — a separate GitHub App — unless the PAT
+  already exists**, because a second App keeps a distinct bot login and leaves
+  the login test reachable. Taking A instead means landing T-145 first, not
+  afterwards. This bullet said *"the cost being accepted is attribution"* and
+  *"the alternative without the attribution cost is a separate GitHub App"* until
+  the fifth review round of
+  [#128](https://github.com/hleserg/Attadipa/pull/128) pointed out that both
+  sentences are ones this branch had corrected in three other files while leaving
+  the one `CLAUDE.md` sends an agent to first.
 - **Tests:** `actionlint` over seven workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
-  cases — 16/16; host build 10/10; simulator 12/12, both geometries. Production:
+  cases — 16/16; the approval-stall rule, 51 cases including both of #71's real
+  runs with the values the API actually returned, the per-head marker rule, and
+  the deployed `token:`/`approvals` lines themselves — 51/51, **not yet wired into
+  CI** because that line is in `ci.yml` and rides the same blocked patch, and
+  the watchdog job around it dry-run against the live repository (the jq, the
+  pagination, the marker written and read back, the rendered comment) — which
+  does not prove it running on a schedule under its own permissions, and that
+  stays `NOT EXECUTED` until it is deployed; host build 10/10; simulator 12/12,
+  both geometries. Production:
   smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
   intake, marker-derived labels, the `@claude` dedup override and a green Claude
   run, and exposed the stuck-label defect now fixed.
@@ -229,6 +292,136 @@ stale silently. The protocol is
   `merge-candidate.sh` does not enumerate, and a `gh pr merge` refused by branch
   protection, which the workflow deliberately turns into one loud failure rather
   than 48 quiet warnings a day.
+- **Hardware required:** no.
+
+### T-145 · The recursion bound must stop depending on who wrote the issue
+- **Priority:** P1 — it becomes live the moment the owner sets
+  `ATTADIPA_AGENT_TOKEN` to a fine-grained PAT, which T-108 asks them to do.
+- **Dependencies:** none. It is a change to the intake rules and can land
+  before or after the secret exists.
+- **Why now:** the anti-recursion boundary is a **login-name** test.
+  `intake-decision.sh` rejects `*"[bot]"`, `claude` and `github-actions`, and
+  `queue-scan.jq` refuses the last two as producers, with the reason written
+  beside it: *"our own output would start a billable writer: exactly the loop
+  the allowlist was built to avoid."* A fine-grained PAT belongs to a **user**,
+  so everything `claude-code-action` writes under it carries the owner's login
+  and `author_association: OWNER` — and `queue-scan.jq` accepts on
+  `author_association` **before** the login test is evaluated. The guard is not
+  bypassed; it is unreachable, and no change to the login list can reach it,
+  because the login really is the owner's. Found in review on
+  [#128](https://github.com/hleserg/Attadipa/pull/128), where the document had
+  claimed the opposite in as many words.
+- **The two reachable consequences**, both today rather than hypothetically:
+  - the agent files a blocker issue — which `CLAUDE.md` instructs, and the
+    BLOCKED template the workflow shows it ends with *"How to resume: comment
+    @claude on this issue."* — carrying `@claude` and the `attadipa-agent-task`
+    marker. `queue-scan.jq` matches on the marker with no label needed and the
+    watchdog dispatches a billable writer on our own output, hourly;
+  - `pr-merge-sweep.yml` clears the unanswered-Codex hold on `select(.bot |
+    not)`. Under the PAT the agent's comments are `user.type == "User"`, so the
+    agent answers Codex on the owner's behalf and the one rule that can put a
+    commit in `main` unattended merges over findings nobody replied to.
+- **Goal:** a bound that does not ask *who wrote it*. Candidates, none decided
+  here: a marker the agent stamps on its own output that the scanner refuses
+  regardless of author; a per-issue dispatch counter in the watchdog, which
+  bounds the loop rather than preventing it; or keeping a distinct bot identity
+  by choosing Option B (a second GitHub App) over the PAT, which leaves the
+  existing login test reachable and is the cheapest of the three if the owner
+  has not already made the PAT.
+- **Acceptance:** a test that fails against today's tree — an issue authored
+  with `author_association: OWNER` carrying the agent's own marker must not be
+  enqueued — plus whichever bound is chosen, and
+  [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md)'s *What this does not
+  cover* updated to match what is then true.
+- **What must not be assumed:** that setting the PAT is what creates the
+  problem. It is what makes it reachable; the ordering bug in `queue-scan.jq`
+  is already there.
+- **Hardware required:** no.
+
+### T-146 · The agent's push path leaves a long-lived credential in `.git/config`
+- **Priority:** P2 — it becomes live with `ATTADIPA_AGENT_TOKEN`, and it is a
+  bounded exposure rather than an open door, which is why it is not P1.
+- **Dependencies:** none in code;
+  [`pending/75-approval-stall.patch`](docs/automation/pending/README.md) is what
+  makes it reachable.
+- **Goal:** `actions/checkout` defaults `persist-credentials` to `true`, which
+  writes the token into `.git/config` as an `http.extraheader` for the life of
+  the workspace. The agent job is the one job where the model holds `Bash`, and
+  it pushes with `git push` from that shell — so the persistence is what makes
+  the push work and cannot simply be turned off. The built-in `GITHUB_TOKEN` it
+  replaces expires with the job; a fine-grained PAT does not, so the same file
+  goes from holding a credential that dies at the end of the run to holding one
+  that does not. Found in review of
+  [#128](https://github.com/hleserg/Attadipa/pull/128), where it was recorded as
+  a price rather than fixed, because fixing it in that patch would have broken
+  the push it exists to enable.
+- **Acceptance:** a push path that does not persist a credential in the
+  workspace — the candidates are `persist-credentials: false` plus an explicit
+  remote URL set at push time from the secret, an App installation token minted
+  per run (Option B in
+  [`APPROVAL_STALLS.md`](docs/automation/APPROVAL_STALLS.md), which also removes
+  the attribution cost), or a push step outside the job that holds `Bash`. It
+  states which one and why, and it is **demonstrated to still push**: a change
+  that closes the exposure and silently stops the agent from pushing is the
+  worse outcome, because nothing goes red.
+- **What must not be assumed:** that this is the generic *"a long-lived
+  credential on a public repository"* already priced in `APPROVAL_STALLS.md`.
+  That sentence is about the secret existing; this is about a specific file, in
+  a specific job, readable by a specific tool.
+- **Hardware required:** no.
+
+### T-147 · A comment on a pull request hides it from the orphan sweep
+- **Priority:** P2
+- **Dependencies:** none; reachable today, and
+  [`pending/75-approval-stall.patch`](docs/automation/pending/README.md) makes
+  it likelier by adding a job that comments.
+- **Goal:** `agent-queue-watchdog.yml`'s `stuck` job selects orphaned tasks with
+  `select(.updated_at < $CUTOFF)` over `repos/$REPO/issues`, and that endpoint
+  returns **pull requests too**. `updated_at` is bumped by a label, by any bot
+  comment and by the watchdog's own note, so a pull request carrying
+  `agent:working` that something comments on every tick never gets older than
+  the two-hour cutoff and is never returned to the queue — lost in plain sight,
+  which is the exact failure the `stuck` job was written to prevent.
+  `merge-candidate.sh` already documents this hazard for itself and uses
+  `committedDate` on the head instead: *"a label, a bot comment or this
+  workflow's own note bumps it. What matters is when code last arrived."* Found
+  in review of [#128](https://github.com/hleserg/Attadipa/pull/128).
+- **Acceptance:** the orphan sweep ages a task by something a comment cannot
+  move. It decides explicitly whether a pull-request-shaped task belongs in that
+  sweep at all — and if it does, it ages it by head `committedDate` like
+  `merge-candidate.sh`; if it does not, it says what returns such a task to the
+  queue instead, because excluding it without a replacement path is the same
+  loss with a different cause. A test that constructs a task whose `updated_at`
+  is fresh and whose head commit is three hours old, and asserts it is swept.
+- **Hardware required:** no.
+
+### T-153 · A citation's fingerprint on the next line is silently unchecked
+- **Priority:** P2
+- **Dependencies:** none. Touches `tools/docs/check_docs.py` only, so it waits
+  behind whatever else is in flight on that file rather than on any decision.
+- **Goal:** `tools/docs/check_docs.py:466` "FINGERPRINT.match(line[match.end()"
+  reads a citation's fingerprint out of the remainder of **the citation's own
+  physical line**. A citation whose quoted snippet wraps onto the next line
+  therefore has no fingerprint as far as the checker is concerned, and falls
+  back to the blank-line test — which passes on any non-blank line, and that is
+  precisely the rot the fingerprint was added to catch. It reads as protected
+  and is not. Three such citations were found in `APPROVAL_STALLS.md` on
+  2026-08-24: two in review of
+  [#128](https://github.com/hleserg/Attadipa/pull/128), and the third only by
+  re-counting that file's citations with the checker's own `CITATION` and
+  `FINGERPRINT` patterns instead of by eye — which also caught its prose
+  undercounting them, six against eight. Eye-counting is not a check, and a
+  defect found three times in one file by hand is a missing check rather than
+  three mistakes.
+- **Acceptance:** `check_docs.py` reports a citation whose fingerprint sits on
+  the following line, naming it a misplaced fingerprint rather than passing it.
+  The signal is precise, not heuristic: fire only when what follows the citation
+  on its own line is trivial — a stray backtick, bracket, comma or dash — **and**
+  `FINGERPRINT` matches the start of the next line. A citation deliberately
+  written without a fingerprint stays legal, because most are. Tests all three
+  ways: a wrapped fingerprint is reported, a citation with no fingerprint at all
+  is not, and one correctly fingerprinted on its own line is not. Reverting the
+  fix turns the new cases red.
 - **Hardware required:** no.
 
 
