@@ -75,7 +75,8 @@ dated Friday 8 January 2021 — a 2020-era title block the vendor never updated.
 The contents are unambiguously S3-class (`ESP32-S3-R8`, `W25Q128JW`), so the
 drawing is the right board with the wrong nameplate. **Cite the filename for
 provenance, never the title block for revision.** Board revision of a *physical*
-unit is still unknown — see OPEN_QUESTIONS A1.
+unit is still unknown — see OPEN_QUESTIONS **D20**. (Not A1: A1 is struck and
+marked ANSWERED, and the revision half of it was carved out into D20.)
 
 ### Core
 
@@ -134,7 +135,14 @@ from RadioLib's drivers and MeshCore's build configuration, not from the TI and
 Silicon Labs datasheets, which refused automated retrieval. Confirming them from
 primary sources is open question **R1**. The schematic itself fits an
 SX1262-class module (HPD16B3), so the most likely fitted part is also the one
-that works — but "most likely" is not A2 answered.
+that works.
+
+**A2 is answered as of 2026-08-22** — SX1262 at 868 MHz, from the order listing
+(`OWNER_DECISIONS.md`, A1–A3, issue #54). It is answered in the *record*, and
+that is the whole distinction this section has to keep: a seller's listing is
+not a marking read off the part, so `RadioChip::Unknown` does not move and
+nothing here is upgraded from PARTIAL. Reading the marking off the fitted chip,
+once the watch arrives, is what closes both.
 
 ### AXP2101 rail map
 
@@ -301,8 +309,15 @@ as a target to reproduce — not as evidence about Attadipa's own firmware.
 
 ## Waveshare ESP32-S3-Touch-AMOLED-2.06
 
-Revision: schematic `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**,
-3 sheets; pin map from vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0.
+Revision: **of the document, not of the unit.** Schematic
+`ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**, 3 sheets; pin map from
+vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0. The received board's
+own revision is unread: its silkscreen carries the product name, whose `2.06` is
+the panel diagonal, and a V1.1 unit would carry the same string. This section's
+own rule above — *cite the filename for provenance, never the title block for
+revision* — is written under the T-Watch and applies here identically. See
+OPEN_QUESTIONS **D20**, which is the revision question itself; A1 is struck and
+answered, and sends a reader nowhere.
 Where the two differ, the schematic wins on *what exists* and the BSP wins on
 *which pin firmware should use* — the BSP was demonstrably written to a subset
 of the board.
@@ -349,9 +364,12 @@ The `Power rail` column reads `D13` where the load is known to be on a PMU rail
 but which rail is unresolved — all three of ALDO1, ALDO2 and ALDO3 are 3.3 V and
 the schematic extraction did not separate them. Addresses are from
 [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.2, which cites each one; three
-are datasheet-fixed, two are schematic-strapped, one is driver-source-only and
-one is in conflict between datasheet revisions. A bus scan settles the last two
-in a second — §5 step 5.
+are datasheet-fixed, two are schematic-strapped and one is driver-source-only.
+The IMU's was **in conflict between datasheet revisions and is not any more**:
+the bus scan of 2026-08-23 got no answer at `0x6A` and an ACK at `0x6B`
+([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1), which is
+what the IMU row nineteen lines above and the `Main I2C bus` row both already
+record. Nothing on this bus is waiting on a scan.
 
 ### AXP2101 rail map
 
@@ -481,4 +499,7 @@ a typed descriptor rather than a flag.
 
 | S13 | **the received unit itself, on 2026-08-23, by two methods.** *Running:* an owner-authorised bench session — the vendor bootloader's and factory application's boot log captured from 62 ms, a diagnostic written into the free OTA slot, and a `PURE_RAM_APP` loaded over USB. The flash route is closed (`ota_1` aliases to `0x0`); **the RAM route works** and the whole bench sequence ran from it, writing nothing — the flash was restored and re-verified byte-for-byte against the T-099 backup. [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md). *Under a hand:* the buttons counted by pressing them. A distinct method from S9, which is defined as silkscreen and populated-or-not only — how many protrusions are *pressable* is tactile, and none of the four S9 frames is a side view of the case. Reported by the owner on [#99](https://github.com/hleserg/Attadipa/issues/99); no separate write-up, and that row is the record |
 
-S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22; S13 on 2026-08-23.
+| S14 | **four upstream repositories read at pinned revisions**, 2026-08-23, tracing one display path for this board end to end: `78/xiaozhi-esp32` @ `bb9122ab08c3083eeb4f67b3974b7afe771723b8` (MIT), `espressif/esp-bsp` @ `2f519317d5375f7bbb0190b29a4988c2ea2453e2` (Apache-2.0), `lvgl/lvgl` @ `v9.5.0` = `85aa60d18b3d5e5588d7b247abf90198f07c8a63` (MIT) and `espressif/esp-iot-solution` @ `5d75f3f0dc499d9ed4b69284a3741187c2b75a70` (Apache-2.0). **This is software, not silicon** — it is evidence about what a program does, and it is not a datasheet, a schematic or a measurement. Per-file sha256 in [VERIFIED_FACTS](VERIFIED_FACTS.md), "The panel driver does not swap pixel bytes" |
+
+S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22; S13 and S14 on
+2026-08-23.

@@ -68,7 +68,7 @@ jobs:
       # applies comes from `main` or from nowhere. A schedule event already runs
       # from the default branch; saying so here means a future trigger cannot
       # quietly change that.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -223,11 +223,20 @@ jobs:
             # decision as something, and `pending` is what the rule refuses on
             # -- reporting it as empty would drop the token and shorten the
             # list, which is how "all green" over nothing gets to be true.
+            #
+            # AND THE ROLLUP HOLDS TWO DIFFERENT THINGS. A `StatusContext` is a
+            # commit status posted by whatever app has a token; a `CheckRun` is
+            # a job. Flattening them let one third-party status stand in for CI
+            # having run at all -- "Devin Review / success / Full review
+            # skipped: trial expired" was the only context on heads whose
+            # workflows were still waiting for approval, and the combined state
+            # read `success`. Statuses are tagged so the rule can refuse on a
+            # red one without counting a green one as a check.
             CHECKS="$(printf '%s' "$FACTS" | jq -r '
               [ .data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes[]?
                 | if .__typename == "CheckRun"
                   then (if .status == "COMPLETED" then (.conclusion // "pending") else "pending" end)
-                  else (.state // "pending") end
+                  else "status:" + (.state // "pending") end
                 | ascii_downcase ] | join(" ")')"
 
             HEAD_AGE=""
