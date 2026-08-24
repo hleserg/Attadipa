@@ -405,8 +405,10 @@ open question**, gated on three measurements only the owner can take: the
 closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
 the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
 280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
-need. **T-106** holds all three, and **all three are still untaken** — a kitchen
-scale, a ruler and a feeler gauge, and none of them has been used. The bus-scan
+need. **T-106** holds all three, and **all three are still untaken** — a caliper and
+a scale, the two instruments T-106 names, plus plasticine for the closed-case
+clearance, which is a squashed-thickness read and **not** something a feeler
+gauge can take through a closed cover. None of them has been used. The bus-scan
 half of T-106 is **done** — 2026-08-23, and `0x6A` is free after all, which is
 what the claim said before anybody could know it — and an earlier version of
 this paragraph let that stand in for the rest, listing *"what remains"* as the

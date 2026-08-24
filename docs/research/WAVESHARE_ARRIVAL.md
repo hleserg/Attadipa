@@ -503,18 +503,39 @@ working init sequence is now observable; and real evidence for T6.
 console: `i2cconfig --port=0 --sda=15 --scl=14 --freq=100000`, then `i2cdetect`.
 Run this **early in the session**, because the FT3168 datasheet documents that
 the touch controller stops answering after the host addresses another slave on
-the same bus while it is in Monitor or Sleep mode. *Expected:* **five** ACKs —
-0x18, 0x34, 0x40, 0x51 and 0x6B — and 0x38 (touch) **only after its reset is
-pulsed on GPIO 9**, which is what the board actually does and what this step
-used to call a failure. It demanded six on a bare scan, so re-running it on a
-known-good board failed its own criterion. Measured 2026-08-23; found in review.
-*Failure:* fewer than five, or 0x38 still silent after the reset pulse, or
-anything at 0x6A. A missing device is **not**
+the same bus while it is in Monitor or Sleep mode. *Expected:* **exactly five**
+ACKs — 0x18, 0x34, 0x40, 0x51 and 0x6B — **and 0x38 absent**, which is the
+correct result for this step and not a failure. `i2c_tools` has four verbs,
+`i2cconfig`, `i2cdetect`, `i2cget`, `i2cset` and `i2cdump` — and **none of the
+five can drive a GPIO**: the FT3168 is held in reset until GPIO 9 is pulsed low and
+back, an *edge* rather than a level, so from this console the touch controller
+cannot be made to answer at all. That is why this step used to fail on a
+known-good board — it demanded six ACKs from a tool that can only ever see
+five. Getting 0x38 is **step 5b**, below, and needs a different binary.
+Measured 2026-08-23; found in review, twice.
+*Failure:* fewer than five, or **anything at 0x6A** — which on this unit means
+a part this board is not documented to carry, not a Rev 0.6 IMU. The scan was
+taken on **one unit**, the same caution `HARDWARE_MATRIX` writes as *"OBSERVED
+on one unit"* for the motor, so if a future board does ACK 0x6A the answer is
+that the strap-to-address rule inverts between QMI8658 datasheet revisions —
+Rev 0.6 maps SA0-low to 0x6A, Revs 0.8/0.9/A map it to 0x6B — and the part is
+being read under the wrong document. Record it, do not treat it as a broken
+board. A missing device is **not**
 proof of absence: the AXP2101 may not have enabled the rail feeding it, and D13
 leaves rail assignment unknown, so record a missing part as UNKNOWN rather than
 ABSENT. `UU` in the table means a timeout, which points at pull-ups rather than
 at a device. *Unblocks:* every driver on this board, and §3.2's whole address
 table.
+
+**Step 5b — bring the touch controller up, which needs a GPIO and therefore its
+own binary.** Not `i2c_tools`. The record of how this was taken is
+[WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.3: a RAM-loaded
+app scans, drives GPIO 9 **high** and holds it 200 ms — 0x38 still absent — then
+pulses it **low 10 ms and back**, waits 300 ms and scans again. *Expected:*
+**six** devices, 0x38 among them. *Failure:* still five after a genuine
+low-then-high pulse, which would move the reset off GPIO 9 and reopen D-touch.
+The distinction that matters and cost one review round: driving the pin high is
+not enough, the falling edge is what brings the controller up.
 
 **Step 6 — settle the QMI8658 datasheet conflict.** Stay in the same `i2c_tools`
 console as step 5, so nothing new has to be built. If step 5 showed 0x6B, run
@@ -522,7 +543,9 @@ console as step 5, so nothing new has to be built. If step 5 showed 0x6B, run
 the Rev A mapping and retires Rev 0.6. The branch that used to sit here — *"if
 step 5 showed 0x6A instead"* — is dead: the scan ran and 0x6A did not answer, so
 this step now confirms `WHO_AM_I` rather than choosing between two datasheet
-revisions. While here, read the FocalTech identity block —
+revisions. **The FocalTech half of this step is not in this console either** —
+0x38 does not acknowledge here, so every read below belongs to step 5b's binary,
+after the pulse. Read the FocalTech identity block —
 `i2cget -c 0x38 -r 0xa3 -l 1` and the same for `0xa6`, `0xa8` and `0xa1` — and
 **record the raw bytes** rather than comparing them to a remembered constant,
 since no FT3168 datasheet publishes a register map. Then write and read back one
