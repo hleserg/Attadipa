@@ -2533,6 +2533,60 @@ stale silently. The protocol is
   other.
 - **Hardware required:** yes — the owner's unit, and a person.
 
+### T-172 · The upper 16 MB: measure it, or keep leaving it alone
+- **Priority:** P3 today, **P1 the moment a layout wants the upper half.**
+  Nothing needs it yet — but not because there is room. The vendor did **not**
+  fit its table into the low 16 MB. `tools/flash/fixtures/waveshare-vendor-factory.csv`,
+  transcribed from the received unit, is contiguous from `0x9000` to exactly
+  `0x1000000` with a zero-byte gap — bootloader areas, a 952K voice model, a
+  **9 MB** `factory` and one 6 MB OTA slot — and its remaining two rows are the
+  ones above the line: `ota_1` at `0x1000000`, which is provably dead, and 6 MB
+  of UI assets at `0x1600000`. Three app partitions, not two, and no room to
+  spare; that overflow is what this task exists about.
+
+  What Attadipa needs is **UNKNOWN** and cannot be labelled otherwise until an
+  image exists to measure. The quantity that matters is not one app slot but
+  *two OTA slots plus assets inside 16 MB*, which is the sum the vendor could
+  not make — 9M + 6M + 6M is why `ota_1` is where it is.
+  `docs/master-prompt-final.md` puts it as *"OTA is not the first MVP blocker.
+  But storage/partition decisions must not make it impossible later."* The first
+  thing that would force the question is
+  [#127](https://github.com/hleserg/Attadipa/issues/127)'s `models` partition.
+- **Dependencies:** the rule and its enforcement are already in place —
+  `tools/flash/partition_check.py`, run by `ctest` as
+  `flash_partitions_below_ceiling`. This task is only the measurement that would
+  lift it. Stages 2 and 3 need the owner's unit; stage 3 needs the owner's
+  authorisation as well.
+- **Why now:** it is written down rather than done, so that whoever wants the
+  upper half finds a plan instead of a temptation. The research is complete:
+  [FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md) traces all
+  six flash access paths through ESP-IDF v5.5.5 and gives each a VERIFIED or
+  UNKNOWN status. Its finding is that **only `esp_partition_mmap` fails closed**,
+  and only since v5.5.5; read, write and erase emit four-byte-address commands
+  with no guard, and this part's JEDEC ID `0xC8 0x4019` passes the capability
+  gate that might otherwise have stopped them. So the hazard #132 named is real
+  and unguarded, and the mitigation is the layout rule rather than the driver.
+- **Goal:** move rows 4–7 of that document's table from UNKNOWN to MEASURED, or
+  decide out loud that the upper half is not worth the bench time and close this.
+- **Acceptance:** §6 of that document run in order, its results written back into
+  the same table, and the unit `verify-flash`-clean against the T-099 backup
+  afterwards. Stage 2 (read-only, `PURE_RAM_APP`, no flash writes) settles the
+  read path and the `mmap` refusal on its own and is worth doing on any bench
+  visit. Stage 3 is the only part that writes.
+- **What must not be assumed:** that the stub flasher's success above 16 MB
+  settles it. The stub runs on this SoC and carries its own SPI routines, so it
+  is evidence about the die and the peripheral and not about ESP-IDF's driver —
+  the bootloader read `0x0` from an address the stub had just written correctly.
+- **The one thing that needs saying before anybody starts stage 3:** there is no
+  canary above the line whose 24-bit alias is harmless, because the vendor's
+  table is contiguous from `0x9000` to `0x1000000`. The plan picks the least
+  valuable alias there is — `0x1FFF000`, whose alias `0x0FFF000` lies 786 KB past
+  the end of the image in `ota_0` — and leans on the whole-part backup, which has
+  already been used successfully once.
+- **Hardware required:** yes for stages 2 and 3. **Stage 3 additionally requires
+  a separate owner authorisation**, and must not be run on the strength of any
+  earlier one.
+
 ### T-113 · Touch needs a reset pulse, and the part number is still a guess
 - **Priority:** P2 — the behaviour is understood, which is the part that blocked
   anything. What remains is provenance.

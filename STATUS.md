@@ -15,7 +15,7 @@ items closed plus one the review did not list
 ## Current implementation
 
 **Attadipa has code.** As of 2026-08-24 the repository builds seven libraries and
-**twenty-eight tests** — **thirty-three** with the desktop simulator, which is off
+**thirty tests** — **thirty-five** with the desktop simulator, which is off
 by default because it needs SDL2 — and has a font pipeline whose output has been
 compiled for the target and measured. Since 2026-08-23 it can also **drive its
 own interface and look at the result** — screenshot, inject a tap or a swipe or
@@ -761,7 +761,7 @@ firmware endpoint, the day there is firmware.
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-eight tests** pass, locally and in CI on `main` since #12 merged — and **thirty-three** with `-DATTADIPA_BUILD_SIMULATOR=ON`, which is the *Simulator build and headless run* job and not this row: `CMakeLists.txt` defaults the option off and the host job configures without it, so a thirty-three here was counting another job's work — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
+| Host / native | builds; **thirty tests** pass, locally and in CI on `main` since #12 merged — and **thirty-five** with `-DATTADIPA_BUILD_SIMULATOR=ON`, which is the *Simulator build and headless run* job and not this row: `CMakeLists.txt` defaults the option off and the host job configures without it, so a thirty-five here was counting another job's work — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code, plus the three added on 2026-08-23 for the input layer, the
 debug wire format and the host tool -- the last of which holds an independent
@@ -869,6 +869,25 @@ the unit is byte-identical to the T-099 backup with `verify-flash` over all
   Attadipa: every app partition on this board lives below 16 MB**, unless somebody
   proves ESP-IDF's experimental `BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH` on it,
   which nobody has.
+
+  **And the upper half is not "for data" either, which took a second look to
+  establish.** That measurement is of the *bootloader's* read. An application has
+  four flash paths of its own and none of them has ever been run above the line;
+  a source trace of ESP-IDF v5.5.5 finds that exactly one — `esp_partition_mmap`
+  — refuses, and that it has only refused **since v5.5.5** (the vendor's own
+  v5.5.1 build has no such check). Read, write and erase emit four-byte-address
+  commands with no guard in front of them, and the capability gate that might
+  have stopped them is passed by this part's JEDEC ID `0xC8 0x4019`. So an erase
+  at `0x1600000` would return `ESP_OK` whether or not the sector it hit was the
+  one intended. **Nothing of ours goes at or above `0x1000000` until somebody
+  measures it**, and `ctest` now enforces that on every partition table in the
+  tree — **of which there are currently none.** The check is real and passes
+  vacuously until a firmware project puts a CSV here, which is the same shape as
+  the defect #132 was filed about: a caveat kept honestly in the tool and
+  dropped by the summary quoting it. Both boards still boot a table this
+  repository does not own —
+  [FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md),
+  which carries the reversible plan that would settle it, and #132.
 - **A `PURE_RAM_APP` runs fine — if the serial port is never closed.** Four
   earlier attempts reset within milliseconds and were written up as proof the
   board refuses RAM images. They were not: the kernel drops DTR and RTS on the
