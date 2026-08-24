@@ -663,6 +663,45 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-154 · A node's own retained coordinate is still a comparable side
+- **Priority:** P2 — the mirror of a defect already fixed on the local half, and
+  reachable by the same ordinary event: a receiver losing its fix.
+- **Dependencies:** `core/src/trust.cpp` — the local half is
+  [#178](https://github.com/hleserg/Attadipa/issues/178) (**done**), and
+  ADR-0011 §5.2 is the rule it established.
+- **Goal:** `compare_provider()` decides whether the second source can answer
+  from `other.position.has_value()`, `in_range()` and the measurement age.
+  **None of those separates a coordinate a node's receiver solved for from the
+  one it kept in the field after losing its fix** — which is exactly the
+  distinction #178 drew for this device's own receiver, and it was drawn on one
+  side only. A node under canopy relaying at 1 Hz therefore keeps disagreeing
+  with the last place it knew about; or, worse, keeps *agreeing* with it, and an
+  agreement reaches `clear()`, which is the only retraction this design has.
+- **Why it is not simply "do the same thing again."** The local side has a
+  `PositionValidity` because `observe()` is handed one. `compare_provider()` is
+  handed a bare `GnssObservation`, and validity is a verdict `classify()`
+  reaches with a `ValidityPolicy` — which the evaluator does not hold, and
+  arguably should not, because how quickly a *node's* fix goes stale is the
+  node link's question and not this receiver's.
+- **Acceptance:** it decides one of — take the validity as a parameter, as
+  `observe()` does, and leave the classifying to whoever owns the link; or give
+  the evaluator a `ValidityPolicy` and classify inside, which is a new piece of
+  policy and needs a reason; or read `other.fix_type`, which is already in the
+  frame and answers a narrower question honestly (`NoFix` and `TimeOnly` cannot
+  carry a solved position, `Unknown` means the receiver has not said). Whichever
+  it picks, a retained coordinate from a node must not become a fresh side of
+  the comparison.
+- **What must not be assumed:** that refusing the frame is the same as calling
+  the node gone. It is not, and
+  `test_a_node_under_cover_is_not_a_node_that_has_gone` must stay green under
+  any answer here — `provider_departure_grace` still bounds how long
+  uncomparable may last before it means departed, and that is T-152, which this
+  does not close. Nor that `fix_type` is free of consequences: a caller that
+  leaves it at its default `Unknown` would start being refused, so whatever is
+  chosen has to be stated where a caller of `compare_provider()` will meet it.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-128 · The generated-asset reproducibility job is written and cannot be pushed
@@ -788,10 +827,11 @@ stale silently. The protocol is
 - **Dependencies:** none
 - **Goal:** close, or consciously decline with reasons, each finding below.
   Every one of them was read in the source before being written here; none is a
-  report taken on trust. Five from the same audit are already fixed —
+  report taken on trust. Six from the same audit are already fixed —
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
-  evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
-  (the movement/altitude baseline, below) — and the rule from the research
+  evaluator), `7e4c4f9` (the replay rig could not produce Stale), issue #26
+  (the movement/altitude baseline, below) and issue #164 (the snapshot that
+  claimed to be trusted, below) — and the rule from the research
   prompt applies: **do not stop after the first fix.** Issue #151 (recovery
   completing on silence alone, below) has since been closed the same way.
   **And one finding is about text rather than code.** `trust.h` and
@@ -815,12 +855,47 @@ stale silently. The protocol is
   with `Unknown` and `Unsupported` as distinct values, and OD-5, which is the
   decision saying they must be.
 
-- **A default-constructed snapshot claims to be trusted.** `GnssStatus::trust`
-  (`core/include/attadipa/core/diagnostics.h:116`) defaults to
-  `TrustState::Trusted`. A snapshot nobody filled in therefore reports the most
-  reassuring answer available. `validity` on the line above defaults to `NoFix`,
-  which is the right instinct; `trust` should be `Untrusted` for the same
-  reason, or the field should be optional so that "not evaluated" is sayable.
+- **A default-constructed snapshot claimed to be trusted — fixed, issue #164.**
+  `GnssStatus::trust` (`core/include/attadipa/core/diagnostics.h`) defaulted to
+  `TrustState::Trusted`, so a snapshot nobody filled in reported the most
+  reassuring answer available — at boot, in a panic handler, and on a board that
+  has no receiver at all. `validity` on the line above defaults to `NoFix`,
+  which was the right instinct. The field is now
+  `std::optional<TrustState>`, empty by default, which is the idiom the rest of
+  that header already uses for facts nobody has produced; the two candidate
+  answers in the original finding were both weighed and **`Untrusted` was
+  rejected**, because it asserts that a verdict was reached and was bad, which
+  is a different claim from "no verdict" and one that anything counting
+  integrity alarms would believe. Not a fourth `TrustState` either: that enum is
+  ordered and compared against thresholds throughout `trust.cpp`.
+  `trust_reasons` moves with the verdict through `record_trust()` /
+  `forget_trust()`, so a mask cannot outlive the evaluation that produced it,
+  and `to_string(std::optional<TrustState>)` gives a log or a support bundle the
+  word `NotEvaluated` rather than a blank or an enum zero — a diagnostic
+  identifier, not a screen string (ADR-0010 §4). A stored verdict is read
+  through `trust_or(stored, when_not_evaluated)`, because the optional's
+  comparisons against a bare `TrustState` compile and `!= Untrusted` is *true*
+  while empty, which is a navigation guard failing open. Eight
+  regression tests in `tests/test_diagnostics.cpp`, including the round trip
+  through the panic-handler `memcpy` for all three real verdicts; restoring
+  either candidate default turns them red. Recorded as an amendment to
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5. The snapshot did not grow:
+  the extra byte fits existing padding, so `GnssStatus` is 40 bytes and
+  `DiagnosticsSnapshot` 384 before and after.
+
+- **Still open, raised by the review of that fix: the verdict and its reason
+  mask are paired by discipline, not indivisibly.** `record_trust()` and
+  `forget_trust()` (`core/include/attadipa/core/diagnostics.h`) are two stores
+  each, and the consumer this snapshot exists for is a panic handler — an
+  exception context that can land between any two instructions of the task
+  filling it in. The result is the one pairing the header says cannot happen: an
+  empty verdict beside a live reason mask, in the artefact somebody reads after
+  a crash. Nothing single-threaded can reach it and no store order avoids both
+  interleavings. Making it indivisible means packing the verdict into spare bits
+  of `trust_reasons` — there are 15 reasons and the mask is 32 bits, so two bits
+  are free — which changes the shape of the field and should be decided when
+  something actually writes a snapshot from a panic path, not before. Filed so
+  that the assumption is written down rather than inherited.
 
 - **Rates for a relayed fix were divided by the wrong interval — fixed,
   issue #26.** `TrustEvaluator::observe` used to set `previous_position_at_

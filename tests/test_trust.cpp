@@ -1520,6 +1520,316 @@ void test_provider_disagreement_is_evidence_about_both()
     CHECK_NO_REASON(agreeing.engine(), TrustReason::ProviderDisagreement);
 }
 
+// A receiver that has lost its fix keeps the last coordinate it solved for in
+// the position field — the frame
+// `test_retained_coordinate_no_fix_does_not_move_the_baseline` above already
+// reproduces, arriving at the other consumer of the same field.
+//
+// `satellites_used` is left UNSAID rather than zero, which is the one liberty
+// these fixtures take. A real receiver reporting zero satellites used also
+// raises `InsufficientSatellites`, correctly and for its own reasons; saying
+// nothing keeps the score to exactly the reasons under test, so an assertion
+// about a number means what it says.
+GnssObservation retained_no_fix(std::uint64_t ms, std::int32_t lat = kLat)
+{
+    GnssObservation o = good_fix(ms, lat);
+    o.fix_type        = FixType::NoFix;
+    o.satellites_used.reset();
+    return o;
+}
+
+// AND THAT COORDINATE IS NOT THIS DEVICE'S ANSWER TO A SECOND PROVIDER.
+//
+// The evaluator held two models of the same observation's fitness. The rate
+// baselines read `validity` and refused retained state; the local side of
+// `compare_provider()` took the last in-range position field unconditionally
+// and stamped it with the ARRIVAL time, so at 1 Hz a receiver with no fix kept
+// that side permanently fresh. A node that still had a fix, reporting the place
+// the wearer had actually walked to, was then measured against a coordinate the
+// local receiver had disowned, and the difference reported as
+// `ProviderDisagreement`. Found by the review of `6965191..8d757a7`, #178.
+//
+// The state assertion is the point. `ProviderDisagreement` weighs 30, which
+// reaches `degrade_at` unaided, so the reason alone moved the device to
+// `Degraded` and every retained frame refreshed it: not one transient epoch but
+// the whole dropout, with a diagnostic screen naming a conflict between two
+// providers only one of which had a position at all.
+void test_a_retained_coordinate_does_not_answer_a_second_provider()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    CHECK_STATE(evaluator.state(), TrustState::Trusted);
+
+    const std::uint64_t window = evaluator.engine().policy().provider_comparison_window.value;
+
+    // The fix goes at t=1 s and the coordinate stays on the wire. The wearer
+    // walks to B, 550 m away; the node still has a fix and says so, once a
+    // second for a minute.
+    //
+    // The node is not consulted until our own last real measurement is outside
+    // the comparison window, because inside it the disagreement would be REAL
+    // and reporting it would be right: a device that measured A four seconds
+    // ago cannot be 550 m from it now, and one of the two sources is wrong.
+    for (std::uint64_t ms = 1000; ms <= 60000; ms += 1000) {
+        evaluator.observe(retained_no_fix(ms), PositionValidity::NoFix, MotionEvidence{}, {},
+                          at(ms));
+        if (ms > window) {
+            GnssObservation node_at_b = good_fix(ms, kLat + 50000);
+            node_at_b.source          = PositionSource::NodeGnss;
+            evaluator.compare_provider(node_at_b, at(ms));
+        }
+    }
+
+    // Sixty frames saying "there is no position at all", and not one of them
+    // was made to contradict a node that was right.
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    CHECK(!evaluator.engine().awaiting_confirmation(TrustReason::ProviderDisagreement));
+
+    // What is on the score is the local receiver's own evidence and nothing
+    // else. Before the fix it was that plus 30, which is 50 and a `Degraded`
+    // this device had not earned.
+    const TrustPolicy&  policy   = evaluator.engine().policy();
+    const std::uint16_t fix_lost = policy.weight[static_cast<std::uint8_t>(TrustReason::FixLost)];
+    CHECK_REASON(evaluator.engine(), TrustReason::FixLost);
+    CHECK(evaluator.engine().score() == fix_lost);
+
+    // `Trusted` with no position is not a contradiction: trust and validity are
+    // separate questions (`position.h`), and this answers the first one only —
+    // nothing here is lying. The interface is told there is no position by
+    // `PositionValidity::NoFix`, which is what that enumerator is for.
+    CHECK_STATE(evaluator.state(), TrustState::Trusted);
+}
+
+// `Stale` is the same refusal for the other reason, and it needs saying twice
+// because the two are stopped by different halves of the same rule.
+//
+// A relayed fix that was already old on arrival is refused by its measurement
+// age — `14-a-relayed-fix-arrives-old.trace` records exactly that at 40 s for a
+// link that queues and retries. A fix a *consumer* calls too old to act on may
+// still be inside the comparison window, and is refused by its validity alone:
+// `PositionValidity` is the caller's verdict, not the evaluator's, `classify()`
+// takes a `ValidityPolicy` whose `stale_after` is policy rather than physics,
+// and what the evaluator does with `Stale` cannot depend on which threshold
+// produced it.
+void test_a_stale_coordinate_is_not_a_fresh_side_of_the_comparison()
+{
+    {
+        TrustEvaluator evaluator;
+        evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+
+        // Measured at t=20 s, delivered at t=60 s: forty seconds in a backlog,
+        // which `classify()` calls `Stale` under the default 30 s.
+        evaluator.observe(good_fix(20000), PositionValidity::Stale, MotionEvidence{}, {},
+                          at(60000));
+
+        GnssObservation node_at_b = good_fix(60000, kLat + 50000);
+        node_at_b.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(node_at_b, at(60000));
+
+        CHECK_NO_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+        CHECK_REASON(evaluator.engine(), TrustReason::StalePosition);
+    }
+    {
+        TrustEvaluator evaluator;
+        // Three seconds old and inside the five-second comparison window, so
+        // the measurement age would let this through. The service that fed it
+        // has already said it is too old to act on.
+        const std::uint64_t window = evaluator.engine().policy().provider_comparison_window.value;
+        CHECK(3000 < window);
+        evaluator.observe(good_fix(0), PositionValidity::Stale, MotionEvidence{}, {}, at(3000));
+
+        GnssObservation node_at_b = good_fix(3000, kLat + 50000);
+        node_at_b.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(node_at_b, at(3000));
+
+        CHECK_NO_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    }
+}
+
+// And the gate is not simply shut, which is the assertion that keeps the two
+// above honest: a refusal that refused everything would satisfy them both and
+// switch the detector off.
+//
+// `Degraded` answers as readily as `Valid` — it is a caveat the interface must
+// show, not a receiver declining to say where it is — and both halves are
+// checked in both directions, so that neither an invented agreement nor a
+// missed disagreement passes.
+void test_a_measured_fix_still_answers_whether_valid_or_degraded()
+{
+    for (int variant = 0; variant < 2; ++variant) {
+        const PositionValidity validity =
+            variant == 0 ? PositionValidity::Valid : PositionValidity::Degraded;
+        GnssObservation local = good_fix(0);
+        if (variant == 1) {
+            local.fix_type = FixType::TwoD;  // no altitude solution: what classify() calls Degraded
+        }
+
+        TrustEvaluator disagreeing;
+        disagreeing.observe(local, validity, MotionEvidence{}, {}, at(0));
+        GnssObservation far = good_fix(0, kLat + 50000);  // ~550 m
+        far.source          = PositionSource::NodeGnss;
+        disagreeing.compare_provider(far, at(0));
+        CHECK_REASON(disagreeing.engine(), TrustReason::ProviderDisagreement);
+
+        TrustEvaluator agreeing;
+        agreeing.observe(local, validity, MotionEvidence{}, {}, at(0));
+        GnssObservation close_by = good_fix(0, kLat + 500);  // ~5 m
+        close_by.source          = PositionSource::NodeGnss;
+        agreeing.compare_provider(close_by, at(0));
+        CHECK_NO_REASON(agreeing.engine(), TrustReason::ProviderDisagreement);
+    }
+}
+
+// NOT BEING ABLE TO ANSWER IS NOT A RETRACTION — and on this path the previous
+// code was not fail-safe, it was the other direction.
+//
+// A node that reports the coordinate the local receiver is still retaining
+// "agrees" with it. The comparison was made, `set()` took the false branch, and
+// `clear()` — the one retraction this class has, and the only thing that lets
+// the state climb — was reached by a position nobody was asserting. Silence
+// from our own half must leave a live allegation exactly where it is.
+void test_a_local_dropout_does_not_withdraw_a_live_disagreement()
+{
+    for (int variant = 0; variant < 2; ++variant) {
+        TrustEvaluator evaluator;
+        evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+        GnssObservation elsewhere = good_fix(0, kLat + 50000);
+        elsewhere.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(elsewhere, at(0));
+        CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+
+        // Past the comparison window, so our own last measurement can no longer
+        // answer, and well inside `evidence_ttl`, so the allegation is LIVE and
+        // this is a test about a retraction rather than about an expiry.
+        const std::uint64_t soon = 6000;
+        CHECK(soon > evaluator.engine().policy().provider_comparison_window.value);
+        CHECK(soon < evaluator.engine().policy().evidence_ttl.value);
+
+        if (variant == 0) {
+            evaluator.observe(retained_no_fix(soon), PositionValidity::NoFix, MotionEvidence{}, {},
+                              at(soon));
+        } else {
+            // The consumer's `Stale`, as above: its own `stale_after`, not ours.
+            evaluator.observe(good_fix(0), PositionValidity::Stale, MotionEvidence{}, {}, at(soon));
+        }
+
+        GnssObservation agreeing_with_the_retained = good_fix(soon, kLat);
+        agreeing_with_the_retained.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(agreeing_with_the_retained, at(soon));
+
+        CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+        CHECK(evaluator.state() != TrustState::Trusted);
+    }
+}
+
+// And the comparison reopens on the next real fix, in both directions. A gate
+// that closed for the rest of the boot would be the pin #153 exists to remove,
+// arrived at from the other side: the local receiver is the one source this
+// device can always ask again.
+void test_the_comparison_reopens_on_the_next_real_fix()
+{
+    TrustEvaluator evaluator;
+    evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(0));
+    GnssObservation elsewhere = good_fix(0, kLat + 50000);
+    elsewhere.source          = PositionSource::NodeGnss;
+    evaluator.compare_provider(elsewhere, at(0));
+    CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    CHECK_STATE(evaluator.state(), TrustState::Degraded);
+
+    // A minute of retained no-fix frames while the node keeps saying B. The
+    // allegation is never withdrawn — it lapses into `unconfirmed_` when the
+    // TTL runs and stays awaited, because the node is still there to withdraw
+    // it and has not.
+    for (std::uint64_t ms = 1000; ms <= 60000; ms += 1000) {
+        evaluator.observe(retained_no_fix(ms), PositionValidity::NoFix, MotionEvidence{}, {},
+                          at(ms));
+        GnssObservation node_at_b = good_fix(ms, kLat + 50000);
+        node_at_b.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(node_at_b, at(ms));
+    }
+    CHECK(evaluator.engine().awaiting_confirmation(TrustReason::ProviderDisagreement));
+    CHECK(evaluator.state() != TrustState::Trusted);
+
+    // The receiver solves a fix again, and it is at B — which is where the
+    // wearer was the whole time and what the node had been saying. 550 m over
+    // sixty-one seconds is 9 m/s, so nothing here is a jump.
+    evaluator.observe(good_fix(61000, kLat + 50000), PositionValidity::Valid, MotionEvidence{}, {},
+                      at(61000));
+    GnssObservation node_still_at_b = good_fix(61000, kLat + 50000);
+    node_still_at_b.source          = PositionSource::NodeGnss;
+    evaluator.compare_provider(node_still_at_b, at(61000));
+
+    // An explicit agreement, which is a retraction and not an expiry: the bit
+    // is gone from both masks, and only that lets the hold start.
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    CHECK(!evaluator.engine().awaiting_confirmation(TrustReason::ProviderDisagreement));
+
+    for (std::uint64_t ms = 62000; ms <= 67000; ms += 1000) {
+        evaluator.observe(good_fix(ms, kLat + 50000), PositionValidity::Valid, MotionEvidence{}, {},
+                          at(ms));
+    }
+    CHECK_STATE(evaluator.state(), TrustState::Trusted);
+
+    // And a real disagreement is reported again straight away. The gate was
+    // shut for the dropout, not for the session.
+    evaluator.observe(good_fix(68000, kLat + 50000), PositionValidity::Valid, MotionEvidence{}, {},
+                      at(68000));
+    GnssObservation node_at_c = good_fix(68000, kLat + 200000);  // ~1.6 km from B
+    node_at_c.source          = PositionSource::NodeGnss;
+    evaluator.compare_provider(node_at_c, at(68000));
+    CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    CHECK_STATE(evaluator.state(), TrustState::Degraded);
+}
+
+// The other half of the same invariant: which clock the local side is judged
+// by. A measurement age, symmetrical with `other.observed_at` on the far side,
+// and never the moment the observation happened to be processed.
+//
+// `observe()` is fed by whoever holds the receiver, and that is not always
+// prompt: a driver draining a FIFO, or a service catching up after a busy tick,
+// delivers a fix measured seconds before it is looked at.
+// `14-a-relayed-fix-arrives-old.trace` records the same shape at 40 s for a
+// node link that queues and retries.
+void test_the_local_side_of_a_comparison_is_a_measurement_age()
+{
+    {
+        // Twenty seconds in flight. Still `Valid` — the default `stale_after`
+        // is 30 s — and not a fresh answer to anything.
+        TrustEvaluator evaluator;
+        evaluator.observe(good_fix(0), PositionValidity::Valid, MotionEvidence{}, {}, at(20000));
+        GnssObservation node = good_fix(20000, kLat + 50000);
+        node.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(node, at(20000));
+        CHECK_NO_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    }
+    {
+        // Two seconds in flight, well inside the window, and the disagreement
+        // is real and reported. Without this the test above would pass on a
+        // gate that had simply been welded shut.
+        TrustEvaluator evaluator;
+        evaluator.observe(good_fix(18000), PositionValidity::Valid, MotionEvidence{}, {},
+                          at(20000));
+        GnssObservation node = good_fix(20000, kLat + 50000);
+        node.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(node, at(20000));
+        CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    }
+    {
+        // And a sample delivered out of order does not displace the measurement
+        // already held. Had the reordered one been adopted its age would be 6 s
+        // — outside the window — and a node's real disagreement would have been
+        // lost to a late delivery rather than judged.
+        TrustEvaluator evaluator;
+        evaluator.observe(good_fix(10000), PositionValidity::Valid, MotionEvidence{}, {},
+                          at(10000));
+        evaluator.observe(good_fix(4000), PositionValidity::Valid, MotionEvidence{}, {}, at(10000));
+        GnssObservation node = good_fix(10000, kLat + 50000);
+        node.source          = PositionSource::NodeGnss;
+        evaluator.compare_provider(node, at(10000));
+        CHECK_REASON(evaluator.engine(), TrustReason::ProviderDisagreement);
+    }
+}
+
 // ADR-0005 §5: no state survives a reconnect implicitly. When a provider
 // detaches, what it
 // told us goes with it — including the fallback position, which would otherwise
@@ -1618,6 +1928,12 @@ int main()
     test_a_node_uncomparable_past_the_grace_stops_being_awaited();
     test_a_detached_provider_stops_being_awaited_and_cannot_clear_a_live_reason();
     test_provider_disagreement_is_evidence_about_both();
+    test_a_retained_coordinate_does_not_answer_a_second_provider();
+    test_a_stale_coordinate_is_not_a_fresh_side_of_the_comparison();
+    test_a_measured_fix_still_answers_whether_valid_or_degraded();
+    test_a_local_dropout_does_not_withdraw_a_live_disagreement();
+    test_the_comparison_reopens_on_the_next_real_fix();
+    test_the_local_side_of_a_comparison_is_a_measurement_age();
     test_reset_leaves_nothing_behind();
     test_everything_has_a_name();
 
