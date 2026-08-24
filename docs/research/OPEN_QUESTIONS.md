@@ -198,9 +198,9 @@ with someone competent reviewing it — not in a paragraph here.
 | # | Question | Status | Resolved by |
 |---|---|---|---|
 | T1 | Which ESP-IDF version to target | **narrowed** | Waveshare supports v5.5.5 and v6.0.2; its BSP needs ≥5.3. Decide with the LilyGO side. |
-| T2 | Which LVGL major version | **narrowed** | Waveshare BSP accepts `>=8,<10`; LVGL 9 is the forward choice. Confirm simulator support. |
+| ~~T2~~ | ~~Which LVGL major version~~ | **RESOLVED 2026-08-24** | **LVGL 9**, pinned at v9.5.0 = `85aa60d18b3d5e5588d7b247abf90198f07c8a63` in [DEPENDENCIES.md](DEPENDENCIES.md), verified by `git ls-remote` against `refs/tags/v9.5.0` and **OBSERVED** in CI from a cold cache. The *"confirm simulator support"* half is answered by the same observation: the simulator builds against that revision and renders a screenshot per geometry |
 | T3 | Is RadioLib needed, or does MeshCore bring its own radio layer? | UNKNOWN | M6 |
-| T4 | Simulator display backend | UNKNOWN | follows T2; SDL2 not currently installed |
+| ~~T4~~ | ~~Simulator display backend~~ | **RESOLVED 2026-08-24** | **SDL2**. `sim/CMakeLists.txt:5` is `find_package(SDL2 REQUIRED)`; LVGL carries the SDL display, mouse and keyboard drivers in-tree and does not link SDL itself, which is why it is the one system package this build needs. CI installs `libsdl2-dev` and runs it headless on SDL's dummy video driver. *"SDL2 not currently installed"* was true of one machine, never of the decision |
 | T5 | Host test framework | UNKNOWN | small decision, no ADR needed |
 | T6 | Use the Waveshare BSP as a dependency, or take only its pin facts? | UNKNOWN | it is Apache-2.0 and incomplete — a reuse-ledger decision |
 | T7 | Does the LilyGO PlatformIO pin to IDF 4.4.7 constrain Attadipa? | ASSUMPTION: no | Attadipa is ESP-IDF-native and does not use the Arduino layer |

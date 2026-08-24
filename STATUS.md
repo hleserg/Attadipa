@@ -1369,6 +1369,25 @@ four more things at no cost:
   **T-157**; and check 8 has a **fourth** bound, undecorated IDs, so a bolded or
   backticked row silently leaves the register.
 
+  **This branch then broke the parked #75 patch and nothing noticed, which is
+  the strongest evidence the parked-patch guard has.** Round five moved the
+  `ci.yml:499` citation to `:500` — correctly, because a comment above it grew
+  by a line — and `docs/automation/pending/75-approval-stall.patch` *removes*
+  that exact line at two sites. `git apply` matches removed lines byte-exactly,
+  with no fuzz, and is all-or-nothing, so the whole 34 KB patch stopped
+  applying, **including the three `.github/workflows/` hunks that are the only
+  reason the directory exists**. The `+` side had gone wrong the same way: the
+  patch inserts 11 lines above the citation, so the landing number moved 510 →
+  511 and a hand-resolved landing would have left two fingerprinted citations
+  one line short — `check_docs.py` reddening the landing commit and naming
+  `WAVESHARE_ARRIVAL.md` rather than the workflow that moved it. Both sides are
+  corrected here, verified by landing the patch into a scratch copy of the tree
+  and running `check_docs.py` on the result rather than by reading it. **The
+  guard that would have caught it is #180**, which is not merged; and this is
+  also exactly why #180 makes the apply check a *warning* — the drift was
+  caused by work CI itself demanded, so a fatal check would have blocked the
+  fix for the very reason the fix was needed.
+
   `tools/docs/test_check_docs.py` holds **74 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
   sub-heading is not a second decision, a range straddling a blank line is
   how a table is cited, and a line number in somebody else's tree is not
