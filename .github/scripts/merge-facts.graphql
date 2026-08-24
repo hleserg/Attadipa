@@ -96,8 +96,41 @@ query($owner: String!, $name: String!, $number: Int!) {
         pageInfo { hasNextPage }
         nodes {
           commit {
-            committedDate
-            pushedDate
+            # THE IDENTITY THE VERDICT IS BOUND TO. Without it the sweep has a
+            # label saying a review happened and no way to say what it happened
+            # to; `merge-candidate.sh` refuses a caller that cannot name it.
+            oid
+
+            # `committedDate` AND `pushedDate` ARE DELIBERATELY NOT ASKED FOR.
+            # The sweep used to read `(.pushedDate // .committedDate)` and use it
+            # both as the start of the six-hour settling window and as the date
+            # the reviewer's verdict had to post-date. `pushedDate` is deprecated
+            # and answered `null` beside a live `committedDate` for the head of
+            # this repository's #193 on 2026-08-24, so the fallback was the only
+            # branch ever taken -- and `committedDate` is the git committer
+            # clock, which `GIT_COMMITTER_DATE` sets. Both properties therefore
+            # rested on an input. Not asking is the point: re-deriving that
+            # fallback now takes an edit to this file as well as to the filter,
+            # and .github/tests/merge-candidate-test.sh refuses both. Issue #199.
+            #
+            # WHAT REPLACES IT. GitHub stamps the workflow runs it starts against
+            # this exact object id, and a commit becoming a pull request's head
+            # is what raises a `pull_request` run. `workflowRun.createdAt` is
+            # therefore GitHub observing the arrival rather than the author
+            # describing it -- 18:30:08Z against a `committedDate` of 18:29:57Z
+            # on #193. `.github/scripts/merge-head-trust.jq` takes the maximum
+            # over these and holds when there are none.
+            checkSuites(first: 100) {
+              totalCount
+              pageInfo { hasNextPage }
+              nodes {
+                app { slug }
+                workflowRun {
+                  createdAt
+                  event
+                }
+              }
+            }
 
             # A `CheckRun` is a job; a `StatusContext` is a commit status posted
             # by whatever app holds a token. They arrive in one connection and

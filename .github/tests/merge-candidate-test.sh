@@ -29,19 +29,27 @@ SCRIPT_UNDER_TEST=.github/scripts/merge-candidate.sh
 
 pass=0; fail=0
 
+# A head commit id shaped the way GitHub writes them. Forty lowercase hex
+# digits; the rule refuses anything else, because a decision that cannot name
+# its commit bound its verdict to nothing. Issue #199.
+OID_OK=0123456789abcdef0123456789abcdef01234567
+
 # run_rule ARGS... -- calls the rule, filling in the arguments the older
 # assertions predate.
 #
 # CHANGED_PATHS defaults to STATUS.md, PASS_AFTER_HEAD and FACTS_COMPLETE to
-# `true`, so every assertion written before those conditions existed still tests
-# exactly the condition it names rather than being refused by a new one first.
-# Each new condition has a section of its own below.
+# `true` and HEAD_OID to a well-formed id, so every assertion written before
+# those conditions existed still tests exactly the condition it names rather
+# than being refused by a new one first. Each new condition has a section of its
+# own below.
 run_rule() {
   local checks="$1" labels="$2" unresolved="$3" codex="$4"
   local mergeable="$5" is_draft="$6" head_age="$7"
   local paths="${8-STATUS.md}" pass_after="${9-true}" complete="${10-true}"
+  local head_oid="${11-$OID_OK}"
   bash "$SCRIPT_UNDER_TEST" "$checks" "$labels" "$unresolved" "$codex" \
-       "$mergeable" "$is_draft" "$head_age" "$paths" "$pass_after" "$complete"
+       "$mergeable" "$is_draft" "$head_age" "$paths" "$pass_after" "$complete" \
+       "$head_oid"
 }
 
 # ok NAME EXPECTED ARGS...
@@ -402,7 +410,17 @@ facts() {
     timelineItems: {totalCount:15, pageInfo:{hasNextPage:false, hasPreviousPage:false},
                     nodes:[{createdAt:"2026-08-24T00:00:00Z", label:{name:"ai-review:pass"}}]},
     commits: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{commit:{
-      committedDate:"2026-08-23T00:00:00Z", pushedDate:"2026-08-23T00:00:00Z",
+      oid: "0123456789abcdef0123456789abcdef01234567",
+      # `committedDate` IS IN THE FIXTURE AND IN NOTHING ELSE. The query stopped
+      # asking for it with #199 and no rule reads it; it is left here, ancient
+      # and contradicting every other date in the document, so that any code
+      # that starts reading it again fails loudly rather than agreeing with
+      # itself. See the head-trust section below, where the same date is the
+      # attack.
+      committedDate:"2020-01-01T00:00:00Z",
+      checkSuites:{totalCount:1, pageInfo:{hasNextPage:false}, nodes:[
+        {app:{slug:"github-actions"},
+         workflowRun:{createdAt:"2026-08-23T00:00:00Z", event:"pull_request"}}]},
       statusCheckRollup:{contexts:{totalCount:1, pageInfo:{hasNextPage:false},
         nodes:[{__typename:"CheckRun", conclusion:"SUCCESS", status:"COMPLETED"}]}}}}]}
   }}}}')" || return 1
@@ -565,6 +583,284 @@ case "$got" in
 esac
 
 echo
+echo "When GitHub saw this head arrive, and which commit the verdict was about"
+# THE SECOND HALF OF THE #170 LESSON, AND A WORSE ONE. Those arguments were
+# summaries of a page nobody had finished reading. These two were summaries of a
+# date the author of the commit chose: `(.pushedDate // .committedDate)`
+# answered BOTH "has this settled for six hours" and "was the verdict reached on
+# this commit", and `pushedDate` is deprecated and answers `null` for every
+# commit this repository has -- read live against the head of #193 on
+# 2026-08-24 -- so the fallback was not the narrow case, it was the only branch
+# ever taken. No assertion phrased in `PASS_AFTER_HEAD` or `HEAD_AGE` could have
+# caught it, for the reason #170 gives about `UNRESOLVED`: a boolean carries no
+# trace of what it was a boolean ABOUT. So these run the normalisation itself.
+# Issue #199.
+TRUST_RULE=.github/scripts/merge-head-trust.sh
+TRUST_JQ=.github/scripts/merge-head-trust.jq
+
+# A fixed clock, so an age is an exact number and not a range. The rule reads it
+# from ATTADIPA_MERGE_NOW, which exists for this and which the sweep never sets.
+NOW_EPOCH="$(date -u -d "2026-08-24T20:00:00Z" +%s 2>/dev/null)"
+
+# The honest document `facts()` builds says: GitHub started a `pull_request` run
+# on this object id at 2026-08-23T00:00:00Z, the reviewer passed it a day later,
+# and the commit itself CLAIMS to be from 2020-01-01, which nothing may read.
+ARRIVED_OK=158400   # 2026-08-24T20:00Z minus 2026-08-23T00:00Z, in seconds
+JUST_NOW=300        # ... minus 2026-08-24T19:55Z
+
+# trust_says NAME EXPECTED-PREFIX DOCUMENT
+trust_says() {
+  local name="$1" expected="$2" doc="$3"
+  local got; got="$(printf '%s' "$doc" | ATTADIPA_MERGE_NOW="$NOW_EPOCH" bash "$TRUST_RULE")"
+  case "$got" in
+    "$expected"*) printf '  ok    %s\n' "$name"; pass=$((pass + 1)) ;;
+    *) printf '  FAIL  %s\n        expected prefix: %s\n        got:             %s\n' \
+         "$name" "$expected" "$got"; fail=$((fail + 1)) ;;
+  esac
+}
+
+# sweep_verdict DOCUMENT -- THE CALLER'S OWN NORMALISATION, EXECUTED. The same
+# three scripts in the same order with the same extractions as the parked
+# caller, so a document goes in and a verdict comes out. Handing
+# merge-candidate.sh booleans somebody worked out by hand is exactly the shape
+# that let #170 and #199 both live in the caller for their whole lives.
+sweep_verdict() {
+  local doc="$1" complete trust oid pass_after age
+  complete="$(printf '%s' "$doc" | bash "$FACTS_RULE")"
+  case "$complete" in
+    COMPLETE) complete=true ;;
+    *) printf '%s\n' "$complete"; return 0 ;;
+  esac
+  trust="$(printf '%s' "$doc" | ATTADIPA_MERGE_NOW="$NOW_EPOCH" bash "$TRUST_RULE")"
+  case "$trust" in
+    "TRUSTED "*) : ;;
+    *) printf '%s\n' "$trust"; return 0 ;;
+  esac
+  IFS=' ' read -r _ oid pass_after age <<<"$trust"
+  bash "$SCRIPT_UNDER_TEST" \
+    "$(printf '%s' "$doc" | jq -r '
+       [ .data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes[]?
+         | if .__typename == "CheckRun"
+           then (if .status == "COMPLETED" then (.conclusion // "pending") else "pending" end)
+           else "status:" + (.state // "pending") end
+         | ascii_downcase ] | join(" ")')" \
+    "$(printf '%s' "$doc" | jq -r '.data.repository.pullRequest.labels.nodes[]?.name')" \
+    "$(printf '%s' "$doc" | jq -r '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved | not)] | length')" \
+    0 \
+    "$(printf '%s' "$doc" | jq -r '.data.repository.pullRequest.mergeStateStatus // "" | ascii_downcase')" \
+    "$(printf '%s' "$doc" | jq -r '.data.repository.pullRequest.isDraft')" \
+    "$age" \
+    "$(printf '%s' "$doc" | jq -r '.data.repository.pullRequest.files.nodes[]?.path')" \
+    "$pass_after" "$complete" "$oid"
+}
+
+# sweep_says NAME EXPECTED DOCUMENT
+sweep_says() {
+  local name="$1" expected="$2" doc="$3"
+  local got; got="$(sweep_verdict "$doc")"
+  if [ "$got" = "$expected" ]; then
+    printf '  ok    %s\n' "$name"; pass=$((pass + 1))
+  else
+    printf '  FAIL  %s\n        expected: %s\n        got:      %s\n' "$name" "$expected" "$got"
+    fail=$((fail + 1))
+  fi
+}
+
+trust_says "a head GitHub started work on, with a verdict after it, is trusted and timed" \
+  "TRUSTED 0123456789abcdef0123456789abcdef01234567 true $ARRIVED_OK" "$(facts)"
+sweep_says "and end to end, through all three rules, that document merges" MERGE "$(facts)"
+
+# THE FINDING ITSELF. Head B replaces A after the reviewer passed A, and B is
+# made with `GIT_COMMITTER_DATE` in 2020 -- which is what the fixture's
+# `committedDate` has said all along. GitHub started B's run at 19:55, five
+# minutes ago and nine hours after the pass.
+ATTACK="$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes[0].workflowRun.createdAt
+  = "2026-08-24T19:55:00Z"')"
+trust_says "a verdict that predates GitHub seeing this head is not a verdict about it" \
+  "TRUSTED 0123456789abcdef0123456789abcdef01234567 false $JUST_NOW" "$ATTACK"
+sweep_says "so the stale pass holds the merge" \
+  "HOLD ai-review:pass predates the head commit" "$ATTACK"
+
+# AND THE MUTATION TEST, as a historical constant rather than as a live read of
+# the workflow -- the same shape as OLD_UNRESOLVED above, and for the same
+# reason: it records the defect, so it cannot quietly start agreeing with a
+# fixed caller. Quoted verbatim from pr-merge-sweep.yml at 861f5fa.
+OLD_COMMITTED="$(printf '%s' "$ATTACK" | jq -r '
+  .data.repository.pullRequest.commits.nodes[0].commit
+  | (.pushedDate // .committedDate) // "null"')"
+OLD_PASS_EPOCH="$(date -u -d "2026-08-24T00:00:00Z" +%s)"
+OLD_HEAD_EPOCH="$(date -u -d "$OLD_COMMITTED" +%s 2>/dev/null || echo "")"
+if [ "$OLD_COMMITTED" = "2020-01-01T00:00:00Z" ] \
+   && [ -n "$OLD_HEAD_EPOCH" ] && [ "$OLD_PASS_EPOCH" -ge "$OLD_HEAD_EPOCH" ] \
+   && [ "$(( NOW_EPOCH - OLD_HEAD_EPOCH ))" -ge 21600 ]; then
+  printf '  ok    the old extraction really did read the backdated date, call the stale pass current, and clear six hours\n'
+  pass=$((pass + 1))
+else
+  printf '  FAIL  the fixture does not reproduce the finding: old extraction read %s\n' "$OLD_COMMITTED"
+  fail=$((fail + 1))
+fi
+
+# JUST ARRIVED, AND CLAIMING TO BE OLD. Same head, but the reviewer passed it a
+# minute after GitHub saw it -- so the verdict binding is satisfied and the only
+# thing left to refuse on is the settling window, which `committedDate` would
+# have cleared in 2020.
+FRESH="$(facts \
+  '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes[0].workflowRun.createdAt
+     = "2026-08-24T19:55:00Z"' \
+  '.data.repository.pullRequest.timelineItems.nodes[0].createdAt = "2026-08-24T19:56:00Z"')"
+trust_says "a head that arrived five minutes ago is five minutes old, whatever its commit says" \
+  "TRUSTED 0123456789abcdef0123456789abcdef01234567 true $JUST_NOW" "$FRESH"
+sweep_says "so the six-hour window refuses it" \
+  "HOLD head commit is $JUST_NOW s old, under 21600" "$FRESH"
+
+# NO TRUSTED MOMENT IS A HOLD, NEVER A FALLBACK. This is the state the deleted
+# `// .committedDate` existed to paper over: GitHub has stamped nothing against
+# this object id that says it is a pull request's head.
+trust_says "a head with no pull-request run has no arrival time, and that holds" \
+  "HOLD GitHub has started no pull-request workflow run on 01234567" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes = []')"
+sweep_says "and the sweep holds on it rather than reaching the rule at all" \
+  "HOLD GitHub has started no pull-request workflow run on 01234567, so nothing says when this head arrived" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes = []')"
+
+# A COMMIT'S EARLIER LIFE IS NOT ITS ARRIVAL HERE. B existed on another branch,
+# with a `push` run in July and a `pull_request` run from a different pull
+# request the day after; it became this pull request's head at 19:55. The
+# maximum over `pull_request` runs is the arrival, and the older objects cannot
+# age it.
+trust_says "a commit that existed before is timed by when it arrived, not by when it was made" \
+  "TRUSTED 0123456789abcdef0123456789abcdef01234567 false $JUST_NOW" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes = [
+      {app:{slug:"github-actions"}, workflowRun:{createdAt:"2026-07-01T00:00:00Z", event:"push"}},
+      {app:{slug:"github-actions"}, workflowRun:{createdAt:"2026-07-02T00:00:00Z", event:"pull_request"}},
+      {app:{slug:"github-actions"}, workflowRun:{createdAt:"2026-08-24T19:55:00Z", event:"pull_request"}}]')"
+trust_says "and a push run alone is not a pull request having a head" \
+  "HOLD GitHub has started no pull-request workflow run on 01234567" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes = [
+      {app:{slug:"github-actions"}, workflowRun:{createdAt:"2026-07-01T00:00:00Z", event:"push"}}]')"
+trust_says "a third-party check suite carries no workflow run and cannot time anything" \
+  "HOLD GitHub has started no pull-request workflow run on 01234567" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes = [
+      {app:{slug:"netlify"}, workflowRun:null}, {app:{slug:"vercel"}, workflowRun:null}]')"
+
+# MALFORMED IS UNKNOWN, AND UNKNOWN HOLDS. Every one of these could otherwise
+# read as "nothing there", and "nothing there" is what the deleted fallback used
+# to answer with a date.
+trust_says "no object id, no binding" \
+  "HOLD the head commit has no usable object id" \
+  "$(facts 'del(.data.repository.pullRequest.commits.nodes[0].commit.oid)')"
+trust_says "a short object id is not a commit" \
+  "HOLD the head commit has no usable object id" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.oid = "0123abc"')"
+trust_says "and neither is an upper-case one, which GitHub does not write" \
+  "HOLD the head commit has no usable object id" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.oid = "0123456789ABCDEF0123456789ABCDEF01234567"')"
+trust_says "an unreadable check-suite connection refuses rather than reading as no runs" \
+  "HOLD the head commit's check suites came back unreadable" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites = null')"
+trust_says "so does one whose nodes are not a list" \
+  "HOLD the head commit's check suites came back unreadable" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes = "none"')"
+trust_says "a run timestamp that is not a timestamp refuses" \
+  "HOLD a workflow run on 01234567 carries a timestamp that cannot be read" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.nodes[0].workflowRun.createdAt = "yesterday"')"
+trust_says "and so does a labelling whose date cannot be read" \
+  "HOLD a labelling event on this pull request carries a timestamp that cannot be read" \
+  "$(facts '.data.repository.pullRequest.timelineItems.nodes[0].createdAt = null')"
+trust_says "a missing head commit is named as one" \
+  "HOLD the head commit is missing from the response" \
+  "$(facts '.data.repository.pullRequest.commits.nodes = []')"
+trust_says "an empty document refuses" \
+  "HOLD the pull request's facts came back empty" ""
+trust_says "unparseable output refuses" \
+  "HOLD the pull request's facts could not be parsed" "not json at all"
+trust_says "and a response with no pull request in it refuses" \
+  "HOLD the response carries no pull request" \
+  '{"data":{"repository":{"pullRequest":null}},"errors":[{"message":"Something went wrong"}]}'
+
+# NO LABELLING ON RECORD IS `unknown`, NOT `false`, so the rule downstream can
+# answer with whichever sentence is actually true rather than with one about
+# dates. Both readings of "no record" are asserted, because they are different
+# facts and they deserve different lines in the sweep log: a label with no
+# labelling event inside the window is a read that fell short, while no label at
+# all is a pull request nobody has passed.
+trust_says "no ai-review:pass labelling at all is unknown, not a refusal here" \
+  "TRUSTED 0123456789abcdef0123456789abcdef01234567 unknown $ARRIVED_OK" \
+  "$(facts '.data.repository.pullRequest.timelineItems.nodes = []')"
+sweep_says "a label whose event is not in the window is a read that could not tell" \
+  "HOLD could not tell whether ai-review:pass covers the head commit" \
+  "$(facts '.data.repository.pullRequest.timelineItems.nodes = []')"
+sweep_says "and no label at all is named as that, not as a date problem" \
+  "HOLD no ai-review:pass" \
+  "$(facts '.data.repository.pullRequest.timelineItems.nodes = []' \
+           '.data.repository.pullRequest.labels.nodes = []')"
+
+# A clock the runner cannot read is not an age of zero and not an age of
+# anything else.
+got="$(printf '%s' "$(facts)" | ATTADIPA_MERGE_NOW=not-a-number bash "$TRUST_RULE")"
+case "$got" in
+  "HOLD the current time could not be read"*)
+    printf '  ok    an unreadable clock holds instead of guessing an age\n'; pass=$((pass + 1)) ;;
+  *) printf '  FAIL  an unreadable clock must not produce an age\n        got: %s\n' "$got"
+     fail=$((fail + 1)) ;;
+esac
+
+# The filter is a separate file, as merge-facts.jq is, so its absence is its own
+# failure and must not be reported as GitHub having answered badly.
+got="$(ATTADIPA_MERGE_HEAD_TRUST_JQ=/nonexistent/merge-head-trust.jq \
+       ATTADIPA_MERGE_NOW="$NOW_EPOCH" bash "$TRUST_RULE" "$(facts)")"
+case "$got" in
+  "HOLD the head-trust filter /nonexistent/merge-head-trust.jq is missing"*)
+    printf '  ok    a missing head-trust filter refuses, and says it was the filter\n'; pass=$((pass + 1)) ;;
+  *) printf '  FAIL  a missing head-trust filter must not read as a head with nothing wrong\n        got: %s\n' "$got"
+     fail=$((fail + 1)) ;;
+esac
+
+# A TRUNCATED CHECK-SUITE PAGE HIDES THE NEWEST RUN, which makes the head look
+# older and an older verdict look current -- both in the merging direction. It
+# is the sixth decision-critical connection and it is guarded like the other
+# five.
+complete_says "a truncated check-suite list refuses, because the newest run is on the page nobody read" \
+  "HOLD the check-suite list is truncated at 100 of 140" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.checkSuites =
+      {totalCount:140, pageInfo:{hasNextPage:true},
+       nodes:[range(0;100)|{app:{slug:"github-actions"},
+                            workflowRun:{createdAt:"2026-08-23T00:00:00Z", event:"pull_request"}}]}')"
+complete_says "and a check-suite connection with no pageInfo refuses" \
+  "HOLD the check-suite list came back without pageInfo" \
+  "$(facts 'del(.data.repository.pullRequest.commits.nodes[0].commit.checkSuites.pageInfo)')"
+
+# THE RULE ITSELF STILL REFUSES A CALLER THAT CANNOT NAME THE COMMIT, whatever
+# the normaliser did. Shape only -- nothing here can verify a SHA -- but a
+# caller that reached the rule without one computed its verdict binding against
+# nothing.
+ok "a well-formed head id is accepted"  MERGE \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "$OID_OK"
+ok "an empty head id is not a commit"   "HOLD the head commit could not be identified" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true ""
+ok "and neither is a truncated one"     "HOLD the head commit could not be identified" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "0123abc"
+ok "nor a branch name"                  "HOLD the head commit could not be identified" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "main"
+ok "a 64-hex object id is accepted too, because a repository may be SHA-256" MERGE \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true \
+                                 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+ok "identity is answered before the verdict, because the verdict was bound to it" \
+                                "HOLD the head commit could not be identified" \
+                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "STATUS.md" true true ""
+
+# TEN ARGUMENTS IS NOW THE OLD CALLER TOO, and it is refused by arity for the
+# reason nine is: it never established which commit it was deciding about.
+got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true 2>/dev/null)"
+case "$got" in
+  "HOLD this caller cannot prove it read all of the pull request"*)
+    printf '  ok    a ten-argument caller cannot merge either\n'; pass=$((pass + 1)) ;;
+  *)
+    printf '  FAIL  a ten-argument caller predates the head-identity condition and must not merge\n        got: %s\n' "$got"
+    fail=$((fail + 1)) ;;
+esac
+
+echo
 echo "The query asks for what the rule reads"
 # The rule can only refuse on a `pageInfo` the query asked for. These two files
 # are one mechanism split across two languages, and the join between them is the
@@ -581,7 +877,7 @@ fi
 # Deleting `pageInfo` from the real `labels(first: 100)` block left the scan
 # green. Caught by mutating the query and watching nothing happen.
 QUERY_BODY="$(grep -vE '^[[:space:]]*#' "$FACTS_QUERY")"
-for connection in labels reviewThreads files timelineItems contexts; do
+for connection in labels reviewThreads files timelineItems checkSuites contexts; do
   # From the connection to its own `nodes`, which is the field it is being read
   # for, `pageInfo` has to appear in between -- and the connection has to appear
   # at all, so deleting one outright is a failure and not a vacuous pass.
@@ -611,10 +907,48 @@ else
   printf '  FAIL  the query no longer separates CheckRun from StatusContext (a192a89)\n'; fail=$((fail + 1))
 fi
 
+# WHAT #199 ADDED, AND WHAT IT TOOK AWAY, both asserted on the query rather than
+# only on the filter -- a filter can only refuse on a field the query asked for,
+# and it can only be defeated by a field the query still offers.
+for field in oid checkSuites workflowRun createdAt event; do
+  if printf '%s\n' "$QUERY_BODY" | grep -q -- "$field"; then
+    printf '  ok    the query asks for %s\n' "$field"; pass=$((pass + 1))
+  else
+    printf '  FAIL  the query no longer asks for %s, so the head cannot be identified or timed\n' "$field"
+    fail=$((fail + 1))
+  fi
+done
+# THE MUTATION THIS SUITE EXISTS TO CATCH. Restoring `(.pushedDate //
+# .committedDate)` anywhere is the defect coming back, and it cannot be restored
+# out of a document that does not carry the field. The comments in both files
+# discuss those names at length, which is why the bodies are stripped first --
+# the same lesson as the pageInfo scan above.
+TRUST_BODY="$(grep -vE '^[[:space:]]*#' "$TRUST_JQ" 2>/dev/null)"
+bad_dates=""
+for field in committedDate pushedDate authoredDate; do
+  printf '%s\n' "$QUERY_BODY" | grep -q -- "$field" && bad_dates="$bad_dates query:$field"
+  printf '%s\n' "$TRUST_BODY" | grep -q -- "$field" && bad_dates="$bad_dates head-trust:$field"
+done
+if [ -z "$bad_dates" ]; then
+  printf '  ok    and neither the query nor the head-trust rule can see a date the committer chose\n'
+  pass=$((pass + 1))
+else
+  printf '  FAIL  an author-controlled commit date is back in reach:%s\n' "$bad_dates"
+  printf '        GIT_COMMITTER_DATE sets it, and it used to answer both the settling\n'
+  printf '        window and the verdict binding. Issue #199.\n'
+  fail=$((fail + 1))
+fi
+if [ -f "$TRUST_JQ" ] && [ -f "$TRUST_RULE" ]; then
+  printf '  ok    the head-trust rule and its filter are both here\n'; pass=$((pass + 1))
+else
+  printf '  FAIL  the head-trust rule is missing, so nothing times the head at all\n'; fail=$((fail + 1))
+fi
+
 echo
 echo "The rule does not grow a seventh condition or lose one of the six"
 for condition in 'ai-review:pass' 'ai-review:blocking' 'agent:blocked' 'needs-owner' \
-                 'MIN_HEAD_AGE_SECONDS' 'mergeable' 'is_draft' 'facts_complete'; do
+                 'MIN_HEAD_AGE_SECONDS' 'mergeable' 'is_draft' 'facts_complete' \
+                 'head_oid'; do
   if grep -q -- "$condition" "$SCRIPT_UNDER_TEST"; then
     printf '  ok    %s is still checked\n' "$condition"; pass=$((pass + 1))
   else
@@ -659,9 +993,14 @@ SWEEP_BODY="$(grep -vE '^[[:space:]]*#' "$SWEEP" 2>/dev/null)"
 # The verdict call itself, from the line naming the script to the first line that
 # does not continue. Its ARITY is the one line everything here depends on and
 # nothing read: nine arguments is the pre-#170 caller, which merge-candidate.sh
-# now refuses outright, and ten is the caller that passes "$COMPLETE". A hand
-# resolution that drops that hunk while keeping the header comment is how the two
-# permitted states quietly become the forbidden one.
+# now refuses outright, and eleven is the caller that passes "$COMPLETE" and
+# "$HEAD_OID". A hand resolution that drops either hunk while keeping the header
+# comment is how the two permitted states quietly become the forbidden one.
+#
+# ELEVEN AND NOT TEN, AND THE NUMBER MOVES ONCE. #199 folded its caller edits
+# into the same parked patch rather than beside it, so there is no intermediate
+# ten-argument state for anybody to land, and no second "apply this one first"
+# to reconcile against T-144.
 VERDICT_CALL="$(printf '%s\n' "$SWEEP_BODY" | awk '
   /merge-candidate[.]sh/ { inside = 1 }
   inside { print; if ($0 ~ /[)]"[[:space:]]*$/) exit }')"
@@ -674,10 +1013,16 @@ if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-facts.sh'; 
   else
     printf '  ok    and the pending patch has been cleared away\n'; pass=$((pass + 1))
   fi
-  if [ "$VERDICT_ARGC" = "10" ]; then
-    printf '  ok    and the verdict call passes the completeness argument\n'; pass=$((pass + 1))
+  if [ "$VERDICT_ARGC" = "11" ]; then
+    printf '  ok    and the verdict call passes the completeness and head arguments\n'; pass=$((pass + 1))
   else
-    printf '  FAIL  the sweep calls merge-facts.sh but hands merge-candidate.sh %s arguments, not 10\n' "$VERDICT_ARGC"
+    printf '  FAIL  the sweep calls merge-facts.sh but hands merge-candidate.sh %s arguments, not 11\n' "$VERDICT_ARGC"
+    fail=$((fail + 1))
+  fi
+  if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-head-trust.sh'; then
+    printf '  ok    and it asks GitHub when the head arrived rather than the commit\n'; pass=$((pass + 1))
+  else
+    printf '  FAIL  the sweep calls merge-facts.sh but not merge-head-trust.sh, so the head is timed by nothing\n'
     fail=$((fail + 1))
   fi
 elif [ -f "$PENDING" ]; then
@@ -693,6 +1038,17 @@ elif [ -f "$PENDING" ]; then
     printf '  ok    and the caller is still the nine-argument one the patch replaces\n'; pass=$((pass + 1))
   else
     printf '  FAIL  the patch is still parked but the caller passes %s arguments, not 9\n' "$VERDICT_ARGC"
+    fail=$((fail + 1))
+  fi
+  # ONE PATCH FOR THIS WORKFLOW, STILL. #199 needed four more edits to the same
+  # file and put them in the same patch, because a second parked patch against
+  # one workflow is two apply orders and a hand merge -- which is the state
+  # T-144 exists to stop growing. If the head-trust half is not in there, it is
+  # somewhere else, and nothing knows where.
+  if grep -q 'merge-head-trust.sh' "$PENDING"; then
+    printf '  ok    and that one patch also carries the head-trust half\n'; pass=$((pass + 1))
+  else
+    printf '  FAIL  %s does not point the sweep at merge-head-trust.sh, so #199 is parked somewhere nothing tracks\n' "$PENDING"
     fail=$((fail + 1))
   fi
 else
