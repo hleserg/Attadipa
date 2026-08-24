@@ -728,9 +728,9 @@ the `PointerDown`, so round trips come out of the intervals they happened in
 rather than lengthening the path; a negative, infinite or NaN duration is
 refused *before* the press goes out, so a mistyped gesture file cannot leave a
 finger down; `duration: 0` stays legal and means as fast as the connection
-manages. Three host self-test groups pin the schedule on a fake clock — the two-
-point case, the five-point case, and the shipped file resolved at **both** board
-geometries — and all three fail on `fc69c26`. The end-to-end test adds the
+manages. Three host self-test groups pin the schedule on a fake clock — the
+two-point case, the five-point case, and the shipped file resolved at **both**
+board geometries — and all three fail on `fc69c26`. The end-to-end test adds the
 coarse version with the real clock and the real socket in it: **0.602 s** on the
 Waveshare geometry and **0.601 s** on the T-Watch for a file declaring 0.6.
 Reported as [#186](https://github.com/hleserg/Attadipa/issues/186), and the
