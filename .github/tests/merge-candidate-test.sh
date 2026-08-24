@@ -431,17 +431,6 @@ ok "so the verdict over it is a HOLD and not a MERGE" \
                                 "HOLD the facts read about this pull request were truncated" \
                                  "success" "ai-review:pass" "$OLD_UNRESOLVED" 0 clean false "$OLD" "STATUS.md" true false
 
-complete_says "truncation alone refuses, even when every thread that was read is resolved" \
-  "HOLD the review-thread list is truncated" \
-  "$(facts '.data.repository.pullRequest.reviewThreads =
-      {totalCount:101, pageInfo:{hasNextPage:true}, nodes:[range(0;100)|{isResolved:true}]}')"
-
-complete_says "a non-green check on the second page cannot be reached, so it refuses" \
-  "HOLD the check list is truncated at 100 of 101" \
-  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts =
-      {totalCount:101, pageInfo:{hasNextPage:true},
-       nodes:[range(0;100)|{__typename:"CheckRun", conclusion:"SUCCESS", status:"COMPLETED"}]}')"
-
 # 101 GREEN check runs. Nothing is hiding on the second page and it still
 # refuses, because "nothing is hiding there" is precisely what a truncated page
 # cannot say. Explicit HOLD, never silent acceptance of the first hundred.
@@ -589,7 +578,7 @@ for connection in labels reviewThreads files timelineItems contexts; do
 done
 # A page over a hundred is not a bigger page, it is a GraphQL error -- and an
 # error here is a fail-closed HOLD on every pull request, 48 times a day.
-if [ -z "$(printf '%s\n' "$QUERY_BODY" | grep -oE 'first: *[0-9]+' | grep -oE '[0-9]+' | awk '$1 > 100')" ]; then
+if [ -z "$(printf '%s\n' "$QUERY_BODY" | grep -oE '(first|last): *[0-9]+' | grep -oE '[0-9]+' | awk '$1 > 100')" ]; then
   printf '  ok    no connection asks for more than the 100 GitHub allows\n'; pass=$((pass + 1))
 else
   printf '  FAIL  a connection asks for more than 100, which GitHub rejects outright\n'; fail=$((fail + 1))

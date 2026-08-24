@@ -1918,6 +1918,31 @@ three things that were otherwise assumptions: that `totalCount` ignores
 not empty, on a head commit with no checks at all; and that a `last:`-only
 connection answers `hasNextPage: false`.
 
+**And the mechanism the caller depends on, which is `gh`'s and not GitHub's.**
+The parked workflow half submits the query as `gh api graphql -F
+query=@.github/scripts/merge-facts.graphql`, and nothing on `main` executes that
+form: the filter takes a document on stdin, so the suite never reaches `gh`, and
+the only place the flag appears is inside the patch. It was therefore run
+directly, read-only, against `hleserg/Attadipa` #176 on 2026-08-24 — the exact
+invocation from the patch, three variables bound from the caller's own
+`${REPO%%/*}` split. Exit 0, one complete document, every connection present.
+So `-F query=@FILE` does read a file and does bind alongside the other `-F`
+variables, which was previously asserted only in a pull request body.
+
+The same reply re-established two of the three facts above on a **different**
+pull request than the one they were found on: `statusCheckRollup` came back
+`null` on #176's head commit, which has never had a check run at all, and
+`timelineItems` answered `totalCount: 6` beside `nodes: []` under
+`itemTypes: [LABELED_EVENT]` — the count ignoring the filter that the nodes
+respect, in one document.
+
+What this does **not** establish is the filter's verdict over that document.
+`jq` is absent on the host that ran it, so `merge-facts.sh` answered *HOLD the
+pull request's facts could not be parsed* — its designed fail-closed answer to a
+`jq` that will not run, and a statement about the host rather than about the
+reply. The verdict over a live document is `NOT EXECUTED` until CI or the sweep
+itself runs one.
+
 That third one was first written down as evidence that the flag is the right one
 to assert on the timeline. It is not, and the observation could not have shown
 it either way: #173's filtered connection held a **single** node, nowhere near

@@ -26,15 +26,19 @@ TO APPLY, from a session whose token may write workflows:
     #  `75-approval-stall.patch` -- 34 kB parked by #128, on `main` today and
     #  not yet applied -- the directory's README, and #154's patch when it
     #  lands. See T-144.
-    bash .github/tests/merge-candidate-test.sh   # 135 assertions, and the last
+    bash .github/tests/merge-candidate-test.sh   # 133 assertions, and the last
                                                  # two flip to the applied state
 
-THEN THE THREE DOCUMENTS THAT DESCRIBE THE PARKED STATE, in the same commit.
+THEN THE FIVE DOCUMENTS THAT DESCRIBE THE PARKED STATE, in the same commit.
 This directory's README says a patch carries every edit its own landing forces,
 and nothing tests prose: the suite checks that this file is gone, not that the
-sentences about it are true. Applying the patch without these leaves three
+sentences about it are true. Applying the patch without these leaves five
 documents asserting the opposite of the truth, which is the defect
-CLAUDE_AUTOMATION.md calls blocking on #154, mirrored.
+CLAUDE_AUTOMATION.md calls blocking on #154, mirrored. The list was three for
+three rounds, and the two it was missing were the README that states the rule
+and the file CLAUDE.md sends every agent to first. Before committing, `grep -rn
+170-merge-sweep-completeness` and `grep -rn 'merges nothing'` -- what those find
+is the list.
 
     CLAUDE.md            the paragraph beginning "The half-hourly sweep merges
                          nothing, from this change until the parked patch
@@ -48,6 +52,23 @@ CLAUDE_AUTOMATION.md calls blocking on #154, mirrored.
                          no longer half.
     STATUS.md            the "Agent automation" row's closing sentence, which
                          names this file as parked.
+    docs/automation/pending/README.md
+                         this patch's row in "Waiting now" -- the row is the
+                         worked example :31-33 gives for the very rule this
+                         block quotes, and a row for a file that is gone
+                         advertises a patch nobody can apply. Also the
+                         "Verified before it was parked" paragraph about this
+                         patch, and the "Two patches now edit
+                         `pr-merge-sweep.yml`" note, which is a statement
+                         about two parked patches and survives only while
+                         both are.
+    TASKS.md             T-144 stays open for #154's patch, so it is edited
+                         rather than closed. Its Impact says the sweep
+                         "merges NOTHING" because the arity refusal holds
+                         every pull request -- that ends here: the caller
+                         passes ten arguments the moment this lands. Its
+                         "Apply both in one commit" instruction then governs
+                         one patch, not two.
 
     git commit -am "The merge sweep asks whether it read all of the pull request"
 
