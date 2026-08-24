@@ -50,6 +50,7 @@ waiting on a person.
 | Patch | For | Written |
 |---|---|---|
 | `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
+| `169-review-convergence.patch` | [#169](https://github.com/hleserg/Attadipa/issues/169) — the reviewer half of the convergence rule: the ledger the reviewer reads and rewrites, the five steps after the review, and one line in `ci.yml`. **While this waits, every review round is a first round** — the reviewer's own label stands, so a finding deferred in round three can be raised again in round nine as though it were new. Its note beside it says what else the landing commit must carry, and three of those are `check_docs.py` failures rather than tidiness | 2026-08-24 |
 
 Verified before it was parked: `actionlint` clean over all seven workflows with
 the patch applied, `shellcheck -x` clean, and the `approvals` job's body

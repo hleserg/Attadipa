@@ -42,14 +42,36 @@ git commit -am "Apply the workflow half of the convergence rule from a local ses
 Push it on a branch and let CI run: the patch touches `ci.yml`, so a broken
 apply shows up as a failed parse rather than as a silently absent step.
 
-Two follow-ups belong in that same commit, because leaving them makes the
-repository claim something that is not true:
+**Five follow-ups belong in that same commit**, and three of them are not a
+matter of tidiness: without them `tools/docs/check_docs.py` fails, and `ci.yml`
+runs it on every push, so the landing commit reddens `main`. This is not a
+prediction. The three commands above were executed against this branch in a
+detached worktree on 2026-08-24 — `check_docs.py` is clean before the apply and
+reports three failures after it, listed below with the numbers it printed.
 
-1. `STATUS.md` — the automation section says the rule is written and not
+1. `docs/automation/CI_AND_REVIEW_PIPELINE.md` — the paragraph naming this file.
+   It was a markdown **link** and is now a code span for exactly this reason; if
+   anyone makes it a link again, the `git rm` above breaks it. **Also** § *The
+   convergence rule*: the sentence saying the rule is written and not deployed
+   has to say it is running.
+2. `docs/research/WAVESHARE_ARRIVAL.md` — two fingerprinted citations of
+   `.github/workflows/ci.yml`, at `:124` and `:702`. The patch inserts ten lines
+   at `ci.yml:359`, which pushes the cited line down; on 2026-08-24 that was
+   `:499` → `:509`. **Do not copy that number** — re-run `check_docs.py` and use
+   what it prints, because it depends on what else has landed in `ci.yml` since.
+   This is the second failure `README.md` in this directory warns about, and the
+   reason it says to run the check *before* parking a patch.
+3. `docs/automation/pending/README.md` — this patch's row in *Waiting now*, which
+   otherwise advertises a patch that no longer exists, and the paragraph
+   recording what was verified before it was parked.
+4. `STATUS.md` — the automation section says the rule is written and not
    deployed. Change it to say it is running, and give the first pull request it
    ran on.
-2. `docs/automation/CI_AND_REVIEW_PIPELINE.md` § *The convergence rule* — same
-   sentence, same reason.
+5. `TASKS.md` — whichever task tracks this patch stops describing a parked one.
+
+Then, before committing: `python3 tools/docs/check_docs.py .` must be clean, and
+`grep -rn 169-review-convergence` must find nothing outside the commit that
+removes it.
 
 ## What the patch does
 

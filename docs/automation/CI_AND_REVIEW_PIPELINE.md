@@ -185,8 +185,11 @@ this is what to do on the day that fails.
 **Not deployed yet.** The rule and its tests are on `main`; the workflow half is
 `docs/automation/pending/169-review-convergence.patch`, because a GitHub App
 cannot push `.github/workflows/`. Until a local session applies it, every round
-is still a first round. See
-[the note beside the patch](pending/169-review-convergence.md).
+is still a first round. The note beside it,
+`docs/automation/pending/169-review-convergence.md`, says what to do — named
+here as a code span rather than linked, because the procedure that applies the
+patch deletes that file, and a link to a deleted file reddens `main` through
+`tools/docs/check_docs.py`.
 
 **When it cannot run, neither label is set and it says so on the pull request.**
 That note is the only signal that `main`'s second protection is absent for a
