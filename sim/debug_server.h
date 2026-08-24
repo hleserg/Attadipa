@@ -70,9 +70,13 @@ private:
     int         client_fd_ = -1;
     std::string path_;
     // The inode `bind` created, so that `close` unlinks the socket it made and
-    // not whatever occupies that path by then. Two simulators sharing a path is
-    // the documented usage in docs/testing/WATCH_CONTROL.md, and without this a
-    // normal exit deletes a live server's socket out from under it.
+    // not whatever occupies that path by then. Sharing a path is **refused**
+    // now (docs/testing/WATCH_CONTROL.md, *"One path per simulator"*) -- this
+    // comment used to cite that file for the opposite, which the commit that
+    // added the refusal made stale. The check survives on the reason `close`
+    // gives: a path can be re-bound by a *later* simulator after this one
+    // started, and without the inode a normal exit deletes that server's socket
+    // out from under it.
     dev_t       path_dev_ = 0;
     ino_t       path_ino_ = 0;
 

@@ -379,7 +379,15 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
             client_fd_ = incoming;
             decoder_.reset();
             out_.clear();
-            out_sent_ = 0;
+            out_sent_  = 0;
+            // The one piece of per-client state `accept` used to leave behind.
+            // Unreachable only while `Bridge::tick` emits nothing -- and the
+            // no-client branch calls it every poll with a live `emit`, so the
+            // day `tick` gains a reply, `queue` can pass `kOutputMax` with
+            // nobody reading and the *next* client is dropped on its first poll
+            // for "the client stopped reading", having been given nothing to
+            // read. Reset beside the buffer it describes.
+            overflowed_ = false;
             std::printf("debug: client connected\n");
             std::fflush(stdout);
         }

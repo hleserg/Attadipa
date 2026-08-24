@@ -65,11 +65,34 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
 
     ++stats_.requests;
 
+    // A foreign class is answered *in our class*, and with `UnknownOpcode` when
+    // what we did not recognise was the class rather than the opcode. Both are
+    // deliberate for the only feeder that exists -- the debug socket carries
+    // nothing else, so a wrong class is a malformed debug message, and an
+    // answer in a class the caller may not parse is worse than an imprecise
+    // code. Worth saying because this file opens by arguing that the debug
+    // channel is a message class inside the one the project already has: the
+    // day a second class shares a transport, this needs a code of its own.
     if (envelope.cls != kClassDebug) {
         send_error(envelope.req_id, ErrorCode::UnknownOpcode, emit, ctx);
         return;
     }
-    if (envelope.version != kDebugProtocolVersion) {
+    // `Hello` is outside the version gate, and that is the design rather than an
+    // exception to it: ADR-0005 section 5 negotiates the protocol version *in*
+    // the HELLO exchange, so a handshake a version gate can refuse is a
+    // negotiation that cannot happen. With the gate over everything, the
+    // leniency `handle_hello` and `client.py` both describe was unreachable
+    // prose -- a host one version behind was refused on its first request and
+    // never learned the board id or the build string, which is the line
+    // `CLAUDE.md` leans on to stop a simulator screenshot being filed as a
+    // hardware result.
+    //
+    // What this costs, said plainly: `HelloBody`'s shape has to stay decodable
+    // across versions or the exemption buys nothing -- a changed layout answers
+    // `BadBody` instead, which is at least an honest failure at the right step.
+    // Everything after the handshake stays gated, so a host that has been told
+    // the version and carries on anyway is refused per request.
+    if (envelope.version != kDebugProtocolVersion && envelope.op != Opcode::Hello) {
         send_error(envelope.req_id, ErrorCode::VersionMismatch, emit, ctx);
         return;
     }
@@ -144,7 +167,9 @@ void Bridge::handle_hello(std::uint16_t req_id, const std::uint8_t* body, std::s
     }
     // The version is reported, not enforced to be equal: ADR-0005 section 5
     // keeps version and capability set orthogonal, and a host one minor behind
-    // should learn what it is talking to rather than be hung up on.
+    // should learn what it is talking to rather than be hung up on. This is
+    // reachable because `handle` exempts `Hello` from the envelope gate -- see
+    // the comment there for why that exemption is the ADR and not a hole in it.
     HelloBody reply;
     reply.protocol_version = kDebugProtocolVersion;
     std::strncpy(reply.board_id, source_.board_id(), sizeof(reply.board_id) - 1);

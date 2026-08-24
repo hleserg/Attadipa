@@ -109,7 +109,13 @@ stale silently. The protocol is
      out of the panel**: the AMOLED is behind QSPI and the CO5300's read path is
      not established (D7 has not settled even its init sequence).
   3. A frame buffer sized for the panel, behind the same config option, so a
-     release build does not carry 617 kB it will never use. Report **RGB565**
+     release build does not carry 617 kB it will never use. **The gate is about
+     that 617 kB and not about who may look:** nothing here says the channel
+     must be unreachable on a shipped watch, where it reads the screen and
+     injects taps, and final §49 and the Definition of Done both point at it as
+     a development instrument. Whether a released build carries it — and behind
+     what — is a product decision nobody has taken, and it is not taken here by
+     a config option chosen for RAM. Report **RGB565**
      with the byte order the driver actually produces — the wire format
      distinguishes `Rgb565Le` from `Rgb565Be` because guessing is how a
      screenshot comes back looking almost right.

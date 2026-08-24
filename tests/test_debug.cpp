@@ -433,12 +433,61 @@ void a_wrong_version_is_answered_rather_than_ignored()
     Rig      rig;
     Envelope e;
     e.version = kDebugProtocolVersion + 1;
-    e.op      = Opcode::Hello;
+    e.op      = Opcode::Capabilities;
     e.req_id  = 5;
 
     std::vector<std::uint8_t> message(kEnvelopeBytes);
     message.resize(encode_message(e, nullptr, 0, message.data(), message.size()));
     rig.send(message);
+    CHECK(rig.sink.last_error() == ErrorCode::VersionMismatch);
+}
+
+void a_handshake_at_the_wrong_version_still_says_what_this_device_is()
+{
+    // The half the gate used to make unreachable. ADR-0005 section 5 negotiates
+    // the version inside the HELLO exchange, so refusing HELLO on a version
+    // mismatch refuses the only message that could have resolved it -- and the
+    // host never learns the board id or the build string, which is what tells a
+    // reader a screenshot came from a simulator.
+    Rig       rig;
+    HelloBody hello;
+    hello.protocol_version = kDebugProtocolVersion + 1;
+
+    std::uint8_t body[kHelloBodyBytes] = {};
+    encode_hello(hello, body, sizeof(body));
+
+    Envelope e;
+    e.version = kDebugProtocolVersion + 1;
+    e.op      = Opcode::Hello;
+    e.req_id  = 6;
+
+    std::vector<std::uint8_t> message(kEnvelopeBytes + sizeof(body));
+    message.resize(encode_message(e, body, sizeof(body), message.data(), message.size()));
+    rig.send(message);
+
+    CHECK(rig.sink.last_is(Opcode::HelloOk));
+
+    Envelope            reply;
+    const std::uint8_t* reply_body = nullptr;
+    CHECK(decode_message(rig.sink.messages.back().data(), rig.sink.messages.back().size(), reply,
+                         reply_body));
+    HelloBody back;
+    CHECK(decode_hello(reply_body, reply.body_len, back));
+    // Its own version, not the caller's -- the host is told what it is talking
+    // to and decides. `client.py` prints exactly this comparison.
+    CHECK(back.protocol_version == kDebugProtocolVersion);
+    CHECK(std::strcmp(back.board_id, "waveshare-amoled-206") == 0);
+
+    // And the leniency stops at the handshake: the next request at that version
+    // is still refused, so a host that was told and carried on is not indulged.
+    rig.sink.clear();
+    Envelope after;
+    after.version = kDebugProtocolVersion + 1;
+    after.op      = Opcode::Capabilities;
+    after.req_id  = 7;
+    std::vector<std::uint8_t> next(kEnvelopeBytes);
+    next.resize(encode_message(after, nullptr, 0, next.data(), next.size()));
+    rig.send(next);
     CHECK(rig.sink.last_error() == ErrorCode::VersionMismatch);
 }
 
@@ -948,6 +997,31 @@ void input_reset_says_what_it_could_not_release()
     CHECK(!rig.state.button_down(1));
 }
 
+void a_persons_finger_is_not_counted_as_something_this_connection_holds()
+{
+    // `held_count`'s origin filter is what the whole `still_held` path rests
+    // on, and that path is control flow now: a scenario step fails on it and
+    // the tool exits non-zero. Drop `button_origin_[i] == origin` and every
+    // other test stays green, while `input-reset` starts reporting a full queue
+    // -- *"the interface may be stalled"* -- every time a person has a finger on
+    // a button. That is the case `InputOrigin` exists to protect, reported as
+    // the one failure it is not.
+    Rig rig;
+    core::InputEvent physical;
+    physical.type   = core::InputEventType::ButtonDown;
+    physical.origin = core::InputOrigin::Physical;
+    physical.button = 0;
+    CHECK(rig.state.apply(physical, 2));
+    rig.queue.clear();
+
+    rig.send(request(Opcode::InputReset, 1), 10);
+    CHECK(rig.sink.last_is(Opcode::InputOk));
+    const auto answer = input_reset_reply(rig);
+    CHECK(answer.first == 0);   // nothing of ours was held
+    CHECK(answer.second == 0);  // and the person's button is not ours to count
+    CHECK(rig.state.button_down(0));  // still theirs, and still down
+}
+
 void a_physical_press_survives_a_remote_disconnect()
 {
     Rig rig;
@@ -1360,6 +1434,7 @@ int main()
 
     an_unknown_opcode_is_answered_with_a_typed_error();
     a_wrong_version_is_answered_rather_than_ignored();
+    a_handshake_at_the_wrong_version_still_says_what_this_device_is();
     a_message_from_another_class_is_not_ours_to_execute();
     an_undecodable_message_gets_no_reply_at_all();
 
@@ -1386,6 +1461,7 @@ int main()
     a_disconnect_lifts_what_the_remote_was_holding();
     input_reset_is_available_as_a_command();
     input_reset_says_what_it_could_not_release();
+    a_persons_finger_is_not_counted_as_something_this_connection_holds();
     a_physical_press_survives_a_remote_disconnect();
 
     a_button_the_board_will_not_simulate_is_refused_by_the_device();
