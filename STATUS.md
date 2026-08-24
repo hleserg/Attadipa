@@ -654,9 +654,11 @@ safer state: powered and attached, brightness at minimum, so a hardware run is
 possible on demand — [OD-17](docs/research/OWNER_DECISIONS.md). **Whether that
 brightness survives a reset is `UNKNOWN`, and a bench session is allowed to
 reset the unit**, so a session that did must report the mitigation as
-unconfirmed rather than as standing — the BSP brings the panel up at 100 %, and
-saying "mitigated" for a state nobody looked at is a `PASS` written for an
-unobserved result. What an agent may
+unconfirmed rather than as standing, because saying "mitigated" for a state
+nobody looked at is a `PASS` written for an unobserved result. Not because the
+vendor BSP brings the panel up at 100 %: the unit runs `phone_s3_box_3` and not
+the BSP, so that figure is evidence about a program which is not on the device —
+the same substitution this branch retracted three files away. What an agent may
 and may not do about that, including why it must not open the serial port to try
 to blank the panel, is
 [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md). The residual risk at minimum

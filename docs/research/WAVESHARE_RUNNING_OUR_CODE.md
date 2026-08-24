@@ -195,8 +195,14 @@ and neither one touched this:
   changed nothing — correctly, because `--after` governs what esptool does
   *before* closing, not the close itself.
 - **The observer resetting the board.** pyserial asserts DTR and RTS on `open()`,
-  so simply opening the port to watch is a hardware reset. Fixed by setting both
-  low before `open()` — a real bug, fixed, and not this one.
+  so simply opening the port to watch is a hardware reset. A real bug, and not
+  this one. **The fix is `LIKELY` rather than established, and this line used to
+  say "fixed":** on Linux `cdc_acm` raises DTR and RTS in the kernel when the
+  tty is first *activated*, before any userspace code runs, so setting them low
+  before `open()` can only lower them again *after* the assertion. Nothing here
+  observed the pin state either way — the experiment that settled §2.3 was about
+  *close*, not open. Proving it on the unit is T-116's third goal, and until it
+  runs the safe reading is that a pre-open set does **not** prevent the reset.
 - **`stty -hupcl`** was tried and is not a fix: esptool reopens the port, and
   pyserial restores termios on open, so the setting is gone before it matters.
 
@@ -579,7 +585,13 @@ writing a byte to the owner's flash.
 - **Opening the serial port resets this board.** pyserial asserts DTR and RTS on
   `open()`; on a USB-Serial/JTAG board those are GPIO0 and EN. Two RAM images
   were destroyed by the tool sent to observe them before this was noticed. Set
-  both `False` on the `Serial` object *before* `open()`.
+  both `False` on the `Serial` object *before* `open()` — **and do not treat
+  that as a fix.** `cdc_acm` raises both lines in the kernel when the tty is
+  activated, before any userspace code runs, so the pre-set lowers them after
+  the assertion rather than preventing it; §2.2 carries the reasoning and
+  T-116's third goal is to observe it on the unit. **Until then, plan for the
+  board to reset on open** — which is why the rule above is *whoever next opens
+  a port*, and not *whoever opens one without setting the lines*.
 - **Closing it resets the board too, and that is the one that cost a wrong
   conclusion.** The kernel drops the modem lines on the *last* close of a
   `ttyACM`, so `esptool` exiting is itself a reset. Anything loaded into RAM must

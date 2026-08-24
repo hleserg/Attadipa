@@ -1290,13 +1290,32 @@ survives only here.)
    nothing of ours runs on the unit — but **whether it survives a reset is
    `UNKNOWN`**, and write-inability is not persistence. It is a runtime setting
    in a launcher's `Settings` app; nothing establishes that `phone_s3_box_3`
-   commits it, and the BSP's init table brings the panel up at `0x51 = 0xFF`,
-   100 %. A bench session is *allowed* to reset the unit — the RAM-load route
+   commits it. **The vendor BSP's init table brings the panel up at
+   `0x51 = 0xFF`, 100 % — and that is corroboration this item may not use**, for
+   the reason this same branch spent a round on: the unit does not run the BSP,
+   it runs `phone_s3_box_3`, and evidence about a program that is not on the
+   device is not evidence about the device. It is left in only as the reason a
+   reset is *worth looking at*, not as a prediction of what it will show.
+   `UNKNOWN` is right either way, and only for the first half of this sentence.
+   A bench session is *allowed* to reset the unit — the RAM-load route
    enters the ROM downloader, and opening a port does it by accident — so this
    is reachable rather than theoretical. Until somebody looks at the panel after
    a reset, **a session that reset the unit must not report the mitigation as
    still in force**; it must say it reset the board and that the brightness is
-   unconfirmed. `WAVESHARE_FLASH_LAYOUT` §2.2, under
+   unconfirmed. **There is a cheaper route than eyes on a panel, and its baseline is already
+   taken.** [VERIFIED_FACTS](VERIFIED_FACTS.md), *"The stock firmware does not
+   rewrite its own configuration partitions on boot"*, hashes `nvs`, `otadata`
+   and `phy_init` (`0x9000`–`0x12000`) to
+   `803798ee52013c09e9dd55a72226d0195ec6a3582f85af3b43315f9247b3e26e` across
+   three reads on **2026-08-22** — the day *before* the brightness was set to
+   minimum. Re-read that range on the next trip: **an unchanged hash means the
+   setting was never committed to flash at all**, so it cannot survive a reset,
+   and no reboot has to be watched to learn it. That is a negative a pair of
+   eyes cannot give, and it costs one dump on a visit already being made for the
+   register burst. A *changed* hash proves only that something was written, so
+   the panel still has to be looked at in that case.
+
+   `WAVESHARE_FLASH_LAYOUT` §2.2, under
    *"`nvs`, `otadata` and `phy_init` did not move either"*, is the precedent for
    the **method** and not a missed chance: the owner watched the unit through
    six download-mode cycles on 2026-08-22, and that is how the `nvs` result

@@ -115,8 +115,12 @@ And the obvious workaround — drive the port and hope something blanks it — h
 §7. DTR and RTS are GPIO0 and EN here, and:
 
 - **pyserial asserts both on `open()`**, so naive tooling resets the board just
-  by attaching to watch it. Two RAM images were destroyed that way. Defeated by
-  setting both `False` on the `Serial` object *before* `open()`.
+  by attaching to watch it. Two RAM images were destroyed that way. Setting both
+  `False` on the `Serial` object *before* `open()` is **`LIKELY` to be defeated**, not established: on Linux `cdc_acm`
+  raises DTR and RTS in the kernel when the tty is first *activated* — before
+  any userspace code runs — so a pyserial-side pre-set can only lower the lines
+  again *after* the assertion, not precede it. It has never been observed on
+  this unit either way, and proving it is T-116's third goal.
 - **the kernel drops both on the *last* close** of a `ttyACM`, so a tool exiting
   is itself a reset. *This* is the one that presented as `rst:0x15
   (USB_UART_CHIP_RESET)` and cost four experiments before it was read correctly.
@@ -161,7 +165,10 @@ examples, so the framework is the likely upstream. At that revision the Settings
 app's display page holds a **brightness slider and light/dark theme modes and
 nothing else** — the only display actions in the whole app are
 `ACTION_DISPLAY_BRIGHTNESS` and the two theme modes; there is no timeout, sleep
-or auto-lock entry. Read 2026-08-23.
+or auto-lock entry. Read 2026-08-23, **and written into
+[REUSE_LEDGER](../research/REUSE_LEDGER.md)'s own row** rather than left here —
+a reading that lives only in the file that needed it is a reading the next agent
+re-clones and repeats.
 
 That is `LIKELY` and **not** an answer, for two reasons that are worth writing
 down rather than glossing: the clone is at `01939b5e` (2026-08-10) while the
@@ -182,9 +189,11 @@ carrying alone. Say that it is sitting lit, name the mitigation in force
 as the brightness the owner themself set, and stop there rather than inventing an
 action to accompany it. **Unless this session reset the board** — the RAM-load
 route enters the ROM downloader, and opening a port does it by accident. Whether
-minimum brightness survives a reset is `UNKNOWN` (OD-17 item 2), and the BSP
-brings the panel up at 100 %, so after a reset the honest report is *"the unit
-was reset and the brightness is unconfirmed"*. Reporting the mitigation as
+minimum brightness survives a reset is `UNKNOWN` (OD-17 item 2) — and it is
+`UNKNOWN` on its own account, not because the vendor BSP brings the panel up at
+100 %, which is a fact about a program **this unit is not running** (§ above).
+After a reset the honest report is *"the unit was reset and the brightness is
+unconfirmed"*. Reporting the mitigation as
 standing there would be a `PASS` written for a state nobody observed, which is
 the one thing this repository does not do. Repeated in every report, an observation the owner acted
 on once becomes a line they learn to skip, which is the failure mode of a rule

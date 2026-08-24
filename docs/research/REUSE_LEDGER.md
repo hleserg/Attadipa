@@ -151,7 +151,7 @@ anything equivalent is written by hand.
 | ~~`78/xiaozhi-esp32`~~ | **evaluated 2026-08-22 — see the record below.** MIT, and it carries a board directory for this exact board. Its *audio-path dependencies* are the finding: `esp-sr`, `esp_audio_codec` and `esp_audio_effects` are **not** MIT | MIT; deps vary |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
 | `infinition/waveshare-watch-rs` | a Rust `no_std` watch firmware for the same board — unusable directly, potentially instructive | to check |
-| ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement | to check |
+| ESP-Brookesia | Espressif application UI framework — overlaps the application framework requirement. **Partly read 2026-08-23** at `01939b5e` (Apache-2.0, row above): its `Settings` app's display page offers a **brightness slider and light/dark theme modes and nothing else** — no screen timeout, no sleep, no auto-lock, and the app's whole display action set is `ACTION_DISPLAY_BRIGHTNESS` plus the two theme modes. That was read to answer whether the received unit's launcher offers a timeout, and it makes "no" **`LIKELY`, not established**: the clone is dated 2026-08-10 while the unit's image was built 4 Nov 2025, `5c6be6c` is not an object in it, and `phone_s3_box_3` was never *identified* with Brookesia. The framework itself is still `to check` as a framework | Apache-2.0 |
 
 Rust and Arduino candidates are still worth reading. `EXTRACT ALGORITHM` and
 `INSPIRE ARCHITECTURE` are decisions in this ledger for exactly that reason —
