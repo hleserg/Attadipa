@@ -98,6 +98,44 @@ constexpr std::uint32_t trust_reason_bit(TrustReason reason)
 const char* to_string(TrustState state);
 const char* to_string(TrustReason reason);
 
+// And the name for "no verdict has been reached", which is a state a stored
+// verdict can be in even though it is not a `TrustState`
+// (`GnssStatus::trust`, diagnostics.h).
+//
+// Like both overloads above it, this is a **diagnostic identifier** — for a
+// log line, a replay trace, a support bundle — and not a string anybody is
+// shown. Core does not speak English and neither external protocol may carry
+// display text (ADR-0010 §4): a screen showing this state goes through `l10n`,
+// which is where its Russian lives. What the identifier buys is that a reader
+// of a bundle meets a word rather than a blank, a zero or the first enumerator,
+// each of which prints a confidence nobody has.
+const char* to_string(std::optional<TrustState> state);
+
+// Read a stored verdict, saying at the call site what its absence means.
+//
+// This exists because `std::optional`'s comparisons against a bare `TrustState`
+// all compile and several of them fail *open*. Checked, not assumed — for an
+// empty optional, `== Untrusted` is false, so a guard that refuses on
+// `Untrusted` does not fire; `!= Untrusted` is true, so a guard that permits on
+// anything-but-`Untrusted` does; and `< Degraded` is true, sorting "nobody
+// looked" below the worst verdict there is. None of those orderings was
+// decided by anyone, and the most natural-reading guard of the set —
+// `if (trust != TrustState::Untrusted) draw_the_arrow();` — points a confident
+// arrow using a position no evaluator has seen. That is reachable today, in the
+// permanent state of a board with no receiver.
+//
+// So absence is resolved before any comparison, and the caller supplies the
+// answer rather than inheriting one. Deliberately **not** a `may_navigate()`
+// boolean: whether a `Degraded` fix is good enough depends on whether the user
+// is reading a map or recording a track, and collapsing three states into one
+// answer here would move the policy back into the detector, which is the first
+// thing ADR-0011 §5 refuses.
+constexpr TrustState trust_or(std::optional<TrustState> stored,
+                              TrustState                when_not_evaluated)
+{
+    return stored.value_or(when_not_evaluated);
+}
+
 // The numbers that turn evidence into a verdict.
 //
 // Policy, deliberately: none of this is physics, and a wrist in a forest and a

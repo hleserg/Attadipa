@@ -6,15 +6,26 @@
 # green while proving nothing. This script asks for the failure *and* for the
 # compiler's own words about it.
 #
+#
 # Usage:
 #   cmake -DBUILD_DIR=... -DTARGET=... -DCONFIG=... -DEXPECT_MATCHES=<regex>
+#         [-DEXPLAIN=<what a successful build would mean>]
 #         -P expect_build_failure.cmake
+#
+# EXPLAIN is what the reader is told when the target builds and should not have.
+# It is per-call because the callers are checking different rules — a layer
+# boundary, a type that must refuse a `bool` — and a message about the wrong one
+# sends the next person to the wrong file.
 
 foreach(var BUILD_DIR TARGET EXPECT_MATCHES)
     if(NOT DEFINED ${var})
         message(FATAL_ERROR "expect_build_failure.cmake: -D${var} is required")
     endif()
 endforeach()
+
+if(NOT DEFINED EXPLAIN)
+    set(EXPLAIN "A rule this repository enforces through the compiler is no longer enforced.")
+endif()
 
 set(_config_args)
 if(CONFIG)
@@ -32,9 +43,7 @@ set(_all "${_out}${_err}")
 if(_result EQUAL 0)
     message(FATAL_ERROR
         "Target '${TARGET}' BUILT, and it must not.\n"
-        "The layer boundary is gone: an application-layer target can now reach a "
-        "hardware header. Check the linkage of attadipa_core against "
-        "attadipa_platform — it has to stay PRIVATE (ADR-0007 section 5).\n"
+        "${EXPLAIN}\n"
         "--- build output ---\n${_all}")
 endif()
 
