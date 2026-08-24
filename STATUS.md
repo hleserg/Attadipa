@@ -743,7 +743,10 @@ brought both checks with it: `T-127`, an `#anchor` resolver against the target
 document's own headings with GitHub's slug rule, and `check_decision_ids` over
 `OWNER_DECISIONS.md` — whose docstring is this branch's own finding. **The
 collision is loud now and it is blocking**, because `ci.yml` runs `check_docs.py`
-in every job. This branch **renumbered itself** rather than waiting to be told,
+— in **one** of its nine jobs (`docs:`, `ci.yml:362`, the call at `:421`), which
+is enough: one red job is a red run. *"In every job"* is what this said until the
+fifteenth review round of #134, and it overstated the checker's reach in exactly
+the direction T-117 warns about. This branch **renumbered itself** rather than waiting to be told,
 which is the convention T-117 asks for applied to itself; it cost **21**
 occurrences across **six** files, none of them a deep anchor, and it has now been
 done **twice** — which is the finding, not an aside.
@@ -794,6 +797,51 @@ that matches what changed is exactly what makes a miss invisible. What T-117
 still owns: the dangling task-ID check, the root-**directory** case in
 `check_root_files`, and the two `OD-nn` failures a duplicate-number check cannot
 see — a repeated *heading* under two numbers, and a gap.
+
+**Round fifteen found four more wrong numbers and one dropped qualifier**, all
+of them evidence rather than argument, which is the right shape for a branch this
+far in:
+
+- **`OWNER_DECISIONS.md` cited `WAVESHARE_FLASH_LAYOUT` §5 three times for text
+  that is in §2.2**, and §1 once for the partition table, which is §2. The whole
+  point of the paragraph they sit in is that a later agent must *read the source
+  against itself* rather than take the cheap 36 KB dump; a pointer that lands
+  where nothing of the kind is said is that safeguard defeated by its own
+  citation. Nothing in CI catches a bare `§N` — `check_links` needs a link,
+  `check_citation_lines` a `path:line` — the blind spot this branch already
+  names for `OD-NN`, one notation over.
+- **`check_docs.py` does not run "in every job".** `ci.yml` has nine jobs and it
+  runs in one, `docs:`. The conclusion survives — one red job is a red run — but
+  the fact did not, and it sat in the two files `CLAUDE.md` makes the next
+  agent's map, overstating a checker's reach in the direction T-117 explicitly
+  warns about. Corrected in three places.
+- **`BENCH_HANDLING.md` said in one place that the screen has been seen lit for
+  hours on USB and in another that idle behaviour is `UNKNOWN`, unqualified.**
+  Both cannot be true, and the unqualified one is the sentence a summariser
+  lifts. That the panel stays lit on USB is the only thing holding OD-18's risk
+  case up, so an agent reading the bare `UNKNOWN` had warrant to conclude nothing
+  establishes it at all — the decision coming apart from underneath. Every
+  `UNKNOWN` about idle behaviour is now scoped to **battery**, which is the state
+  that really is unobserved.
+- **`acm_port_activate()` was the wrong function, cited four times.** In current
+  Linux the raise is `acm_port_dtr_rts()` — the `dtr_rts` member of
+  `acm_port_ops`, setting `USB_CDC_CTRL_DTR | USB_CDC_CTRL_RTS`, reached from
+  `tty_port_block_til_ready()`; `acm_port_activate()` is the `activate` op and
+  touches no control line. Settled by fetching `drivers/usb/class/cdc-acm.c`
+  rather than by argument. The conclusion is unaffected — both are kernel-side
+  and both precede userspace — but T-116 goal 3 is the one thing this claim is
+  load-bearing for, and whoever picks it up will grep the name.
+- Also from that round: **`CLAUDE.md`'s "Read first" now names
+  `BENCH_HANDLING.md`** — its once-per-session obligation binds every session
+  while being reachable only through OD-18 inside a 1450-line register, which is
+  a rule nobody can find; **the second consumable is a `needs-owner` question**
+  in the register, bilingual, asking one thing (read the charger's registers on
+  the next trip?) and offering no recommendation, because neither state is
+  established as kinder; **T-116 gains the Windows host** it was written without,
+  where there is no tty, `usbser.sys` is not `cdc_acm` and `COM7` matches no
+  pattern in its lint list; and **`.gitignore`'s residual is named rather than
+  argued away** — the un-ignored screenshot directory is under a published,
+  sweep-mergeable prefix and nothing looks at bytes, filed as **T-163**.
 
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing

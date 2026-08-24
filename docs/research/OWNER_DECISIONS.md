@@ -1312,13 +1312,13 @@ survives only here.)
 
    **That range is three of the five data partitions, and the negative needs
    all five.** `0x9000`–`0x12000` stops at the byte where `model` begins;
-   [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §1 lists two more data
-   partitions outside it — `model` (952 KB spiffs) and **`storage`** (6 MB
+   [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §2, the factory partition
+   table, lists two more data partitions outside it — `model` (952 KB spiffs) and **`storage`** (6 MB
    spiffs, UI assets) — and nothing establishes where `phone_s3_box_3` commits a
    runtime setting. On the branch whose thesis is that this image is opaque, an
    unchanged 36 KB says the setting is not in *those* 36 KB, not that it was
    never written. **So the baseline to re-read is the whole flash**, which is
-   already taken and is stronger: `WAVESHARE_FLASH_LAYOUT` §5 hashes all
+   already taken and is stronger: `WAVESHARE_FLASH_LAYOUT` §2.2 hashes all
    33 554 432 bytes to
    `2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5`, agreed by
    three independent complete reads and by the device's own MD5, on the same
@@ -1329,13 +1329,13 @@ survives only here.)
    means the setting was never committed to flash at all, so it cannot survive a
    reset, and no reboot has to be watched to learn it — a negative a pair of eyes
    cannot give. But that branch is reachable only if **nothing else in 32 MB
-   moved**, and nothing establishes that. `WAVESHARE_FLASH_LAYOUT` §5 makes the
+   moved**, and nothing establishes that. `WAVESHARE_FLASH_LAYOUT` §2.2 makes the
    point against itself: *"on a live device it also mixes in partitions the
    firmware is entitled to rewrite."* The across-reboot evidence this repository
    actually holds belongs to the **36 KB** range and not to the image — `nvs`,
    `otadata` and `phy_init` identical across three reads separated by hard resets
    and ~90 s of running ([VERIFIED_FACTS](VERIFIED_FACTS.md), S12) — whereas the
-   whole-image reads §5 describes were taken back to back, plus the owner's
+   whole-image reads §2.2 describes were taken back to back, plus the owner's
    Windows pass. `storage` alone is 6 MB of UI assets and nothing says ordinary
    use leaves it untouched.
 
@@ -1422,6 +1422,39 @@ been read, and neither state is established as the kinder one. This is **not** a
 reason to reopen the decision — the owner chose availability knowingly and that
 choice stands. It is here so that the decision is not read as having weighed a
 question it was never asked.
+
+**Waiting on the owner: the second consumable, `needs-owner`.** Recording it in
+`docs/` and closing the paragraph is what round 15 of #134 called wrong, and it
+is right: a fact nobody was asked about does not become weighed by being written
+down. No recommendation is offered and none is possible — neither state is
+established as kinder — so this is one question and not a proposal.
+
+> **English.** The unit has a cell fitted on `VBAT1`, which has no disconnect
+> switch, no protection FET and no fuel gauge, and `TS` is tied to `GND` so the
+> charger never sees cell temperature. `0x63[4]` has not been read, so indefinite
+> CV float is not excluded. Nobody has read a register on that charger, and
+> nothing here says which of "left plugged in" and "unplugged" is kinder to the
+> cell — the first is `UNKNOWN`, and the second does not stop the panel ageing
+> either, so it is not an escape. **The question is only this: do you want the
+> charger's registers read on the next bench trip, so that the cell half of
+> "stays powered and attached" stops being `UNKNOWN`?** It is a read, nothing is
+> driven, and it costs one session. A "no" is a complete answer and closes this.
+>
+> **По-русски.** В плате стоит аккумулятор на `VBAT1`: нет разъединителя, нет
+> защитного FET, нет топливомера, а `TS` посажен на `GND` — зарядник вообще не
+> видит температуру ячейки. Регистр `0x63[4]` не читали, поэтому бесконечный
+> CV-float не исключён. Никто не читал ни одного регистра этого зарядника, и
+> здесь нигде не сказано, что для ячейки лучше — «оставить в USB» или
+> «отключить»: первое `UNKNOWN`, а второе всё равно не останавливает старение
+> панели, то есть это не выход. **Вопрос ровно один: прочитать регистры
+> зарядника в следующий заход на стол, чтобы «стоит подключённым» перестало быть
+> `UNKNOWN` со стороны ячейки?** Это чтение, ничего не подаётся, стоит одну
+> сессию. «Нет» — полный ответ и закрывает вопрос.
+
+Raised 2026-08-24; no answer yet, and nothing is being changed while there is
+none. Like the item below it, this is written into the register rather than into
+a pull request comment because a squash merge keeps the file and discards the
+comment.
 
 **Waiting on the owner: this register is published.** `docs/` is the GitHub Pages
 root for this repository — `docs/.nojekyll`, `docs/robots.txt` with `Allow: /` —

@@ -9,10 +9,14 @@ leave them to the owner. This file is about the hours nobody is looking.
 ## The AMOLED sits lit on a static screen, and the owner has decided it stays
 
 The Waveshare ESP32-S3-Touch-AMOLED-2.06 boots `phone_s3_box_3` to a fixed
-desktop and has been seen sitting on it for hours at a time, **on USB**. It has
-never been observed on battery, and what it does when left idle is `UNKNOWN` —
-both refused further down and, until this round, asserted here in the file's
-first sentence, which is the one an agent quotes. **That is the state
+desktop and **has been seen sitting on it for hours at a time, on USB** — that
+much is observed, and it is the whole of what the risk case rests on. It has
+never been observed **on battery**, and what it does when left idle **on
+battery** is `UNKNOWN`. Every `UNKNOWN` about idle behaviour in this file is
+scoped to battery for that reason; one of them was written unqualified until the
+fifteenth review round of #134, which gave an agent reading it warrant to
+conclude that nothing establishes the screen stays lit at all — and OD-18 comes
+apart from underneath rather than from the front. **That is the state
 [OD-18](../research/OWNER_DECISIONS.md) chose, knowingly, over the safer one, and
 an agent does not ask for it to be undone** — it does not power the unit down and
 does not offer "unplug it" as the recommendation. What follows is why the state
@@ -57,9 +61,11 @@ refuses to reason from about the charger. **That opacity belongs to `xiaozhi`,
 which is not on screen** — a verdict borrowed from the wrong binary, which then
 made a question owner-only that a source read can reach.
 
-What the running image does when left idle is still `UNKNOWN`, unobserved. But
-it is not anonymous, and the nearest source has now been read rather than
-assumed — see row 1 and *"What was tried"* below.
+What the running image does when left idle **on battery** is still `UNKNOWN`,
+unobserved — the qualifier is load-bearing, per the first section: on USB it has
+been seen staying lit for hours, and that observation is not in doubt. But the
+image is not anonymous either, and the nearest source has now been read rather
+than assumed — see row 1 and *"What was tried"* below.
 
 ### What to do, in order of preference
 
@@ -132,10 +138,12 @@ board to reset on open.** And:
 - **pyserial asserts both on `open()`**, so naive tooling resets the board just
   by attaching to watch it. Two RAM images were destroyed that way. Setting both
   `False` on the `Serial` object *before* `open()` is **`LIKELY` to be defeated**, not established: on Linux `cdc_acm`
-  raises DTR and RTS in the kernel when the tty is first *activated*
-  (`acm_port_activate()`, `drivers/usb/class/cdc-acm.c`, setting
-  `ACM_CTRL_DTR | ACM_CTRL_RTS`) — before
-  any userspace code runs — so a pyserial-side pre-set can only lower the lines
+  raises DTR and RTS in the kernel on the tty open path
+  (`acm_port_dtr_rts()`, `drivers/usb/class/cdc-acm.c`, the `dtr_rts` member of
+  `acm_port_ops`, setting `USB_CDC_CTRL_DTR | USB_CDC_CTRL_RTS`, reached from
+  `tty_port_block_til_ready()` — **not** `acm_port_activate()`, which is the
+  `activate` op and touches no control line; corrected in round 15 of #134) —
+  before any userspace code runs — so a pyserial-side pre-set can only lower the lines
   again *after* the assertion, not precede it. Reading the driver is **not** a
   measurement on this unit: what it establishes is that the mechanism exists,
   not that it fires here. It has never been observed on
@@ -150,10 +158,10 @@ paragraph is read as a blanket permission. **Hold-open has a bench result**:
 §2.3 is a recorded experiment, and it is what the RAM-load route above rests on.
 **Pre-open does not.** It is one asserted line in `WAVESHARE_RUNNING_OUR_CODE`
 §2.2, inside a list of things that turned out *not* to be the cause, and on
-Linux `cdc_acm` raises DTR and RTS in the kernel when the tty is first
-activated (`acm_port_activate()`) — before any userspace code runs — so a
-pyserial-side pre-set cannot precede the assertion, only lower the lines again
-after it.
+Linux `cdc_acm` raises DTR and RTS in the kernel on the tty open path
+(`acm_port_dtr_rts()`, via `tty_port_block_til_ready()`) — before any userspace
+code runs — so a pyserial-side pre-set cannot precede the assertion, only lower
+the lines again after it.
 
 **`stty -hupcl` is a separate failure and fails for a separate reason.**
 `HUPCL` governs the lines being dropped on **close**, not raised on **open**, so
@@ -309,7 +317,7 @@ resolves — to the wrong task — and a reader following the retraction to chec
 cannot tell whether the registers moved there or this sentence went stale.
 Which is why the claim is scoped to the two branches it was checked against
 rather than to *the repository*: absent-everywhere is a claim about branches,
-and the sweep that found five `OD-16`s is the method that answers it. It found five and there were six: the sixteenth occurrence was this file's own row 1 above, renumbered in `STATUS.md` and not here — one sentence, two files — and found only in the thirteenth review round of [#134](https://github.com/hleserg/Attadipa/pull/134). Nothing catches a bare `OD-NN` in prose: `check_decision_ids` reads headings, `check_links` needs a link, `check_citation_lines` needs a `path:line`. The renumber's own price of *"15 occurrences across six files"* is what makes that miss invisible — the count matches what changed.
+and the sweep that found five `OD-16`s is the method that answers it. It found five branches and there were six occurrences: the sixth was this file's own row 1 above, renumbered in `STATUS.md` and not here — one sentence, two files — and found only in the thirteenth review round of [#134](https://github.com/hleserg/Attadipa/pull/134). Nothing catches a bare `OD-NN` in prose: `check_decision_ids` reads headings, `check_links` needs a link, `check_citation_lines` needs a `path:line`. The renumber's own recorded price is what makes such a miss invisible — the count matches what changed, so nothing is left over to notice. (This sentence used to price it at *"15 occurrences across six files"*, which was true of `0e9f86f` and is not true of the tree: `STATUS.md` now records **21** across six, because the OD-17 → OD-18 renumber came after. Quoting a number from a commit that has moved is the same defect one level down, found in round 15.)
 
 So the file's cell-safety questions read as *assigned* while having no owner
 anywhere, which is worse than reading as absent, because a reader who checks

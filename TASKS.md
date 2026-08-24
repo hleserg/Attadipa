@@ -2325,6 +2325,40 @@ stale silently. The protocol is
   BSP's touch bring-up with a comment saying why a level will not do.
 - **Hardware required:** no for (1), yes to re-verify (2).
 
+### T-163 · The one binary sink is under a published, sweep-mergeable prefix
+- **Filed from the fifteenth review round of
+  [#134](https://github.com/hleserg/Attadipa/pull/134)**, which named the
+  residual left by the same round's `.gitignore` narrowing rather than accepting
+  it silently.
+- **Priority:** P2. Nothing is broken today; what is missing is the gate that
+  would keep it that way.
+- **The shape.** `.gitignore` un-ignores `docs/hardware/artifacts/watch/` so the
+  screenshot directory is usable. That directory is under `docs/`, which is the
+  GitHub Pages root, **and** under `docs/hardware/`, which is on
+  `ATTADIPA_MERGE_ALLOWED_PREFIXES` (`.github/scripts/merge-candidate.sh:134`).
+  Nothing in CI looks at bytes or at size — T-117 item 1 records that — so a
+  multi-megabyte PNG picked up by `git add -A` can reach `main` through the
+  half-hourly sweep, with no session standing in the path. This branch's own
+  history carries 3.3 MB the tree does not, which is why it must be squashed;
+  that is the same failure one commit earlier.
+- **The close, and it is not a re-ignore.** A screenshot directory that ignores
+  screenshots is a directory nobody uses. The gate belongs on the sweep: refuse
+  a pull request whose diff adds a file over a stated size, or a file `git`
+  reports as binary, under any allowed prefix — with the threshold written down
+  and a reason beside it, the way `check_docs.py`'s exemption list states its
+  own. `merge-candidate.sh` already has the allowlist, the denied-file list and
+  85 test cases to extend.
+- **Why not in #134.** It is a `.github/scripts/` change with its own tests, on
+  a documentation branch fifteen review rounds deep; landing it there means one
+  more round on code nobody was reviewing for it. The precedent is T-161, filed
+  the same day for the same reason.
+- **Acceptance:** the sweep refuses an oversized or binary addition under an
+  allowed prefix, with cases in `merge-candidate-test.sh` covering the threshold
+  either side and a text file of the same size passing; the threshold and its
+  reason are in the script, not in a commit message; and `.gitignore`'s comment
+  points here instead of naming the residual as unclosed.
+- **Hardware required:** no.
+
 ### T-116 · Nothing resolves a board by its USB serial, and two boards answer to `ttyACM0`
 
 - **Priority:** P1 — cheap, and the failure it prevents writes to the wrong
@@ -2408,6 +2442,21 @@ stale silently. The protocol is
   `/dev/tty…`, **`idf.py flash`/`monitor` and `ESPPORT`** — the last two because
   that is how an ESP-IDF project actually writes to a board, and a wrapper under
   `tools/` would walk straight past a list that only knows pyserial.
+
+  **This whole task is Linux-shaped, and one of the three flash passes on record
+  was the owner's, on Windows** — [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)
+  and [OWNER_DECISIONS](docs/research/OWNER_DECISIONS.md) both record it. That
+  matters three ways, and none of them is fixed by a rename: goal 1's "USB serial
+  → tty" has no tty on that host, and `COM7` matches no pattern in the lint list
+  above; `usbser.sys` is not `cdc_acm`, so goal 3's whole mechanism — the kernel
+  raising DTR and RTS on open — is a claim about one of the two hosts and
+  unestablished on the other; and a goal-3 `MEASURED` taken on Linux would close
+  this task while saying nothing about the machine that did a third of the
+  writing. **So goal 1 resolves a port and not a tty**, the lint list gains
+  `COM[0-9]` alongside `/dev/tty…`, and goal 3 records **which host** the
+  observation was taken on, with the other left `NOT EXECUTED — HARDWARE
+  REQUIRED` rather than assumed to match. Found in the fifteenth review round of
+  [#134](https://github.com/hleserg/Attadipa/pull/134).
   **The lint is not optional**, because every *other* criterion here can be
   satisfied without a caller, and a task marked done that way documents a rail
   connecting to nothing. And **`SerialTransport` is converted, not exempted** —
@@ -2543,8 +2592,11 @@ stale silently. The protocol is
      tests. Its docstring is this task's own finding. **#92 merged, so this is
      live**: the collision is loud now, with file, line and instruction, which
      is better than what the rest of this item predicted. It is also blocking —
-     `ci.yml` runs `check_docs.py` in every job — so the next branch to bring a
-     second `OD-16` takes `main` red rather than quietly duplicating a number.
+     `ci.yml` runs `check_docs.py` in its `docs:` job (`ci.yml:362`, the call at
+     `:421`), one of nine, and one red job is a red run — so the next branch to
+     bring a second `OD-16` takes `main` red rather than quietly duplicating a
+     number. *"In every job"* is what this said until round 15 of #134; the
+     conclusion held and the fact did not.
      **Three** branches are in that position — #95, #97 and #112 — per the
      corrected sweep above, not the six the first one reported.
 
@@ -2612,7 +2664,8 @@ stale silently. The protocol is
   another sweep.
 
   **And this one is already armed.** `check_task_ids` fires on a duplicate
-  `### T-nnn` and `ci.yml` runs `check_docs.py` in every job, so with #92 merged
+  `### T-nnn` and `ci.yml` runs `check_docs.py` in its `docs:` job — one of
+  nine, which is enough, because one red job is a red run — so with #92 merged
   the **next** of those two branches to land takes `main` red — behind a
   `**DONE**` heading that reads as finished work. The convention is what should
   be written down, for both spaces; what must not be written down is that one of
@@ -2653,8 +2706,8 @@ stale silently. The protocol is
   tracked: continue` inspects root-level **files** and skips anything inside a
   root-level **directory**, so `Testing/Temporary/…` and `artifacts/watch/…`
   went straight past the check built to catch them. That is one line, in a check
-  that already runs in every CI job and already has an allow-list with reasons
-  in it. A size-or-binary gate is heavier, blunter, and leaves this hole open;
+  that already runs in CI's `docs:` job and already has an allow-list with
+  reasons in it. A size-or-binary gate is heavier, blunter, and leaves this hole open;
   whatever else item 1 grows into, closing the directory case comes first.
 - **Research status:** done. All three blind spots were established by reading
   the checkers and the branches, and are cited by line above.

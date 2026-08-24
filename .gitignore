@@ -156,6 +156,17 @@ EASTER_EGGS.md
 # ignored, `docs/hardware/artifacts/watch/c.png` VISIBLE under both --
 # and `docs/artifacts/watch/e.png` VISIBLE under `docs/**/`, ignored under the
 # anchored spelling, which is the hole and its close.
+#
+# THE RESIDUAL, NAMED RATHER THAN LEFT TO BE FOUND. The un-ignore below is the
+# only `git add -A`-visible binary sink in the tree, and it sits under a prefix
+# that is BOTH published (`docs/` is the Pages root) and on the unattended
+# sweep's allowlist (`docs/hardware/`, merge-candidate.sh:134). Nothing in CI
+# looks at bytes or at file size, so a screenshot committed by accident reaches
+# `main` through a path no human is standing in. The un-ignore is still right --
+# a screenshot directory that ignores screenshots is a directory nobody uses --
+# but "right" is not "costless", and the cost is written here rather than
+# discovered. The close is T-163: a size-or-binary gate on the sweep, not a
+# re-ignore. Round fifteen of #134.
 /artifacts/
 **/artifacts/watch/
 !docs/hardware/artifacts/watch/

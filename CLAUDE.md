@@ -18,6 +18,15 @@
   which are not ours to overturn.
 - [`STATUS.md`](STATUS.md) — where things actually are.
 - [`TASKS.md`](TASKS.md) — what to pick up.
+- [`docs/hardware/BENCH_HANDLING.md`](docs/hardware/BENCH_HANDLING.md) — **the
+  one obligation that binds every session, not only a bench one.** The owner's
+  Waveshare unit sits lit on a static AMOLED, on USB, by the owner's own
+  decision (OD-18), and a session that used the unit or is ending owes them one
+  sentence about it — at most once, naming the mitigation in force, with no
+  action invented to accompany it. The rule is in that file; it was reachable
+  only through OD-18 inside a 1450-line register until the fifteenth review
+  round of [#134](https://github.com/hleserg/Attadipa/pull/134) pointed out that
+  a rule nobody can find is not a rule.
 
 There is a matching `esp-idf-firmware` skill covering ESP-IDF mechanics,
 bring-up order and the hardware-verification discipline. Use it rather than

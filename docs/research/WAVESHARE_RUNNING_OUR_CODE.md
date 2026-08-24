@@ -211,12 +211,19 @@ and neither one touched this:
 - **The observer resetting the board.** pyserial asserts DTR and RTS on `open()`,
   so simply opening the port to watch is a hardware reset. A real bug, and not
   this one. **The fix is `LIKELY` rather than established, and this line used to
-  say "fixed":** on Linux `cdc_acm` raises DTR and RTS in the kernel when the
-  tty is first *activated* — `acm_port_activate()` in
-  `drivers/usb/class/cdc-acm.c` sets `ACM_CTRL_DTR | ACM_CTRL_RTS`, named here
-  because this claim is load-bearing for T-116 goal 3 and appeared three times
-  with no source — before any userspace code runs, so setting them low
-  before `open()` can only lower them again *after* the assertion. Nothing here
+  say "fixed":** on Linux `cdc_acm` raises DTR and RTS in the kernel on the tty
+  open path, before any userspace code runs, so setting them low before
+  `open()` can only lower them again *after* the assertion. **The named
+  function was wrong here for two rounds and is corrected:** the raise is
+  `acm_port_dtr_rts()` — `drivers/usb/class/cdc-acm.c`, the `dtr_rts` member of
+  `acm_port_ops`, which sets `USB_CDC_CTRL_DTR | USB_CDC_CTRL_RTS` — reached
+  from `tty_port_block_til_ready()` in `drivers/tty/tty_port.c`, which calls
+  `tty_port_raise_dtr_rts()` when `C_BAUD(tty)`. `acm_port_activate()` is the
+  *`activate`* op and touches no control line at all. Named precisely because
+  this claim is load-bearing for T-116 goal 3 and appeared three times with no
+  source; whoever picks that goal up will grep the function.
+  The conclusion is unchanged either way — both are kernel-side and both precede
+  userspace. Nothing here
   observed the pin state either way — the experiment that settled §2.3 was about
   *close*, not open. Proving it on the unit is T-116's third goal, and until it
   runs the safe reading is that a pre-open set does **not** prevent the reset.
