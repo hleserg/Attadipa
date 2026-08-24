@@ -1263,3 +1263,68 @@ separately from its firmware, which cellular module the node will carry, and
 which tower database may lawfully be shipped in a product. The first is research
 and is filed; the last two are the owner's.
 
+---
+
+## OD-23 — The queue has a width, and it is two
+
+**Decided:** 2026-08-24.
+
+**As stated:**
+
+> «Нужно ввести правило WIP-limit для pull request. В Attadipa одновременно
+> должно быть не больше: 2 открытых рабочих PR — нормальный режим; 3 открытых
+> рабочих PR — допустимый кратковременный максимум. […] 4+ открытых рабочих PR
+> — это аварийное состояние очереди. […] Pull request — это не долговременное
+> хранилище незавершённой работы. PR — короткий шлюз в main. Если шлюзов
+> одновременно открыто несколько десятков, система разработки уже не работает.»
+
+**In English:** a work-in-progress limit on pull requests. Two open working pull
+requests is normal; three is a short-lived maximum; four or more is a queue
+incident. A pull request is a short gate into `main`, not long-term storage for
+unfinished work, and several dozen gates open at once means the development
+system has stopped working.
+
+**What prompted it.** The queue reached **35 open pull requests** on 2026-08-24.
+None of them was opened against a rule — each was a reasonable next task, and
+nobody's step was the count. What the number cost is measurable: every branch
+edits `TASKS.md` and `STATUS.md`, so each merge into `main` re-conflicted the
+rest; each re-resolution was a push and each push bought another independent
+review at roughly $7.50; one branch reached **round sixteen**. Two reviews on
+that day finished, published a verdict and had it discarded by a turn ceiling,
+which is $15 for nothing. Branches were also arriving at review contradicting
+hardware facts measured while they waited — #84 still carried an `UNKNOWN` IMU
+address after the I²C scan had run. The queue had become more expensive than the
+development it existed to serve.
+
+**What it obliges:**
+
+- **0–1 open** — start the next task.
+- **2 open** — a third only if one of the two is essentially finished, or the
+  new one is a genuinely short independent step. Finishing one is preferred.
+- **3 open** — stop starting. Drive one to `MERGED`, `CLOSED AS STALE`,
+  `SUPERSEDED`, or back to an issue with no open pull request first.
+- **4 or more** — queue incident. No new feature, research or meta work until
+  the queue is back to two or three.
+
+A draft counts as soon as it carries real content. The only exemptions are
+`queue:parked` (held open with the owner's agreement) and `queue:emergency`
+(security, data loss, broken CI or merge infrastructure, a critical regression
+in `main`), and both must state their reason on the pull request. Work blocked
+on the owner's hands, a delivered part, an external credential, a product
+decision or a measurement is **closed** and recorded as an issue, not left open
+for weeks. Research does not occupy a slot until it is ready to go into `main`.
+
+**What it invalidates.** Nothing about how a pull request is reviewed or merged
+— OD of 2026-08-21 (the orchestrator merges on green CI) stands unchanged. What
+it ends is the practice of opening a branch per finding and reconciling them
+later: findings on one pull request are collected and fixed in **one** pass, and
+after two or three rounds the remaining small or arguable points become a
+follow-up issue rather than round four.
+
+**Where it is written.** [`../../CLAUDE.md`](../../CLAUDE.md), *"The queue has a
+width, and it is two"*; step 0 of *"What an agent does with a task"* in
+[`../automation/AI_TASK_PROTOCOL.md`](../automation/AI_TASK_PROTOCOL.md); and
+enforced as a count by
+[`pr-wip-limit.yml`](../../.github/workflows/pr-wip-limit.yml), which says the
+number on a pull request opened at or over the width and blocks nothing — the
+queue is reduced by finishing pull requests, and no workflow can do that part.

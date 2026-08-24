@@ -1,0 +1,88 @@
+name: PR WIP limit
+
+# How many pull requests are open, said out loud at the one moment it is still
+# cheap to act on: when another one has just been opened.
+#
+# CLAUDE.md, "The queue has a width, and it is two" — owner decision OD-23,
+# 2026-08-24, after this repository reached thirty-five open at once and spent
+# more on re-reviewing branches that had gone stale waiting than on the work
+# they carried.
+#
+# THIS DOES NOT REFUSE ANYTHING, and that is deliberate rather than unfinished.
+# It holds no `contents` write, closes nothing and blocks no merge. Refusing the
+# pull request would not reduce the queue — the branch and the work would still
+# exist, and the only casualty would be the record of them. What breaks the loop
+# is an agent reading a number before it starts the next task, so the number is
+# what this produces.
+#
+# It is also not the whole guard. The check an agent is supposed to make is the
+# one in CLAUDE.md, before opening anything; this is the backstop for when that
+# did not happen, which on 2026-08-24 was thirty-five times in a row.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+concurrency:
+  # One answer per pull request. The count changes under it constantly and an
+  # old one is misleading, so a newer run always wins.
+  group: attadipa-wip-limit-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  count:
+    name: How wide is the queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      issues: write
+    # A fork's pull request cannot be counted against this repository's queue —
+    # it is not in it — and pull_request_target, which would give the token to
+    # do it anyway, is the pattern this repository refuses everywhere else.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Count the open pull requests
+        id: wip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash .github/scripts/wip-limit.sh
+
+      # Only when it is over. A comment on every pull request saying the queue
+      # is fine is how a signal becomes something people filter out, and this
+      # one has to still be readable the day it says thirty-five.
+      - name: Say so on the pull request
+        if: steps.wip.outputs.state == 'full' || steps.wip.outputs.state == 'incident'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          STATE: ${{ steps.wip.outputs.state }}
+          COUNT: ${{ steps.wip.outputs.count }}
+        run: |
+          set -euo pipefail
+          body="$(bash .github/scripts/wip-limit.sh --say "$STATE" "$COUNT")"
+          {
+            echo "<!-- attadipa-wip-limit -->"
+            echo "$body"
+            echo
+            echo "Counted: every open pull request except those labelled \`queue:parked\` or \`queue:emergency\`. A draft counts."
+            echo
+            echo "This does not block this pull request. It is the number the next agent is supposed to read before opening one."
+          } > body.md
+          gh pr comment "$PR" --repo "$REPO" --body-file body.md
+          gh pr edit "$PR" --repo "$REPO" --add-label queue:over-limit || true
+
+      - name: Summary
+        if: always()
+        env:
+          STATE: ${{ steps.wip.outputs.state }}
+          COUNT: ${{ steps.wip.outputs.count }}
+        run: |
+          set -euo pipefail
+          printf 'Open working pull requests: %s (%s)\n' "${COUNT:-unknown}" "${STATE:-unknown}" >> "$GITHUB_STEP_SUMMARY"

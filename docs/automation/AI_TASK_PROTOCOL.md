@@ -202,10 +202,22 @@ the watchdog says so and puts it back.
 | humans | `needs-owner` `needs-hardware` |
 | CI | `ci:repairing` `ci:failed` |
 | review | `ai-review:pass` `ai-review:blocking` |
+| queue | `queue:parked` `queue:emergency` `queue:over-limit` |
 
 The intake workflow derives the `type:`, `priority:` and `source:` labels from
 the marker, so a producer does not have to set them and cannot set them
 inconsistently with the marker it wrote.
+
+The `queue:` three are the only exemptions from the WIP limit, and two of them
+are claims a person has to stand behind rather than states the pipeline can
+derive: `queue:parked` means the owner agreed to hold this open, and
+`queue:emergency` means it is one of the four cases `CLAUDE.md` names as
+allowed over the limit — security, data loss, broken CI or merge
+infrastructure, or a critical regression in `main`. Either without a stated
+reason on the pull request is not an exemption, it is a label. `queue:over-limit`
+is written by [`pr-wip-limit.yml`](../../.github/workflows/pr-wip-limit.yml) and
+records that the queue was already at its width when this one was opened; it
+blocks nothing.
 
 ---
 
@@ -254,6 +266,15 @@ on drifts back to silence one edit at a time.
 
 ## What an agent does with a task
 
+0. **Count the open pull requests, before anything else.** `bash
+   .github/scripts/wip-limit.sh --count` prints the number the guard uses.
+   Two is the normal width of this project, three is a ceiling that forbids
+   starting anything new, and four or more is a queue incident in which no
+   feature, research or meta work begins until the queue is back down. The rule
+   and what it excludes are in `CLAUDE.md`, *"The queue has a width, and it is
+   two"* — owner decision **OD-23**. This step is numbered zero because it is
+   the one an agent skips: every pull request in the queue of thirty-five was a
+   reasonable next step on its own, and the count was nobody's step.
 1. **Read before writing.** The issue and all its comments, `CLAUDE.md`,
    `docs/master-prompt-final.md`, `STATUS.md`, `TASKS.md`, the ADRs the task
    touches, and `docs/research/REUSE_LEDGER.md`.
@@ -263,9 +284,15 @@ on drifts back to silence one edit at a time.
 3. **Reuse before writing.** `CLAUDE.md`'s rule, and it applies to agents more
    than to people, because an agent will happily write four hundred lines that
    already exist under a licence we can use.
-4. **One branch, one pull request.** Draft while it moves, ready when it does
-   not, and **merged by the orchestrator once CI is green** (owner decision,
-   2026-08-21). Nothing waits on a person for the merge itself.
+4. **One branch, one pull request, and it is short-lived.** Draft while it
+   moves, ready when it does not, and **merged by the orchestrator once CI is
+   green** (owner decision, 2026-08-21). Nothing waits on a person for the merge
+   itself. Hours is the target life, a day the outside; past that without a
+   named external reason it is triaged rather than nursed — finished, cut down,
+   split, closed as stale, or returned to an issue. A draft is not a way to
+   keep a slot: it counts against the limit the moment it carries real content.
+   Research does not open a pull request at all until the change is ready for
+   `main`; findings live in the issue or under `docs/research/` until then.
 
    **Two different actors merge, under two different rules, and conflating them
    is how a finished `core/` pull request sits forever.** The *orchestrator* is

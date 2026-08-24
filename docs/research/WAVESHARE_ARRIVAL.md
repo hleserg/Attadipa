@@ -121,7 +121,7 @@ Whatever is decided, wrapping the BSP does not cover the board.
 "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
 ([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
 `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
-([`.github/workflows/ci.yml:500`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+([`.github/workflows/ci.yml:506`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
 What exists
 is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
 installed is not decided.
@@ -750,7 +750,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:500`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+    [`.github/workflows/ci.yml:506`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more

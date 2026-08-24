@@ -60,6 +60,9 @@ ci:repairing|fef2c0|Automatic CI repair is in flight.
 ci:failed|b60205|CI is red and automatic repair has stopped.
 ai-review:pass|0e8a16|The independent reviewer found nothing blocking.
 ai-review:blocking|b60205|The independent reviewer found something that must be fixed before merge.
+queue:parked|d4c5f9|Held open deliberately, with the owner's agreement. Not counted against the WIP limit.
+queue:emergency|b60205|Security, data loss, broken CI or a regression in main. May be opened over the WIP limit.
+queue:over-limit|fbca04|Opened while the queue was at or over its width. See CLAUDE.md, OD-23.
 EOF
 )
 

@@ -166,6 +166,86 @@ Everything about the workflows themselves — security model, authentication,
 cost control and the kill switch — is in
 [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md).
 
+## The queue has a width, and it is two
+
+> **Normal PR WIP limit: 2. Hard temporary limit: 3. At 3 open working pull
+> requests, finish, merge or close one before opening another. 4+ open pull
+> requests is a queue incident and blocks new feature work.**
+
+Owner decision **OD-23**, 2026-08-24, and it is not a style preference. On
+2026-08-24 this repository had **35 pull requests open at once**. Every one of
+them edited `TASKS.md` and `STATUS.md`, so each merge re-conflicted all the
+others; every re-resolution was a push, every push bought another independent
+review, and reviews reached *round sixteen* on a single branch. The queue was
+consuming more of the budget than the development it existed to serve, and
+branches were arriving at review contradicting hardware facts that had been
+measured while they waited. **A pull request is a short gate into `main`, not
+long-term storage for unfinished work.** Thirty-five gates open at once is not
+a busy project; it is a development system that has stopped working.
+
+**Before opening a pull request, count the open ones.** `.github/scripts/wip-limit.sh`
+is the same count the guard uses, and `bash .github/scripts/wip-limit.sh --count`
+prints it.
+
+- **0–1 open** — start the next task.
+- **2 open** — open a third only if one of the two is essentially finished
+  (waiting on CI, or on a mechanical rebase), or the new one is genuinely a
+  short independent step that cannot conflict with them. Finishing one of the
+  two is still the better move.
+- **3 open** — **stop starting.** Drive one to `MERGED`, `CLOSED AS STALE`,
+  `SUPERSEDED`, or back to an issue with no open pull request, and only then
+  open the next.
+- **4 or more** — **queue incident.** No new feature, research or meta work
+  until the queue is back to two or three. Triage what is open into: merge now
+  or after a mechanical update · fix once · close as stale or superseded ·
+  external blocker, returned to an issue.
+
+**What counts.** Anything that will need work or a merge. A draft counts as
+soon as it carries real content, conflicts with `main`, or is being worked on —
+draft is not a way to hold ten branches open. Only two things are exempt, and
+both must say so on the pull request: `queue:parked` for work deliberately held
+with the owner's agreement, and `queue:emergency` for the four cases that may
+be opened over the limit — a security fix, data loss, CI or merge
+infrastructure that is fully broken, and a critical regression in `main`. An
+exemption label with no stated reason is not an exemption.
+
+**A pull request is short-lived.** Hours, ideally one working session, at the
+outside about a day for something genuinely hard. Past a day without a named
+external reason it is a triage candidate: finish it, cut its scope, split it,
+close it as stale, or return the unfinished part to an issue. Surviving a
+dozen changes to `main` is not normal and must not be treated as normal.
+
+**Research does not take a slot.** Findings belong in the issue, a comment, or
+`docs/research/` on a branch that is not yet proposed. Open the pull request
+when the change is ready to go into `main` — never as a container for work in
+progress.
+
+**Findings are collected, not drip-fed.** Gather every substantive finding on a
+pull request, fix them in one pass, and go back for one final review. Review →
+one fix → review → one fix, round after round, is how a branch reaches round
+sixteen. After two or three rounds leave only small or arguable points, the
+decision is merge, follow-up issue, or close — not another round.
+
+**Sunk cost is not a reason to keep a branch open.** Close it when `main` has
+moved past it, when another pull request has already solved most of it, when
+the hardware facts it rests on have since been measured, when reconciling it
+with `main` is now larger than the change it was opened for, or when re-doing
+it small would cost less than the next review. Reopen the useful remainder as
+an issue.
+
+**`STATUS.md` and `TASKS.md` must not hold a branch open.** They are the two
+files every branch touches, so they serialise work that is otherwise
+independent. When the code is ready and only those two conflict: take `main`'s
+version, add this pull request's own result to it, and merge. Do not preserve
+the branch's historical wording, and do not let a documentation conflict
+reopen a review of code that has not changed.
+
+**Blocked is not parked.** Work that cannot move because it needs the owner's
+hands, a delivered part, an external credential, a product decision or a
+measurement nobody can take today does not sit as an open pull request for
+weeks. Close it, record the state in an issue with the `BLOCKED` block, and
+open a fresh pull request from a current `main` when the blocker lifts.
+
 ## Look at the screen you changed
 
 A UI change that compiles has not been checked. `tools/watch_control.py` takes a

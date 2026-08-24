@@ -359,6 +359,12 @@ jobs:
       - name: The gh calls in the workflows are ones gh accepts
         run: bash .github/tests/gh-api-usage-test.sh
 
+      # Three is the ceiling and four is an incident, which is neither of the
+      # two bands a `>` comparison produces. The boundary is the whole rule
+      # (CLAUDE.md, OD-23), so it is the boundary that is tested.
+      - name: The queue has a width
+        run: bash .github/tests/wip-limit-test.sh
+
   docs:
     name: Documentation consistency
     runs-on: ubuntu-latest

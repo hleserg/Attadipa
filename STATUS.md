@@ -5,6 +5,31 @@ Last updated: 2026-08-24
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
 
+## The pull request queue has a width, and it is two — 2026-08-24
+
+**Owner decision OD-23.** Two open working pull requests is normal, three is a
+short-lived ceiling, four or more is a queue incident that stops new feature,
+research and meta work until the queue comes back down. A draft counts. The
+only exemptions are `queue:parked` and `queue:emergency`, and both must say why
+on the pull request.
+
+**The queue was at 35 when the rule was made**, which is a queue incident by a
+factor of nine, so T-171 is P1 and the roadmap waits behind it. What the number
+cost is not a matter of taste: every branch edits `TASKS.md` and `STATUS.md`, so
+each merge re-conflicted the rest, each re-resolution was a push, and each push
+bought another independent review at roughly $7.50 — one branch reached round
+sixteen, and two reviews that day finished, published a verdict and had it
+discarded by a turn ceiling. Branches were also reaching review contradicting
+hardware facts measured while they waited.
+
+The rule is in [`CLAUDE.md`](CLAUDE.md) and as step 0 of
+[`AI_TASK_PROTOCOL.md`](docs/automation/AI_TASK_PROTOCOL.md). It is counted, not
+only written: [`pr-wip-limit.yml`](.github/workflows/pr-wip-limit.yml) says the
+number on a pull request opened at or over the width. It blocks nothing —
+refusing the pull request would leave the branch and the work in place and lose
+only the record of them, and a queue is reduced by finishing pull requests,
+which no workflow can do.
+
 ## Current milestone
 
 **M1 — simulator and the product design foundation.** M0.5, the reconciliation

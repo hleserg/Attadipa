@@ -39,6 +39,30 @@ stale silently. The protocol is
 
 ## NOW
 
+### T-171 · The queue has a width, and on 2026-08-24 it was seventeen times over it
+- **Priority:** P1 — this blocks new feature work by its own rule.
+- **Dependencies:** none.
+- **Goal:** hold the number of open pull requests at two, three at a pinch, and
+  bring the current queue back to that. Owner decision **OD-23**, recorded in
+  [`docs/research/OWNER_DECISIONS.md`](docs/research/OWNER_DECISIONS.md); the
+  rule an agent reads is in [`CLAUDE.md`](CLAUDE.md), *"The queue has a width,
+  and it is two"*, and step 0 of `AI_TASK_PROTOCOL.md`.
+- **Why it is P1 rather than housekeeping:** with 35 branches open, every merge
+  into `main` re-conflicted the rest, every re-resolution was a push, and every
+  push bought another independent review at roughly $7.50. One branch reached
+  round sixteen. The queue was costing more than the development in it, and two
+  reviews that day published a verdict and had it thrown away by a turn ceiling.
+- **Acceptance:** `bash .github/scripts/wip-limit.sh --count` reports 3 or
+  fewer; every pull request that was open on 2026-08-24 has reached `MERGED`,
+  `CLOSED AS STALE`, `SUPERSEDED`, or an issue with no open pull request; and
+  [`pr-wip-limit.yml`](.github/workflows/pr-wip-limit.yml) says the number on
+  anything opened at or over the width.
+- **Triage categories**, one per pull request and exactly one: merge now or
+  after a mechanical update · fix every current finding in one pass · close as
+  stale or superseded · genuine semantic review still needed.
+- **Not in scope:** rebuilding the review automation. A finding about it becomes
+  an issue; the queue is not held open for it.
+
 ### T-100 · The agent queue, verified by running it rather than by reading it
 - **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
   different pieces of work carried that ID: this one, and the transport tests
