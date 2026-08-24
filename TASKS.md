@@ -2686,7 +2686,7 @@ Recommended next action:
 
 ## WAITING
 
-### T-112 · One MeshCore identity across several physical nodes
+### T-168 · One MeshCore identity across several physical nodes
 - **Priority:** **P4 — backlog.** The scale in
   [AI_TASK_PROTOCOL](docs/automation/AI_TASK_PROTOCOL.md) stops at `P3`, so the
   number lives here rather than in a marker that has no value for it. Owner
