@@ -5,7 +5,8 @@ Three directories and two arrows, which is what final §45 asks for:
 ```
 ui/assets/source/     the art, committed, one file per icon per pixel size
         ↓  tools/assets/generate_images.py   (the pipeline)
-ui/assets/generated/  LVGL C arrays, committed, plus INPUTS.sha256
+ui/assets/generated/  LVGL C arrays, committed, plus INPUTS.sha256 — which
+                      records the inputs *and* a hash of every file here
         ↓  attadipa_icons.cpp                (the one lookup)
 a screen asks for an IconSize and a Metrics, and gets an lv_image_dsc_t or nothing
 ```
@@ -49,20 +50,45 @@ python3 tools/assets/generate_images.py   # the pipeline: source masks → C arr
 python3 tools/assets/contact_sheet.py     # the review sheet, day and night, 1:1
 ```
 
-Nothing in the build runs any of them. The generated tree is committed and three
+The first two need **Pillow**, and `generate_images.py` additionally needs
+**pypng** and **lz4** — module-scope imports inside the vendored `LVGLImage.py`,
+required even though compression is off. `apt install python3-pil` plus
+`pip install pypng lz4`.
+
+Nothing in the build runs any of them. The generated tree is committed and four
 tests notice when it goes stale.
 
-`ui_images_are_current` is the primary gate and it **needs nothing installed** —
-it compares a digest. That digest covers the **converter** and the **drawings**
-as well as the art: an encoder that changes its output is the asset changing, and
-hashing `icon_drawings.py` means an edited stroke weight with nothing regenerated
-is caught by arithmetic rather than by a package.
+`ui_images_are_current` is the primary gate and it **needs nothing installed**.
+It compares two things, and the second one was missing until issue #69:
+
+* the **inputs** digest, covering the art, the manifest, the **converter** and
+  the **drawings** — an encoder that changes its output is the asset changing,
+  and hashing `icon_drawings.py` means an edited stroke weight with nothing
+  regenerated is caught by arithmetic rather than by a package;
+* the **outputs**, each of the nine masks and the generated header against its
+  recorded SHA-256. An inputs digest alone says the tree was once built from
+  these sources and nothing at all about the bytes in it, so a hand-edited
+  bitmap byte used to pass green — verified as a reproducer, not a worry. The
+  format is `tools/integrity/stamp.py`, and the font tree is bound by the same
+  contract.
+
+`ui_generated_outputs_reject_mutations` is the check on that check. It mutates
+each of the fourteen committed outputs in turn — in a copy of the tree, never
+this one — and fails if either pipeline accepted the mutation. It needs nothing
+installed either.
 
 `ui_icon_drawings_are_current` and `ui_image_pipeline_rejects_mistakes` have to
-*draw* something, so they need **Pillow** — `apt install python3-pil`, or
-`pip install pillow`. Without it CMake registers a deliberately failing
-`ui_image_checks_unavailable` rather than skipping them, because a skipped check
-reads as a passing one in a summary. CI installs it.
+*draw* something, so they need **Pillow**. Without it CMake registers a
+deliberately failing `ui_image_checks_unavailable` rather than skipping them,
+because a skipped check reads as a passing one in a summary. CI installs it.
+
+The one thing none of them can do is prove the committed bytes are what these
+sources actually produce — a stamp beside a wrong file records the wrong file
+faithfully. That takes regeneration:
+`tools/integrity/reproducibility.py` builds both trees twice from two different
+absolute paths and compares all sixteen files against what is committed. It has
+been run and it passes; the CI job that would run it on every push is written,
+not applied, and waiting on a permission — `tools/integrity/README.md`, T-128.
 
 ## Cost
 

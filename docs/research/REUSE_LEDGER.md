@@ -510,6 +510,32 @@ regression), `test_minmea_parse_rmc1/rmc2`, `test_minmea_checksum`,
 `test_minmea_check` — MIT, portable wholesale. GeographicLib's `GeodTest.dat` is
 data from an MIT library and freely usable as reference vectors.
 
+**The distance function stayed ours — `REIMPLEMENT`, re-examined 2026-08-23.**
+Issue #28 found that `distance_mm()` (`core/src/geo.cpp`) discarded the
+fractional latitude before its cosine lookup and so overstated a polar longitude
+difference by up to a thousand times, which put the choice back on the table:
+fix it locally, or take **GeographicLib** (MIT), which is already named in this
+entry and would be correct at every latitude by construction.
+
+Kept local, and the fix was fifteen lines of integer interpolation. Reasons, in
+the order they mattered: the consumer is the jump detector comparing two fixes
+taken seconds apart, and at that baseline the equirectangular approximation is
+already inside the error of the fixes being compared, so a geodesic would be
+*more* precise about a quantity nobody needs precisely; GeographicLib is C++ with
+`<cmath>` and `double` throughout, and this runs on every fix on a battery, where
+the whole point of the 91-entry table is not linking libm into that path; and the
+defect was quantization, not method — the fix is arithmetic the existing design
+already implied rather than a different design.
+
+What the decision costs, so the next person can weigh it rather than inherit it:
+the residual error is **0.9% to 89.999°**, measured on every test run against an
+independent haversine reference, and it is dominated by the rounding of
+`kCosTable1024`'s own entries. Anything that needs better than a percent — a
+route distance, a bearing, a track length — must not reach for `distance_mm()`,
+and this is the entry that says GeographicLib is where to go instead. That
+boundary is written into `core/include/attadipa/core/geo.h` as well, because a
+ledger nobody opens does not stop anybody.
+
 **Open:** whether the node carries a magnetometer decides whether this is the
 fallback plan or the only plan ([NODE_PROFILE](../node/NODE_PROFILE.md) N3). The
 speed gate below which course-over-ground is not trustworthy is unresolved and
@@ -788,6 +814,79 @@ in C++, that every linked descriptor is `A8` with `stride == width` and carries
 a drawing rather than a blank rectangle.
 ---
 
+### Binding a committed generated tree to the bytes in it
+
+**Problem:** two asset trees are generated and committed —
+`assets/fonts/generated/` and `ui/assets/generated/` — so that a build needs
+neither Node nor Pillow. Something then has to fail when the committed bytes
+stop being what the sources produce, on a machine with nothing installed, and it
+has to distinguish "the inputs moved", "an output was edited" and "the record
+itself is damaged", because those need three different repairs.
+
+**Projects investigated:** `sha256sum` and its `-c` verify mode (coreutils, the
+obvious answer) · `git hash-object` and `git diff --exit-code` after a
+regeneration · `pre-commit` with `check-added-large-files`-style hooks ·
+content-addressed build systems, Bazel and DVC, which solve exactly this and
+several other problems nobody here has · the existing `INPUTS.sha256` mechanism
+in both pipelines, which is what had to be extended.
+
+**Useful implementation:** `sha256sum -c` is a real candidate and was close.
+It reads a `SHA256SUMS` file, verifies every listed file, exits non-zero on any
+mismatch, and is on every machine that already has coreutils.
+
+**License:** n/a — nothing was taken. `hashlib` is the Python standard library.
+
+**Strengths of the candidate:** universally available, universally understood, a
+format anyone can read and re-verify by hand.
+
+**Weaknesses:** three, and together they decide it. It verifies only the files
+it lists, so deleting an asset and leaving a stale line passes for every file
+still there while a *newly generated* file nobody stamped is invisible —
+the check has to compare both directions, and `-c` compares one. It has nowhere
+to put the inputs digest, so a tree would need two files that must agree and can
+be updated separately, which is the same class of defect one file down. And its
+failure output is `FAILED` per line, with nothing about which of the three
+faults occurred or what command repairs it; both pipelines already compute an
+inputs digest in Python, so wrapping a second process to get a worse message
+costs more code than not doing it.
+
+**Decision:** `REIMPLEMENT` — `tools/integrity/stamp.py`, about 200 lines of
+standard library, shared by both pipelines rather than copied into each.
+
+**Reason.** The thing being written is not "hash some files": it is a small
+format with a strict parser and three distinguishable verdicts, whose whole
+value is that it refuses ambiguity. A `SHA256SUMS` beside an `INPUTS.sha256`
+would be two records that must agree, maintained by two code paths, which is the
+shape the finding in issue #69 was already about. One file, one writer, one
+parse — and a deliberate absence of any "re-stamp what is on disk" command,
+because a tool that blesses whatever bytes it finds reopens the hole while
+looking like maintenance.
+
+**Source revision:** n/a. The two things it is pinned against are recorded
+elsewhere and stay there: `lv_font_conv` **1.5.3** and LVGL **v9.5.0** at
+`85aa60d18b3d5e5588d7b247abf90198f07c8a63`, both in
+[DEPENDENCIES](DEPENDENCIES.md), and the vendored `LVGLImage.py` hash in
+`tools/assets/vendor/README.md`. The font generator now refuses a converter
+whose `--version` is not the pinned one, so the pin is enforced rather than
+documented.
+
+**Attadipa integration:** `tools/integrity/stamp.py`, used by
+`tools/font/generate_ui_fonts.py` and `tools/assets/generate_images.py`.
+
+**Tests required, and present:** `tools/integrity/selftest.py` — forty-five
+cases, registered as `ui_generated_outputs_reject_mutations`. Each of the
+fourteen committed outputs is mutated in turn in a copy of the tree and the real
+check must reject it and name it; so are a deleted output, a changed input, a
+doctored hash, a dropped line, a stamp with no inputs line, a stamp naming a
+file nobody generates, and a deleted stamp. A control case at each end asserts
+an untouched tree passes, which is what catches a harness that has broken the
+sandbox and is therefore rejecting everything for free. Reproducibility across
+checkout paths is `tools/integrity/reproducibility.py` rather than this file,
+because it needs the pinned converter; it has been run and its CI job is written
+and waiting on a permission (T-128).
+
+---
+
 ### Speaking the vanilla MeshCore companion protocol
 
 **Problem:** a watch must talk to a MeshCore node that is running **stock**
@@ -926,7 +1025,16 @@ receiver's own verdict enters the model as the heaviest single input, and OD-5
 is why `Unknown` and `Unsupported` are distinct from `None`.
 
 **Tests required, and present:** `tests/test_trust.cpp`, mutation-checked
-against four real regressions, plus the twelve replay traces.
+against five real regressions, plus the replay traces — sixteen fixtures, of
+which fifteen are replayed and one is deliberately broken for the rig's own
+test.
+
+**Nothing was taken for the 2026-08-23 recovery fix either, and the decision
+above is why.** The defect — silence completing a recovery hold, issue #151 —
+is a defect in *policy*, in a state machine whose whole reason for existing is
+that the policy is ours and explicit. There is no library to reach for and
+reaching for one would have been the mistake this entry already rejected.
+`REIMPLEMENT` stands, unchanged.
 
 ---
 
