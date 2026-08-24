@@ -667,7 +667,7 @@ resolved — [OWNER_DECISIONS.md](docs/research/OWNER_DECISIONS.md) OD-15.
 **The unit stays on the desk, powered.** The owner raised AMOLED ageing while it
 sat showing the vendor firmware's static desktop, and chose availability over the
 safer state: powered and attached, brightness at minimum, so a hardware run is
-possible on demand — [OD-17](docs/research/OWNER_DECISIONS.md). **Whether that
+possible on demand — [OD-18](docs/research/OWNER_DECISIONS.md). **Whether that
 brightness survives a reset is `UNKNOWN`, and a bench session is allowed to
 reset the unit**, so a session that did must report the mitigation as
 unconfirmed rather than as standing, because saying "mitigated" for a state
@@ -680,7 +680,7 @@ to blank the panel, is
 [BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md). The residual risk at minimum
 brightness is `UNKNOWN`, not "safe" — and so is the risk to the **cell**, which
 is the second consumable in *"powered indefinitely"* and which neither that file
-nor OD-17 had weighed. The schematic gives the cell no way to be disconnected —
+nor OD-18 had weighed. The schematic gives the cell no way to be disconnected —
 `VBAT1` has no disconnect switch — so unplugging does not remove power; **what
 the factory image does on battery is `UNKNOWN`, because this unit has only ever
 been run on USB and nobody has looked.** And leaving it plugged sits on a charger
@@ -704,7 +704,7 @@ to an unrelated task — worse than dangling, because it looks answered. **Absen
 handled**, and the second is worse, because a reader who checks stops at the
 citation. **One cheap thing is still unlooked-at
 and the file now says so rather than ruling it out:** whether the factory
-launcher offers a display timeout. It carries a `Settings` app — OD-17 is the
+launcher offers a display timeout. It carries a `Settings` app — OD-18 is the
 owner having been inside it to find the brightness — and nobody has enumerated
 the rest of the menu, so that row is `UNKNOWN`, unobserved, not unavailable.
 The likeliest upstream **was** read rather than left as an ask: `esp-brookesia`
@@ -732,8 +732,9 @@ nothing about dangling ones. A third was found while this branch was in review
 and is not hypothetical: **`OD-nn` has no allocator and no check**, and a sweep
 of every remote branch finds it already broken three ways. Five branches each
 introduced an `OD-16`; #94 and #112 carry the *same* decision — A5/A6, issue
-#56 — as `OD-17` and `OD-16`, so merging both duplicates one decision under two
-citable numbers; and #126 numbers itself `OD-21` with nothing between it and
+#56 — as `OD-17` and `OD-16` respectively, so merging both duplicates one
+decision under two citable numbers, which a duplicate-*number* check passes by
+construction; and #126 numbers itself `OD-21` with nothing between it and
 `OD-15`, leaving a hole if it lands first.
 
 **Then the first of those collisions actually landed, which settled two of the
@@ -742,25 +743,57 @@ brought both checks with it: `T-127`, an `#anchor` resolver against the target
 document's own headings with GitHub's slug rule, and `check_decision_ids` over
 `OWNER_DECISIONS.md` — whose docstring is this branch's own finding. **The
 collision is loud now and it is blocking**, because `ci.yml` runs `check_docs.py`
-in every job. A second sweep the same day finds **six branches still holding
-`OD-16`** — #95, #97, #112, #94, #128, and `claude/review-convergence-169`,
-which has no open pull request and would therefore not appear in any listing of
-the queue. This branch **renumbered itself to `OD-17`** rather than waiting to be
-told, which is the convention T-117 asks for applied to itself; it cost **16**
-occurrences across **seven** files, none of them a deep anchor. It said 15 across
-six until the thirteenth review round of
-[#134](https://github.com/hleserg/Attadipa/pull/134): the sixteenth was one
-sentence duplicated into `docs/hardware/BENCH_HANDLING.md`, renumbered here and
-not there, so it attributed the owner's brightness quote to a decision about
-radio chips and node counts. A count that matches what changed is exactly what
-makes a miss invisible, and nothing catches a bare `OD-NN` in prose —
-`check_decision_ids` reads headings, `check_links` needs a link,
-`check_citation_lines` needs a `path:line`. Not `OD-18`, because
-`main` ends at 16 and #94's rival claim on 17 is half of a duplicate it must
-resolve anyway — dodging it would bake in the gap. What T-117 still owns: the
-dangling task-ID check, the root-**directory** case in `check_root_files`, and
-the two `OD-nn` failures a duplicate-number check cannot see — a repeated
-*heading* under two numbers, and a gap.
+in every job. This branch **renumbered itself** rather than waiting to be told,
+which is the convention T-117 asks for applied to itself; it cost **21**
+occurrences across **six** files, none of them a deep anchor, and it has now been
+done **twice** — which is the finding, not an aside.
+
+**The sweep that justified the first renumber was itself wrong, and the
+fourteenth review round of [#134](https://github.com/hleserg/Attadipa/pull/134)
+re-ran it.** It reported *"six branches still holding `OD-16`"* — #95, #97, #112,
+#94, #128 and `claude/review-convergence-169`. Three of those six were wrong.
+Reproduce:
+
+    git grep -n "^## OD-1[5-9]" origin/claude/day-theme-amoled-52 \
+      origin/docs/od-16-a10-wake-sources origin/docs/node-imu-capability-model-93 \
+      origin/docs/a5-a6-owner-decisions-56 origin/claude/review-convergence-169 \
+      -- docs/research/OWNER_DECISIONS.md
+
+| listed | what it actually holds |
+|---|---|
+| #95, #97, #112 | a **rival** `OD-16` — A9, A10, A5/A6 |
+| #94 | its `OD-16` is **`main`'s own** A1/A2/A3; its live claim is `OD-17` — A5/A6 |
+| #128 | **merged**, as this branch's own merge base |
+| `review-convergence-169` | `main`'s `OD-16`, unchanged. No rival at all |
+
+Three rivals, not six — and the two false positives are the same mistake: a
+branch that has merged `main` *carries* `main`'s headings, so a bare grep for
+`OD-16` cannot tell a claim from an inheritance. The entry the sweep made a point
+of, `review-convergence-169` — *"no open pull request at all, so only a branch
+sweep finds it"* — is the one it got wrong, which is the shape of every finding
+in this bullet: **a sweep is evidence about the moment it ran, and this file
+recorded it as a standing fact.**
+
+**And the #94 row is why this branch renumbered a second time.** Its live claim
+is `OD-17`, the number this branch took on the strength of the wrong sweep — so
+the two collided against live heads, and *"#94's claim on 17 is half of a
+duplicate it has to resolve anyway"* was false: #94 holds a single clean `OD-17`
+and has nothing to resolve. This branch moves to **`OD-18`** and #94 keeps 17,
+because #94's number is older, is cited by number from `ADR-0009` prose and from
+#112's instructions, and moving it would cost more edits in more places. If this
+branch lands first the register skips 17 until #94 fills it, which is a **known,
+named and short** gap rather than the anonymous kind T-117's floor argument is
+about.
+
+Nothing catches a bare `OD-NN` in prose — `check_decision_ids` reads headings,
+`check_links` needs a link, `check_citation_lines` needs a `path:line` — which is
+how the thirteenth round's sixteenth occurrence hid in
+`docs/hardware/BENCH_HANDLING.md`, renumbered here and not there, attributing the
+owner's brightness quote to a decision about radio chips and node counts. A count
+that matches what changed is exactly what makes a miss invisible. What T-117
+still owns: the dangling task-ID check, the root-**directory** case in
+`check_root_files`, and the two `OD-nn` failures a duplicate-number check cannot
+see — a repeated *heading* under two numbers, and a gap.
 
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing

@@ -1248,7 +1248,7 @@ answer.
 
 ---
 
-## OD-17 — The received unit stays powered, with its brightness at minimum
+## OD-18 — The received unit stays powered, with its brightness at minimum
 
 **Decided:** 2026-08-23, in session. Raised by the owner, unprompted, while the
 unit sat on the desk showing the vendor firmware's desktop.
@@ -1322,15 +1322,37 @@ survives only here.)
    33 554 432 bytes to
    `2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5`, agreed by
    three independent complete reads and by the device's own MD5, on the same
-   2026-08-22 and likewise before the brightness was set. For a negative, a
-   whole-image hash is the strongest form there is.
+   2026-08-22 and likewise before the brightness was set.
 
-   Re-read it on the next trip: **an unchanged whole-flash hash means the setting
-   was never committed to flash at all**, so it cannot survive a reset, and no
-   reboot has to be watched to learn it. That is a negative a pair of eyes cannot
-   give. A *changed* hash proves only that something was written, so the panel
-   still has to be looked at in that case — and the 36 KB range above is then
-   worth reading as a second step, because it says *where*.
+   **Its decisive branch is also its least likely one, and the source it comes
+   from says so.** Re-read it on the next trip: an unchanged whole-flash hash
+   means the setting was never committed to flash at all, so it cannot survive a
+   reset, and no reboot has to be watched to learn it — a negative a pair of eyes
+   cannot give. But that branch is reachable only if **nothing else in 32 MB
+   moved**, and nothing establishes that. `WAVESHARE_FLASH_LAYOUT` §5 makes the
+   point against itself: *"on a live device it also mixes in partitions the
+   firmware is entitled to rewrite."* The across-reboot evidence this repository
+   actually holds belongs to the **36 KB** range and not to the image — `nvs`,
+   `otadata` and `phy_init` identical across three reads separated by hard resets
+   and ~90 s of running ([VERIFIED_FACTS](VERIFIED_FACTS.md), S12) — whereas the
+   whole-image reads §5 describes were taken back to back, plus the owner's
+   Windows pass. `storage` alone is 6 MB of UI assets and nothing says ordinary
+   use leaves it untouched.
+
+   So the trip is worth taking and the shortcut is **not** cheap and decisive:
+   read the whole image *and* the 36 KB range. A changed whole-flash hash — the
+   likely outcome — proves only that something was written, so the panel has to
+   be looked at anyway, and the 36 KB range is then what says *where*. The
+   fallback is safe either way, which is why this is a wording correction and not
+   a `MEASURED` that would have been wrong. Round fourteen of
+   [#134](https://github.com/hleserg/Attadipa/pull/134); an earlier version of
+   this paragraph closed *"for a negative, a whole-image hash is the strongest
+   form there is"*, which argued against the section it cites.
+
+   **And the trip is not free in the other direction either**: running our code
+   to take the read resets the unit, which is exactly what reopens the brightness
+   `UNKNOWN` item 2 records. The read that goes to close it costs the state it
+   was closing.
 
    The cost is the honest part: a full 32 MB read, not one 36 KB dump. It is the
    same read the backup already needed and takes minutes over USB/IP, but it is

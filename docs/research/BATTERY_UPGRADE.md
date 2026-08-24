@@ -376,6 +376,11 @@ housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
 - **One I²C read burst at `0x34`** covering `0x62`, `0x50`, `0x58`, `0x12`,
   `0x69` — the five eFuse-defaulted registers of §1.3. Until then every
   "default" claimed for them is `UNKNOWN`.
+  **Watch for one pathological combination**: `0x50` bit 4 = 0 *and* bits 3:2 =
+  00 (current source off) makes `TS` read 0 V through `RP2`, which the part sees
+  as "battery far too hot" and refuses to charge. With the source at its 50 µA
+  default, `RP2`'s 10 kΩ puts `TS` at 500 mV — exactly the datasheet's 25 °C row
+  and comfortably inside the [176 mV, 1312 mV] window.
 - **And three more in the same burst, added 2026-08-23: `0x64` (CV target),
   `0x63` (bit 4, termination enable) and `0x61` (precharge current).** A
   *different* class from the five above and named separately for that reason:
@@ -386,7 +391,7 @@ housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
   seven.**
 
   The three are not equally urgent, and the difference is worth writing down
-  rather than flattening. **`0x64` and `0x63[4]` are the pair OD-17 makes live**
+  rather than flattening. **`0x64` and `0x63[4]` are the pair OD-18 makes live**
   — the unit is on a charger indefinitely by decision, and with `0x63[4]` clear
   the part holds CV on a cell with no protection FET for as long as that lasts.
   **`0x61` is the one that waits for a different state.** Precharge does not run
@@ -399,15 +404,10 @@ housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
   being taken, against a second hardware trip — and the bullet below is what
   prices that trip.
 - **One thing this visit cannot also do.** Reading those registers means running
-  our code on the unit, which resets it, and OD-17 item 2 says a reset leaves
+  our code on the unit, which resets it, and OD-18 item 2 says a reset leaves
   the panel's brightness mitigation unconfirmed. The two `UNKNOWN`s want the
   same trip and cannot both be closed by it: note the brightness the panel comes
   back at, or accept that this visit reopens it.
-  **Watch for one pathological combination**: `0x50` bit 4 = 0 *and* bits 3:2 =
-  00 (current source off) makes `TS` read 0 V through `RP2`, which the part sees
-  as "battery far too hot" and refuses to charge. With the source at its 50 µA
-  default, `RP2`'s 10 kΩ puts `TS` at 500 mV — exactly the datasheet's 25 °C row
-  and comfortably inside the [176 mV, 1312 mV] window.
 - **`RP2`: NTC or plain resistor?** Measure cold, warm the board with a hot-air
   pencil, measure again. An NTC falls; a resistor does not.
   `NOT EXECUTED — HARDWARE REQUIRED`.

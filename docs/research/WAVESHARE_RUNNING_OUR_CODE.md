@@ -212,7 +212,10 @@ and neither one touched this:
   so simply opening the port to watch is a hardware reset. A real bug, and not
   this one. **The fix is `LIKELY` rather than established, and this line used to
   say "fixed":** on Linux `cdc_acm` raises DTR and RTS in the kernel when the
-  tty is first *activated*, before any userspace code runs, so setting them low
+  tty is first *activated* — `acm_port_activate()` in
+  `drivers/usb/class/cdc-acm.c` sets `ACM_CTRL_DTR | ACM_CTRL_RTS`, named here
+  because this claim is load-bearing for T-116 goal 3 and appeared three times
+  with no source — before any userspace code runs, so setting them low
   before `open()` can only lower them again *after* the assertion. Nothing here
   observed the pin state either way — the experiment that settled §2.3 was about
   *close*, not open. Proving it on the unit is T-116's third goal, and until it

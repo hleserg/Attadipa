@@ -75,7 +75,7 @@ both as `UNKNOWN`: whether it stays lit *on battery*, which nobody has run with
 the cable out, and whether its `Settings` menu offers a display timeout, which
 nobody has opened. What is established is that no mitigation has been enabled
 and that minimum brightness is the one in force, by the owner's own hand
-(OD-17). Rules for the unit are in that file, including why an agent must not
+(OD-18). Rules for the unit are in that file, including why an agent must not
 try to blank the panel itself.
 
 ---

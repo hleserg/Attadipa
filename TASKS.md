@@ -424,6 +424,35 @@ stale silently. The protocol is
   the case fold only appears under `-c core.ignorecase=true`, which CI does not
   have. Both traps are already written into the `.gitignore` comment and the
   test has to honour them.
+- **Also in scope, found in the fourteenth round: the third line of the same
+  hunk.** `!docs/**/artifacts/watch/` buys back one directory the second line
+  would otherwise hide — and `/**/` matches **zero** or more directories, so it
+  also un-ignores `docs/artifacts/watch/`, where `cd docs && python3
+  ../tools/watch_control.py screenshot` lands. That is the same CWD assumption
+  the comment three lines above faults `/artifacts/` for making about `sim/`.
+  Spelled `!docs/hardware/artifacts/watch/` now, and reproduced in a scratch
+  repository both ways before and after. The check this task asks for should
+  cover un-ignore lines under `docs/` too, because `docs/` is the published Pages
+  root and `docs/hardware/` is a prefix the unattended sweep may merge — nothing
+  in `.github/workflows/` looks at what a pull request adds in bytes (T-117
+  item 1), so a stray PNG reaching `main` through a `git add -A` is silent.
+- **ID note:** allocated as **T-159**, which **skips T-154 through T-158**. Those
+  five are live on unmerged branches — T-154 on
+  `claude/detach-reason-provenance-162` **and** on
+  `claude/retained-nofix-not-fresh-178` (a genuine double claim, and whichever
+  merges second takes `check_task_ids` red), T-155/T-156/T-160 on the first of
+  those, T-157 on `claude/panel-byte-order-109`, T-158 on
+  `claude/parked-patch-guards-179`. Reproduce with the same all-branch sweep this
+  file's T-117 item uses.
+  **The convention here is the opposite of the one this branch applies to `OD`
+  numbers, and that is deliberate rather than an oversight.** An `OD` number
+  names an owner decision and the register is read as a sequence, so a gap in it
+  is a question nobody can answer; a `T` number is a label on a work item and the
+  file is read by heading, so a gap costs nothing and a *collision* costs a red
+  CI run. Taking the next free number across every branch is therefore right for
+  `T` and wrong for `OD`. Recorded because T-117 asks the next agent to build a
+  gap check **with a floor**, and it would otherwise be calibrated over a hole
+  this diff made without knowing the hole was intended.
 - **Research status:** n/a
 - **Implementation status:** not started.
 - **Tests:** host, in whatever runs it.
@@ -2163,7 +2192,7 @@ stale silently. The protocol is
 
   **The pair and the third are live in different states, which is why all three
   are here rather than two.** With `0x63[4]` clear the charger holds CV
-  indefinitely — float-charging a Li-ion — and OD-17 keeps the unit on a charger
+  indefinitely — float-charging a Li-ion — and OD-18 keeps the unit on a charger
   indefinitely, so that pair is live now
   ([BENCH_HANDLING](docs/hardware/BENCH_HANDLING.md), *"What is not
   established"*). `0x61` is not: precharge does not run on a plugged and full
@@ -2447,24 +2476,47 @@ stale silently. The protocol is
 
      - **`OD-16` was claimed by five branches, and #92 took it.** It merged on
        2026-08-23, so `main` ends at **OD-16** and every other claimant now
-       carries a number that is somebody else's. A fresh sweep the same day
-       finds **six branches still on `OD-16`**:
-       [#95](https://github.com/hleserg/Attadipa/pull/95) (A9),
-       [#97](https://github.com/hleserg/Attadipa/pull/97) (A10),
-       [#112](https://github.com/hleserg/Attadipa/pull/112) (A5/A6),
-       [#94](https://github.com/hleserg/Attadipa/pull/94) (which carries an
-       `OD-17` as well), [#128](https://github.com/hleserg/Attadipa/pull/128),
-       and `claude/review-convergence-169`, which has **no open pull request at
-       all** — so the queue's own listing would not have shown it and only a
-       branch sweep does.
+       carries a number that is somebody else's. A sweep the same day reported
+       **six branches still on `OD-16`**. **Three of the six were wrong**, and
+       the correction is the fourteenth review round of
+       [#134](https://github.com/hleserg/Attadipa/pull/134):
 
-       **This branch renumbered to `OD-17` rather than waiting to be told**,
-       which is the convention this item asks for, applied to itself. Not
-       `OD-18`: `main` ends at 16, so 17 is the next number, and #94's claim on
-       17 is one half of the duplicate below — a decision it already has to
-       resolve. Dodging a claim that is known to be wrong would bake in exactly
-       the gap the third failure is about. If #94 lands first, this one moves
-       again, loudly, which is the point.
+       ```
+       git grep -n "^## OD-1[5-9]" origin/claude/day-theme-amoled-52 \
+         origin/docs/od-16-a10-wake-sources origin/docs/node-imu-capability-model-93 \
+         origin/docs/a5-a6-owner-decisions-56 origin/claude/review-convergence-169 \
+         -- docs/research/OWNER_DECISIONS.md
+       ```
+
+       | listed | what it holds |
+       |---|---|
+       | [#95](https://github.com/hleserg/Attadipa/pull/95) (A9), [#97](https://github.com/hleserg/Attadipa/pull/97) (A10), [#112](https://github.com/hleserg/Attadipa/pull/112) (A5/A6) | a **rival** `OD-16` |
+       | [#94](https://github.com/hleserg/Attadipa/pull/94) | `main`'s own `OD-16`; its **live claim is `OD-17`** |
+       | [#128](https://github.com/hleserg/Attadipa/pull/128) | **merged** — it is this branch's own merge base |
+       | `claude/review-convergence-169` | `main`'s own `OD-16`. No rival |
+
+       **Three rivals, not six**, and the two false positives are one mistake: a
+       branch that has merged `main` *carries* `main`'s headings, so a bare grep
+       for `OD-16` cannot separate a claim from an inheritance. The entry the
+       original sweep made a point of — `review-convergence-169`, *"no open pull
+       request at all, so only a branch sweep finds it"* — is the entry it got
+       wrong. **A sweep is evidence about the moment it ran**, and this item had
+       recorded one as a standing fact, which is the same failure it exists to
+       name.
+
+       **This branch renumbered rather than waiting to be told**, which is the
+       convention this item asks for, applied to itself — and it has now done so
+       **twice**. The first move, to `OD-17`, rested on the wrong sweep: *"#94's
+       claim on 17 is one half of the duplicate below, a decision it already has
+       to resolve"* is false, because #94's `OD-16` is `main`'s and its `OD-17`
+       is a single clean claim with nothing to resolve. So the two collided
+       against live heads. **This branch takes `OD-18` and #94 keeps 17**,
+       because #94's number is the older claim, is cited by number from
+       `ADR-0009`'s prose and from the instructions #112 must follow, and moving
+       it would cost more edits in more places than moving this one. If this
+       branch lands first the register skips 17 until #94 fills it — a **named,
+       short and already-owned** gap, which is not the anonymous kind the floor
+       argument below is about.
      - **One decision has two numbers.**
        [#94](https://github.com/hleserg/Attadipa/pull/94) and
        [#112](https://github.com/hleserg/Attadipa/pull/112) both carry *"A5 and
@@ -2474,7 +2526,9 @@ stale silently. The protocol is
        **OD-16** respectively. Merge both and nothing collides: the register
        simply holds one decision twice under two numbers, which is the outcome
        it is least able to survive, because both numbers are then citable and
-       neither is wrong.
+       neither is wrong. Still true after the corrected sweep above: #94's
+       `OD-17` and #112's `OD-16` are the same heading, the same date and the
+       same issue, and no duplicate-*number* check can see it.
      - **One branch leaves a hole.**
        [#126](https://github.com/hleserg/Attadipa/pull/126) numbers itself
        **OD-21** with nothing between `OD-15` and it. If it merges before the
@@ -2491,7 +2545,8 @@ stale silently. The protocol is
      is better than what the rest of this item predicted. It is also blocking —
      `ci.yml` runs `check_docs.py` in every job — so the next branch to bring a
      second `OD-16` takes `main` red rather than quietly duplicating a number.
-     Six branches are in that position as of the second sweep.
+     **Three** branches are in that position — #95, #97 and #112 — per the
+     corrected sweep above, not the six the first one reported.
 
      The other two failures have no counterpart there: a repeated *heading*
      under two numbers (#94/#112) passes a duplicate-number check by
@@ -2523,15 +2578,38 @@ stale silently. The protocol is
   **An earlier version of this bullet offered the `T-nnn` space as the working
   model — "the same problem the T-number space has and solves by convention" —
   and that is false right now.** The same all-branch sweep that found the
-  `OD-16` collision finds **`T-127` claimed by three unrelated tasks**:
-  `origin/docs/a1-a3-owner-decisions-54` (the anchor checker, **since merged**,
-  so it is on `main` at `:2345`), `origin/claude/generated-output-integrity-69`
-  (generated bytes, marked **DONE**) and `origin/claude/blocked-state-contract-129`
-  (the repair bound). A fourth branch,
+  `OD-16` collision finds **`T-127` naming two unrelated tasks**: the anchor
+  checker, which merged with
+  [#92](https://github.com/hleserg/Attadipa/pull/92) and is on `main` (find it
+  with `git grep -n "^### T-127" origin/main -- TASKS.md` rather than by line —
+  a line number into another branch's file is the dangling-citation failure this
+  very task is about), and the two-attempt repair bound on
+  `origin/claude/blocked-state-contract-129`. Reproduce:
+
+  ```
+  git grep -n "^### T-127" origin/docs/a1-a3-owner-decisions-54 \
+    origin/claude/generated-output-integrity-69 \
+    origin/claude/blocked-state-contract-129 -- TASKS.md
+  ```
+
+  **That command returns three hits and only two tasks, and the third hit is the
+  correction the fourteenth review round of
+  [#134](https://github.com/hleserg/Attadipa/pull/134) made.** This bullet said
+  *three unrelated tasks*, counting `generated-output-integrity-69`'s `T-127` as
+  a third — generated-byte checks. It was, when the bullet was written. That
+  branch has since merged `main` (`13d5c66`), **renumbered its own task to
+  `T-149`**, which is now on `main`, and inherited `main`'s `T-127` — so the
+  branch's two hits are one task each, and both anchor-checker hits are the same
+  task seen through two merges. A third branch,
   `origin/docs/a5-a6-owner-decisions-56`, carries #92's finding in substance as
   **`T-122`** — the same-finding-twice that a name collision is supposed to
-  prevent, and the names did not collide. Reproduce:
-  `git grep -n "^### T-127" origin/docs/a1-a3-owner-decisions-54 origin/claude/generated-output-integrity-69 origin/claude/blocked-state-contract-129 -- TASKS.md`
+  prevent, and the names did not collide.
+
+  **The conclusion is unchanged and the count is the point.** The `T-nnn` space
+  still does not solve this by convention; what the correction shows is that a
+  collision count goes stale the moment any claimant renumbers, silently, with
+  nothing red — which is why **P2** below asks for an allocator and not for
+  another sweep.
 
   **And this one is already armed.** `check_task_ids` fires on a duplicate
   `### T-nnn` and `ci.yml` runs `check_docs.py` in every job, so with #92 merged

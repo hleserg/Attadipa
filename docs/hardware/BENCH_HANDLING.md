@@ -13,7 +13,7 @@ desktop and has been seen sitting on it for hours at a time, **on USB**. It has
 never been observed on battery, and what it does when left idle is `UNKNOWN` —
 both refused further down and, until this round, asserted here in the file's
 first sentence, which is the one an agent quotes. **That is the state
-[OD-17](../research/OWNER_DECISIONS.md) chose, knowingly, over the safer one, and
+[OD-18](../research/OWNER_DECISIONS.md) chose, knowingly, over the safer one, and
 an agent does not ask for it to be undone** — it does not power the unit down and
 does not offer "unplug it" as the recommendation. What follows is why the state
 costs something, what the mitigation in force is, and the one thing an agent
@@ -65,7 +65,7 @@ assumed — see row 1 and *"What was tried"* below.
 
 | | Effect | Cost to development |
 |---|---|---|
-| **Screen timeout, shortest available** | removes the static image entirely | **none** — and whether the received unit offers one is `UNKNOWN`, unobserved, **not** absent. The launcher it boots carries a **`Settings`** app ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.9) and **OD-17** is the owner having already been inside it — «нашел **в настройках** яркость экрана». Nobody has enumerated the rest of that menu. This is the cheapest open question in the file: thirty seconds, and unlike the one below it needs no cable out. The likeliest upstream **has** been read — see *"What was tried"* — and its display page offers brightness and theme and no timeout, which makes "no" `LIKELY` and leaves the unit itself unobserved |
+| **Screen timeout, shortest available** | removes the static image entirely | **none** — and whether the received unit offers one is `UNKNOWN`, unobserved, **not** absent. The launcher it boots carries a **`Settings`** app ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.9) and **OD-18** is the owner having already been inside it — «нашел **в настройках** яркость экрана». Nobody has enumerated the rest of that menu. This is the cheapest open question in the file: thirty seconds, and unlike the one below it needs no cable out. The likeliest upstream **has** been read — see *"What was tried"* — and its display page offers brightness and theme and no timeout, which makes "no" `LIKELY` and leaves the unit itself unobserved |
 | **Brightness at minimum** | slows ageing at least in proportion to luminance; does not stop it | **not none** — it is the *plugged-in* state, and what that costs the cell is `UNKNOWN` rather than nothing: see **the cell** under *"What is not established"* |
 | **Unplug** | **cannot be assumed to stop it** — the cell is fitted and `VBAT1` has no disconnect switch, so removing USB does not remove power; what the factory image does on battery is `UNKNOWN`, unobserved | the unit is not reachable, *and* the cell carries the load instead of USB. Direction only: **how fast, and therefore whether it is left sitting at a low state of charge, depends on the same unread image behaviour the effect cell declines to lean on** |
 
@@ -96,10 +96,10 @@ be** the state to aim for: fully available, ageing nothing.
 
 Future tense on purpose. It is a statement about a firmware Attadipa has not
 written — row 1 is unavailable on the received unit, nothing of ours can address
-its display, and OD-17 fixes it at row 2. There is no route to that state today
+its display, and OD-18 fixes it at row 2. There is no route to that state today
 and this paragraph is not offering one.
 
-**[OD-17 — *The received unit stays powered, with its brightness at
+**[OD-18 — *The received unit stays powered, with its brightness at
 minimum*](../research/OWNER_DECISIONS.md), 2026-08-23:** the received unit stays powered and attached so that hardware runs
 are possible on demand, with the vendor firmware's brightness at minimum. The
 decision and its wording live there; this file only acts on it.
@@ -132,9 +132,13 @@ board to reset on open.** And:
 - **pyserial asserts both on `open()`**, so naive tooling resets the board just
   by attaching to watch it. Two RAM images were destroyed that way. Setting both
   `False` on the `Serial` object *before* `open()` is **`LIKELY` to be defeated**, not established: on Linux `cdc_acm`
-  raises DTR and RTS in the kernel when the tty is first *activated* — before
+  raises DTR and RTS in the kernel when the tty is first *activated*
+  (`acm_port_activate()`, `drivers/usb/class/cdc-acm.c`, setting
+  `ACM_CTRL_DTR | ACM_CTRL_RTS`) — before
   any userspace code runs — so a pyserial-side pre-set can only lower the lines
-  again *after* the assertion, not precede it. It has never been observed on
+  again *after* the assertion, not precede it. Reading the driver is **not** a
+  measurement on this unit: what it establishes is that the mechanism exists,
+  not that it fires here. It has never been observed on
   this unit either way, and proving it is T-116's third goal.
 - **the kernel drops both on the *last* close** of a `ttyACM`, so a tool exiting
   is itself a reset. *This* is the one that presented as `rst:0x15
@@ -147,8 +151,9 @@ paragraph is read as a blanket permission. **Hold-open has a bench result**:
 **Pre-open does not.** It is one asserted line in `WAVESHARE_RUNNING_OUR_CODE`
 §2.2, inside a list of things that turned out *not* to be the cause, and on
 Linux `cdc_acm` raises DTR and RTS in the kernel when the tty is first
-activated — before any userspace code runs — so a pyserial-side pre-set cannot
-precede the assertion, only lower the lines again after it.
+activated (`acm_port_activate()`) — before any userspace code runs — so a
+pyserial-side pre-set cannot precede the assertion, only lower the lines again
+after it.
 
 **`stty -hupcl` is a separate failure and fails for a separate reason.**
 `HUPCL` governs the lines being dropped on **close**, not raised on **open**, so
@@ -164,7 +169,7 @@ section headed by what an agent must not do, and on its own it reads like
 permission. What does not follow is that an agent may reboot the
 owner's device to save its screen — that is a trade to be asked for, not made.
 
-So the action is the owner's — and under OD-17 there is very little left to
+So the action is the owner's — and under OD-18 there is very little left to
 recommend: minimum brightness is already set, nothing of ours can blank the
 panel, and item 1 of that decision rules out offering "unplug it" as the
 recommendation. **One thing does remain, and it stays on the list until somebody
@@ -204,7 +209,7 @@ carrying alone. Say that it is sitting lit, name the mitigation in force
 as the brightness the owner themself set, and stop there rather than inventing an
 action to accompany it. **Unless this session reset the board** — the RAM-load
 route enters the ROM downloader, and opening a port does it by accident. Whether
-minimum brightness survives a reset is `UNKNOWN` (OD-17 item 2) — and it is
+minimum brightness survives a reset is `UNKNOWN` (OD-18 item 2) — and it is
 `UNKNOWN` on its own account, not because the vendor BSP brings the panel up at
 100 %, which is a fact about a program **this unit is not running** (§ above).
 After a reset the honest report is *"the unit was reset and the brightness is
@@ -238,7 +243,7 @@ them. On that page the maximum-luminance condition belongs to the *image-stickin
 test, whose pattern is an 8×8 chessboard; the **150 hrs** white-pattern lifetime
 is quoted with no luminance at all; and the **≥ 200 hours** figure is at white
 light and 600 cd/m², which the source nowhere calls that module's maximum. §3.5
-closes by saying none of the three is this panel's. So against OD-17's minimum
+closes by saying none of the three is this panel's. So against OD-18's minimum
 brightness they bound the risk **in direction, not in size** — sizing it would
 need two numbers this repository has not got: the luminance each figure was rated
 at, and this panel's luminance at minimum brightness. `51h WRDISBV` is a register
@@ -285,7 +290,7 @@ Two consequences follow, both from facts this repository already holds at
   sitting at a low state of charge"*. Plug back in below 3.0 V and precharge
   runs at whatever the factory image wrote; the POR figure is 125 mA, 0.42C on a
   ~300 mAh cell, four times the convention for a cell in exactly that state
-  (`BATTERY_UPGRADE` §6). It is not live in the state OD-17 actually holds the
+  (`BATTERY_UPGRADE` §6). It is not live in the state OD-18 actually holds the
   unit in — plugged and full, precharge does not run — which is why it is
   written down here rather than raised as an alarm.
 

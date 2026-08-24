@@ -132,17 +132,30 @@ EASTER_EGGS.md
 # real cost rather than a theoretical one: `docs/hardware/` is where bench
 # evidence goes AND a prefix the unattended sweep may merge, so an agent writing
 # a screenshot there would lose it inside a sweep-merged commit with nothing
-# red. The third line buys it back. It is safe because the hazard the second
-# line exists for is TOOL OUTPUT, and `tools/watch_control.py` writes relative
-# to the process working directory -- never under `docs/`. Recorded as a comment
-# and left to be obeyed until review of
-# https://github.com/hleserg/Attadipa/pull/134 asked why a rule nothing enforces
-# was thought to be enough.
+# red. The third line buys it back.
 #
-# All three verified in a scratch repository with `check-ignore`:
-# `artifacts/watch/a.png` ignored, `sim/artifacts/watch/b.png` ignored,
-# `docs/hardware/artifacts/watch/c.png` VISIBLE, `docs/hardware/artifacts/d.txt`
-# visible.
+# BOTH DIRECTIONS COST SOMETHING, and the third line is the one that has to say
+# so. Losing a screenshot costs an agent a re-run. Un-ignoring a directory under
+# `docs/` costs the other way round, and it costs more: `docs/hardware/` is on
+# ATTADIPA_MERGE_ALLOWED_PREFIXES, `docs/` is the published Pages root, and
+# T-117 item 1 records that nothing in `.github/workflows/` looks at what a pull
+# request adds in BYTES. So a `git add -A` that sweeps up a stray PNG puts
+# megabytes on `main` and on the public site with nothing red -- which is this
+# branch's own 3.3 MB accident with the unattended sweep added. The carve-out is
+# therefore as narrow as it can be made: ONE anchored directory, not a `**` glob.
+#
+# `!docs/**/artifacts/watch/` was the first spelling and it was too wide.
+# gitignore(5): a `/**/` matches zero or more directories, so it also un-ignores
+# `docs/artifacts/watch/` -- and `cd docs && python3 ../tools/watch_control.py
+# screenshot` lands exactly there. That is the same CWD assumption the paragraph
+# above faults `/artifacts/` for making about `sim/`, one directory over. Found
+# by review of https://github.com/hleserg/Attadipa/pull/134, round fourteen.
+#
+# Verified in a scratch repository with `check-ignore`, both spellings, before
+# and after: `artifacts/watch/a.png` ignored, `sim/artifacts/watch/b.png`
+# ignored, `docs/hardware/artifacts/watch/c.png` VISIBLE under both --
+# and `docs/artifacts/watch/e.png` VISIBLE under `docs/**/`, ignored under the
+# anchored spelling, which is the hole and its close.
 /artifacts/
 **/artifacts/watch/
-!docs/**/artifacts/watch/
+!docs/hardware/artifacts/watch/
