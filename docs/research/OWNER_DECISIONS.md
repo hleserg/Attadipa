@@ -1279,23 +1279,50 @@ ACL is revisited.
 
 **The raise gesture is accelerometer-only, on both boards, and that is a design
 constraint, not an implementation preference.** The T-Watch's BMA423 has **no
-gyroscope** ([HARDWARE_MATRIX.md:30, :86](HARDWARE_MATRIX.md)); the Waveshare's
-QMI8658 does. A raise gesture built on gyro data would therefore be a feature
-that exists on one board and silently does not on the other — precisely what
-`core/` and `apps/` are not allowed to know, per this file's architecture
-paragraph. Built on the accelerometer's gravity vector alone — the same
+gyroscope** ([HARDWARE_MATRIX.md:30, :100](HARDWARE_MATRIX.md)); the Waveshare's
+QMI8658 does. Built on the accelerometer's gravity vector alone — the same
 technique watches have always used for raise-to-wake, because the accelerometer
 is the half of an IMU cheap enough to leave running — it is one implementation
-and both boards answer yes. The gyroscope stays available to applications that
-ask for it explicitly (it is real hardware, on one board, and the capability
-registry already has a seat for that), but no *display-wake* logic may depend
-on it existing.
+and both boards answer yes. No *display-wake* logic may depend on a gyroscope
+existing.
+
+> **Correction to this paragraph's supporting argument, 2026-08-24. The
+> decision is unchanged and is not an agent's to change; two technical claims
+> under it were wrong and are corrected here rather than left for the next
+> reader to implement against.**
+>
+> It said a gyro-based gesture *"would be a feature that exists on one board and
+> silently does not on the other — precisely what `core/` and `apps/` are not
+> allowed to know."* That inverts the architecture. Hardware that differs
+> between boards **is** the design: `platform/src/board_profiles.cpp:55` puts
+> `HF::Gyroscope` in the Waveshare's feature set and pointedly not in the
+> T-Watch's, exactly as it does for `Radio`, `GnssReceiver`, `IrTransmitter`
+> and `SdCard`, and the comment there says each absence is load-bearing. What
+> `core/` and `apps/` may not know is **which board** they are on — not that
+> boards differ. Read literally, the original sentence indicts ADR-0004 and
+> ADR-0008.
+>
+> The real reason accelerometer-only is right is the one the decision already
+> rests on and states above: display-wake is the first leg of the path to the
+> screen, so it has to be **one implementation that both boards answer yes to**,
+> not a capability that quietly degrades on the older one.
+>
+> It also said the gyroscope *"stays available to applications that ask for it
+> explicitly ... the capability registry already has a seat for that."* There is
+> no seat. `core/include/attadipa/core/capability.h` holds thirteen entries and
+> none is a gyroscope; `Gyroscope` is a **platform** `HardwareFeature`
+> (`platform/include/attadipa/platform/hardware_feature.h:36`), and that
+> header's own comment says an application which includes it fails to build —
+> ADR-0007 §5, pinned by a compile-fail test. So an application cannot ask for
+> the gyroscope today by any route. Making it askable means adding a capability
+> and deciding what it answers on a board without one; that is unbuilt work, not
+> an existing seat.
 
 **The worry the answer came with, checked against the schematic and settled in
 the feature's favour.** Whether a raise gesture forces the SoC to poll the IMU
 over I2C with the screen off — turning a low-power feature into a moderate-power
 one — turns on whether the QMI8658's interrupt reaches a wake-capable GPIO, and
-`HARDWARE_MATRIX.md:318` recorded no interrupt line at all. Re-reading the
+`HARDWARE_MATRIX.md:346` recorded no interrupt line at all. Re-reading the
 schematic directly, cross-checked against two independently-known-true facts on
 the same sheet (the FT3168 touch interrupt on GPIO 38, the native USB pins on
 GPIO 19/20) and independently re-verified by a second pass: **INT1 (package pin
@@ -1323,7 +1350,7 @@ also unmeasured.
 2. A raise-gesture implementation reads the accelerometer channel only, on
    both boards, through `Capability::MotionSensing` or its wake-source
    equivalent — never a gyroscope, and never a board check.
-3. [HARDWARE_MATRIX.md:318](HARDWARE_MATRIX.md), [OPEN_QUESTIONS.md H5 and
+3. [HARDWARE_MATRIX.md:346](HARDWARE_MATRIX.md), [OPEN_QUESTIONS.md H5 and
    H16](OPEN_QUESTIONS.md), and the new task filed for this feature
    ([TASKS.md T-089](../../TASKS.md)) carry this forward; none of it repeats
    the extraction gap the schematic re-read just closed.

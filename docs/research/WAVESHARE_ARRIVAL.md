@@ -247,7 +247,7 @@ Attadipa wrapper that re-exports either name hands the next reader the same trap
 The question this closes: whether a raise-of-wrist gesture built on the
 Waveshare's IMU can wake the SoC from deep sleep on an interrupt, or has to
 poll the IMU over I2C while the SoC stays up — the difference between a
-low-power feature and a moderate-power one. `HARDWARE_MATRIX.md:318` recorded
+low-power feature and a moderate-power one. `HARDWARE_MATRIX.md:346` recorded
 bus and address straps for the QMI8658 only, with no interrupt line at all,
 which is an extraction gap rather than a finding of absence — the same gap the
 extraction already had on the button GPIOs (D5).
@@ -267,9 +267,9 @@ y-coordinate, one continuous conductor. `GPIO21` appears a third time, as the
 SoC's own pin name, and a fourth time in the board's pin-allocation table
 (`GPIO21 | QMI_INT1` at y = 80.75) — printed on the same sheet as, and using the
 identical idiom as, two already-`VERIFIED` facts: `GPIO38 | TP_INT` (the FT3168
-touch interrupt, `HARDWARE_MATRIX.md:316`) and the `GPIO19`/`GPIO20` →
+touch interrupt, `HARDWARE_MATRIX.md:344`) and the `GPIO19`/`GPIO20` →
 `USB_N`/`USB_P` pair through the 22 Ω series resistors
-(`HARDWARE_MATRIX.md:331`). Reproducing two independently-known facts by the
+(`HARDWARE_MATRIX.md:359`). Reproducing two independently-known facts by the
 same method, on the same sheet, is what makes this a schematic reading rather
 than a coordinate coincidence. `GPIO21` occurs nowhere else in the document, so
 nothing else claims that pin.
@@ -279,7 +279,7 @@ net label `QMI_INT2` occurs exactly **once** in the whole PDF, at the pin
 itself (609.6, 385.5) — no second occurrence, so no alias to a GPIO exists to
 find. The pin's wire instead runs to test point `TP15`
 (`PITP1501`/`PIU509` share y = 387.1). Same shape as the T-Watch's BMA423
-INT2, **bonded out but not routed** (`HARDWARE_MATRIX.md:86`) — on both boards
+INT2, **bonded out but not routed** (`HARDWARE_MATRIX.md:100`) — on both boards
 the IMU ships with one usable interrupt line, not two.
 
 **GPIO21 is wake-capable.** ESP-IDF, `esp32s3` target, *System API → Sleep

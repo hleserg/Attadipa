@@ -2120,7 +2120,7 @@ stale silently. The protocol is
   traces the Waveshare's QMI8658 INT1 to ESP32-S3 GPIO 21 — inside the SoC's
   RTC-IO range, so `esp_sleep_enable_ext0/1_wakeup()` can arm it — and the
   T-Watch's BMA423 INT1 is already `VERIFIED` on GPIO 14, the same range on the
-  same SoC family (`HARDWARE_MATRIX.md:86`). Both IMUs give exactly one usable
+  same SoC family (`HARDWARE_MATRIX.md:100`). Both IMUs give exactly one usable
   interrupt line (the second is bonded out on the T-Watch, routed only to a
   test point on the Waveshare), and on the T-Watch that one line is already
   shared six ways by LilyGo's own board support (step counter, any-motion,
@@ -2129,8 +2129,46 @@ stale silently. The protocol is
 - **What must not be assumed:** that INT1's polarity or push-pull/open-drain
   configuration is known — it is not (H16); that the IMU rail survives SoC deep
   sleep — H8 is `CONFLICTING`, not answered; that button GPIOs are known — the
-  extraction never resolved them (D5, `HARDWARE_MATRIX.md:325`), so the button
+  extraction never resolved them (D5, `HARDWARE_MATRIX.md:353`), so the button
   wake source may need its own schematic pass first.
+- **Of OD-20's three wake sources, only one has a traced deep-sleep path on
+  the Waveshare, and it is the raise gesture.** Checked against the matrix
+  rather than assumed:
+  - **Touch cannot wake it from deep sleep.** `HARDWARE_MATRIX.md:344` puts
+    the FT3168 interrupt on **GPIO 38**, and the RTC-IO range this task relies
+    on for INT1 is `0`—`21`. 38 is outside it.
+    `esp_sleep_enable_gpio_wakeup()` reaches arbitrary GPIOs in **light**
+    sleep only — so "touch wakes it" and "it deep-sleeps" cannot both hold on
+    this board. The T-Watch genuinely differs: its touch interrupt is GPIO 16
+    (`:97`), inside the range. Light sleep is not free either:
+    [ESP32S3_ERRATA_V02.md:52](docs/research/ESP32S3_ERRATA_V02.md) records
+    RTC-126 as light-sleep-only with its cost **UNKNOWN, NOT MEASURED**.
+  - **The button has no traced wake path at all.** `HARDWARE_MATRIX.md:353`
+    leaves the Waveshare's button GPIOs unresolved (D5), and
+    [WAVESHARE_ARRIVAL](docs/research/WAVESHARE_ARRIVAL.md) item 14 records
+    that `AXP_IRQ` appears in **no row** of the schematic GPIO table — the
+    same table §3.2a used to settle INT1. On the T-Watch the power button
+    reaches the SoC only as a PMU interrupt (`:113`), so "there is a button"
+    and "the button can wake it" are again different sentences.
+  - **Why that reaches past battery life.** Display-off-by-default makes the
+    wake path the first leg of the SOS path, which final §88 requires to have
+    *"no dangerous delay"* and §49 puts in Child Mode. If the only proven
+    deep-sleep wake is a raise gesture, the fallback for someone who cannot
+    perform one on demand is unspecified. **This task must state which state
+    the device is in when SOS must be reachable, or say that it is deferred
+    and to what.**
+- **Two wake sources with opposite trigger levels cannot share one `ext1`
+  mask.** `ext0` takes one pin; `ext1` takes one mask and **one level mode for
+  all of it**. This repository already holds the fact and had not carried it
+  here: [meshcore-1.17-review.md:393](docs/upstream/meshcore-1.17-review.md)
+  records from upstream #1347, on an ESP32-S3, that *"a button and DIO1 cannot
+  share an ext1 mask because they need opposite trigger levels"*, and marks it
+  `ADAPT` — *"the ext1-polarity fact is a hardware fact worth carrying"*. A
+  button to ground is active-low by construction; INT1's active level is
+  `UNKNOWN` (H16). Arming both in one `esp_sleep_enable_ext1_wakeup()` call
+  fails **silently**: the mismatched source is simply never a wake source, or
+  it idles at the trigger level and wakes continuously. Neither raises an
+  error.
 - **Acceptance:** a host test exercising all three wake sources through the
   same code path with a fake board, including the case where the board reports
   `MotionSensing` as `Degraded`; a design note or ADR update stating the
