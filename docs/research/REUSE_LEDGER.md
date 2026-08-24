@@ -1038,6 +1038,18 @@ that the policy is ours and explicit. There is no library to reach for and
 reaching for one would have been the mistake this entry already rejected.
 `REIMPLEMENT` stands, unchanged.
 
+**How a stored verdict says "not evaluated" (issue #164, 2026-08-23):**
+`REUSE` — internal, and no upstream candidate was reached for. The question is
+how a diagnostics field holds the absence of a verdict, and this repository had
+already answered it twice: `std::optional<T>` throughout `DiagnosticsSnapshot`
+for facts nobody produced, and `ReceiverIndication::{Unknown, Unsupported,
+None}` for the three-state case OD-5 forced. `GnssStatus::trust` became
+`std::optional<TrustState>` on that precedent rather than on a new dependency.
+Nothing external offers a better answer to a one-field representation question,
+so nothing external was examined and no licence is involved. Recorded here
+because "we already had this" is a reuse decision and an unrecorded one is
+indistinguishable from not having looked.
+
 ---
 
 ### The replayable navigation rig
