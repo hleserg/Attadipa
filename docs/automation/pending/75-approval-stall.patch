@@ -1,3 +1,16 @@
+diff --git a/.github/tests/gh-api-usage-test.sh b/.github/tests/gh-api-usage-test.sh
+index 8503589..eb03488 100755
+--- a/.github/tests/gh-api-usage-test.sh
++++ b/.github/tests/gh-api-usage-test.sh
+@@ -789,7 +789,7 @@ FIXTURE
+ # GITHUB_STEP_SUMMARY IS REDIRECTED AT A SCRATCH FILE, and that is not tidiness.
+ # `out=$("$@" 2>&1)` captures stdout and stderr; a `>> "$GITHUB_STEP_SUMMARY"`
+ # redirection is neither. Actions sets that variable for every step and
+-# `ci.yml:360` runs this suite as an ordinary one, so without this every CI run
++# `ci.yml:371` runs this suite as an ordinary one, so without this every CI run
+ # -- every pull request, every push to main -- ended with four stale-parked-patch
+ # lines in its job summary, naming a `mktemp` directory the EXIT trap had already
+ # deleted. The job summary and the annotation are the ONLY channel 1c has,
 diff --git a/.github/workflows/agent-queue-watchdog.yml b/.github/workflows/agent-queue-watchdog.yml
 index 69dea3d..b92271f 100644
 --- a/.github/workflows/agent-queue-watchdog.yml

@@ -38,6 +38,19 @@ and any fingerprinted citation that the insertion pushes down the file, which
 that holds the citation rather than the workflow that moved it. `git apply`
 then `python3 tools/docs/check_docs.py .` before parking a patch says which.
 
+**And a citation in a `.sh` or a `.yml` will never be reported at all**, which
+is the case that has to be carried by hand. `check_docs.py` walks `*.md` and
+nothing else, so a `ci.yml:NNN` written in a shell comment is invisible to the
+one tool that would otherwise catch it: the landing commit is green and the
+citation is wrong. `75-approval-stall.patch` carries exactly one of these —
+`.github/tests/gh-api-usage-test.sh`'s own comment citing the `ci.yml` line that
+runs it, bumped from `:360` to `:371` in the same patch that inserts eleven
+lines above it. Found in the fourth review round of
+[#180](https://github.com/hleserg/Attadipa/pull/180), where the patch already
+bumped all three of its `.md` citations correctly and had missed the one nothing
+would report. **Before parking a patch, grep the non-Markdown files it touches
+for a citation into a file it moves.**
+
 **CI checks that it still applies**, on every push, in
 `.github/tests/gh-api-usage-test.sh`
 ([`.github/workflows/ci.yml:360`](../../../.github/workflows/ci.yml) "bash .github/tests/gh-api-usage-test.sh") — `git apply --check` over
@@ -104,6 +117,66 @@ change still makes sense.
 
 This directory being empty is the normal state. If it is not empty, something is
 waiting on a person.
+
+## Two things the guard does on purpose, and only the owner may change either
+
+Both were found in the fourth review round of
+[#180](https://github.com/hleserg/Attadipa/pull/180) and both are written down
+rather than quietly decided, because each puts a red on `main` **and every open
+pull request at once** — and widening or narrowing what the guard fails on is
+the same class of decision as the unattended-merge allowlist, which
+[`CLAUDE.md`](../../../CLAUDE.md) already reserves to the owner.
+
+**1. Two parked patches that both edit `ci.yml` will red the queue when the
+first one lands.** The fatal arm covers `.github/workflows/`, and that is
+correct as far as it goes: nobody but the owner can move workflow context, so a
+patch whose workflow half has drifted really is wrong now. But *landing another
+parked patch* moves that context too, and two patches each inserting a step into
+`ci.yml` is the natural shape — a new test script needs a line there, which is
+the stated reason patches get parked at all. Land the first and the second goes
+`stale-workflow`, which is red on `main`, on every open pull request, and
+therefore on the orchestrator merge and on
+[`pr-merge-sweep.yml`](../../../.github/workflows/pr-merge-sweep.yml), both of
+which are gated on green.
+
+It is not a deadlock — the pull request that rebuilds the second patch has a
+green tree of its own — but everything else is red while somebody does it.
+"Rare" is a claim nobody has established; "small audience" is the one that is
+true, and they are different sentences. The docs half was made a warning to
+avoid exactly this radius. **The options are: leave it fatal; make it a warning
+like the other half; or keep it fatal and require that only one patch at a time
+may carry a `ci.yml` hunk.** No agent picks between those.
+
+**2. A placeholder file in this directory reds the whole queue.** Anything here
+that is not a `*.patch` and not a `README.md` fails the scan — `.gitkeep`,
+`.gitignore`, `NOTES.md`, a stray `README.ru.md`. That is deliberate: the
+enumeration's promise is that it opens everything parked here, and passing over
+a file it does not recognise is how the guard turns itself off. It is also a
+trap, because this file says the directory is empty in normal operation and git
+cannot track an empty directory, so `.gitkeep` is the obvious reach. Worse, the
+apply half returns *silently* while that red is being diagnosed, so half the
+guard is off and nothing says so.
+
+The behaviour is now pinned by a fixture either way
+(`.github/tests/gh-api-usage-test.sh`, *"a .gitkeep beside a valid patch fails
+the queue"*), so a change to it is a change somebody chose. **The options are:
+leave it; allow a named placeholder such as `.gitkeep` explicitly; or warn on an
+unrecognised file rather than failing.**
+
+> **For the owner — two questions, and both can wait.**
+> Neither is urgent: nothing is broken today, both are recorded so that the day
+> one of them fires, nobody has to reconstruct why. Answer them whenever the
+> queue next comes up.
+>
+> **По-русски.** Два вопроса к тебе, оба не срочные. Ничего сейчас не сломано —
+> это записано, чтобы в день, когда оно выстрелит, никто не разбирался заново.
+> Первый: два припаркованных патча, оба правящие `ci.yml`, — когда садится
+> первый, второй краснеет, и краснеет он на `main` и на всех открытых PR сразу.
+> Оставить как есть (это честно: патч действительно устарел), сделать
+> предупреждением, или запретить больше одного патча с правкой `ci.yml`
+> одновременно? Второй: любой посторонний файл в `pending/` (например
+> `.gitkeep`) роняет всю проверку. Оставить, разрешить `.gitkeep` явно, или
+> сделать предупреждением? Ответ «оставить как есть» — полный ответ на оба.
 
 ## Waiting now
 

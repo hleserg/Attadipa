@@ -535,6 +535,38 @@ stale silently. The protocol is
   is not, and one correctly fingerprinted on its own line is not. Reverting the
   fix turns the new cases red.
 
+### T-164 · The gh-usage rules strip `#` without knowing what a quote is
+- **Priority:** P3 — a false negative in a guard, which is worse than it sounds
+  and rarer than it sounds. Not urgent: no `gh api` in this repository carries a
+  `#` inside a quoted argument today, and the whole point of filing it is that
+  the next one will not announce itself.
+- **Dependencies:** none. `.github/tests/gh-api-usage-test.sh` only.
+- **Goal.** Both rules in that file — `offenders`, over the workflows, and
+  `patch_offenders`, over a parked patch's post-image — begin by stripping from
+  the first `#` to end of line, so that a comment cannot look like a call. `awk`
+  has no idea about shell quoting, so a `gh api` whose URL fragment or whose
+  `jq` program contains a `#` is truncated at it. If the truncated tail is where
+  the `--slurp` or the `--jq` lived, the pair is no longer visible and the call
+  **reads as clean**. That is a swallowed signal, which is the shape this file's
+  own header names as its reason for existing, one level down: the guard reports
+  green about a call it did not finish reading.
+- **Why it is filed rather than half-fixed.** Doing it properly means tracking
+  single and double quotes across line continuations — a small shell-quoting
+  parser, not a `sub`. A partial fix (say, only stripping a `#` preceded by
+  whitespace) trades one wrong answer for another and is harder to reason about
+  than the honest limit. Found and named in the fourth review round of
+  [#180](https://github.com/hleserg/Attadipa/pull/180), which classed it as
+  inherited and not a blocker; the limit is now written at both call sites.
+- **Acceptance:** a fixture whose `gh api` carries a `#` inside single quotes
+  *and* a `--slurp`/`--jq` pair after it is flagged, and a fixture whose `#`
+  really does start a comment is still left alone — both directions, because a
+  quoting parser that over-strips reds correct workflows and a guard that reds
+  correct work gets routed around. Whatever is not covered stays written down at
+  the call site rather than silently narrowed. The two rules must keep agreeing:
+  a divergence between the workflow scan and the patch scan is worse than a
+  limit they share.
+- **Hardware required:** no
+
 ### T-157 · Prose cites a check by number and nothing reconciles the number
 - **Priority:** P3 — small, and it has already produced two wrong instructions.
 - **Dependencies:** none. `tools/docs/` only.

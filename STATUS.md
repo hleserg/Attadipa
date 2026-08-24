@@ -1255,13 +1255,22 @@ four more things at no cost:
   scan's on purpose**, and it was `.github/*` until the third review round of
   #180 found that `scripts/` and `tests/` are agent-writable — 32 of 262 commits
   since 2026-08-01 touch them — so the wide form put two directories any branch
-  edits on the fatal side. **49 cases** — the suite's own
-  `49 passed, 0 failed`; only 46 print an `ok` line, because three run with
-  their stdout captured to assert on the job-summary file instead. Both halves
-  mutation-verified against the real parked patch, in both directions: each of
-  the four fixes was reverted and the case that binds it went red, and the
-  queue-stopping scenario was reproduced end to end before the split was
-  written.
+  edits on the fatal side. **60 cases** — the suite's own
+  `60 passed, 0 failed` — of which **55 are assertions and five are not**, and
+  the difference is worth stating precisely because an earlier version of this
+  paragraph got it wrong in a way that flattered the number. The five come from
+  three `quietly` calls, which run a shipping check in the current shell to
+  assert on the job-summary file it writes; that check calls `ok` itself, so
+  those five passes are **the code under test reporting on a fixture**, not an
+  expectation anybody checked. `quietly` holds their output, which is why the
+  transcript shows 55 `ok` lines and the total says 60. Both halves
+  mutation-verified against the real parked patch, in both directions: each fix
+  was reverted and the case that binds it went red, the queue-stopping scenario
+  was reproduced end to end before the split was written, and **two fixtures
+  were rewritten because the mutation did not redden** — a marker on `+++` that
+  `@@` already covered, and a spaced-filename fixture parked with a patch that
+  fits, where reading the file and not reading it produce the same transcript.
+  A test that survives its own mutation is not binding the code.
   The general lesson is the one that produced this: **dispatch a new
   scheduled workflow once by hand instead of waiting for its cron**, because
   reading it had already passed it.

@@ -48,12 +48,32 @@ root=$(cd "$here/../.." && pwd) || exit 1
 
 pass=0; fail=0
 
+# The marker `patch_postimage` emits where a hunk or a file ends, so that
+# `patch_offenders` can reset a line continuation instead of carrying it across.
+# A literal control byte rather than a word: it has to be something no patch can
+# contain, because a post-image line that happened to equal it would silently
+# break a real invocation in half.
+kPatchBoundary=$'\034'
+
 ok()   { pass=$((pass + 1)); printf 'ok   %s\n' "$1"; }
 bad()  { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
 
 # Join shell line continuations so one `gh api` invocation is one record,
 # strip comments, then look for the forbidden pair inside a single invocation.
 # `awk` rather than `grep` because the flags are routinely on different lines.
+#
+# KNOWN LIMIT, and it points the safe way only by accident. `sub(/#.*$/, "")`
+# does not know about quoting, so a `gh api` whose URL fragment or whose `jq`
+# program contains a `#` is truncated at it -- and if the truncated tail held
+# the `--slurp` or the `--jq`, the pair is no longer visible and the call reads
+# as clean. That is a FALSE NEGATIVE: a swallowed signal, which is the shape
+# this file's own header names as its reason for existing. It has never fired
+# (no `gh api` in this repository carries a `#` inside a quoted argument) and
+# fixing it properly means a shell-quoting parser rather than a `sub`, so it is
+# written down and filed as T-164 instead of half-fixed here. `patch_offenders`
+# inherits it, deliberately: the two rules must agree, and a divergence between
+# them would be worse than a limit both share. Named in the fourth review round
+# of #180.
 offenders() {
   awk '
     { sub(/[[:space:]]*#.*$/, "") }
@@ -92,7 +112,7 @@ offenders() {
 # knows how to fail on a non-zero exit. Found in the second review round of
 # #180.
 patch_postimage() {
-  awk '
+  awk -v boundary="$kPatchBoundary" '
     /^\+\+\+ /{
       seen_target = 1
       target = $2
@@ -101,7 +121,22 @@ patch_postimage() {
       next
     }
     /^--- /  { next }
-    /^@@/    { next }
+    # A HUNK HEADER IS A BOUNDARY, not nothing. It used to be skipped outright,
+    # which meant a hunk whose last added line ended in a backslash carried its
+    # continuation into the next hunk -- and, since a new file in a patch is
+    # reached through a hunk header too, into the next FILE -- so two unrelated
+    # lines were joined into one that reads as a forbidden invocation.
+    # `patch_offenders` is fatal precisely because it does not drift on its own,
+    # so a false positive there is expensive. Emitting a marker rather than
+    # dropping the line is what lets the reader reset.
+    #
+    # This is the ONLY boundary emitted, and that is deliberate. A marker on
+    # `+++` as well was written first and then removed: every file header in a
+    # valid patch is followed by a hunk header, so the `@@` below already resets
+    # at a file boundary, and mutating the `+++` marker away left the suite
+    # green -- a line no test can bind is a line that is not doing anything.
+    # Found in the fourth review round of #180.
+    /^@@/    { printf "%d\t%s\n", FNR, boundary; next }
     !want    { next }
     /^[+ ]/  { text = $0; sub(/^./, "", text); printf "%d\t%s\n", FNR, text }
     END      { if (!seen_target) exit 3 }
@@ -122,10 +157,11 @@ patch_offenders() {
   # refusal survives somebody removing `pipefail`, which is one line at the top
   # of a 700-line file and no test would notice.
   image=$(patch_postimage "$patch") || return 3
-  printf '%s\n' "$image" | awk -v patch="$patch" '
+  printf '%s\n' "$image" | awk -v patch="$patch" -v boundary="$kPatchBoundary" '
     {
       n = $0; sub(/\t.*$/, "", n)
       t = $0; sub(/^[0-9]+\t/, "", t)
+      if (t == boundary) { line = ""; next }
       sub(/[[:space:]]*#.*$/, "", t)
       if (line == "") first = n
       line = line t
@@ -195,6 +231,17 @@ parked_patches() {
     printf 'MISSING\n'
     return
   fi
+  # `find ... 2>/dev/null` alone threw away the one thing that distinguishes a
+  # directory with nothing in it from a directory this process may not read: the
+  # exit status. An unreadable `pending/` came back as an empty enumeration, and
+  # both halves of the guard then reported themselves green about a queue
+  # neither had opened -- the `|| VAR=""` shape one level down from where this
+  # file already refuses it. Found in the fourth review round of #180.
+  local listing
+  if ! listing=$(find "$dir" -type f 2>/dev/null | sort); then
+    printf 'UNREADABLE\n%s (find could not read all of it) (not a .patch)\n' "$dir"
+    return
+  fi
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     case "$f" in
@@ -204,7 +251,7 @@ parked_patches() {
       *)           bad_entry="$bad_entry$f (not a .patch)"$'\n' ;;
     esac
   done <<EOF
-$(find "$dir" -type f 2>/dev/null | sort)
+$listing
 EOF
   [ -z "$bad_entry" ] || printf 'UNREADABLE\n%s' "$bad_entry"
   [ -z "$good" ] || printf '%s' "$good"
@@ -229,8 +276,23 @@ parked_bad_entries() {
 # when it breaks -- see 1c.
 patch_apply_states() {
   local dir=$1 tree=$2 patch err
-  for patch in $(parked_patches "$dir" | grep -v '^MISSING$\|^UNREADABLE$\|(in a subdirectory)$\|(not a .patch)$'); do
-    [ -e "$patch" ] || continue
+  # `for patch in $(...)` split every path on whitespace, so a parked patch whose
+  # name contains a space became three words, each of which failed the `[ -e ]`
+  # below and was skipped IN SILENCE -- and the caller then printed that every
+  # parked patch still applies, about a file nothing had opened. `read -r` is
+  # what makes the enumeration's promise true. Found in the fourth review round
+  # of #180; `parked-patch-with-a-space` is the fixture.
+  while IFS= read -r patch; do
+    [ -n "$patch" ] || continue
+    # NOT a silent `continue`. The enumeration named this path a moment ago, so
+    # its absence now is either a race or a defect in the enumeration, and both
+    # are things somebody has to see. `corrupt` is the right state: it is fatal,
+    # and its remedy is never `git rm`.
+    if [ ! -e "$patch" ]; then
+      printf 'corrupt\t%s\t%s\n' "$patch" \
+        "the enumeration named this path and it is not there"
+      continue
+    fi
     # `.github/workflows/*` and NOT `.github/*`. The whole rationale for making
     # this half fatal is at 1c: "no agent token can write those files." That is
     # true of `.github/workflows/`, which the `workflows` permission gates, and
@@ -255,7 +317,9 @@ patch_apply_states() {
         printf 'drifted\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | refused_files)"
       fi
     fi
-  done
+  done <<EOF
+$(parked_patches "$dir" | grep -v '^MISSING$\|^UNREADABLE$\|(in a subdirectory)$\|(not a .patch)$')
+EOF
 }
 
 files=$(find "$root/.github/workflows" -name '*.yml' -o -name '*.yaml' | sort) || exit 1
@@ -293,15 +357,27 @@ guard covers it:"
       parked_bad_entries "$entries" | sed 's/^/       /'
       return ;;
   esac
-  for patch in $entries; do
-    [ -e "$patch" ] || continue
+  # `for patch in $entries` split on whitespace here too, and the `[ -e ]` that
+  # followed turned each fragment into a silent skip -- so a parked patch whose
+  # name contains a space was never opened and this printed `ok no parked patch
+  # would deploy ...` about it. The mirror of the same defect in
+  # `patch_apply_states`; both fixed in the fourth review round of #180.
+  while IFS= read -r patch; do
+    [ -n "$patch" ] || continue
+    if [ ! -e "$patch" ]; then
+      bad "the enumeration named $patch and it is not there -- something moved \
+under this guard while it ran, and skipping it silently is what this file refuses"
+      return
+    fi
     if ! found=$(patch_offenders "$patch"); then
       bad "could not scan $patch -- treating an unreadable patch as clean is the \
 || VAR=\"\" shape this file exists to refuse"
       return
     fi
     [ -n "$found" ] && all="$all$found"$'\n'
-  done
+  done <<EOF
+$entries
+EOF
   if [ -z "$all" ]; then
     ok "no parked patch would deploy --slurp together with --jq or --template"
   else
@@ -387,14 +463,18 @@ check_parked_applies() {
     printf '       already landed? git rm it -- pending/README.md says a patch is deleted in\n'
     printf '       the commit that applies it. Not landed? rebuild it against the current\n'
     printf '       tree; do not hand-edit the hunk headers.\n'
-  elif [ -z "$drifted" ] && [ -z "$corrupt" ]; then
-    # `-z "$corrupt"` because the corrupt branch above is its own `if`, outside
-    # this chain: without it a malformed patch printed FAIL and then this printed
-    # `ok every parked patch still applies` directly underneath, about a file
-    # nothing had read. Third review round of #180.
-    ok "every parked patch still applies to the tree"
-    return
+  elif [ -n "$corrupt" ]; then
+    # NOTHING is claimed green while a patch is unparseable, and the guard sits
+    # on the chain rather than on one branch of it. Round three put `-z
+    # "$corrupt"` on the first `elif` only, which left the `else` below free to
+    # print `ok every parked patch still applies under .github/workflows/`
+    # directly under `FAIL a parked patch is malformed` -- the same wrong
+    # transcript one branch over, and it survived because the corrupt fixture
+    # held ONLY a corrupt patch, so the `else` was never reached. Fourth review
+    # round of #180; `corrupt-and-drifted` is the fixture that reaches it.
+    :
   elif [ -z "$drifted" ]; then
+    ok "every parked patch still applies to the tree"
     return
   else
     ok "every parked patch still applies under .github/workflows/, the half nobody here can rebuild"
@@ -530,7 +610,36 @@ for f in adds-bad adds-bad-continued; do
     bad "the patch scan misses $f -- a parked patch would deploy a call gh rejects"
   fi
 done
-for f in removes-bad adds-good documents-the-rule; do
+# A continuation that ENDS A HUNK must not be carried into the next one, and a
+# continuation that ends a FILE must not be carried into the next file. Both were
+# live until the fourth review round of #180: `patch_postimage` dropped `@@` and
+# `+++` lines outright, so `patch_offenders` never learned that its record had
+# ended and joined two unrelated lines into one that reads as a forbidden call.
+# `patch_offenders` is FATAL -- 1b's rationale is that it does not drift on its
+# own -- so a false positive here reds a correct patch and there is no warning
+# tier to fall back on. Both fixtures are correct patches: neither hunk deploys
+# `--slurp` together with `--jq`, and the pairing exists only across the seam.
+cat > "$probe/continuation-crosses-hunk.patch" <<'FIXTURE'
+--- a/.github/workflows/x.yml
++++ b/.github/workflows/x.yml
+@@ -1,1 +1,2 @@
++          gh api "repos/x/y/a" --paginate --slurp \
+@@ -20,1 +21,2 @@
++          --jq '.[]'
+FIXTURE
+cat > "$probe/continuation-crosses-file.patch" <<'FIXTURE'
+--- a/.github/workflows/x.yml
++++ b/.github/workflows/x.yml
+@@ -1,1 +1,2 @@
++          gh api "repos/x/y/a" --paginate --slurp \
+--- a/.github/scripts/y.sh
++++ b/.github/scripts/y.sh
+@@ -1,1 +1,2 @@
++          --jq '.[]'
+FIXTURE
+
+for f in removes-bad adds-good documents-the-rule \
+         continuation-crosses-hunk continuation-crosses-file; do
   if [ -z "$(patch_offenders "$probe/$f.patch")" ]; then
     ok "the patch scan leaves $f alone"
   else
@@ -763,8 +872,15 @@ fi
 # run the check with `root` pointed at the fixture parent instead, which is the
 # same relationship the real patch has to the real repository.
 : > "$tree/summary"
-( root=$tree; GITHUB_STEP_SUMMARY="$tree/summary" \
-  check_parked_applies "$tree/both-halves" "$tree" >/dev/null 2>&1 )
+# `root` is overridden in the CURRENT shell and restored, not in a subshell. A
+# subshell here threw away both halves of what `quietly` exists to prevent: a
+# `bad` inside incremented `fail` in a child that then exited, and `>/dev/null
+# 2>&1` discarded the message that would have said so -- two lines below the
+# comment saying exactly that. Found in the fourth review round of #180.
+saved_root=$root
+root=$tree
+quietly check_parked_applies "$tree/both-halves" "$tree"
+root=$saved_root
 # shellcheck disable=SC2016  # the backticks are the Markdown code span the
 # summary line writes; single quotes are what keeps them literal.
 if grep -q '`both-halves/a.patch`' "$tree/summary"; then
@@ -896,6 +1012,99 @@ esac
 case "$out" in
   *"still applies"*) bad "a malformed patch is reported and then contradicted by an ok line about the same file" ;;
   *)                 ok "and nothing prints ok still-applies about a file git could not parse" ;;
+esac
+
+# THE SAME CONTRADICTION, ONE BRANCH OVER, and the reason the case above did not
+# catch it: `$sub/corrupt` holds ONLY a corrupt patch, so `drifted` is empty and
+# the chain returns before reaching its `else`. Round three's guard went on the
+# first `elif` and the `else` kept its own way of saying the same wrong thing --
+# `FAIL a parked patch is malformed` followed by `ok every parked patch still
+# applies under .github/workflows/`. This fixture parks a corrupt patch BESIDE a
+# drifted one, which is the only shape that reaches it. Fourth review round.
+mkdir -p "$sub/corrupt-and-drifted"
+cp "$sub/corrupt/a.patch" "$sub/corrupt-and-drifted/a.patch"
+cp "$tree/both-halves/a.patch" "$sub/corrupt-and-drifted/b.patch"
+out=$(GITHUB_STEP_SUMMARY="$tree/summary" \
+      check_parked_applies "$sub/corrupt-and-drifted" "$tree" 2>&1)
+case "$out" in
+  *"malformed"*) ok "a corrupt patch beside a drifted one is still reported as malformed" ;;
+  *)             bad "the corrupt patch is lost when a drifted one is parked with it -- got: $(printf '%s' "$out" | head -1)" ;;
+esac
+# Matched against the `ok` LINE and not the whole transcript. The drifted
+# warning legitimately contains the words "still applies under
+# .github/workflows/ but not in full" -- that is the sentence telling the
+# operator which half moved -- so a substring match on the transcript reads the
+# warning as the contradiction and fails a correct run. Caught by this fixture
+# on its first run.
+if printf '%s\n' "$out" | grep -q '^ok .*still applies'; then
+  bad "FAIL malformed and then ok still-applies, in the same transcript -- the round-three defect surviving on the else branch"
+else
+  ok "and no ok still-applies line is printed on the branch beside it either"
+fi
+# The drifted half is not swallowed by the corrupt one either: it is a warning
+# and it still has to reach the operator, or fixing the corrupt patch is the
+# only thing anyone learns to do.
+case "$out" in
+  *"no longer apply in full"*) ok "and the drifted patch beside it is still warned about" ;;
+  *)                           bad "the drifted warning vanishes when a corrupt patch is parked with it" ;;
+esac
+
+# A PLACEHOLDER IN `pending/` REDS THE WHOLE QUEUE, and that is recorded as a
+# tested fact rather than left to be discovered. `pending/README.md` says the
+# directory is empty in normal operation; git cannot track an empty directory;
+# so `.gitkeep` is the reach anybody would make, and it fails 1b -- which then
+# turns 1c off as well, because 1c returns silently on UNREADABLE. The verdict
+# is deliberate (an unrecognised file in the queue is a thing somebody has to
+# look at, not a thing to pass over), but "deliberate" and "known" are different
+# claims and only a fixture makes the second one true. Whether the fail/warn
+# split should move is an owner call, written up in
+# `docs/automation/pending/README.md`. Fourth review round of #180.
+mkdir -p "$sub/placeholder"
+cp "$tree/fits/a.patch" "$sub/placeholder/a.patch"
+: > "$sub/placeholder/.gitkeep"
+out=$(check_parked_shell "$sub/placeholder" 2>&1)
+case "$out" in
+  *FAIL*) ok "a .gitkeep beside a valid patch fails the queue, and that is the recorded behaviour" ;;
+  *)      bad "a .gitkeep passes -- then the enumeration's promise is that it reads everything, and it does not" ;;
+esac
+out=$(GITHUB_STEP_SUMMARY="$tree/summary" \
+      check_parked_applies "$sub/placeholder" "$tree" 2>&1)
+if [ -z "$out" ]; then
+  ok "and 1c stays silent about it rather than reporting green on a queue 1b refused"
+else
+  bad "1c spoke about a queue 1b could not read -- got: $(printf '%s' "$out" | head -1)"
+fi
+
+# A PARKED PATCH WHOSE NAME CONTAINS A SPACE. `for patch in $(...)` split it into
+# words, each of which failed `[ -e ]` and was skipped in silence, so BOTH halves
+# of the guard reported themselves green about a file neither had opened -- the
+# two strongest lines this suite can print, about nothing. No fixture exercised a
+# filename at all until the fourth review round of #180. The patch itself is the
+# `offends` one, so a scan that actually reads it must say so.
+mkdir -p "$sub/spaced"
+cp "$probe/adds-bad.patch" "$sub/spaced/a patch with spaces.patch"
+out=$(check_parked_shell "$sub/spaced" 2>&1)
+case "$out" in
+  *FAIL*) ok "a parked patch whose name has spaces in it is actually scanned" ;;
+  *)      bad "a spaced filename scans as clean -- the enumeration named it and the loop never opened it" ;;
+esac
+# And the apply half, which splits on whitespace in a second loop of its own.
+#
+# THE PARKED PATCH HERE HAS TO BE ONE THAT DOES NOT APPLY. A patch that fits
+# proves nothing: with the path split into fragments the loop produces no states
+# at all, which is indistinguishable from every patch applying, and the suite
+# stays green while nothing has been opened. Written with the `fits` fixture
+# first and caught by mutating the loop back -- the mutation did not redden,
+# which is the definition of a test that does not bind the code. This uses the
+# drifted shape instead, where reading the patch and not reading it produce
+# different transcripts.
+mkdir -p "$sub/spaced-drifted"
+cp "$tree/both-halves/a.patch" "$sub/spaced-drifted/a patch with spaces.patch"
+out=$(GITHUB_STEP_SUMMARY="$tree/summary" \
+      check_parked_applies "$sub/spaced-drifted" "$tree" 2>&1)
+case "$out" in
+  *"no longer apply in full"*) ok "and the apply half reads it too, rather than passing over three fragments" ;;
+  *)                           bad "the apply half did not open the spaced patch -- got: $(printf '%s' "$out" | head -1)" ;;
 esac
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
