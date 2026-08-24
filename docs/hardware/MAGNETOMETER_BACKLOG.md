@@ -35,7 +35,7 @@ it is therefore a designed UI state rather than an absence. It never renders as
 **A6 is answered, and the node path is closed rather than merely unavailable:**
 the Attadipa node will never carry a magnetometer — owner decision, 2026-08-22,
 *"в нодах магнитометр реально лишний"*
-([OWNER_DECISIONS.md](../research/OWNER_DECISIONS.md) OD-16). It gets an
+([OWNER_DECISIONS.md](../research/OWNER_DECISIONS.md) OD-17). It gets an
 accelerometer and probably a gyroscope instead, for GNSS power optimisation, not
 for heading — filed as its own capability question,
 [#93](https://github.com/hleserg/Attadipa/issues/93), not resolved here. So the
@@ -103,8 +103,8 @@ the arbiter is being built for the contention that actually exists here.
 
 | # | Question | Status |
 |---|---|---|
-| ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch, hardware ordered** — [OWNER_DECISIONS OD-16](../research/OWNER_DECISIONS.md) |
-| ~~A6~~ | ~~Does the Attadipa node carry one?~~ | **RESOLVED — no, deliberately** — [OWNER_DECISIONS OD-16](../research/OWNER_DECISIONS.md). The node compass path this row used to gate is closed, not merely unavailable |
+| ~~A5~~ | ~~Is an external magnetometer intended at all?~~ | **RESOLVED — yes, for the watch, hardware ordered** — [OWNER_DECISIONS OD-17](../research/OWNER_DECISIONS.md) |
+| ~~A6~~ | ~~Does the Attadipa node carry one?~~ | **RESOLVED — no, deliberately** — [OWNER_DECISIONS OD-17](../research/OWNER_DECISIONS.md). The node compass path this row used to gate is closed, not merely unavailable |
 | G-14 | Which part, on which bus, at what address, on which rail? | answered for the part: CJMCU-9911 (AK09911C, `0x0C`) and GY-271 (QMC5883L, `0x0D`), both on the Waveshare main I2C bus with `CAD` tied to ground — `docs/research/MAGNETOMETER_RETROFIT.md` in [PR #87](https://github.com/hleserg/Attadipa/pull/87), not yet merged. Rail is still open |
 | G-15 | Is it on the same I2C bus as the PMU and RTC? | **yes** — the Waveshare main I2C bus carries all fitted devices; this decides G-08–G-10 are measurable in principle once T-109 places the sensor |
 

@@ -314,7 +314,14 @@ void set_theme(Theme theme)
 void toggle_theme()
 {
     g_theme = g_theme == Theme::Day ? Theme::Night : Theme::Day;
-    std::printf("theme: %s\n", ui::name_of(g_theme));
+    // Says whether anything followed it. Under `--diagnostic` the boot screen
+    // was never built, so `rebuild_boot_screen` is a no-op and the diagnostic
+    // pattern deliberately does not follow a palette -- its colours are test
+    // vectors. Printing `theme: night` there announced a change nothing on
+    // screen made, which is the sort of line an agent reads as confirmation.
+    const bool follows = g_inventory != nullptr && g_caps != nullptr;
+    std::printf("theme: %s%s\n", ui::name_of(g_theme),
+                follows ? "" : " (nothing on screen follows it in this mode)");
     rebuild_boot_screen();
 }
 

@@ -81,7 +81,14 @@ changes on the watch depending on the answer.
 
 P15–P18 are the ones to answer first. They are the only rows that can make a
 planned feature legally or commercially impossible rather than merely hard, and
-P15 additionally depends on which GNSS module is fitted — OPEN_QUESTIONS A2.
+P15 additionally depends on which GNSS module is fitted. **That is no longer
+OPEN_QUESTIONS A2**, which is marked RESOLVED and would send a reader to a
+struck-through row: A2's GNSS half is *recalled* rather than read — MIA-M10Q,
+from the owner, on an order listing that names the radio and is silent on GNSS —
+so the module fitted is still unread and MIA-M10Q against LS550G still decides
+the assistance mechanism. [`COMPANION_BACKLOG.md`](COMPANION_BACKLOG.md) M-05
+carries the same dependency in the same words; the two must not drift apart
+again.
 
 ## 3. Standing constraint
 

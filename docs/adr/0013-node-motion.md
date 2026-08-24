@@ -9,7 +9,7 @@ constrains [ADR-0011](0011-gnss-integrity.md) §6
 
 ## Context
 
-[OD-16](../research/OWNER_DECISIONS.md#od-16--a5-and-a6-an-external-magnetometer-is-coming-for-the-watch-the-node-will-never-carry-one)
+[OD-17](../research/OWNER_DECISIONS.md)
 gave the Attadipa node a **6-axis IMU — accelerometer and gyroscope — for GNSS
 optimisation**, and explicitly no magnetometer. It also said what that part does
 not buy: no absolute heading, no standalone position. What it buys is knowing
@@ -180,7 +180,7 @@ gate as if the ceiling were already behind it.
 
 ### 3. Motion belongs to a body, and two bodies are not one
 
-OD-16 states the general rule the A5 and A6 answers share, and
+OD-17 states the general rule the A5 and A6 answers share, and
 [ADR-0009](0009-heading.md) §3a records it:
 
 > *A sensor may correct another reading taken on the same body, and may not be
