@@ -223,6 +223,7 @@ with someone competent reviewing it — not in a paragraph here.
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
 | Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83), [OD-17](OWNER_DECISIONS.md)). A6 also settles that the node will never be the source. The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
+| Q4 | On the Waveshare board, does Child Mode show the position-provenance sentence at all? | OPEN, raised 2026-08-24 | a design decision, owned by whoever writes the Child Mode position screen |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
 on 2026-08-21 in a way that reframed it. The board is not a lesser device that
@@ -251,6 +252,25 @@ orientation in any case ([ADR-0009](../adr/0009-heading.md) §3).
 What Q2 now asks is the narrow, still-open thing: **on a board nobody has
 modified, is heading GNSS-course-only for good?** That is a product decision and
 the retrofit does not make it.
+
+Q4 is [ADR-0009](../adr/0009-heading.md) §3a's own escape hatch, written down
+rather than left in an ADR's prose. §3a rules that a position whose co-location
+with the wearer is `Unknown` may be shown but must name its actual source. On
+the Waveshare board, which has no receiver of its own, **every** position is
+`Unknown` — so the qualifier is permanent rather than occasional. The
+specification says that screen is for a six-year-old, and a permanent hedge on
+the one number they came to read may be a worse answer than the one it prevents.
+
+The distinction that keeps this a product question and not a correctness one:
+§3a forbids showing a node's fix **as the wearer's own instrument's fix**, and
+nothing about Child Mode relaxes that. What is open is whether the honesty is
+spent on a *sentence the child reads* or on something else — an icon, a colour,
+a parent-facing screen, or a deliberate decision that this audience is not the
+one the sentence is for. T-026 owns the *localisation* of the sentence, since it
+is a `StringId` and not a literal, and that is a different question from whether
+Child Mode shows it. Named in the thirteenth review round of
+[#94](https://github.com/hleserg/Attadipa/pull/94), which found it stated as
+open in an accepted ADR with nothing anywhere to carry it.
 
 ---
 

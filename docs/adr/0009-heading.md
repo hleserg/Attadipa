@@ -211,7 +211,11 @@ that is a different question from whether Child Mode shows it at all. **Named
 here rather than decided**: this ADR is about what the axis means, the Definition
 of Done names Child Mode, and this section considered it nowhere until the
 twelfth review round of [#94](https://github.com/hleserg/Attadipa/pull/94).
-Whoever writes the Child Mode position screen owns the answer.
+Whoever writes the Child Mode position screen owns the answer, and it is carried
+as **Q4** in
+[OPEN_QUESTIONS.md](../research/OPEN_QUESTIONS.md#product) rather than left in
+this paragraph — an ADR naming a question open, with nothing anywhere to hold
+it, is how a question stops being open without being answered.
 
 **This section states the axis and does not choose the representation.** A
 stored field beside
@@ -365,12 +369,33 @@ bodies, and no `LocationService` exists yet to produce them.
 The invitation is in `position.h`'s own header — *"Ordered worst to best … so a
 fold over several providers can take the best without a table"* — and nothing in
 the tree, or in this section, says the winner of that fold may not change
-without a `reset()`. **So this ADR states the premise rather than leaving it
-implied: a `TrustEvaluator` sees one body's positions, and a change of primary
-provider is a `reset()`, not a new sample.** That is a constraint on
-`LocationService` when it is written, and it is the cheaper half of the fix —
-the alternative is `PositionJump` growing a source test of its own, which T-141
-may still decide it wants.
+silently. **So this ADR states the premise rather than leaving it implied: a
+`TrustEvaluator` sees one body's positions, and a change of primary provider
+invalidates the RATE BASELINES — `previous_position_`, `previous_altitude_mm_`
+and their timestamps — because a rate computed across two bodies is not a rate.**
+That is a constraint on `LocationService` when it is written.
+
+**The mechanism is deliberately not named here, and it is emphatically not
+`reset()`.** An earlier version of this paragraph said it was, and that was
+wrong in a way worth recording, because `reset()` is the only call in `trust.h`
+that clears `have_previous_` and so is the one an implementer reaches for.
+`TrustEvaluator::reset()` (`core/src/trust.cpp:710` "void TrustEvaluator::reset()")
+calls `engine_.reset()`, and `trust.h` says on that function what that costs — *"NOT the call for a
+provider going away … throws away the local receiver's entire evidence and the
+last trusted position with it, and asserts `Trusted` outright — which is the
+all-clear this class exists to refuse."* Under the very configuration this
+section is about, a fold that flips between a canopy-stale local fix and
+`NodeGnss` would call it on every flip: a live `ReceiverSpoofing` erased and the
+state re-asserted `Trusted`, an `unconfirmed_` allegation converted into an
+all-clear, `has_last_trusted_` cleared so §5's growing-uncertainty fallback has
+nothing to draw, and the bounded transition log §7 requires for a field report
+wiped. A device that alternates providers could then never leave `Trusted` at
+all. **The constraint must cost the baselines and nothing else**, and no call
+with that scope exists today.
+
+Writing it is **T-141's**, beside the `PositionJump` source test its acceptance
+already offers — the two are the same decision seen from either end of the
+call, and this ADR does not choose between them.
 
 The reproduction if the premise is not honoured is the OD-8 configuration T-142
 names: wearer at a desk, node in a bag by the door 300 m away, both `Valid`, the
@@ -386,56 +411,60 @@ the outcome this section exists to prevent.
 that this section had wrong — twice.** An implementer reading *"one detector"*,
 or *"two"*, builds to a list short by the likeliest case and reads the silence
 as coverage.
-[#112](https://github.com/hleserg/Attadipa/pull/112) — an open **pull request**,
-not an issue, which an earlier version of this line got wrong — is already on the code
-side of the second one — *a wrist's stillness stops judging a node's position* —
-which sharpens the point rather than closing it: this ADR must not read as
-settled-and-singular while another branch removes a case it does not mention.
-Found in review.
+Work is already under way on the code side of the second one — *a wrist's
+stillness stops judging a node's position* — which sharpens the point rather
+than closing it: this ADR must not read as settled-and-singular while a case it
+does not mention is being removed elsewhere. Which branch, and in what order it
+lands, is deliberately **not** written here: an accepted ADR outlives every
+pull request number in it, and a merge order recorded in one becomes archaeology
+the day it is followed. That belongs in the pull request bodies, and it is
+there. Found in review, and the branch numbers were taken back out of this
+paragraph in the thirteenth round.
 
-**And #112 answers the same axis under another name, in another ADR, which is a
-merge-order question rather than a disagreement.** Named here rather than left
-for whoever merges second, because until the eleventh review round this section
-knew #112's *behaviour* and neither its **type** nor its **ADR**. #112 adds
-`SensorBody { Unknown, Watch, Node, Companion }` in a new `core/motion.h`, a
-free function `SensorBody body_of(PositionSource source);` in
+**The same axis is answered under another name, in another ADR, and that is a
+reconciliation rather than a disagreement.** Named here rather than left for
+whoever reads the two afterwards, because until the eleventh review round this
+section knew that work's *behaviour* and neither its **type** nor its **ADR**.
+The motion work adds `SensorBody { Unknown, Watch, Node, Companion }` in a new
+`core/motion.h`, a free function `SensorBody body_of(PositionSource source);` in
 [`position.h`](../../core/include/attadipa/core/position.h), and
 **ADR-0013 §3** to govern them; it makes motion disagreement inert unless the
 two readings are demonstrably the same object. `body_of()` **is** an accessor
 over `PositionSource` — which is precisely the representation ADR-0011 §2
 recommends and which this section, as amended above, no longer forbids. Under
-the earlier wording the two branches were in flat contradiction: `:187` required
-a stored field for a value #112's tree computes. They are not any more, and
+the earlier wording the two were in flat contradiction: `:187` required a stored
+field for a value that tree computes. They are not any more, and
 T-026 may well find that the accessor it is asked to choose between is
 `body_of()` with a different question asked of it — co-location `SameBody` is
 `body_of(source) == SensorBody::Watch`, and the two names are worth reconciling
 rather than both existing.
 
-**The merge order: #94 lands before #112**, because this section is the *same*
-§3a heading #112 also writes, developed through eleven review rounds against
-this branch's diff, so #112 rebasing onto it loses nothing while the reverse
-loses all of that. That is the whole of what belongs here. **The mechanics —
-which record #112 must then delete rather than renumber, and which task ID it
-must reconcile — live in the two pull request bodies**, where
+**No merge order is recorded here, and that is the second thing taken out of
+this paragraph rather than reworded.** Round twelve moved the *mechanics* — which
+duplicate record must be deleted rather than renumbered, which task ID must be
+reconciled — into the two pull request bodies, where
 [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) says agent-written merge
-policy belongs: it binds nobody afterwards, and an accepted ADR does. An earlier
-version of this paragraph carried all of it, which would have left an inventory
-of an unmerged branch inside an accepted decision — archaeology the day #112
-lands. Found in the twelfth review round. What #112 still carries is everything
-this section does not say: `SensorBody`, `body_of()`, ADR-0013 and the motion
-half. Its Testable item
-**Three** below — *the two fixtures the trust suite already holds still pass
-unchanged* — is asserted against the suite as it stands **when T-026 runs**, not
-as of this ADR: #112 rewrites those fixtures on purpose, and an item that reads
-otherwise would make a correct change look like a regression.
+policy belongs: a pull request body binds nobody after the merge, and an
+accepted ADR does. Round thirteen found the ordering itself still sitting here,
+which is the same defect one layer up. Ordering is process, it is decided by
+whoever merges, and the day it is followed it is archaeology inside an accepted
+decision. **What belongs here is the reconciliation and nothing else**:
+`body_of()` and `SameBody` are the same question asked from two sides, and the
+two names are worth unifying rather than both existing.
+
+Its Testable item **Three** below — *the two fixtures the trust suite already
+holds still pass unchanged* — is asserted against the suite as it stands **when
+T-026 runs**, not as of this ADR. Those fixtures are being rewritten on purpose
+by the motion work, and an item that read otherwise would make a correct change
+look like a regression.
 
 **So this section governs the claim, not the arithmetic.** Co-location decides
 what the screen may say a position is *about*. It is not an input to
 `TrustState`, and it changes nothing in the two fixtures above **as they stand
 today**. It does not gate `compare_provider` or `moved_at_rest` — and that
 sentence is about *co-location*, not about whether those detectors should be
-gated by something: #112 gates `moved_at_rest` on `SensorBody`, which is T-141's
-question and is not contradicted here. This paragraph read as though nothing
+gated by something: the motion work gates `moved_at_rest` on `SensorBody`,
+which is T-141's question and is not contradicted here. This paragraph read as though nothing
 should ever gate them, which was never the claim.
 
 **Who produces the value, because a state nothing can set is a constant.** A fix
@@ -734,10 +763,9 @@ two fixtures the trust suite already holds still pass unchanged — a `NodeGnss`
 fix ~550 m out raises `ProviderDisagreement`, and a live bit is left standing by
 a comparison that could not be made. An implementation of §3a that reddens
 either has changed something §3a did not ask for. **Against the suite as it
-stands when T-026 runs, not as of this ADR**:
-[#112](https://github.com/hleserg/Attadipa/pull/112) rewrites both fixtures on
-purpose — that is its subject — so an item pinned to today's file would make a
-correct change look like a regression. What is asserted is that *§3a* does not
+stands when T-026 runs, not as of this ADR**: the motion work rewrites both
+fixtures on purpose — that is its subject — so an item pinned to today's file
+would make a correct change look like a regression. What is asserted is that *§3a* does not
 move them, not that nothing does. Stated in the eleventh review round of
 [#94](https://github.com/hleserg/Attadipa/pull/94). **Four:** co-location does
 not live in `PositionValidity`, in `TrustState` or in a reason bit — whichever

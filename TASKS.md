@@ -569,10 +569,15 @@ stale silently. The protocol is
   calls carrying positions from different bodies, which requires a
   `LocationService` that folds across providers and does not exist yet. That is
   why ADR-0009 §3a now states the premise — a `TrustEvaluator` sees one body's
-  positions, and a change of primary provider is a `reset()` — rather than
-  leaving it to be discovered. **This task may still decide it wants the source
-  test in the detector instead**, and if it does, it says why a constraint on the
-  caller was not enough. What the premise buys is the OD-8 arithmetic staying
+  positions, and a change of primary provider invalidates the **rate baselines**
+  — rather than leaving it to be discovered. **The premise is this task's to
+  build**, and §3a deliberately does not name the mechanism, because the only
+  existing call that clears `have_previous_` is `TrustEvaluator::reset()` and
+  `trust.h` says on that function that it throws away the local receiver's whole
+  evidence and asserts `Trusted` outright. So the choice this task makes is
+  between a narrower invalidation that costs the baselines and nothing else, and
+  **the source test in the detector instead**; if it takes the second, it says
+  why a constraint on the caller was not enough. What the premise buys is the OD-8 arithmetic staying
   where §3a puts it: without it, a wearer at a desk and a node 300 m away
   alternating at 1 Hz raise `PositionJump` (40) and `MotionDisagreement` (45)
   together, 85 clears `untrust_at` (60), and the device is `Untrusted` with no
@@ -664,8 +669,10 @@ stale silently. The protocol is
   covers it: a watch with a local receiver **and** an attached node — the node's
   fix is `Trusted` and remembered, the node stays attached, the local receiver
   never gets a fix, trust degrades on staleness, and the screen draws "last
-  known position" from a node's fix with no source to name. `reset()`
-  (`trust.h`) covers walk-away; nothing detaches here and nothing resets.
+  known position" from a node's fix with no source to name. `provider_detached()`
+  (`trust.h`) is what covers a node walking away — **not** `reset()`, which
+  `trust.h` reserves for a link reset and which an earlier version of this
+  bullet named; either way nothing detaches here and nothing resets.
 - **Acceptance:** the remembered fix carries its `PositionSource` and its
   co-location to whatever draws it, and a host test asserts the drawn label for
   a remembered **node** fix differs from the label for a remembered local one.
@@ -2170,30 +2177,48 @@ stale silently. The protocol is
     task, which did not contain it. Found in review;
   - **and the field was already named for one body — [#112](https://github.com/hleserg/Attadipa/pull/112)
     renames it, so this bullet is about what is left over after that lands.**
-    On `main` today the gate reads
-    `core/include/attadipa/core/gnss_power.h:70` "bool             device_moving      = false;",
-    a single boolean consumed at `gnss_power.cpp:114` and `:126` under a comment
+    On `main` today the gate reads a single `bool device_moving` in
+    `core/include/attadipa/core/gnss_power.h`,
+    consumed at `gnss_power.cpp:114` and `:126` under a comment
     about *the wrist* not moving, while the receiver it gates sits on the node.
     The conflation is not only in the reasoning, it is in `core/`, in a field
     name that says *device* and means *wearer*. **#112 is open and deletes that
     line**, replacing it with a `MotionEvidence motion` carrying a
     `SensorBody`, rewriting both call sites; its `speaks_for()` refuses evidence
     about another body rather than approximating it. So **do not do the rename
-    here** — that is the failure `CLAUDE.md` says the queue exists to prevent,
-    and the merge order is settled in
-    [ADR-0009](docs/adr/0009-heading.md) §3a: #94 first, then #112.
+    here** — that is the failure `CLAUDE.md` says the queue exists to prevent.
+    The merge order is settled — #94 first, then #112 — and it is recorded in
+    `STATUS.md` and in the two pull request bodies, **not** in ADR-0009: an
+    accepted decision outlives every branch number in it, so a merge order
+    written there is archaeology the day it is followed. Round thirteen of #94
+    took it back out of the ADR.
     What survives #112 and is genuinely this task's is the half a body label
     does not answer: **OD-10's ceiling**, and whether the cross-body
     configuration is excluded from the gate at all or justified against a
     measurement. #112's own body says as much — the ceiling *"is owed and is not
     in `next_state()`"*. The trust side of the same confusion got T-141 and
     T-142; this is the power side and it belongs here because the same
-    acceptance decides both. The citation above is deliberately fingerprinted on
-    its own line: the day #112 lands, `check_docs.py` check 7 reports this
-    bullet by name rather than leaving a line number pointing at whatever
-    replaced the field. Found in the tenth review round of
+    acceptance decides both.
+
+    **The field is named without a line number or a fingerprint, deliberately,
+    and the reasoning is worth keeping because the first attempt went the other
+    way.** Round twelve fingerprinted it on purpose, as a tripwire: the day #112
+    deleted the line, `check_docs.py` check 7 would report *this* bullet by name
+    instead of leaving a citation pointing at whatever replaced it. Round
+    thirteen found what that costs. CI runs on `push: [main]` and
+    `pull_request`, and GitHub does not re-run a pull request's checks when its
+    base moves — so #112 can merge on a run that predates this branch and land
+    the break on `main`. A pull request's CI builds the merge of its head into
+    `main`, so from that moment **every open pull request is red on a `TASKS.md`
+    citation it never touched**, and `pr-merge-sweep.yml`, which gates on the
+    head commit's `statusCheckRollup`, stops sweeping all of them. One bullet's
+    tripwire would stop the whole queue — the same shape as the stale parked
+    patch T-158 refused to make fatal for the same reason. The prose above says
+    in plain English what #112 must not leave behind, and prose is what a person
+    reads; a citation whose failure mode is a repository-wide stall is not worth
+    the guard. Found in the tenth review round of
     [#94](https://github.com/hleserg/Attadipa/pull/94), scoped against #112 in
-    the twelfth.
+    the twelfth, and de-fanged in the thirteenth.
 - **Composes with:** T-071 (dead reckoning covers the interval this opens) and
   T-077 (assistance held ready is the other half of avoiding the cold start).
 - **Hardware required:** yes, for every number in it

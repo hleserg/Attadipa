@@ -646,7 +646,12 @@ readings are demonstrably the same object. §3a knew #112's *behaviour* and
 neither its type nor its ADR until this round. `body_of()` **is** the accessor
 ADR-0011 §2 recommends, so the contradiction above was also a flat collision
 with an open branch, and fixing the first removes the second. **Merge order,
-decided rather than left to whichever CI is green first: #94 first, then #112.**
+decided rather than left to whichever CI is green first: #94 first, then #112 —
+recorded here and in the two pull request bodies, and deliberately not in the
+ADR.** Round thirteen took the ordering out of ADR-0009 §3a along with the
+branch numbers: the `body_of()`/`SameBody` reconciliation is architectural and
+stays, the ordering is process and belongs where it stops binding once it has
+been followed.
 #112 writes the *same* §3a heading with a three-paragraph version of a section
 this branch developed over eleven rounds; it must renumber `T-111` and its
 owner-decision record regardless, since `main` already holds both; and its A5/A6
