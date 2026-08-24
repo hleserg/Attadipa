@@ -73,10 +73,17 @@ blocks it or is a correctness, security or queue-stalling defect.
      is allowed to change and the ADR is what freezes it;
   3. `idf.py build` reproducible from a clean checkout on the pinned IDF, proved
      by **a CI job** rather than by a sentence in a pull request;
-  4. the existing libraries **link into it** rather than being copied —
-     `attadipa_core`, `attadipa_platform`, `attadipa_link` and `attadipa_l10n`
-     compile for the target. If one of them does not, that is the finding, and
-     it is worth more than the skeleton;
+  4. the existing libraries **link into it** rather than being copied, and
+     **all seven that are meant to run on a device**, not the four least likely
+     to fail: `attadipa_platform`, `attadipa_core`, `attadipa_link`,
+     `attadipa_l10n`, **`attadipa_ui`** (LVGL, fonts, images — what T-166 binds
+     to a flush path), **`attadipa_debug`** (T-114's whole subject) and
+     **`attadipa_apps`** (T-037's Clock, and the top of the target graph).
+     `attadipa_sim` and `attadipa_replay` are host-only by construction and are
+     excluded deliberately. If one of the seven does not cross-compile, **that
+     is the finding**, and it is worth more than the skeleton — which is the
+     whole reason this task exists rather than discovering it three tasks later,
+     inside one that already has D21 in front of it;
   5. serial diagnostics on boot: chip revision, flash id, PSRAM presence and
      mode, reset reason, free heap. Enough that the first hardware report is a
      transcript instead of an impression;
@@ -117,9 +124,14 @@ blocks it or is a correctness, security or queue-stalling defect.
      guessed** — D21, and the swap is a **board** fact that belongs in
      `platform/`, absorbed once at flush, never a build flag or a setting;
   2. LVGL bound to a real flush path, one internally consistent frame at a time;
-  3. FT3168 touch pushed into `core::InputQueue` with `InputOrigin::Physical`,
-     which is how remote and physical input are made to coexist rather than
-     compete;
+  3. the FT3168 brought up and readable — a controller that reports a touch.
+     **The `InputOrigin::Physical` producer into `core::InputQueue` is not this
+     task's**: `core/include/attadipa/core/input.h` says *"the touch controller
+     and the buttons are T-114's"*, and T-114 item 5 routes both, calling it
+     *"not extra work for this task."* One deliverable, one owner. The
+     **buttons** would otherwise fall in the gap entirely, since this task names
+     only touch and the vendor BSP supplies none (`BSP_CAPS_BUTTONS 0`). So this
+     item ends at the driver, and T-114 takes it from there;
   4. the AXP2101 rails owned by something, and the PCF85063ATL as a time source
      — **the vendor BSP drives neither**, nor the IMU, and `BSP_CAPS_BUTTONS` and
      `BSP_CAPS_IMU` are both `0` there. "Vendor supported" is not "handled";

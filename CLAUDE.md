@@ -158,8 +158,12 @@ If you are working from an issue:
   agents editing one branch is a merge conflict with a robot on both ends.
 - **More than one agent works here, and the boards are how the work divides.**
   A session with a board physically on its desk owns everything that touches it:
-  flashing, probes, part markings, bus scans, and every number that is allowed
-  to be `MEASURED`. A session without one owns the queue: issues, branches,
+  probes, part markings, bus scans, **flashing it and running our firmware on
+  it**, and every number that is allowed to be `MEASURED`. Flashing is on that
+  list since **OD-19** (2026-08-24) and the list above was edited in the same
+  commit, so the two agree; what stays off it is the genuinely irreversible set —
+  eFuses, secure boot, flash encryption, secrets, keys. A session without a board
+  owns the queue: issues, branches,
   reviews, merges, documents, host tests and the simulator. Neither waits on the
   other for permission, and **neither re-does the other's half** — a cloud
   session that writes a bring-up procedure hands it over rather than
