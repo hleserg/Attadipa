@@ -26,8 +26,29 @@ TO APPLY, from a session whose token may write workflows:
     #  `75-approval-stall.patch` -- 34 kB parked by #128, on `main` today and
     #  not yet applied -- the directory's README, and #154's patch when it
     #  lands. See T-144.
-    bash .github/tests/merge-candidate-test.sh   # 134 assertions, and the last
+    bash .github/tests/merge-candidate-test.sh   # 135 assertions, and the last
                                                  # two flip to the applied state
+
+THEN THE THREE DOCUMENTS THAT DESCRIBE THE PARKED STATE, in the same commit.
+This directory's README says a patch carries every edit its own landing forces,
+and nothing tests prose: the suite checks that this file is gone, not that the
+sentences about it are true. Applying the patch without these leaves three
+documents asserting the opposite of the truth, which is the defect
+CLAUDE_AUTOMATION.md calls blocking on #154, mirrored.
+
+    CLAUDE.md            the paragraph beginning "The half-hourly sweep merges
+                         nothing, from this change until the parked patch
+                         lands" -- delete it. The sentences above it, which
+                         describe a sweep that merges three per run, become
+                         true again the moment this lands.
+    docs/automation/CLAUDE_AUTOMATION.md
+                         the "HALF LIVE" banner and the table under it,
+                         including "It merges nothing at all" and the row
+                         answering "Who can finish it?" -- the caller half is
+                         no longer half.
+    STATUS.md            the "Agent automation" row's closing sentence, which
+                         names this file as parked.
+
     git commit -am "The merge sweep asks whether it read all of the pull request"
 
 WHAT IT CHANGES, all in .github/workflows/pr-merge-sweep.yml:

@@ -50,6 +50,7 @@ waiting on a person.
 | Patch | For | Written |
 |---|---|---|
 | `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
+| `170-merge-sweep-completeness.patch` | [#170](https://github.com/hleserg/Attadipa/issues/170) — the caller half of the completeness rule, all in `pr-merge-sweep.yml`. **While this waits, the half-hourly merge sweep merges nothing at all**: the rule refuses the nine-argument caller by arity and holds every pull request, once per sweep, naming this file. See [CLAUDE_AUTOMATION.md](../CLAUDE_AUTOMATION.md) and T-144 | 2026-08-24 |
 
 Verified before it was parked: `actionlint` clean over all seven workflows with
 the patch applied, `shellcheck -x` clean, and the `approvals` job's body
@@ -57,3 +58,15 @@ dry-run against the live repository — the pagination, the jq, the marker
 written and read back, and the rendered comment. What that does **not** prove
 is the job running on a schedule under its own permissions, which no local run
 can prove and which is therefore `NOT EXECUTED` until it is deployed.
+
+For `170-merge-sweep-completeness.patch`: the rule, its filter, its query and
+its 135 assertions are already on `main` and run in CI on every push — only the
+four edits that make the sweep *call* them are in the patch. `git apply --check`
+is asserted by `merge-candidate-test.sh` itself, so a patch that stops applying
+turns CI red rather than rotting quietly. What that does **not** prove is the
+sweep running on its schedule with the patch applied, which is `NOT EXECUTED`
+until it lands.
+
+**Two patches now edit `pr-merge-sweep.yml`.** Apply them in one commit, not in
+either order — see T-144. Each `git rm`s only its own file; neither removes this
+directory, which three links in `APPROVAL_STALLS.md` point at.

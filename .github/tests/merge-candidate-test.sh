@@ -322,12 +322,29 @@ ok "a draft whose facts are truncated is not undrafted either" \
 # asked whether there were more; there is no reading of those nine under which
 # this may merge. The message names the fix, because this line is what a reader
 # sees in the sweep log until somebody applies it.
-got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true)"
+got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>/dev/null)"
 case "$got" in
   "HOLD this caller cannot prove it read all of the pull request"*)
     printf '  ok    a nine-argument caller cannot merge, and is told what to apply\n'; pass=$((pass + 1)) ;;
   *)
     printf '  FAIL  a nine-argument caller is the pre-#170 sweep and must not merge\n        got: %s\n' "$got"
+    fail=$((fail + 1)) ;;
+esac
+
+# The redirect above is deliberate, and so is this. `ci.yml` runs this suite as
+# a plain `run:` step, and the runner scans a step's stderr for workflow
+# commands -- so an unredirected fixture prints `::warning::the merge sweep is
+# holding every pull request` on every CI run of every pull request, and keeps
+# printing it after the patch lands and the state is no longer true. The one
+# signal that separates a disabled sweep from an idle one would be buried in
+# its own noise long before the day it matters. Discarding it there means
+# asserting it here, or the remedy is inert and nothing would say so.
+warned="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>&1 >/dev/null)"
+case "$warned" in
+  *"::warning::"*"merge sweep is holding every pull request"*)
+    printf '  ok    and it warns on stderr, which is where the sweep log shows it\n'; pass=$((pass + 1)) ;;
+  *)
+    printf '  FAIL  the nine-argument refusal is silent on stderr, so a disabled sweep reads as an idle one\n        got: %s\n' "$warned"
     fail=$((fail + 1)) ;;
 esac
 

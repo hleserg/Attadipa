@@ -2610,9 +2610,11 @@ Impact:         #170 is closed fail-closed rather than fixed: until the patch
                 The two patches touch the same file and will conflict with
                 each other, not with `main`.
 Possible options:
-                1. An orchestrator session applies both patches, in either
-                   order, resolving the one overlap by hand, and deletes
-                   docs/automation/pending/. Costs one live session.
+                1. An orchestrator session applies both patches in one
+                   commit, resolving the one overlap by hand, and `git rm`s
+                   the two patch files it applied — not the directory, which
+                   also holds README.md, the target of three links in
+                   APPROVAL_STALLS.md. Costs one live session.
                 2. Owner grants the Claude GitHub App `workflows: write` on
                    this installation. Fixes the class, not just these two —
                    and widens what an agent may change to include the files
