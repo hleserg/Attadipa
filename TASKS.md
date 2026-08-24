@@ -2168,19 +2168,32 @@ stale silently. The protocol is
     unmeasured, not that it is zero. Added 2026-08-24; ADR-0009 §3a had been
     observing this case in passing and attributing the observation to this
     task, which did not contain it. Found in review;
-  - **and the field is already named for one body.**
-    `core/include/attadipa/core/gnss_power.h:70`
-    "bool             device_moving      = false;" is a single boolean consumed
-    at `gnss_power.cpp:114` and `:126` under a comment about *the wrist* not
-    moving, while the receiver it gates sits on the node. So the conflation is
-    not only in the reasoning, it is in `core/`, in a field name that says
-    *device* and means *wearer*. The trust side of the same confusion got T-141
-    and T-142; this is the power side of it and it belongs here rather than in a
-    task of its own, because the same acceptance decides both. `next_state()`
-    has no caller outside `tests/test_power.cpp` today, which is the window in
-    which renaming the field costs nothing — a model, not a live regression.
-    Found in the tenth review round of
-    [#94](https://github.com/hleserg/Attadipa/pull/94).
+  - **and the field was already named for one body — [#112](https://github.com/hleserg/Attadipa/pull/112)
+    renames it, so this bullet is about what is left over after that lands.**
+    On `main` today the gate reads
+    `core/include/attadipa/core/gnss_power.h:70` "bool             device_moving      = false;",
+    a single boolean consumed at `gnss_power.cpp:114` and `:126` under a comment
+    about *the wrist* not moving, while the receiver it gates sits on the node.
+    The conflation is not only in the reasoning, it is in `core/`, in a field
+    name that says *device* and means *wearer*. **#112 is open and deletes that
+    line**, replacing it with a `MotionEvidence motion` carrying a
+    `SensorBody`, rewriting both call sites; its `speaks_for()` refuses evidence
+    about another body rather than approximating it. So **do not do the rename
+    here** — that is the failure `CLAUDE.md` says the queue exists to prevent,
+    and the merge order is settled in
+    [ADR-0009](docs/adr/0009-heading.md) §3a: #94 first, then #112.
+    What survives #112 and is genuinely this task's is the half a body label
+    does not answer: **OD-10's ceiling**, and whether the cross-body
+    configuration is excluded from the gate at all or justified against a
+    measurement. #112's own body says as much — the ceiling *"is owed and is not
+    in `next_state()`"*. The trust side of the same confusion got T-141 and
+    T-142; this is the power side and it belongs here because the same
+    acceptance decides both. The citation above is deliberately fingerprinted on
+    its own line: the day #112 lands, `check_docs.py` check 7 reports this
+    bullet by name rather than leaving a line number pointing at whatever
+    replaced the field. Found in the tenth review round of
+    [#94](https://github.com/hleserg/Attadipa/pull/94), scoped against #112 in
+    the twelfth.
 - **Composes with:** T-071 (dead reckoning covers the interval this opens) and
   T-077 (assistance held ready is the other half of avoiding the cold start).
 - **Hardware required:** yes, for every number in it

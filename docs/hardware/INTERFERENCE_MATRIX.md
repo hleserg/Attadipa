@@ -72,14 +72,22 @@ different things, not one**, and an earlier version of this paragraph asserted a
 closed list of two that was true of one row:
 
 - **Audio amplifier × Magnetometer** and **Battery charging × Magnetometer** are
-  the two whose *disturbing source* is already on the unit: the speaker is
-  `VERIFIED` (`AAC210602A1`, back cover,
-  [WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.8), and
-  the AXP2101 charge path exists — §1.2 records where the battery connects.
+  the two whose *disturbing source* is on the unit — with one qualification that
+  applies to the first of them only. The **part** `AAC210602A1` is `VERIFIED` on
+  the back cover
+  ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.8);
+  **what it is remains `CONFLICTING` between speaker and haptic actuator, and
+  that is T-105** ([HARDWARE_MATRIX](../research/HARDWARE_MATRIX.md)). A
+  verified part number is not a verified function, and this paragraph said *"the
+  speaker is `VERIFIED`"* flatly until the twelfth review round of
+  [#94](https://github.com/hleserg/Attadipa/pull/94), while the row it summarises
+  had carried the qualification all along. The charge path is not in doubt —
+  §1.2 records where the battery connects.
 
   **They are not gated on placement alone, and an earlier version of this
-  paragraph said they were.** Three things are still open, and each would corrupt
-  the measurement rather than merely delay it:
+  paragraph said they were.** Four things are still open — three shared, plus
+  T-105 on the audio pair — and each would corrupt the measurement rather than
+  merely delay it:
 
   1. **The rail.** `MAGNETOMETER_BACKLOG` G-14 says *"rail is still open"* in the
      same table that called these unblocked. An unpowered sensor measures
@@ -102,7 +110,12 @@ closed list of two that was true of one row:
      chance of a confounded circuit and a certainty of a clean-looking number, in
      the one paragraph whose subject is an irretractable `MEASURED`.
   2. **Pull-ups.** [MAGNETOMETER_RETROFIT](../research/MAGNETOMETER_RETROFIT.md)
-     records *"external pull-ups required"* for the retrofit.
+     records *"external pull-ups required"* — **for the breakout module as
+     bought**, which is a property of that board and not a requirement of the
+     die. The distinction is the one `STATUS.md` says was corrected everywhere
+     it appeared; it was not corrected here, so *"all fifteen now point at
+     T-130"* read as complete over a site that still framed it the old way.
+     Found in the twelfth review round.
   3. **The bus.** The sensor is the **seventh** device on the Waveshare main I2C
      bus — [WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md)
      §1.5 lists six (AXP2101 PMU, RTC, touch, IMU, two codecs) and warns that a
@@ -111,10 +124,20 @@ closed list of two that was true of one row:
      this being asked. `MAGNETOMETER_RETROFIT` §4.3 clears the *address*
      conflict only, and its plan to fit both candidates at once would make eight.
 
-  So: placement plus a rail decision plus the module pull-ups plus T-130 makes
-  these two measurable.
-  Placement alone makes them *attemptable*, which is not the same sentence and is
-  the one that produces a bad number.
+  4. **What the part is, for the audio pair only.** T-105. If `AAC210602A1` is
+     an actuator there is no speaker to disturb anything and the row is not
+     merely unmeasured but empty — the same shape as the haptic row below, which
+     is `BLOCKED` because no motor is fitted. This item was in the row and in no
+     prose list until the twelfth round.
+
+  So: for **Battery charging × Magnetometer**, placement plus a rail decision
+  plus the module pull-ups plus T-130 makes it measurable. For **Audio amplifier
+  × Magnetometer**, all four of those plus **T-105**, and T-105 can close the row
+  rather than open it. Placement alone makes either *attemptable*, which is not
+  the same sentence and is the one that produces a bad number — and running the
+  audio pair with T-105 open produces a number that is real, `MEASURED`, about a
+  device that may not be there, which is worse than a bad one because it cannot
+  be retracted.
 
   **The charge path is not characterised.** An earlier version of this paragraph
   cited *"§1.3"* for it; §1.3 is the **flash** section. The only charge-path
@@ -150,9 +173,12 @@ list of two quietly broke.
 Note that this includes the pair the master plan uses to motivate the whole
 coexistence architecture. The architecture is still justified — by the shared
 I2C bus, a 3.3 V rail shared between a sensor and a disturbing subsystem, and
-the amplifier's missing shutdown pin, all of which are real on these boards (the
-shared rail is documented as ALDO3 on the T-Watch and is unresolved among
-ALDO1/2/3 on Waveshare, which is why it is named by role here) — but not by this example. See
+the amplifier's missing shutdown pin. The bus and the shutdown pin are real on
+both boards. **The shared rail is real on the T-Watch and unresolved on
+Waveshare** — documented as ALDO3 there, and unresolved among ALDO1/2/3 here,
+which is why it is named by role rather than by rail and why this sentence no
+longer says *"all of which are real on these boards"*. The architecture is
+justified by those — but not by this example. See
 [COEXISTENCE_BACKLOG](COEXISTENCE_BACKLOG.md).
 
 These five rows continue the table above. They followed two paragraphs of prose

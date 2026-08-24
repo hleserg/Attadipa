@@ -33,8 +33,14 @@ ordered a CJMCU-9911 and a GY-271 and is soldering one into the Waveshare unit
 ([OD-17](../research/OWNER_DECISIONS.md)). So the magnetometer arrives — but the
 *haptic* pair still cannot be measured on it, because that unit has no vibration
 motor fitted (`OBSERVED`, T-097). The audio pair can be, once the sensor is
-placed, a rail is chosen and the seventh-device bus hazard **T-130** is settled — T-096 is the *node* link and does not ask this. Two
-epics, two different blockers; see
+placed, a rail is chosen, the seventh-device bus hazard **T-130** is settled —
+T-096 is the *node* link and does not ask this — **and T-105 says the part is a
+speaker at all**: `AAC210602A1` is `VERIFIED` as a part and `CONFLICTING` as a
+function, and if it is a haptic actuator the audio pair has nothing to disturb
+the sensor with, exactly as the haptic pair has nothing today. This paragraph
+listed three gates and the C-09 row beside it listed four, until the twelfth
+review round of [#94](https://github.com/hleserg/Attadipa/pull/94). Two
+epics, different blockers; see
 [MAGNETOMETER_BACKLOG](MAGNETOMETER_BACKLOG.md), which is the authority.
 
 The architecture survives the loss of its example because the contention above is

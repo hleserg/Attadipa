@@ -1275,7 +1275,12 @@ and researched in full in [#87](https://github.com/hleserg/Attadipa/pull/87)
 (`docs/research/MAGNETOMETER_RETROFIT.md`, **merged 2026-08-22**; this entry
 said "not yet merged at the time of this record" in a commit written after it
 landed, which left the file CLAUDE.md ranks highest disagreeing with
-`MAGNETOMETER_BACKLOG.md:60`. Found in review). **Both the part and the placement are
+`docs/hardware/MAGNETOMETER_BACKLOG.md:63` "([#87](https://github.com/hleserg/Attadipa/pull/87), merged)".
+Found in review; the line number said `:60` and the claim is at `:63`,
+uncaught because check 7 proves non-blankness and the citation carried no
+fingerprint — T-140's defect, in the file CLAUDE.md ranks highest, found in
+the twelfth review round of
+[#94](https://github.com/hleserg/Attadipa/pull/94)). **Both the part and the placement are
 open, and placement is the one that gates.** An earlier version of this entry
 read *"placement is the open part, not the part number"*, which put the
 authoritative file at odds with the three documents that treat the part as

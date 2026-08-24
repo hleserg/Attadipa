@@ -660,6 +660,37 @@ pinned item would read a correct change as a regression. T-141's scope after
 writing a fourth ADR to decide what ADR-0013 decided is the two-documents-one-
 axis failure that task's own history is about.
 
+**The twelfth round found the eleventh's retraction had moved rather than
+landed.** ADR-0011 §2's table row still carried the withdrawn mandate's own
+wording, and fourteen lines past the sentence saying *"T-026 decides"* the
+paragraph still argued *"it earns a field"* — the register an implementer
+consults, arguing the case the register had just dropped. ADR-0009 §3a claimed
+ADR-0011 §2 *"says the same in the same words"*, which it does not and never
+did; that claim is gone rather than reworded, since a reader checking it is
+exactly the reader who finds the two documents still disagreeing. Two residual
+*"separate fields"* / *"the field is"* phrasings in §3a went with it. **Two
+things the round found that were not about representation at all.** T-080's new
+bullet commissioned the `device_moving` rename that #112 — open, and merging
+second by this branch's own decision — has already implemented, which is the
+duplicate-work failure `CLAUDE.md` says the queue exists to prevent; the bullet
+now asks for the half a body label does not answer (OD-10's ceiling, and whether
+the cross-body configuration is excluded from the gate at all) and its citation
+is fingerprinted on one line so that CI names it the day #112 lands. And
+**T-105 was in every table row and in no prose list**, including the one
+`MAGNETOMETER_BACKLOG` calls the authority: `AAC210602A1` is `VERIFIED` as a
+part and `CONFLICTING` as a function, so *"the speaker is `VERIFIED`"* was
+three documents saying a thing the rows beside them denied. Placement, rail,
+pull-ups and T-130 could all have closed, leaving an engineer to run G-09
+against a speaker that may be a haptic actuator and write down a `MEASURED`
+number about a different device. Four smaller ones landed with it: the
+merge-order mechanics left an accepted ADR for the pull request bodies, where
+`OWNER_DECISIONS` says agent-written merge policy belongs; an OD-17 citation
+said `:60` where the claim is at `:63` and now carries a fingerprint; the
+pull-up gate stopped being framed as the die's requirement in the one place
+that framing survived; and **Child Mode** is named as open — on Waveshare every
+position is `Unknown`, so §3a's provenance sentence is a permanent hedge on the
+one number a six-year-old came to read, and no section considered it.
+
 *§3a sits next to two detectors already in the tree, and the second draft named
 one of them and tried to overrule it in prose.*
 `TrustEvaluator::compare_provider` raises
@@ -765,7 +796,10 @@ raise `PositionJump` (40) and `MotionDisagreement` (45) together, 85 clears
 `untrust_at` (60), and the board is **`Untrusted`** with no remembered position
 rather than `Degraded`. Four smaller ones from the same round: `device_moving`
 in `gnss_power.h` is one boolean for two bodies and is named for the wrong one,
-now a T-080 bullet beside the gate finding; `OPEN_QUESTIONS.md`'s standing
+now a T-080 bullet beside the gate finding — **scoped in the twelfth round
+against [#112](https://github.com/hleserg/Attadipa/pull/112), which is open and
+already replaces that field**, so the bullet asks for OD-10's ceiling and the
+cross-body decision rather than for a rename somebody has done; `OPEN_QUESTIONS.md`'s standing
 *"until A1–A3 are answered, hardware work does not proceed"* was satisfied by
 its own table twelve lines above and is recorded as spent rather than left
 reading as live; the specification's fifth evidence level and

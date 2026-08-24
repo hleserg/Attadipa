@@ -199,12 +199,31 @@ conditions and refuses otherwise. Cross-body position gets the same shape:
 > co-location is `Unknown` may be shown, and must be shown with its actual
 > source — never as the wearer's own instrument's fix.**
 
+**Child Mode is open and this section does not answer it.** The rule above puts
+a provenance sentence on every position whose co-location is `Unknown`, and on
+the Waveshare board — which has no GNSS of its own — **every** position is
+`Unknown`, so the hedge is permanent rather than occasional. The specification
+says that screen is *for a six-year-old*, and a permanent qualifier on the one
+number they came to read is a worse answer than the qualifier prevents,
+which is a design question and not a correctness one. T-026 handles the
+*localisation* of the sentence — it is a `StringId` and not a literal — and
+that is a different question from whether Child Mode shows it at all. **Named
+here rather than decided**: this ADR is about what the axis means, the Definition
+of Done names Child Mode, and this section considered it nowhere until the
+twelfth review round of [#94](https://github.com/hleserg/Attadipa/pull/94).
+Whoever writes the Child Mode position screen owns the answer.
+
 **This section states the axis and does not choose the representation.** A
 stored field beside
 [`PositionSource`](../../core/include/attadipa/core/position.h) and an accessor
 over `PositionSource` both satisfy the rule above; **T-026 decides which**, and
-[ADR-0011](0011-gnss-integrity.md) §2 says the same in the same words. It had
-to, because the two documents said opposite things until the eleventh review
+[ADR-0011](0011-gnss-integrity.md) §2 leaves it open too — it says so in its own
+words, and it argues the accessor case while leaving the choice with T-026,
+which is not the same sentence as this one and is not meant to be. (This
+paragraph claimed it said *"the same in the same words"* until the twelfth
+round; it did not, and a reader checking a claim about wording is exactly the
+reader who finds the two documents still disagreeing.) It had to leave it open,
+because the two documents said opposite things until the eleventh review
 round of [#94](https://github.com/hleserg/Attadipa/pull/94): this section
 mandated a field four times over, ADR-0011 §2 retracted the mandate and argued
 for the accessor — *"an accessor serves it at no risk, while a stored field buys
@@ -392,17 +411,19 @@ T-026 may well find that the accessor it is asked to choose between is
 `body_of(source) == SensorBody::Watch`, and the two names are worth reconciling
 rather than both existing.
 
-**The merge order, decided rather than left to whichever CI is green first.**
-#94 lands before #112. Three reasons, none of them about which is better: this
-section is the *same* §3a heading #112 also writes, developed through eleven
-review rounds against this branch's diff, so #112 rebasing onto it loses
-nothing while the reverse loses all of that; #112 must renumber `T-111` and its
-owner-decision record **regardless**, because `main` already holds `T-111` and
-`OD-16`; and #112's A5/A6 record is byte-identical in heading to this branch's
-**OD-17**, so once this lands #112's copy is a duplicate to be **deleted**, not
-renumbered — two records of one owner decision is the hazard the register exists
-to prevent. What #112 then still carries is everything this section does not
-say: `SensorBody`, `body_of()`, ADR-0013 and the motion half. Its Testable item
+**The merge order: #94 lands before #112**, because this section is the *same*
+§3a heading #112 also writes, developed through eleven review rounds against
+this branch's diff, so #112 rebasing onto it loses nothing while the reverse
+loses all of that. That is the whole of what belongs here. **The mechanics —
+which record #112 must then delete rather than renumber, and which task ID it
+must reconcile — live in the two pull request bodies**, where
+[OWNER_DECISIONS](../research/OWNER_DECISIONS.md) says agent-written merge
+policy belongs: it binds nobody afterwards, and an accepted ADR does. An earlier
+version of this paragraph carried all of it, which would have left an inventory
+of an unmerged branch inside an accepted decision — archaeology the day #112
+lands. Found in the twelfth review round. What #112 still carries is everything
+this section does not say: `SensorBody`, `body_of()`, ADR-0013 and the motion
+half. Its Testable item
 **Three** below — *the two fixtures the trust suite already holds still pass
 unchanged* — is asserted against the suite as it stands **when T-026 runs**, not
 as of this ADR: #112 rewrites those fixtures on purpose, and an item that reads
@@ -432,9 +453,11 @@ is the field's initialiser — what a driver that forgets to stamp provenance
 produces — so *shown with its actual source* can print `Unknown` for the source
 **and** `Unknown` for the co-location: two different questions answered with one
 word. A screen that renders both as the same string is telling the reader
-nothing twice. The two are separate fields and must read back separately, and a
-source of `Unknown` is a defect to surface rather than a provenance to display.
-Found in review.
+nothing twice. The two are separate **answers** and must read back separately —
+whether the second is stored or computed is T-026's, per the paragraph above,
+and this sentence said *"separate fields"* until the twelfth round. A source of
+`Unknown` is a defect to surface rather than a provenance to display. Found in
+review.
 
 **`Unknown` is not a synonym for "the node's".** An earlier draft of the quoted
 rule said such a position *"must be shown as the node's fix"*, and
@@ -716,8 +739,9 @@ stands when T-026 runs, not as of this ADR**:
 purpose — that is its subject — so an item pinned to today's file would make a
 correct change look like a regression. What is asserted is that *§3a* does not
 move them, not that nothing does. Stated in the eleventh review round of
-[#94](https://github.com/hleserg/Attadipa/pull/94). **Four:** the field is not
-`PositionValidity`, not `TrustState` and not a reason bit — and the guard for
+[#94](https://github.com/hleserg/Attadipa/pull/94). **Four:** co-location does
+not live in `PositionValidity`, in `TrustState` or in a reason bit — whichever
+representation T-026 picks — and the guard for
 that is **the exhaustive `to_string` switch, not a count assertion**. An earlier
 version of this item specified *"a compile-time assertion that
 `kPositionValidityCount`, the `TrustState` enumerators and `kTrustReasonCount`

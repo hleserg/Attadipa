@@ -162,10 +162,14 @@ this paragraph said they were.
   ([the table above](#backlog)), mapping to *Audio amplifier × Magnetometer* and
   *Battery charging × Magnetometer* in
   [INTERFERENCE_MATRIX](INTERFERENCE_MATRIX.md). Neither disturbing source is
-  the vibration motor and both are on the unit: the speaker is `VERIFIED` —
-  `AAC210602A1`, a metal-can micro-speaker in the back cover
+  the vibration motor. `AAC210602A1` is `VERIFIED` as a **part** — marking,
+  mounting and wiring, a metal can in the back cover
   ([WAVESHARE_BOARD_RECEIVED](../research/WAVESHARE_BOARD_RECEIVED.md) §1.8) —
-  and the AXP2101 charge path exists, §1.2 recording where the battery connects.
+  but **what it is is `CONFLICTING` and that is T-105**, the fourth gate below.
+  This bullet called it *"the speaker is `VERIFIED`"* until the twelfth review
+  round, three lines under a G-09 row that had said otherwise since it was
+  written. The AXP2101 charge path is not in doubt, §1.2 recording where the
+  battery connects.
   **It is not characterised**, and an earlier version of this bullet cited
   *"§1.3"* for a characterisation; §1.3 is the flash section, and §1.2 explicitly
   declines to give a current figure. G-10 therefore establishes its own
@@ -200,6 +204,15 @@ this paragraph said they were.
      holding `SDA` low takes the AXP2101 with it: **T-130**. Fitting both
      candidate modules at once, which `MAGNETOMETER_RETROFIT` plans, makes
      eight.
+  4. **What the part is — G-09 only. T-105.** `HARDWARE_MATRIX.md`'s Speaker row
+     reads `CONFLICTING`: *"a parallel reading of the same unit calls this part a
+     haptic actuator… AAC makes both, so the marking does not decide it…
+     Resolved by tracing the pads."* If it is an actuator there is no speaker to
+     disturb anything and G-09 has no premise — the same state G-08 is in, from
+     the opposite direction, and T-105 landing on *actuator* moves both rows at
+     once. **This gate is what makes G-09 and G-10 different from each other**,
+     and both the table row and `INTERFERENCE_MATRIX` carried it while this list
+     — which the paragraph above calls the authority — closed at three.
 - **One — G-08, the haptic test — is blocked on placement *and* on a vibration
   motor that is not there.** The sensor is going into the Waveshare unit
   (OD-17), and `WAVESHARE_BOARD_RECEIVED` §1.7 records `OBSERVED`: *"There is no

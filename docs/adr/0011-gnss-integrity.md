@@ -87,7 +87,7 @@ These are separate, and no two of them may be stored in the same field:
 | interference | is the band jammed, and is the receiver mitigating |
 | spoofing suspicion | does anything believe these signals are fabricated |
 | trust | the fused verdict, §5 below |
-| co-location | is this position about **the body this device is on**, or about a different one — [ADR-0009](0009-heading.md) §3a, beside [`PositionSource`](../../core/include/attadipa/core/position.h), defaulting to `Unknown`. *On*, not *wearing*: §3a's producer rule is about the instrument, and neither board detects wear. **Whether it is a stored field or an accessor over `PositionSource` is T-026's to decide, and this row no longer says** — see below |
+| co-location | is this position about **the body this device is on**, or about a different one — [ADR-0009](0009-heading.md) §3a, carried explicitly on every observation and readable from it, defaulting to `Unknown`. *On*, not *wearing*: §3a's producer rule is about the instrument, and neither board detects wear. **Whether that is a stored field or an accessor over [`PositionSource`](../../core/include/attadipa/core/position.h) is T-026's to decide, and this row does not** — see below |
 
 **And the eleventh is the one axis this register may not be able to keep.** The
 rule two paragraphs up is that no two of these may be stored in the same field,
@@ -111,9 +111,14 @@ receiver. It is not, however, independent of everything else on the observation:
 under §3a's producer rule it is a function of
 [`PositionSource`](../../core/include/attadipa/core/position.h) (`LocalGnss`
 gives `SameBody`, everything else `Unknown`), which is why T-026 asserts the two
-agree rather than letting them drift apart. It earns a field because the
-question it answers is proximity and `PositionSource`'s is provenance, and a
-reader should not have to infer one from the other. [ADR-0009](0009-heading.md) §3a decides what it means and what it
+agree rather than letting them drift apart. It earns **an answer of its own on
+every observation** — the question it answers is proximity and
+`PositionSource`'s is provenance, and a reader should not have to infer one
+from the other. Whether that answer is stored or computed is a separate
+question and the paragraph above is where it is left open; this sentence read
+*"it earns a field"* until the twelfth review round, which is the withdrawn
+mandate arguing its own case fourteen lines after the retraction.
+[ADR-0009](0009-heading.md) §3a decides what it means and what it
 withholds — **not where it lives**, which is T-026's and is said so in both
 documents since the eleventh review round of
 [#94](https://github.com/hleserg/Attadipa/pull/94); this sentence read *"decides
