@@ -280,8 +280,26 @@ pixel count or a duration written as a number anywhere under `ui/`, `sim/` or
 what somebody copying a line out of the palette would paste. Exactly one file is
 exempt, `ui/src/color.cpp`, because being the palette is its job; six other
 candidates were tried and removed on finding they were exempt from a rule they
-never broke. `tools/ui/selftest.py` proves the checker rejects nine real
-mistakes and accepts nine correct lines.
+never broke. `tools/ui/selftest.py` proves the checker rejects thirty real
+mistakes and accepts twenty-eight correct forms.
+
+**It reads calls, not lines, and that distinction was bought.** Until
+[#68](https://github.com/hleserg/Attadipa/issues/68) the checker matched one
+physical line at a time, so whether a raw pixel count was refused depended on
+where the line breaks fell — `clang-format` at a narrow column split a call
+across four lines and the same value became invisible. An invariant that a
+formatter can switch off is not one. The checker now blanks comment and string
+bodies, takes each call whole by balancing parentheses, and judges arguments by
+position against an inventory of LVGL entry points read out of the pinned v9.5.0
+headers. Half the self-test is the same call written twice, one line and
+wrapped, because the two disagreeing is precisely what nobody noticed.
+
+**It is a rule about lengths, not about numbers.** A repeat count, a rotation in
+tenths of a degree, a gradient stop between 0 and 255, a flex weight and an
+array index are all integers in UI code that are not pixel counts, and all five
+are self-test cases that must *pass*. Widening the rule to "no literals in
+`ui/`" would make it cry often enough to be turned off, which is the failure
+mode a boundary check cannot survive.
 
 ## 6. Sound and haptics are tokens too
 
