@@ -118,6 +118,42 @@ By default the tool looks for a simulator socket at `./.attadipa-sim.sock` and
 `/tmp/attadipa-sim.sock`. `--socket <path>` says where; `--port <device>` is for
 a serial device.
 
+### What `duration` measures
+
+**The whole path, from the `PointerDown` to the `PointerUp`.** A gesture of `N`
+points has `N - 1` intervals between adjacent points; each is `duration / (N-1)`
+and every one of them is waited out, the interval before the release included.
+So a two-point gesture — which has nothing in the middle at all — holds the
+pointer down for the whole `duration` before lifting it, and a `duration` of
+`0.6` means the device sees 0.6 s of gesture whatever the shape.
+
+This was not true before, which is why it is written down rather than assumed:
+the wait hung off the *intermediate* points and came after each was sent, so a
+five-point 0.6 s gesture spent 0.45 s with a zero-length first segment, and a
+two-point one was a down immediately followed by an up. A recogniser reads
+**speed** — it is what separates a swipe from a drag from a flick — so a report
+saying a gesture took the time it asked for while the device saw a different
+one is worse than no timing at all.
+
+The deadlines are absolute, taken from one `time.monotonic()` at the
+`PointerDown`, so the round trips come out of the intervals they happened in
+rather than being added to the path: a long path does not drift late. If a
+round trip overruns its interval, the next point is already due and is sent
+immediately — the tool never tries to make time back up, and never sleeps for a
+negative interval.
+
+`duration: 0` is legal and means *as fast as the connection manages* — the
+shape without a claim about its speed. A negative, infinite or NaN duration is
+refused **before** the `PointerDown` goes out, so a mistyped gesture file
+cannot leave a finger down on the device. The same rule reaches a scenario step
+and a `gesture --file`, because both go through the one client method.
+
+`swipe` and `drag` are a hair short of this today — they take `steps` intervals
+between their points and sleep for `steps - 1` of them, so a swipe runs `1/steps`
+under its duration and starts with a zero-length segment. Bounded, unlike the
+gesture defect above, and recorded under **T-114** in
+[TASKS.md](../../TASKS.md) rather than left to be rediscovered.
+
 ### `info` is not decoration
 
 It prints what the **device** said, not what this tool assumes. Two lines of it

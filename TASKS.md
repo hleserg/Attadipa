@@ -297,6 +297,21 @@ blocks it or is a correctness, security or queue-stalling defect.
   transport-independent half is done: the protocol, the input layer, the bridge,
   the host tool, the diagnostic screen, the tests and the agent skill all exist
   and run against the simulator.
+  - **Corrections to that half are this task, not a new one.**
+    [#186](https://github.com/hleserg/Attadipa/issues/186) is the first:
+    `gesture --file` did not spend the `duration` it was given — an `N`-point
+    path waited `N - 2` intervals instead of `N - 1` and a two-point one waited
+    none at all, so the shipped example spent 0.45 s of its declared 0.6 and a
+    two-point gesture was a press and a release back to back. Fixed on absolute
+    deadlines, pinned by three host groups on a fake clock and by a wall-clock
+    bound in the end-to-end test; the semantics are now stated in
+    [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md#what-duration-measures).
+  - **Still open, and deliberately not folded into that fix:** `swipe()` has
+    the same shape of error one order smaller — `steps` intervals between its
+    points, `steps - 1` sleeps, the first of them zero — so it runs `1/steps`
+    short of the duration asked for and begins with a zero-length segment,
+    where the gesture defect was categorical. Bounded and not urgent; it wants
+    its own change and its own test rather than a widened diff.
 - **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
   task after that point is supposed to end with a real screenshot, and this is
   what makes one possible. That point now has a task and a date attached:
@@ -359,7 +374,7 @@ blocks it or is a correctness, security or queue-stalling defect.
      here rather than fixed there, because each is an answer the firmware end
      has to give and none has a right answer on a host socket.
      - **Bound the injected coordinates at the device.** `_check_point` in
-       `tools/watch/client.py:599` refuses a point outside the panel, and that
+       `tools/watch/client.py:640` refuses a point outside the panel, and that
        is the *host* being polite. `Bridge::handle_input` validates the event
        type, the button index, the rate and the hold, and never looks at `x`
        and `y` — a client that does not use this tool, or a resync landing
