@@ -154,11 +154,42 @@ Everything about the workflows themselves — security model, authentication,
 cost control and the kill switch — is in
 [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md).
 
+## Look at the screen you changed
+
+A UI change that compiles has not been checked. `tools/watch_control.py` takes a
+picture of what is actually on the screen, presses buttons, taps and swipes, and
+takes another picture — against the simulator today and against a device when
+there is firmware for one.
+
+**After a substantive change to screens, navigation, themes, fonts, widgets,
+system dialogs, lock, touch handling or buttons: build it, open the screen, take
+a real screenshot, and look at the image.** Check for clipped text, overlaps,
+collapsed padding, unreadable contrast, wrong colours, corrupted regions,
+animations caught halfway, touch targets that are invisible or too small, a tap
+that fires twice, and a UI that is wedged after a series of actions. Fix what
+you find and repeat.
+
+Not after every keystroke — at logical checkpoints and before finishing a task
+that touched the interface. And **never compute tap coordinates from the source
+and fire at them**: that tests your arithmetic. Look at the frame first, find the
+element in it, then tap.
+
+Two rules do not relax here. A screenshot from the simulator is evidence about
+layout, colour and geometry and about **nothing physical** — the tool prints
+`sim` in its build string so that cannot be claimed by accident. And "it built"
+is not "it works": *"Compiles"* is the first item in the Definition of Done, not
+the last.
+
+[`.claude/skills/watch-ui-testing/SKILL.md`](.claude/skills/watch-ui-testing/SKILL.md)
+is the procedure. [`docs/testing/WATCH_CONTROL.md`](docs/testing/WATCH_CONTROL.md)
+is the longer version, including what the feature costs and how it works.
+
 ## Definition of Done
 
 Compiles for every supported target · host tests pass, hardware tests honestly
-marked · no application-layer hardware access · simulator tested · reviewed at
-both geometries · day and night themes checked · Child Mode considered · power
+marked · no application-layer hardware access · simulator tested · **a real
+screenshot taken and looked at, if the interface changed** · reviewed at both
+geometries · day and night themes checked · Child Mode considered · power
 and coexistence implications considered · errors handled in human language ·
 loading, empty, offline and error states exist · docs and `STATUS.md` updated.
 
