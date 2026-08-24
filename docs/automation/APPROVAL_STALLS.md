@@ -254,7 +254,7 @@ this document's own §*Citations* warns about at
 number rots silently. All eight code citations in this file now carry a
 fingerprint **on the citation's own physical line**, which is the only place the
 checker looks:
-`tools/docs/check_docs.py:466` "FINGERPRINT.match(line[match.end()" reads it out
+`tools/docs/check_docs.py:498` "FINGERPRINT.match(line[match.end()" reads it out
 of the remainder of that same line, so a citation whose quoted snippet wraps
 onto the next line is checked for nothing but non-blankness and drifts as
 silently as a bare number. Three here did

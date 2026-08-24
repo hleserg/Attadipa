@@ -57,6 +57,9 @@ void print_usage(const char* argv0)
         "  --locale <lang>  start in en or ru. L toggles it while running\n"
         "  --theme <name>   start in day or night. T toggles it while running\n"
         "  --node           present a paired, reachable Attadipa node\n"
+        "  --debug-socket <p>  listen for the remote-control tool on the Unix socket p.\n"
+        "                   Off by default. Not a network port: tools/watch_control.py\n"
+        "  --diagnostic     show the test pattern instead of the capability screen\n"
         "  --no-bring-up    leave every part untouched instead of pretending it came up\n"
         "  --list-boards    print the board profiles this build knows about\n"
         "  --help\n"
@@ -107,6 +110,18 @@ ParseResult parse_options(int argc, char** argv, Options& out)
         }
         if (std::strcmp(arg, "--no-bring-up") == 0) {
             out.bring_up = false;
+            continue;
+        }
+        if (std::strcmp(arg, "--diagnostic") == 0) {
+            out.diagnostic_screen = true;
+            continue;
+        }
+        if (std::strcmp(arg, "--debug-socket") == 0) {
+            const char* value = take_value(argc, argv, i, arg);
+            if (value == nullptr) {
+                return ParseResult::Error;
+            }
+            out.debug_socket = value;
             continue;
         }
         if (std::strcmp(arg, "--board") == 0) {
