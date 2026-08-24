@@ -50,7 +50,8 @@ This document does the first. The second is a separate task.
 | M5 | **QST `QMI8658A` Datasheet Rev A**, doc `13-52-25`, md5 `5a0fef65a358430d6499944a75d22e19`. Admissible here as evidence about **M3's own document lineage** and nothing else: its revision-history rows 0.4, 0.5 and 0.6 are *verbatim identical* to M3's, so it is the same document renamed at 0.7. Used only for what the vendor did to the documentation — **never** for an electrical characteristic, per §5.3 |
 | M4 | Owner's photographs of both AliExpress listings, 2026-08-22 — silkscreen, pin labels and the die marking only. A photograph of a module is evidence about *labels*, not about *nets*. The break-out pin lists it yielded are in [#83, 19:13:48Z](https://github.com/hleserg/Attadipa/issues/83#issuecomment-5382126078): **CJMCU-9911 → `VCC GND SCL SDA CAD RST TST`**, GY-271 → `VCC GND SCL SDA DRDY` |
 | M6 | **NXP `UM10204`, *I²C-bus specification and user manual*, Rev. 7.0 — 1 October 2021**, 62 pages, md5 `f0e2e0922efd7eed0aa86a6eee40801a`, sha256 `dc91f00f65584e06ef36e26c93bf9d91a95fb3c8a1830a9223e53caf678b36af`, from `nxp.com/docs/en/user-guide/UM10204.pdf`. **This is the document behind "the 3 mA sink limit I²C specifies"** and it is cited by clause below, never carried over on trust. Note that Rev. 7.0 renamed *master/slave* to *controller/target* throughout; the electrical tables did not change with it |
-| M7 | **The Waveshare schematic — the same file as `HARDWARE_MATRIX` S6**, `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`, md5 `b0cdcac0afb0c8605896d995676c4468`, sha256 `6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d`, re-read 2026-08-24. **The method is the news, not the file**: S6 was read by *text extraction*, which recovers designators and values but not the wires between them, and that is exactly why the pull-ups were never recovered from it. This reading **rendered** the region around `GPIO14`/`GPIO15` at 900 dpi and read the junction dots. §4.3 |
+| M7 | **The Waveshare schematic — the same file as `HARDWARE_MATRIX` S6**, `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`, md5 `b0cdcac0afb0c8605896d995676c4468`, sha256 `6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d`, re-read 2026-08-24. **The method is the news, not the file**: S6 was read by *text extraction*, which recovers designators and values but not the wires between them, and that is exactly why the pull-ups were never recovered from it. This reading **rendered** the region around `GPIO14`/`GPIO15` at 900 dpi and read the junction dots. §4.3. **Confirmed 2026-08-24 by a third method and a second context** — see M8 |
+| M8 | **The same file again, read a third way — by extracting the PDF's vector paths** rather than its text or its pixels. Done in a context that had not made the M7 reading, on a copy re-downloaded from `waveshareteam/ESP32-S3-Touch-AMOLED-2.06` whose md5 and sha256 both matched M7's byte for byte. This is the strongest of the three methods and the one to reach for next: a schematic PDF stores wires as line segments and junction dots as filled curves, so **connectivity is recoverable as coordinates rather than as a judgement about a picture**. Every value and every net in §4.3.1 reproduced. §4.3.1 |
 
 ## 2. AK09911C — the purple CJMCU-9911
 
@@ -543,6 +544,37 @@ junction dots settle which goes where. There is **exactly one pull-up per line o
 the whole drawing** — the I²C net labels occur 28 times and all of them are on
 sheet 1, and no other resistor on any sheet touches them.
 
+**Every line of that table was re-derived independently on 2026-08-24 from the
+PDF's vector paths (M8), in a context that had not made the M7 reading**, and it
+agrees. The geometry, in the drawing's own coordinates, because it is the
+evidence and not a description of it:
+
+- both resistors' upper leads meet at `(147.55, 438.15)` under a junction dot
+  centred `(147.5, 438.09)`, and a stub rises from there to the `VCC3V3` symbol —
+  so **both pull to `VCC3V3`**, and it is one node, not two;
+- `R23`'s lower lead runs down `x = 142.23` and terminates on the wire at
+  `y = 455.44`, dot at `(142.17, 455.39)`. `R49`'s runs down `x = 150.22` and
+  terminates on the wire at `y = 452.78`, dot at `(150.16, 452.73)`;
+- the `GPIO14`/`ESP32_SCL` label box spans the `y = 455.44` wire and
+  `GPIO15`/`ESP32_SDA` the `y = 452.78` one. **So `R23` is the `SCL` pull-up and
+  `R49` the `SDA` pull-up** — the assignment the table gives;
+- `C34` rises from `x = 171.52` to the `SCL` wire, dot at `(171.47, 455.39)`;
+  `C35` from `x = 176.85` to the `SDA` wire, dot at `(176.8, 452.73)`. Their lower
+  leads join at `y = 468.74` and drop together to `AGND`;
+- the label count is exact: `ESP32_SCL`/`ESP32_SDA` 9 each, `TP_SCL`/`TP_SDA` 3
+  each, `RTC_SCL`/`RTC_SDA` 2 each — **28**, and sheets 2 and 3 carry none.
+
+**This is a stronger claim than a rendered reading, and it is worth saying why.**
+A render is pixels and a human judgement about whether two marks touch; the
+vector paths are the endpoints the drawing tool wrote down. Where a wire crosses
+another without connecting, the two are distinguishable by the presence or
+absence of a filled curve at the crossing, which is precisely the question a
+picture makes hardest. The value of the resistors never depended on this — both
+lines see 2.2 kΩ either way, so no number in §4.3.3 moves — but
+`HARDWARE_MATRIX` now asserts the designator-to-net mapping, and a hardware
+matrix that names the wrong resistor is the kind of error this repository exists
+to prevent.
+
 **Two things here contradict what was assumed.** The owner's correction said
 *"typically 4.7 kΩ or 10 kΩ"* and explicitly flagged that as typical; the board
 is at **2.2 kΩ**, stiffer than either, so the arithmetic starts closer to the
@@ -553,7 +585,21 @@ deliberate lump on top of pin and trace capacitance, and it matters to §4.3.4.
 read "by text extraction", which recovers designators and values but not the
 wires between them. The values `2.2k` were in that extraction all along with
 nothing to attach them to. This reading rendered the sheet and read the junction
-dots — see M7.
+dots — see M7 — and a third reading recovered the same wires as coordinates
+(M8).
+
+**And that generalises past this row, which is the part worth carrying away.**
+Three methods on one file, in increasing strength: text gives designators and
+values; a render gives a picture of the wires; the vector paths give the wires
+themselves. S6 has been read only the first way for everything except this bus,
+and several questions still open against it are exactly connectivity questions —
+`VCC3V3`'s source rail ([OPEN_QUESTIONS](OPEN_QUESTIONS.md) **D13**), what the
+display flex carries (**D3**), and which of `Key1`/`Key3`/`PWRON` reaches a
+finger (**D5**). None of those is answered here and none should be assumed to
+fall out; but **the method that answered this one has not been tried on them**,
+and that is a cheaper next move than a meter on a board. Recorded so the next
+agent does not conclude from S6's "partially recoverable" that the file has been
+exhausted.
 
 #### 4.3.2 What the specification actually requires
 

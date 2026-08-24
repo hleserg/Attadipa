@@ -1152,6 +1152,14 @@ constants.
   `HARDWARE_MATRIX` S6, re-read by **rendering** the region around `GPIO14`/`GPIO15`
   and reading the junction dots. The earlier text-only extraction had the value
   string `2.2k` and no way to attach it to a net, which is why this was missing.
+- **Confirmed independently the same day, by a third method and a second
+  context** that had not made the rendered reading: extracting the PDF's **vector
+  paths**, where wires are line segments and junction dots are filled curves, so
+  connectivity is coordinates rather than a judgement about a picture. The file
+  was re-downloaded and both hashes matched byte for byte. Every value and every
+  net reproduced — including the `R23`↔`SCL` / `R49`↔`SDA` assignment, which the
+  rendered reading had flagged as its weakest part. Endpoints and dot centres are
+  written out in [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §4.3.1.
 - **Checked:** 2026-08-24. **Board revision:** V1.0, which is the revision the
   received unit's silkscreen matches
   ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1).

@@ -614,6 +614,19 @@ here to answer: each module's fitted resistor, and whether the CJMCU-9911's
 `RST` pad reaches the die. Both are four ohmmeter probes on a bare module, both
 now have a published pass line, and both are **H16** and T-109's.
 
+**And a method came out of it that is worth more than the row it settled.** The
+pull-ups were missing for two days because S6 had only ever been read by *text
+extraction*, which recovers designators and values but not the wires between
+them. They were recovered by **rendering** the sheet, and then re-derived the
+same day, in a second context, by **extracting the PDF's vector paths** — where
+wires are line segments and junction dots are filled curves, so connectivity
+comes out as coordinates rather than as a judgement about a picture. All three
+readings agree, and the third is the strongest. **It has not been tried on `D3`,
+`D5` or `D13`**, which are connectivity questions of exactly the same shape and
+are currently waiting on a board. That is a cheaper next move than a meter, and
+nothing about it needs hardware —
+[MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §4.3.1.
+
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as
 [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature).

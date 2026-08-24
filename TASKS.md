@@ -2364,6 +2364,10 @@ stale silently. The protocol is
     Rev. 7.0's 3 mA with both modules at 4.7 kΩ. **Do not lift the modules'
     resistors on account of the assumed values** — but the values are assumed,
     and the pass line is: one module ≥ 1.8 kΩ, both ≥ 3.6 kΩ each. §4.3.3.
+    Both resistors, both 22 pF capacitors and the designator-to-net mapping were
+    then re-derived **independently from the schematic's vector paths**, in a
+    context that had not made the first reading, and agree — so this row is
+    double-sourced and the wiring plan may rest on it. §4.3.1.
   - **Do not wire the CJMCU-9911's `TST` pad.** The module breaks it out; M1
     §4.3 and §7 both say to keep that pin electrically non-connected, and `IIN2`
     on it is 100 µA — 33× the part's idle current. §2.6.4.
