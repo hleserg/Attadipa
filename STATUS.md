@@ -716,6 +716,40 @@ four more things at no cost:
 
 ## Recently completed
 
+- **A re-review was always a fresh review, so a branch could stay blocking
+  forever.** [#169](https://github.com/hleserg/Attadipa/issues/169).
+  `claude-pr-review.yml` reviews the head commit: answer every finding, push, and
+  the next run reads a new head, a different diff and therefore different
+  findings. On 2026-08-24 four branches sat at rounds five, eight, ten and two,
+  the findings down to a `§4.1` that should read `§2.4` and a line number that
+  had drifted three lines, with `ai-review:blocking` still on and the
+  orchestrator's rule — *merge once CI is green* — unable to fire. `main` had not
+  moved for 25 hours with 39 open pull requests.
+  `.github/scripts/review-verdict.sh` is the rule: an open finding holds a pull
+  request **iff** it is *floor* — a hardware fact with no source, a `PASS` for a
+  test that did not run on a board, an application-layer hardware access, an
+  architecture-boundary violation — or it was first raised **before** the floor
+  round, which is **round 4**. Two things make it converge rather than appear to:
+  a deferred finding never ages into a blocker (#169's own *"carry-over only"*
+  phrasing does not converge — each round's new prose defect is next round's
+  carry-over), and the round a finding was first seen comes from a ledger comment
+  the workflow keeps rather than from the reviewer, so nothing can be re-dated
+  into blocking or out of it. Every unreadable input is read in the direction that
+  blocks. **The workflow half is NOT DEPLOYED** — a GitHub App cannot push
+  `.github/workflows/`, probed and rejected on this branch, so it is
+  `docs/automation/pending/169-review-convergence.patch` and every round is still
+  a first round until a local session applies it.
+  **Tests:** 87 assertions, offline, proven to fail against six deliberate
+  defects — the literal `carry-over` reading (15 failed), an unknown kind
+  defaulting to `normal` (2), model-supplied dating (4), silence closing a
+  finding (3), an unknown state read as `fixed` (1), a category downgrade (1),
+  and a `sed` range in place of the block reader (3). `actionlint` clean over all
+  seven workflows **with the patch applied**; `shellcheck -x` clean.
+  **The other two halves of #169 are not in that change and are not lost:** the
+  branch-sync job is ordered behind
+  [#128](https://github.com/hleserg/Attadipa/pull/128) by the issue itself, and
+  splitting `STATUS.md`/`TASKS.md` into per-task files is filed separately.
+
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
   `tools/ui/check_raw_values.py` read one physical line at a time, so the same

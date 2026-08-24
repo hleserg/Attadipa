@@ -101,6 +101,67 @@ It finishes by setting exactly one of `ai-review:pass` or `ai-review:blocking`,
 and it is asked to say plainly when it found nothing. A reviewer that always
 finds something is noise, and noise is how a review stops being read.
 
+## The convergence rule
+
+**A re-review is a fresh review, and that is the problem.** The reviewer reads
+the head commit. Answer every finding, push, and the next run reads a new head —
+a different diff, and therefore different findings. On 2026-08-24 four branches
+sat at rounds five, eight, ten and two: the findings shrank each round to a
+`§4.1` that should read `§2.4` and a line number that had drifted three lines,
+and `ai-review:blocking` never came off. The orchestrator merges once CI is
+green, so those pull requests were waiting for something that could not arrive.
+`main` did not move for 25 hours with 39 open pull requests
+([#169](https://github.com/hleserg/Attadipa/issues/169)).
+
+The rule, in one line:
+
+> An open finding holds a pull request **if and only if** it is *floor*, or it
+> was first raised **before** the floor round.
+
+*Floor* is four kinds and it is not a severity rating: **a hardware fact with no
+source, a `PASS` for a test that did not run on a board, an application-layer
+hardware access, an architecture-boundary violation.** Those hold at any round,
+however late they are found — the acceptance in #169 refuses to weaken them and
+this does not. Everything else, first raised at or after the floor, is published,
+marked *deferred*, and filed as a follow-up issue rather than held.
+
+**The floor is round 4**, so rounds 1 to 3 behave exactly as this repository
+always did. That is the bound #169 asked to have written down, and the number is
+an owner decision rather than a default: three passes is more than the observed
+diffs needed to surface everything of substance, and from round 4 the blocking
+set can only shrink.
+
+Two things make it converge rather than merely look as though it does:
+
+- **A deferred finding never ages into a blocker.** #169's own phrasing —
+  *"block on a finding it already raised and the push did not fix"* — does not
+  converge on its own, because each round's new prose defect is next round's
+  carry-over, and the queue is unbounded again. The clause is *before the floor*,
+  not *before this round*.
+- **Dating is not the reviewer's.** The round a finding was first seen comes from
+  a ledger comment the workflow keeps, so a finding cannot be re-dated into
+  blocking or out of it. The reviewer supplies findings; the rule supplies the
+  verdict.
+
+That rule is [`.github/scripts/review-verdict.sh`](../../.github/scripts/review-verdict.sh),
+with 87 assertions in `.github/tests/review-verdict-test.sh` behind it, proven to
+fail against six deliberate defects including the literal reading of #169 above.
+It is executable rather than a paragraph in the prompt for the same reason the
+intake gate is a script: a rule that has never been run against a hostile input
+is a hypothesis, and here the input is written by a model.
+
+Every unreadable input is read in the direction that blocks — an unknown kind is
+`floor`, an unknown state is `open`, a finding the reviewer did not mention stays
+open, a corrupt ledger restarts at round 1. A review that publishes no findings
+block gets no computed verdict at all: the label the reviewer set itself stands,
+and the ledger comment says so.
+
+**Not deployed yet.** The rule and its tests are on `main`; the workflow half is
+`docs/automation/pending/169-review-convergence.patch`, because a GitHub App
+cannot push `.github/workflows/`. Until a local session applies it, every round
+is still a first round. See
+[the note beside the patch](pending/169-review-convergence.md).
+
 **When it cannot run, neither label is set and it says so on the pull request.**
 That note is the only signal that `main`'s second protection is absent for a
 commit, so it reads the action's own execution log and quotes the result record —

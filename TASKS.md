@@ -81,6 +81,29 @@ stale silently. The protocol is
   required. Until an issue has actually been filed that way, this is `UNKNOWN`
   and it is the single thing standing between the queue and the owner being
   removed from the loop.
+- **The queue's throughput problem is separate from its correctness problem, and
+  it has three halves** ([#169](https://github.com/hleserg/Attadipa/issues/169),
+  filed after `main` did not move for 25 hours with 39 open pull requests):
+  - **A convergence rule for the reviewer — written, tested, not deployed.**
+    `.github/scripts/review-verdict.sh` with 87 assertions. The floor is round 4
+    and it is an owner-movable number rather than a default. The workflow half is
+    `docs/automation/pending/169-review-convergence.patch`, because a GitHub App
+    cannot push `.github/workflows/`; **until a local session applies it every
+    round is still a first round**, and `STATUS.md` and
+    `docs/automation/CI_AND_REVIEW_PIPELINE.md` both say so rather than claiming
+    a guard that is not running.
+  - **A branch-sync job, ordered behind
+    [#128](https://github.com/hleserg/Attadipa/pull/128) by #169 itself.** An
+    update-branch push authored by `github-actions[bot]` leaves the runs at
+    `action_required`, so shipping it first replaces *dirty, no CI* with *clean,
+    no CI*, which is worse because it looks fine. The unblocked half of it —
+    naming and labelling the conflicted pull requests rather than discovering
+    them one at a time — is [#119](https://github.com/hleserg/Attadipa/pull/119)
+    and is not to be written a second time.
+  - **Per-task files instead of one `STATUS.md` and one `TASKS.md`.** Almost
+    every pull request touches both because this repository requires it, so one
+    merge makes every other branch dirty and a conflicted pull request gets no
+    CI at all. #169 says this belongs in its own issue, and it does.
 
 
 ### T-110 · The mandated reading list is 500 KB before the agent opens a file

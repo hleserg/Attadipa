@@ -1,0 +1,282 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 1414c2b..990315c 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -359,6 +359,16 @@ jobs:
+       - name: The gh calls in the workflows are ones gh accepts
+         run: bash .github/tests/gh-api-usage-test.sh
+ 
++      # A re-review is a fresh review: answering every finding moves the head,
++      # which moves the diff, which produces new findings. Four branches reached
++      # rounds five, eight, ten and two with `ai-review:blocking` never coming
++      # off. The convergence rule bounds that WITHOUT weakening what blocks, and
++      # the two halves pull against each other hard enough that this suite
++      # asserts both directions: a deferred finding never ages into a blocker,
++      # and a `floor` finding blocks at any round however late.
++      - name: What a late review round may still hold
++        run: bash .github/tests/review-verdict-test.sh
++
+   docs:
+     name: Documentation consistency
+     runs-on: ubuntu-latest
+diff --git a/.github/workflows/claude-pr-review.yml b/.github/workflows/claude-pr-review.yml
+index 76e171b..fd67686 100644
+--- a/.github/workflows/claude-pr-review.yml
++++ b/.github/workflows/claude-pr-review.yml
+@@ -279,6 +279,22 @@ jobs:
+             reproduces. Rank by severity. Say explicitly if you found nothing
+             blocking — a review that always finds something is noise.
+ 
++            **READ THE LEDGER BEFORE YOU WRITE ANYTHING.** This may not be the
++            first round on this branch. Run `gh pr view
++            ${{ github.event.pull_request.number }} --comments` and look for the
++            comment beginning `<!-- attadipa-review-ledger -->`. Its
++            `<!-- attadipa-review-ledger-state` block lists every finding ever
++            raised here, with the round it was first seen, its kind and its
++            state.
++
++            **Re-use those ids exactly.** An id you invent for a problem the
++            ledger already names is a new finding dated this round, which is how
++            a real blocker quietly stops blocking — and, in the other direction,
++            how a defect you already reported comes back as if it were fresh.
++            Account for every finding the ledger still shows as `open`: one that
++            you do not mention stays open, because "it did not come up again" is
++            not evidence that a push fixed it.
++
+             **Publish the review — it does not publish itself.** Post your
+             findings as a comment with `gh pr comment`. Nothing you write
+             reaches the pull request otherwise; the action leaves it in the run
+@@ -290,10 +306,47 @@ jobs:
+             than adding another — a fresh wall of text on every push is how a
+             review becomes something people scroll past.
+ 
+-            Finish by setting exactly one label on this pull request using the
+-            gh CLI: `ai-review:blocking` if anything must be fixed before merge,
++            **End the comment with a findings block**, which is what actually
++            decides the verdict. One line per finding, four fields, pipes
++            between them:
++
++                <!-- attadipa-review-findings
++                gnss-trust-source | open  | floor  | The trust state is claimed with no source
++                adr-section-number | fixed | normal | ADR-0007 §4.1 should read §2.4
++                -->
++
++            - **id** — lower-case letters, digits and hyphens, and the SAME id
++              every round for the same problem.
++            - **state** — `open` or `fixed`. `fixed` means you looked at the
++              current head and the problem is gone, not that somebody said they
++              had fixed it.
++            - **kind** — `floor` or `normal`. **`floor` is a short list and it is
++              not a severity rating**: a hardware fact with no source, a `PASS`
++              for a test that did not run on a board, an application-layer
++              hardware access, or an architecture-boundary violation. Those four
++              hold the pull request at any round, however late they are found.
++              Everything else is `normal` — including things you consider
++              serious. Anything you type that is neither word is read as `floor`.
++            - **description** — one line, no pipes.
++
++            List every finding you are reporting AND every one the ledger still
++            shows as open, so that a `fixed` is said out loud rather than
++            inferred from silence.
++
++            Then set exactly one label on this pull request using the gh CLI:
++            `ai-review:blocking` if anything must be fixed before merge,
+             otherwise `ai-review:pass`. Remove the other one if present.
+ 
++            **A later step may correct that label**, and this is deliberate
++            rather than a disagreement with you. From the convergence floor on,
++            a `normal` finding first raised at or after that round is published
++            and filed rather than held — because this workflow reviews the head
++            commit, so answering every finding produces a new head, a new diff
++            and new findings, and four branches reached rounds five, eight, ten
++            and two with the label never coming off (issue #169). The rule is
++            `.github/scripts/review-verdict.sh`. Your block is its input; nothing
++            you can write to it weakens the four `floor` kinds.
++
+       # What actually went wrong, read from the action's own execution log
+       # rather than guessed at.
+       #
+@@ -347,6 +400,183 @@ jobs:
+             echo "::warning::The review step reported success and never reached the model — see the note on the pull request."
+           fi
+ 
++      # THE CONVERGENCE RULE, and the reason it is four steps of plumbing around
++      # one script rather than a paragraph in the prompt above.
++      #
++      # A re-review is a fresh review. This workflow reviews the head commit, so
++      # answering every finding produces a new head, a new diff and — necessarily
++      # — new findings. On 2026-08-24 four branches sat at rounds five, eight,
++      # ten and two: the findings shrank each round to a `§4.1` that should read
++      # `§2.4` and a line number that had drifted three lines, and
++      # `ai-review:blocking` stayed on. The orchestrator's rule is *merge once CI
++      # is green*, which never arrived. Issue #169.
++      #
++      # The rule could have been written into the prompt. It is not, because a
++      # rule a model is asked to apply to its own verdict is a hope, and because
++      # the round a finding was first seen has to come from somewhere the model
++      # cannot re-date. So: the reviewer publishes findings, this ledger records
++      # when each was first seen, and .github/scripts/review-verdict.sh — 87
++      # assertions, no network, no `gh` — decides the label from the two.
++      #
++      # Nothing here can weaken what blocks. A `floor` finding holds the pull
++      # request at every round, and every unreadable input is read in the
++      # direction that blocks.
++      - name: Read the ledger and this round's findings
++        id: ledger
++        if: >-
++          !cancelled() && steps.auth.outputs.ok == 'true' &&
++          steps.happened.outputs.ran == 'yes'
++        env:
++          GH_TOKEN: ${{ github.token }}
++          REPO: ${{ github.repository }}
++          PR: ${{ github.event.pull_request.number }}
++        run: |
++          set -euo pipefail
++          : > /tmp/prev-ledger.md
++          : > /tmp/findings.md
++
++          # Ids first, bodies second, and deliberately not `--paginate` with a
++          # reducing `--jq`: `map(...) | last` runs once per PAGE and emits one
++          # answer per page, so the answer silently changes when a pull request
++          # crosses a hundred comments. Selecting element-wise and taking the
++          # last id is the shape that survives that.
++          # .github/tests/gh-api-usage-test.sh is about exactly this class of
++          # call.
++          ledger_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
++            --jq '.[] | select(.body | contains("<!-- attadipa-review-ledger -->")) | .id' \
++            | tail -1)
++          if [ -n "$ledger_id" ]; then
++            gh api "repos/$REPO/issues/comments/$ledger_id" --jq '.body' \
++              > /tmp/prev-ledger.md
++            echo "ledger_id=$ledger_id" >> "$GITHUB_OUTPUT"
++          fi
++
++          # The reviewer edits its comment in place, so a stale block can be read
++          # as this round's. That is harmless and not worth guarding: re-applying
++          # last round's statements reconciles to the same state, which is what
++          # carrying forward already does when there is no block at all.
++          find_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
++            --jq '.[] | select(.body | contains("<!-- attadipa-review-findings")) | .id' \
++            | tail -1)
++          if [ -n "$find_id" ]; then
++            gh api "repos/$REPO/issues/comments/$find_id" --jq '.body' \
++              > /tmp/findings.md
++          fi
++
++      - name: Decide what may still hold this pull request
++        id: verdict
++        if: >-
++          !cancelled() && steps.auth.outputs.ok == 'true' &&
++          steps.happened.outputs.ran == 'yes'
++        env:
++          # THE FLOOR, and the number is a decision rather than a default.
++          # Rounds 1 to 3 are the regime this repository had all along: anything
++          # the reviewer judges blocking, blocks. Three passes is more than the
++          # observed diffs needed to surface everything of substance, and from
++          # round 4 the blocking set can only shrink — no new blocker can be
++          # minted except a `floor` one, which is exactly the thing that must
++          # still block. Moving this number is an owner decision, because it is
++          # the bound #169 asks to have written down.
++          FLOOR: "4"
++          PR: ${{ github.event.pull_request.number }}
++        run: |
++          set -euo pipefail
++          bash .github/scripts/review-verdict.sh \
++            /tmp/prev-ledger.md /tmp/findings.md "$FLOOR" \
++            /tmp/new-ledger.md /tmp/deferred.md "$PR" > /tmp/verdict.txt
++          cat /tmp/verdict.txt
++          # Filtered into GITHUB_OUTPUT rather than appended wholesale. Every
++          # value this script prints is a small integer or one of five fixed
++          # tokens, so the filter drops nothing real -- and the file it parsed is
++          # a comment body written by a model, which is the one input in this
++          # workflow that must never reach a step output unshaped.
++          grep -E '^[a-z_]+=[A-Za-z0-9 :#._-]*$' /tmp/verdict.txt >> "$GITHUB_OUTPUT"
++
++      - name: File the deferred findings, so not holding them is not losing them
++        id: deferred
++        if: >-
++          !cancelled() && steps.auth.outputs.ok == 'true' &&
++          steps.happened.outputs.ran == 'yes' &&
++          steps.verdict.outputs.deferred != '0' &&
++          steps.verdict.outputs.deferred != ''
++        env:
++          GH_TOKEN: ${{ github.token }}
++          REPO: ${{ github.repository }}
++          PR: ${{ github.event.pull_request.number }}
++          EXISTING: ${{ steps.verdict.outputs.deferred_issue }}
++          TITLE: ${{ steps.verdict.outputs.deferred_title }}
++        run: |
++          set -euo pipefail
++          if [ -n "${EXISTING:-}" ]; then
++            gh issue edit "$EXISTING" --repo "$REPO" --body-file /tmp/deferred.md
++            echo "::notice::deferred findings updated on #${EXISTING}"
++            exit 0
++          fi
++          # No `agent:ready` and no `agent:*` label of any kind. A follow-up the
++          # reviewer files is a note, not a work package: labelling it ready
++          # would let this workflow's output start a billable writer, which is
++          # the loop docs/automation/AI_TASK_PROTOCOL.md's allowlist exists to
++          # prevent. It cannot start one anyway -- GITHUB_TOKEN events do not
++          # trigger workflow runs -- and depending on that alone would make the
++          # safety a property of the token rather than of the decision.
++          url=$(gh issue create --repo "$REPO" \
++            --title "$TITLE" --body-file /tmp/deferred.md)
++          number="${url##*/}"
++          case "$number" in
++            ''|*[!0-9]*)
++              echo "::warning::could not read the new issue number from '$url'" ;;
++            *)
++              # Recorded in the ledger rather than searched for next round.
++              # GitHub's issue search is an index with lag, and two review rounds
++              # are minutes apart, so a search would file the same follow-up
++              # twice. The script carries this line forward once it is there.
++              sed -i "\$ i deferred_issue=${number}" /tmp/new-ledger.md ;;
++          esac
++
++      - name: Say which round this is and what it may still hold
++        if: >-
++          !cancelled() && steps.auth.outputs.ok == 'true' &&
++          steps.happened.outputs.ran == 'yes'
++        env:
++          GH_TOKEN: ${{ github.token }}
++          REPO: ${{ github.repository }}
++          PR: ${{ github.event.pull_request.number }}
++          LEDGER_ID: ${{ steps.ledger.outputs.ledger_id }}
++        run: |
++          set -euo pipefail
++          # Edited in place, never appended. The ledger is one comment for the
++          # life of the pull request; a second one would make "which round is
++          # this" a question again, which is the thing it exists to answer.
++          if [ -n "${LEDGER_ID:-}" ]; then
++            gh api -X PATCH "repos/$REPO/issues/comments/$LEDGER_ID" \
++              -F body=@/tmp/new-ledger.md > /dev/null
++          else
++            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/new-ledger.md
++          fi
++
++      - name: Set the verdict from the rule rather than from the reviewer
++        if: >-
++          !cancelled() && steps.auth.outputs.ok == 'true' &&
++          steps.happened.outputs.ran == 'yes' &&
++          steps.verdict.outputs.label != 'unknown' &&
++          steps.verdict.outputs.label != ''
++        env:
++          GH_TOKEN: ${{ github.token }}
++          REPO: ${{ github.repository }}
++          PR: ${{ github.event.pull_request.number }}
++          LABEL: ${{ steps.verdict.outputs.label }}
++        run: |
++          set -euo pipefail
++          case "$LABEL" in
++            ai-review:blocking) other=ai-review:pass ;;
++            ai-review:pass)     other=ai-review:blocking ;;
++            *) echo "::warning::unrecognised verdict '$LABEL'; leaving the labels alone"; exit 0 ;;
++          esac
++          # `gh pr edit`, not `gh issue edit`: the latter resolves through
++          # repository.issue(number:), which does not resolve pull requests --
++          # see .github/scripts/gh-label.sh.
++          gh pr edit "$PR" --repo "$REPO" --add-label "$LABEL" --remove-label "$other"
++
+       - name: Work out why the review did not happen
+         id: why
+         if: always() && steps.auth.outputs.ok == 'true' && (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no')

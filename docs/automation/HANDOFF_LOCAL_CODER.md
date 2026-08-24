@@ -347,6 +347,31 @@ re-run hoping for a different result.
 **Note:** commenting `@claude` yourself works because you have write access. It
 does not answer task 1 — that is still about ChatGPT's own account.
 
+## Pending workflow patches — the half a cloud session cannot push
+
+A GitHub App cannot create or update anything under `.github/workflows/` without
+the `workflows` permission, and the cloud agent's `claude[bot]` token does not
+have it. The push is **rejected**, not warned about. So a change whose logic is a
+script and whose wiring is a workflow arrives split: the script and its test on
+`main`, the workflow half as a `.patch` under `docs/automation/pending/` with a
+note beside it saying what it is and that it is not running.
+
+Applying one is three commands and belongs in a branch of its own:
+
+```bash
+git apply docs/automation/pending/<name>.patch
+git rm docs/automation/pending/<name>.patch docs/automation/pending/<name>.md
+git commit -am "Apply the workflow half of <name> from a local session"
+```
+
+Read the note beside the patch first — each says which documents claim the thing
+is *not* deployed and therefore have to change in the same commit. A repository
+that says a guard is running when it is not is worse than one with no guard.
+
+Whether to grant the App `Workflows: Read and write` permanently would remove the
+split entirely. It is an owner decision with a real argument on each side and it
+has not been taken.
+
 ## Do not do these
 
 - Do not disable Issues, or use interaction limits.
