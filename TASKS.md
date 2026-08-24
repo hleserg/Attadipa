@@ -2503,41 +2503,6 @@ stale silently. The protocol is
   with the search documented, and the reset sequence written into the Waveshare
   BSP's touch bring-up with a comment saying why a level will not do.
 - **Hardware required:** no for (1), yes to re-verify (2).
-- **And one bus scan, still outstanding and not a gate on anything:** the
-  `0x6A`-versus-`0x6B` question on the IMU is `CONFLICTING` in
-  [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md) and a scan on
-  `SDA 15 / SCL 14` settles it —
-  [WAVESHARE_BOARD_RECEIVED](docs/research/WAVESHARE_BOARD_RECEIVED.md) §3 has
-  listed it as outstanding all along, and the bench is open once anyway. It is
-  **not** a precondition of the magnetometer retrofit:
-  [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §4.3 routes
-  around the contested pair entirely — `CAD` tied low puts the AK09911C at
-  `0x0C` and the QMC5883L is fixed at `0x0D`, both clear — so nothing in
-  [#83](https://github.com/hleserg/Attadipa/issues/83) waits on it. Do not
-  resolve the conflict by picking the likelier mapping; run the scan when the
-  board is on the bench.
-- **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
-  instrument named, the five register values recorded as read, and the sizing
-  table in
-  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one row.
-  `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
-- **What must not be assumed:** that the sticker settles the capacity. Reading
-  it was verified; what it means is exactly what is in doubt.
-- **Hardware required:** yes — the board, a caliper, a scale, and an I²C
-  session: five register reads at `0x34`, plus the bus scan above while the
-  bench is open.
-- **Update 2026-08-22 — PAUSED behind [#83](https://github.com/hleserg/Attadipa/issues/83).**
-  The owner has ordered a magnetometer to solder into the same cavity this
-  task's M1/M2 measure, so the cell is chosen after the sensor is sited, not
-  before ([STATUS.md](STATUS.md), [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md)).
-  **This task's text above is left exactly as written** — the measurements
-  themselves are still correct and still the ones to take — but they are not
-  to be taken, and no cell is to be ordered from them, until #83 sites the
-  sensor. Do not pick this task up before then, even though it is still filed
-  under `## READY` rather than moved. **This does not strand #83**: the bus scan
-  listed above is not something #83 waits on — the retrofit uses `0x0C`/`0x0D`
-  and needs nothing from the contested pair — so the pause runs one way only,
-  from #83 to this task, and never back.
 
 ### T-109 · The magnetometer that is in the post, and the one measurement that chooses it
 - **Priority:** P2 — nothing can start until the parts land, but what to do

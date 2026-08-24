@@ -34,6 +34,15 @@ blocked on four measurements only the owner can take.** Raised by the owner
 > is *closed-case* clearance, because a cell chosen against the recess depth fits
 > until the case is closed on it. Nothing in §5 has been promoted on the strength
 > of it.
+>
+> **What this note does not settle, and does not try to.** `TASKS.md` T-106 says
+> *"M1 through M3 are the gate, they wait on nothing"*. That sentence is about
+> M4's `0x0C`/`0x0D` legs — I²C addresses waiting on a module in the post — and
+> this note is about the cavity the cell and the magnetometer would share. The
+> two are not the same claim and neither refutes the other, but whether the
+> **cell choice** is downstream of the magnetometer's **size** is the owner's,
+> and T-106's acceptance is deliberately left as it stands until they say. Filed
+> rather than decided here.
 
 ## 0. What this note is
 
