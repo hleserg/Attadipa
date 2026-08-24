@@ -150,9 +150,11 @@ If you are working from an issue:
 - **One writer.** Reading, reviewing and analysing in parallel is free; two
   agents editing one branch is a merge conflict with a robot on both ends.
 - **More than one agent works here, and the boards are how the work divides.**
-  A session with a board physically on its desk owns everything that touches it:
-  flashing, probes, part markings, bus scans, and every number that is allowed
-  to be `MEASURED`. A session without one owns the queue: issues, branches,
+  A session with a board physically on its desk owns everything that *reads* it:
+  probes, part markings, bus scans, and every number that is allowed to be
+  `MEASURED`. **Not flashing** — *Never irreversible without being asked* above
+  is unchanged and outranks this bullet, and having the board on the desk is not
+  the permission it withholds. A session without one owns the queue: issues, branches,
   reviews, merges, documents, host tests and the simulator. Neither waits on the
   other for permission, and **neither re-does the other's half** — a cloud
   session that writes a bring-up procedure hands it over rather than

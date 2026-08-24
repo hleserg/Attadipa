@@ -79,6 +79,14 @@ None of those is forbidden. Each needs an argument that is about *now*.
 
 ## M2 — the first device vertical slice
 
+**On the name.** [`master-prompt-final.md`](master-prompt-final.md) §2703
+defines M2 as *"Board Bring-Up / **Per board:** boot; display; touch; PMU
+basics; input; diagnostics"* — and that document is binding, so this is **the
+specification's M2 narrowed to one board, with the second still owed**, not a
+replacement for it. Finishing the six items below on the Waveshare does not
+finish M2: the T-Watch half remains, blocked on a board that is `ORDERED` and
+not in hand (T-010). Nobody may write *"M2 complete"* off this list alone.
+
 The shape, end to end:
 
 ```
@@ -99,15 +107,26 @@ behind it has not been tested, only asserted.
 |---|---|---|---|
 | 1 | **T-004** | the ESP-IDF pin as a decision, not an installation | none — it is one row in [DEPENDENCIES](research/DEPENDENCIES.md) away from done |
 | 2 | **T-165** ([#189](https://github.com/hleserg/Attadipa/issues/189)) | an ESP-IDF project that builds: `main/`, `sdkconfig.defaults`, a partition table, a boot path, serial diagnostics, a reproducible build, a documented flash procedure | T-004 |
-| 3 | **T-166** ([#190](https://github.com/hleserg/Attadipa/issues/190)) | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC | T-165; **D21** on the first line of display bring-up |
-| 4 | **T-114** ([#117](https://github.com/hleserg/Attadipa/issues/117)) | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel | T-165, T-166 |
+| 3 | **T-166** ([#190](https://github.com/hleserg/Attadipa/issues/190)) | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC, **up to the driver** | T-165; **D21** on the first line of display bring-up |
+| 4 | **T-114** ([#117](https://github.com/hleserg/Attadipa/issues/117)) | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel — **and the `InputOrigin::Physical` producer for touch *and buttons*, which is T-114's alone** | T-165, T-166 |
 | 5 | **T-037** | the first Clock, running on the watch, on real input, with the real tokens and fonts | T-166 |
 | 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | T-166; T-068 |
 
 None of the three new ones is `agent:ready` yet, and that is deliberate:
-eighteen open pull requests are conflicted against `main` as this is written, and
-adding a writer to that is how a course correction turns into chaos. Draining
-the queue is the step before starting the slice, not a competitor to it.
+eighteen open pull requests were conflicted against `main` when this was
+written, and adding a writer to that is how a course correction turns into
+chaos.
+
+**A fence needs a gate, so here is the gate.** `agent:ready` is the queue's only
+entry point — `claude-agent.yml` fires on it and the watchdog scans for it — so
+a P0 task without it is invisible to the automation, and nothing watches for
+that. The three labels are flipped by **the session that holds the queue**, and
+the condition is observable rather than remembered: **when the branch it is
+about to start is not itself conflicted against `main`.** That is per-issue, so
+#189 can start while #190 and #191 wait. Draining the queue is the step before
+the slice rather than a competitor to it, and it is
+[#172](https://github.com/hleserg/Attadipa/issues/172)'s own subject — the
+conflicts come from every pull request editing `TASKS.md` and `STATUS.md`.
 
 Steps 4 and 5 do not strictly order against each other. Step 4 first is the
 better bet, because it is the instrument that makes step 5 checkable — which is
@@ -129,10 +148,12 @@ milestone does not bend it. Every hardware step therefore ends at:
 - a flash procedure written down well enough to follow without improvising;
 - and a line that says `NOT EXECUTED — HARDWARE REQUIRED`, never `PASS`.
 
-The `PASS` arrives when the owner — or a session with the board physically on
-its desk — runs the procedure and reports what happened. That hand-off is part
-of the milestone, not an afterthought to it, and the procedure is the
-deliverable that makes it cheap.
+**The `PASS` arrives when the owner runs the procedure** and reports what
+happened. Having the board on the desk does not confer that permission — an
+agent on the bench machine reads the board (probes, markings, bus scans,
+`MEASURED` numbers) and does not write to it. That hand-off is part of the
+milestone, not an afterthought to it, and the procedure is the deliverable that
+makes it cheap.
 
 ## Use the hardware earlier, not at the end
 
