@@ -317,10 +317,13 @@ This is a Waveshare constraint that the shared codebase inherits, in the same
 way as everything else in [HARDWARE_MATRIX](HARDWARE_MATRIX.md).
 
 **And the cheapest resolution is not to run §6 at all.** The vendor fits a
-bootloader, two 6 MB app slots, a voice-model partition and 6 MB of UI assets
-into 28 MB, of which everything except `ota_1` and `storage` is below the line.
-Attadipa needs less than that. The upper half is worth measuring when something
-actually needs it — the `models` partition of
+bootloader, a 952K voice model, a **9 MB** `factory` and two 6 MB OTA slots —
+three app partitions, not two — plus 6 MB of UI assets into 28 MB, of which
+everything except `ota_1` and `storage` is below the line. What Attadipa needs
+is **UNKNOWN**: no image exists to measure, and the quantity that matters is
+two OTA slots plus assets inside 16 MB, which is the sum 9M + 6M + 6M failed to
+make. The upper half is worth measuring when something actually needs it — the
+`models` partition of
 [#127](https://github.com/hleserg/Attadipa/issues/127) is the first candidate —
 and not before.
 
