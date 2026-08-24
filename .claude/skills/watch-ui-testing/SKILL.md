@@ -103,9 +103,13 @@ python3 tools/watch_control.py swipe --from 350,120 --to 60,420 --duration 0.5
 #   those are Waveshare pixels; `info` prints the size of the board you are on
 python3 tools/watch_control.py drag  --from 60,420  --to 350,420 --duration 1.2
 python3 tools/watch_control.py button power click        # T-Watch
-python3 tools/watch_control.py button power hold --duration 1.5
 #   the Waveshare declares no button it will simulate -- `info` says so, and
-#   section 2 says why; on that board these two exit 1 rather than press
+#   section 2 says why; on that board this one exits 1 rather than presses.
+#   A *hold* is demonstrated on the pointer above rather than on this key:
+#   injection bypasses the PMU, but `power` is SW7 on the AXP2101's `PWRON`
+#   pin and long-press behaviour is PMU register policy, so on a device a held
+#   power key may be a shutdown. `diagnostic_tour.yaml` gives the same reason
+#   for holding a pointer instead, and it is the file this one should agree with
 python3 tools/watch_control.py gesture --file tests/ui/gestures/example.json
 #   fractions of the panel, so this one is board-independent -- it used to be
 #   Waveshare pixels and refused outright on a 240x240 T-Watch

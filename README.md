@@ -13,7 +13,7 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
 > **Status: early implementation.** The host-testable layers exist and are
 > tested — the hardware inventory, the capability registry, the transport, the
-> GNSS trust evaluator, the design-token system, the desktop simulator, and 24
+> GNSS trust evaluator, the design-token system, the desktop simulator, and 28
 > host tests. One target board is now on the owner's desk and has been read over
 > its own USB port, which is the first evidence in this repository that came
 > from silicon rather than from a document. **No Attadipa firmware has run on

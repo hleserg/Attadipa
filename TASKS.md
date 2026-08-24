@@ -204,11 +204,11 @@ stale silently. The protocol is
        invisible; on a board with 8 MB of PSRAM and a draw buffer already in it,
        it is a number to have decided about rather than discovered. Snapshot
        into the bridge's own buffer, or size the budget for two.
-  7. **Two things the simulator gets away with and a device will not.** Both
+  7. **Three things the simulator gets away with and a device will not.** All
      were raised in review on
      [#121](https://github.com/hleserg/Attadipa/pull/121) and deliberately left
-     here rather than fixed there, because both are answers the firmware end
-     has to give and neither has a right answer on a host socket.
+     here rather than fixed there, because each is an answer the firmware end
+     has to give and none has a right answer on a host socket.
      - **Bound the injected coordinates at the device.** `_check_point` in
        `tools/watch/client.py:599` refuses a point outside the panel, and that
        is the *host* being polite. `Bridge::handle_input` validates the event
@@ -218,6 +218,20 @@ stale silently. The protocol is
        clamps and nothing shows; on a device the coordinate reaches a driver.
        The device is the only end that knows the panel, so the check belongs
        there whatever the host does.
+     - **Design the queue between the two tasks.** `core::InputQueue` is owned
+       by one thread: `push` and `pop` read-modify-write a single plain
+       `count_` from both ends, with no atomics, and `stats_` likewise. That is
+       correct and cheap on the simulator, which is single-threaded, and it is
+       what `bridge.h` implicitly promises to the device arrangement it
+       describes — *a queue in front of it rather than a mutex inside it* —
+       where the transport task and the interface task are different tasks. Two
+       tasks on this queue lose an update: a lost increment strands an event
+       while the `pushed == popped + flushed + size()` identity stops holding,
+       and a lost decrement tears a five-field event across two taps. Either
+       make it a real SPSC ring — separate head and tail, one writer each,
+       release/acquire — or hand the crossing to an RTOS queue and leave this
+       one behind the interface task. The header now says one thread owns it;
+       this is where that stops being enough.
      - **Decide the poll cadence rather than inherit it.** `sim/main.cpp:289`
        runs the loop at 5 ms with a client attached and 50 ms without. Those
        two numbers were chosen so a 600 kB screenshot over a Unix socket does

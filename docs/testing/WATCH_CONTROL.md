@@ -94,8 +94,10 @@ python3 tools/watch_control.py gesture --file tests/ui/gestures/example.json
 #   boards; whole numbers in a gesture file are pixels, same rule as a scenario
 
 python3 tools/watch_control.py button power click        # T-Watch
-python3 tools/watch_control.py button power hold --duration 1.5
-#   the Waveshare declares no button it will simulate -- see `info` below
+#   the Waveshare declares no button it will simulate -- see `info` below.
+#   `hold` is shown on the pointer above, not here: `power` is SW7 on the
+#   AXP2101's `PWRON` pin and its long-press behaviour is PMU register policy,
+#   so on a device a held power key may be a shutdown rather than an event
 python3 tools/watch_control.py input-reset
 python3 tools/watch_control.py run tests/ui/scenarios/diagnostic_tour.yaml
 python3 tools/watch_control.py live --screenshot-after

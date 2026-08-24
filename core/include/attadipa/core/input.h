@@ -127,7 +127,25 @@ struct InputQueueStats {
 // condition the counters exist to make legible. `dropped` is its own statement:
 // events the queue refused, never silent.
 
-// A fixed-capacity single-producer-friendly ring of input events.
+// A fixed-capacity ring of input events, owned by ONE thread.
+//
+// Not an SPSC queue, and "single-producer-friendly" -- which this said, and
+// which reads as safe across two tasks -- was the wrong phrase for it. `push`
+// does `++count_` and `pop` does `--count_`: one plain `std::size_t`
+// read-modify-written from both ends, no atomics and no release/acquire, and
+// `stats_` is written by both as well. On one thread that is correct and cheap.
+// Across two it loses an update: a lost increment strands an event in the
+// buffer while `pushed == popped + flushed + size()` stops holding, so the
+// identity that exists to make a lost event legible is what hides it; a lost
+// decrement hands the consumer a slot the producer is midway through writing,
+// and an `InputEvent` is five fields, so a torn one is a tap whose `x` and `y`
+// came from different events.
+//
+// This matters because `Bridge` documents the device arrangement as a queue in
+// front of it rather than a mutex inside it, and this is the queue. Nothing
+// reaches it today: the simulator is single-threaded. **Designing that handoff
+// -- a real SPSC ring with separate head and tail and one writer each, or a
+// port queue from the RTOS -- is T-114's, and it is not settled here.**
 //
 // Capacity is 64: a 500 ms swipe sampled at 60 Hz is 32 points, so one full
 // gesture fits with room to spare even if the interface stalls for a frame.
