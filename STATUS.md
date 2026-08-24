@@ -918,6 +918,47 @@ four more things at no cost:
 
 ## Recently completed
 
+- **A node walking out of range was reported as the watch's own hardware.**
+  [#174](https://github.com/hleserg/Attadipa/issues/174). Capability source
+  selection existed twice in `core/src/capability_registry.cpp`:
+  `availability()` chose between the local and node sources by `remedy_rank`,
+  and `provider()` re-derived the same choice with a condition of its own —
+  default `Origin::Local`, reaching `Node` only when the node was already
+  `Ready`. So on the Waveshare board, which has no GNSS receiver at all,
+  `Position` went from `Ready`/`node` to `Unreachable`/**`local`** when a bound
+  node walked out of range: the same unchanged provider, reported as the
+  opposite side of the device. The same for `Incompatible`, and for a paired
+  node that does not offer the capability. That contradicts
+  [ADR-0004](docs/adr/0004-capability-sources.md) §2's invariant —
+  `Unprovisioned`, `Unreachable` and `Incompatible` imply a remote provider —
+  and it broke it precisely in the degraded states the origin axis exists to
+  serve: dispatch, the rail service and the coexistence coordinator all need to
+  know a part is not on this device, and Settings would have offered *service
+  the receiver* for a receiver this board does not have. **Nothing shipped was
+  wrong**, because nothing consumes `provider()` yet outside the tests — which
+  is the cheap moment to fix it, and the same argument ADR-0004 §2a makes about
+  Meshtastic widening an enum two years late. Fixed by making it one decision:
+  `CapabilityRegistry::source()` returns a `CapabilitySource` carrying both
+  halves, and `availability()` and `provider()` are readers of it, so the two
+  cannot disagree again. **`availability()` answers do not move** — only the
+  origin does. Mutation-checked: restoring the old `provider()` body turns 79
+  checks red across five of the nine new tests, 48 of them in the ADR-0004 §2
+  sweep over every capability on three board configurations and five node
+  states. The other four new tests are green both before and after on purpose —
+  they are what says the fix moved nothing else: a working local source still
+  wins over an attached node, a local part that is `Off` or `Failed` is still
+  reported as ours, and `Unsupported` is still terminal. Two things recorded
+  rather than fixed, both deliberately. `Origin` still has two values and none
+  of them means *nobody*, so a capability nothing can provide answers `Local`;
+  the case is now a named branch in `source()` with `Availability::Unsupported`
+  documented as the discriminator that says the field is not an answer, and
+  whether the axis grows a third value is T-111's ADR question, not an
+  implementation detail. And ADR-0004 §2's invariant is **not true as written**:
+  `CompanionLink` and `NotificationRelay` sit in `Unprovisioned` and
+  `Unreachable` with `Origin::Local`, because the sentence was written about
+  nodes while a second remote peer — a phone — exists and has no value on the
+  axis. That pair is named in the sweep rather than skipped, so a third one
+  arriving is a test failure, and it is noted under T-111 as the same shape.
 - **A degree of longitude at 89.9°N measured 1.96 km instead of 194 m, and it
   got worse the closer you stood to the pole.**
   [#28](https://github.com/hleserg/Attadipa/issues/28). `lon_e7_to_mm`

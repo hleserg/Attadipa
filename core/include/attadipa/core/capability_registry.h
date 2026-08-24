@@ -59,10 +59,19 @@ public:
     // Can it do it right now?
     bool is_available(Capability capability) const;
 
+    // Which source is answering for this capability, and what state it is in.
+    // The one place the choice is made; everything below reads this.
+    CapabilitySource source(Capability capability) const;
+
     // Why not, and what can the user do about it?
     Availability availability(Capability capability) const;
 
-    // Which side is serving it. Diagnostics and Settings only.
+    // Which side is serving it. Diagnostics and Settings only, and an answer
+    // only when availability() is not Unsupported — see CapabilitySource.
+    //
+    // Prefer source() where both halves are wanted. These two agree because
+    // they are the same call, and that is a property to keep: deriving one of
+    // them separately is the defect issue #174 was opened about.
     ProviderRef provider(Capability capability) const;
 
     void set_node_link(const NodeLink& link);
