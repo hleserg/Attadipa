@@ -1248,18 +1248,58 @@ answer.
 
 ---
 
+## OD-17 — A5 and A6: a watch retrofit may have a magnetometer; the node will not
+
+**Decided:** 2026-08-22, on [#56](https://github.com/hleserg/Attadipa/issues/56),
+with the ordered watch modules recorded on [#83](https://github.com/hleserg/Attadipa/issues/83).
+
+The owner decided that a magnetometer is an external module fitted to the
+Waveshare watch, not a capability of any stock board. Two candidates were
+ordered: CJMCU-9911 (AK09911C) and GY-271 (QMC5883L). Choosing the part and its
+placement remains open; [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) is the
+technical record. This decision does not promote an unmodified board from
+"absent" to "present".
+
+The Attadipa node will not carry a magnetometer. A third-party companion can
+still report its own heading, but it cannot become `WatchBody` heading without
+a known, calibrated, valid body transform; [ADR-0009](../adr/0009-heading.md)
+continues to enforce that boundary. A future node accelerometer or gyroscope is
+a separate capability decision, not an implicit compass project.
+
+**Status:** decision only; it does not authorise soldering, a driver, or a
+hardware claim without the required measurement.
+
+---
+
+## OD-20 — A10: wake the display on raise, button, or touch
+
+**Decided:** 2026-08-22, on [#53](https://github.com/hleserg/Attadipa/issues/53).
+
+The display is off by default and wakes for a wrist raise, a button press, or a
+touch. This addresses AMOLED static-content exposure through duty cycle; it
+does not decide an always-on face, Auto Current Limit, brightness values, or
+their hardware measurements.
+
+Raise-to-wake must use the accelerometer signal only. The T-Watch has no
+gyroscope, so a gyro-dependent wake path would not be one behaviour that both
+supported boards can provide. This is a constraint on this common wake feature,
+not a denial that a board-specific gyroscope exists or may be used by a future,
+explicitly designed capability.
+
+**Status:** the decision does not implement the wake sources. Their electrical
+configuration, latency, current cost, and the Waveshare IMU interrupt path
+remain subject to the corresponding measured hardware evidence.
+
+---
+
 ## Still with the owner
 
-Nothing here answers the compass question (A6), which remains in
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). **A5 is answered** — separately, on the
-same day, on [#83](https://github.com/hleserg/Attadipa/issues/83): an external
-magnetometer is intended and two candidate parts are ordered. Not by *this*
-decision, which is why an earlier version of this paragraph still listed it as
-open.
+The product question of whether a stock board remains GNSS-heading-only is still
+open in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) Q2. OD-17 answers A5 and A6; it
+does not silently answer that separate product question.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
 answered from a datasheet: whether Meshtastic's protocol definitions are licensed
 separately from its firmware, which cellular module the node will carry, and
 which tower database may lawfully be shipped in a product. The first is research
 and is filed; the last two are the owner's.
-
