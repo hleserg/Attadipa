@@ -1640,14 +1640,23 @@ stale silently. The protocol is
   Stereo source material decoded to one transducer is still mono output.
 - **Hardware required:** yes — a meter on the board.
 
-### T-106 · Three measurements and five registers, before any cell is ordered
-- **Priority:** P1 — it gates the battery decision, and every part of it is
-  cheap. Nothing here needs a soldering iron.
+### T-106 · Four measurements and five registers, before any cell is ordered
+- **Priority:** P1 — it gates the battery decision, and every part of *the
+  gate* is cheap: M1, M2, M3 and the five registers need a caliper, a scale,
+  plasticine and a console, and no soldering iron. M4's magnetometer leg does
+  need one, which is why it is explicitly **not** part of the gate below and
+  goes to T-109 if it slips.
 - **Dependencies:** the research is done —
-  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md). What is missing is
-  physical, and only the owner can take it.
-- **Why it is not one measurement.** The note's sizing table branches on all
-  three, and each answers a different way of being wrong:
+  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) and the magnetometer
+  datasheet comparison from [#83](https://github.com/hleserg/Attadipa/issues/83)
+  ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md), which
+  landed with [#87](https://github.com/hleserg/Attadipa/pull/87) on
+  2026-08-22 — an earlier version of this line called it "not yet linkable").
+  What is missing is physical, and only the owner can take it.
+- **Why it is not one measurement.** The note's sizing table branches on the
+  first three, and each answers a different way of being wrong. The fourth
+  answers a separate question — the bus, not the cell — and rides along because
+  it needs the same board on the same bench:
   - **M1 — closed-case clearance**, *not* the depth of the recess. Three
     plasticine balls, the cover screwed to normal torque, and the **smallest**
     of the three is the number. A cell chosen against the recess depth fits
@@ -1660,17 +1669,116 @@ stale silently. The protocol is
     consistent with 280–330 mAh; 7.5–8 g is the only mass consistent with a
     genuine 400 mAh**, and no sampled pouch reaches that density. A kitchen
     scale settles what 51 datasheets can only estimate.
+  - **M4 — the bus scan. The `0x6A` half is DONE**, measured 2026-08-23:
+    `0x6A` does not answer, the IMU is at `0x6B`, and
+    [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)'s IMU row now reads
+    `MEASURED` / `VERIFIED` rather than `address CONFLICTING`
+    ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
+    §3.1). This bullet asked for it as pending for 120 lines after the record of
+    it landing, which left two documents in this repository disagreeing about
+    whether a hardware fact was established — and *never trust, verify* gives a
+    reader no tie-break, so the honest outcome would have been re-running a
+    bench session that already happened. Found in review.
+    **What is left of M4** ([#83](https://github.com/hleserg/Attadipa/issues/83))
+    is the magnetometer half, once the modules are in hand:
+    - **Scan one module at a time, and strap `CAD` before scanning.** The AKM
+      module *breaks `CAD` out* ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)
+      §2.4) — it is not tied to `VSS` by the manufacturer, and this bullet used
+      to state that as delivered fact. §4.3 is where the grounding decision
+      itself lives. The address table in §2.4 holds two rows only: `CAD` to
+      `VSS` gives `0x0C`, `CAD` to `VDD` gives `0x0D`. **Tied high the part
+      sits at `0x0D`** — exactly where the QMC5883L is and where the QMC cannot
+      move from. What the pin does **floating** is `UNKNOWN`: no internal
+      pull-up, pull-down or bias is recorded anywhere in this repository, so
+      an unstrapped `CAD` could answer at either address or neither, and an
+      operator following the old wording writes down *"QMC5883L confirmed,
+      AK09911C absent"* — wrong twice and recorded as `MEASURED`. That is why a
+      verified low strap on `CAD` is a **precondition** of this measurement
+      rather than part of it: the precondition does not need the floating
+      mechanism, it exists because the mechanism is unknown. Found in review.
+    - **Neither part is identified by the ACK alone, and the ID registers are
+      the opposite way round from what this bullet used to say.** The
+      **QMC5883L does** have a chip-ID register — offset `0x0D`, returning
+      `0xFF` (§3.4) — and the **AK09911C's `WIA1`/`WIA2` are `UNKNOWN` from a
+      primary source** in this repository (§2.4, which closes *"do not copy
+      register numbers out of an Arduino library"*). The old sentence had both
+      halves backwards and would have sent a driver author to an Arduino
+      library for AKM register numbers, the one move §2.4 forbids by name.
+      The QMC's ID is not a clean check either: `0xFF` is a valid ID *and* the
+      classic signature of an absent device on a floating bus (§3.4), so the
+      probe is the address ACK — with one module fitted at a time, which is
+      what makes the ACK unambiguous. Found in review.
+    - Cheap GY-271 modules sold as QMC5883L are regularly relabelled HMC5883L
+      at `0x1E`, so an ACK at `0x1E` and silence at `0x0D` is the relabelled
+      part rather than a missing one.
+    - **This half needs a soldering iron and parts in the post**, which the
+      title of this task does not. `IO15`/`IO14` are bare plated pads
+      ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md#waveshare-esp32-s3-touch-amoled-206)
+      "Expansion pad row" — an anchor rather than a line number, because line
+      numbers drift on every insertion above them), and `CAD` needs strapping.
+      **T-109** already owns the modules, the `CAD` decision and both
+      footprints, so if this half slips, it goes there rather than holding a
+      P1 battery task open. M1 through M3 do not wait on any of it.
 - **And five registers, on the board, whenever convenient:** `0x62` (charge
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
   `0x12` and `0x69`, at I²C address `0x34`.
-- **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
-  instrument named, the five register values recorded as read, and the sizing
-  table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
-  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
+- **Acceptance — and it does not include the magnetometer.** M1, M2, M3, M4's
+  `0x6A` leg and the five register values, each recorded as `MEASURED` with the
+  instrument named, and the sizing table in
+  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one row.
+  `UNKNOWN` stays `UNKNOWN` for anything not actually taken. **M4's `0x6A` leg
+  is already satisfied** — measured 2026-08-23, recorded in `HARDWARE_MATRIX`
+  and `WAVESHARE_RUNNING_OUR_CODE` §3.1. M4's `0x0C` and `0x0D` legs stay
+  `UNKNOWN` and are **explicitly outside this acceptance**: they need modules in
+  the post and a strap on `CAD`, and a P1 battery gate must not hang on a P2
+  delivery. They close under **T-109**, which now owns the strap in its own
+  acceptance. So: **M1 through M3 are the gate**, they wait on nothing, and they
+  have not been taken.
 - **What must not be assumed:** that the sticker settles the capacity. Reading
   it was verified; what it means is exactly what is in doubt.
-- **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
+- **Hardware required:** yes — the board, a caliper, a scale, a bus scan, and
+  the five-register read.
+
+### T-111 · A third capability source, for hardware that is neither the board's nor the node's
+- **Priority:** P2 — no code depends on the answer yet, but the registry design
+  ([ADR-0007](docs/adr/0007-two-capability-layers.md)) is the thing every
+  application trusts not to leak where an answer came from, and this is the
+  first hardware that does not fit either of the two sources it already knows.
+- **Dependencies:** none — this is a design question, answerable on paper. Not
+  gated on T-106 or on the modules arriving.
+- **Goal:** [#83](https://github.com/hleserg/Attadipa/issues/83) asked this as a
+  question rather than answering it, and it stays asked here rather than
+  decided inline in a research note. An owner-soldered magnetometer is a
+  capability that is a property of neither the board type (other units of the
+  same model do not have it) nor an attached Attadipa node (it does not walk
+  away). Whether the registry needs a third source class, and how to add one
+  **without** letting an application learn which source answered — the
+  invariant [ADR-0007](docs/adr/0007-two-capability-layers.md) exists to
+  protect — is an ADR question. The lifecycle half of it is already decided,
+  and it is decided by
+  [ADR-0004](docs/adr/0004-capability-sources.md) rather than by ADR-0007 or
+  ADR-0009: `docs/adr/0004-capability-sources.md:186` reads
+  "terminal. Nothing may leave it. Ever." of `Availability::Unsupported`, and
+  `:198` already reasons about this exact case by name —
+  "nothing ever reaches `Unsupported`", because a device that never had a
+  magnetometer does not acquire one when a node says so, it acquires a
+  *provider*, and that is a different edge. A part the owner solders on is not a
+  provider walking up, and it is the case ADR-0004 does **not** cover: so the
+  question this task has to answer is what state a per-unit capability sits in
+  **before** that specific unit has been probed, given that it may never leave
+  `Unsupported` and that an I2C probe finding nothing is indistinguishable from
+  a cold solder joint. "Probe at boot" is not by itself an answer to how a
+  soldered-on source announces itself.
+- **Acceptance:** an ADR, accepted or explicitly deferred with a reason, that
+  says whether a third source class exists, what state a per-device (not
+  per-board-type) capability is in before that specific unit has been probed,
+  and how [ADR-0004](docs/adr/0004-capability-sources.md) and
+  [ADR-0009](docs/adr/0009-heading.md) are superseded or amended once it does —
+  ADR-0004 because the two-source model and the terminal `Unsupported` state
+  are its, ADR-0009 because it is the document that assumes heading has no
+  on-board source on either board.
+- **Hardware required:** no.
 
 ### T-112 · The pedometer has a datasheet now; it still needs someone to walk
 - **Filed as [#116](https://github.com/hleserg/Attadipa/issues/116)**, which also
@@ -1742,10 +1850,18 @@ stale silently. The protocol is
 - **What is already settled, so that nobody re-opens it:**
   - Both parts run at 3.3 V. The AK09911C is *not* a 1.8 V part; `VDD` is
     2.4–3.6 V.
-  - **`CAD` goes to ground.** That puts the AKM part at `0x0C` and leaves the
-    QST part at its fixed `0x0D`, so both can be on the bus at once — which is
-    the only way to compare them in the same magnetic environment on the same
-    wrist. `0x34`, `0x38` and `0x6A`/`0x6B` are taken; these two are free.
+  - **`CAD` goes to ground** — the *decision*, not a strap anybody has added:
+    no module exists yet, so nothing about it is measured. Grounding puts the
+    AKM part at `0x0C` and leaves the QST part at its fixed `0x0D`, so both can
+    be on the bus at once — which is the only way to compare them in the same
+    magnetic environment on the same wrist. **Adding the strap and verifying it
+    reads low is work this task owns**, and T-106's M4 hands it here: without
+    it the AKM part is not at `0x0C`, and what it does with `CAD` floating is
+    `UNKNOWN`. What *was* **measured on 2026-08-23, not predicted:** `0x18`,
+    `0x34`, `0x40`,
+    `0x51` and `0x6B` answer a bare scan, and `0x38` (touch) answers after its
+    reset is pulsed on GPIO 9. `0x6A` does **not** answer — the IMU is at
+    `0x6B` — so `0x0C`, `0x0D` and `0x1E` are all free, and so is `0x6A`.
   - **The IMU will not read the magnetometer for us, and the reason is stronger
     than "wrong part".** QMI8658C Mag Mode names AK09915C, AK09918CZ and QMC6308
     — neither ordered part among them — but the decisive point is that `CTRL4`
@@ -1767,7 +1883,9 @@ stale silently. The protocol is
   millimetres away is exactly the thing that closes a six-fold range advantage.
   If the QMC sits near overflow wherever it physically fits, the AKM part is not
   a fallback, it is the answer.
-- **Acceptance:** both module footprints recorded as `MEASURED` with the caliper
+- **Acceptance:** the `CAD` strap fitted and **verified low** before any address
+  is written down, and each module scanned on its own so the ACK is unambiguous;
+  both module footprints recorded as `MEASURED` with the caliper
   named; the field at the chosen position recorded with the motor in both
   states; the rotation between module frame and board frame written down for
   *this assembly* rather than inferred; overflow surfaced by the driver as a

@@ -364,9 +364,12 @@ The `Power rail` column reads `D13` where the load is known to be on a PMU rail
 but which rail is unresolved — all three of ALDO1, ALDO2 and ALDO3 are 3.3 V and
 the schematic extraction did not separate them. Addresses are from
 [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.2, which cites each one; three
-are datasheet-fixed, two are schematic-strapped, one is driver-source-only and
-one is in conflict between datasheet revisions. A bus scan settles the last two
-in a second — §5 step 5.
+are datasheet-fixed, two are schematic-strapped and one is driver-source-only.
+The IMU's was **in conflict between datasheet revisions and is not any more**:
+the bus scan of 2026-08-23 got no answer at `0x6A` and an ACK at `0x6B`
+([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1), which is
+what the IMU row nineteen lines above and the `Main I2C bus` row both already
+record. Nothing on this bus is waiting on a scan.
 
 ### AXP2101 rail map
 
