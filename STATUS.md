@@ -773,13 +773,14 @@ four more things at no cost:
   advances `latest_position_at_`, `NoFix` included"* — the same sentence with
   the load-bearing word removed, written as a consolation and true as a defect.
   ADR-0011 **§5.2** is now the rule for both sides. Six regression tests and
-  `17-a-lost-fix-keeps-its-last-coordinate.trace`, all proven against the
-  pre-fix code by three separate mutations: the code as it was fails 9 checks
-  and 9 trace steps; removing only the validity gate fails 7; keeping the gate
-  and stamping with arrival time fails 1, which is the test that exists for it.
-  The positive control — a `Valid` **and** a `Degraded` fix still answering, and
-  a real disagreement still reported — stays green under all three, so the fix
-  is not a gate welded shut. GCC, GCC `-Werror` strict, Clang, ASan+UBSan with
+  `17-a-lost-fix-keeps-its-last-coordinate.trace`, mutation-proved three ways
+  against the pre-fix code: the code as it was fails **9 checks across five of
+  the six tests, and 9 steps of the trace**; removing only the validity gate
+  fails 7; keeping the gate and stamping with arrival time fails 1, which is the
+  test that exists for that half. The sixth is the positive control — a `Valid`
+  **and** a `Degraded` fix still answering, a real disagreement still reported —
+  and it stays green under all three mutations, which is the whole of its job:
+  a gate welded shut would satisfy every other assertion here. GCC, GCC `-Werror` strict, Clang, ASan+UBSan with
   `-fno-sanitize-recover=all`, and both documentation checkers: clean.
   **What it does not close, deliberately: T-153.** The second provider's frame
   arrives as a bare `GnssObservation`, which carries no `PositionValidity`, so a
