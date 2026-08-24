@@ -139,7 +139,7 @@ That closes the issue's evidence table exactly:
 | `c9e00d0` | the owner | ran |
 | `488be1e` | **the agent's own `git push`, over the checkout's persisted `GITHUB_TOKEN`** | `action_required`, 0 jobs |
 
-The workflow already knows the rule — `claude-agent.yml:795-804` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
+The workflow already knows the rule — `claude-agent.yml:810-819` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
 `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
 action's push path was fixed. The agent's own push path was never covered by it.
 
@@ -238,13 +238,13 @@ left unchecked** — *Contents: Read and write*, *Pull requests: Read and write*
 omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
 `github_token:` for `claude-code-action` — one citation per line, because the
 checker reads a fingerprint only from the citation's own physical line:
-`claude-agent.yml:804` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+`claude-agent.yml:819` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
 `claude-pr-review.yml:112` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
-`claude-ci-repair.yml:237` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
+`claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
 `display_report: "true"` posts the agent's summary **on the triggering issue**
 over it, and the
 agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
-`claude-agent.yml:884` "depends entirely on `gh` being allowed" says the
+`claude-agent.yml:899` "depends entirely on `gh` being allowed" says the
 action has no label feature of its own. That citation read `:846` until
 2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
 asserts this stays in`, an unrelated comment — so a reader checking the evidence

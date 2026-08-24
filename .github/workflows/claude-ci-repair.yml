@@ -16,6 +16,8 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
+  issue_comment:
+    types: [created]
 
 concurrency:
   group: attadipa-ci-repair-${{ github.event.workflow_run.head_branch }}
@@ -24,6 +26,56 @@ concurrency:
 permissions: {}
 
 jobs:
+  # A CI escalation is cleared only by an explicit command from a collaborator
+  # with write-equivalent permission.  This job neither invokes Claude nor
+  # checks out PR code: it reads the decision script from main and changes only
+  # the two labels that the give-up path owns.
+  reset:
+    name: Clear an acknowledged CI escalation
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Fetch the decision rule from main
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Decide, and clear what the escalation put there
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.actor }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          PERMISSION=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" \
+            --jq '.permission // "none"' 2>/dev/null || echo none)
+          DECISION=$(bash .github/scripts/ci-repair-reset.sh \
+            "$ACTOR" "$PERMISSION" true "$COMMENT_BODY")
+          if [ "$DECISION" != reset ]; then
+            echo "::notice::#$PR: $DECISION"
+            exit 0
+          fi
+
+          for label in ci:failed agent:blocked; do
+            gh pr edit "$PR" --repo "$REPO" --remove-label "$label" || true
+          done
+          {
+            echo "Cleared the CI-repair escalation after an explicit /ci-repair reset"
+            printf 'from a collaborator with %s permission.\n' "$PERMISSION"
+          } > /tmp/reset.md
+          gh pr comment "$PR" --repo "$REPO" --body-file /tmp/reset.md
+
   gate:
     name: Is this ours to fix
     runs-on: ubuntu-latest
