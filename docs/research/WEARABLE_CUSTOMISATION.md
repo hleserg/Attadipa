@@ -5,17 +5,18 @@ below carries a source; where a claim is folklore rather than documentation, it
 says so. Nothing here is a decision — the recommendations at the end are inputs
 to tasks, not tasks.
 
-Raised by the owner, who asked for the survey *instead of* a feature task:
-
-> *"надо подумать че по кастомизации дизайна вообще учудить. Давай так лучше,
-> забей на это задание а вместо этого назначь в план исследование по
-> кастомизации дизайна на носимых смарт часах. Че кто и как делает, как
-> реализует, какие-то удачные дизайнерские и программные фишки поищи."*
+**Raised by the owner, who asked for the survey *instead of* a feature task.**
+His words are paraphrased here rather than quoted, which is the convention
+[OWNER_DECISIONS](OWNER_DECISIONS.md) adopted on 2026-08-24 because `docs/` is
+this repository's public Pages root: drop the feature task that had been queued,
+and put a research task in the plan instead — a survey of design customisation on
+wearable smart watches, covering who does what and how they implement it, and
+looking for the design and software ideas that actually worked.
 
 The starting requirements are [OD-11](OWNER_DECISIONS.md#od-11--themes-are-installable-and-the-layout-survives-them):
 themes, fonts, icons and animations that a user can download and install like
 applications, with the layout surviving them — plus the Flipper-style idle
-animation the owner named, and *"чтобы детишкам нравилось"*.
+animation the owner named, and his requirement that **children should like it**.
 
 ---
 
@@ -146,9 +147,9 @@ manifest.txt                     which animations exist and when each may appear
 
 1. **The passive/active split is the power model in disguise.** A cheap loop runs
    when nothing is happening; the expensive sequence only plays on an event. On a
-   watch the trigger is already there and the owner named it — *"поднимает
-   человек руку"*. Wrist-raise is exactly Flipper's "active", and the rest of the
-   day is passive or nothing at all.
+   watch the trigger is already there and the owner named it — *the person
+   raises their arm*. Wrist-raise is exactly Flipper's "active", and the rest of
+   the day is passive or nothing at all.
 2. **1–8 fps is the recommended range**, on a device with no battery anxiety at
    all. Anybody proposing 30 fps on a watch face should have to explain why
    Flipper does not.
@@ -225,7 +226,8 @@ arithmetic already found two failures in the *owner's own* palette that nobody
 had noticed by looking. Refusing — or honestly labelling — a theme whose text
 cannot be read is a check nobody else performs, it costs almost nothing, and it
 is the difference between *"install anything"* and *"install anything and the
-watch still works"*, which is exactly OD-11's *"чтобы всё не поехало"*.
+watch still works"* — which is exactly OD-11's requirement that the layout must
+not fall apart.
 
 ---
 

@@ -1336,9 +1336,9 @@ latency is 26 minutes: recovery, not live tracking.
 
 *The owner* then rejected the feature itself
 ([OD-13](OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
-2026-08-22, on [#33](https://github.com/hleserg/Attadipa/issues/33)): *"Не
-делаем. Ни Apple, ни какую-либо ещё."* That is a product decision and it does
-not rest on any of the above.
+2026-08-22, on [#33](https://github.com/hleserg/Attadipa/issues/33)): we are not
+doing it, not Apple's ecosystem and not any other. That is a product decision and
+it does not rest on any of the above.
 
 Recording both matters, and the order matters more here than usual. If a
 crowd-sourced network ever became reachable under a permissive licence, the
@@ -1745,9 +1745,9 @@ swipe or press, wait, screenshot again. Owner request, 2026-08-23, filed as
   (`cmake/AttadipaLvgl.cmake`). Two facilities are directly relevant and both
   are used rather than reimplemented:
   - `lv_snapshot_take(obj, LV_COLOR_FORMAT_RGB888)` (`src/others/snapshot/`) —
-    re-renders an object tree into a fresh buffer. This is the "штатный
-    screenshot API графической библиотеки" the request asks to prefer, and it
-    is preferred.
+    re-renders an object tree into a fresh buffer. This is *the graphics
+    library's own screenshot API* that the request asks to prefer, and it is
+    preferred.
   - `lv_indev_create` + `LV_INDEV_TYPE_POINTER` with a read callback, and
     `lv_indev_data_t::continue_reading` to hand LVGL a queue of transitions in
     one pass (`src/indev/lv_indev.c`: the read timer is created at `:132` with

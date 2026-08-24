@@ -222,8 +222,8 @@ hardware run the same applications, because applications ask what the device can
 do and never which device it is.
 
 Q2 is the part of the compass question that OD-1 did *not* answer, and it got
-sharper, and then on 2026-08-22 it got **split**. The owner named "компас" among
-the applications the node enables. No board has a magnetometer. The original
+sharper, and then on 2026-08-22 it got **split**. The owner named a **compass**
+among the applications the node enables. No board has a magnetometer. The original
 framing was: either the node carries one — which would answer both Q2 and A5 —
 or "compass" means GNSS course-over-ground, which only works while moving and
 shows nothing at all when the user stands still. Those are different products and

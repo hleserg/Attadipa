@@ -7,7 +7,7 @@
 // MeshCore already draws this line — mesh::RTCClock against
 // mesh::MillisecondClock — and Attadipa adopts it rather than rediscovering it
 // (docs/upstream/meshcore-1.17-review.md §7, TASKS T-047). The owner states the
-// rule directly: *wall clock нельзя использовать для измерения elapsed time.*
+// rule directly: the wall clock must never be used to measure elapsed time.
 //
 // The enforcement is in the types rather than in a comment. `MonotonicTime`
 // subtracts and yields a duration. `WallTime` does not subtract at all — there

@@ -2024,13 +2024,13 @@ stale silently. The protocol is
 
 ### T-081 · Themes are installable data
 - **Priority:** P2 — [OD-11](docs/research/OWNER_DECISIONS.md#od-11--themes-are-installable-and-the-layout-survives-them),
-  and the owner marked it *обязательно*
+  and the owner marked it **not optional**
 - **Dependencies:** T-009 (**done** — it is the substrate), T-046 (crash-safe
   persistence), T-034 (icons must be named before they can be replaced)
 - **Goal:** an ADR. A theme is **data**: colour values for the twelve roles in
   both themes, a font, an icon set. It never carries layout and never carries a
   pixel count — a theme that could set a padding could break every screen, and
-  *"чтобы всё не поехало"* is exactly the requirement that it cannot.
+  *the layout does not fall apart* is exactly the requirement that it cannot.
 - **Acceptance:**
   - the built-in theme cannot be uninstalled, and a theme that makes the screen
     unreadable is removable **without reading the screen**. The recovery path is
@@ -2085,7 +2085,7 @@ stale silently. The protocol is
 - **Hardware required:** no
 
 ### T-087 · Living watch faces: the passive/active model
-- **Priority:** P2 — this is the *"чтобы детишкам нравилось"* feature, and the
+- **Priority:** P2 — this is the *children should like it* feature, and the
   survey says it is a power model before it is a feature
 - **Dependencies:** T-086, and the wrist-raise gesture, which needs T-060
 - **Goal:** the animation model. A cheap passive loop, an expensive active
@@ -3601,8 +3601,8 @@ A1's schematic-revision
   Attadipa can fill for free because the contrast arithmetic already exists.
 - Filed out of it: T-085, T-086, T-087. And one finding against existing code:
   `touch.min.adult` is 44 dp and Wear OS requires 48.
-- **Original brief, kept:** *"Прям нормальный дип ресерч. А по результатам уже
-  назначишь задание себе че делать че не делать."*
+- **Original brief, kept, in paraphrase:** a proper deep research pass, and the
+  tasks — what to do and what not to do — get filed from its results.
 
 ### T-072 · What a vanilla MeshCore node actually exposes — **DONE** 2026-08-22
 - §1 of [COMPANION_AND_POSITION_SOURCES](docs/research/COMPANION_AND_POSITION_SOURCES.md)
@@ -3627,8 +3627,8 @@ A1's schematic-revision
 ### T-064 · Beacon profiles and the slot scheduler — **REJECTED**, owner decision 2026-08-22
 - **Outcome:** the watch does not emulate a smart tag, in any ecosystem.
   [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature),
-  answering A7 on [#33](https://github.com/hleserg/Attadipa/issues/33): *"Не
-  делаем. Ни Apple, ни какую-либо ещё."*
+  answering A7 on [#33](https://github.com/hleserg/Attadipa/issues/33): we are
+  not doing it, not Apple's ecosystem and not any other.
 - **Why, and the order matters.** The research found the feature expensive
   before it found it unwanted, and the decision is the second one. Two of the
   three ecosystems are shut before the radio is involved — Google needs
@@ -4127,7 +4127,7 @@ A1's schematic-revision
   reuse ledger's wrong upstream, D3's mis-stated connector, the false promise in
   VERIFIED_FACTS §1, and the D12 split propagated to all three of the places it
   had been left out of. **Two remain:**
-  - [`docs/upstream/research-integration.md:180-181`](docs/upstream/research-integration.md)
+  - [`docs/upstream/research-integration.md:185-186`](docs/upstream/research-integration.md)
     says "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
     ~10 µA light-sleep floor on the workaround "must not be deselected on a
     module rather than a bare chip". [HARDWARE_MATRIX.md:301](docs/research/HARDWARE_MATRIX.md)

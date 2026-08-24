@@ -13,21 +13,32 @@ specification was written.
 
 Format: what was decided · when · what it obliges · what it invalidates.
 
+**The owner's words are paraphrased here, not quoted, and that is his
+decision** — taken 2026-08-24 and recorded under
+[OD-18](#od-18--the-received-unit-stays-powered-with-its-brightness-at-minimum).
+`docs/` is this repository's GitHub Pages root, so every decision in this file
+is served from the project's public website; until that date each one opened
+with the chat message it came from, verbatim and in Russian. Three options were
+put to him — leave it, take the register out of publication, or carry his words
+as paraphrase — and he chose the third. So an entry now records **what he
+decided, in this repository's own words. It does not reproduce how he said it.**
+
+Two things did not change with the convention, and a reader should not mistake
+one for the other. The paraphrase is still a record of a decision that is **not
+ours to overturn**: rewording it does not turn it into our opinion, and an entry
+that softens or widens what he actually settled is the same failure it always
+was. And his **own authored documents** in this tree — `docs/master-prompt-final.md`,
+`docs/master-prompt.md`, `docs/development-addendum.md`, `docs/ideas/` — are his
+text rather than our record of it, are outside this convention, and stay in the
+Russian he wrote them in.
+
 ---
 
 ## OD-1 — There is a separate Attadipa node, and the watch uses it
 
 **Decided:** 2026-08-21.
 
-**As stated:**
-
-> «там будет отдельная нода с lora, GPS и esp32, часы будут подключаться к ней и
-> использовать те же приложения, типа карты, компас, и проч, что и в lora часах.
-> когда нода не подключена — будут часами, аудиоустройством и прочим зависит от
-> установленных приложений которые мы ещё не написали. все возможности должны
-> быть учтены на уровне ядра, а реализовывать будем уже позже.»
-
-**In English:** a separate node carrying LoRa, GNSS and an ESP32 exists. The
+**What he decided:** a separate node carrying LoRa, GNSS and an ESP32 exists. The
 watch connects to it and runs *the same applications* — maps, compass and the
 rest — that it would run on a watch with its own LoRa. With no node connected
 the device is a watch, an audio device, and whatever else the installed
@@ -69,9 +80,8 @@ for a separate node, and lists "additional GNSS" among what it provides.
 
 **Decided:** 2026-08-21.
 
-**As stated:** «Вот настройки для MashCore, но они не должны зашиваться в ядро,
-это настройки» — *these are the MeshCore settings, but they must not be baked
-into the core; they are settings.*
+**What he decided:** these are the MeshCore settings, but they must not be baked
+into the core. They are settings.
 
 **Evidence supplied:** two screenshots of a live MeshCore node's exposed
 parameters — the second one complete. Recorded here in full because it is the
@@ -170,10 +180,10 @@ default that assumes it.
 
 **Decided:** 2026-08-21.
 
-**As stated:** the owner supplied `Attadipa_Master_Prompt_Final_Bundle.zip`
-containing a 3 125-line specification and three PNGs, with the instruction
-«так, в архиве ревью, сделай все по промту от туда» — *the archive contains a
-review; do everything according to the prompt in it.*
+**What he decided:** the owner supplied `Attadipa_Master_Prompt_Final_Bundle.zip`
+containing a 3 125-line specification and three PNGs, with the instruction that
+the archive contains a review and that everything is to be done according to the
+prompt inside it.
 
 **What arrived:**
 
@@ -223,8 +233,8 @@ is untouched: final §3 and §9 restate it almost word for word.
 
 **Decided:** 2026-08-21.
 
-**As stated:** «ПЕРВАЯ ЗАДАЧА — выполнить до дальнейшей разработки OS» — the
-first task, to be done before further OS development. Stop the roadmap and
+**What he decided:** this is the *first* task, to be done before any further OS
+development. Stop the roadmap and
 review upstream MeshCore between v1.16.0 and v1.17.1+, including `dev`, across
 ESP32-S3, the Heltec V4 family, SX1262, the companion firmware, BLE, USB, the
 multi-interface work, LoRa RX/TX, preamble detection, LBT, CAD, FEM/LNA, power
@@ -237,9 +247,8 @@ contacts and storage, GPS and time, and hardware RNG and crypto acceleration.
    technically valuable unmerged ones, open issues and `dev`; for each change,
    find the *root cause*, not the changelog line.
 2. **Distinguish confirmed fix / merged fix / released fix / open PR /
-   experimental.** «Не считай, что последний релиз — лучший» — do not assume the
-   latest release is the best. Check for open regressions, the FEM RX gain path
-   in particular.
+   experimental.** Do not assume the latest release is the best one. Check for
+   open regressions, the FEM RX gain path in particular.
 3. **Do not pull unmerged code into production Attadipa without analysis.**
 4. **Build a compatibility layer** so MeshCore can be updated without rewriting
    the OS: `UI/Apps → Services → Mesh Service API → MeshCore Adapter →
@@ -252,22 +261,20 @@ contacts and storage, GPS and time, and hardware RNG and crypto acceleration.
    principle: **Research → reuse proven implementations → adapt → test → only
    then invent.**
 
-Four specific instructions inside it are narrower than the rest and are recorded
-verbatim in effect, because each forbids something that would otherwise look
-reasonable:
+Four instructions inside it are narrower than the rest and are recorded
+separately, because each forbids something that would otherwise look reasonable:
 
 - **Transport is not BLE.** Attadipa's must admit BLE, USB, UART, Wi-Fi/TCP and
-  possibly ESP-NOW, several at once — «не копируй слепо», do not copy #3049
-  blindly.
-- **No own LBT yet.** «Не реализовывай собственный LBT, пока не станет понятно,
-  что можно безопасно взять из MeshCore.» Hardware CAD stays experimental while
-  upstream ships it off.
-- **Do not port the old FEM implementation.** «Не переносить старую
-  реализацию.» FEM/LNA is a **board capability**, never an SX1262 assumption.
-- **Hibernate is not a sleep with the radio armed.** «Не смешивай "сон с
-  пробуждением по LoRa" и настоящий hibernate.» And, separately: **«wall clock
-  нельзя использовать для измерения elapsed time»** — the monotonic clock owns
-  timers, timeouts, retries, connection expiry and the scheduler.
+  possibly ESP-NOW, several at once. Do not copy #3049 blindly.
+- **No own LBT yet.** Do not implement our own listen-before-talk until it is
+  clear what can safely be taken from MeshCore. Hardware CAD stays experimental
+  while upstream ships it off.
+- **Do not port the old FEM implementation.** FEM/LNA is a **board capability**,
+  never an SX1262 assumption.
+- **Hibernate is not a sleep with the radio armed** — do not conflate "sleep with
+  a LoRa wake-up" with a true hibernate. And, separately: **the wall clock must
+  never be used to measure elapsed time** — the monotonic clock owns timers,
+  timeouts, retries, connection expiry and the scheduler.
 
 **What it invalidates:** nothing already written, because none of these
 subsystems exists yet. That is the point of its timing — the review landed
@@ -331,8 +338,8 @@ a combined trust state.**
 **What is explicitly *not* to be built now** (owner §15, and it is emphatic):
 no Kalman filter, no RTS smoother, no pedestrian dead reckoning, no second GNSS,
 no RTK, no DGNSS, no RTCM over LoRa, no map matching, no HMM, no routing, no
-universal spoofing detector. «Текущий milestone не ломать» — do not break the
-current milestone. What is to be done now is the architecture and the tasks:
+universal spoofing detector — and do not break the current milestone. What is to
+be done now is the architecture and the tasks:
 record the decision, check the existing `GnssDriver` / `LocationService` shape,
 stop the interfaces losing integrity information, file the receiver research,
 add the descriptor, add the trust state, add the simulator's fault scenarios,
@@ -354,9 +361,8 @@ a correction.
 
 **Decided:** 2026-08-21.
 
-**As stated:** *"учти кстати что шагомер должен быть в часах обязательно"* — a
-pedometer is a mandatory feature of the watch, not a nice-to-have and not a
-later milestone.
+**What he decided:** a pedometer is a mandatory feature of the watch — not a
+nice-to-have and not a later milestone.
 
 **What already exists, and what does not.** `Capability::MotionSensing` is
 already in the enum and its comment already says *"steps, wrist gestures,
@@ -416,19 +422,18 @@ persistence). Neither is started.
 
 **Decided:** 2026-08-22.
 
-**As stated**, across three messages:
+**What he decided**, across three messages:
 
-> *"а почему бы нам не добавить в часы возможность цепляться к нодам meshcore на
-> ванильной прошиве по ble или lan? Не каждый захочет заморачиваться со сбором
-> нашего варианта ноды сразу. Да и нам может пригодиться. В план!"*
-
-> *"Нужно чтобы часы при этом получали сразу возможность общаться по мешкору,
-> возможность запрашивать и получать телеметрию, возможность снимать координаты
-> из телеметрии, входящих сообщений и с самой ноды если в ней есть gps."*
-
-> *"При наличии lora и меш в самих часах я бы хотел чтобы была возможность
-> пользоваться обеими нодами, на часах пусть так же будет доступен meshtastiс
-> как вариант компаньона вместо (или вместе, как получится) meshcore."*
+- **Attach to a stock MeshCore node over BLE or LAN.** Not everyone will want to
+  build our variant of the node first, and it is useful to us as well. Put it in
+  the plan.
+- **Attaching is not enough on its own.** The watch must immediately be able to
+  talk over the mesh, to request and receive telemetry, and to take coordinates
+  out of telemetry, out of incoming messages, and off the node itself where the
+  node has GNSS.
+- **A watch with its own LoRa should still be able to use both nodes**, and
+  Meshtastic should be available on the watch as a companion option — instead of
+  MeshCore, or alongside it, whichever turns out to be workable.
 
 **What it changes.** [ADR-0008](../adr/0008-mesh-service-providers.md) already
 has the right shape — one `MeshService`, providers behind it, applications that
@@ -488,18 +493,16 @@ written until T-072 has answers from source.
 
 **Decided:** 2026-08-22.
 
-**As stated**, across two messages:
+**What he decided**, across two messages:
 
-> *"При наличии gps в часах - так же хорошо бы иметь возможность выбрать какой
-> gps использовать и еще как вариант - использовать оба источника данных
-> комбинируя и обрабатывая их для улучшения точности. Если возможно - та же
-> история с телефоном - нужно иметь возможность снять gps координаты (и прочие
-> полезные и доступные данные) и обработать на уровне часов. Они превращаются в
-> основной навигационный инструмент."*
-
-> *"По поводу agps - надо заложить возможность их получения не только по
-> интернету но и по другим каналам связи, ble, lora и проч. На всякий. Буду
-> стараться как-то их получить и пропихнуть в любом случае."*
+- **With GNSS in the watch, the wearer picks which receiver is used** — and, as
+  a further option, both sources are combined and processed together to improve
+  accuracy. The same applies to a phone where possible: the watch should be able
+  to take coordinates (and whatever else is useful and available) from it and
+  process them itself. The watch becomes **the primary navigation instrument**.
+- **Assistance data must not assume the internet.** Provide for obtaining AGPS
+  over other channels too — BLE, LoRa and the rest — because he intends to get
+  it to the device one way or another regardless.
 
 **The list of sources this creates**, which is longer than the one the GNSS work
 was written against:
@@ -550,13 +553,10 @@ fusion is deliberately not decided here.
 
 **Decided:** 2026-08-22.
 
-**As stated:**
-
-> *"я вероятно пихну в ноду gsm/4g/lte короче мобильную связь. Это будет
-> во-первых - один из вариантов уточнения позиции (опрашиваем вышки, по
-> идентификатору смотрим ее координаты в базе которая заранее качается из
-> интернета) а во-вторых, один из вариантов выйти на связь, получить agps, и тому
-> подобное."*
+**What he decided:** he will probably put cellular — GSM/4G/LTE — into the
+node. It serves two purposes: refining position (interrogate the towers, look
+their identifiers up in a database downloaded from the internet ahead of time),
+and having a way to get online at all — for assistance data and the like.
 
 **Two features, and they are independent.** A modem in the node would give:
 
@@ -602,13 +602,12 @@ a part exists.
 
 **Decided:** 2026-08-22.
 
-**As stated:**
-
-> *"надо чтобы у стоящего на месте человека (определять по акселерометру можно)
-> gps координаты брались реже, если есть точные и доверенные координаты - то
-> вообще можно не переспрашивать пока он не двинется с места. При этом конечно
-> не допускать холодного пуска желательно очень, т.е. не выключать модуль совсем
-> или держать agps на готове как-то. В общем на подумать это"*
+**What he decided:** for a wearer who is standing still — detectable from the
+accelerometer — take GNSS fixes less often, and where the existing coordinates
+are accurate and trusted, do not ask again at all until they move. At the same
+time, a cold start must be avoided if at all possible: do not switch the module
+off entirely, or keep assistance data ready somehow. Filed as something to think
+about rather than as a finished design.
 
 **The idea is right and the second half is the hard half.** GNSS is the largest
 continuous draw on a watch that has it, and a position that has not changed does
@@ -674,19 +673,15 @@ is a claim about a specific module's low-power behaviour.
 
 **Decided:** 2026-08-22.
 
-**As stated:**
+**What he decided:** we will make it look good, but no single look will please
+everybody. Theme switching goes into the core, and themes are downloadable,
+installable and switchable **like applications** — a user's own colours, own
+fonts, own icons for the stock applications, and so on — **without the layout
+falling apart on screen**. In the plan, and not optionally.
 
-> *"мы сделаем красиво, но всем понравиться с одним единственным вариантом не
-> получится. нужно заложить в ядро возможность смены темы. и сделать эти темы
-> скачиваемыми, устанавливаемыми и переключаемыми, как приложения. чтобы можно
-> было поставить свои цвета, свои шрифты, свои иконки ванильных приложений и
-> прочее. и при этом чтобы все не поехало к чертям на экране. в план,
-> обязательно!"*
-
-And, in the same message, about a `□` visible in a simulator screenshot:
-
-> *"а что там за прямоугольник на экране? проебанный в шрифте символ? в проде
-> конечно же такого быть не должно, ты же понимаешь?"*
+And, in the same message, about a `□` visible in a simulator screenshot: he
+asked what that rectangle was, whether it was a glyph missing from the font, and
+said that of course nothing like it may reach production.
 
 The second half is not a separate topic. A missing glyph is what a theme system
 produces by default unless it is designed not to, and the box in that screenshot
@@ -705,7 +700,7 @@ code, a way to install one, a validity check, or a way to survive a bad one.
 1. **A theme is data, not code.** It carries colour values for the twelve roles
    in both themes, a font, an icon set, and nothing else. It never carries
    layout, and it never carries a pixel count — a theme that could set a padding
-   could break every screen, and "чтобы всё не поехало" is precisely a
+   could break every screen, and *the layout does not fall apart* is precisely a
    requirement that it cannot.
 2. **Installing a theme is installing untrusted content**, and it arrives over
    the same links a message does. It is parsed defensively, it is bounded in
@@ -749,17 +744,14 @@ than a feature). T-034's asset pipeline is amended before it starts.
 
 **Decided:** 2026-08-22, on [#41](https://github.com/hleserg/Attadipa/issues/41).
 
-**As stated:**
-
-> *"Согласен - принимаю."*
-
-— to the recommendation in that issue: option 4, do not support Meshtastic,
-MeshCore alone answers what [OD-7](#od-7--the-companion-is-any-node-not-only-ours)
-actually asked for.
+**What he decided:** he agreed and accepted the recommendation in that issue —
+option 4, do not support Meshtastic, because MeshCore alone answers what
+[OD-7](#od-7--the-companion-is-any-node-not-only-ours) actually asked for.
 
 **What was asked, and what happened to it.** OD-7 said Meshtastic should be a
-companion option *"вместо (или вместе, как получится)"* MeshCore. T-073 checked
-the licence first, as that task required, and found the blocker:
+companion option *instead of MeshCore, or alongside it, whichever turned out to
+be workable*. T-073 checked the licence first, as that task required, and found
+the blocker:
 `meshtastic/protobufs` is a separate repository with its own `LICENSE`, and that
 file is **GPL-3.0** with no linking exception. Generating code from those
 `.proto` files and linking it into the firmware would make Attadipa's firmware a
@@ -845,9 +837,8 @@ better question than the one asked.
 
 ### 1. The watch does not pretend to be a smart tag
 
-**As stated:**
-
-> *"Не делаем. Ни Apple, ни какую-либо ещё."*
+**What he decided:** we are not doing it — not Apple's ecosystem and not any
+other.
 
 Not deferred, not blocked on the ecosystems. **Decided.**
 
@@ -867,10 +858,9 @@ project already specifies.
 
 ### 2. A track is not a length of time. It is distance from familiar ground, on foot
 
-The question asked was *how many hours*. The owner replaced it:
-
-> *"трек пишется на случай, когда по нему, вероятно, придётся возвращаться
-> пешком"* — вышел из метро, топаешь, заблудился, посмотрел трек, вернулся.
+The question asked was *how many hours*. The owner replaced it: **a track is
+recorded for the case where somebody will probably have to walk back along it**
+— out of the metro, walking, lost, looked at the track, found the way back.
 
 So the recording rule is about **purpose**, not duration:
 
@@ -912,10 +902,10 @@ of writing the decision down:
 
 ### 3. Saving a whole track is a second, independent feature
 
-> *"хочу уметь сохранить трек целиком по запросу и посмотреть его потом на
-> карте"* — on request, so no restriction on how the wearer is travelling; a car
-> is fine here. Shaped as an application, allowed to run in the background so
-> other applications keep working while it records.
+**What he decided:** he wants to be able to save a whole track on request and
+look at it afterwards on a map. On request, so there is no restriction on how
+the wearer is travelling — a car is fine here. Shaped as an application, allowed
+to run in the background so other applications keep working while it records.
 
 It is **not a mode of the first one**. Different consumer, different volume,
 different behaviour when storage fills. Filed separately for that reason.
@@ -946,8 +936,7 @@ numbers in it, not a quiet simplification.
 
 **Decided:** 2026-08-22, on [#55](https://github.com/hleserg/Attadipa/issues/55).
 
-**As stated:** *«Законность моя проблема а не прошивки»* — *legality is my
-problem, not the firmware's.*
+**What he decided:** legality is his problem, not the firmware's.
 
 **What was asked.** [OPEN_QUESTIONS](OPEN_QUESTIONS.md) A4: which country or
 regulatory region does the device operate in. The question was concrete rather
@@ -1015,15 +1004,9 @@ writes `SettingsService` next.
 
 **Decided:** 2026-08-22, on [issue #57](https://github.com/hleserg/Attadipa/issues/57).
 
-**As stated:**
-
-> *"@claude A7 побеждает то что ты сделал уже последним. Не надо переделывать и
-> перепроверять. A8 буду очень благодарен если ты сам уберешь фон с картинок
-> где надо. Уверен ты справишься"*
-
-**In English:** for A7, what wins is whatever was already done last — no need
-to redo it or re-verify it. For A8: yes, please remove the background from the
-images where it needs it.
+**What he decided:** for A7, what wins is whatever was already done last — no
+need to redo it or re-verify it. For A8: yes, please remove the background from
+the images where it needs it.
 
 **A7 — which orange, which olive.** "What was already done last" is the
 canonical palette: every colour in the design system and the firmware already
@@ -1066,13 +1049,8 @@ the two that actually conflicted.
 
 **Decided:** 2026-08-22, on [issue #54](https://github.com/hleserg/Attadipa/issues/54).
 
-**As stated:**
-
-> *"@claude A1 пока нет ни тех ни других часов. A2 sx1262 mia-m10q A3 есть
-> компаньон ноды meshcore heltec t114 и heltec v4"*
-
-**In English:** A1 — no watch of either kind yet. A2 — SX1262, MIA-M10Q. A3 —
-there is a companion node, MeshCore Heltec T114 and Heltec V4.
+**What he decided:** A1 — no watch of either kind yet. A2 — SX1262, MIA-M10Q.
+A3 — there is a companion node, MeshCore Heltec T114 and Heltec V4.
 
 The owner then posted a longer analysis of their own answer on the same issue;
 this record follows that analysis rather than the three words alone, because
@@ -1253,31 +1231,22 @@ answer.
 **Decided:** 2026-08-23, in session. Raised by the owner, unprompted, while the
 unit sat on the desk showing the vendor firmware's desktop.
 
-**As stated**, the concern first:
+**The concern first.** While the coding goes on, the watch lies powered showing
+one and the same desktop picture, and this project had itself said an AMOLED can
+be burned that way. Could it be switched off between runs, or the screen blanked?
+It would be good to make that a rule.
 
-> «слух, я чет беспокоюсь - ты пока кодишь часы лежат включенные с одной и той
-> же картинкой рабочего стола. ты сам говорил что амолед можно выжечь так. может
-> между прогонами будешь их выключать? гасить экран? хорошо бы это сделать
-> правилом»
+**And then the decision, after the options were laid out:** he found the screen
+brightness **in the settings**, turned it to minimum, and asked whether at low
+brightness the panel is safe. He does not want it switched off — he wants the
+hardware available for a code run whenever one is needed.
 
-**In English:** while you code, the watch lies powered with one and the same
-desktop picture — you said yourself an AMOLED can be burned that way. Could you
-switch it off between runs, or blank the screen? It would be good to make that a
-rule.
-
-And then the decision, after the options were laid out:
-
-> «нашел в настройках яркость экрана - выкрутил на минимум, на малой яркости они
-> не проебутся да? Не хочу выключать, хочу чтобы у тебя была возможность
-> прогнать код на железе когда понадобится»
-
-**In English:** found the screen brightness **in the settings** and turned it to
-minimum — at low brightness they will not be ruined, right? I do not want to
-switch it off; I want you to be able to run code on the hardware whenever it is
-needed. («в настройках» is kept in the gloss deliberately: it is the one word
-saying the factory launcher has a menu somebody has been inside, and English is
-this repository's working language, so for every reader but the owner the clue
-survives only here.)
+**"In the settings" is the load-bearing half of that sentence, and it is not a
+figure of speech.** It is the only thing anywhere in this repository saying the
+factory launcher has a settings menu, that it contains at least a brightness
+control, and that a human being has been inside it. Nothing else has ever
+enumerated it — which is why the paragraph below can say a display timeout in
+that menu is `UNKNOWN` and unobserved rather than absent.
 
 **What it obliges:**
 

@@ -2,11 +2,16 @@
 
 Owner instruction, 2026-08-21: take the findings of the ESP32-S3 / MeshCore /
 GNSS research and apply *only* what is genuinely needed and genuinely ready.
-The instruction is explicit about the epistemics and this document follows it:
+The instruction is explicit about the epistemics and this document follows it —
+paraphrased rather than quoted, the convention
+[OWNER_DECISIONS](../research/OWNER_DECISIONS.md) adopted on 2026-08-24 because
+`docs/` is this repository's public Pages root, and applied here as well because
+the report it comes from is not checked into the tree for a reader to compare
+against:
 
-> Не делай изменения только ради соответствия research-отчёту. Его findings —
-> входные гипотезы. Источник истины — актуальный Attadipa, фактический upstream
-> и проверенное железо.
+> **Do not make a change merely to conform to the research report.** Its findings
+> are input hypotheses. The sources of truth are the current state of Attadipa,
+> the actual upstream, and hardware that has been verified.
 
 So every finding below is a hypothesis until it is checked against three things:
 **what this repository actually contains today**, **what the actual upstream
@@ -48,11 +53,11 @@ create from nothing:
 | any crypto or RNG | none, anywhere |
 | `docs/testing/` | the directory exists and is empty |
 
-This shapes every verdict below. The owner's own §3 anticipated it: *"Если
-реализация power manager ещё не находится в текущем этапе проекта, зафиксируй
-конкретные решения в архитектуре/backlog вместо преждевременного кода."* That
-sentence generalises to most of the report, and this document applies it
-uniformly rather than only where it was written.
+This shapes every verdict below. The owner's own §3 anticipated it: **where the
+power manager's implementation is not yet in the project's current stage, record
+the concrete decisions in the architecture and the backlog instead of writing
+premature code.** That sentence generalises to most of the report, and this
+document applies it uniformly rather than only where it was written.
 
 **What that leaves genuinely buildable today** is everything that is
 device-independent, host-testable and does not depend on a decision that is
@@ -265,8 +270,8 @@ recovery. Checked against upstream at `d929643`:
 
 - **#3005** (ESP32 BLE bonded reconnects) and **#3007** (BLE receive queue
   synchronization) are **merged and released** in v1.17.0. Per the owner's §5 —
-  *"Не добавляй workaround для старого upstream bug, если текущая используемая
-  версия уже содержит исправление"* — Attadipa does **not** carry a workaround for
+  **do not add a workaround for an old upstream bug when the version actually in
+  use already contains the fix** — Attadipa does **not** carry a workaround for
   either, and this line exists so nobody adds one later.
 - **#2333** (BLE ghost connection) is **open**, and its root-cause list is worth
   more than its patch: `onDisconnect()` not resetting state unconditionally;

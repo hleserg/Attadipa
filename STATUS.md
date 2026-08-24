@@ -1023,6 +1023,33 @@ measurement.**
   `development-addendum.md`, `docs/ideas/`) are outside it — they are his text,
   not our record of it.
 
+**The retrofit itself, on the branch stacked above.** Every entry in
+`OWNER_DECISIONS.md` from OD-1 to OD-18 now opens with **What he decided** and a
+paraphrase; the sixteen Russian blockquotes and inline quotations are gone from
+it, and the header states the convention and its two exclusions. The same pass
+went through the files that quoted him elsewhere — `WEARABLE_CUSTOMISATION`,
+`research-integration`, `meshcore-1.17-review`, `REUSE_LEDGER`,
+`COMPANION_AND_POSITION_SOURCES`, `TAGS_TRACKS_RECKONING`, `OPEN_QUESTIONS`,
+`BENCH_HANDLING`, `TASKS.md`, `STATUS.md` and one comment in `clock.h`.
+
+**Three things were deliberately left in Russian, and the distinction is the
+point of the exercise rather than an oversight:**
+
+- his **own authored documents** in the tree, which are his text rather than our
+  record of it, and which a reader can open in full anyway;
+- **evidence that is not his** — the LILYGO order listing quoted under OD-16 is a
+  seller's claim and reads as one;
+- **the owner-facing `needs-owner` block** under OD-18, which the global
+  convention requires to be bilingual because its reader is one Russian-speaking
+  person and the surface is a public repository. Both facts are true at once, and
+  that block is addressed to him rather than quoting him.
+
+The one place the retrofit did **not** reach is
+`.github/tests/intake-gate-test.sh`, whose fixture carries the exact comment that
+reproduced the 2026-08-22 intake bug. Those bytes are a regression input, not a
+record of a decision, and `.github/` is not served by Pages. It is named here
+rather than changed quietly, so that the owner can say otherwise if he wants to.
+
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)). In the end **nothing
 needed to be flashed** — the bench sequence ran out of RAM, wrote nothing, and
@@ -1558,8 +1585,8 @@ four more things at no cost:
 - **A4 is closed, not answered.** [#55](https://github.com/hleserg/Attadipa/issues/55)
   asked which regulatory region governs the radio, concretely — the owner's own
   MeshCore node already transmits 158 mW at 868.731 MHz and its legality here
-  was never established. The owner declined to name a region: *"Законность моя
-  проблема а не прошивки"* — legality is his problem, not the firmware's
+  was never established. The owner declined to name a region: **legality is his
+  problem, not the firmware's**
   ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
   Nothing in [ADR-0006](docs/adr/0006-settings-and-bounded-values.md) changes:
   the design never required this project to know which region applies, only

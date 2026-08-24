@@ -110,8 +110,8 @@ Evidence: /root/upstream/meshtastic/protobufs/LICENSE — "GNU GENERAL PUBLIC
 Impact:   T-073 cannot produce a Meshtastic provider as scoped. T-074 (several
           providers at once) loses its second concrete provider and must be
           written against MeshCore plus a hypothetical, or wait.
-          OD-7 asked for Meshtastic "вместо (или вместе)" MeshCore, so this is a
-          product-level shortfall and not only a technical one.
+          OD-7 asked for Meshtastic instead of MeshCore or alongside it, so this
+          is a product-level shortfall and not only a technical one.
 Possible options:
   1. Clean-room from published documentation only. Meshtastic's protocol is
      publicly documented; a client written from documentation, by someone who
@@ -177,9 +177,9 @@ only offers a smoothed, already-fused position rather than raw measurements.
 | Does anything useful fit a LoRa channel's budget under the duty cycle? | `UNKNOWN` | the above, against the airtime accounting in T-027 |
 | Where does the data come from, and under what licence and terms? | `UNKNOWN` | the provider's terms — a service that forbids redistribution is not a channel-agnostic payload |
 
-The owner's framing — *"буду стараться как-то их получить и пропихнуть в любом
-случае"* — is why the **payload** is defined once and the **delivery** is
-answered per channel.
+The owner's framing — *he will try to get assistance data to the device one way
+or another regardless* — is why the **payload** is defined once and the
+**delivery** is answered per channel.
 
 ## 6. Cellular in the node — T-078, T-079
 

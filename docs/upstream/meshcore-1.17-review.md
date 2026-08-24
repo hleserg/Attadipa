@@ -1,7 +1,8 @@
 # MeshCore v1.16.0 → v1.17.1 (+ `dev`) — upstream review
 
-Owner amendment, 2026-08-21: *"Перед продолжением текущего roadmap остановись и
-проведи техническую ревизию актуального upstream MeshCore."* Recorded in
+Owner amendment, 2026-08-21, in paraphrase: **before continuing the current
+roadmap, stop and carry out a technical review of the actual upstream
+MeshCore.** Recorded in
 [OWNER_DECISIONS](../research/OWNER_DECISIONS.md); tracked as **T-041**.
 
 **What this document is.** A read of the actual upstream tree and the actual
@@ -260,9 +261,10 @@ sibling fix is visible in `resetAGC()`: the floor is reset to 0 on AGC reset,
 with the reason in the comment — a stuck −120 floor makes the sampling threshold
 too low to accept normal samples, so it re-reinforces itself.
 
-**Status: `ADAPT`, and do not write our own.** The owner's instruction —
-*"Не реализовывай собственный LBT, пока не станет понятно, что можно безопасно
-взять из MeshCore"* — is correct and this review's answer is: take the *scheme*,
+**Status: `ADAPT`, and do not write our own.** The owner's instruction — **do
+not implement our own listen-before-talk until it is clear what can safely be
+taken from MeshCore** — is correct, and this review's answer is: take the
+*scheme*,
 including both watchdog deadlines and the airtime-derived timeouts, and take the
 noise-floor reset reasoning. Attadipa's radio path is not written yet
 ([ADR-0003](../adr/0003-radio-not-lora.md) is still about which chip is even

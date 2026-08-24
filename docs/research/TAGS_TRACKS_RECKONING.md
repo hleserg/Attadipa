@@ -12,8 +12,8 @@ The owner asked for three capabilities in conversation on 2026-08-21:
 2. it records a breadcrumb track, sends it and receives someone else's, over
    mesh and BLE directly and over the internet as well;
 3. the track can be reconstructed from the accelerometer when GNSS is lost —
-   *"прошёл столько-то, повернул, прошёл столько-то"* — so that a way back
-   exists without a map, and so that an approximate position can be computed
+   the owner's own shape for it was *walked this far, turned, walked that far* —
+   so that a way back exists without a map, and so that an approximate position can be computed
    from the last GNSS fix. Heading by compass points where a magnetometer
    exists.
 
@@ -283,7 +283,8 @@ rely on external infrastructure"* (`THIRD-PARTY-DOCUMENTED`). That is a result
 worth taking seriously — and it is one paper, on their subjects, with their
 mounting, and it is not a shipped product.
 
-**Conclusion, and it is the honest answer to *"повернул"*:** on the T-Watch
+**Conclusion, and it is the honest answer to the *turned* in that sentence:** on
+the T-Watch
 there is no gyroscope, so a turn is not merely inaccurate — it is **not
 observable at all**, and the reckoned track is a *length, not a shape*. On the
 Waveshare a turn is observable for a bounded window whose length is set by

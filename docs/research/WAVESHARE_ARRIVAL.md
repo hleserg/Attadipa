@@ -817,7 +817,7 @@ twice. **Two are still live.**
 
 **Still live, and each one a small correcting commit:**
 
-6. [`docs/upstream/research-integration.md:180-181`](../upstream/research-integration.md)
+6. [`docs/upstream/research-integration.md:185-186`](../upstream/research-integration.md)
    states "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
    ~10 µA light-sleep floor on the reasoning that the workaround "must not be
    deselected on a module rather than a bare chip". That contradicts
