@@ -1,0 +1,122 @@
+# Every fact the unattended merge sweep decides on, in one round trip.
+#
+# WHY THIS IS A FILE. The same reason merge-candidate.sh is one: a query
+# embedded in a workflow cannot be executed by a test, so nothing can assert
+# what it asks for -- and what this query asks for is a security property. On
+# 2026-08-24 it asked for `labels(first:50)`, `reviewThreads(first:100)` and
+# `contexts(first:100)` and for no `pageInfo` at all, so the sweep read a
+# bounded page and treated it as the whole set. A pull request with 101 review
+# threads whose 101st was unresolved reported zero unresolved threads. Issue
+# #170.
+#
+# EVERY CONNECTION HERE CARRIES `pageInfo { hasNextPage }`, and
+# .github/scripts/merge-facts.sh refuses to decide on a page that says there is
+# another one. `totalCount` is asked for as well, but only so the log line can
+# say "100 of 101" -- it is never the completeness test. `nodes | length == 100`
+# is not one either: it cannot tell an exactly-full page from a truncated one,
+# and the schema already answers the question exactly.
+#
+# AND `totalCount` COULD NOT BE THE TEST EVEN IF WE WANTED IT TO BE, because on
+# a FILTERED connection it does not count the filtered set. Run against this
+# repository's pull request #173 on 2026-08-24, `timelineItems(last:100,
+# itemTypes:[LABELED_EVENT])` answered `totalCount: 15` beside a single node --
+# fifteen timeline items, one of them a labelling. `pageInfo` on the same
+# response respected the filter and read `hasNextPage: false,
+# hasPreviousPage: false`. So a `nodes | length < totalCount` rule would hold
+# every pull request in the repository forever, and pageInfo is not merely the
+# tidier answer here, it is the only correct one. Observed, not assumed.
+#
+# THE PAGE SIZES ARE GITHUB'S MAXIMUM, 100. `labels(first:50)` was half of what
+# one round trip may ask for, which bought nothing and made a truncated label
+# list twice as likely.
+
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      isDraft
+      mergeStateStatus
+
+      # A blocking label off the end of the page is the worst of these: it is
+      # the one truncation that turns a refusal into a merge. `ai-review:pass`
+      # going missing only holds.
+      labels(first: 100) {
+        totalCount
+        pageInfo { hasNextPage }
+        nodes { name }
+      }
+
+      # The count of unresolved threads is computed over these nodes, so a
+      # truncated page reports fewer unresolved threads than exist -- and zero
+      # is the value that merges.
+      reviewThreads(first: 100) {
+        totalCount
+        pageInfo { hasNextPage }
+        nodes { isResolved }
+      }
+
+      # The path allowlist is applied to these nodes, so a truncated page can
+      # hide the one path that is not on it.
+      files(first: 100) {
+        totalCount
+        pageInfo { hasNextPage }
+        nodes { path }
+      }
+
+      # `last:` because the question is which `ai-review:pass` labelling is the
+      # MOST RECENT one, and the newest events are the ones that answer it.
+      #
+      # WHICH DIRECTION MATTERS HERE, AND IT IS NOT THE OBVIOUS ONE. Under the
+      # Relay contract a `last:`-only page ends at the newest edge, so
+      # `hasNextPage` is false and asserting it is what proves the window
+      # reaches the present. `hasPreviousPage` will often be true on a busy pull
+      # request and is deliberately NOT a refusal: an older labelling cannot
+      # raise the maximum, and if the latest pass event is older than this
+      # window then no pass event is inside it at all, the date comes back
+      # empty, and the caller already holds on `unknown`. Refusing on
+      # `hasPreviousPage` would hold every pull request with a hundred label
+      # events and prove nothing extra.
+      timelineItems(last: 100, itemTypes: [LABELED_EVENT]) {
+        totalCount
+        pageInfo { hasNextPage hasPreviousPage }
+        nodes {
+          ... on LabeledEvent {
+            createdAt
+            label { name }
+          }
+        }
+      }
+
+      commits(last: 1) {
+        totalCount
+        pageInfo { hasNextPage }
+        nodes {
+          commit {
+            committedDate
+            pushedDate
+
+            # A `CheckRun` is a job; a `StatusContext` is a commit status posted
+            # by whatever app holds a token. They arrive in one connection and
+            # must stay distinguishable -- flattening them let one third-party
+            # green status stand in for CI having run at all. Kept from a192a89.
+            statusCheckRollup {
+              contexts(first: 100) {
+                totalCount
+                pageInfo { hasNextPage }
+                nodes {
+                  __typename
+                  ... on CheckRun {
+                    conclusion
+                    status
+                  }
+                  ... on StatusContext {
+                    state
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,169 @@
+Issue #170 — the caller half: make the merge sweep prove it read all of the
+pull request before it decides anything about it.
+
+WHY THIS IS A FILE AND NOT A COMMIT. Agents here run as `claude[bot]` through
+the Claude GitHub App, `ATTADIPA_AGENT_TOKEN` is unset by design, and that
+installation token holds no `workflows` permission. Verified on 2026-08-24 by
+pushing a one-character change to a scratch branch:
+
+    ! [remote rejected] probe/wf-push-170 -> probe/wf-push-170
+      (refusing to allow a GitHub App to create or update workflow
+       `.github/workflows/pr-merge-sweep.yml` without `workflows` permission)
+
+So the rule, its filter, its query and its tests are on `main`, and the four
+edits that make the sweep USE them are here. Until this lands the sweep merges
+nothing: `merge-candidate.sh` refuses a nine-argument caller by arity and says
+so in the log, once per open pull request per sweep, naming this file. That is
+the intended state -- a gate that cannot prove it read the whole pull request
+must not merge one -- but it is not the finished one.
+
+TO APPLY, from a session whose token may write workflows:
+
+    git checkout main && git pull
+    git apply docs/automation/pending/170-merge-sweep-completeness.patch
+    git rm -r --ignore-unmatch docs/automation/pending
+    bash .github/tests/merge-candidate-test.sh   # 134 assertions, and the last
+                                                 # two flip to the applied state
+    git commit -am "The merge sweep asks whether it read all of the pull request"
+
+WHAT IT CHANGES, all in .github/workflows/pr-merge-sweep.yml:
+
+  1. the inline GraphQL query becomes `-F query=@.github/scripts/merge-facts.graphql`,
+     which is the same query plus `pageInfo` on all five decision-critical
+     connections and `labels(first:100)` in place of `first:50`;
+  2. a completeness step between reading the facts and using them, which holds
+     on anything `merge-facts.sh` cannot prove complete;
+  3. the `FILE_COUNT >= 100` guard goes, because the schema now answers that
+     question exactly for all five connections instead of by length for one;
+  4. the verdict call passes the completeness answer as its tenth argument.
+
+Nothing else moves. The path allowlist, the six-hour settling window, the
+three-per-run cap, the reviewer's verdict conditions and the CheckRun /
+StatusContext separation from a192a89 are untouched.
+
+diff --git a/.github/workflows/pr-merge-sweep.yml b/.github/workflows/pr-merge-sweep.yml
+index 598fbaa..6035032 100644
+--- a/.github/workflows/pr-merge-sweep.yml
++++ b/.github/workflows/pr-merge-sweep.yml
+@@ -35,6 +35,16 @@ name: Merge what is finished
+ # so a hostile contributor's tree cannot execute here -- the only inputs are API
+ # facts, and the decision itself is a file that a test can execute:
+ # .github/scripts/merge-candidate.sh, .github/tests/merge-candidate-test.sh.
++#
++# SO IS THE QUESTION OF WHETHER THOSE API FACTS ARE ALL OF THEM. A GraphQL
++# connection is a page, and this workflow spent its first weeks treating the
++# first page as the whole set -- so a hundred and first review thread, a hundred
++# and first check and a fifty-first label were all invisible to a gate that
++# could only refuse on what it had read. The query is now
++# .github/scripts/merge-facts.graphql and the completeness rule over its answer
++# is .github/scripts/merge-facts.jq, driven by .github/scripts/merge-facts.sh,
++# for the same reason: a query and a filter inside a YAML block cannot be
++# executed, so nothing can assert what they ask for. Issue #170.
+ 
+ on:
+   schedule:
+@@ -132,31 +142,14 @@ jobs:
+             # GraphQL in one round trip for the facts REST splits across four
+             # endpoints, including the two REST cannot answer at all:
+             # mergeStateStatus and whether a review thread is resolved.
+-            # shellcheck disable=SC2016  # $owner/$name/$number are GraphQL variables, bound by -F below
+-            FACTS="$(gh api graphql -f query='
+-              query($owner:String!, $name:String!, $number:Int!) {
+-                repository(owner:$owner, name:$name) {
+-                  pullRequest(number:$number) {
+-                    isDraft
+-                    mergeStateStatus
+-                    labels(first:50) { nodes { name } }
+-                    reviewThreads(first:100) { nodes { isResolved } }
+-                    files(first:100) { nodes { path } }
+-                    timelineItems(last:100, itemTypes:[LABELED_EVENT]) {
+-                      nodes { ... on LabeledEvent { createdAt label { name } } }
+-                    }
+-                    commits(last:1) { nodes { commit {
+-                      committedDate
+-                      pushedDate
+-                      statusCheckRollup { contexts(first:100) { nodes {
+-                        __typename
+-                        ... on CheckRun { conclusion status }
+-                        ... on StatusContext { state }
+-                      } } }
+-                    } } }
+-                  }
+-                }
+-              }' -F owner="${REPO%%/*}" -F name="${REPO##*/}" -F number="$PR" \
++            #
++            # THE QUERY IS A FILE, .github/scripts/merge-facts.graphql, for the
++            # reason merge-candidate.sh is one: what it asks for is a security
++            # property, and a query inside a YAML block cannot be executed by a
++            # test, so nothing could assert it. What it asks for that this used
++            # to omit is `pageInfo` -- see the step below.
++            FACTS="$(gh api graphql -F query=@.github/scripts/merge-facts.graphql \
++              -F owner="${REPO%%/*}" -F name="${REPO##*/}" -F number="$PR" \
+               2>/dev/null)" || FACTS=""
+ 
+             # An empty or error document means the facts were not established.
+@@ -167,6 +160,29 @@ jobs:
+               continue
+             fi
+ 
++            # DID WE READ ALL OF IT? A GraphQL connection is a PAGE, and until
++            # 2026-08-24 this step asked for `labels(first:50)`,
++            # `reviewThreads(first:100)` and `contexts(first:100)`, never asked
++            # whether there was another page, and computed on what came back as
++            # though it were the whole set. A pull request with 101 review
++            # threads whose hundred-and-first was unresolved reported ZERO
++            # unresolved threads, and zero is the value that merges. `first: N`
++            # had become a silent permitting condition. Issue #170.
++            #
++            # The rule is a file so a test can execute it over real response
++            # shapes; it reads `pageInfo`, never `nodes | length`, and every
++            # unreadable shape holds rather than reading as an empty set.
++            COMPLETE="$(printf '%s' "$FACTS" | bash .github/scripts/merge-facts.sh)"
++            case "$COMPLETE" in
++              COMPLETE) COMPLETE=true ;;
++              HOLD*)
++                echo "::notice::#$PR: ${COMPLETE#HOLD }"
++                continue ;;
++              *)
++                echo "::warning::#$PR: the completeness check answered '$COMPLETE', which is not one of its two answers; leaving it alone"
++                continue ;;
++            esac
++
+             IS_DRAFT="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.isDraft')"
+             MERGEABLE="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.mergeStateStatus // "" | ascii_downcase')"
+             # One label per line, not space joined: GitHub permits a space
+@@ -208,16 +224,15 @@ jobs:
+               fi
+             fi
+ 
+-            # WHAT IT TOUCHES. `files(first:100)` -- a pull request with more
+-            # than a hundred changed files reads as a truncated list, so the
+-            # count is compared against `changedFiles` below and a truncation
+-            # holds rather than merging on a partial read.
++            # WHAT IT TOUCHES. The truncation guard that used to live here read
++            # `nodes | length >= 100`, which was the right worry answered by the
++            # wrong evidence: it cannot tell an exactly-full page from a
++            # truncated one, so it held a pull request with exactly a hundred
++            # files and, more to the point, it was the only connection of the
++            # five that had a guard at all. The completeness step above now asks
++            # the schema about all five, so a hundred files with
++            # `hasNextPage: false` is a complete list and reads as one.
+             PATHS="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.files.nodes[]?.path')"
+-            FILE_COUNT="$(printf '%s' "$FACTS" | jq -r '[.data.repository.pullRequest.files.nodes[]?] | length')"
+-            if [ "$FILE_COUNT" -ge 100 ]; then
+-              echo "::notice::#$PR: 100 or more changed files, so the path list may be truncated; leaving it alone"
+-              continue
+-            fi
+ 
+             # A run still in flight has a null conclusion. It must reach the
+             # decision as something, and `pending` is what the rule refuses on
+@@ -293,7 +308,8 @@ jobs:
+ 
+             VERDICT="$(bash .github/scripts/merge-candidate.sh \
+               "$CHECKS" "$LABELS" "$UNRESOLVED" "$CODEX" \
+-              "$MERGEABLE" "$IS_DRAFT" "$HEAD_AGE" "$PATHS" "$PASS_AFTER_HEAD")"
++              "$MERGEABLE" "$IS_DRAFT" "$HEAD_AGE" "$PATHS" "$PASS_AFTER_HEAD" \
++              "$COMPLETE")"
+ 
+             case "$VERDICT" in
+               HOLD*)

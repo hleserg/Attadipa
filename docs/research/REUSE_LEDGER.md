@@ -1638,3 +1638,65 @@ mutation-checked three ways: disabling the comment/string blanking, loosening
 the colour rule back to where it would read `Rgb make_colour()\n{...}` as a
 colour literal, and dropping the zero exemption each turn it red. No hardware —
 this is a source-tree checker and touches no board.
+
+### Proving a GraphQL connection was read in full
+
+**Problem:** the unattended merge sweep decides whether a robot may write to
+`main`, out of one GraphQL round trip — and every fact in it arrives in a
+*connection*, which is a page. `reviewThreads(first:100)` over a pull request
+with 101 threads returns a hundred, so `[ .nodes[] | select(.isResolved | not) ]
+| length` answers **zero** when the unresolved one is the hundred-and-first, and
+zero is the value that merges. Past the fiftieth label the same shape hid
+`ai-review:blocking`; past the hundredth context, a failing check
+([#170](https://github.com/hleserg/Attadipa/issues/170)). The question is
+therefore not "how do we paginate" but "how does a caller *prove* it read the
+whole set, in a way a test can execute".
+
+**Projects investigated:**
+
+| Candidate | Licence, at revision | Why it was not taken |
+|---|---|---|
+| GitHub's own `pageInfo { hasNextPage }` — the Relay Cursor Connections contract | the schema, no code taken | **Taken.** The schema already answers exactly the question being asked, per connection, and answers it about the *filtered* set |
+| `gh api --paginate` | MIT (`cli/cli`) | Already used in this workflow for REST, and it does not apply: `--paginate` follows REST `Link` headers and GraphQL `pageInfo` **only for a query written to accept `$endCursor`** — one connection per query. Five connections in one document is exactly the shape it cannot walk |
+| `octokit/plugin-paginate-graphql.js` | MIT; `octokit/plugin-paginate-graphql.js` | Real, maintained and the right tool for a Node action. This job is `bash` + `gh` in a sparse checkout with no `node_modules` and no `npm install` step, and it must stay that way: adding a package manager to a workflow holding `contents: write` on `main` is a bigger change than the defect it would fix |
+| Hand-rolled pagination loops, one per connection | — | `REJECT` for now, with the reason recorded below rather than left as taste |
+| `nodes \| length == first` as the truncation test | — | `REJECT`. It cannot tell an exactly-full page from a truncated one, so it either lets truncation through or holds every pull request landing on the boundary — guessing in both directions while the schema answers exactly. The workflow already had one instance of this (`FILE_COUNT >= 100`) and it is removed |
+| `totalCount` as the truncation test | — | `REJECT`, and this one is not a matter of taste: on a **filtered** connection GitHub does not count the filtered set. Measured against this repository's #173 on 2026-08-24, `timelineItems(last:100, itemTypes:[LABELED_EVENT])` answered `totalCount: 15` beside a single node, while `pageInfo` on the same response respected the filter. A `length < totalCount` rule would have held every pull request in the repository, forever |
+| This repository's own "the rule is a file, the workflow calls it" shape | — | Taken. `merge-candidate.sh`, `intake-decision.sh`, `queue-scan.jq`, `failure-count.jq` |
+
+**Decision:** `USE AS-IS` the schema's `pageInfo`; `REIMPLEMENT` the completeness
+check as `.github/scripts/merge-facts.jq` behind `merge-facts.sh`, in the shape
+this repository already uses for every other decision an unattended workflow
+makes; `REJECT` full pagination, for now and with a condition on when to revisit.
+
+**Reason:** for an *unattended* gate the bounded fail-closed answer is the one
+worth having. Paginating five connections adds request loops, partial-failure
+states and a second way to be wrong, in order to raise a ceiling that the
+three-per-run cap and a documentation-only path allowlist make almost
+unreachable — a hundred labels or 101 review threads on a `docs/` pull request is
+not a case to optimise, it is a case for an orchestrator session, which is where
+everything off the allowlist already goes. The condition for revisiting is
+written into `merge-facts.sh`: if refusals on truncation stop being rare, the
+change is to paginate **there**, not to widen what counts as complete.
+
+The second half of the reason is testability, which is why the filter is a file.
+A query and a `jq` program inside a YAML block cannot be executed, so nothing can
+assert what they ask for — and what this query asks for *is* the security
+property. Both files are now driven by `.github/tests/merge-candidate-test.sh`
+over documents shaped like GitHub's own replies, and the shapes were taken from
+live responses rather than imagined.
+
+**Where the knowledge came from instead of the code:** the responses themselves.
+The query was run read-only against `hleserg/Attadipa` pull requests #173 and
+#176 on 2026-08-24 before anything depended on it, which is what established
+three things that were otherwise assumptions: that `totalCount` ignores
+`itemTypes` while `pageInfo` respects it; that `statusCheckRollup` is **null**,
+not empty, on a head commit with no checks at all; and that a `last:`-only
+connection answers `hasNextPage: false`, which is what makes it the right flag to
+assert on the timeline and `hasPreviousPage` the wrong one.
+
+**Weakness, stated rather than discovered:** a pull request that genuinely
+exceeds a page is now unmergeable by the sweep rather than merged wrongly, and it
+will say so every half hour until a person looks. That is the intended direction
+and it is still a cost. No hardware — this is repository automation and touches
+no board.

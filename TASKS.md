@@ -2019,6 +2019,65 @@ Recommended next action:
   reason: that unit has **no vibration motor fitted**, so there is nothing to
   interfere with the compass even once the compass exists.
 
+### T-144 · An agent cannot land a change to `.github/workflows/`, and two fixes are parked behind it
+- **Priority:** P1
+- **Dependencies:** none. This is a token permission, not a design problem.
+- **Goal:** let a fix that has to touch a workflow file actually reach `main`.
+```
+BLOCKED:
+Reason:         Agents here run as `claude[bot]` through the Claude GitHub App
+                (`ATTADIPA_AGENT_TOKEN` unset — the documented default,
+                CLAUDE_AUTOMATION.md), and that installation token holds no
+                `workflows` permission. Every push touching
+                `.github/workflows/` is refused by the remote, so any finding
+                whose fix lives in a workflow can be written, tested and
+                reviewed here, and cannot be delivered.
+Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
+                  ! [remote rejected] probe/wf-push-170 -> probe/wf-push-170
+                    (refusing to allow a GitHub App to create or update
+                     workflow `.github/workflows/pr-merge-sweep.yml` without
+                     `workflows` permission)
+                Two fixes are parked on it, both against the same file:
+                  · #170 — docs/automation/pending/170-merge-sweep-completeness.patch
+                    (the merge sweep proving it read the whole pull request)
+                  · #130 — docs/automation/pending/130-merge-sweep-caller.patch
+                    on pull request #154, which files this same blocker as
+                    "T-127" — a number already taken by the anchor check in
+                    DONE. Whichever of the two lands second should fold its
+                    entry into this one rather than leave three numbers for
+                    one problem.
+Impact:         #170 is closed fail-closed rather than fixed: until the patch
+                lands, `merge-candidate.sh` refuses the pre-#170 nine-argument
+                caller by arity, so the sweep merges NOTHING and logs the file
+                to apply once per open pull request per run. Correct, and not
+                finished. Everything still merges through an orchestrator
+                session, which is unaffected.
+                The two patches touch the same file and will conflict with
+                each other, not with `main`.
+Possible options:
+                1. An orchestrator session applies both patches, in either
+                   order, resolving the one overlap by hand, and deletes
+                   docs/automation/pending/. Costs one live session.
+                2. Owner grants the Claude GitHub App `workflows: write` on
+                   this installation. Fixes the class, not just these two —
+                   and widens what an agent may change to include the files
+                   that decide what agents may do.
+                3. Owner sets `ATTADIPA_AGENT_TOKEN` to a fine-grained PAT
+                   carrying `workflows`. Same reach as 2, and it also changes
+                   the author of every agent commit to the token's owner.
+                4. Leave both parked. The merge sweep stays a no-op, and the
+                   next workflow-level finding parks behind these two.
+Recommended next action:
+                Option 1 for these two, then decide 2 or 3 at leisure. It
+                needs no permission change and no new trust boundary, and the
+                sweep is back the same day. Options 2 and 3 hand an agent
+                write access to the workflows that constrain agents, which is
+                exactly the "a gate that can widen itself is not a gate"
+                argument CLAUDE_AUTOMATION.md makes about `docs/automation/`
+                — worth doing deliberately, not as a side effect of clearing
+                a queue.
+```
+
 ---
 
 ## WAITING
