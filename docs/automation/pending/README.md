@@ -40,7 +40,7 @@ then `python3 tools/docs/check_docs.py .` before parking a patch says which.
 
 **CI checks that it still applies**, on every push, in
 `.github/tests/gh-api-usage-test.sh`
-([`.github/workflows/ci.yml:360`](../../.github/workflows/ci.yml) "bash .github/tests/gh-api-usage-test.sh") — `git apply --check` over
+([`.github/workflows/ci.yml:360`](../../../.github/workflows/ci.yml) "bash .github/tests/gh-api-usage-test.sh") — `git apply --check` over
 every `*.patch` in this directory. Until T-158 that sentence read *"check it
 before trusting it"* and nothing did, which is the shape of every defect this
 directory's own patches were written to fix.
