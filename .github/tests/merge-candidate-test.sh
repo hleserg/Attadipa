@@ -720,7 +720,12 @@ for patch in docs/automation/pending/*.patch; do
   found_patch=$((found_patch + 1))
   git --no-pager apply --check "$patch" >/dev/null 2>&1 || rotted="$rotted $patch"
 done
-if [ -z "$rotted" ]; then
+if [ ! -d docs/automation/pending ]; then
+  printf '  FAIL  docs/automation/pending/ is not here, so nothing was checked\n'
+  printf '        (a sparse checkout without docs/ is indistinguishable from an empty\n'
+  printf '        directory, and a vacuous pass is what this suite refuses elsewhere)\n'
+  fail=$((fail + 1))
+elif [ -z "$rotted" ]; then
   printf '  ok    all %d of them apply to this tree\n' "$found_patch"; pass=$((pass + 1))
 else
   printf '  FAIL  these parked patches no longer apply:%s\n' "$rotted"

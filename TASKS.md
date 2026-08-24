@@ -2597,9 +2597,12 @@ Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
                     entry into this one rather than leave three numbers for
                     one problem.
                 Apply both **in one commit**, not in either order: they edit the
-                same workflow, and `merge-candidate-test.sh` hard-fails CI for
-                every open pull request while one is applied and the other is
-                not. Each `git rm`s only its own file, so neither deletes the
+                same workflow. `merge-candidate-test.sh` hard-fails CI for every
+                open pull request if #154's patch lands first — but **not** in the
+                other direction: its state machine keys on the 170 patch, and
+                #154's is on that pull request rather than in `pending/`, so
+                landing 170 alone goes green while leaving #154's patch stale.
+                The order this entry recommends is the unguarded one. Each `git rm`s only its own file, so neither deletes the
                 other's while it is still parked.
 Impact:         #170 is closed fail-closed rather than fixed: until the patch
                 lands, `merge-candidate.sh` refuses the pre-#170 nine-argument

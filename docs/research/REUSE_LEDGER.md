@@ -1924,8 +1924,10 @@ query=@.github/scripts/merge-facts.graphql`, and nothing on `main` executes that
 form: the filter takes a document on stdin, so the suite never reaches `gh`, and
 the only place the flag appears is inside the patch. It was therefore run
 directly, read-only, against `hleserg/Attadipa` #176 on 2026-08-24 — the exact
-invocation from the patch, three variables bound from the caller's own
-`${REPO%%/*}` split. Exit 0, one complete document, every connection present.
+invocation from the patch, with the three variables **bound as literals**.
+The caller's own `${REPO%%/*}` and `${REPO##*/}` expansion is **NOT EXECUTED** —
+it is the one link in this chain that nothing exercises, and this run did not
+exercise it either. Exit 0, one complete document, every connection present.
 So `-F query=@FILE` does read a file and does bind alongside the other `-F`
 variables, which was previously asserted only in a pull request body.
 
