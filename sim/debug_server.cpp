@@ -350,11 +350,14 @@ bool DebugServer::dispatch_ready(std::uint32_t now_ms, debug::Bridge& bridge)
     bool any = false;
     std::uint8_t payload[link::kMaxPayload];
     for (;;) {
-        const std::size_t length = decoder_.next(payload, sizeof(payload));
-        if (length == 0) {
+        const link::FrameResult frame = decoder_.next(payload, sizeof(payload));
+        if (frame.exhausted()) {
             break;
         }
-        bridge.handle(payload, length, now_ms, &DebugServer::emit, this);
+        if (frame.status == link::FrameStatus::OutputTooSmall) {
+            return any;
+        }
+        bridge.handle(payload, frame.length, now_ms, &DebugServer::emit, this);
         any = true;
     }
     return any;
