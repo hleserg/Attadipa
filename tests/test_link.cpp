@@ -880,6 +880,64 @@ void test_attach_does_not_resurrect_a_suspended_link()
     CHECK(link.sessions() == 1);
 }
 
+// A Detach tells us that the local transport disappeared; it must preserve the
+// caller's evidence about why, instead of claiming the peer closed first.
+void test_detach_records_the_callers_reason()
+{
+    const DisconnectReason reasons[] = {
+        DisconnectReason::LocalRequest,
+        DisconnectReason::SubsystemRestart,
+        DisconnectReason::Fault,
+        DisconnectReason::Unknown,
+        DisconnectReason::PeerClosed,
+    };
+
+    for (DisconnectReason reason : reasons) {
+        LinkState link(LinkState::Config{TransportKind::Usb, Millis{5000}, true});
+        link.apply(LinkEvent::Attach, at(0));
+        link.apply(LinkEvent::PeerArriving, at(10));
+        link.apply(LinkEvent::PeerEstablished, at(20));
+        const std::uint32_t epoch_before = link.epoch();
+
+        CHECK_OUTCOME(link.apply(LinkEvent::Detach, at(30), reason), EventOutcome::Applied);
+        CHECK_PHASE(link.phase(), TransportPhase::Absent);
+        CHECK(link.last_disconnect() == reason);
+        CHECK(link.epoch() == epoch_before + 1);
+    }
+
+    // `None` means no prior disconnection; it cannot become the reported reason
+    // for one. The public default is Unknown for exactly this case.
+    LinkState unspecified(LinkState::Config{TransportKind::Usb, Millis{5000}, true});
+    unspecified.apply(LinkEvent::Attach, at(0));
+    unspecified.apply(LinkEvent::PeerArriving, at(10));
+    unspecified.apply(LinkEvent::PeerEstablished, at(20));
+    CHECK_OUTCOME(unspecified.apply(LinkEvent::Detach, at(30), DisconnectReason::None),
+                  EventOutcome::Applied);
+    CHECK(unspecified.last_disconnect() == DisconnectReason::Unknown);
+}
+
+// A detach from a non-live phase clears the transport but does not rewrite the
+// evidence belonging to the already-finished session.
+void test_detach_from_a_non_live_phase_keeps_the_last_session_reason()
+{
+    LinkState link(LinkState::Config{TransportKind::Usb, Millis{5000}, true});
+    link.apply(LinkEvent::Attach, at(0));
+    link.apply(LinkEvent::PeerArriving, at(10));
+    link.apply(LinkEvent::PeerEstablished, at(20));
+    link.apply(LinkEvent::PeerGone, at(30), DisconnectReason::PeerClosed);
+    CHECK_PHASE(link.phase(), TransportPhase::Attached);
+
+    CHECK_OUTCOME(link.apply(LinkEvent::Detach, at(40), DisconnectReason::LocalRequest),
+                  EventOutcome::Applied);
+    CHECK_PHASE(link.phase(), TransportPhase::Absent);
+    CHECK(link.last_disconnect() == DisconnectReason::PeerClosed);
+
+    // Duplicate callbacks are ordinary and cannot repaint the recorded reason.
+    CHECK_OUTCOME(link.apply(LinkEvent::Detach, at(50), DisconnectReason::Fault),
+                  EventOutcome::Redundant);
+    CHECK(link.last_disconnect() == DisconnectReason::PeerClosed);
+}
+
 // The decoder's buffer is finite, and what it does when a peer fills it faster
 // than anybody drains it is a design decision rather than an accident.
 void test_input_beyond_the_buffer_is_refused_and_counted()
@@ -1478,6 +1536,8 @@ int main()
     test_attach_is_classified_per_phase();
     test_attach_while_faulted_is_refused_and_counted_every_time();
     test_attach_does_not_resurrect_a_suspended_link();
+    test_detach_records_the_callers_reason();
+    test_detach_from_a_non_live_phase_keeps_the_last_session_reason();
     test_input_beyond_the_buffer_is_refused_and_counted();
 
     // The zero-length frame and the sentinel it collided with (#146, T-062).
