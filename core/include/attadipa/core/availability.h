@@ -36,6 +36,30 @@ struct ProviderRef {
     ProviderId id     = 0;  // meaningless when origin == Local
 };
 
+// One decision, both of its halves.
+//
+// Availability and origin are not two questions. They are the same choice —
+// *which source is answering for this capability* — seen from two sides, and
+// returning them separately is exactly what let them disagree: `provider()`
+// used to re-derive the choice with a condition of its own and default to
+// `Local`, so a bound node going out of range reported itself as the local
+// device (issue #174). Anything that computes one of these computes the other
+// at the same time, and this struct is how it says so.
+//
+// **`provider` is an answer only when `availability != Unsupported`.**
+// `Unsupported` means no configuration of this device can provide the
+// capability, from either side, so there is nothing serving it and nothing to
+// dispatch to, power, configure or diagnose. `Origin` has no value that says
+// "nobody" — it has two, and whether it should have a third is TASKS.md T-111,
+// which is an ADR decision and not a detail to settle in a struct. Until that
+// lands, this field is what keeps `Local` from being read as a claim: the
+// discriminator travels with the origin rather than having to be remembered,
+// which is the same contract style as `ProviderRef::id` above.
+struct CapabilitySource {
+    Availability availability = Availability::Unsupported;
+    ProviderRef  provider     = {};
+};
+
 enum class Validity : std::uint8_t { Unknown, Valid, Stale, Invalid };
 
 // Two ages, because a datum that crossed a link has two of them, and collapsing

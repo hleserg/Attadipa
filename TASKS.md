@@ -151,6 +151,21 @@ stale silently. The protocol is
   transport-independent half is done: the protocol, the input layer, the bridge,
   the host tool, the diagnostic screen, the tests and the agent skill all exist
   and run against the simulator.
+  - **Corrections to that half are this task, not a new one.**
+    [#186](https://github.com/hleserg/Attadipa/issues/186) is the first:
+    `gesture --file` did not spend the `duration` it was given — an `N`-point
+    path waited `N - 2` intervals instead of `N - 1` and a two-point one waited
+    none at all, so the shipped example spent 0.45 s of its declared 0.6 and a
+    two-point gesture was a press and a release back to back. Fixed on absolute
+    deadlines, pinned by three host groups on a fake clock and by a wall-clock
+    bound in the end-to-end test; the semantics are now stated in
+    [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md#what-duration-measures).
+  - **Still open, and deliberately not folded into that fix:** `swipe()` has
+    the same shape of error one order smaller — `steps` intervals between its
+    points, `steps - 1` sleeps, the first of them zero — so it runs `1/steps`
+    short of the duration asked for and begins with a zero-length segment,
+    where the gesture defect was categorical. Bounded and not urgent; it wants
+    its own change and its own test rather than a widened diff.
 - **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
   task after that point is supposed to end with a real screenshot, and this is
   what makes one possible.
@@ -210,7 +225,7 @@ stale silently. The protocol is
      here rather than fixed there, because each is an answer the firmware end
      has to give and none has a right answer on a host socket.
      - **Bound the injected coordinates at the device.** `_check_point` in
-       `tools/watch/client.py:599` refuses a point outside the panel, and that
+       `tools/watch/client.py:640` refuses a point outside the panel, and that
        is the *host* being polite. `Bridge::handle_input` validates the event
        type, the button index, the rate and the hold, and never looks at `x`
        and `y` — a client that does not use this tool, or a resync landing
@@ -2148,8 +2163,16 @@ stale silently. The protocol is
   states, and a model that collapses them reports a position the device does not
   have.
 - **Research status:** n/a
-- **Implementation status:** not started — the six adversarial agents allocated
-  to this terminated on an account spend limit and returned nothing
+- **Implementation status:** not started as a task — the six adversarial agents
+  allocated to this terminated on an account spend limit and returned nothing.
+  Two of its scenarios have since been resolved from the outside, by
+  [#174](https://github.com/hleserg/Attadipa/issues/174): *the link drops
+  mid-navigation* and *the node's firmware is too old to speak our version* both
+  produced a wrong answer, and it was the kind this task is looking for rather
+  than an omission — `provider()` reported a node that had merely gone out of
+  range as the local device. Fixed, and both are now host tests in
+  `tests/test_capability_registry.cpp`. The remaining scenarios are untouched,
+  and the sharpest one below is still open.
 - **Tests:** each scenario becomes a host test
 - **Hardware required:** no
 
@@ -2817,14 +2840,35 @@ stale silently. The protocol is
   `Unsupported` and that an I2C probe finding nothing is indistinguishable from
   a cold solder joint. "Probe at boot" is not by itself an answer to how a
   soldered-on source announces itself.
+- **Two more instances of the same shape, both found by
+  [#174](https://github.com/hleserg/Attadipa/issues/174) and neither an argument
+  on its own for widening the axis — they are here so the ADR has the full set
+  in front of it rather than deciding on the magnetometer alone.** First, `Origin`
+  has no value meaning *nobody*: a capability neither the board nor a node can
+  provide answers `Origin::Local`, which is the only thing two values allow and
+  is not what is true. `source()` names that case explicitly and
+  `Availability::Unsupported` is documented as the discriminator that says the
+  field is not an answer, which is as far as it can be taken without this
+  decision. Second, and sharper because it makes an ADR sentence false rather
+  than merely coarse: **the phone is already a third source in everything but
+  name.** `CompanionLink` and `NotificationRelay` reach `Unprovisioned` and
+  `Unreachable` — states ADR-0004 §2's invariant says imply a *remote* provider
+  — while reporting `Origin::Local`, because the invariant was written about
+  nodes. Which half is wrong is genuinely open: ADR-0002 forbids a phone from
+  *providing* a capability, so on that reading the provider is the on-board BLE
+  radio and `Local` is right and the invariant is over-stated; on the other
+  reading the axis is simply missing a value. `tests/test_capability_registry.cpp`
+  names the pair as an exception rather than skipping the states, so a third
+  capability entering them is a test failure and lands here.
 - **Acceptance:** an ADR, accepted or explicitly deferred with a reason, that
   says whether a third source class exists, what state a per-device (not
   per-board-type) capability is in before that specific unit has been probed,
-  and how [ADR-0004](docs/adr/0004-capability-sources.md) and
+  what a capability with **no** provider on any side reports, whether the phone
+  is on the axis, and how [ADR-0004](docs/adr/0004-capability-sources.md) and
   [ADR-0009](docs/adr/0009-heading.md) are superseded or amended once it does —
-  ADR-0004 because the two-source model and the terminal `Unsupported` state
-  are its, ADR-0009 because it is the document that assumes heading has no
-  on-board source on either board.
+  ADR-0004 because the two-source model, the terminal `Unsupported` state and
+  the remote-provider invariant are its, ADR-0009 because it is the document
+  that assumes heading has no on-board source on either board.
 - **Hardware required:** no.
 
 ### T-112 · The pedometer has a datasheet now; it still needs someone to walk
@@ -3070,6 +3114,75 @@ Recommended next action:
 - **On the Waveshare unit it stays doubly blocked**, for a second and unrelated
   reason: that unit has **no vibration motor fitted**, so there is nothing to
   interfere with the compass even once the compass exists.
+
+### T-144 · An agent cannot land a change to `.github/workflows/`, and two fixes are parked behind it
+- **Priority:** P1
+- **Dependencies:** none. This is a token permission, not a design problem.
+- **Goal:** let a fix that has to touch a workflow file actually reach `main`.
+```
+BLOCKED:
+Reason:         Agents here run as `claude[bot]` through the Claude GitHub App
+                (`ATTADIPA_AGENT_TOKEN` unset — the documented default,
+                CLAUDE_AUTOMATION.md), and that installation token holds no
+                `workflows` permission. Every push touching
+                `.github/workflows/` is refused by the remote, so any finding
+                whose fix lives in a workflow can be written, tested and
+                reviewed here, and cannot be delivered.
+Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
+                  ! [remote rejected] probe/wf-push-170 -> probe/wf-push-170
+                    (refusing to allow a GitHub App to create or update
+                     workflow `.github/workflows/pr-merge-sweep.yml` without
+                     `workflows` permission)
+                Two fixes are parked on it, both against the same file:
+                  · #170 — docs/automation/pending/170-merge-sweep-completeness.patch
+                    (the merge sweep proving it read the whole pull request)
+                  · #130 — docs/automation/pending/130-merge-sweep-caller.patch
+                    on pull request #154, which files this same blocker as
+                    "T-127" — a number already taken by the anchor check in
+                    DONE. Whichever of the two lands second should fold its
+                    entry into this one rather than leave three numbers for
+                    one problem.
+                Apply both **in one commit**, not in either order: they edit the
+                same workflow. `merge-candidate-test.sh` hard-fails CI for every
+                open pull request if #154's patch lands first — but **not** in the
+                other direction: its state machine keys on the 170 patch, and
+                #154's is on that pull request rather than in `pending/`, so
+                landing 170 alone goes green while leaving #154's patch stale.
+                The order this entry recommends is the unguarded one. Each `git rm`s only its own file, so neither deletes the
+                other's while it is still parked.
+Impact:         #170 is closed fail-closed rather than fixed: until the patch
+                lands, `merge-candidate.sh` refuses the pre-#170 nine-argument
+                caller by arity, so the sweep merges NOTHING and logs the file
+                to apply once per open pull request per run. Correct, and not
+                finished. Everything still merges through an orchestrator
+                session, which is unaffected.
+                The two patches touch the same file and will conflict with
+                each other, not with `main`.
+Possible options:
+                1. An orchestrator session applies both patches in one
+                   commit, resolving the one overlap by hand, and `git rm`s
+                   the two patch files it applied — not the directory, which
+                   also holds README.md, the target of three links in
+                   APPROVAL_STALLS.md. Costs one live session.
+                2. Owner grants the Claude GitHub App `workflows: write` on
+                   this installation. Fixes the class, not just these two —
+                   and widens what an agent may change to include the files
+                   that decide what agents may do.
+                3. Owner sets `ATTADIPA_AGENT_TOKEN` to a fine-grained PAT
+                   carrying `workflows`. Same reach as 2, and it also changes
+                   the author of every agent commit to the token's owner.
+                4. Leave both parked. The merge sweep stays a no-op, and the
+                   next workflow-level finding parks behind these two.
+Recommended next action:
+                Option 1 for these two, then decide 2 or 3 at leisure. It
+                needs no permission change and no new trust boundary, and the
+                sweep is back the same day. Options 2 and 3 hand an agent
+                write access to the workflows that constrain agents, which is
+                exactly the "a gate that can widen itself is not a gate"
+                argument CLAUDE_AUTOMATION.md makes about `docs/automation/`
+                — worth doing deliberately, not as a side effect of clearing
+                a queue.
+```
 
 ---
 
