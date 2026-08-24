@@ -308,13 +308,12 @@ Consequences only. Designs go in ADRs and tasks.
    protocol, with its own framing, checksum and refusal of over-long frames — but
    its size constant is *not* independent of MeshCore's, and an earlier revision
    of this section said it was. `kMaxPayload = 192` is derived **from
-   `MAX_FRAME_SIZE`**: the constant's own comment says so — *"ADR-0005 §4's
-   envelope is 12 bytes, and MeshCore's companion frames cap at 176 — so 192
-   carries a full companion frame"* (`link/include/attadipa/link/frame_codec.h:57-62`).
-   The derivation this section previously gave, 184 plus our envelope, does not
-   even produce it: 184 + 12 = 196.
+   `MAX_FRAME_SIZE`**. The source now explicitly records that ADR-0005 §4 is
+   read here as a **10-byte** envelope and that this reading remains owner-owned
+   (`link/include/attadipa/link/frame_codec.h:57-71`). The conclusion does not
+   depend on settling that reading: 184 + 10 = 194 still exceeds 192.
 
-   So `kMaxFrame` is 192 + 7 = **199** (`frame_codec.h:51-53,64`), and at MTU 176
+   So `kMaxFrame` is 192 + 7 = **199** (`frame_codec.h:51-71`), and at MTU 176
    a BLE notification carries 173. **A maximum node-link frame does not fit one
    notification.** ADR-0005 §8 already calls fragmentation mandatory and names BLE
    as the presumed transport; what this document adds is the number it must be
@@ -363,7 +362,7 @@ Attadipa central. Nothing below may be marked `PASS` from a simulation.
    about what it missed.
 
 Steps 1–3 need one node and one central. Steps 4–5 need a second radio-capable
-node, which is [A3](OPEN_QUESTIONS.md) and still `UNKNOWN`. Step 6 needs a Wi-Fi
+node; [A3](OPEN_QUESTIONS.md) is resolved with three MeshCore nodes. Step 6 needs a Wi-Fi
 companion build; the node behind Home Assistant on `doctor` is the cheapest
 route and needs no BLE stack at all.
 

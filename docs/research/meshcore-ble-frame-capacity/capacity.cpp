@@ -275,7 +275,8 @@ static void case_no_active_sink() {
 
 int main(int argc, char **argv) {
   const char *rev = argc > 1 ? argv[1] : "(unnamed revision)";
-  printf("MeshCore BLE frame-capacity harness — upstream tree: %s\n", rev);
+  printf("MeshCore BLE frame-capacity harness — upstream tree: %s (%s)\n", rev,
+         UPSTREAM_SHA);
   printf("MAX_FRAME_SIZE, as upstream defines it: %d\n", MAX_FRAME_SIZE);
 
   const size_t deliverable = case_att_arithmetic();

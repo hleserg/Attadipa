@@ -328,7 +328,7 @@ changed what we can plan:
   no peer can raise it. Every queue and buffer size on our side is bounded by it.
   **It is not the transport's capacity, corrected 2026-08-23.** Over BLE at a
   negotiated MTU of 176 one notification carries 173, and a chunk payload after a
-  2-byte header is 171 — four different numbers where this said one. Every
+  derivative's 2-byte header is 171 — four different numbers where this said one. Every
   *chunking* decision is bounded by the third, not the first
   ([MESHCORE_BLE_FRAME_CAPACITY](docs/research/MESHCORE_BLE_FRAME_CAPACITY.md),
   T-127).

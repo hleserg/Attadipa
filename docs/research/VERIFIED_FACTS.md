@@ -70,11 +70,13 @@ An entry that cannot name its source does not belong here. It belongs in
 - **Consequence, read from source:** four companion producers size against the
   buffer. `logRxRaw` → `PUSH_CODE_LOG_RX_DATA` is bounded at *exactly* 176 by
   `len + 3 <= MAX_FRAME_SIZE` (`examples/companion_radio/MyMesh.cpp:287`) and is
-  called for every received raw packet (`src/Dispatcher.cpp:199`). Three others
+  called for every received raw packet (`src/Dispatcher.cpp:199`). Two others
   guard against `sizeof(out_frame)` = `MAX_FRAME_SIZE + 1` = 177 — one byte more
-  than any `writeFrame()` accepts. The guard admits `payload_len <= 173` and
-  `writeFrame()` accepts 176, so **exactly one value drops**: `payload_len` of
-  precisely 173, building a 177-byte frame. It is **dropped**, on every transport
+  than any `writeFrame()` accepts. Their `payload_len` guard admits `payload_len
+  <= 173` while `writeFrame()` accepts 176, so **exactly one value drops**:
+  `payload_len` of precisely 173, building a 177-byte frame. `onTraceRecv` has a
+  different path-length guard; whether it can reach 177 is unresolved in #142.
+  The two `payload_len` frames are **dropped**, on every transport
   and silently: `ArduinoSerialInterface.cpp:25-28` returns
   0 with no message, and `MESH_DEBUG_PRINTLN` is `{}` unless `MESH_DEBUG` is
   defined (`src/MeshCore.h:29-32`), which the root `platformio.ini` does not.

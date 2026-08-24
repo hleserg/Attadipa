@@ -3437,8 +3437,9 @@ A1's schematic-revision
 - Reuse ledger: **ADAPT** two invariants and port two MIT test suites as
   specifications; **do not** adopt the fork; **MONITOR** vanilla, which has
   nothing to converge yet — `main` is still our pin.
-- **No ADR.** It corrects a number and adds a rule for something not yet built.
-  `link/` is a different protocol boundary and is untouched.
+- **No ADR.** ADR-0005 §8 already mandates fragmentation; this work corrects the
+  link quantity it must use, not the architectural decision. `link/` is reached:
+  its 199-byte maximum frame does not fit a 173-byte BLE notification.
 - **Nothing measured here.** The field evidence is upstream's, on their boards
   and a different BLE stack. `NOT EXECUTED — HARDWARE REQUIRED` — the plan is
   §7 of the document, and its first three steps are folded into T-072a.

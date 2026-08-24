@@ -52,9 +52,11 @@ git -C "$OFFBAND_SRC" archive "$ref" src/helpers | tar -x -C "$tree"
 # MultiSerialInterface.h. They are header-only, so there is nothing else to link.
 # -Wall -Wextra because a silent narrowing conversion is exactly the class of
 # defect being measured.
+resolved_ref="$(git -C "$OFFBAND_SRC" rev-parse "$ref")"
 ${CXX:-g++} -std=c++17 -g -O0 -Wall -Wextra \
+    "-DUPSTREAM_SHA=\"$resolved_ref\"" \
     -I"$tree/src" -I"$here/shim" \
     "$here/capacity.cpp" \
     -o "$out/capacity-$tag"
 
-echo "built build/capacity-$tag from $(git -C "$OFFBAND_SRC" rev-parse "$ref")"
+echo "built build/capacity-$tag from $resolved_ref"
