@@ -57,6 +57,21 @@ set -uo pipefail
 #                      `success`, `skipped`, `failure`, `cancelled`, ... An
 #                      in-flight run has no conclusion and must be passed as
 #                      `pending`. An EMPTY string means no check run exists.
+#
+#                      A COMMIT STATUS IS NOT A CHECK RUN, and the two arrive
+#                      in one rollup. A third-party app posting a green commit
+#                      status is evidence about that app, not evidence that
+#                      this repository's CI ran: "Devin Review / success /
+#                      Full review skipped: trial expired and no credits
+#                      remaining" was, for a while, the ONLY context on a head
+#                      commit whose workflows were all still waiting for
+#                      approval -- so the combined state read `success` over a
+#                      pull request nothing had looked at. Commit statuses are
+#                      therefore passed with a `status:` prefix
+#                      (`status:success`, `status:failure`). They still HOLD the
+#                      merge when they are not green -- a red third party is
+#                      information -- but they cannot satisfy the "some check
+#                      ran" condition below, because they are not one.
 # LABELS               label names currently on the pull request, ONE PER LINE.
 #                      Newline separated rather than space separated because
 #                      GitHub permits a space inside a label name, and a label
@@ -210,18 +225,22 @@ EOF
 
   # -- the checks --------------------------------------------------------------
   # "All green" over an empty list is vacuously true, and a pull request no
-  # workflow touched has proved nothing. So the count is a condition of its own.
-  if [ -z "${checks// /}" ]; then
+  # workflow touched has proved nothing. So the count is a condition of its own
+  # -- and it counts CHECK RUNS, never commit statuses. See the CHECKS contract
+  # above: a third-party app's green status is evidence about that app.
+  local c runs=0
+  for c in $checks; do
+    case "$c" in
+      status:success|status:skipped) : ;;
+      status:*)   echo "HOLD commit status is ${c#status:}"; return 0 ;;
+      success|skipped) runs=$((runs + 1)) ;;
+      *)          echo "HOLD check run is $c"; return 0 ;;
+    esac
+  done
+  if [ "$runs" -eq 0 ]; then
     echo "HOLD no check run on the head commit"
     return 0
   fi
-  local c
-  for c in $checks; do
-    case "$c" in
-      success|skipped) : ;;
-      *) echo "HOLD check run is $c"; return 0 ;;
-    esac
-  done
 
   # -- the other reviewer ------------------------------------------------------
   # Codex is configured on ChatGPT's side, not in this repository, and it does

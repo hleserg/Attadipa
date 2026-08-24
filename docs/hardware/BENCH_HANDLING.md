@@ -13,7 +13,7 @@ desktop and has been seen sitting on it for hours at a time, **on USB**. It has
 never been observed on battery, and what it does when left idle is `UNKNOWN` —
 both refused further down and, until this round, asserted here in the file's
 first sentence, which is the one an agent quotes. **That is the state
-[OD-16](../research/OWNER_DECISIONS.md) chose, knowingly, over the safer one, and
+[OD-17](../research/OWNER_DECISIONS.md) chose, knowingly, over the safer one, and
 an agent does not ask for it to be undone** — it does not power the unit down and
 does not offer "unplug it" as the recommendation. What follows is why the state
 costs something, what the mitigation in force is, and the one thing an agent
@@ -96,10 +96,10 @@ be** the state to aim for: fully available, ageing nothing.
 
 Future tense on purpose. It is a statement about a firmware Attadipa has not
 written — row 1 is unavailable on the received unit, nothing of ours can address
-its display, and OD-16 fixes it at row 2. There is no route to that state today
+its display, and OD-17 fixes it at row 2. There is no route to that state today
 and this paragraph is not offering one.
 
-**[OD-16 — *The received unit stays powered, with its brightness at
+**[OD-17 — *The received unit stays powered, with its brightness at
 minimum*](../research/OWNER_DECISIONS.md), 2026-08-23:** the received unit stays powered and attached so that hardware runs
 are possible on demand, with the vendor firmware's brightness at minimum. The
 decision and its wording live there; this file only acts on it.
@@ -145,7 +145,7 @@ section headed by what an agent must not do, and on its own it reads like
 permission. What does not follow is that an agent may reboot the
 owner's device to save its screen — that is a trade to be asked for, not made.
 
-So the action is the owner's — and under OD-16 there is very little left to
+So the action is the owner's — and under OD-17 there is very little left to
 recommend: minimum brightness is already set, nothing of ours can blank the
 panel, and item 1 of that decision rules out offering "unplug it" as the
 recommendation. **One thing does remain, and it stays on the list until somebody
@@ -182,7 +182,7 @@ carrying alone. Say that it is sitting lit, name the mitigation in force
 as the brightness the owner themself set, and stop there rather than inventing an
 action to accompany it. **Unless this session reset the board** — the RAM-load
 route enters the ROM downloader, and opening a port does it by accident. Whether
-minimum brightness survives a reset is `UNKNOWN` (OD-16 item 2), and the BSP
+minimum brightness survives a reset is `UNKNOWN` (OD-17 item 2), and the BSP
 brings the panel up at 100 %, so after a reset the honest report is *"the unit
 was reset and the brightness is unconfirmed"*. Reporting the mitigation as
 standing there would be a `PASS` written for a state nobody observed, which is
@@ -214,7 +214,7 @@ them. On that page the maximum-luminance condition belongs to the *image-stickin
 test, whose pattern is an 8×8 chessboard; the **150 hrs** white-pattern lifetime
 is quoted with no luminance at all; and the **≥ 200 hours** figure is at white
 light and 600 cd/m², which the source nowhere calls that module's maximum. §3.5
-closes by saying none of the three is this panel's. So against OD-16's minimum
+closes by saying none of the three is this panel's. So against OD-17's minimum
 brightness they bound the risk **in direction, not in size** — sizing it would
 need two numbers this repository has not got: the luminance each figure was rated
 at, and this panel's luminance at minimum brightness. `51h WRDISBV` is a register
@@ -261,7 +261,7 @@ Two consequences follow, both from facts this repository already holds at
   sitting at a low state of charge"*. Plug back in below 3.0 V and precharge
   runs at whatever the factory image wrote; the POR figure is 125 mA, 0.42C on a
   ~300 mAh cell, four times the convention for a cell in exactly that state
-  (`BATTERY_UPGRADE` §6). It is not live in the state OD-16 actually holds the
+  (`BATTERY_UPGRADE` §6). It is not live in the state OD-17 actually holds the
   unit in — plugged and full, precharge does not run — which is why it is
   written down here rather than raised as an alarm.
 

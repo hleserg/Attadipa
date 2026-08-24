@@ -13,7 +13,7 @@ gate column says what must be true before the epic can start.
 | M-02 | Pairing / authentication | DESIGN | MOB3 decided — bonding alone, or an application-layer secret |
 | M-03 | Time synchronization | DESIGN | `TimeService` exists and owns the clock; §5 trust rules settled |
 | M-04 | Timezone synchronization | DESIGN | M-03; DST rule representation chosen |
-| M-05 | A-GNSS assistance | RESEARCH | **P15–P18** and OPEN_QUESTIONS A2 — which module is actually fitted |
+| M-05 | A-GNSS assistance | RESEARCH | **P15–P18** and OPEN_QUESTIONS A2. A2 is answered for the radio and *recalled* for the GNSS — MIA-M10Q, from the owner rather than from the order listing, which is silent on it — so which module is fitted is still unread, and MIA-M10Q against LS550G decides the assistance mechanism this row depends on |
 | M-06 | Find My Phone | RESEARCH | P12–P14. May prove to be limited by Android policy rather than by design |
 | M-07 | Notification relay | RESEARCH | P9–P11 |
 | M-08 | Notification app allowlist | DESIGN | M-07 viable |

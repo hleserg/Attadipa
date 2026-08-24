@@ -386,7 +386,7 @@ housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
   seven.**
 
   The three are not equally urgent, and the difference is worth writing down
-  rather than flattening. **`0x64` and `0x63[4]` are the pair OD-16 makes live**
+  rather than flattening. **`0x64` and `0x63[4]` are the pair OD-17 makes live**
   — the unit is on a charger indefinitely by decision, and with `0x63[4]` clear
   the part holds CV on a cell with no protection FET for as long as that lasts.
   **`0x61` is the one that waits for a different state.** Precharge does not run
@@ -399,7 +399,7 @@ housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
   being taken, against a second hardware trip — and the bullet below is what
   prices that trip.
 - **One thing this visit cannot also do.** Reading those registers means running
-  our code on the unit, which resets it, and OD-16 item 2 says a reset leaves
+  our code on the unit, which resets it, and OD-17 item 2 says a reset leaves
   the panel's brightness mitigation unconfirmed. The two `UNKNOWN`s want the
   same trip and cannot both be closed by it: note the brightness the panel comes
   back at, or accept that this visit reopens it.

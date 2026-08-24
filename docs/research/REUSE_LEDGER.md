@@ -1539,3 +1539,83 @@ nothing. Any pin, rate or register sequence sourced from xiaozhi is `LIKELY`
 until an instrument or a schematic says otherwise, and none of it may be written
 `PASS` until it has run on the unit. `NOT EXECUTED — HARDWARE REQUIRED` is the
 honest status of every one of these today.
+
+### Reading a C++ call expression well enough to police it
+
+**Problem:** T-009's acceptance criterion is a property of the *source tree* —
+no raw colour, pixel count or duration anywhere under `sim/`, `apps/` or `ui/`.
+The first implementation read one physical line at a time, which quietly made it
+a property of the *formatting* instead: `clang-format` at a narrow column splits
+a call across four lines and the same raw pixel count stops being visible
+([#68](https://github.com/hleserg/Attadipa/issues/68)). Fixing that means the
+checker has to see a complete call expression, which is a parsing question.
+
+**Projects investigated:**
+
+| Candidate | Licence, at revision | Why it was not taken |
+|---|---|---|
+| `clang.cindex` — Clang's own Python bindings | Apache-2.0 **WITH LLVM-exception**, stated in the file header of `clang/bindings/python/clang/cindex.py` | The licence is fine and the parse would be authoritative. It needs a matching `libclang.so` **and the translation unit's include path** — which here means LVGL's headers. LVGL is behind `ATTADIPA_BUILD_SIMULATOR`, **OFF by default**, so on four of the five CI jobs the headers are simply not on disk. A checker that needs a dependency the primary gate does not fetch is a checker that degrades to a skip, and a skipped check reads as a passing one in a summary. |
+| `pycparser` | BSD-3-Clause (`LICENSE`, "Copyright (c) 2008-2022, Eli Bendersky"); latest tag `release_v3.00` `77de509f0268f44ee587b5a4d9f0d680e269fcae` | Parses **C99 only, and only after a real preprocessor**. Everything it would be pointed at is C++ with templates, namespaces and `constexpr`. Not a close call. |
+| `tree-sitter` + `tree-sitter-cpp` | MIT both (`tree-sitter/py-tree-sitter`, `tree-sitter/tree-sitter-cpp`); latest grammar tag `v0.23.4` `f41e1a044c8a84ea9fa8577fdd2eab92ec96de02` | The genuinely strong candidate: error-tolerant, needs no include path, ships wheels. Rejected on where it would sit rather than on quality — see below. |
+| This repository's own bounded-scanner shape | — | `tools/l10n/`, `tools/assets/` and `tests/boundary/` are all "one focused checker plus a self-test that proves it still refuses things". Taken. |
+
+**Decision:** `INSPIRE ARCHITECTURE` from the checkers already in `tools/`;
+`REIMPLEMENT` the reading of a call as a bounded tokenizer in
+`tools/ui/check_raw_values.py`. `REJECT` all three parsers, with tree-sitter
+recorded as the one to reach for if the requirement ever grows.
+
+**Reason:** `ui_no_raw_values` runs in *every* CI job and is the enforcement
+half of a design invariant, so what it costs to run is part of what it is worth.
+Adding a wheel to it would put the invariant behind an installed package, and
+this repository has already decided that question in the other direction and
+written down why: `tests/CMakeLists.txt` registers a **deliberately failing**
+test when Pillow is missing rather than skipping the asset checks, and
+[DEPENDENCIES](DEPENDENCIES.md) keeps the image *digest* check free of Pillow so
+"the primary staleness gate never depends on a package being installed". The
+same argument applies here and points the same way.
+
+The second half of the reason is scope. The question the checker asks is not
+"what does this program mean" but "did an integer literal reach an LVGL length",
+and that is answerable without types, overloads or the preprocessor: blank the
+comment and string bodies, find a known entry point, balance parentheses to the
+end of its argument list, split on top-level commas, and look at the argument
+the signature says is the value. Three passes, no grammar. A full C++ parse
+would answer a much harder question than the one being asked, and the extra
+capability is not free — it is a dependency, a version to pin, and a second
+thing that can be wrong.
+
+**Where the knowledge came from instead of the code:** LVGL v9.5.0 itself, at
+the commit `cmake/AttadipaLvgl.cmake` pins and verifies —
+`85aa60d18b3d5e5588d7b247abf90198f07c8a63`, checked out and confirmed by the
+configure step's own `LVGL commit verified:` line. The inventory of which
+entry points take a length, a duration or a colour, and at which argument
+position, was read out of `src/core/lv_obj_style_gen.h`,
+`src/misc/lv_style_gen.h`, `src/core/lv_obj_style.h`, `src/core/lv_obj_pos.h`,
+`src/core/lv_obj_scroll.h`, `src/misc/lv_anim.h` and `src/lv_api_map_v9_1.h`
+rather than recalled. That last file is why `lv_anim_set_time` is still checked:
+in v9 it is a compatibility macro for `lv_anim_set_duration`, so both spellings
+compile — and the old hand-written list knew only the compatibility one, which
+meant the name a v9 screen would actually reach for was the one nobody checked.
+
+**Weakness, stated rather than discovered:** the inventory is a list in a Python
+file, so LVGL can grow a setter and the checker will not know. That is the price
+of not depending on the headers at check time, and it is paid where it can be
+seen — [DEPENDENCIES](DEPENDENCIES.md) carries re-deriving the inventory as a
+step of an LVGL bump, beside retesting both geometries.
+
+**Source revision:** no third-party code taken, so nothing to pin. The revisions
+above are recorded so the rejections can be re-examined rather than re-argued.
+
+**Attadipa integration:** `tools/ui/check_raw_values.py`, run by the
+`ui_no_raw_values` test; `tools/ui/selftest.py`, run by
+`ui_check_rejects_mistakes`.
+
+**Tests required:** every negative fixture in both formattings — one line and
+wrapped — because the whole defect was that those two disagreed. Plus the
+positives that keep the rule from becoming "no numbers in UI code": a repeat
+count, a rotation in tenths of a degree, a gradient stop, a flex weight and an
+array index all pass, and are tests rather than comments. The self-test was
+mutation-checked three ways: disabling the comment/string blanking, loosening
+the colour rule back to where it would read `Rgb make_colour()\n{...}` as a
+colour literal, and dropping the zero exemption each turn it red. No hardware —
+this is a source-tree checker and touches no board.
