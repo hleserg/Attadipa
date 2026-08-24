@@ -180,6 +180,96 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-143 · A band is not readable off the part, and nothing says so but a comment
+- **Priority:** P2
+- **Dependencies:** the T-Watch arriving (T-106 bring-up). The data-model half
+  can be designed now.
+- **Goal:** `radio_info_for()` publishes RadioLib's **driver** limits as a
+  chip's coverage — `{150 MHz, 960 MHz}` for the SX1262 — and `RadioInfo` has
+  nowhere to record that this particular unit's matching network and antenna
+  were never looked at. So the moment somebody sets `RadioChip::Sx1262` from a
+  marking alone, `covers()` answers yes for EU868, US915 **and** AS433 at once —
+  three regional networks one unit cannot all be built for — and
+  `MeshMessaging` goes Ready. The code is not lying; the observation is missing.
+  A2's answer names 868 MHz, and only the chip half of it is readable off the
+  part: band is set by the matching network, and is readable neither over SPI
+  nor off the package, so the 868 rests on the same seller's listing this
+  project refuses for the chip (ADR-0003).
+- **Acceptance:** `RadioInfo` carries the band as an *observation* with its own
+  provenance, distinct from the driver's tuning range, and `covers()` answers
+  from the observation or says it cannot say. A capability derived from an
+  unobserved band never reaches `Ready`. Host tests for: driver range present
+  and band unobserved, band observed and narrower than the driver's, and the
+  three-regions-at-once case above asserted to be impossible once observed.
+- **Watch for:** this is the second half of the same lesson as
+  `test_shipped_twatch_radio_is_unread` — a comment is not a check.
+  `test_sx1262_bands_are_the_drivers_not_this_units` pins the trap today so the
+  sentence cannot quietly stop being true, but pinning a trap is not closing it.
+- **Hardware required:** for the observation itself, yes — the matching network
+  is read off the board. The data model is not.
+
+### T-140 · Fingerprint the citations into `HARDWARE_MATRIX.md`, which are all about thirteen lines out
+- **Priority:** P2
+- **Dependencies:** none — the mechanism exists; this is the sweep.
+- **Goal:** `check_docs.py` check 7 can now hold a citation to the *text* it was
+  written for, where the citation carries a fingerprint:
+  `EXAMPLE.md:357 "Display FPC"` — the reserved placeholder path, because an
+  illustration written with a real one is a live assertion about a document
+  this task is not about. Three citations in `WAVESHARE_ARRIVAL.md` were out by
+  thirteen lines or more and landed on a real, wrong row — one on Flash where it
+  meant the display FPC, one on the tail of the GNSS-rail trap bullet where it
+  meant PSRAM, and one into `VERIFIED_FACTS.md` that had drifted onto the AXP2101
+  `PWRON` entry — and all three were repaired with fingerprints.
+  **Forty-nine bare ones remain**, counted rather than remembered, and the
+  number has now been wrong twice for the same reason. An early version said
+  fifteen — a remembered subtotal of one file. The next said twenty-three, from
+  a scan written to match *"the same shape the checker reads"* — and it did,
+  faithfully, including the checker's two blind spots: a citation into a
+  dot-directory matched at no position, and a bare basename resolved only beside
+  the citing document or at the repository root. Both are fixed, and the count
+  is now produced by importing `check_docs` and running its own resolution
+  rules rather than by a scan that imitates them, so the two cannot drift apart
+  again. The largest concentrations are still `WAVESHARE_ARRIVAL.md` — nine into
+  `HARDWARE_MATRIX.md`, five into `OPEN_QUESTIONS.md` — with the rest spread over
+  `TASKS.md`, `RECONCILIATION_2026-08-21.md`, `OWNER_DECISIONS.md` and six others,
+  and twelve of them are into `.h`, `.cpp` and `.md` files that the old scan
+  never looked at. Every one is a bare line number into a file that grows from
+  the middle, so every one is a silent wrongness waiting. Repairing them without
+  a fingerprint would only reset the clock.
+- **Acceptance:** each of those citations resolves to the row or paragraph its
+  sentence describes, carries a fingerprint that the checker reads, and
+  `check_docs.py` is green. Where a citation cannot be given a fingerprint
+  because the sentence does not name anything stable on the line, say so in the
+  document rather than leaving a bare number — a section reference is better
+  than a line number nobody can verify.
+- **Watch for:** the numbering. This task is **T-140** rather than T-128
+  deliberately: four open branches were each holding an unmerged `T-1xx` in the
+  130s at the time it was filed, and taking the next free number on this branch
+  is exactly how T-111 was claimed three times. Renumber at merge time if it
+  still collides.
+- **Hardware required:** no.
+
+### T-126 · The merge sweep has still never merged anything
+- **Priority:** P1
+- **Dependencies:** the `--slurp`/`--jq` fix, which is what this checks.
+- **Goal:** `pr-merge-sweep.yml` has run exactly once, by hand, and exited 1 in
+  eleven seconds without reading a pull request. The fix is argued and unit
+  guarded, but the workflow's own claim — that it merges what is finished — is
+  still `NOT EXECUTED`. A workflow that has never completed its loop is not a
+  working workflow, however good the diff looks.
+- **Acceptance:** a dispatched run that reaches `sweep finished, N merged` and
+  prints a per-candidate line for every open pull request, with the reason each
+  was held. Then a run that actually merges one, on a pull request that was
+  going to be merged anyway. Both run IDs recorded here. Until that second run
+  exists, the orchestrator merges by hand and does not treat the sweep as cover.
+- **Watch for:** the two conditions that can only fail on a real repository and
+  not in a unit test — `mergeStateStatus` values GitHub returns that
+  `merge-candidate.sh` does not enumerate, and a `gh pr merge` refused by branch
+  protection, which the workflow deliberately turns into one loud failure rather
+  than 48 quiet warnings a day.
+- **Hardware required:** no.
+
+
 ## NEXT
 
 ### T-034a · The mascot, at a size somebody drew
@@ -1588,14 +1678,23 @@ stale silently. The protocol is
   Stereo source material decoded to one transducer is still mono output.
 - **Hardware required:** yes — a meter on the board.
 
-### T-106 · Three measurements and five registers, before any cell is ordered
-- **Priority:** P1 — it gates the battery decision, and every part of it is
-  cheap. Nothing here needs a soldering iron.
+### T-106 · Four measurements and five registers, before any cell is ordered
+- **Priority:** P1 — it gates the battery decision, and every part of *the
+  gate* is cheap: M1, M2, M3 and the five registers need a caliper, a scale,
+  plasticine and a console, and no soldering iron. M4's magnetometer leg does
+  need one, which is why it is explicitly **not** part of the gate below and
+  goes to T-109 if it slips.
 - **Dependencies:** the research is done —
-  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md). What is missing is
-  physical, and only the owner can take it.
-- **Why it is not one measurement.** The note's sizing table branches on all
-  three, and each answers a different way of being wrong:
+  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) and the magnetometer
+  datasheet comparison from [#83](https://github.com/hleserg/Attadipa/issues/83)
+  ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md), which
+  landed with [#87](https://github.com/hleserg/Attadipa/pull/87) on
+  2026-08-22 — an earlier version of this line called it "not yet linkable").
+  What is missing is physical, and only the owner can take it.
+- **Why it is not one measurement.** The note's sizing table branches on the
+  first three, and each answers a different way of being wrong. The fourth
+  answers a separate question — the bus, not the cell — and rides along because
+  it needs the same board on the same bench:
   - **M1 — closed-case clearance**, *not* the depth of the recess. Three
     plasticine balls, the cover screwed to normal torque, and the **smallest**
     of the three is the number. A cell chosen against the recess depth fits
@@ -1608,17 +1707,116 @@ stale silently. The protocol is
     consistent with 280–330 mAh; 7.5–8 g is the only mass consistent with a
     genuine 400 mAh**, and no sampled pouch reaches that density. A kitchen
     scale settles what 51 datasheets can only estimate.
+  - **M4 — the bus scan. The `0x6A` half is DONE**, measured 2026-08-23:
+    `0x6A` does not answer, the IMU is at `0x6B`, and
+    [HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md)'s IMU row now reads
+    `MEASURED` / `VERIFIED` rather than `address CONFLICTING`
+    ([WAVESHARE_RUNNING_OUR_CODE](docs/research/WAVESHARE_RUNNING_OUR_CODE.md)
+    §3.1). This bullet asked for it as pending for 120 lines after the record of
+    it landing, which left two documents in this repository disagreeing about
+    whether a hardware fact was established — and *never trust, verify* gives a
+    reader no tie-break, so the honest outcome would have been re-running a
+    bench session that already happened. Found in review.
+    **What is left of M4** ([#83](https://github.com/hleserg/Attadipa/issues/83))
+    is the magnetometer half, once the modules are in hand:
+    - **Scan one module at a time, and strap `CAD` before scanning.** The AKM
+      module *breaks `CAD` out* ([MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)
+      §2.4) — it is not tied to `VSS` by the manufacturer, and this bullet used
+      to state that as delivered fact. §4.3 is where the grounding decision
+      itself lives. The address table in §2.4 holds two rows only: `CAD` to
+      `VSS` gives `0x0C`, `CAD` to `VDD` gives `0x0D`. **Tied high the part
+      sits at `0x0D`** — exactly where the QMC5883L is and where the QMC cannot
+      move from. What the pin does **floating** is `UNKNOWN`: no internal
+      pull-up, pull-down or bias is recorded anywhere in this repository, so
+      an unstrapped `CAD` could answer at either address or neither, and an
+      operator following the old wording writes down *"QMC5883L confirmed,
+      AK09911C absent"* — wrong twice and recorded as `MEASURED`. That is why a
+      verified low strap on `CAD` is a **precondition** of this measurement
+      rather than part of it: the precondition does not need the floating
+      mechanism, it exists because the mechanism is unknown. Found in review.
+    - **Neither part is identified by the ACK alone, and the ID registers are
+      the opposite way round from what this bullet used to say.** The
+      **QMC5883L does** have a chip-ID register — offset `0x0D`, returning
+      `0xFF` (§3.4) — and the **AK09911C's `WIA1`/`WIA2` are `UNKNOWN` from a
+      primary source** in this repository (§2.4, which closes *"do not copy
+      register numbers out of an Arduino library"*). The old sentence had both
+      halves backwards and would have sent a driver author to an Arduino
+      library for AKM register numbers, the one move §2.4 forbids by name.
+      The QMC's ID is not a clean check either: `0xFF` is a valid ID *and* the
+      classic signature of an absent device on a floating bus (§3.4), so the
+      probe is the address ACK — with one module fitted at a time, which is
+      what makes the ACK unambiguous. Found in review.
+    - Cheap GY-271 modules sold as QMC5883L are regularly relabelled HMC5883L
+      at `0x1E`, so an ACK at `0x1E` and silence at `0x0D` is the relabelled
+      part rather than a missing one.
+    - **This half needs a soldering iron and parts in the post**, which the
+      title of this task does not. `IO15`/`IO14` are bare plated pads
+      ([HARDWARE_MATRIX](docs/research/HARDWARE_MATRIX.md#waveshare-esp32-s3-touch-amoled-206)
+      "Expansion pad row" — an anchor rather than a line number, because line
+      numbers drift on every insertion above them), and `CAD` needs strapping.
+      **T-109** already owns the modules, the `CAD` decision and both
+      footprints, so if this half slips, it goes there rather than holding a
+      P1 battery task open. M1 through M3 do not wait on any of it.
 - **And five registers, on the board, whenever convenient:** `0x62` (charge
   current — the one value that has never been read and cannot be quoted from
   the datasheet, because its reset value is eFuse-trimmed), `0x50`, `0x58`,
   `0x12` and `0x69`, at I²C address `0x34`.
-- **Acceptance:** each of M1, M2 and M3 recorded as `MEASURED` with the
-  instrument named, the five register values recorded as read, and the sizing
-  table in [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one
-  row. `UNKNOWN` stays `UNKNOWN` for anything not actually taken.
+- **Acceptance — and it does not include the magnetometer.** M1, M2, M3, M4's
+  `0x6A` leg and the five register values, each recorded as `MEASURED` with the
+  instrument named, and the sizing table in
+  [BATTERY_UPGRADE](docs/research/BATTERY_UPGRADE.md) resolved to one row.
+  `UNKNOWN` stays `UNKNOWN` for anything not actually taken. **M4's `0x6A` leg
+  is already satisfied** — measured 2026-08-23, recorded in `HARDWARE_MATRIX`
+  and `WAVESHARE_RUNNING_OUR_CODE` §3.1. M4's `0x0C` and `0x0D` legs stay
+  `UNKNOWN` and are **explicitly outside this acceptance**: they need modules in
+  the post and a strap on `CAD`, and a P1 battery gate must not hang on a P2
+  delivery. They close under **T-109**, which now owns the strap in its own
+  acceptance. So: **M1 through M3 are the gate**, they wait on nothing, and they
+  have not been taken.
 - **What must not be assumed:** that the sticker settles the capacity. Reading
   it was verified; what it means is exactly what is in doubt.
-- **Hardware required:** yes — the board, a caliper, a scale, and one I²C read.
+- **Hardware required:** yes — the board, a caliper, a scale, a bus scan, and
+  the five-register read.
+
+### T-111 · A third capability source, for hardware that is neither the board's nor the node's
+- **Priority:** P2 — no code depends on the answer yet, but the registry design
+  ([ADR-0007](docs/adr/0007-two-capability-layers.md)) is the thing every
+  application trusts not to leak where an answer came from, and this is the
+  first hardware that does not fit either of the two sources it already knows.
+- **Dependencies:** none — this is a design question, answerable on paper. Not
+  gated on T-106 or on the modules arriving.
+- **Goal:** [#83](https://github.com/hleserg/Attadipa/issues/83) asked this as a
+  question rather than answering it, and it stays asked here rather than
+  decided inline in a research note. An owner-soldered magnetometer is a
+  capability that is a property of neither the board type (other units of the
+  same model do not have it) nor an attached Attadipa node (it does not walk
+  away). Whether the registry needs a third source class, and how to add one
+  **without** letting an application learn which source answered — the
+  invariant [ADR-0007](docs/adr/0007-two-capability-layers.md) exists to
+  protect — is an ADR question. The lifecycle half of it is already decided,
+  and it is decided by
+  [ADR-0004](docs/adr/0004-capability-sources.md) rather than by ADR-0007 or
+  ADR-0009: `docs/adr/0004-capability-sources.md:186` reads
+  "terminal. Nothing may leave it. Ever." of `Availability::Unsupported`, and
+  `:198` already reasons about this exact case by name —
+  "nothing ever reaches `Unsupported`", because a device that never had a
+  magnetometer does not acquire one when a node says so, it acquires a
+  *provider*, and that is a different edge. A part the owner solders on is not a
+  provider walking up, and it is the case ADR-0004 does **not** cover: so the
+  question this task has to answer is what state a per-unit capability sits in
+  **before** that specific unit has been probed, given that it may never leave
+  `Unsupported` and that an I2C probe finding nothing is indistinguishable from
+  a cold solder joint. "Probe at boot" is not by itself an answer to how a
+  soldered-on source announces itself.
+- **Acceptance:** an ADR, accepted or explicitly deferred with a reason, that
+  says whether a third source class exists, what state a per-device (not
+  per-board-type) capability is in before that specific unit has been probed,
+  and how [ADR-0004](docs/adr/0004-capability-sources.md) and
+  [ADR-0009](docs/adr/0009-heading.md) are superseded or amended once it does —
+  ADR-0004 because the two-source model and the terminal `Unsupported` state
+  are its, ADR-0009 because it is the document that assumes heading has no
+  on-board source on either board.
+- **Hardware required:** no.
 
 ### T-112 · The pedometer has a datasheet now; it still needs someone to walk
 - **Filed as [#116](https://github.com/hleserg/Attadipa/issues/116)**, which also
@@ -1690,10 +1888,18 @@ stale silently. The protocol is
 - **What is already settled, so that nobody re-opens it:**
   - Both parts run at 3.3 V. The AK09911C is *not* a 1.8 V part; `VDD` is
     2.4–3.6 V.
-  - **`CAD` goes to ground.** That puts the AKM part at `0x0C` and leaves the
-    QST part at its fixed `0x0D`, so both can be on the bus at once — which is
-    the only way to compare them in the same magnetic environment on the same
-    wrist. `0x34`, `0x38` and `0x6A`/`0x6B` are taken; these two are free.
+  - **`CAD` goes to ground** — the *decision*, not a strap anybody has added:
+    no module exists yet, so nothing about it is measured. Grounding puts the
+    AKM part at `0x0C` and leaves the QST part at its fixed `0x0D`, so both can
+    be on the bus at once — which is the only way to compare them in the same
+    magnetic environment on the same wrist. **Adding the strap and verifying it
+    reads low is work this task owns**, and T-106's M4 hands it here: without
+    it the AKM part is not at `0x0C`, and what it does with `CAD` floating is
+    `UNKNOWN`. What *was* **measured on 2026-08-23, not predicted:** `0x18`,
+    `0x34`, `0x40`,
+    `0x51` and `0x6B` answer a bare scan, and `0x38` (touch) answers after its
+    reset is pulsed on GPIO 9. `0x6A` does **not** answer — the IMU is at
+    `0x6B` — so `0x0C`, `0x0D` and `0x1E` are all free, and so is `0x6A`.
   - **The IMU will not read the magnetometer for us, and the reason is stronger
     than "wrong part".** QMI8658C Mag Mode names AK09915C, AK09918CZ and QMC6308
     — neither ordered part among them — but the decisive point is that `CTRL4`
@@ -1715,7 +1921,9 @@ stale silently. The protocol is
   millimetres away is exactly the thing that closes a six-fold range advantage.
   If the QMC sits near overflow wherever it physically fits, the AKM part is not
   a fallback, it is the answer.
-- **Acceptance:** both module footprints recorded as `MEASURED` with the caliper
+- **Acceptance:** the `CAD` strap fitted and **verified low** before any address
+  is written down, and each module scanned on its own so the ACK is unambiguous;
+  both module footprints recorded as `MEASURED` with the caliper
   named; the field at the chosen position recorded with the motor in both
   states; the rotation between module frame and board frame written down for
   *this assembly* rather than inferred; overflow surfaced by the driver as a
@@ -1730,21 +1938,67 @@ stale silently. The protocol is
 ### T-010 · Board bring-up
 ```
 BLOCKED:
-Reason:         No physical board is available, and the exact variant is unknown.
-Evidence:       OPEN_QUESTIONS A1, A2. The T-Watch ships with one of five radio
-                chips and one of two GNSS modules; the GNSS power rail differs
-                between board revisions (BLDO1 vs DC3).
-Impact:         Blocks all bring-up, every power measurement, the whole
-                interference matrix, and any claim that hardware works.
+Reason:         The T-Watch S3 Plus is ORDERED, not PRESENT — no physical unit
+                to bring up yet. The Waveshare is on the desk and IDENTIFIED —
+                silkscreen `ESP32-S3-Touch-AMOLED-2.06`, which is what
+                schematic V1.0 describes. Its REVISION is not read: that
+                string is the product name and its `2.06` is the panel
+                diagonal, so a V1.1 unit would carry it too. Bring-up may
+                rely on V1.0 as a document, not as a fact about this board.
+Evidence:       OPEN_QUESTIONS A1 (OD-16, issue #54, 2026-08-22). A2 (which
+                radio, which GNSS) has an answer, from two sources of
+                different strength: SX1262 at 868 MHz is quoted from the
+                order listing, and MIA-M10Q is the owner's recollection,
+                because that listing names the radio and is silent on GNSS.
+                Neither is a marking read off the part, so RadioChip::Unknown
+                does not change until the watch arrives and the marking is
+                read.
+
+                The GNSS power rail still differs between board revisions (BLDO1
+                vs DC3), and **no part marking distinguishes them** — the
+                discriminator is a feature of the case: a unit with rear
+                BOOT/RST buttons is the DC3-unused revision. See
+                OPEN_QUESTIONS D6, the T-Watch rail table in
+                HARDWARE_MATRIX (the DC3 row: "unused (was GNSS on earlier
+                revisions without rear BOOT/RST buttons)") and VERIFIED_FACTS
+                on the GNSS rail, which all say the same thing. Reading SX1262 off
+                the radio settles the radio and settles nothing about the
+                rail; choosing wrong means GNSS silently never starts, and
+                presents as a receiver or antenna fault.
+Impact:         Blocks all T-Watch bring-up, every power measurement, the
+                whole interference matrix, and any claim that hardware works.
+                Does not block Waveshare bring-up, which is unblocked and
+                simply not yet done — STATUS.md, the T-010 entry. (This
+                previously read "see the M1 section above". There is no M1
+                section: the headings are NOW, NEXT, READY, BLOCKED, WAITING
+                and DONE, and the nearest M1 above is T-106's closed-case
+                clearance measurement, which is a different subject.)
 Possible options:
                 1. Proceed on simulator and host tests only — no hardware claims.
-                2. Obtain a board and record its exact variant.
+                2. Wait for the T-Watch to arrive, then make THREE separate
+                   observations, none of which substitutes for another:
+                   (a) read the radio marking — settles which of the five
+                   chips is fitted, and nothing else;
+                   (b) look at the back of the case for the BOOT/RST buttons
+                   that decide the GNSS rail;
+                   (c) establish the BAND. A2's answer is "SX1262 (868 MHz)"
+                   and only the chip half of that is readable off a marking:
+                   band is set by the matching network and antenna fitted, per
+                   OWNER_DECISIONS' own #89 paragraph, and is readable neither
+                   over SPI nor off the part. So the 868 rests on the same
+                   seller's listing this task refuses for the chip. Note what
+                   happens if (c) is skipped: set RadioChip::Sx1262 after (a)
+                   alone and radio_info_for() supplies {150 MHz, 960 MHz} —
+                   RadioLib's DRIVER limits, not this unit's — so
+                   covers(eu868) is true and MeshMessaging goes Ready with
+                   nobody having looked at the matching network. The code is
+                   not lying; the checklist would be incomplete.
                 3. Write the bring-up checklist now so that day one with real
                    hardware is not spent improvising.
 Recommended next action:
-                Option 3 now, in parallel with option 1. Ask the project owner
-                about hardware availability (A1–A3); A4 is closed, not
-                outstanding (OD-14).
+                Option 3 now, in parallel with option 1. A1–A3 are answered
+                (OD-16); nothing further to ask the owner here. A4 is closed,
+                not outstanding (OD-14).
 ```
 
 ### T-011 · Interference measurement
@@ -1779,30 +2033,42 @@ Recommended next action:
 ### T-012 · Answers from the project owner
 - **Priority:** P0
 - **Waiting on:** the project owner
-- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3,
-  A6 — hardware availability and revision · which radio and GNSS variant ·
-  a second mesh device · whether the node carries a magnetometer. **A5 is
-  answered** — 2026-08-22, the owner has ordered a CJMCU-9911 (AK09911C) and a
-  GY-271 (QMC5883L) and is soldering one in
-  ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
+- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A6 —
+  whether the node carries a magnetometer. **A1–A3 are no longer on this
+  list** — answered 2026-08-22 on
+  [#54](https://github.com/hleserg/Attadipa/issues/54), recorded as
+  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
+A1's schematic-revision
+  sub-question is **not closed and is not owed by the owner** — the silkscreen
+  reads `ESP32-S3-Touch-AMOLED-2.06`, which is the **product name** schematic
+  V1.0 describes, not a revision field: `2.06` is the panel diagonal, so a V1.1
+  unit carries it unchanged (`WAVESHARE_BOARD_RECEIVED` §1.1, and
+  `OPEN_QUESTIONS` D20, where it is now filed). An earlier version of this
+  bullet called it closed, which was the same mistake the rest of this branch
+  exists to correct. A2's marking-read-off-the-part confirmation likewise
+  remains, and is a hardware-in-hand task now, not an owner question. **A11 is new and IS on this list** — one T114 with GNSS or two,
+  [#124](https://github.com/hleserg/Attadipa/issues/124). **A5 is no longer on it either** — 2026-08-22, the owner has
+  ordered a CJMCU-9911 (AK09911C) and a GY-271 (QMC5883L) and is soldering one
+  in ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
   that: a node's magnetometer and a wrist's magnetometer answer different
-  questions. **A4 (the regulatory region) is no longer on this
-  list** — closed 2026-08-22, not by an answer but by the owner declining to
-  give one: legality is his problem, not the firmware's
+  questions. **A4 (the regulatory region) is no longer on this list** — closed
+  2026-08-22, not by an answer but by the owner declining to give one:
+  legality is his problem, not the firmware's
   ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
   No task here researches a specific jurisdiction's rules on the project's own
   initiative; [ADR-0006](docs/adr/0006-settings-and-bounded-values.md)'s
   transmit-closed-while-`Unknown` gate needs no such research to keep working.
-- **Impact:** A1–A2 gate all hardware work, and A2 got sharper: of the five
-  candidate radios, two cannot do LoRa at all and only one is supported by the
-  pinned MeshCore ([ADR-0003](docs/adr/0003-radio-not-lora.md)), so the answer
-  decides whether the watch has a local mesh path at all. A5 and A6 decide
-  whether five magnetometer epics are dormant or dead, and A6 does **not** give
-  the watch a compass even if the answer is yes
+- **Impact:** A5 and A6 decide whether five magnetometer epics are dormant or
+  dead, and A6 does **not** give the watch a compass even if the answer is yes
   ([ADR-0009](docs/adr/0009-heading.md) §3). A5's answer moves those five epics
   from *possibly dead* to *dormant with a delivery date*, and hands
   [ADR-0009](docs/adr/0009-heading.md) a second possible provider for heading —
-  see [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md).
+  see [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md). A2's
+  answer, now given, decided the other half: of the five candidate radios two
+  cannot do LoRa at all and only one is supported by the pinned MeshCore
+  ([ADR-0003](docs/adr/0003-radio-not-lora.md)), and the order listing says
+  SX1262 — so the watch has a local mesh path, subject to reading the marking
+  off the physical part when it arrives.
 - **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification
@@ -1833,6 +2099,50 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-127 · A link's `#anchor` is captured and then never checked — **DONE** 2026-08-23
+- **Priority:** P3
+- **Dependencies:** none.
+- **Goal:** `tools/docs/check_docs.py` check 1 matches a link with an anchor on
+  it, captures the anchor as a regex group, and then tests only
+  `os.path.exists(target)`. So every `#od-16--...` style deep link in this
+  repository is unverified, and a heading renamed or renumbered leaves a link
+  that resolves to the top of the right file — which reads as working. This is
+  the half of the OD-16 collision that the new duplicate-decision check does
+  **not** cover: that one catches two headings with one number, this one catches
+  a citation pointing at a number that has moved.
+- **Acceptance:** anchors resolve against the target file's own headings, using
+  GitHub's slug rule (lower-case, drop punctuation except hyphen and
+  underscore, spaces to hyphens, de-duplicate with `-1`, `-2`). Mutation tests
+  in `tools/docs/test_check_docs.py` for: a good anchor, a renamed heading, an
+  em dash, backticks and bold inside a heading, two headings that slug the same,
+  and an anchor into a file that has none.
+- **Watch for:** the first run will find pre-existing broken anchors. That is
+  the point, but it makes this a two-commit job — the check, then the fixes —
+  and the fixes are the larger half. Do not weaken the rule to make the first
+  run green.
+- **Hardware required:** no.
+- **What came of it:** `check_links` now resolves every `#anchor` against the
+  target document's own headings, including `](#same-document)` links, which the
+  link pattern had never captured at all. GitHub's slug rule is implemented as
+  described — and its awkward half is that punctuation is dropped while the
+  spaces around it are not, which is why `## OD-16 — A1, A2 and A3` answers to
+  `#od-16--a1-a2-and-a3` with two hyphens. Headings inside a fenced block are not
+  headings. Anchors on non-Markdown targets are left alone: GitHub anchors a code
+  file by line, and reporting `#L12` would be noise. Seven mutation cases.
+  **The first run found exactly one broken anchor in the whole repository** —
+  `PEDOMETER_PARTS.md:19` had dropped the trailing `` `SUPPORTED` `` from the
+  slug — so the two-commit worry did not materialise, and the fix is in this
+  commit. The OD-16 half is what this was for: renumber one of two colliding
+  headings now and every `#od-16` link says so.
+
+  **And it caught this record while it was being written.** The paragraph above
+  described the syntax of a same-document link, in backticks, and the new check
+  read the illustration as a live link into a heading that does not exist —
+  which is the `EXAMPLE.md` defect exactly, one check over. GitHub renders an
+  inline code span as characters, so `check_links` now blanks code spans before
+  looking for links. Two more cases: an illustration stays quiet, a real link
+  after a code span on the same line is still read.
 
 ### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
 - **The cause was not the model, the context or the turn ceiling.** It was
@@ -1972,10 +2282,14 @@ Recommended next action:
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
 - `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
-  Four checks, each of a failure that had already happened here. **A fifth was
+  Seven checks: relative links, inline code spans, task IDs, owner-decision
+  numbers, task bodies, root files, and `file:line` citations. Four at first,
+  each of a failure that had already happened here. **A fifth was
   added 2026-08-23** — nothing unexpected is tracked at the repository root —
   after `git add -A` swept a scraped vendor page into `main` through
-  [#98](https://github.com/hleserg/Attadipa/pull/98).
+  [#98](https://github.com/hleserg/Attadipa/pull/98); a sixth and a seventh
+  followed on the same day, for the four pull requests that each claimed OD-16
+  and for citations that land on a real, wrong line.
 - **Relative links resolve.** These documents cite each other constantly and a
   link that 404s reads exactly like one that works until somebody clicks it. The
   repository was clean at the time this landed; the point is that it stays that
@@ -2021,8 +2335,11 @@ Recommended next action:
   this is the one place in the checker that reads fenced lines — everywhere else
   a `**Priority:**` inside a fence is an example and does not count as a body.
 - **Mutation-tested**, and CI runs those tests before it runs the checker:
-  twenty-five cases in `tools/docs/test_check_docs.py`, thirteen of which assert
-  the checker does *not* fire where firing would be wrong. One reproduces the
+  **67 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  checker does *not* fire where firing would be wrong — a `###` sub-heading is
+  not a second decision, a range straddling a blank line is how a table is
+  cited, and a line number in somebody else's tree is not ours to verify. The
+  suite prints its own count, so this number has one source. One reproduces the
   splice defect above verbatim and asserts the span check catches what the
   uniqueness check cannot; another asserts the body check catches the same splice
   from the other side.
@@ -2252,9 +2569,21 @@ Recommended next action:
   only the composition root knows which panel answered.
 - **Acceptance met.** `tools/ui/check_raw_values.py` refuses a colour, a pixel
   count or a duration written as a number under `ui/`, `sim/` or `apps/`, with
-  two files exempted for holding the palette and the scale; `tools/ui/selftest.py`
-  proves the checker rejects seven real mistakes and accepts seven correct
-  lines. `sim/boot_screen.cpp` no longer contains a hex colour or a raw padding.
+  one file exempted for holding the palette; `tools/ui/selftest.py` proves the
+  checker rejects thirty real mistakes, accepts twenty-eight correct forms
+  and reports three diagnostics usefully. `sim/boot_screen.cpp` no longer
+  contains a hex colour or a raw padding.
+- **The acceptance criterion was weaker than it read, and is now what it says**
+  — [#68](https://github.com/hleserg/Attadipa/issues/68), fixed 2026-08-23. The
+  checker matched one physical line at a time against a hand-written list of
+  setter names, so wrapping a call across lines changed the verdict and
+  `lv_obj_set_size`/`lv_obj_set_pos` were never on the list at all. It now blanks
+  comment and string bodies, takes each call whole by balancing parentheses, and
+  judges arguments by position against an inventory read out of the pinned LVGL
+  v9.5.0 headers. **A bump of the LVGL pin has to re-derive that inventory** —
+  the step is recorded in [DEPENDENCIES](docs/research/DEPENDENCIES.md), and why
+  it is a list rather than a parse is in
+  [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
 - **Both themes are now switchable without a rebuild** — `T` at runtime,
   `--theme day|night` for CI — for the same reason the locale is: a reviewer who
   must rebuild to see the second one checks the first.

@@ -470,7 +470,8 @@ is sourced to the drawing itself.
 - **Impact:** the contents are unambiguously S3-class, so this is a stale
   nameplate rather than the wrong document. But it means the drawing cannot be
   used to establish which board revision anything applies to. Revision still
-  comes from inspecting a physical unit — OPEN_QUESTIONS A1.
+  comes from inspecting a physical unit — OPEN_QUESTIONS **D20**, the row that
+  question was carved into. A1 is struck and marked ANSWERED.
 
 ---
 
