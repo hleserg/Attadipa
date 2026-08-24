@@ -731,11 +731,21 @@ the `PointerDown`, so round trips come out of the intervals they happened in
 rather than lengthening the path; a negative, infinite or NaN duration is
 refused *before* the press goes out, so a mistyped gesture file cannot leave a
 finger down; `duration: 0` stays legal and means as fast as the connection
-manages. Three host self-test groups pin the schedule on a fake clock — the
-two-point case, the five-point case, and the shipped file resolved at **both**
-board geometries — and all three fail on `fc69c26`. The end-to-end test adds the
-coarse version with the real clock and the real socket in it: **0.602 s** on the
-Waveshare geometry and **0.601 s** on the T-Watch for a file declaring 0.6.
+manages. **And a gesture longer than the device's own `max_hold_ms` is refused
+in a sentence**, because holding the pointer down for the whole duration made
+that bound reachable for the first time: past it the bridge expires the hold,
+the interface takes a click nobody asked for, and the real release is then
+refused as impossible from the current state. `button_hold` has refused for
+that reason since it was written. Read from the capabilities, never hardcoded —
+a T-114 firmware choosing a tighter limit than the simulator's 30 s is the case
+a number in the host would get wrong. Five host self-test groups pin the
+schedule on a fake clock — the two-point case, the five-point case, the shipped
+file resolved at **both** board geometries, the hold bound, and one that gives
+the wire a price so that **absolute** deadlines can be told from a `sleep(gap)`
+loop at all, which the first four could not. All five fail on `fc69c26`. The
+end-to-end test adds the coarse version with the real clock and the real socket
+in it: **0.602 s** on the Waveshare geometry and **0.601 s** on the T-Watch for
+a file declaring 0.6.
 Reported as [#186](https://github.com/hleserg/Attadipa/issues/186), and the
 semantics `duration` now has are written down in
 [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md#what-duration-measures) because
@@ -1250,6 +1260,86 @@ four more things at no cost:
   ultimately about, which is how often a real BLE or USB stack re-fires an
   attach callback after a subsystem failure — that is a measurement, nobody has
   taken it, and the fix does not depend on the number.
+- **A snapshot nobody had filled in reported the most confident verdict there
+  is.** [#164](https://github.com/hleserg/Attadipa/issues/164), a T-062 finding.
+  `GnssStatus::trust` (`core/include/attadipa/core/diagnostics.h`) defaulted to
+  `TrustState::Trusted`, one line below a `validity` that correctly defaults to
+  `NoFix`. So `DiagnosticsSnapshot{}` — which is what exists at boot, in a panic
+  handler before anything has run, and on the Waveshare board, which has no GNSS
+  receiver at all — simultaneously said *no receiver*, *off*, *no fix*, *source
+  unknown* and *trusted*. The cause is a type doing a job it cannot do:
+  `TrustState`'s three values are all verdicts somebody reached after weighing
+  evidence, and none of them can say the evaluator has not run. `Trusted` is the
+  right initial state for a live `TrustEngine`, where it has a lifecycle around
+  it; carried into a detached aggregate it became an assertion about nothing.
+  The field is now `std::optional<TrustState>` — the idiom that header already
+  uses for every fact nobody produced, and the same instinct as
+  `ReceiverIndication::Unknown` under OD-5. **`Untrusted` was weighed and
+  rejected** rather than not considered: it is the safe default and the wrong
+  sentence, because it says a verdict was reached and it was bad, which anything
+  counting integrity alarms across support bundles would believe. A fourth
+  `TrustState` was rejected too — the enum is ordered, and thresholds, recovery
+  and the transition log all compare its values. `trust_reasons` now moves with
+  the verdict through `record_trust()` / `forget_trust()`, so evidence cannot
+  outlive the evaluation that weighed it, and `to_string(std::optional<
+  TrustState>)` gives a log, a replay trace or a support bundle the word
+  `NotEvaluated` instead of leaving each to invent a blank or an enum zero — a
+  diagnostic identifier, not a screen string, because ADR-0010 §4 still binds
+  and core does not speak English. There
+  is no renderer, serializer or other producer of this field anywhere in the
+  tree — `DiagnosticsSnapshot` appears only in its own header and in
+  `tests/test_diagnostics.cpp` — so nothing downstream needed changing and no
+  persisted format could break.
+
+  **The independent review found the type right and three of the comments around
+  it wrong, which is worth recording because it is the same defect one layer
+  out.** With no consumer in the tree those header comments *are* the forward
+  interface, and two of them stated guarantees the code does not give. A
+  `std::optional<TrustState>` does not stop a comparison against a bare
+  `TrustState` from compiling, and several of those comparisons answer unsafely:
+  `!= Untrusted` is **true** while empty, so
+  `if (trust != TrustState::Untrusted) draw_the_arrow()` — which reads correctly
+  in English — draws a confident arrow from a position no evaluator has seen,
+  reachable today in the Waveshare board's permanent state; `< Degraded` is true
+  as well, sorting "nobody looked" below the worst verdict there is. A stored
+  verdict is now read through `trust_or(stored, when_not_evaluated)`, which makes
+  the caller name what absence means before any comparison can answer for it, and
+  the unsafe readings are pinned in a test rather than left as a warning.
+  Deliberately **not** a `may_navigate()` boolean: whether a `Degraded` fix is
+  good enough depends on whether the user is reading a map or recording a track,
+  and collapsing three states into one answer inside core is the
+  policy-in-the-detector mistake ADR-0011 §5 opens by refusing.
+  `record_trust()`/`forget_trust()` now say they are a call-site discipline and
+  **not** atomic — two stores are two instructions, and a panic landing between
+  them writes the one pairing the comment claimed impossible; making them
+  indivisible means packing the verdict into the mask's two spare bits, filed in
+  `TASKS.md` rather than assumed. And `forget_trust()` says plainly that it
+  clears the verdict and nothing else: `NotEvaluated` beside a `present`, a
+  `Valid` and a `fix_age` that has stopped advancing describes a healthy fix from
+  a receiver that has gone, which is worse than the bug being fixed. The
+  round-trip test also stopped depending on `default_trust_policy()`'s weights —
+  they are `ESTIMATED` and named as the first numbers to change, and a
+  snapshot-layout test that reddens when the trust policy is tuned gets edited
+  until it passes rather than read.
+
+  Eight regression tests, including all three real
+  verdicts round-tripping through the panic-handler `memcpy` with their reason
+  masks, and a disengaged one arriving still disengaged. Both candidate defaults
+  were re-applied as mutants and turn the suite red — nine failures for
+  `Trusted`, eight for `Untrusted`; the pre-existing
+  `test_nothing_defaults_to_a_confident_answer` did **not** move under either,
+  which is why it had stayed green while contradicting its own name. The
+  structure did not grow *on the branch*: the extra byte fitted existing
+  padding, and `GnssStatus` was 40 bytes there. It is **44 on `main`**, and the
+  four bytes are not this change's — `trust_unconfirmed` (#153) landed while
+  this branch was open, and the two spend from the same padding without either
+  knowing about the other. `tests/test_diagnostics.cpp` records the measurement
+  and bounds it at 44. `DiagnosticsSnapshot` is 384 throughout, against a 1 KiB
+  budget. Host suite clean under GCC, under GCC with `-Werror -Wshadow
+  -Wconversion -Wsign-conversion -Wcast-qual -Wold-style-cast`, under Clang and
+  under ASan+UBSan with `-fno-sanitize-recover=all`. Recorded as an amendment to
+  [ADR-0011](docs/adr/0011-gnss-integrity.md) §5, which is where a future reader
+  of "three states" needs to meet the fourth reading.
 - **A capability nobody had checked was stored as one the hardware does not
   have.** [#166](https://github.com/hleserg/Attadipa/issues/166), the first of
   T-062's remaining findings. `GnssCapabilities` was four plain `bool`s
