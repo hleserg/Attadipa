@@ -135,6 +135,18 @@ If you are working from an issue:
   those will sweep it up — it is waiting for an orchestrator session to look at
   it. Widening that list is the owner's decision, not an agent's and not a
   reviewer's.
+
+  **The half-hourly sweep merges nothing, from this change until the parked
+  patch lands.** Its caller cannot prove it read the whole pull request — a
+  GraphQL connection is a page, not a set — so the rule refuses it by arity and
+  every run holds. The fix is parked as
+  `docs/automation/pending/170-merge-sweep-completeness.patch`, named here as a
+  code span rather than linked because the procedure that applies it deletes
+  the file, and a link to a deleted file reddens `main`. Until it lands, the
+  daily backstop routine is the only thing merging unattended, so a finished
+  documentation pull request waits a day rather than half an hour.
+  [`CLAUDE_AUTOMATION.md`](docs/automation/CLAUDE_AUTOMATION.md) is the long
+  version.
 - **Hardware facts are verified or they are `UNKNOWN`.** Never a `PASS` for a
   test that did not run on a board — the rule above, and it does not relax
   because a workflow is watching.

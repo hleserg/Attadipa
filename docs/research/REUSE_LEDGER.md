@@ -1860,3 +1860,105 @@ exist), `debug/` (protocol and bridge), `sim/remote_input.cpp`,
   executed.** There is no Attadipa firmware, so nothing on the far end of a USB
   cable speaks this protocol. `SerialTransport` is written and has never spoken
   to a device.
+
+---
+
+### Proving a GraphQL connection was read in full
+
+**Problem:** the unattended merge sweep decides whether a robot may write to
+`main`, out of one GraphQL round trip — and every fact in it arrives in a
+*connection*, which is a page. `reviewThreads(first:100)` over a pull request
+with 101 threads returns a hundred, so `[ .nodes[] | select(.isResolved | not) ]
+| length` answers **zero** when the unresolved one is the hundred-and-first, and
+zero is the value that merges. Past the fiftieth label the same shape hid
+`ai-review:blocking`; past the hundredth context, a failing check
+([#170](https://github.com/hleserg/Attadipa/issues/170)). The question is
+therefore not "how do we paginate" but "how does a caller *prove* it read the
+whole set, in a way a test can execute".
+
+**Projects investigated:**
+
+| Candidate | Licence, at revision | Why it was not taken |
+|---|---|---|
+| GitHub's own `pageInfo { hasNextPage }` — the Relay Cursor Connections contract | the schema, no code taken | **Taken.** The schema already answers exactly the question being asked, per connection, and answers it about the *filtered* set |
+| `gh api --paginate` | MIT (`cli/cli`) | Already used in this workflow for REST, and it does not apply: `--paginate` follows REST `Link` headers and GraphQL `pageInfo` **only for a query written to accept `$endCursor`** — one connection per query. Five connections in one document is exactly the shape it cannot walk |
+| `octokit/plugin-paginate-graphql.js` | MIT; `octokit/plugin-paginate-graphql.js` | Real, maintained and the right tool for a Node action. This job is `bash` + `gh` in a sparse checkout with no `node_modules` and no `npm install` step, and it must stay that way: adding a package manager to a workflow holding `contents: write` on `main` is a bigger change than the defect it would fix |
+| Hand-rolled pagination loops, one per connection | — | `REJECT` for now, with the reason recorded below rather than left as taste |
+| `nodes \| length == first` as the truncation test | — | `REJECT`. It cannot tell an exactly-full page from a truncated one, so it either lets truncation through or holds every pull request landing on the boundary — guessing in both directions while the schema answers exactly. The workflow already had one instance of this (`FILE_COUNT >= 100`) and it is removed |
+| `totalCount` as the truncation test | — | `REJECT`, and this one is not a matter of taste: on a **filtered** connection GitHub does not count the filtered set. Measured against this repository's #173 on 2026-08-24, `timelineItems(last:100, itemTypes:[LABELED_EVENT])` answered `totalCount: 15` beside a single node, while `pageInfo` on the same response respected the filter. A `length < totalCount` rule would have held every pull request in the repository, forever |
+| This repository's own "the rule is a file, the workflow calls it" shape | — | Taken. `merge-candidate.sh`, `intake-decision.sh`, `queue-scan.jq`, `failure-count.jq` |
+
+**Decision:** `USE AS-IS` the schema's `pageInfo`; `REIMPLEMENT` the completeness
+check as `.github/scripts/merge-facts.jq` behind `merge-facts.sh`, in the shape
+this repository already uses for every other decision an unattended workflow
+makes; `REJECT` full pagination, for now and with a condition on when to revisit.
+
+**Reason:** for an *unattended* gate the bounded fail-closed answer is the one
+worth having. Paginating five connections adds request loops, partial-failure
+states and a second way to be wrong, in order to raise a ceiling that the
+three-per-run cap and a documentation-only path allowlist make almost
+unreachable — a hundred labels or 101 review threads on a `docs/` pull request is
+not a case to optimise, it is a case for an orchestrator session, which is where
+everything off the allowlist already goes. The condition for revisiting is
+written into `merge-facts.sh`: if refusals on truncation stop being rare, the
+change is to paginate **there**, not to widen what counts as complete.
+
+The second half of the reason is testability, which is why the filter is a file.
+A query and a `jq` program inside a YAML block cannot be executed, so nothing can
+assert what they ask for — and what this query asks for *is* the security
+property. Both files are now driven by `.github/tests/merge-candidate-test.sh`
+over documents shaped like GitHub's own replies, and the shapes were taken from
+live responses rather than imagined.
+
+**Where the knowledge came from instead of the code:** the responses themselves.
+The query was run read-only against `hleserg/Attadipa` pull requests #173 and
+#176 on 2026-08-24 before anything depended on it, which is what established
+three things that were otherwise assumptions: that `totalCount` ignores
+`itemTypes` while `pageInfo` respects it; that `statusCheckRollup` is **null**,
+not empty, on a head commit with no checks at all; and that a `last:`-only
+connection answers `hasNextPage: false`.
+
+**And the mechanism the caller depends on, which is `gh`'s and not GitHub's.**
+The parked workflow half submits the query as `gh api graphql -F
+query=@.github/scripts/merge-facts.graphql`, and nothing on `main` executes that
+form: the filter takes a document on stdin, so the suite never reaches `gh`, and
+the only place the flag appears is inside the patch. It was therefore run
+directly, read-only, against `hleserg/Attadipa` #176 on 2026-08-24 — the exact
+invocation from the patch, with the three variables **bound as literals**.
+The caller's own `${REPO%%/*}` and `${REPO##*/}` expansion is **NOT EXECUTED** —
+it is the one link in this chain that nothing exercises, and this run did not
+exercise it either. Exit 0, one complete document, every connection present.
+So `-F query=@FILE` does read a file and does bind alongside the other `-F`
+variables, which was previously asserted only in a pull request body.
+
+The same reply re-established two of the three facts above on a **different**
+pull request than the one they were found on: `statusCheckRollup` came back
+`null` on #176's head commit, which has never had a check run at all, and
+`timelineItems` answered `totalCount: 6` beside `nodes: []` under
+`itemTypes: [LABELED_EVENT]` — the count ignoring the filter that the nodes
+respect, in one document.
+
+What this does **not** establish is the filter's verdict over that document.
+`jq` is absent on the host that ran it, so `merge-facts.sh` answered *HOLD the
+pull request's facts could not be parsed* — its designed fail-closed answer to a
+`jq` that will not run, and a statement about the host rather than about the
+reply. The verdict over a live document is `NOT EXECUTED` until CI or the sweep
+itself runs one.
+
+That third one was first written down as evidence that the flag is the right one
+to assert on the timeline. It is not, and the observation could not have shown
+it either way: #173's filtered connection held a **single** node, nowhere near
+the limit, so `false` there cannot be told apart from `false` by construction.
+Under the Relay contract `hasNextPage` is true only when paginating forward with
+`first:` or when `before:` is set, so on a `last:`-only page it is a constant and
+the completeness refusal on that connection can never fire. What the timeline is
+actually safe on is downstream: an event outside the window is older than
+everything in it and cannot raise the maximum, so a truncated window yields no
+date and the caller holds. Recorded as a correction rather than edited away,
+because this file is what the next agent is told to trust.
+
+**Weakness, stated rather than discovered:** a pull request that genuinely
+exceeds a page is now unmergeable by the sweep rather than merged wrongly, and it
+will say so every half hour until a person looks. That is the intended direction
+and it is still a cost. No hardware — this is repository automation and touches
+no board.
