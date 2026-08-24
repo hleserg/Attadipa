@@ -351,6 +351,17 @@ jobs:
       - name: The staleness summary
         run: bash .github/tests/compare-summary-test.sh
 
+      # And whether anything notices a pull request that CANNOT be built. A
+      # merge conflict stops GitHub creating the `pull_request` run at all, so
+      # #65 sat with `total_count: 0` across two pushes: not a red check, no
+      # check, and every consumer downstream reads that as "not failing". The
+      # guard's own failure mode is the opposite one and it is easier to ship --
+      # `mergeable` is null for a few seconds after every push, and a guard that
+      # reads null as false would accuse every push in flight, hourly, forever.
+      # All three states are asserted here in both directions.
+      - name: A conflicted pull request gets told
+        run: bash .github/tests/pr-conflict-decision-test.sh
+
       # `gh` refuses `--slurp` together with `--jq`, and exits 1 before making
       # a request. pr-merge-sweep.yml shipped with three of them: one fatal on
       # the first dispatched run, two swallowed by `|| VAR=""` into "could not
