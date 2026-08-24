@@ -273,6 +273,22 @@ if(ATTADIPA_BUILD_SIMULATOR)
     add_test(NAME ui_icons COMMAND test_ui_icons)
     set_tests_properties(ui_icons PROPERTIES LABELS design)
 
+    # The raw-value checker is only complete if its written LVGL inventory is
+    # held against the headers used by this simulator build.
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME ui_inventory_matches_lvgl
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/ui/check_inventory.py
+                         ${lvgl_SOURCE_DIR})
+        add_test(NAME ui_inventory_check_rejects_mistakes
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/ui/selftest_inventory.py
+                         ${lvgl_SOURCE_DIR})
+        set_tests_properties(ui_inventory_matches_lvgl
+                             ui_inventory_check_rejects_mistakes
+                             PROPERTIES LABELS design)
+    endif()
+
     # ---------------------------------------------------------------------
     # The remote-control loop, end to end (#117).
     #
