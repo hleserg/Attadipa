@@ -679,6 +679,21 @@ jobs:
             label_edit --remove-label "$stale" || true
           done
 
+          # This is deliberately read after the claim's label edits.  The
+          # hand-over needs to distinguish a blocker the agent created during
+          # this run from a pre-existing escalation, and a pre-mutation snapshot
+          # cannot answer that question for an issue restarted with @claude.
+          AFTER_JSON=$(gh api "repos/$REPO/issues/$ISSUE" 2>/dev/null || echo "")
+          BLOCKED_AT_CLAIM=unknown
+          if [ -n "$AFTER_JSON" ]; then
+            BLOCKED_AT_CLAIM=$(printf '%s' "$AFTER_JSON" \
+              | jq -r 'if ([.labels[]?.name] | index("agent:blocked")) then "true" else "false" end' \
+                2>/dev/null || echo unknown)
+          fi
+          case "$BLOCKED_AT_CLAIM" in true|false) ;; *) BLOCKED_AT_CLAIM=unknown ;; esac
+          echo "ATTADIPA_BLOCKED_AT_CLAIM=$BLOCKED_AT_CLAIM" >> "$GITHUB_ENV"
+          echo "::notice::#$ISSUE is agent:blocked at claim baseline: $BLOCKED_AT_CLAIM"
+
       - name: Check that an Anthropic credential exists
         id: auth
         env:
@@ -1204,7 +1219,7 @@ jobs:
           # trigger surface.
           #
           # So the fact is recorded rather than deduced. The claim step wrote
-          # ATTADIPA_BLOCKED_BEFORE from a read taken before it changed anything.
+          # ATTADIPA_BLOCKED_AT_CLAIM after it finished normalising labels.
           # `unknown` means the read failed, and unknown is treated as "not this
           # run": falling silent is the defect, and a redundant outcome comment
           # beside a BLOCKED comment is a smaller cost than a finished run
@@ -1212,26 +1227,28 @@ jobs:
           #
           # `.github/tests/blocked-restart-test.sh` asserts the pair, which lives
           # in two steps of one workflow and is correct in neither alone.
-          case ",$LABELS," in
-            *,agent:blocked,*)
-              if [ "${ATTADIPA_BLOCKED_BEFORE:-unknown}" = "false" ]; then
-                # agent:blocked was NOT there when this run started, so this run
-                # applied it -- and a BLOCKED comment written by the agent says
-                # far more than this step could. Release the claim and stop:
-                # leaving agent:working beside agent:blocked makes the issue
-                # invisible to the watchdog while looking finished to a person,
-                # which is the worst of both. Smoke test A ended in that state.
-                attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --remove-label agent:working || true
-                echo "::notice::#$ISSUE is blocked and the agent has said why; not commenting over it."
-                exit 0
-              fi
-              echo "::notice::#$ISSUE carried agent:blocked before this run started (ATTADIPA_BLOCKED_BEFORE=${ATTADIPA_BLOCKED_BEFORE:-unknown}); reporting the outcome rather than mistaking somebody else's label for this agent's."
-              ;;
+          BLOCKED_OUTCOME=$(bash .github/scripts/blocked-outcome.sh \
+            "$LABELS" "${ATTADIPA_BLOCKED_AT_CLAIM:-unknown}" 2>/dev/null || true)
+          case "$BLOCKED_OUTCOME" in
+            normal|silent|report) ;;
+            *) BLOCKED_OUTCOME=report ;;
           esac
+          if [ "$BLOCKED_OUTCOME" = "silent" ]; then
+            attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --remove-label agent:working || true
+            echo "::notice::#$ISSUE is blocked and the agent has said why; not commenting over it."
+            exit 0
+          fi
+          if [ "$BLOCKED_OUTCOME" = "report" ]; then
+            echo "::notice::#$ISSUE carries a pre-existing or unreadable blocker; reporting without changing its state."
+          fi
 
           bash .github/scripts/agent-say.sh outcome \
             "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" "${REASON:-}" > /tmp/outcome.md
           attadipa_label_comment "$TARGET" "$ISSUE" "$REPO" --body-file /tmp/outcome.md
+
+          if [ "$BLOCKED_OUTCOME" = "report" ]; then
+            exit 0
+          fi
 
           # A DRAFT IS NOT A HAND-OVER. The prompt tells the agent to open the
           # pull request as a draft while it is still moving and to mark it
