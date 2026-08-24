@@ -275,11 +275,14 @@ void test_a_receiver_can_always_be_switched_off()
 // The finding this file was extended for, and the shortest statement of it: a
 // capability nobody has established is a third value, not the absent one.
 //
-// A `GnssCapabilities` that is four `bool`s cannot compile the first two checks
-// here, which is the mutation proof — the old model does not merely fail this
-// test, it fails to build it. tests/CMakeLists.txt registers the other half of
-// that claim: `GnssCapabilities{false, false, false, false}` must not compile
-// either, so a bool cannot creep back in through an aggregate initializer.
+// A `GnssCapabilities` that is four `bool`s cannot compile groups 1 and 4 below
+// — a `bool` does not compare against a `SupportState`, and `fully_established()`
+// has nowhere to live — which is the mutation proof: the old model does not
+// merely fail this test, it fails to build it. tests/CMakeLists.txt registers the
+// other half of that claim: `GnssCapabilities{false, false, false, false}` must
+// not compile either, so a bool cannot creep back in through an aggregate
+// initializer. Group 2 is the exception and is meant to be: it is about the enum
+// alone, and would compile against any struct at all.
 void test_an_unchecked_capability_is_not_a_missing_one()
 {
     // 1. The default is Unknown, in every field. This is what a caller who
