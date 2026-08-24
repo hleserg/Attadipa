@@ -62,7 +62,7 @@ waiting on a person.
 | Patch | For | Written |
 |---|---|---|
 | `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
-| `170-merge-sweep-completeness.patch` | [#170](https://github.com/hleserg/Attadipa/issues/170) — the caller half of the completeness rule, all in `pr-merge-sweep.yml`. **While this waits, the half-hourly merge sweep merges nothing at all**: the rule refuses the nine-argument caller by arity and holds every pull request, once per sweep, naming this file. See [CLAUDE_AUTOMATION.md](../CLAUDE_AUTOMATION.md) and T-144 | 2026-08-24 |
+| `170-merge-sweep-completeness.patch` | [#170](https://github.com/hleserg/Attadipa/issues/170) **and** [#199](https://github.com/hleserg/Attadipa/issues/199) — the caller half of the completeness rule and of the head-trust rule, all in `pr-merge-sweep.yml`. **While this waits, the half-hourly merge sweep merges nothing at all**: the rule refuses the nine-argument caller by arity and holds every pull request, once per sweep, naming this file. See [CLAUDE_AUTOMATION.md](../CLAUDE_AUTOMATION.md) and T-144 | 2026-08-24 |
 
 Verified before it was parked: `actionlint` clean over all seven workflows with
 the patch applied, `shellcheck -x` clean, and the `approvals` job's body
@@ -71,13 +71,24 @@ written and read back, and the rendered comment. What that does **not** prove
 is the job running on a schedule under its own permissions, which no local run
 can prove and which is therefore `NOT EXECUTED` until it is deployed.
 
-For `170-merge-sweep-completeness.patch`: the rule, its filter, its query and
-its 135 assertions are already on `main` and run in CI on every push — only the
-four edits that make the sweep *call* them are in the patch. `git apply --check`
-is asserted by `merge-candidate-test.sh` itself, so a patch that stops applying
-turns CI red rather than rotting quietly. What that does **not** prove is the
-sweep running on its schedule with the patch applied, which is `NOT EXECUTED`
-until it lands.
+For `170-merge-sweep-completeness.patch`: the rules, their filters, their query
+and their 182 assertions are already on `main` and run in CI on every push — only
+the eight edits that make the sweep *call* them are in the patch. `git apply
+--check` is asserted by `merge-candidate-test.sh` itself, so a patch that stops
+applying turns CI red rather than rotting quietly, and the suite reports the same
+182 either way, in the parked state and in the applied one. The GraphQL document
+it points the sweep at was run read-only against this repository's #173, #176,
+#180, #188 and #193 on 2026-08-24, and both rules answered over the real
+replies. What none of that proves is the sweep running on its schedule with the
+patch applied, which is `NOT EXECUTED` until it lands — T-126.
+
+**Two issues, one patch, and that is the decision rather than an accident.**
+#199 landed its rule while #170's caller edits were still parked here, and both
+fixes edit `pr-merge-sweep.yml`. A second patch would have meant two apply
+orders against one file and a `merge-candidate.sh` arity moving twice — nine to
+ten to eleven, with a middle state somebody could land and CI could not
+recognise. Folding them keeps one transition: nine arguments today, eleven the
+moment this lands.
 
 **One patch in this directory edits `pr-merge-sweep.yml`** — this one.
 `75-approval-stall.patch` beside it edits `agent-queue-watchdog.yml`, `ci.yml`,

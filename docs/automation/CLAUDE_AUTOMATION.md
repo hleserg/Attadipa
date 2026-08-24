@@ -287,13 +287,13 @@ as much as the first.
 | **It always answers, and says why** — an 👀 reaction within seconds, a receipt saying what was understood, and an outcome comment on every exit path. A failure carries the reason, extracted on the runner from a log that is not published | `acknowledge` job, `Hand over` step, `agent-say.sh`, `failure-reason.sh` |
 | **Turn limits** — 200 for implementation, 100 for review, 40 for repair. The writer's was 60 until 2026-08-22, when six runs died at turn 61 with an accurate plan posted and nothing on the branch | `claude_args: --max-turns` |
 | **Model and effort are pinned, not defaulted** — `claude-opus-5` at `--effort max` in all three. The action has **no `model:` input**, so the model is a string inside `claude_args` and its absence is not an error: it silently falls back to whatever the CLI defaults to. This loop ran that way from the day it was built until 2026-08-22, so no past run can be attributed to a model and no two runs can be compared. Flags read off `claude --help`: `--model` takes an alias or a full name, `--effort` takes one of `low, medium, high, xhigh, max`. The full name is pinned rather than the `opus` alias so a new Opus cannot silently change what this loop is — somebody has to come and move it, which is the intended cost. Owner decision, 2026-08-22 | `claude_args: --model`, `--effort`, `.github/tests/bot-actor-test.sh` |
-| **Nothing merges itself on a green tick alone** — the sweep reads `ai-review:pass` as a *condition*, so a pull request the reviewer never looked at is never merged, and one it blocked never is either. GitHub's own auto-merge cannot do this: it reads required checks, and `ai-review:blocking` is a label on purpose, because the reviewer's verdict is a judgement while a red tick is a fact. Arming native auto-merge would merge precisely the pull requests the reviewer stopped | `merge-candidate.sh`, 135 assertions |
+| **Nothing merges itself on a green tick alone** — the sweep reads `ai-review:pass` as a *condition*, so a pull request the reviewer never looked at is never merged, and one it blocked never is either. GitHub's own auto-merge cannot do this: it reads required checks, and `ai-review:blocking` is a label on purpose, because the reviewer's verdict is a judgement while a red tick is a fact. Arming native auto-merge would merge precisely the pull requests the reviewer stopped | `merge-candidate.sh`, 182 assertions |
 | **A commit status is not a check run** — GitHub returns both in one `statusCheckRollup`, and the sweep used to flatten them, so a third-party app's green commit status counted toward *"some check ran on this head"*. The app here is Devin, whose status on every head commit reads *"Devin Review · success · Full review skipped: trial expired and no credits remaining"* — and on a head whose own workflows were all still `action_required` it was the **only** context present, so the combined state read `success` over a pull request nothing had looked at. Statuses now arrive tagged `status:`: a red or pending one still refuses, because a red third party is information; a green one can no longer stand in for CI having run. Removing the app outright is a repository-settings act and the owner's own | `merge-candidate.sh`, `pr-merge-sweep.yml` |
-| **The verdict has to cover the head commit** — `ai-review:pass` records that a verdict was reached, not *which commit* it was reached on. A review that reaches no verdict at all — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, and nothing removes it. So the sweep dates the most recent `labeled ai-review:pass` event against the head commit and refuses when it is older, or when it cannot tell | `merge-candidate.sh` |
+| **The verdict has to cover the head commit** — `ai-review:pass` records that a verdict was reached, not *which commit* it was reached on. A review that reaches no verdict at all — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, and nothing removes it. So the sweep dates the most recent `labeled ai-review:pass` event against **GitHub's own record of that head arriving**, and refuses when it is older, or when it cannot tell. It used to date it against the commit's own `committedDate`, which is an input rather than an observation — see the settling-window row below, which was the same defect | `merge-candidate.sh`, `merge-head-trust.jq` |
 | **The path allowlist above applies unchanged** — the sweep merges exactly what the backstop routine already may, on a schedule instead of on somebody remembering. Every `no` row is asserted in the test. Widening it reverses an owner decision of 2026-08-21 and is not the sweep's, or a reviewer's, to grant; a green pull request touching `core/` or `.github/` still waits for an orchestrator session | `merge-candidate.sh`, and CLAUDE_AUTOMATION.md's table above |
 | **A page is not a set — ⚠️ HALF LIVE, see below.** Every fact above arrives in a GraphQL connection, and a connection is a *page*. The sweep asked for `labels(first:50)`, `reviewThreads(first:100)` and `contexts(first:100)`, never asked whether there was another page, and computed on what came back as though it were everything: a pull request with 101 review threads whose hundred-and-first was unresolved reported **zero** unresolved threads, and zero is the value that merges. Past the fiftieth label the same shape hid `ai-review:blocking`, and past the hundredth context a failing check. `first: N` had become a silent *permitting* condition — the more there was to read, the less the gate could refuse on. Completeness is now proved from `pageInfo`, never from `nodes \| length`, and every unprovable shape holds | `merge-facts.graphql`, `merge-facts.jq`, `merge-facts.sh`, `merge-candidate.sh`, issue [#170](https://github.com/hleserg/Attadipa/issues/170) |
 | **Three merges per run** — the backstop's cap, for its reason: *"a backstop that empties the queue in one go is indistinguishable from one that has gone wrong"*. It also bounds the base-moved problem — a green tick is `refs/pull/N/merge` against `main` **as it was when the checks ran**, and a base move raises no `synchronize` | `pr-merge-sweep.yml` |
-| **A six-hour settling window** — measured on the head commit's `pushedDate`, falling back to `committedDate`. The question is when *code* last arrived, not what the git committer clock says, and never the pull request's `updatedAt`, which a label, a bot comment or the sweep's own note bumps | `merge-candidate.sh` |
+| **A six-hour settling window, on a clock the author does not hold — ⚠️ HALF LIVE, see below.** The question is when *code* last arrived: never the pull request's `updatedAt`, which a label or a bot comment bumps, and — since [#199](https://github.com/hleserg/Attadipa/issues/199) — never the commit's own date either. It was `(.pushedDate // .committedDate)`, and `pushedDate` is deprecated and answers `null` for **every** commit this repository has (read live against the head of #193 on 2026-08-24, beside a live `committedDate`), so the fallback was the only branch ever taken and the window was measured on the git committer clock. `GIT_COMMITTER_DATE=2020-01-01 git commit` cleared six hours at the instant the commit was made, and made every earlier `ai-review:pass` look like a verdict about it — two protections, one input. Both now come from `workflowRun.createdAt` on the head commit's own check suites, which GitHub writes when it starts work on that object id, and where GitHub has stamped nothing the sweep **holds** rather than falling back | `merge-head-trust.sh`, `merge-head-trust.jq`, `merge-candidate.sh`, issue [#199](https://github.com/hleserg/Attadipa/issues/199) |
 | **Undrafting is never a way to qualify** — every other condition holds first, and the sweep that undrafts merges nothing: the next one re-gathers every fact and asks again. It does **not** start a review, which the first version of this said it did — GitHub raises no workflow run from an event caused by `GITHUB_TOKEN`, and `claude-pr-review.yml` fires on `ready_for_review`. What protects the merge is the condition two rows above, which survives the undraft because undrafting changes no commit | `pr-merge-sweep.yml` |
 | **Job timeouts** — 60, 30 and 45 minutes | `timeout-minutes` |
 | **Two repair attempts** — per problem chain, then it stops and says why | `claude-ci-repair.yml` |
@@ -305,19 +305,23 @@ as much as the first.
 | **Sticky review comment** — one comment edited in place, not a new one per push | `use_sticky_comment` |
 | **Bots named, never starred** — a workflow that admits a bot actor must name it, and nothing may name `'*'`. The writer admits `github-actions`, the actor its own watchdog dispatches as; the reviewer admits `claude`, the actor that opens the pull requests it exists to review; the CI repairer admits none and names none. Empty lists had made the first two refuse silently — the watchdog had never started an agent, and no agent-authored pull request had ever been reviewed. The test asserts the rule rather than the three instances, so a fourth workflow is checked the day it grows an exemption | `allowed_bots`, `.github/tests/bot-actor-test.sh` |
 
-### ⚠️ "A page is not a set" is half live, and this is which half
+### ⚠️ Two protections are half live, and this is which half
 
-The rule, its query, its filter and its 135 assertions are on `main`. **The
-sweep does not call them yet**, because agents here run as `claude[bot]` and
-that installation token holds no `workflows` permission — a push touching
-`.github/workflows/` is refused by the remote, verified on 2026-08-24:
+"A page is not a set" ([#170](https://github.com/hleserg/Attadipa/issues/170))
+and "a clock the author does not hold"
+([#199](https://github.com/hleserg/Attadipa/issues/199)) are in the same
+position, and they travel together. The rules, their query, their filters and
+their 182 assertions are on `main`. **The sweep does not call them yet**, because
+agents here run as `claude[bot]` and that installation token holds no `workflows`
+permission — a push touching `.github/workflows/` is refused by the remote,
+verified on 2026-08-24:
 
 ```
 ! [remote rejected] (refusing to allow a GitHub App to create or update workflow
   `.github/workflows/pr-merge-sweep.yml` without `workflows` permission)
 ```
 
-So the four edits that point the sweep at the rule are parked in
+So the eight edits that point the sweep at the rules are parked in
 `docs/automation/pending/170-merge-sweep-completeness.patch`, with the command
 that applies them in its own header. Deliberately not a link: applying the patch
 deletes the file, and `check_docs.py` fails on a relative link whose target is
@@ -325,15 +329,24 @@ absent — on every push to `main`, which stops the sweep for every pull request
 behind it. A parked patch is named rather than linked for exactly as long as
 following the procedure would remove it.
 
+**One patch and not two, deliberately.** #199 arrived while #170 was still
+waiting, and a second patch against the same workflow would have meant two apply
+orders to get right by hand and a `merge-candidate.sh` arity that moves twice.
+So its edits went into the same file: the live sweep passes nine arguments today
+and eleven the moment it lands, with no intermediate state anybody can land
+halfway. That is the invariant T-144 tracks.
+
 **What is true right now, in both directions, so nobody has to guess:**
 
 | | |
 |---|---|
 | Can a truncated snapshot merge a pull request today? | **No.** `merge-candidate.sh` refuses a nine-argument caller by arity — and the pre-#170 sweep is a nine-argument caller |
+| Can a backdated commit date merge one? | **No, and it could not before either** — for the same reason and not for a reason of its own. The arity refusal comes first and holds everything, which is why #199 is a finding about code and a parked patch rather than a live incident |
 | So what does the sweep do today? | **It merges nothing at all**, and logs `HOLD this caller cannot prove it read all of the pull request; apply docs/automation/pending/170-merge-sweep-completeness.patch` once per open pull request per run |
-| Is that the finished state? | **No.** It is the fail-closed one. A gate that cannot prove it read the whole pull request must not merge it, but a gate that refuses everything is not doing its job either |
+| Is that the finished state? | **No.** It is the fail-closed one. A gate that cannot prove it read the whole pull request, or say when its head arrived, must not merge it — but a gate that refuses everything is not doing its job either |
 | What still merges? | An **orchestrator** session, which is a live session over every path. Nothing about that changed |
 | Who can finish it? | Anyone whose token may write workflows: apply the patch, `git rm` **that one file** — never `pending/` itself, which also holds `75-approval-stall.patch` and the README three `APPROVAL_STALLS.md` links point at — and commit. `.github/tests/merge-candidate-test.sh` asserts the repository is in one of the two consistent states and turns red on the third — a tested rule that nothing calls and nothing tracks |
+| Has the sweep ever merged anything with either half live? | **No.** T-126 stays open: no run of this workflow has completed a merge, and no local check can prove one would |
 
 The alternative was to leave the rule uncalled while the sweep kept merging on
 unproven snapshots, which is the live P1 this closes; and a documentation table

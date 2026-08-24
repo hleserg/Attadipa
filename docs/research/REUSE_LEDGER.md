@@ -1977,6 +1977,67 @@ no board.
 
 ---
 
+### Timing a pull request's head without trusting the commit
+
+**Problem:** the same sweep needs two facts about its head commit that no rule
+can guess — *has this settled for six hours* and *was `ai-review:pass` reached on
+this commit* — and it derived both from `(.pushedDate // .committedDate)`.
+`committedDate` is the git committer clock, which is an input:
+`GIT_COMMITTER_DATE=2020-01-01 git commit` produces a head that cleared six hours
+at birth and that every earlier labelling post-dates, so the previous head's
+verdict reads as a verdict about it
+([#199](https://github.com/hleserg/Attadipa/issues/199)). The workflow's own
+comment said so and fell back anyway, on the belief that `pushedDate` covers the
+normal case. So the question is what GitHub itself stamps against a *specific
+object id* when that object becomes a pull request's head.
+
+**What the API actually says, read rather than assumed.** Every line below is a
+live read against `hleserg/Attadipa` on 2026-08-24, read-only, no writes:
+
+| Field | What it answered | What that settles |
+|---|---|---|
+| `Commit.pushedDate` | `null` on the head of #193, beside `committedDate: 2026-08-24T18:29:57Z` | It is **not** the normal case and `committedDate` the exception. The field is deprecated in GitHub's schema ([Commit object](https://docs.github.com/en/graphql/reference/objects#commit)) and the fallback was the only branch ever taken |
+| `Commit.checkSuites[].workflowRun.createdAt` | `2026-08-24T18:30:08Z` on that same head — eleven seconds after `committedDate` | GitHub's own observation of the push, written by GitHub, attached to that object id, and unreachable from a commit |
+| `WorkflowRun.event` | `"pull_request"` on the three GitHub-Actions suites; the twelve third-party suites (`netlify`, `vercel`, `cursor`, …) carry `workflowRun: null` | A run raised **because this object became a pull request's head** is distinguishable from a `push` run and from an app's own suite, with no allowlist of app names to maintain |
+| `CheckSuite.matchingPullRequests` | present, and answered `[193]` — for the third-party suites too | Real, and **not taken**: it is a *current* association rather than the trigger, and it is one more connection whose truncation would be fail-open. Taking the maximum over `pull_request` runs is already conservative for the two-pull-request case |
+| The shape on a merged, reviewed pull request | #176: three `pull_request` runs at `15:50:19Z`, `ai-review:pass` labelled `16:04:43Z` | The intended `true` has a fourteen-minute margin in practice, so the comparison is not knife-edge |
+
+**Projects investigated:**
+
+| Candidate | What it is | Why it was not taken |
+|---|---|---|
+| `Commit.pushedDate` | GitHub's own "when was this pushed" | **REJECT.** Deprecated, and `null` for every commit this repository has. Exactly the field that would have been right |
+| `PullRequest.updatedAt` | bumped on every change to the pull request | **REJECT as the primary**, and the issue permits it as a fail-closed stopgap. It cannot tell a head arriving from a label, a bot comment or the sweep's own undrafting — and the undraft is the fatal one: the sweep undrafts, then must wait another six hours on its own act |
+| `PullRequest.timelineItems(itemTypes:[PULL_REQUEST_COMMIT])` and array order | the timeline's own ordering | **REJECT.** `PullRequestCommit` carries no `createdAt` at all, so the only signal is position, and whether GitHub orders those by push or by committer date is undocumented — which puts the security property back on a date the committer writes |
+| `HeadRefForcePushedEvent` | dated, GitHub-observed | Real and used by nothing here: an ordinary push to a pull request branch raises no such event, so it covers a minority of head changes |
+| A commit status posted by the reviewer naming the reviewed SHA | exact identity binding | **REJECT for now.** It is the strongest binding and it needs `statuses: write` on the review job — a permission widening, which #199 explicitly rules out — plus a new mechanism in a workflow no agent can push. Recorded as the option to revisit if the timestamp comparison proves insufficient |
+| `CheckSuite.createdAt` instead of `workflowRun.createdAt` | GitHub-set, per suite | Equivalent for GitHub Actions and worse elsewhere: third-party suites have one too, and their timestamps say when an app noticed a commit, not when a pull request got a head |
+
+**Decision:** `USE AS-IS` GitHub's `workflowRun.createdAt`, filtered to
+`event == "pull_request"`, maximum over the head commit's suites;
+`REIMPLEMENT` the derivation as `.github/scripts/merge-head-trust.jq` behind
+`merge-head-trust.sh`, in the shape this repository already uses for every
+unattended decision; `REJECT` every fallback, including the one that was there.
+
+**Reason for the maximum rather than the minimum**, which is the one place this
+could have been wrong quietly. A commit that already existed elsewhere in the
+repository carries older runs, and its arrival *here* creates a newer one, so the
+maximum is the arrival and the older objects cannot age it. A commit that heads
+two pull requests takes the later of the two stamps, which shortens the settling
+window and lengthens what the verdict has to post-date. Being wrong in that
+direction holds; being wrong in the other merges.
+
+**Weaknesses, stated rather than discovered.** A pull request whose head has no
+`pull_request` workflow run is unmergeable by the sweep and says so — correct,
+and it is a state nothing has observed, so the first dispatched run is where it
+would show up (T-126). And a head that arrives while Actions are disabled
+entirely raises no run, so an older run on the same object id would stand: that
+requires the object to have headed this pull request before, in which case the
+older stamp is a real arrival of that same code. No hardware — repository
+automation, no board.
+
+---
+
 ### Checking a partition table against the 16 MB addressing ceiling
 
 **Problem:** on the Waveshare's 32 MB part, `0x1000000` aliases to `0x0` for the

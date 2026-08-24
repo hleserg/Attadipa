@@ -431,11 +431,19 @@ stale silently. The protocol is
   was held. Then a run that actually merges one, on a pull request that was
   going to be merged anyway. Both run IDs recorded here. Until that second run
   exists, the orchestrator merges by hand and does not treat the sweep as cover.
-- **Watch for:** the two conditions that can only fail on a real repository and
-  not in a unit test — `mergeStateStatus` values GitHub returns that
-  `merge-candidate.sh` does not enumerate, and a `gh pr merge` refused by branch
+- **Watch for:** the conditions that can only fail on a real repository and not
+  in a unit test — `mergeStateStatus` values GitHub returns that
+  `merge-candidate.sh` does not enumerate; a `gh pr merge` refused by branch
   protection, which the workflow deliberately turns into one loud failure rather
-  than 48 quiet warnings a day.
+  than 48 quiet warnings a day; and, since #199, whether every open pull request
+  really does carry a `pull_request` workflow run on its head. That last one is
+  now a merge condition: the sweep holds where GitHub has stamped nothing, which
+  is the right direction and would also be the shape of a sweep that holds
+  everything for a reason nobody expected. A dispatched run prints the head-trust
+  line per candidate, so the first dispatch answers it. The rules were dry-run
+  read-only against #173, #176, #180, #188 and #193 on 2026-08-24 and all five
+  returned a `TRUSTED` line, which is evidence about those five and not about
+  the workflow having run.
 - **Hardware required:** no.
 
 ### T-145 · The recursion bound must stop depending on who wrote the issue
@@ -2798,14 +2806,34 @@ Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
                      workflow `.github/workflows/pr-merge-sweep.yml` without
                      `workflows` permission)
                 Two fixes are parked on it, both against the same file:
-                  · #170 — docs/automation/pending/170-merge-sweep-completeness.patch
-                    (the merge sweep proving it read the whole pull request)
+                  · #170 and #199 — docs/automation/pending/170-merge-sweep-completeness.patch
+                    (the merge sweep proving it read the whole pull request,
+                    and asking GitHub rather than the commit when that commit
+                    arrived). ONE patch carrying both, deliberately: #199
+                    arrived while #170 was still parked, and a second patch
+                    against the same workflow would have meant two apply
+                    orders and a `merge-candidate.sh` arity that moves twice.
+                    Folded instead — the live caller passes nine arguments and
+                    the applied one passes eleven, with nothing in between.
+                    182 assertions, and four of them flip to the applied state.
                   · #130 — docs/automation/pending/130-merge-sweep-caller.patch
                     on pull request #154, which files this same blocker as
                     "T-127" — a number already taken by the anchor check in
                     DONE. Whichever of the two lands second should fold its
                     entry into this one rather than leave three numbers for
                     one problem.
+                    ITS OVERLAP WITH THE 170 PATCH IS NOW LARGER, and it is
+                    worth knowing before anybody tries: #154's second hunk
+                    rewrites the Codex-comment block at :238-286, while the
+                    170 patch now also rewrites :193-225 (the deleted
+                    `COMMITTED` / `PASS_AT` block), :260-263 (the deleted
+                    `HEAD_AGE` computation) and the verdict call at :293. The
+                    two hunk ranges still do not intersect, so `git apply` of
+                    both in one commit is expected to succeed; what will not
+                    survive is #154's own verdict-call edit if it has one,
+                    because that line is now eleven arguments rather than
+                    nine. Read both before applying — this is the entry that
+                    says so rather than the day somebody finds out.
                 Apply both **in one commit**, not in either order: they edit the
                 same workflow. `merge-candidate-test.sh` hard-fails CI for every
                 open pull request if #154's patch lands first — but **not** in the
@@ -2814,12 +2842,15 @@ Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
                 landing 170 alone goes green while leaving #154's patch stale.
                 The order this entry recommends is the unguarded one. Each `git rm`s only its own file, so neither deletes the
                 other's while it is still parked.
-Impact:         #170 is closed fail-closed rather than fixed: until the patch
-                lands, `merge-candidate.sh` refuses the pre-#170 nine-argument
-                caller by arity, so the sweep merges NOTHING and logs the file
-                to apply once per open pull request per run. Correct, and not
-                finished. Everything still merges through an orchestrator
-                session, which is unaffected.
+Impact:         #170 and #199 are both closed fail-closed rather than fixed:
+                until the patch lands, `merge-candidate.sh` refuses the
+                pre-#170 nine-argument caller by arity, so the sweep merges
+                NOTHING and logs the file to apply once per open pull request
+                per run. That arity refusal is also the reason #199 was never a
+                live incident — the backdated-commit-date bypass it describes
+                becomes reachable only once this patch restores the call.
+                Correct, and not finished. Everything still merges through an
+                orchestrator session, which is unaffected.
                 The two patches touch the same file and will conflict with
                 each other, not with `main`.
 Possible options:
