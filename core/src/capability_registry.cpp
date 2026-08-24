@@ -185,33 +185,64 @@ Availability CapabilityRegistry::node_availability(Capability capability) const
     return Availability::Ready;
 }
 
+// Choosing between the two sources — once, for both halves of the answer.
+//
+// This used to be two functions. `availability()` picked the effective source
+// by remedy rank and `provider()` re-derived the choice with a condition of its
+// own, defaulting to `Local` and reaching `Node` only when the node was already
+// `Ready`. So on a board with no local GNSS, a bound node going out of range
+// took `Position` from Ready/node to Unreachable/**local** — the same provider,
+// unchanged, reported as the opposite side of the device. Settings and
+// Diagnostics would have offered "service the receiver" for a receiver this
+// board does not have, and the remedy the user needed — walk back to the node —
+// belonged to a provider the API had just disowned. Issue #174; the invariant
+// is ADR-0004 §2.
+//
+// Two answers derived from one choice cannot disagree, which is the whole
+// reason this returns a pair rather than being called twice.
+CapabilitySource CapabilityRegistry::source(Capability capability) const
+{
+    const CapabilitySource from_local{local_availability(capability), {Origin::Local, 0}};
+    if (from_local.availability == Availability::Ready) {
+        return from_local;  // local is preferred when it works — ADR-0008 §4
+    }
+
+    const CapabilitySource from_node{node_availability(capability), {Origin::Node, 0}};
+    if (from_node.availability == Availability::Ready) {
+        return from_node;
+    }
+
+    // Neither works. Nothing provides it at all, and that is a third thing —
+    // not "the local device has it and it is broken". Named here rather than
+    // left to fall out of the tie-break below, because `Origin` has two values
+    // and neither of them means "nobody": `CapabilitySource` documents
+    // `Unsupported` as the discriminator that says so, and TASKS.md T-111 owns
+    // the question of whether the axis should grow a value instead.
+    //
+    // The tie-break *is* this case, as it happens — every other pair of states
+    // the two sources can hold at once has distinct remedy ranks — so writing
+    // it out costs a branch and buys the case a name.
+    if (from_local.availability == Availability::Unsupported &&
+        from_node.availability == Availability::Unsupported) {
+        return from_local;
+    }
+
+    // Both are unsatisfied and one of them is the better thing to tell the
+    // user about. remedy_rank decides which, and the origin follows it — that
+    // following is the fix.
+    return remedy_rank(from_local.availability) >= remedy_rank(from_node.availability)
+               ? from_local
+               : from_node;
+}
+
 Availability CapabilityRegistry::availability(Capability capability) const
 {
-    const Availability local = local_availability(capability);
-    if (local == Availability::Ready) {
-        return local;  // local is preferred when it works — ADR-0008 §4
-    }
-
-    const Availability node = node_availability(capability);
-    if (node == Availability::Ready) {
-        return node;
-    }
-
-    return remedy_rank(local) >= remedy_rank(node) ? local : node;
+    return source(capability).availability;
 }
 
 ProviderRef CapabilityRegistry::provider(Capability capability) const
 {
-    ProviderRef ref;
-    ref.origin = Origin::Local;
-
-    if (local_availability(capability) == Availability::Ready) {
-        return ref;
-    }
-    if (node_availability(capability) == Availability::Ready) {
-        ref.origin = Origin::Node;
-    }
-    return ref;
+    return source(capability).provider;
 }
 
 bool CapabilityRegistry::supports(Capability capability) const

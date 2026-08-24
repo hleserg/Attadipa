@@ -1,3 +1,43 @@
+THIS PATCH NO LONGER EDITS `docs/automation/pending/README.md`, AND THAT IS
+DELIBERATE. It used to, with a hunk replacing the whole *Waiting now* table by
+"Nothing -- the normal state described above", written when this was the only
+parked patch in the directory. It is not any more, and a hunk that deletes a
+table as one contiguous block breaks the moment anybody adds a row to it -- as
+#177 did, and as #173 will. `git apply` tolerates an offset and never an
+insertion inside the preimage, and it is all-or-nothing, so a stale row would
+have taken the three workflow edits down with it.
+
+So the README edit is an instruction here rather than a hunk, which is the form
+that survives a table nobody can stop editing.
+
+TO APPLY:
+
+    git checkout main && git pull
+    git apply docs/automation/pending/75-approval-stall.patch
+    git rm docs/automation/pending/75-approval-stall.patch
+    #  This file only. `git rm -r docs/automation/pending` would also delete
+    #  every other parked patch and the README three links in
+    #  APPROVAL_STALLS.md point at.
+
+THEN, IN THE SAME COMMIT:
+
+    docs/automation/pending/README.md
+                         delete this patch's row from *Waiting now* and the
+                         "Verified before it was parked" paragraph about it.
+                         Leave every other row alone -- the table is shared. If
+                         the table ends up with no rows at all, then and only
+                         then say "Nothing -- the normal state described above".
+    docs/automation/APPROVAL_STALLS.md
+                         the sentences saying the `approvals` job is written and
+                         not deployed.
+
+    bash .github/tests/merge-candidate-test.sh   # asserts every patch left in
+                                                 # pending/ still applies
+
+    git commit -am "Land the approval-stall watchdog from a local session"
+
+WHAT IT CHANGES, below.
+
 diff --git a/.github/workflows/agent-queue-watchdog.yml b/.github/workflows/agent-queue-watchdog.yml
 index 69dea3d..b92271f 100644
 --- a/.github/workflows/agent-queue-watchdog.yml
@@ -462,36 +502,6 @@ index 4e21eda..eaf6fc3 100644
  action has no label feature of its own. That citation read `:846` until
  2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
  asserts this stays in`, an unrelated comment — so a reader checking the evidence
-diff --git a/docs/automation/pending/README.md b/docs/automation/pending/README.md
-index 4882e57..157e9d4 100644
---- a/docs/automation/pending/README.md
-+++ b/docs/automation/pending/README.md
-@@ -47,13 +47,15 @@ waiting on a person.
- 
- ## Waiting now
- 
--| Patch | For | Written |
--|---|---|---|
--| `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
--
--Verified before it was parked: `actionlint` clean over all seven workflows with
--the patch applied, `shellcheck -x` clean, and the `approvals` job's body
--dry-run against the live repository — the pagination, the jq, the marker
--written and read back, and the rendered comment. What that does **not** prove
--is the job running on a schedule under its own permissions, which no local run
--can prove and which is therefore `NOT EXECUTED` until it is deployed.
-+Nothing — the normal state described above.
-+
-+`75-approval-stall.patch` was the last one, landed for
-+[#75](https://github.com/hleserg/Attadipa/issues/75): the writer checkout's
-+`token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See
-+[APPROVAL_STALLS.md](../APPROVAL_STALLS.md). Verified before it was parked:
-+`actionlint` clean over all seven workflows with the patch applied,
-+`shellcheck -x` clean, and the `approvals` job's body dry-run against the live
-+repository — the pagination, the jq, the marker written and read back, and the
-+rendered comment. What that does **not** prove is the job running on a schedule
-+under its own permissions, which no local run can prove and which is therefore
-+`NOT EXECUTED` until it has run deployed.
 diff --git a/docs/research/WAVESHARE_ARRIVAL.md b/docs/research/WAVESHARE_ARRIVAL.md
 index 5c097bf..cdbe059 100644
 --- a/docs/research/WAVESHARE_ARRIVAL.md
@@ -500,8 +510,8 @@ index 5c097bf..cdbe059 100644
  "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
  ([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
  `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
--([`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
-+([`.github/workflows/ci.yml:510`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+-([`.github/workflows/ci.yml:500`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
++([`.github/workflows/ci.yml:511`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
  What exists
  is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
  installed is not decided.
@@ -509,8 +519,8 @@ index 5c097bf..cdbe059 100644
      line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
      Both live citations are written above with fingerprints —
      [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
--    [`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
-+    [`.github/workflows/ci.yml:510`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+-    [`.github/workflows/ci.yml:500`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
++    [`.github/workflows/ci.yml:511`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
      — and the numbers in this paragraph are
      deliberately **not** citations: it is a record of where two claims used to
      point, and writing that record in the live syntax would make it four more
