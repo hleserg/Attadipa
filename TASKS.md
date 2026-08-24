@@ -142,6 +142,75 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-143 · A band is not readable off the part, and nothing says so but a comment
+- **Priority:** P2
+- **Dependencies:** the T-Watch arriving (T-106 bring-up). The data-model half
+  can be designed now.
+- **Goal:** `radio_info_for()` publishes RadioLib's **driver** limits as a
+  chip's coverage — `{150 MHz, 960 MHz}` for the SX1262 — and `RadioInfo` has
+  nowhere to record that this particular unit's matching network and antenna
+  were never looked at. So the moment somebody sets `RadioChip::Sx1262` from a
+  marking alone, `covers()` answers yes for EU868, US915 **and** AS433 at once —
+  three regional networks one unit cannot all be built for — and
+  `MeshMessaging` goes Ready. The code is not lying; the observation is missing.
+  A2's answer names 868 MHz, and only the chip half of it is readable off the
+  part: band is set by the matching network, and is readable neither over SPI
+  nor off the package, so the 868 rests on the same seller's listing this
+  project refuses for the chip (ADR-0003).
+- **Acceptance:** `RadioInfo` carries the band as an *observation* with its own
+  provenance, distinct from the driver's tuning range, and `covers()` answers
+  from the observation or says it cannot say. A capability derived from an
+  unobserved band never reaches `Ready`. Host tests for: driver range present
+  and band unobserved, band observed and narrower than the driver's, and the
+  three-regions-at-once case above asserted to be impossible once observed.
+- **Watch for:** this is the second half of the same lesson as
+  `test_shipped_twatch_radio_is_unread` — a comment is not a check.
+  `test_sx1262_bands_are_the_drivers_not_this_units` pins the trap today so the
+  sentence cannot quietly stop being true, but pinning a trap is not closing it.
+- **Hardware required:** for the observation itself, yes — the matching network
+  is read off the board. The data model is not.
+
+### T-140 · Fingerprint the citations into `HARDWARE_MATRIX.md`, which are all about thirteen lines out
+- **Priority:** P2
+- **Dependencies:** none — the mechanism exists; this is the sweep.
+- **Goal:** `check_docs.py` check 7 can now hold a citation to the *text* it was
+  written for, where the citation carries a fingerprint:
+  `EXAMPLE.md:357 "Display FPC"` — the reserved placeholder path, because an
+  illustration written with a real one is a live assertion about a document
+  this task is not about. Three citations in `WAVESHARE_ARRIVAL.md` were out by
+  thirteen lines or more and landed on a real, wrong row — one on Flash where it
+  meant the display FPC, one on the tail of the GNSS-rail trap bullet where it
+  meant PSRAM, and one into `VERIFIED_FACTS.md` that had drifted onto the AXP2101
+  `PWRON` entry — and all three were repaired with fingerprints.
+  **Forty-nine bare ones remain**, counted rather than remembered, and the
+  number has now been wrong twice for the same reason. An early version said
+  fifteen — a remembered subtotal of one file. The next said twenty-three, from
+  a scan written to match *"the same shape the checker reads"* — and it did,
+  faithfully, including the checker's two blind spots: a citation into a
+  dot-directory matched at no position, and a bare basename resolved only beside
+  the citing document or at the repository root. Both are fixed, and the count
+  is now produced by importing `check_docs` and running its own resolution
+  rules rather than by a scan that imitates them, so the two cannot drift apart
+  again. The largest concentrations are still `WAVESHARE_ARRIVAL.md` — nine into
+  `HARDWARE_MATRIX.md`, five into `OPEN_QUESTIONS.md` — with the rest spread over
+  `TASKS.md`, `RECONCILIATION_2026-08-21.md`, `OWNER_DECISIONS.md` and six others,
+  and twelve of them are into `.h`, `.cpp` and `.md` files that the old scan
+  never looked at. Every one is a bare line number into a file that grows from
+  the middle, so every one is a silent wrongness waiting. Repairing them without
+  a fingerprint would only reset the clock.
+- **Acceptance:** each of those citations resolves to the row or paragraph its
+  sentence describes, carries a fingerprint that the checker reads, and
+  `check_docs.py` is green. Where a citation cannot be given a fingerprint
+  because the sentence does not name anything stable on the line, say so in the
+  document rather than leaving a bare number — a section reference is better
+  than a line number nobody can verify.
+- **Watch for:** the numbering. This task is **T-140** rather than T-128
+  deliberately: four open branches were each holding an unmerged `T-1xx` in the
+  130s at the time it was filed, and taking the next free number on this branch
+  is exactly how T-111 was claimed three times. Renumber at merge time if it
+  still collides.
+- **Hardware required:** no.
+
 ### T-126 · The merge sweep has still never merged anything
 - **Priority:** P1
 - **Dependencies:** the `--slurp`/`--jq` fix, which is what this checks.
@@ -1713,21 +1782,67 @@ stale silently. The protocol is
 ### T-010 · Board bring-up
 ```
 BLOCKED:
-Reason:         No physical board is available, and the exact variant is unknown.
-Evidence:       OPEN_QUESTIONS A1, A2. The T-Watch ships with one of five radio
-                chips and one of two GNSS modules; the GNSS power rail differs
-                between board revisions (BLDO1 vs DC3).
-Impact:         Blocks all bring-up, every power measurement, the whole
-                interference matrix, and any claim that hardware works.
+Reason:         The T-Watch S3 Plus is ORDERED, not PRESENT — no physical unit
+                to bring up yet. The Waveshare is on the desk and IDENTIFIED —
+                silkscreen `ESP32-S3-Touch-AMOLED-2.06`, which is what
+                schematic V1.0 describes. Its REVISION is not read: that
+                string is the product name and its `2.06` is the panel
+                diagonal, so a V1.1 unit would carry it too. Bring-up may
+                rely on V1.0 as a document, not as a fact about this board.
+Evidence:       OPEN_QUESTIONS A1 (OD-16, issue #54, 2026-08-22). A2 (which
+                radio, which GNSS) has an answer, from two sources of
+                different strength: SX1262 at 868 MHz is quoted from the
+                order listing, and MIA-M10Q is the owner's recollection,
+                because that listing names the radio and is silent on GNSS.
+                Neither is a marking read off the part, so RadioChip::Unknown
+                does not change until the watch arrives and the marking is
+                read.
+
+                The GNSS power rail still differs between board revisions (BLDO1
+                vs DC3), and **no part marking distinguishes them** — the
+                discriminator is a feature of the case: a unit with rear
+                BOOT/RST buttons is the DC3-unused revision. See
+                OPEN_QUESTIONS D6, the T-Watch rail table in
+                HARDWARE_MATRIX (the DC3 row: "unused (was GNSS on earlier
+                revisions without rear BOOT/RST buttons)") and VERIFIED_FACTS
+                on the GNSS rail, which all say the same thing. Reading SX1262 off
+                the radio settles the radio and settles nothing about the
+                rail; choosing wrong means GNSS silently never starts, and
+                presents as a receiver or antenna fault.
+Impact:         Blocks all T-Watch bring-up, every power measurement, the
+                whole interference matrix, and any claim that hardware works.
+                Does not block Waveshare bring-up, which is unblocked and
+                simply not yet done — STATUS.md, the T-010 entry. (This
+                previously read "see the M1 section above". There is no M1
+                section: the headings are NOW, NEXT, READY, BLOCKED, WAITING
+                and DONE, and the nearest M1 above is T-106's closed-case
+                clearance measurement, which is a different subject.)
 Possible options:
                 1. Proceed on simulator and host tests only — no hardware claims.
-                2. Obtain a board and record its exact variant.
+                2. Wait for the T-Watch to arrive, then make THREE separate
+                   observations, none of which substitutes for another:
+                   (a) read the radio marking — settles which of the five
+                   chips is fitted, and nothing else;
+                   (b) look at the back of the case for the BOOT/RST buttons
+                   that decide the GNSS rail;
+                   (c) establish the BAND. A2's answer is "SX1262 (868 MHz)"
+                   and only the chip half of that is readable off a marking:
+                   band is set by the matching network and antenna fitted, per
+                   OWNER_DECISIONS' own #89 paragraph, and is readable neither
+                   over SPI nor off the part. So the 868 rests on the same
+                   seller's listing this task refuses for the chip. Note what
+                   happens if (c) is skipped: set RadioChip::Sx1262 after (a)
+                   alone and radio_info_for() supplies {150 MHz, 960 MHz} —
+                   RadioLib's DRIVER limits, not this unit's — so
+                   covers(eu868) is true and MeshMessaging goes Ready with
+                   nobody having looked at the matching network. The code is
+                   not lying; the checklist would be incomplete.
                 3. Write the bring-up checklist now so that day one with real
                    hardware is not spent improvising.
 Recommended next action:
-                Option 3 now, in parallel with option 1. Ask the project owner
-                about hardware availability (A1–A3); A4 is closed, not
-                outstanding (OD-14).
+                Option 3 now, in parallel with option 1. A1–A3 are answered
+                (OD-16); nothing further to ask the owner here. A4 is closed,
+                not outstanding (OD-14).
 ```
 
 ### T-011 · Interference measurement
@@ -1762,30 +1877,42 @@ Recommended next action:
 ### T-012 · Answers from the project owner
 - **Priority:** P0
 - **Waiting on:** the project owner
-- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A1, A2, A3,
-  A6 — hardware availability and revision · which radio and GNSS variant ·
-  a second mesh device · whether the node carries a magnetometer. **A5 is
-  answered** — 2026-08-22, the owner has ordered a CJMCU-9911 (AK09911C) and a
-  GY-271 (QMC5883L) and is soldering one in
-  ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
+- **Questions:** [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) A6 —
+  whether the node carries a magnetometer. **A1–A3 are no longer on this
+  list** — answered 2026-08-22 on
+  [#54](https://github.com/hleserg/Attadipa/issues/54), recorded as
+  [OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
+A1's schematic-revision
+  sub-question is **not closed and is not owed by the owner** — the silkscreen
+  reads `ESP32-S3-Touch-AMOLED-2.06`, which is the **product name** schematic
+  V1.0 describes, not a revision field: `2.06` is the panel diagonal, so a V1.1
+  unit carries it unchanged (`WAVESHARE_BOARD_RECEIVED` §1.1, and
+  `OPEN_QUESTIONS` D20, where it is now filed). An earlier version of this
+  bullet called it closed, which was the same mistake the rest of this branch
+  exists to correct. A2's marking-read-off-the-part confirmation likewise
+  remains, and is a hardware-in-hand task now, not an owner question. **A11 is new and IS on this list** — one T114 with GNSS or two,
+  [#124](https://github.com/hleserg/Attadipa/issues/124). **A5 is no longer on it either** — 2026-08-22, the owner has
+  ordered a CJMCU-9911 (AK09911C) and a GY-271 (QMC5883L) and is soldering one
+  in ([#83](https://github.com/hleserg/Attadipa/issues/83)). A6 is untouched by
   that: a node's magnetometer and a wrist's magnetometer answer different
-  questions. **A4 (the regulatory region) is no longer on this
-  list** — closed 2026-08-22, not by an answer but by the owner declining to
-  give one: legality is his problem, not the firmware's
+  questions. **A4 (the regulatory region) is no longer on this list** — closed
+  2026-08-22, not by an answer but by the owner declining to give one:
+  legality is his problem, not the firmware's
   ([OD-14](docs/research/OWNER_DECISIONS.md#od-14--which-region-is-the-owners-problem-not-the-firmwares)).
   No task here researches a specific jurisdiction's rules on the project's own
   initiative; [ADR-0006](docs/adr/0006-settings-and-bounded-values.md)'s
   transmit-closed-while-`Unknown` gate needs no such research to keep working.
-- **Impact:** A1–A2 gate all hardware work, and A2 got sharper: of the five
-  candidate radios, two cannot do LoRa at all and only one is supported by the
-  pinned MeshCore ([ADR-0003](docs/adr/0003-radio-not-lora.md)), so the answer
-  decides whether the watch has a local mesh path at all. A5 and A6 decide
-  whether five magnetometer epics are dormant or dead, and A6 does **not** give
-  the watch a compass even if the answer is yes
+- **Impact:** A5 and A6 decide whether five magnetometer epics are dormant or
+  dead, and A6 does **not** give the watch a compass even if the answer is yes
   ([ADR-0009](docs/adr/0009-heading.md) §3). A5's answer moves those five epics
   from *possibly dead* to *dormant with a delivery date*, and hands
   [ADR-0009](docs/adr/0009-heading.md) a second possible provider for heading —
-  see [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md).
+  see [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md). A2's
+  answer, now given, decided the other half: of the five candidate radios two
+  cannot do LoRa at all and only one is supported by the pinned MeshCore
+  ([ADR-0003](docs/adr/0003-radio-not-lora.md)), and the order listing says
+  SX1262 — so the watch has a local mesh path, subject to reading the marking
+  off the physical part when it arrives.
 - **None of these blocks M1.**
 
 ### T-014 · Mandatory backlogs from the specification
@@ -1816,6 +1943,50 @@ Recommended next action:
 ---
 
 ## DONE
+
+### T-127 · A link's `#anchor` is captured and then never checked — **DONE** 2026-08-23
+- **Priority:** P3
+- **Dependencies:** none.
+- **Goal:** `tools/docs/check_docs.py` check 1 matches a link with an anchor on
+  it, captures the anchor as a regex group, and then tests only
+  `os.path.exists(target)`. So every `#od-16--...` style deep link in this
+  repository is unverified, and a heading renamed or renumbered leaves a link
+  that resolves to the top of the right file — which reads as working. This is
+  the half of the OD-16 collision that the new duplicate-decision check does
+  **not** cover: that one catches two headings with one number, this one catches
+  a citation pointing at a number that has moved.
+- **Acceptance:** anchors resolve against the target file's own headings, using
+  GitHub's slug rule (lower-case, drop punctuation except hyphen and
+  underscore, spaces to hyphens, de-duplicate with `-1`, `-2`). Mutation tests
+  in `tools/docs/test_check_docs.py` for: a good anchor, a renamed heading, an
+  em dash, backticks and bold inside a heading, two headings that slug the same,
+  and an anchor into a file that has none.
+- **Watch for:** the first run will find pre-existing broken anchors. That is
+  the point, but it makes this a two-commit job — the check, then the fixes —
+  and the fixes are the larger half. Do not weaken the rule to make the first
+  run green.
+- **Hardware required:** no.
+- **What came of it:** `check_links` now resolves every `#anchor` against the
+  target document's own headings, including `](#same-document)` links, which the
+  link pattern had never captured at all. GitHub's slug rule is implemented as
+  described — and its awkward half is that punctuation is dropped while the
+  spaces around it are not, which is why `## OD-16 — A1, A2 and A3` answers to
+  `#od-16--a1-a2-and-a3` with two hyphens. Headings inside a fenced block are not
+  headings. Anchors on non-Markdown targets are left alone: GitHub anchors a code
+  file by line, and reporting `#L12` would be noise. Seven mutation cases.
+  **The first run found exactly one broken anchor in the whole repository** —
+  `PEDOMETER_PARTS.md:19` had dropped the trailing `` `SUPPORTED` `` from the
+  slug — so the two-commit worry did not materialise, and the fix is in this
+  commit. The OD-16 half is what this was for: renumber one of two colliding
+  headings now and every `#od-16` link says so.
+
+  **And it caught this record while it was being written.** The paragraph above
+  described the syntax of a same-document link, in backticks, and the new check
+  read the illustration as a live link into a heading that does not exist —
+  which is the `EXAMPLE.md` defect exactly, one check over. GitHub renders an
+  inline code span as characters, so `check_links` now blanks code spans before
+  looking for links. Two more cases: an illustration stays quiet, a real link
+  after a code span on the same line is still read.
 
 ### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
 - **The cause was not the model, the context or the turn ceiling.** It was
@@ -1955,10 +2126,14 @@ Recommended next action:
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
 - `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
-  Four checks, each of a failure that had already happened here. **A fifth was
+  Seven checks: relative links, inline code spans, task IDs, owner-decision
+  numbers, task bodies, root files, and `file:line` citations. Four at first,
+  each of a failure that had already happened here. **A fifth was
   added 2026-08-23** — nothing unexpected is tracked at the repository root —
   after `git add -A` swept a scraped vendor page into `main` through
-  [#98](https://github.com/hleserg/Attadipa/pull/98).
+  [#98](https://github.com/hleserg/Attadipa/pull/98); a sixth and a seventh
+  followed on the same day, for the four pull requests that each claimed OD-16
+  and for citations that land on a real, wrong line.
 - **Relative links resolve.** These documents cite each other constantly and a
   link that 404s reads exactly like one that works until somebody clicks it. The
   repository was clean at the time this landed; the point is that it stays that
@@ -2004,8 +2179,11 @@ Recommended next action:
   this is the one place in the checker that reads fenced lines — everywhere else
   a `**Priority:**` inside a fence is an example and does not count as a body.
 - **Mutation-tested**, and CI runs those tests before it runs the checker:
-  twenty-five cases in `tools/docs/test_check_docs.py`, thirteen of which assert
-  the checker does *not* fire where firing would be wrong. One reproduces the
+  **67 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  checker does *not* fire where firing would be wrong — a `###` sub-heading is
+  not a second decision, a range straddling a blank line is how a table is
+  cited, and a line number in somebody else's tree is not ours to verify. The
+  suite prints its own count, so this number has one source. One reproduces the
   splice defect above verbatim and asserts the span check catches what the
   uniqueness check cannot; another asserts the body check catches the same splice
   from the other side.
