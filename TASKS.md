@@ -321,6 +321,63 @@ stale silently. The protocol is
   is already there.
 - **Hardware required:** no.
 
+### T-146 · The agent's push path leaves a long-lived credential in `.git/config`
+- **Priority:** P2 — it becomes live with `ATTADIPA_AGENT_TOKEN`, and it is a
+  bounded exposure rather than an open door, which is why it is not P1.
+- **Dependencies:** none in code;
+  [`pending/75-approval-stall.patch`](docs/automation/pending/README.md) is what
+  makes it reachable.
+- **Goal:** `actions/checkout` defaults `persist-credentials` to `true`, which
+  writes the token into `.git/config` as an `http.extraheader` for the life of
+  the workspace. The agent job is the one job where the model holds `Bash`, and
+  it pushes with `git push` from that shell — so the persistence is what makes
+  the push work and cannot simply be turned off. The built-in `GITHUB_TOKEN` it
+  replaces expires with the job; a fine-grained PAT does not, so the same file
+  goes from holding a credential that dies at the end of the run to holding one
+  that does not. Found in review of
+  [#128](https://github.com/hleserg/Attadipa/pull/128), where it was recorded as
+  a price rather than fixed, because fixing it in that patch would have broken
+  the push it exists to enable.
+- **Acceptance:** a push path that does not persist a credential in the
+  workspace — the candidates are `persist-credentials: false` plus an explicit
+  remote URL set at push time from the secret, an App installation token minted
+  per run (Option B in
+  [`APPROVAL_STALLS.md`](docs/automation/APPROVAL_STALLS.md), which also removes
+  the attribution cost), or a push step outside the job that holds `Bash`. It
+  states which one and why, and it is **demonstrated to still push**: a change
+  that closes the exposure and silently stops the agent from pushing is the
+  worse outcome, because nothing goes red.
+- **What must not be assumed:** that this is the generic *"a long-lived
+  credential on a public repository"* already priced in `APPROVAL_STALLS.md`.
+  That sentence is about the secret existing; this is about a specific file, in
+  a specific job, readable by a specific tool.
+- **Hardware required:** no.
+
+### T-147 · A comment on a pull request hides it from the orphan sweep
+- **Priority:** P2
+- **Dependencies:** none; reachable today, and
+  [`pending/75-approval-stall.patch`](docs/automation/pending/README.md) makes
+  it likelier by adding a job that comments.
+- **Goal:** `agent-queue-watchdog.yml`'s `stuck` job selects orphaned tasks with
+  `select(.updated_at < $CUTOFF)` over `repos/$REPO/issues`, and that endpoint
+  returns **pull requests too**. `updated_at` is bumped by a label, by any bot
+  comment and by the watchdog's own note, so a pull request carrying
+  `agent:working` that something comments on every tick never gets older than
+  the two-hour cutoff and is never returned to the queue — lost in plain sight,
+  which is the exact failure the `stuck` job was written to prevent.
+  `merge-candidate.sh` already documents this hazard for itself and uses
+  `committedDate` on the head instead: *"a label, a bot comment or this
+  workflow's own note bumps it. What matters is when code last arrived."* Found
+  in review of [#128](https://github.com/hleserg/Attadipa/pull/128).
+- **Acceptance:** the orphan sweep ages a task by something a comment cannot
+  move. It decides explicitly whether a pull-request-shaped task belongs in that
+  sweep at all — and if it does, it ages it by head `committedDate` like
+  `merge-candidate.sh`; if it does not, it says what returns such a task to the
+  queue instead, because excluding it without a replacement path is the same
+  loss with a different cause. A test that constructs a task whose `updated_at`
+  is fresh and whose head commit is three hours old, and asserts it is swept.
+- **Hardware required:** no.
+
 
 ## NEXT
 

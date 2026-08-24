@@ -139,7 +139,7 @@ That closes the issue's evidence table exactly:
 | `c9e00d0` | the owner | ran |
 | `488be1e` | **the agent's own `git push`, over the checkout's persisted `GITHUB_TOKEN`** | `action_required`, 0 jobs |
 
-The workflow already knows the rule — `claude-agent.yml:795-804` explains why
+The workflow already knows the rule — `claude-agent.yml:795-804` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
 `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
 action's push path was fixed. The agent's own push path was never covered by it.
 
@@ -161,7 +161,7 @@ that lets an agent rewrite the gate that governs it.
 credential that expires in an hour, and commits stay attributed to an app. Cost:
 two more secrets (App ID and private key) and one more action in the supply
 chain. Whether the *Claude* App's installation token can be obtained outside
-`claude-code-action` — which mints one over OIDC, see `claude-agent.yml:508-517`
+`claude-code-action` — which mints one over OIDC, see `claude-agent.yml:508-517` "id-token: write is not optional"
 — is **UNKNOWN**; a separate App would have to be created if not.
 
 **C — `persist-credentials: false` on the writer's checkout.** Free, no
@@ -194,12 +194,23 @@ unchecked** — *Contents: Read and write*, *Pull requests: Read and write* **an
 
 **The third permission is not optional and an earlier version of this section
 omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is
-`github_token:` for `claude-code-action` at `claude-agent.yml:804`,
-`claude-pr-review.yml:111` and `claude-ci-repair.yml:237`. `display_report:
+`github_token:` for `claude-code-action` at `claude-agent.yml:804`
+"github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+`claude-pr-review.yml:111` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}"
+and `claude-ci-repair.yml:237`
+"github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}". `display_report:
 "true"` posts the agent's summary **on the triggering issue** over it, and the
 agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
-`claude-agent.yml:846` says the action has no label feature of its own and that
-labelling *"depends entirely on `gh` being allowed"*.
+`claude-agent.yml:884` "depends entirely on `gh` being allowed" says the
+action has no label feature of its own. That citation read `:846` until
+2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
+asserts this stays in`, an unrelated comment — so a reader checking the evidence
+for the blocking claim found nothing. Found in review, and it is the failure
+this document's own §*Citations* warns about at
+[`APPROVAL_STALLS.md#citations-in-this-file`](APPROVAL_STALLS.md): a bare line
+number rots silently. All six code citations in this file now carry a
+fingerprint, so the next one to drift is reported with the line the text moved
+to rather than passing because the line it landed on happened to be non-blank.
 [CLAUDE_AUTOMATION.md](CLAUDE_AUTOMATION.md) already records the working scope
 for this same secret as all three. Set only the first two and the next
 issue-driven run — the canonical path per `CLAUDE.md` — takes a 403 on the issue
@@ -215,14 +226,34 @@ makes the secret *sufficient* is in
 `${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}`, so applying it while the
 secret is unset changes nothing at all and the two can land in either order.
 
-The cost being accepted is the attribution one: agent commits will carry the
-PAT owner's name. If that is the wrong trade, **B** is the same fix without it,
-at the price of two more secrets.
+**Three costs are being accepted, and naming one of them was not enough.**
+
+1. **Attribution.** Agent commits will carry the PAT owner's name. If that is
+   the wrong trade, **B** is the same fix without it, at the price of two more
+   secrets.
+2. **A long-lived credential in `.git/config`, in the job that holds `Bash`.**
+   `actions/checkout` defaults `persist-credentials` to `true` and writes the
+   token in as an `http.extraheader` for the life of the workspace. The agent
+   pushes with `git push` from the model's own shell, so that persistence is
+   what makes the push work — turning it off breaks the fix. The built-in
+   `GITHUB_TOKEN` it replaces expires with the job; a PAT does not, so the
+   exposure outlives the run that leaked it. It is bounded by the job, not by
+   the token, and removing it needs a push path that does not persist a
+   credential — **T-146**. This is not the generic *"a long-lived credential on
+   a public repository"* the section above prices; it is a specific file, in a
+   specific job, readable by a specific tool. Found in review.
+3. **`claude-ci-repair.yml` becomes reachable.** Today the agent's pushes create
+   runs that stall at `action_required` with no jobs, so nothing fails and the
+   repair workflow never fires. The moment those pushes run CI, a red one calls
+   a second billable writer: two attempts, `timeout-minutes: 60`, against the
+   per-run figure `STATUS.md` records. The `approvals` job added by the patch
+   costs nothing from Anthropic; this consequence of the same patch does not,
+   and the risk list said only the first. Found in review.
 
 ## What happens in the meantime — written, tested, **not deployed**
 
 > [!IMPORTANT]
-> The rule below is on `main` and has 38 cases — **but nothing on `main` runs
+> The rule below is on `main` and has 40 cases — **but nothing on `main` runs
 > them.** `ci.yml` enumerates every shell test by name and this one is absent,
 > because the line that would add it rides the same blocked patch: `ci.yml` is
 > itself under `.github/workflows/`. `shellcheck` globs the file, so it is
@@ -259,15 +290,21 @@ the API has a bad minute, hourly and forever, which is
 [#82](https://github.com/hleserg/Attadipa/issues/82)'s shape; guessing "fine"
 restores exactly the silence being fixed.
 
-38 cases in `.github/tests/approval-stall-decision-test.sh`, including the two
-real runs above with the values the API actually returned.
+40 cases in `.github/tests/approval-stall-decision-test.sh`, including the two
+real runs above with the values the API actually returned, and two that lift the
+field split out of `pending/75-approval-stall.patch` and run it — because the
+loop that split lives in is inside an unapplied patch, which neither this suite
+nor `ci.yml`'s `actionlint`/`shellcheck` globs can see. Extracted rather than
+copied: a copy drifts, an extraction goes red the moment the patch stops
+containing a recognisable `while IFS=`.
 
 ## What this does not cover
 
 The intake gate is untouched and the actor check is the security boundary —
 nothing here reads it. **But Option A does change who may drive a write-capable
 agent, and an earlier version of this section said the opposite.** The
-anti-recursion boundary is a *login-name* test: `intake-decision.sh:142` rejects
+anti-recursion boundary is a *login-name* test: `intake-decision.sh:142`
+"[bot]\"|claude|github-actions" rejects
 `*"[bot]"`, `claude` and `github-actions`, and `queue-scan.jq` refuses the last
 two as producers because *"our own output would start a billable writer: exactly
 the loop the allowlist was built to avoid."* A fine-grained PAT belongs to a

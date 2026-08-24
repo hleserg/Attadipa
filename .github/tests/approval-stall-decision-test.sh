@@ -137,5 +137,44 @@ says "the word in the status field of a completed run is still not this" \
      "$(decide completed completed 0 "$SHA_STALLED" "")" "quiet|ran"
 
 echo
+echo "The field split in the pending patch, lifted out of the patch itself"
+# Every defect this guard has shipped lived in a `run:` block, and the split
+# below is one. It cannot be reached from here -- the loop is inside an
+# unapplied patch in docs/automation/pending/, which neither this suite nor
+# ci.yml's actionlint/shellcheck globs can see -- so the line is EXTRACTED from
+# the patch file rather than copied. A copy would drift; an extraction fails
+# loudly the moment the patch stops containing a recognisable `while IFS=`.
+#
+# What it is guarding: tab is IFS *whitespace*, so `IFS=$'\t' read` collapses
+# adjacent tabs and a null `conclusion` shifts every later field left, putting
+# the head SHA in CONCLUSION and the workflow name in RUN_SHA. The decision
+# script then answers `quiet|unreadable` for a real stall. `|` is not IFS
+# whitespace and survives the empty field.
+PATCH=docs/automation/pending/75-approval-stall.patch
+SPLIT=$(sed -n 's/^+ *\(while IFS=.*read -r RUN_ID .*; do\)$/\1/p' "$PATCH" | head -1)
+
+if [ -z "$SPLIT" ]; then
+  printf '  FAIL  the patch no longer contains a recognisable field split\n'
+  fail=$((fail + 1))
+else
+  # `action_required` as a STATUS, which is the shape that arrives with an
+  # empty conclusion -- the exact record the collapse makes unreachable.
+  got=$(printf '32581052659|action_required||%s|CI\n' "$SHA_STALLED" \
+          | eval "$SPLIT"' printf "%s/%s/%s/%s/%s" "$RUN_ID" "$STATUS" "$CONCLUSION" "$RUN_SHA" "$RUN_NAME"; done')
+  says "a null conclusion keeps its own field, so the SHA stays in RUN_SHA" \
+       "$got" "32581052659/action_required//$SHA_STALLED/CI"
+
+  # And the decision the loop would then reach, with the fields in the right
+  # places. This is the assertion that goes red if the delimiter regresses.
+  # shellcheck disable=SC2016
+  fields=$(printf '32581052659|action_required||%s|CI\n' "$SHA_STALLED" \
+             | eval "$SPLIT"' printf "%s\n%s\n%s" "$STATUS" "$CONCLUSION" "$RUN_SHA"; done')
+  says "and the run the fields describe is still recognised as the stall" \
+       "$(decide "$(printf '%s' "$fields" | sed -n 1p)" \
+                 "$(printf '%s' "$fields" | sed -n 2p)" \
+                 0 "$(printf '%s' "$fields" | sed -n 3p)" "")" "say|stalled"
+fi
+
+echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -84,7 +84,7 @@ index 69dea3d..3098445 100644
 +                          --paginate --slurp </dev/null 2>/dev/null \
 +                        | jq -r 'if type == "array" then [.[].workflow_runs[]?] else [.workflow_runs[]?] end
 +                                 | group_by(.workflow_id) | map(max_by(.id))
-+                                 | .[] | [(.id|tostring), .status, (.conclusion // ""), .head_sha, .name] | @tsv' 2>/dev/null); then
++                                 | .[] | [(.id|tostring), .status, (.conclusion // ""), .head_sha, (.name // "")] | join("|")' 2>/dev/null); then
 +              echo "::warning::Could not read the runs for #$PR at $SHA; skipping it this tick rather than guessing in either direction."
 +              continue
 +            fi
@@ -120,7 +120,27 @@ index 69dea3d..3098445 100644
 +            # partial picture answers `repeat` forever for a stall never
 +            # mentioned, which is the silence this job exists to break.
 +            UNREADABLE=""
-+            while IFS=$'\t' read -r RUN_ID STATUS CONCLUSION RUN_SHA RUN_NAME; do
++            # A PIPE, not a tab, and the reason is not style. Tab is IFS
++            # *whitespace*, so bash collapses a run of tabs into one delimiter:
++            # a record whose `conclusion` is null arrives a field short and
++            # every later field shifts left. `1<TAB>action_required<TAB><TAB>
++            # 488be1e...<TAB>CI` reads back as CONCLUSION=488be1e...,
++            # RUN_SHA=CI, RUN_NAME="" -- and the decision script then rejects
++            # `CI` as a non-hexadecimal head and returns `quiet|unreadable`.
++            # That kills the `action_required`-as-a-STATUS branch, which is the
++            # one arriving with an empty conclusion, which is the branch this
++            # whole guard argues hardest for. One-directional: after the shift
++            # field 3 is always a SHA, so no false positive is reachable -- only
++            # the missed stall, which is the failure mode with no symptom.
++            # `|` is not IFS whitespace, so empty fields survive it; the idiom
++            # is already used twice in this repository (`failure-reason.sh`,
++            # `setup-labels.sh`). RUN_NAME is last on purpose: it is the only
++            # field that could contain a `|`, and `read` gives the last variable
++            # the unsplit remainder. Found in review, before anyone applied
++            # this; .github/tests/approval-stall-decision-test.sh now runs this
++            # exact line, lifted out of this file, against a null-conclusion
++            # record.
++            while IFS='|' read -r RUN_ID STATUS CONCLUSION RUN_SHA RUN_NAME; do
 +              [ -n "$RUN_ID" ] || continue
 +
 +              # Asked for every run rather than only the suspicious ones, so
@@ -132,7 +152,6 @@ index 69dea3d..3098445 100644
 +              JOBS=""
 +              JOBS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=1" \
 +                       --jq '.total_count' </dev/null 2>/dev/null) || JOBS=""
-+              [ -n "$JOBS" ] || UNREADABLE="yes"
 +
 +              # Called ONCE and both lines read off the result. Calling it twice
 +              # -- once for the decision, once for the reason -- would let the
@@ -143,6 +162,19 @@ index 69dea3d..3098445 100644
 +                      "$STATUS" "$CONCLUSION" "$JOBS" "$RUN_SHA" "$SAID") || OUT=""
 +              DECISION=$(printf '%s' "$OUT" | sed -n 1p)
 +              REASON=$(printf '%s' "$OUT" | sed -n 2p)
++
++              # Set from the DECISION, not from `[ -n "$JOBS" ]`. An empty job
++              # count on a run that is not the approval shape at all -- an
++              # ordinary green one this loop is about to discard -- is not a
++              # partial picture of anything, and letting it withhold the marker
++              # takes the repeat bound off for a reason unrelated to the stall:
++              # one transient 502 on an unrelated run and the same comment posts
++              # every tick for as long as it lasts. The decision script reaches
++              # `unreadable` only AFTER the shape test, which is exactly the
++              # ordering its own comment argues for, so this is the precise
++              # signal and the earlier `[ -n "$JOBS" ]` test was a proxy for it.
++              # Found in review.
++              [ "$DECISION|$REASON" = "quiet|unreadable" ] && UNREADABLE="yes"
 +
 +              [ "$DECISION" = "say" ] || continue
 +              case "$REASON" in
@@ -170,7 +202,7 @@ index 69dea3d..3098445 100644
 +              if [ -n "$STALLED" ]; then
 +                printf '%s\n' "$STALLED"
 +                printf "A run that finishes as \`action_required\` with **no jobs** put no check on this pull request at all. Nothing is red, so nothing looks wrong — but the orchestrator merges once CI is green, and there is no verdict here to be green.\n\n"
-+                printf "The usual cause is that the last push was authenticated with the built-in \`GITHUB_TOKEN\`: GitHub creates the run in an approval-required state and waits. **A maintainer can start it from the Checks tab of this pull request.** The rule, the evidence and what it would cost to stop this happening are in [APPROVAL_STALLS.md](https://github.com/%s/blob/main/docs/automation/APPROVAL_STALLS.md).\n\n" "$REPO"
++                printf "The usual cause is that the last push was authenticated with the built-in \`GITHUB_TOKEN\`: GitHub creates the run in an approval-required state and waits. **What has actually been seen to clear one is a maintainer re-running the workflow** — from the run's own page, or the Checks tab of this pull request. An *approve and run* button may not be there: GitHub documents that control for a pull request from a public fork of a first-time contributor, which is not this case, and the run reads \`completed\` rather than waiting. The rule, the evidence and what it would cost to stop this happening are in [APPROVAL_STALLS.md](https://github.com/%s/blob/main/docs/automation/APPROVAL_STALLS.md).\n\n" "$REPO"
 +              fi
 +              if [ -n "$GATED" ]; then
 +                printf '%s\n' "$GATED"
@@ -179,6 +211,19 @@ index 69dea3d..3098445 100644
 +              printf 'This is said once per head commit. Push again and it is re-checked against the new one; re-run the checks and this goes quiet by itself.\n'
 +            } > /tmp/approval-stall.md
 +
++            # AND THIS COMMENT BUMPS `updated_at` ON THE PULL REQUEST.
++            # `repos/$REPO/issues` returns pull requests too, and the `stuck`
++            # job below ages orphaned `agent:working` tasks with
++            # `select(.updated_at < $CUTOFF)`. A pull-request-shaped task that
++            # something comments on every tick therefore never gets older than
++            # the cutoff and is never returned to the queue. The marker above
++            # bounds this to one comment per head, so the interaction is bounded
++            # rather than perpetual -- but `merge-candidate.sh` already ages by
++            # head `committedDate` for exactly this reason, and the `stuck` job
++            # does not. That is **T-147**, filed rather than fixed here: this
++            # patch is already blocked on a `workflows` permission and widening
++            # it to change the orphan sweep would put two unrelated behaviours
++            # behind one owner action. Found in review.
 +            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/approval-stall.md </dev/null \
 +              || echo "::warning::Could not comment on #$PR; leaving it for the next tick."
 +          done < /tmp/heads
@@ -250,6 +295,18 @@ index 9a25754..d082ec0 100644
          if: steps.auth.outputs.ok == 'true'
          with:
            fetch-depth: 0
++          # `persist-credentials` stays at its default `true`, and that is a
++          # PRICE, not an oversight. The agent pushes with `git push` from the
++          # model's own `Bash`, so the credential has to be in `.git/config`
++          # for the push path to work at all -- turning it off here would break
++          # the thing this patch exists to fix. The consequence, stated rather
++          # than discovered: with `ATTADIPA_AGENT_TOKEN` set, a LONG-LIVED PAT
++          # sits in `.git/config` as an `http.extraheader` for the life of the
++          # workspace, in the one job where the model holds `Bash`. The
++          # built-in `GITHUB_TOKEN` this replaces expires with the job; a PAT
++          # does not. It is bounded by the job, not by the token. Removing the
++          # exposure means a push path that does not persist a credential, and
++          # that is **T-146**, not this patch. Found in review.
 +          token: ${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}
  
        # WHERE THE BRANCH WAS BEFORE THIS RUN TOUCHED IT.
