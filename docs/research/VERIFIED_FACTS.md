@@ -899,6 +899,27 @@ same question, the datasheet wins and the entry says so.
   `esp_lvgl_port_disp.c`
   `4a1bcfd9088b6216ff33509dfc15c86886426d545012568e2f21f77239c3b0f0`.
   None of them is committed here.
+
+  **The two LVGL files, hashed the same way and by a different route.** They
+  were omitted in the first two rounds, which left the only claims in this
+  entry without the section's own provenance mechanism sitting on LVGL — and
+  one of those is the *correction* to a finding whose whole substance was that
+  an unread mechanism had been stated as fact here. Found in the third review
+  round of [#152](https://github.com/hleserg/Attadipa/pull/152). At
+  `lvgl/lvgl@85aa60d18b3d5e5588d7b247abf90198f07c8a63` (the commit `v9.5.0`
+  points at): `src/draw/sw/lv_draw_sw_utils.c`
+  `9fcad9796d421f99a88ceae4c498d9e23042c82e809a67df90370b2b44874a5b`,
+  `src/draw/sw/blend/lv_draw_sw_blend_to_rgb565.c`
+  `b25dfda8103b8c5844b06d705fafc341533bcf82f7b87c069f6d53e775580c5b`.
+
+  **Route stated, because it is not the same one.** The five above were fetched
+  by raw URL. These two were hashed out of the `FetchContent` checkout this
+  repository's own simulator build produces, whose `git rev-parse HEAD` is that
+  same commit — so the bytes are pinned to a revision either way, but a reader
+  reproducing them fetches where the other five were fetched and gets the same
+  digest, or the tag has moved and that is itself the finding. Said rather than
+  glossed: a provenance note that describes a route it did not take is the
+  defect this whole mechanism exists to prevent.
 - **Checked:** 2026-08-23.
 - **Board revision:** `ESP32-S3-Touch-AMOLED-2.06` — step 1 is that board's own
   upstream file, not a sibling's. Note the trap

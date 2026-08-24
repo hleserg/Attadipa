@@ -558,10 +558,17 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
   which leaves the next person to invent one. **Start it at `swap_bytes = true`
   and say why in the code**: that is the setting on the one complete path
   readable in pinned source (§4.1a's four-step trace), so it is the value with
-  evidence behind it rather than the value that reads as neutral. Being wrong
-  that way is loud — red renders blue-ish green on the first pattern anyone
-  draws — whereas starting from `false` on a panel that wants the swap is the
-  same wrongness with a plausible-looking screen in front of it. And
+  evidence behind it rather than the value that reads as neutral. **That reason
+  stands alone, and an earlier version of this sentence propped it up with a
+  second one that is not true**: it claimed being wrong this way is *loud* while
+  starting from `false` on a panel that wants the swap is *"the same wrongness
+  with a plausible-looking screen in front of it"*. Both directions put
+  byte-swapped RGB565 on the wire — `0xF800` arrives as `0x00F8` either way, a
+  saturated blue with a trace of green — so there is no direction in which the
+  mistake is quieter. Withdrawn in the third review round of
+  [#152](https://github.com/hleserg/Attadipa/pull/152), in a paragraph that has
+  just finished saying anything short of a photograph of that pattern is not an
+  answer to this question. And
   *configurable* here means a **board fact**, so it lives in
   `boards/`/`platform/` rather than in settings or a build flag. It is not the
   first colour asset's question at all: see §4.2. Found in review.

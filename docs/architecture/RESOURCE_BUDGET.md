@@ -121,7 +121,19 @@ paragraph priced the pass as a fixed property of the panel:
 The third exists because LVGL can render straight into a swapped destination:
 `lv_draw_sw_blend_to_rgb565_swapped.c` is a whole blend target at the pinned
 `lvgl@85aa60d1`, and `sim/lv_conf_simulator.h:216`
-"LV_DRAW_SW_SUPPORT_RGB565_SWAPPED       1" compiles it in. On that strategy the
+"LV_DRAW_SW_SUPPORT_RGB565_SWAPPED       1" compiles it in.
+
+**With a precondition this row has to carry, because it is a device row resting
+on a host-build fact.** That file is the *simulator's* `lv_conf`, and
+`cmake/AttadipaLvgl.cmake:62` "LV_BUILD_CONF_PATH" points the only LVGL build
+this repository has at it — there is no device configuration, because there is
+no device build. The flag also sits under `sim/lv_conf_simulator.h:210`
+"Selectively disable color format support in order to reduce code size", which
+is precisely the switch a flash-constrained firmware turns off. So T-093 must
+decide whether the device `lv_conf` carries it at all before designing around
+the option; treating *"it compiles in"* as settled is how a later size pass
+removes an assumption three layers up. Named in the third review round of
+[#152](https://github.com/hleserg/Attadipa/pull/152). On that strategy the
 conversion folds into the blend that already runs and there is no second
 traversal at all — it is paid per blended pixel rather than per frame pixel,
 which for a watch face that redraws a small region is a different number

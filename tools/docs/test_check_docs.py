@@ -72,7 +72,17 @@ def checks_with_no_case() -> list[str]:
 # paragraph observed that "the three documents quoting it were all stale within
 # a day of the last time cases were added". An instruction to fix them by hand
 # is what had just failed, so they are read back instead. Found in review.
-CLAIM_FILES = ("STATUS.md", "TASKS.md", os.path.join(".github", "workflows", "ci.yml"))
+# `check_docs.py` is in this list because it was NOT, and went stale the way
+# the other three had: its docstring opened "Seven checks" above an enumeration
+# running 1 to 8 and a `CHECKS` tuple with eight entries. A guard that reads
+# three copies of a number and not the one inside the tool is a guard with a
+# blind spot shaped like the tool. Found in review of #152.
+CLAIM_FILES = (
+    "STATUS.md",
+    "TASKS.md",
+    os.path.join(".github", "workflows", "ci.yml"),
+    os.path.join("tools", "docs", "check_docs.py"),
+)
 ANCHORS = ("check_docs.py", "test_check_docs.py")
 WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,

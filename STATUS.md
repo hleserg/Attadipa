@@ -1010,8 +1010,11 @@ four more things at no cost:
   IDs are unique, **one OD number names one owner decision**, a live task has a
   body while finished work is filed under `## DONE`, nothing unexpected is
   tracked at the repository root, **a `file:line` citation lands where it
-  says it does**, and **one open-question ID names one question** — meaning it is inside the file, on a line that is not blank,
-  over a range that reads first-to-last. A citation that lands on a real but
+  says it does** — meaning it is inside the file, on a line that is not blank,
+  over a range that reads first-to-last — and **one open-question ID names one
+  question**. That gloss belongs to the citation check and had been spliced in
+  behind the eighth, where it read as a description of the wrong item; found in
+  the third review round of #152. A citation that lands on a real but
   *wrong* line is invisible to that, which is what happened to two citations
   into `HARDWARE_MATRIX.md`: both were thirteen lines out, both pointed at a
   real row, and nothing went red for weeks. So a citation may now carry a
@@ -1063,13 +1066,42 @@ four more things at no cost:
   citations in eight files — including `OWNER_DECISIONS.md`, the file
   [CLAUDE.md](CLAUDE.md) calls not ours to overturn — with every check green,
   because the rows sit in different tables and neither is a heading, a task or a
-  link. Check 5 does exactly this for OD numbers and stopped at that file; check
+  link. Check 4 does exactly this for OD numbers and stopped at that file; check
   8 does it for `OPEN_QUESTIONS.md`, which carries about four times as many
   identifiers. Struck rows count: `~~D12~~` is spent, not free, and reusing it
   sends a reader to a question marked RESOLVED and tells them their own subject
   is settled. Six new cases, and the coverage guard below is what noticed the
   check had none. Found in review of
   [#152](https://github.com/hleserg/Attadipa/pull/152).
+
+  **And the third round found the same failure inside the checker itself.** The
+  docstring opened *"Seven checks"* above an enumeration running 1 to 8 and a
+  `CHECKS` tuple with eight entries — on the very commit that made it eight,
+  which is the failure this file is proudest of catching, recurring one file
+  further in. The count guard read `STATUS.md`, `TASKS.md` and the CI comment;
+  the copy inside the tool was a fourth quote nothing looked at, so the three
+  guarded ones were dragged to Eight and the unguarded one stayed. `check_docs.py`
+  is now a `CLAIM_FILES` entry, its docstring opens with the colon the cue
+  requires, and reverting the word alone exits 1 with *"states Seven checks, and
+  this tree has 8"*. Three more from the round. The docstring's own numbering
+  had disagreed with the tuple's order since before the tuple existed — 4 and 5
+  swapped — which stayed invisible until prose began citing the numbers, at
+  which point `TASKS.md` said *Check 4* for OD numbers and `STATUS.md` said
+  *Check 5*, one of them wrong and neither checkable; both are now the tuple's
+  order, which is what the tool prints, and **T-157** files the reconciliation
+  because fixing the instance is not fixing the mechanism. Check 8's three
+  bounds are written into its docstring rather than left to be discovered: it is
+  bound to a **path**, so a rename removes the guard silently and green; it is
+  bound to a **table shape**, so a future cross-reference table repeating
+  register IDs would redden CI on a correct document; and it does **not** check
+  that a `D<NN>` cited elsewhere resolves to a live row — the half that cost the
+  nineteen hand-edits, exactly as invisible now as the collision was. And the
+  two LVGL files carrying the byte-order correction are hashed like the other
+  five in that entry, with the route stated plainly: they came out of the
+  simulator's own `FetchContent` checkout at `85aa60d1` rather than by raw URL,
+  which is the same bytes by a different road and worth saying so in a
+  provenance note whose whole subject is not glossing over how something was
+  read.
 
   **73 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
   sub-heading is not a second decision, a range straddling a blank line is

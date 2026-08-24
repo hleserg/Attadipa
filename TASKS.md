@@ -231,6 +231,34 @@ stale silently. The protocol is
   than 48 quiet warnings a day.
 - **Hardware required:** no.
 
+### T-157 · Prose cites a check by number and nothing reconciles the number
+- **Priority:** P3 — small, and it has already produced two wrong instructions.
+- **Dependencies:** none. `tools/docs/` only.
+- **Goal:** `check_docs.py`'s docstring enumerates the checks 1–8 and the
+  `CHECKS` tuple at the foot of the same file orders them, and until the third
+  review round of [#152](https://github.com/hleserg/Attadipa/pull/152) the two
+  disagreed: items 4 and 5 were swapped, from before the tuple existed. Nothing
+  reconciles a docstring with a data structure, so the drift was invisible until
+  prose started citing the numbers — at which point `TASKS.md` said *Check 4*
+  for OD numbers and `STATUS.md` said *Check 5*, one of them wrong and neither
+  checkable. Both are now the tuple's order, which is the order the tool prints
+  and therefore the only one a reader can verify. That fixes the instance.
+  Nothing stops it recurring, and the same round's headline finding was a stale
+  count in the same docstring for the same reason.
+- **Acceptance:** the suite reads the docstring's enumeration and asserts it
+  matches `CHECKS` — count and order both — so reordering the tuple without
+  touching the prose turns a case red, and vice versa. Cheap: the enumeration is
+  `^(\d+)\. ` in `check_docs.__doc__`. Optionally also reject a `Check N` in
+  `STATUS.md` or `TASKS.md` that names a check the tuple does not have at that
+  position, which is the half that produced the two wrong instructions; if that
+  is judged too clever, say so in the docstring rather than leaving the gap
+  unstated.
+- **What must not be assumed:** that this is the same guard as the count. The
+  count guard (`CLAIM_FILES` in `test_check_docs.py`) reads *how many* checks
+  are claimed; this is about *which check is which*, and the count was right in
+  both files that got the number wrong.
+- **Hardware required:** no.
+
 
 ## NEXT
 

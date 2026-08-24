@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Seven checks on the documentation, each of a failure that already happened here.
+"""Eight checks: documentation failures that have already happened here.
+`test_check_docs.py` reads this number back against the `CHECKS` tuple at the
+foot of this file. It did not, until #152's third review round: the guard
+covered STATUS.md, TASKS.md and the CI comment, and this docstring was a fourth
+copy nothing looked at -- so the three guarded ones were dragged to Eight and
+the one inside the checker stayed at Seven, on the very commit that made it
+eight. That is the failure this file is proudest of catching, recurring one
+file further in. The colon above is load-bearing: the cue requires it, because
+"the two checks this pull request added" is prose and a claim about the whole
+checker enumerates.
 
 1. Relative links resolve. This repository's documents cite each other
    constantly, and a link that 404s reads exactly like one that works until
@@ -20,7 +29,15 @@
    rejected task's original scope in one, and that is a record rather than a
    second live task.
 
-4. A live task has a body, and a finished one is filed under DONE. Check 2
+4. One OD number names one decision. Four open pull requests each inserted
+   `## OD-16` into OWNER_DECISIONS.md at the same line, for four different
+   decisions. They share no file, so git merges them clean and nothing forces a
+   choice; "keep both" leaves two OD-16 headings and two ambiguous anchors with
+   CI green. Check 3 is TASKS.md-only and check 1 captures a link's `#anchor`
+   and then never looks at it, so nothing saw it. See T-127 for the anchor half,
+   which is a bigger job and is not this check.
+
+5. A live task has a body, and a finished one is filed under DONE. Check 2
    catches the splice at its cause; this catches it at its effect, and catches
    the effect however it got there. The rule is TASKS.md's own, stated two
    paragraphs into it: every live task carries priority, dependencies, goal,
@@ -28,13 +45,14 @@
    first time it ran -- drift that predates the splice by weeks and that no
    syntactic check would ever see.
 
-5. One OD number names one decision. Four open pull requests each inserted
-   `## OD-16` into OWNER_DECISIONS.md at the same line, for four different
-   decisions. They share no file, so git merges them clean and nothing forces a
-   choice; "keep both" leaves two OD-16 headings and two ambiguous anchors with
-   CI green. Check 3 is TASKS.md-only and check 1 captures a link's `#anchor`
-   and then never looks at it, so nothing saw it. See T-127 for the anchor half,
-   which is a bigger job and is not this check.
+   THE NUMBERS ABOVE ARE THE `CHECKS` ORDER, which is the order this tool
+   prints. They had not been: 4 and 5 were swapped here relative to the tuple,
+   from before the tuple existed, and nothing reconciles a docstring with a
+   data structure. The first prose to cite one of these numbers did so twice,
+   differently -- TASKS.md said Check 4 for OD numbers and STATUS.md said Check
+   5 -- which is how a stale ordering becomes a wrong instruction. Reconciled in
+   the third review round of #152; a reader can now check any of these against
+   the tool's own output.
 
 6. Nothing unexpected is tracked at the repository root. `git add -A` run from
    the root has twice swept in a file that was only ever meant to be read: an
@@ -59,7 +77,7 @@
    -- upstream MeshCore sources and the like -- are skipped, because their line
    numbers are facts about somebody else's tree.
 
-8. One open-question ID names one question. Check 5 does this for OWNER_DECISIONS
+8. One open-question ID names one question. Check 4 does this for OWNER_DECISIONS
    and nothing did it for OPEN_QUESTIONS, which is the same register one step
    earlier and has four times as many identifiers in it. A branch filed the
    panel's wire byte order as `D19` while `main` was taking `D19` for the
@@ -785,7 +803,7 @@ QUESTION_ROW = re.compile(r"^\|\s*(?:~~)?\s*([A-Z]+\d+[a-z]?)\s*(?:~~)?\s*\|")
 def check_question_ids(root: str) -> list[str]:
     """One open-question ID, one question.
 
-    Check 5 does this for OWNER_DECISIONS.md. Nothing did it for
+    Check 4 does this for OWNER_DECISIONS.md. Nothing did it for
     OPEN_QUESTIONS.md, which is the register one step earlier -- the questions
     that become owner decisions -- and carries about four times as many
     identifiers.
@@ -802,6 +820,27 @@ def check_question_ids(root: str) -> list[str]:
     reusing it produces the same ambiguity with a subtler cause: a reader
     following a citation lands on a question marked RESOLVED and concludes the
     thing they were asking about is settled.
+
+    THREE BOUNDS, WRITTEN DOWN BECAUSE EACH IS INVISIBLE FROM THE OUTSIDE.
+    Named in the third review round of #152.
+
+    * It is bound to a PATH. A missing `OPEN_QUESTIONS.md` returns no findings,
+      and the suite asserts that as intended -- so renaming or moving the file
+      removes this guard silently, with CI green. That is the right behaviour
+      for a repository where the file may not exist yet and the wrong one for a
+      rename, and nothing here can tell those apart.
+    * It is bound to a TABLE SHAPE. Any row in that file whose first cell reads
+      `[A-Z]+\d+[a-z]?` is treated as a register entry, and the file already
+      holds nine tables. A future cross-reference table repeating register IDs
+      would redden CI on a correct document, with a message telling the reader
+      to renumber a row that is only being cited -- the exact harm this check
+      exists to prevent. Clean today: every ID in the register is unique and no
+      other table reuses the shape.
+    * It does NOT check that a `D<NN>` cited elsewhere resolves to a live row.
+      That is the half that cost the nineteen hand-edits, and a citation to a
+      retired or renumbered ID is exactly as invisible now as the collision was.
+      A fair follow-up; not covered here, and this docstring should not be read
+      as implying otherwise.
     """
     path = os.path.join(root, "docs", "research", "OPEN_QUESTIONS.md")
     if not os.path.exists(path):
@@ -828,9 +867,12 @@ def check_question_ids(root: str) -> list[str]:
 
 
 # The checks this file runs, as data. How many there are is quoted in STATUS.md,
-# TASKS.md and the CI comment, and the copy in STATUS.md said Six on the very
-# commit that added the seventh -- so the number now has one source, and
-# test_check_docs.py holds the quotes to it. Found in review.
+# TASKS.md, the CI comment AND this file's own docstring, and the copy in
+# STATUS.md said Six on the very commit that added the seventh -- so the number
+# now has one source, and test_check_docs.py holds the quotes to it. The
+# docstring joined that list one round later, having gone stale in exactly the
+# way the sentence above describes while sitting six hundred lines above it.
+# Found in review, twice.
 CHECKS = (
     ("Broken relative links", "check_links"),
     ("Unclosed inline code spans", "check_code_spans"),
