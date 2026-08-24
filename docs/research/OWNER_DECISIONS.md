@@ -1449,9 +1449,10 @@ carry his words as **paraphrase** rather than quotation.
 So the convention has changed, and the change is his rather than an editorial
 preference of ours: **a decision records what the owner decided, in this
 repository's own words. It does not reproduce how he said it.** Retrofitting the
-register to that convention is a **separate pull request, opened on top of this
-branch** — it touches every quoted decision from OD-1 down, and this branch is
-fifteen review rounds deep on an unrelated subject. Two categories are outside
+register to that convention is
+[#185](https://github.com/hleserg/Attadipa/pull/185), a **separate pull request
+stacked on this branch** — it touches every quoted decision from OD-1 down, and
+this branch is fifteen review rounds deep on an unrelated subject. Two categories are outside
 it, because neither is quotation of chat: the owner's own authored documents
 checked into the tree (`docs/master-prompt-final.md`, `docs/master-prompt.md`,
 `docs/development-addendum.md`, `docs/ideas/`), which are his text and not our

@@ -1023,7 +1023,8 @@ measurement.**
   `development-addendum.md`, `docs/ideas/`) are outside it — they are his text,
   not our record of it.
 
-**The retrofit itself, on the branch stacked above.** Every entry in
+**The retrofit itself is [#185](https://github.com/hleserg/Attadipa/pull/185),
+on the branch stacked above.** Every entry in
 `OWNER_DECISIONS.md` from OD-1 to OD-18 now opens with **What he decided** and a
 paraphrase; the sixteen Russian blockquotes and inline quotations are gone from
 it, and the header states the convention and its two exclusions. The same pass
