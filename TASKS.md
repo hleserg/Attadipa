@@ -65,9 +65,72 @@ stale silently. The protocol is
 - **Implementation status:** live. Seven workflows, an hourly watchdog, a
   half-hourly merge sweep applying the backstop's own path allowlist, and a
   daily backstop routine scoped to what a workflow cannot detect about itself.
+  A second watchdog scan is written, tested and **not deployed**:
+  [#75](https://github.com/hleserg/Attadipa/issues/75) — a run that completes
+  `action_required` with **zero jobs** put no check on the pull request at all,
+  so the orchestrator's *merge once CI is green* has no verdict to read and the
+  agent's own "waiting on CI" is true forever. The `approvals` job comments once
+  per head commit and deliberately does not re-run anything.
+
+  **What blocks it is not the work**, and it is the same wall
+  [#74](https://github.com/hleserg/Attadipa/issues/74) hit: GitHub refuses to
+  let a GitHub App update anything under `.github/workflows/` without the
+  `workflows` permission, which `claude[bot]` does not hold. The job, the
+  `token:` line that is the actual fix, and the test's line in `ci.yml` all wait
+  as `docs/automation/pending/75-approval-stall.patch`; landing it is three
+  commands from a local session. Until then the stall is still silent **and
+  still happening**.
+- **One owner action is outstanding, and it is the fix rather than the guard.**
+  The cause is the writer checkout leaving `actions/checkout`'s defaults, so the
+  agent's own `git push` authenticates as `github-actions[bot]` and GitHub
+  creates the resulting `pull_request` run in an approval-required state — a
+  documented rule about the *token*, not a setting, and **no repository setting
+  disables it**. The checkout now reads
+  `${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}`, which changes nothing
+  until that secret exists. **Create a fine-grained PAT scoped to this
+  repository — *Contents: Read and write*, *Pull requests: Read and write*,
+  ***Issues: Read and write***, and `Workflows` deliberately NOT granted — and
+  set it as `ATTADIPA_AGENT_TOKEN`.** The issue permission is **not optional**:
+  this secret is `github_token:` for `claude-code-action`, which posts the
+  agent's report on the triggering issue and does its own labelling through
+  `gh`. Without it the next issue-driven run 403s on the issue write, leaves no
+  `agent:review`, and the watchdog re-queues a billable writer hourly with every
+  run green. An earlier version of this bullet listed two permissions; the
+  working scope in `CLAUDE_AUTOMATION.md` has always been three. Found in
+  review.
+  **Four costs are being accepted, and this bullet used to name one.** They are
+  listed in full in
+  [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md); in short: attribution
+  (agent commits carry the PAT owner's name rather than `claude[bot]`); a
+  long-lived credential in `.git/config` in the one job the model holds `Bash`
+  in (**T-146**); `claude-ci-repair.yml` becoming reachable, so a red run calls
+  a second billable writer; and — the one that is not a trade-off but a
+  condition — **the anti-recursion guard becomes unreachable** (**T-145**, P1). A
+  fine-grained PAT belongs to a *user*, so the agent's own output carries
+  `author_association: OWNER`, which `queue-scan.jq` accepts *before* the
+  `claude`/`github-actions` login test is ever evaluated. Granting `Workflows`
+  too would retire `docs/automation/pending/`, which is convenient and is exactly
+  the widening that lets an agent rewrite the gate governing it.
+  **So the recommendation is now B — a separate GitHub App — unless the PAT
+  already exists**, because a second App keeps a distinct bot login and leaves
+  the login test reachable. Taking A instead means landing T-145 first, not
+  afterwards. This bullet said *"the cost being accepted is attribution"* and
+  *"the alternative without the attribution cost is a separate GitHub App"* until
+  the fifth review round of
+  [#128](https://github.com/hleserg/Attadipa/pull/128) pointed out that both
+  sentences are ones this branch had corrected in three other files while leaving
+  the one `CLAUDE.md` sends an agent to first.
 - **Tests:** `actionlint` over seven workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
-  cases — 16/16; host build 10/10; simulator 12/12, both geometries. Production:
+  cases — 16/16; the approval-stall rule, 51 cases including both of #71's real
+  runs with the values the API actually returned, the per-head marker rule, and
+  the deployed `token:`/`approvals` lines themselves — 51/51, **not yet wired into
+  CI** because that line is in `ci.yml` and rides the same blocked patch, and
+  the watchdog job around it dry-run against the live repository (the jq, the
+  pagination, the marker written and read back, the rendered comment) — which
+  does not prove it running on a schedule under its own permissions, and that
+  stays `NOT EXECUTED` until it is deployed; host build 10/10; simulator 12/12,
+  both geometries. Production:
   smoke test A ([#5](https://github.com/hleserg/Attadipa/issues/5)) exercised
   intake, marker-derived labels, the `@claude` dedup override and a green Claude
   run, and exposed the stuck-label defect now fixed.
@@ -231,8 +294,227 @@ stale silently. The protocol is
   than 48 quiet warnings a day.
 - **Hardware required:** no.
 
+### T-145 · The recursion bound must stop depending on who wrote the issue
+- **Priority:** P1 — it becomes live the moment the owner sets
+  `ATTADIPA_AGENT_TOKEN` to a fine-grained PAT, which T-108 asks them to do.
+- **Dependencies:** none. It is a change to the intake rules and can land
+  before or after the secret exists.
+- **Why now:** the anti-recursion boundary is a **login-name** test.
+  `intake-decision.sh` rejects `*"[bot]"`, `claude` and `github-actions`, and
+  `queue-scan.jq` refuses the last two as producers, with the reason written
+  beside it: *"our own output would start a billable writer: exactly the loop
+  the allowlist was built to avoid."* A fine-grained PAT belongs to a **user**,
+  so everything `claude-code-action` writes under it carries the owner's login
+  and `author_association: OWNER` — and `queue-scan.jq` accepts on
+  `author_association` **before** the login test is evaluated. The guard is not
+  bypassed; it is unreachable, and no change to the login list can reach it,
+  because the login really is the owner's. Found in review on
+  [#128](https://github.com/hleserg/Attadipa/pull/128), where the document had
+  claimed the opposite in as many words.
+- **The two reachable consequences**, both today rather than hypothetically:
+  - the agent files a blocker issue — which `CLAUDE.md` instructs, and the
+    BLOCKED template the workflow shows it ends with *"How to resume: comment
+    @claude on this issue."* — carrying `@claude` and the `attadipa-agent-task`
+    marker. `queue-scan.jq` matches on the marker with no label needed and the
+    watchdog dispatches a billable writer on our own output, hourly;
+  - `pr-merge-sweep.yml` clears the unanswered-Codex hold on `select(.bot |
+    not)`. Under the PAT the agent's comments are `user.type == "User"`, so the
+    agent answers Codex on the owner's behalf and the one rule that can put a
+    commit in `main` unattended merges over findings nobody replied to.
+- **Goal:** a bound that does not ask *who wrote it*. Candidates, none decided
+  here: a marker the agent stamps on its own output that the scanner refuses
+  regardless of author; a per-issue dispatch counter in the watchdog, which
+  bounds the loop rather than preventing it; or keeping a distinct bot identity
+  by choosing Option B (a second GitHub App) over the PAT, which leaves the
+  existing login test reachable and is the cheapest of the three if the owner
+  has not already made the PAT.
+- **Acceptance:** a test that fails against today's tree — an issue authored
+  with `author_association: OWNER` carrying the agent's own marker must not be
+  enqueued — plus whichever bound is chosen, and
+  [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md)'s *What this does not
+  cover* updated to match what is then true.
+- **What must not be assumed:** that setting the PAT is what creates the
+  problem. It is what makes it reachable; the ordering bug in `queue-scan.jq`
+  is already there.
+- **Hardware required:** no.
+
+### T-146 · The agent's push path leaves a long-lived credential in `.git/config`
+- **Priority:** P2 — it becomes live with `ATTADIPA_AGENT_TOKEN`, and it is a
+  bounded exposure rather than an open door, which is why it is not P1.
+- **Dependencies:** none in code;
+  [`pending/75-approval-stall.patch`](docs/automation/pending/README.md) is what
+  makes it reachable.
+- **Goal:** `actions/checkout` defaults `persist-credentials` to `true`, which
+  writes the token into `.git/config` as an `http.extraheader` for the life of
+  the workspace. The agent job is the one job where the model holds `Bash`, and
+  it pushes with `git push` from that shell — so the persistence is what makes
+  the push work and cannot simply be turned off. The built-in `GITHUB_TOKEN` it
+  replaces expires with the job; a fine-grained PAT does not, so the same file
+  goes from holding a credential that dies at the end of the run to holding one
+  that does not. Found in review of
+  [#128](https://github.com/hleserg/Attadipa/pull/128), where it was recorded as
+  a price rather than fixed, because fixing it in that patch would have broken
+  the push it exists to enable.
+- **Acceptance:** a push path that does not persist a credential in the
+  workspace — the candidates are `persist-credentials: false` plus an explicit
+  remote URL set at push time from the secret, an App installation token minted
+  per run (Option B in
+  [`APPROVAL_STALLS.md`](docs/automation/APPROVAL_STALLS.md), which also removes
+  the attribution cost), or a push step outside the job that holds `Bash`. It
+  states which one and why, and it is **demonstrated to still push**: a change
+  that closes the exposure and silently stops the agent from pushing is the
+  worse outcome, because nothing goes red.
+- **What must not be assumed:** that this is the generic *"a long-lived
+  credential on a public repository"* already priced in `APPROVAL_STALLS.md`.
+  That sentence is about the secret existing; this is about a specific file, in
+  a specific job, readable by a specific tool.
+- **Hardware required:** no.
+
+### T-147 · A comment on a pull request hides it from the orphan sweep
+- **Priority:** P2
+- **Dependencies:** none; reachable today, and
+  [`pending/75-approval-stall.patch`](docs/automation/pending/README.md) makes
+  it likelier by adding a job that comments.
+- **Goal:** `agent-queue-watchdog.yml`'s `stuck` job selects orphaned tasks with
+  `select(.updated_at < $CUTOFF)` over `repos/$REPO/issues`, and that endpoint
+  returns **pull requests too**. `updated_at` is bumped by a label, by any bot
+  comment and by the watchdog's own note, so a pull request carrying
+  `agent:working` that something comments on every tick never gets older than
+  the two-hour cutoff and is never returned to the queue — lost in plain sight,
+  which is the exact failure the `stuck` job was written to prevent.
+  `merge-candidate.sh` already documents this hazard for itself and uses
+  `committedDate` on the head instead: *"a label, a bot comment or this
+  workflow's own note bumps it. What matters is when code last arrived."* Found
+  in review of [#128](https://github.com/hleserg/Attadipa/pull/128).
+- **Acceptance:** the orphan sweep ages a task by something a comment cannot
+  move. It decides explicitly whether a pull-request-shaped task belongs in that
+  sweep at all — and if it does, it ages it by head `committedDate` like
+  `merge-candidate.sh`; if it does not, it says what returns such a task to the
+  queue instead, because excluding it without a replacement path is the same
+  loss with a different cause. A test that constructs a task whose `updated_at`
+  is fresh and whose head commit is three hours old, and asserts it is swept.
+- **Hardware required:** no.
+
+### T-153 · A citation's fingerprint on the next line is silently unchecked
+- **Priority:** P2
+- **Dependencies:** none. Touches `tools/docs/check_docs.py` only, so it waits
+  behind whatever else is in flight on that file rather than on any decision.
+- **Goal:** `tools/docs/check_docs.py:466` "FINGERPRINT.match(line[match.end()"
+  reads a citation's fingerprint out of the remainder of **the citation's own
+  physical line**. A citation whose quoted snippet wraps onto the next line
+  therefore has no fingerprint as far as the checker is concerned, and falls
+  back to the blank-line test — which passes on any non-blank line, and that is
+  precisely the rot the fingerprint was added to catch. It reads as protected
+  and is not. Three such citations were found in `APPROVAL_STALLS.md` on
+  2026-08-24: two in review of
+  [#128](https://github.com/hleserg/Attadipa/pull/128), and the third only by
+  re-counting that file's citations with the checker's own `CITATION` and
+  `FINGERPRINT` patterns instead of by eye — which also caught its prose
+  undercounting them, six against eight. Eye-counting is not a check, and a
+  defect found three times in one file by hand is a missing check rather than
+  three mistakes.
+- **Acceptance:** `check_docs.py` reports a citation whose fingerprint sits on
+  the following line, naming it a misplaced fingerprint rather than passing it.
+  The signal is precise, not heuristic: fire only when what follows the citation
+  on its own line is trivial — a stray backtick, bracket, comma or dash — **and**
+  `FINGERPRINT` matches the start of the next line. A citation deliberately
+  written without a fingerprint stays legal, because most are. Tests all three
+  ways: a wrapped fingerprint is reported, a citation with no fingerprint at all
+  is not, and one correctly fingerprinted on its own line is not. Reverting the
+  fix turns the new cases red.
+- **Hardware required:** no.
+
+
+### T-152 · A present provider that is permanently uncomparable still releases the hold
+- **Priority:** P2 — narrow, and it is the residual of a fix rather than a new
+  defect.
+- **Dependencies:** `core/src/trust.cpp` (**done**); `provider_detached()`
+  (**done**).
+- **Goal:** `compare_provider()` calls `stop_awaiting(ProviderDisagreement)`
+  when the second source cannot answer — no position, an out-of-range one, or a
+  measurement older than `provider_comparison_window`. The first two mean the
+  provider really has stopped being one. The third does not: a node relaying
+  fixes at 1 Hz whose measurement times are consistently 6 s old is **present,
+  is disagreeing, and stops being awaited anyway**, so the device climbs back to
+  `Trusted` in about twenty seconds with the node still saying it is 550 m out.
+  `14-a-relayed-fix-arrives-old.trace` records relayed ages of 2 s and 40 s over
+  *"a link that can queue, retry and reconnect"*, so a persistently late relay is
+  ordinary rather than exotic. Found in the second review round of
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which named it and did
+  not block on it.
+- **Acceptance:** it decides one of — a `TrustReason` meaning *a second source
+  is present and cannot be compared*, which is a live reason that holds the
+  state down and is retracted the moment one comparable frame arrives; or
+  `stop_awaiting()` on the stale path is removed entirely and the only exits
+  become an uncomparable-by-content frame and `provider_detached()`, with the
+  owner obliged to call it; or the release is kept and the bound is stated where
+  a reader meets it rather than only in this task. Whichever it picks,
+  `tests/test_trust.cpp`'s
+  `test_a_disagreement_stops_being_awaited_when_it_can_no_longer_be_compared`
+  is rewritten to assert the decision — it currently pins today's behaviour with
+  a deliberately disagreeing frame, so it will go red on purpose. Its two
+  siblings are `test_a_node_under_cover_is_not_a_node_that_has_gone`, which
+  pins that the grace is honoured, and
+  `test_a_node_uncomparable_past_the_grace_stops_being_awaited`, which pins that
+  it eventually expires; the first must stay green under any decision here, and
+  the second is the one a new enumerator replaces.
+- **What the fourth review round already settled, so this task starts from it.**
+  The lift no longer keys on one uncomparable frame: it needs the other side to
+  have been unable to answer for `provider_departure_grace`, and
+  `provider_detached()` latches so that a detach is not silently timed against
+  `evidence_ttl`. That closes the reachable half of the defect — a node under
+  canopy, relaying fix-less frames at 1 Hz, was being read as a node that had
+  gone, lifting the allegation about five seconds later and letting `remember()`
+  commit the disputed coordinate as the fallback. What remains for this task is
+  the *permanently* uncomparable present node, where the grace does eventually
+  expire and the release is a bound rather than a bug.
+- **And the grace is `ESTIMATED`, which is part of this task.** 120 s is chosen
+  to sit above an ordinary urban dropout and below a boot; nobody has measured
+  how long a node's receiver stays fix-less under cover, and the second source's
+  duty cycle is not ours to know. Being generous costs a pinned `Degraded` for a
+  node that vanishes without telling us; being stingy costs a false all-clear.
+  It is a number to measure, not to argue about.
+- **What must not be assumed:** that a new enumerator is free. Every
+  `TrustReason` costs a bit in a mask that `DiagnosticsSnapshot` carries and a
+  weight in `policy()`, and a reason nothing can retract is the pin this whole
+  area exists to remove — the retraction has to be designed with it.
+- **Hardware required:** no.
+
 
 ## NEXT
+
+### T-128 · The generated-asset reproducibility job is written and cannot be pushed
+- **Priority:** P2
+- **Dependencies:** T-149 (**done**) — the script it runs is committed.
+- **Goal:** add the `generated-assets` job to `.github/workflows/ci.yml`. It
+  regenerates both committed asset trees from two different absolute paths with
+  the pinned `lv_font_conv` and compares all sixteen files against what is
+  committed — the one thing a stamp cannot do, because a stamp written beside a
+  wrong file records the wrong file faithfully. The block is in
+  [`tools/integrity/README.md`](tools/integrity/README.md), written against
+  `actionlint 1.7.7` and passing it, together with the two one-line edits to the
+  `evidence` job that go with it.
+- **Why it is not already there, and it is not a decision:** the agent that
+  wrote it authenticates as a GitHub App whose installation may not write
+  `.github/workflows`, so the push was refused server-side — *"refusing to allow
+  a GitHub App to create or update workflow `.github/workflows/ci.yml` without
+  `workflows` permission"*. Working around that would mean smuggling a workflow
+  change past a permission boundary somebody set on purpose.
+- **Acceptance:** the job runs on a pull request and reaches `reproducible: 16
+  generated file(s) are identical across two checkout paths and identical to
+  what is committed`, and `evidence` lists it. Run ID recorded here.
+- **Two ways to close it, and the owner picks:** paste the block in an
+  orchestrator session whose token may write workflows, or grant the App
+  installation `workflows: write` and hand this back to the queue. The first is
+  one commit and changes no permissions; the second unblocks every future
+  workflow fix an agent finds, and widens what an agent may push. **Recommended:
+  the first**, because nothing else in the current backlog needs the second and
+  a permission granted to close one task is a permission nobody revisits.
+- **Watch for:** the job installs `pypng` and `lz4` from pip inside a venv —
+  they are `LVGLImage.py`'s module-scope imports and are needed even with
+  compression off. Pillow comes from apt, as it does in the other jobs.
+- **Hardware required:** no. **Owner required:** yes, for the permission or the
+  paste.
 
 ### T-034a · The mascot, at a size somebody drew
 - **Priority:** P2, and it is **an owner decision before it is work.**
@@ -296,7 +578,19 @@ stale silently. The protocol is
   `d2bf02c` (the CRC did not cover the last byte), `f46578c` (three in the trust
   evaluator), `7e4c4f9` (the replay rig could not produce Stale) and issue #26
   (the movement/altitude baseline, below) — and the rule from the research
-  prompt applies: **do not stop after the first fix.**
+  prompt applies: **do not stop after the first fix.** Issue #151 (recovery
+  completing on silence alone, below) has since been closed the same way.
+  **And one finding is about text rather than code.** `trust.h` and
+  `diagnostics.h` both justify keeping a per-reason mask by what a diagnostic
+  screen will show — *"can name it rather than showing a device stuck for no
+  visible reason"* — and there is no `l10n/strings.toml` entry for any
+  `TrustReason` or `TrustState`. `to_string(TrustReason)` returns English
+  identifiers, which is right for a diagnostics dump and is not a sentence a
+  user reads, so the promise is currently kept by something that cannot keep it.
+  Either the strings exist, or the promise says *a support bundle* instead of *a
+  screen*. Pre-existing; made twice more by
+  [#153](https://github.com/hleserg/Attadipa/pull/153), which is why it is
+  written down here rather than left to the next reader of a header.
 
 - **A state that cannot say "nobody has checked".** `GnssCapabilities`
   (`core/include/attadipa/core/gnss_power.h:51`) is four plain `bool`s defaulting
@@ -382,18 +676,77 @@ stale silently. The protocol is
   `encode()` accepts it and the round-trip tests cover it — so a caller
   draining until zero silently drops one.
 
-- **`Attach` while `Faulted` reports the wrong refusal.** It returns `Redundant`
-  where `Ignored` is the truth: nothing about a faulted link makes a new attach
-  redundant, and the two words tell an operator different things.
+- **`Attach` while `Faulted` reported the wrong refusal — fixed, issue #158.**
+  It returned `Redundant` where `Ignored` is the truth: nothing about a faulted
+  link makes a new attach redundant, and the two words tell an operator
+  different things. The cause was one guard, `phase_ != Absent -> Redundant`,
+  answering for five phases at once, and the diagnostic cost was the larger
+  half — `Redundant` is not counted, so a controller retrying an attach against
+  broken hardware left nothing in `ignored_events()` to find. `Attach` is now
+  classified per phase: `Absent` applies it, `Attached`/`Connecting`/`Ready`
+  answer `Redundant` because the peripheral genuinely is there, and `Faulted`
+  and `Suspended` answer `Ignored` and are counted. **`Suspended` is the
+  contract that had never been decided**, and it is decided here: a quiesced
+  link carries nothing, so an attach is refused rather than satisfied and the
+  way back stays `Resume` — otherwise a lifecycle owner that had not noticed
+  the suspend could route around it silently. A phase added to the enum later
+  falls to `Ignored` rather than `Redundant` in `link_state.cpp`, which is the
+  safe half of the two and is deliberately not compile-time guarded; the guard
+  is in **the test**, where a `constexpr` coverage check over
+  `kTransportPhaseCount` fails to build if the phase table does not name every
+  phase. So a new phase compiles and behaves safely, and the suite refuses to
+  build until somebody has decided what it *should* do.
+  Mutation-verified: restoring the old guard turns 13 checks red across the
+  three new tests, and leaves the `Attached`/`Connecting`/`Ready` rows green,
+  which is the evidence that only the two intended phases moved.
 
 - **`Detach` hardcodes `PeerClosed`.** A detach the *device* initiated is
   recorded as one the peer initiated. That is the field-report evidence for the
   most common question about a node link — who let go first.
 
-- **Recovery can complete with no observation at all.** The clean-hold window
-  can elapse while nothing whatever has been reported, so silence promotes the
-  state. OD-5's rule is that silence is not an all-clear; this is the one place
-  the code still treats it as one.
+- **Recovery could complete with no observation at all — fixed, issue #151.**
+  The clean-hold window could elapse while nothing whatever had been reported,
+  so silence promoted the state. With the default policy the whole path was
+  deterministic: `report(ReceiverSpoofing, t=0)` reached `Untrusted`, the TTL
+  took the alarm out of the score at 15 s, `evaluate()` read the resulting zero
+  as a detector's all-clear and started the clean hold on it, and twenty-five
+  seconds after the alarm the device announced `Trusted` again — no observation,
+  no `clear()`, no evidence of any kind in between. OD-5's rule is that silence
+  is not an all-clear, and this was the one place the code still treated it as
+  one. `TrustEngine` now remembers, per reason, whether an allegation left
+  `live_` by `clear()` or by the TTL, and refuses to start or advance the
+  recovery hold while any of them stands unretracted
+  (`TrustEngine::unconfirmed_reasons()`); when a retraction does arrive the hold
+  is measured from it rather than from the silence in front of it. Descent,
+  hysteresis and one-step-per-hold are unchanged. Six regression tests in
+  `tests/test_trust.cpp` and replay trace
+  `16-silence-does-not-restore-trust.trace`; removing the gate alone turns
+  sixteen checks and four trace expectations red. The rule is now written down
+  as [ADR-0011](docs/adr/0011-gnss-integrity.md) §5.1, including what it costs:
+  a device that never hears another positive word does not climb back on its
+  own, and the ways out are a detector saying so, `reset()`, or
+  `stop_awaiting()` **when the provider goes away** — three, not two, and not
+  *never a timer*: past `stop_awaiting()` the recovery hold runs and the state
+  climbs on the clock with nothing retracted, which is legitimate only because
+  the allegation was about a pair and one of the pair is gone. The scope on
+  `reset()` is load-bearing:
+  it asserts `Trusted` immediately and skips both holds, so it answers *a
+  different provider is here now*, and the pin most likely to be met comes from
+  the device's own receiver, which never detaches. It is also per boot, nothing
+  in `core/` persisting trust state. **Three further findings on the second
+  review pass**, one blocking: `ProviderDisagreement`'s only retraction sat
+  behind `compare_provider()`'s freshness gate, so a duty-cycled receiver or a
+  relayed fix measured outside the window pinned the device for the rest of the
+  boot with no live reason and no exit — fixed with `stop_awaiting()`, which
+  clears the *awaiting* bit without touching a live allegation, mutation-checked
+  in both directions; `DiagnosticsSnapshot` could not carry the mask that
+  decides the verdict, so a stuck device could not say why on the one screen
+  meant to explain it, and `GnssStatus` gained `trust_unconfirmed`; and the
+  claim that only three reasons can reach the mask is **false** whenever
+  `observe()` does not run inside `evidence_ttl`, because `refresh()` retracts
+  only `FixLost` and `StalePosition` — with the shipped defaults that is a
+  fifteen-second window of `Degraded` with `score() == 0`, self-healing on the
+  next observation, so a corrected sentence rather than a code change.
 
 - **`FixLost` and `StalePosition` both weigh 20 against a `degrade_at` of 30.**
   So neither, alone, moves trust. That may be the intended two-axis design —
@@ -411,7 +764,13 @@ stale silently. The protocol is
   — mutation-verified, as the four already closed were — or declined in writing
   with the reason. A silent decline is not one.
 - **Research status:** n/a
-- **Implementation status:** not started
+- **Implementation status:** in progress — the items marked *fixed* above are
+  closed, each with a mutation-verified test, and the rest are open with this
+  task. Closed so far: the `Attach`-while-`Faulted` refusal (issue #158), and
+  silence after a GNSS alarm restoring `Trusted` on its own (issue #151). The
+  remaining bullet in the same file as the first — zero meaning two things in
+  the decoder — was deliberately left alone, so that one finding stays one
+  change.
 - **Tests:** host, per item
 - **Hardware required:** no, except the resync measurement, which is a HIL note
   rather than a HIL plan.
@@ -914,7 +1273,16 @@ stale silently. The protocol is
 - **Acceptance:** no critical structure is ever overwritten in place; a migration
   never destroys its source; the ~2× storage headroom the pattern needs is
   checked rather than assumed; dirty state is flushed on every shutdown and
-  reboot path (#2627).
+  reboot path (#2627); **and `DiagnosticsSnapshot` carries a version, a magic
+  and its own size** before anything writes it anywhere. `tests/test_diagnostics.cpp`
+  pins a memcpy-into-RTC contract and the struct has no stamp of any kind, so a
+  snapshot written before an OTA and read after it is garbage with nothing to
+  detect it by. Latent today because nothing persists one; the layout has now
+  changed twice
+  ([#153](https://github.com/hleserg/Attadipa/pull/153),
+  [#163](https://github.com/hleserg/Attadipa/pull/163)) without a reader
+  noticing, which is exactly the condition for the defect. Found in review of
+  #153.
 - **Research status:** done —
   [meshcore-1.17-review §6](docs/upstream/meshcore-1.17-review.md)
 - **Implementation status:** not started
@@ -2196,6 +2564,61 @@ A1's schematic-revision
   looking for links. Two more cases: an illustration stays quiet, a real link
   after a code span on the same line is still read.
 
+### T-149 · The generated asset checks never looked at the generated bytes — **DONE** 2026-08-23
+- **This task was filed as T-127 and renumbered on merge.** `main` took its
+  own T-127 — *a link's `#anchor` is captured and then never checked* — while
+  this branch was open, so two unrelated tasks arrived at one ID. `main`'s
+  keeps the number because it landed first; every reference here to the
+  *anchor* half still reads T-127 and is correct. `check_docs.py`'s duplicate
+  task-ID check would have caught the collision at merge, which is what it is
+  for; it is recorded here so the next reader does not read the two as one.
+- **The finding, reproduced before it was fixed** (issue #69). Both committed
+  asset trees were guarded by a stamp of their *inputs* and then a count of
+  filenames. Editing a line of a generated font left
+  `generate_ui_fonts.py --check` at exit 0 saying *"fonts: inputs unchanged, 4
+  generated file(s) present"*; changing the first A8 bitmap byte of
+  `attadipa_icon_mesh_33.c` left `generate_images.py --check` at exit 0 saying
+  the same about ten. Missing glyphs, altered masks and corrupted descriptors
+  could all reach firmware behind a green CI run.
+- **The second half was worse, and is the reason the first was never caught.**
+  `lv_font_conv` writes its own argv into an `Opts:` comment, so all four
+  committed fonts carried `/mnt/e/projects/firefly/...` — one machine's absolute
+  paths. A fresh generation anywhere else differed in bytes while being
+  identical in every glyph, so the only byte-for-byte gate available reported
+  **all four files as differing** and could never be turned on. MEASURED here
+  before the fix: four false positives, and the diff was one line per file.
+- **One contract for both trees**, `tools/integrity/stamp.py`: `inputs` plus a
+  `output <sha256> <name>` line per committed file, strict parser, three
+  distinguishable verdicts — inputs moved, a file changed, the stamp itself is
+  damaged — because those need three different repairs. Written atomically and
+  **only by a generator**; there is deliberately no "re-stamp what is on disk"
+  mode, since a tool that blesses whatever bytes it finds is the same hole
+  wearing a maintenance hat. Reuse considered and recorded: `sha256sum -c` was
+  the close candidate and is in [REUSE_LEDGER](docs/research/REUSE_LEDGER.md).
+- **The provenance line is normalized** to logical paths, and now says something
+  a reader can check: every generated font banner carries the source TTF's
+  SHA-256 and the pinned converter version, and the generator **refuses a
+  converter whose `--version` is not 1.5.3** rather than trusting whatever npm
+  left on PATH. The glyph bytes did not move — verified by comparing the bodies
+  past the header, all four identical.
+- **45 mutation cases**, `ui_generated_outputs_reject_mutations`, needing neither
+  Node nor Pillow so they run in the same host job as the gate they are about.
+  Each of the fourteen outputs is corrupted in turn in a copy of the tree; so is
+  each input, and the stamp in six different ways. A control case at each end
+  asserts an untouched tree still passes — that is what caught a harness bug
+  where CPython reused bytecode from a mutation because the restored source had
+  the same size and the same mtime to the second.
+- **The expensive half is a script that is run and not yet automated** —
+  `tools/integrity/reproducibility.py`, T-128 for the CI job: fetch Montserrat
+  from the pinned LVGL commit (one 243 kB file, hash-checked, instead of the
+  350 MiB clone), install `lv_font_conv@1.5.3`, regenerate **both** trees from
+  two different absolute paths and compare all sixteen files against what is
+  committed. Host jobs stay Node-free, which is the whole reason the outputs are
+  committed. Run here before the job existed: 16/16 identical, 3.6 s.
+- **Not hardware.** Whether the glyphs and masks look right on a panel is
+  `NOT EXECUTED — HARDWARE REQUIRED` and belongs to a HIL task; this is about
+  the bytes being the bytes that were generated.
+
 ### T-107 · Why agent runs died with no explanation — **DONE** 2026-08-22
 - **The cause was not the model, the context or the turn ceiling.** It was
   `allowed_bots: ""` in `claude-agent.yml`. The hourly watchdog hands a task
@@ -2407,7 +2830,9 @@ A1's schematic-revision
 - **The staleness gate covers the converter as well as the art.** An encoder
   that changes its output *is* the asset changing, so its SHA-256 is inside
   `INPUTS.sha256` and a bump fails `ui_images_are_current` until the tree is
-  regenerated.
+  regenerated. What it did **not** cover was the generated bytes themselves, so
+  a hand-edited mask passed — **T-149** closed that, and `INPUTS.sha256` now
+  records a hash per output as well.
 - **Three refusals, each with a test that triggers it:** a source over 512 px
   (the 1440-pixel concept sheets, §41); a source under `docs/` or `pics/`; and a
   pixel size with no drawing behind it — which is final §86 made mechanical

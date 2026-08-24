@@ -1,8 +1,6 @@
 # Font tooling
 
-Four scripts, in the order they run. Nothing here runs in CI yet — that arrives
-with T-033, whose third check is "a catalogue entry the generated font cannot
-draw".
+The scripts, in the order they run.
 
 | | What it is for |
 |---|---|
@@ -11,8 +9,40 @@ draw".
 | [`instantiate.py`](instantiate.py) | pin a variable font to one weight — and refuse to rewrite it when it is already at that weight |
 | [`measure.py`](measure.py) | generate, compile for ESP32-S3, and report `.rodata`. The flash cost, measured |
 | [`contact_sheet.py`](contact_sheet.py) | render the glyphs LVGL will actually draw, at the size it will draw them, with the advance, side bearings and kerning it will use, in both themes |
+| [`fetch_ttf.py`](fetch_ttf.py) | one 243 kB file out of the pinned LVGL commit, hash-checked, instead of the 350 MiB clone |
+| [`generate_ui_fonts.py`](generate_ui_fonts.py) | the four committed subsets the simulator links, and the `--check` every host CI job runs |
 
 Results: [FONT_MEASUREMENTS](../../docs/research/FONT_MEASUREMENTS.md).
+
+## The committed subsets, and what guards them
+
+`assets/fonts/generated/` holds four `.c` files that ship in flash, and
+`INPUTS.sha256` beside them binds two different things:
+
+* the **inputs** — the charset, the sizes, the bit depth, the source TTF's
+  SHA-256, the pinned converter version and the exact banner text;
+* the **outputs** — a SHA-256 per committed file.
+
+The second half was missing until issue #69, and its absence was not theoretical:
+a hand-edited byte in a generated font passed `--check` green, because the check
+compared inputs and then counted filenames. The format is
+[`tools/integrity/stamp.py`](../integrity/stamp.py), shared with the image
+pipeline, and only a generator writes one — there is no "re-stamp what is on
+disk" mode, because a tool that blesses whatever bytes it finds is the hole
+itself wearing a maintenance hat.
+
+**The `Opts:` line is rewritten on the way out.** lv_font_conv records its own
+argv in a comment, so the first generation baked one developer's
+`/mnt/e/projects/...` into a shipping asset — and a fresh generation anywhere
+else then differed in bytes while being identical in every glyph. It is
+normalized to logical paths, which is what makes a byte-for-byte check possible
+at all; `tools/integrity/reproducibility.py` proves it by generating from two
+different absolute paths, and is waiting on a permission to run in CI —
+[`tools/integrity/README.md`](../integrity/README.md).
+
+**The converter is checked before it is used.** `--version` must report the
+pinned 1.5.3, because every generated file's banner claims that version and a
+bump changes bytes that ship in flash.
 
 ## What has to be installed
 
@@ -20,6 +50,25 @@ Results: [FONT_MEASUREMENTS](../../docs/research/FONT_MEASUREMENTS.md).
 pip install fonttools pillow           # coverage, instancing, contact sheets
 npm install --no-save lv_font_conv@1.5.3
 ```
+
+Neither is needed to *check* the committed fonts — that is the point of
+committing them. `python3 tools/font/generate_ui_fonts.py --check` runs on a
+machine with no Node and no configured build, and it is what
+`ui_fonts_are_current` runs in every host CI job.
+
+To rebuild them, which is the only way to update the stamp:
+
+```bash
+npm install --no-save lv_font_conv@1.5.3
+python3 tools/font/fetch_ttf.py --out /tmp/Montserrat-Medium.ttf
+python3 tools/font/generate_ui_fonts.py \
+        --ttf /tmp/Montserrat-Medium.ttf --converter ./node_modules/.bin/lv_font_conv
+```
+
+Passing both arguments to `--check` instead runs the expensive comparison: a
+fresh generation into a temporary directory, byte-compared against what is
+committed. That path used to be unusable — it reported all four files as
+differing on any machine but one — and now passes.
 
 `measure.py` also needs an ESP-IDF xtensa toolchain on the machine; it finds
 `xtensa-esp32s3-elf-gcc` under `~/.espressif` and refuses rather than falling

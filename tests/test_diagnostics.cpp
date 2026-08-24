@@ -58,6 +58,7 @@ void test_a_snapshot_can_be_saved_from_a_panic_handler()
     original.gnss.trust      = TrustState::Degraded;
     original.gnss.trust_reasons = trust_reason_bit(TrustReason::ReceiverJamming) |
                                   trust_reason_bit(TrustReason::AccuracyPoor);
+    original.gnss.trust_unconfirmed = trust_reason_bit(TrustReason::ReceiverSpoofing);
     original.transport_count = 2;
 
     unsigned char buffer[sizeof(DiagnosticsSnapshot)];
@@ -71,6 +72,7 @@ void test_a_snapshot_can_be_saved_from_a_panic_handler()
     CHECK(restored.power_state == PowerState::Idle);
     CHECK(restored.gnss.trust == TrustState::Degraded);
     CHECK(restored.gnss.trust_reasons == original.gnss.trust_reasons);
+    CHECK(restored.gnss.trust_unconfirmed == original.gnss.trust_unconfirmed);
     CHECK(restored.transport_count == 2);
 }
 
@@ -189,6 +191,43 @@ void test_the_reason_mask_carries_the_whole_set()
     CHECK(kTrustReasonCount <= 32);
 }
 
+// THE STATE THAT DECIDES THE VERDICT HAS TO BE EXPRESSIBLE IN THE STRUCT A
+// SCREEN READS. `trust_reasons` alone cannot describe a device held below
+// `Trusted` by an allegation nobody withdrew: nothing is currently alleged, the
+// mask is empty, and the state still will not climb. That is the one case
+// `trust.h` promises the per-reason mask exists to explain -- "so a diagnostic
+// screen can name it rather than showing a device stuck for no visible reason"
+// -- and until `trust_unconfirmed` existed the promise was kept by an accessor
+// no snapshot could carry. Found in review of #153.
+void test_a_snapshot_can_say_why_a_device_is_stuck_with_no_live_reason()
+{
+    TrustEngine engine;
+    engine.report(TrustReason::ReceiverJamming, MonotonicTime{0});
+    engine.update(MonotonicTime{0});
+
+    // Let the evidence lapse without anybody retracting it.
+    const TrustPolicy& policy = engine.policy();
+    engine.update(MonotonicTime{policy.evidence_ttl.value + 1});
+
+    GnssStatus status;
+    status.trust             = engine.state();
+    status.trust_reasons     = engine.reasons();
+    status.trust_unconfirmed = engine.unconfirmed_reasons();
+
+    // This is the shape a screen has to be able to render: not Trusted, and no
+    // live reason to show for it.
+    CHECK(status.trust != TrustState::Trusted);
+    CHECK(status.trust_reasons == 0);
+
+    // And the snapshot names the detector being waited on.
+    CHECK((status.trust_unconfirmed & trust_reason_bit(TrustReason::ReceiverJamming)) != 0);
+    CHECK((status.trust_unconfirmed & trust_reason_bit(TrustReason::ReceiverSpoofing)) == 0);
+
+    // The two masks are disjoint, so a screen can render them as one list
+    // without a reason appearing twice under two different words.
+    CHECK((status.trust_reasons & status.trust_unconfirmed) == 0);
+}
+
 // A support engineer reading a snapshot must not meet a bare integer. Every
 // enum in it prints.
 void test_every_enum_in_a_snapshot_prints()
@@ -220,6 +259,7 @@ int main()
     test_the_snapshot_carries_no_format();
     test_nothing_defaults_to_a_confident_answer();
     test_the_reason_mask_carries_the_whole_set();
+    test_a_snapshot_can_say_why_a_device_is_stuck_with_no_live_reason();
     test_every_enum_in_a_snapshot_prints();
 
     if (failures != 0) {
