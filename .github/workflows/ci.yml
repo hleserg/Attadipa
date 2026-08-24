@@ -351,6 +351,17 @@ jobs:
       - name: The staleness summary
         run: bash .github/tests/compare-summary-test.sh
 
+      # And whether anything notices a pull request that CANNOT be built. A
+      # merge conflict stops GitHub creating the `pull_request` run at all, so
+      # #65 sat with `total_count: 0` across two pushes: not a red check, no
+      # check, and every consumer downstream reads that as "not failing". The
+      # guard's own failure mode is the opposite one and it is easier to ship --
+      # `mergeable` is null for a few seconds after every push, and a guard that
+      # reads null as false would accuse every push in flight, hourly, forever.
+      # All three states are asserted here in both directions.
+      - name: A conflicted pull request gets told
+        run: bash .github/tests/pr-conflict-decision-test.sh
+
       # `gh` refuses `--slurp` together with `--jq`, and exits 1 before making
       # a request. pr-merge-sweep.yml shipped with three of them: one fatal on
       # the first dispatched run, two swallowed by `|| VAR=""` into "could not
@@ -365,18 +376,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Four failures that have all already happened here, and none of which
-      # anything else catches. A relative link that 404s reads exactly like one
-      # that works until somebody clicks it, and these documents cite each other
-      # constantly — a rename with a stale reference behind it is the normal way
-      # it breaks. A stray backtick turns everything after it into code until
-      # the next one, so a heading that lands inside the span stops being a
-      # heading. A duplicate task ID means two tasks answer to one name, so an
-      # agent handed "T-054" cannot tell which it was handed; four pairs had
-      # accumulated before this job existed. And a live task with no body cannot
-      # be picked up at all, while a finished one left in a live section reads
-      # as work waiting — four records were sitting like that.
-      #
+      # Eight failures. SIX shipped here; TWO were caught in flight and never
+      # reached main -- a duplicate OD number, four open pull requests deep, and a duplicate open-question ID inside this one.
+      # A relative link that 404s reads exactly like one that works until
+      # somebody clicks it, and these documents cite each other constantly. A
+      # stray backtick turns everything after it into code until the next one,
+      # so a heading inside the span stops being a heading. A duplicate task ID
+      # means two tasks answer to one name; four pairs had accumulated before
+      # this job existed. A live task with no body cannot be picked up, and a
+      # finished one in a live section reads as work waiting. A duplicate
+      # open-question ID splits one question in two. A stray file at the root is
+      # somebody's copyright. And a citation drifts onto a live line that says
+      # something else. This said FOUR, and described four, until T-157; the
+      # split of shipped against in-flight was wrong twice before it was derived.
       # Headings inside a `<details>` block are excluded on purpose: TASKS.md
       # keeps a rejected task's original scope in one, and that is a record
       # rather than a second live task. A check that failed on it would be
@@ -389,15 +401,35 @@ jobs:
 
       # The checker's own mutation tests, run before the checker. A checker that
       # passes everything is worse than no checker, because it reads as
-      # evidence. Twenty-five cases, thirteen of which assert it does *not* fire
-      # where firing would be wrong, and two that reproduce the splice defect
-      # this pull request's first revision shipped — one from each side, because
-      # a stray backtick both strips the task above of its fields and hands the
-      # task below a DONE mark in a live section.
+      # evidence. tools/docs/test_check_docs.py holds 74 cases; several assert
+      # it does *not* fire where firing would be wrong (a `###` sub-heading is not a second decision, a range
+      # straddling a blank line is how a table is cited, a line number in
+      # somebody else's tree is not ours to verify), and two reproduce the
+      # splice defect this pull request's first revision shipped — one from each
+      # side, because a stray backtick both strips the task above of its fields
+      # and hands the task below a DONE mark in a live section.
+      #
+      # The suite prints its own count. Three documents quoted this number and
+      # all three were stale within a day of cases being added, which is the
+      # T-102 drift shape inside the tool built to catch it.
       - name: The checker actually checks
         run: python3 tools/docs/test_check_docs.py
 
-      - name: Links resolve, spans close, IDs are unique, tasks have bodies
+      # What the citation check can and cannot see, because three documents
+      # billed it as the answer to citation drift and it is not: it catches a
+      # line past the end of a file, a blank line, and a range that is not one.
+      # A citation that lands on a real, WRONG line is invisible to it unless
+      # the citation carries a fingerprint -- `EXAMPLE.md:357 "Display FPC"`,
+      # written with the reserved placeholder path because an illustration with
+      # a real one is a live assertion -- in which case the check reads the line
+      # and says where the text actually went. Two citations here were thirteen
+      # lines out for weeks.
+      #
+      # Check 1 now reads the other half of a link too: the `#anchor` it had
+      # always captured and never looked at. A renamed heading leaves a link
+      # that lands at the top of the right file, which reads as working, and it
+      # is what makes an OD-number collision survive a merge.
+      - name: Links and anchors, spans, task IDs, OD numbers, task bodies, root files, citations, open-question IDs
         run: python3 tools/docs/check_docs.py .
 
   simulator:
