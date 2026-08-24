@@ -97,6 +97,29 @@ ok "and an unknown conclusion refuses rather than being assumed benign" \
                                 "HOLD check run is action_required" \
                                  "action_required" "ai-review:pass" 0 0 clean false "$OLD"
 
+# A COMMIT STATUS IS NOT A CHECK RUN. Both arrive in one `statusCheckRollup`,
+# and flattening them let a third-party app stand in for CI having run: the
+# only context on some head commits was "Devin Review / success / Full review
+# skipped: trial expired and no credits remaining", so the combined state read
+# `success` over a pull request whose workflows were all still waiting for
+# approval. A green status is evidence about that app. A red one is still
+# information and still refuses.
+ok "a green commit status alone is not a check having run" \
+                                "HOLD no check run on the head commit" \
+                                 "status:success" "ai-review:pass" 0 0 clean false "$OLD"
+ok "several green statuses are still not a check having run" \
+                                "HOLD no check run on the head commit" \
+                                 "status:success status:success" "ai-review:pass" 0 0 clean false "$OLD"
+ok "a red commit status refuses, and says it was a status" \
+                                "HOLD commit status is failure" \
+                                 "success status:failure" "ai-review:pass" 0 0 clean false "$OLD"
+ok "a pending commit status refuses too" \
+                                "HOLD commit status is pending" \
+                                 "success status:pending" "ai-review:pass" 0 0 clean false "$OLD"
+ok "and a green status beside a real green check run does not block the merge" \
+                                "MERGE" \
+                                 "success status:success" "ai-review:pass" 0 0 clean false "$OLD"
+
 echo
 echo "The other reviewer"
 starts "an unresolved review thread refuses" "HOLD 1 unresolved review thread" \

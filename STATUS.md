@@ -193,10 +193,12 @@ REQUIRED`.**
 - **The main I2C bus has six devices, not four.** The ES8311 codec and the ES7210
   microphone ADC are I2C control slaves on the same wire; both were recorded here
   as "I2S", which is their data path. All six addresses are now in the matrix,
-  each cited — three datasheet-fixed, two schematic-strapped, one
-  driver-source-only, and one (`0x6A` vs `0x6B` on the IMU) in conflict between
-  datasheet revisions, where the revision Waveshare's own wiki links is the one
-  that disagrees.
+  each cited. The IMU's `0x6A` vs `0x6B` conflict between datasheet revisions
+  is **settled by measurement** since this was written — the bench scan on
+  2026-08-23 found `0x6B` and no answer at `0x6A`, so the revision Waveshare's
+  own wiki links is the one that disagrees with the silicon. Five answer on a
+  bare scan (`0x18`, `0x34`, `0x40`, `0x51`, `0x6B`); the sixth, touch at
+  `0x38`, answers only after its reset is pulsed on GPIO 9.
 - **The vendor BSP is not the existence proof it is taken for.** Its PSRAM
   draw-buffer configuration is dead code; what ships is one ~80 KiB partial
   buffer in internal SRAM. T-093.
@@ -432,7 +434,23 @@ open question**, gated on three measurements only the owner can take: the
 closed-case clearance, the clear rectangle *and its diagonal*, and the mass of
 the fitted cell, which is the lie detector — 6.0–6.5 g is consistent with
 280–330 mAh and no sampled pouch reaches the density a genuine 400 mAh would
-need. **T-106** holds all three, and the register reads that go with them.
+need. **T-106** holds all three, and **all three are still untaken** — a caliper and
+a scale, the two instruments T-106 names, plus plasticine for the closed-case
+clearance, which is a squashed-thickness read and **not** something a feeler
+gauge can take through a closed cover. None of them has been used. The bus-scan
+half of T-106 is **done** — 2026-08-23, and `0x6A` is free after all, which is
+what the claim said before anybody could know it — and an earlier version of
+this paragraph let that stand in for the rest, listing *"what remains"* as the
+magnetometer modules and the register reads while silently dropping the
+clearance, the rectangle-and-diagonal and the mass. That is the one wrong
+sentence here that spends money: an owner reading it concludes the battery gate
+is clear and orders against the `ESTIMATED` 250–310 mAh tree without the mass —
+this paragraph's own lie detector — or the diagonal, which T-106 calls the
+measurement that gets forgotten. Found in review. **What remains under T-106 is
+M1, M2 and M3 — the clearance, the rectangle and its diagonal, and the mass —
+plus** confirming the magnetometer modules once they arrive
+([#83](https://github.com/hleserg/Attadipa/issues/83)), and the register reads
+that go with them.
 
 **Both inheritable charge currents are wrong for the real cell.** Waveshare's own
 demo sets 400 mA, which is 1.33C on ~300 mAh against a 1.0C class maximum, and
@@ -487,7 +505,11 @@ available on this board.
 - **T-010 board bring-up** — **half unblocked as of 2026-08-22.** A physical
   Waveshare `ESP32-S3-Touch-AMOLED-2.06` is on the desk; a T-Watch is not, and
   the T-Watch's variant question (which of five radios, which of two GNSS
-  modules) is exactly what nobody can answer without one. The Waveshare half is
+  modules) has an *answer* from the order listing — SX1262 at 868 MHz, and the
+  owner's recollection of MIA-M10Q — but not a *marking read*, which is the only
+  thing that moves `RadioChip::Unknown`, and needs the unit in hand. The GNSS
+  half has no enum to move: there is no `GnssModule` type in the tree, so its
+  gate is documentary where the radio's is in code. The Waveshare half is
   no longer blocked and is no longer being *done* either — see the section
   above; **nothing in this repository may say `PASS` until somebody runs a test
   on the board and writes down what came out.**
@@ -506,13 +528,44 @@ available on this board.
 
 | | Question | Why it matters |
 |---|---|---|
-| A1 | Is either board physically available, and which revision? | everything hardware |
-| A2 | If a T-Watch: which radio chip and which GNSS module? | decides whether the watch can join a MeshCore network at all — two of the five candidate radios cannot ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
-| A3 | Is there a second radio device, so mesh can be tested? | mesh test plan |
 | A6 | Does the Attadipa node carry a magnetometer? | decides what "compass" can mean — and even if the answer is yes, node orientation is **not** watch orientation ([ADR-0009](docs/adr/0009-heading.md) §3) |
+| A11 | **Do one or two of the T114s carry GNSS?** ([#124](https://github.com/hleserg/Attadipa/issues/124)) The fleet table records one GNSS-capable node; the indoor-fix observation in OD-16 says "either unit" | nothing is blocked either way — no node here gets an indoor fix under either reading — but [#90](https://github.com/hleserg/Attadipa/issues/90) and [#91](https://github.com/hleserg/Attadipa/issues/91) both plan against that table |
 | D16 | **Inter or Nunito Sans, and where do the arrows come from?** | the numbers exist ([FONT_MEASUREMENTS](docs/research/FONT_MEASUREMENTS.md)); the choice does not. Nunito Sans has no U+2190–U+2193, so picking it also picks "arrows are icons". Blocks freezing the design tokens, not M1 |
 
-None of these blocks M1. All of them block hardware work.
+None of these blocks M1, and the table says what each one *does* block rather
+than sharing one sentence: A6 blocks what "compass" is allowed to mean, D16
+blocks freezing the design tokens, and A11 blocks nothing either way — it is
+here because two planned tasks read a fleet table whose answer it changes, not
+because work stops without it. The blanket *"all of them block hardware work"*
+this line used to carry was written when the table held one kind of question,
+and by the time A11 was added it contradicted the row directly above it.
+
+**A1, A2 and A3 are answered as owner questions** — and A1 is off the table
+above because what is left of it is not an answer somebody owes us: the T-Watch
+half is the post arriving, and the Waveshare half is a loupe on a board already
+on the desk, now filed as `OPEN_QUESTIONS` **D20** rather than left live in a
+table whose rule is that every `A`-question is an open `needs-owner` issue —
+[#54](https://github.com/hleserg/Attadipa/issues/54), on 2026-08-22, recorded
+as
+[OD-16](docs/research/OWNER_DECISIONS.md#od-16--a1-a2-and-a3-no-watch-yet-sx1262-confirmed-by-listing-and-three-meshcore-nodes-instead-of-one).
+Waveshare is received and its **identity** is `VERIFIED` from the silkscreen —
+the board is the one schematic V1.0 describes. Its **revision** is not: the
+silkscreen carries the product name, whose `2.06` is the panel diagonal, and no
+revision field has been read off the unit, so V1.0-derived rows are confirmed
+against a document rather than against the board. What remains unread there
+is that revision (D20) and the display-FPC part marking (D19) — U2 and U3 were
+answered off the die itself, `WAVESHARE_EFUSE_READ` §1.2–1.3; T-Watch
+S3 Plus is `ORDERED`, not `PRESENT` — the T-010 blocker above is unchanged
+until it arrives and its radio marking is read off the physical part. A2:
+SX1262 at 868 MHz by order listing; MIA-M10Q from the owner's recollection,
+because the listing is silent on GNSS — the good outcome
+ADR-0003 flagged as possible but not guaranteed. A3: three MeshCore nodes
+(Heltec V4 companion, two Heltec T114s), not one. Two questions this answer
+raised are filed separately rather than folded in: T114 band
+([#89](https://github.com/hleserg/Attadipa/issues/89)) and the
+three-firmware-revision compatibility matrix
+([#90](https://github.com/hleserg/Attadipa/issues/90)); the indoor-GPS-fix
+constraint is filed as [#91](https://github.com/hleserg/Attadipa/issues/91).
 
 **A5 was answered on 2026-08-22** and is struck from the table above: an
 external magnetometer is intended, the owner has ordered a **CJMCU-9911
@@ -546,7 +599,7 @@ of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
-| Agent automation | **live — and the unattended half of it had never once worked.** The hourly watchdog hands a task over with `gh workflow run claude-agent.yml` under `GH_TOKEN: ${{ github.token }}` (`agent-queue-watchdog.yml:51,:85`), so the dispatching actor is `github-actions[bot]`. `claude-agent.yml` passed `allowed_bots: ""` to `anthropics/claude-code-action`, which refuses a non-User actor absent from that list: *"Workflow initiated by non-human actor: github-actions (type: Bot)."* Five seconds, no execution log written, and the hand-over could only report `no conclusion`. Every autonomous run since the watchdog was added died there; #27, #28, #67 and #69 were written off as unexplained model deaths and **T-107 was opened to investigate the reading list, which was the leading theory and was wrong**. The only successes were runs a *person* started by commenting — which is invisible unless the actor of each run is lined up against its outcome. Fixed by naming the dispatcher: `allowed_bots: "github-actions"`, which is strictly narrower than `'*'` (that would let any installed GitHub App drive a write-capable agent, and a test now refuses it) and is **not** a producer grant — `queue-scan.jq` still refuses `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so this repository's own output still cannot enqueue a billable writer. Both halves were defensible alone and only the *pair* was wrong, which no single file's review could ever show, so it is a test rather than a comment: `.github/tests/bot-actor-test.sh`, 19 assertions, reimplementing `isAllowedBot` in shell and asserting the watchdog still dispatches with the built-in token — proven to fail against the pre-fix tree, in both places. Found only because #81's `failure-reason.sh` replaced *"the cause is in the run log"* with *"no execution log was written — the agent step did not get far enough to leave one"*, which pointed at the step instead of the model. **And the same defect was in the reviewer, where it hid better.** `claude-pr-review.yml`'s `if:` deliberately admits `claude[bot]` — a blanket bot guard had skipped the review on the agent's own pull requests, the ones it exists for — and then handed the action `allowed_bots: ""`, the one list that does not contain `claude`. Runs `32597016812` (#95), `32596445164` (#94), `32595947792` (#92) and `32595273274` (#88): five, five, five and four seconds, byte-identical *"Workflow initiated by non-human actor: claude (type: Bot)"*, no execution log. **No agent-authored pull request had ever been reviewed**, and every one of those jobs reported **success**, because the `Review` step carries `continue-on-error` — which is right for its own reason and turned a refusal into a green tick. The workflow's own "the review did not run" comment listed five candidate causes and this was not among them; it is now cause 1. Fixed as `allowed_bots: "claude"`, and the test now asserts the *rule* — a workflow that admits a bot in its `if:` must name it, and none may name `'*'` — over all three agent workflows, so a fourth is checked the day it grows an exemption. **And the writer's turn ceiling was the same day's most expensive defect.** Six runs on 2026-08-22 — #71 three times, #67, #75, #78 — were accepted, posted an accurate plan about three minutes in, and died at turn 61 of a 60 ceiling with nothing on the branch: `error_max_turns`, `num_turns: 61`, **$3.00 each**, after 8 min 49 s of real work (run `32587675386`). An accurate report over an empty branch is the one outcome nobody can act on. The identical incident had already happened to the *reviewer* the same day and been fixed — 40 → 100, with the reasoning written down — and the writer, which does strictly more, was left at 60. Now 200; spend stays bounded by `timeout-minutes: 60`, which is what is actually billed. **Raising it exposed the failure underneath**: the next run of #67 died in ninety seconds instead of nine minutes with `subtype: success`, `is_error: true`, `num_turns: 20`, `permission_denials_count: 0` (run `32589375744`) — a real session that ended badly under a name reserved for one that did not, naming no cause, and `permission_denials_count: 0` rules out the tool-list failure. The published log holds the SDK options, an init line and that object, because `show_full_output` is off and that is correct — so the outcome comment was telling people the cause was in a log emptied of the cause on purpose. `.github/scripts/failure-reason.sh` now reads the *unpublished* execution log on the runner and puts one line on the issue, chosen by a whitelist of error grammars (an API status, a context refusal, a credit balance, an expired token) with everything else reported as `unclassified` plus structural facts only. The whitelist is the security model: that log holds every tool result, and the 27-case test puts an API key, a token and a private key beside a real error to prove only the error comes out. **Why #67 died is now known — it is the `allowed_bots` refusal above**, and the whitelisted line was what pointed at it. The 500 KB reading order the prompt mandates, `TASKS.md` alone 149 KB before the agent opens a file of its own, was the suspected cause and was not it; it survives as T-110 on its own merits rather than as an explanation for anything. **live and exercised in production.** Seven workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all seven with shellcheck integration, `shellcheck` clean over every script, the intake gate's 49-case hostile-input test and the watchdog filter's 37-case test pass. **Three defects fixed on 2026-08-22, all silent and all found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all; and the hand-over step's pull-request lookup asked GraphQL for `issue(number:)`, which does not resolve pull requests, so an agent started from a comment **on a pull request** got a `NOT_FOUND` document that `gh` had already written to stdout — `|| echo ""` does not undo that — and the outcome comment on #71 went out as ``### Done — pull request #{"data":{"repository":{"issue":null}}…``. `issueOrPullRequest` answers for both, and — the review's finding on the first fix — *pushed to this pull request* now requires the head to have actually moved, because a pull request is open before the agent starts and open after whatever it does; a clean run that pushed nothing says so instead. And the *before* head is read inside the writer queue rather than at event time — the gate fires the instant an event arrives while the agent job waits in `attadipa-agent-writer` for up to an hour, so a gate-time snapshot would have credited this run with a push made by whoever moved the branch in that window. A run that pushed a commit and then died says both things: work landed, and it may be half of it. And a cross-reference is evidence only if it was made **during** the run: #75 cites #71 five times, so filing #75 created that reference before any agent started, and the step announced *"Done — pull request #71"* for a run that produced nothing — then labelled the issue `agent:review`, so nothing would re-queue it. A `Fixes #N` still needs no timestamp; a bare mention does. **And a bare cross-reference is not an answer at all** — the fourth defect in this one step, reported as [#76](https://github.com/hleserg/Attadipa/issues/76) by the producing agent an hour after the third was merged. The step's second question was *which open pull request mentions this issue at all*, and a mention is created by any pull request naming it: #75 cites #71 five times as evidence, so filing #75 made that reference before any agent existed, and a run that produced nothing announced *"Done — pull request #71"*. Filtering mentions by time proved only that one appeared **during** the run, never that this run **caused** it — correlation standing in for ownership. The question is now gone rather than qualified again, and the reason it could go is in the prompt: a research pull request is required to carry `Fixes #N` in the same words as an implementation one, so nothing compliant needed the fallback. A closing reference also no longer launders a failed run into a success — a pull request that exists over a run that died says both things. A cut-off run is also told, in words, that **nothing automated will come back for the unfinished part**: the watchdog scans issues, not pull requests, so no label on a pull request queues anything — the first version added `agent:ready` there and review pointed out the label was promising something that could not happen. The whole decision moved into `.github/scripts/handover-decision.sh` with a 37-case test, because every defect this step has had lived in shell embedded in a workflow where nothing could execute it. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. **And nobody had ever recorded which model was answering.** The action has no `model:` input, so the model is a string inside `claude_args` — and an absent string is not an error, it is a silent fall back to the CLI default. All three agent workflows had run that way since the day they were built, which makes every past result unattributable and any comparison between two runs meaningless. Now `--model claude-opus-5 --effort max` in the writer, the reviewer and the CI repairer, with the flags read off `claude --help` rather than guessed (`--effort` takes one of `low, medium, high, xhigh, max`; there is no `ultracode` level, and the test rejects one). The full model name is pinned rather than the `opus` alias so that a new Opus cannot quietly change what this loop is. Owner decision, 2026-08-22; `bot-actor-test.sh` now holds it, and fails both when a pin is missing and when the level is not one the CLI accepts. **And the last link in the queue had no automation in it at all.** An agent opens a pull request, CI goes green, the reviewer sets `ai-review:pass` — and then nothing happens, because [CLAUDE.md](CLAUDE.md) makes the merge an *orchestrator* act and an orchestrator is a live session. On 2026-08-22 six finished pull requests (#88, #92, #94, #95, #97, #103) sat green for hours, each carrying `Fixes #N`, and the six issues behind them stayed open — which is what the owner actually complained about, one link downstream of the cause. Two defects fed it: five of the six had been left as **drafts**, and nothing merges a draft (`claude-agent.yml`'s Hand over step now runs `gh pr ready` on the two outcome kinds that carry a pull request the run actually moved, and never `--undo`); and the unattended backstop merges `docs/` only, three per run, so a green pull request touching `core/` was waiting for a human-shaped event the design never scheduled. **`pr-merge-sweep.yml`** closes it, every half hour, on the same conditions the owner had already approved for the backstop — transcribed rather than reinvented, **including the path allowlist**. It invokes no model and costs nothing from Anthropic. **Not** GitHub's native auto-merge, which cannot read a label: `ai-review:blocking` is a label on purpose, because a verdict is a judgement and a red tick is a fact, so arming native auto-merge would merge exactly the pull requests the reviewer stopped. The decision is a file rather than shell inside a workflow — `.github/scripts/merge-candidate.sh`, 80 assertions in `.github/tests/merge-candidate-test.sh`, every condition asserted in both directions plus the *order* of two of them, proven to fail against four distinct real defects. **The first version of this dropped three conditions, all in the widening direction, and review caught every one.** It had no path condition at all, so it merged over `core/`, `.github/` and `docs/automation/` — an agent could have opened a pull request replacing this very rule and had the sweep merge it, and a gate that can widen itself is not a gate. It read `ai-review:pass` as present-or-absent, when the label records that a verdict was reached and never *which commit* it was reached on: a review that reaches no verdict — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, so the next commit would have merged reviewed by nothing. And it had no per-run cap. All three now hold, plus a `timeout-minutes`, a Codex condition that no longer counts a bot's own comment as an answer, and an API failure that no longer prints the same line as an empty queue. It also claimed undrafting starts a fresh review: it does not — GitHub raises no workflow run from a `GITHUB_TOKEN` event, and saying a second opinion was obtained when none was is worse than not splitting the passes at all. What guards the merge is the head-commit condition, which survives an undraft because undrafting changes no commit. **So a green pull request touching `core/` still waits for an orchestrator session**, exactly as [CLAUDE.md](CLAUDE.md) says: widening that is the owner's decision, not this rule's. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
+| Agent automation | **live — and the unattended half of it had never once worked.** The hourly watchdog hands a task over with `gh workflow run claude-agent.yml` under `GH_TOKEN: ${{ github.token }}` (`agent-queue-watchdog.yml:54` "GH_TOKEN: ${{ github.token }}", `:218` "gh workflow run claude-agent.yml"), so the dispatching actor is `github-actions[bot]`. `claude-agent.yml` passed `allowed_bots: ""` to `anthropics/claude-code-action`, which refuses a non-User actor absent from that list: *"Workflow initiated by non-human actor: github-actions (type: Bot)."* Five seconds, no execution log written, and the hand-over could only report `no conclusion`. Every autonomous run since the watchdog was added died there; #27, #28, #67 and #69 were written off as unexplained model deaths and **T-107 was opened to investigate the reading list, which was the leading theory and was wrong**. The only successes were runs a *person* started by commenting — which is invisible unless the actor of each run is lined up against its outcome. Fixed by naming the dispatcher: `allowed_bots: "github-actions"`, which is strictly narrower than `'*'` (that would let any installed GitHub App drive a write-capable agent, and a test now refuses it) and is **not** a producer grant — `queue-scan.jq` still refuses `claude` and `github-actions` in `ATTADIPA_TRUSTED_PRODUCERS`, so this repository's own output still cannot enqueue a billable writer. Both halves were defensible alone and only the *pair* was wrong, which no single file's review could ever show, so it is a test rather than a comment: `.github/tests/bot-actor-test.sh`, 19 assertions, reimplementing `isAllowedBot` in shell and asserting the watchdog still dispatches with the built-in token — proven to fail against the pre-fix tree, in both places. Found only because #81's `failure-reason.sh` replaced *"the cause is in the run log"* with *"no execution log was written — the agent step did not get far enough to leave one"*, which pointed at the step instead of the model. **And the same defect was in the reviewer, where it hid better.** `claude-pr-review.yml`'s `if:` deliberately admits `claude[bot]` — a blanket bot guard had skipped the review on the agent's own pull requests, the ones it exists for — and then handed the action `allowed_bots: ""`, the one list that does not contain `claude`. Runs `32597016812` (#95), `32596445164` (#94), `32595947792` (#92) and `32595273274` (#88): five, five, five and four seconds, byte-identical *"Workflow initiated by non-human actor: claude (type: Bot)"*, no execution log. **No agent-authored pull request had ever been reviewed**, and every one of those jobs reported **success**, because the `Review` step carries `continue-on-error` — which is right for its own reason and turned a refusal into a green tick. The workflow's own "the review did not run" comment listed five candidate causes and this was not among them; it is now cause 1. Fixed as `allowed_bots: "claude"`, and the test now asserts the *rule* — a workflow that admits a bot in its `if:` must name it, and none may name `'*'` — over all three agent workflows, so a fourth is checked the day it grows an exemption. **And the writer's turn ceiling was the same day's most expensive defect.** Six runs on 2026-08-22 — #71 three times, #67, #75, #78 — were accepted, posted an accurate plan about three minutes in, and died at turn 61 of a 60 ceiling with nothing on the branch: `error_max_turns`, `num_turns: 61`, **$3.00 each**, after 8 min 49 s of real work (run `32587675386`). An accurate report over an empty branch is the one outcome nobody can act on. The identical incident had already happened to the *reviewer* the same day and been fixed — 40 → 100, with the reasoning written down — and the writer, which does strictly more, was left at 60. Now 200; spend stays bounded by `timeout-minutes: 60`, which is what is actually billed. **Raising it exposed the failure underneath**: the next run of #67 died in ninety seconds instead of nine minutes with `subtype: success`, `is_error: true`, `num_turns: 20`, `permission_denials_count: 0` (run `32589375744`) — a real session that ended badly under a name reserved for one that did not, naming no cause, and `permission_denials_count: 0` rules out the tool-list failure. The published log holds the SDK options, an init line and that object, because `show_full_output` is off and that is correct — so the outcome comment was telling people the cause was in a log emptied of the cause on purpose. `.github/scripts/failure-reason.sh` now reads the *unpublished* execution log on the runner and puts one line on the issue, chosen by a whitelist of error grammars (an API status, a context refusal, a credit balance, an expired token) with everything else reported as `unclassified` plus structural facts only. The whitelist is the security model: that log holds every tool result, and the 27-case test puts an API key, a token and a private key beside a real error to prove only the error comes out. **Why #67 died is now known — it is the `allowed_bots` refusal above**, and the whitelisted line was what pointed at it. The 500 KB reading order the prompt mandates, `TASKS.md` alone 149 KB before the agent opens a file of its own, was the suspected cause and was not it; it survives as T-110 on its own merits rather than as an explanation for anything. **live and exercised in production.** Seven workflows on `main`; the intake gate has accepted a real task, derived its labels from the marker and handed it to a Claude run that finished green (runs `32472498158`, `32472504777`). `actionlint` clean over all seven with shellcheck integration, `shellcheck` clean over every script, the intake gate's 49-case hostile-input test and the watchdog filter's 37-case test pass. **Three defects fixed on 2026-08-22, all silent and all found by reading run logs rather than by anything going red:** the gate was given the issue body where it needed the comment, so every `@claude` mention ever written here was refused with "nothing asks for an agent" — including the owner's on #41; a workflow-level concurrency group cancelled queued intake runs, so labelling #26, #27 and #28 `agent:ready` in one burst started no agent at all; and the hand-over step's pull-request lookup asked GraphQL for `issue(number:)`, which does not resolve pull requests, so an agent started from a comment **on a pull request** got a `NOT_FOUND` document that `gh` had already written to stdout — `|| echo ""` does not undo that — and the outcome comment on #71 went out as ``### Done — pull request #{"data":{"repository":{"issue":null}}…``. `issueOrPullRequest` answers for both, and — the review's finding on the first fix — *pushed to this pull request* now requires the head to have actually moved, because a pull request is open before the agent starts and open after whatever it does; a clean run that pushed nothing says so instead. And the *before* head is read inside the writer queue rather than at event time — the gate fires the instant an event arrives while the agent job waits in `attadipa-agent-writer` for up to an hour, so a gate-time snapshot would have credited this run with a push made by whoever moved the branch in that window. A run that pushed a commit and then died says both things: work landed, and it may be half of it. And a cross-reference is evidence only if it was made **during** the run: #75 cites #71 five times, so filing #75 created that reference before any agent started, and the step announced *"Done — pull request #71"* for a run that produced nothing — then labelled the issue `agent:review`, so nothing would re-queue it. A `Fixes #N` still needs no timestamp; a bare mention does. **And a bare cross-reference is not an answer at all** — the fourth defect in this one step, reported as [#76](https://github.com/hleserg/Attadipa/issues/76) by the producing agent an hour after the third was merged. The step's second question was *which open pull request mentions this issue at all*, and a mention is created by any pull request naming it: #75 cites #71 five times as evidence, so filing #75 made that reference before any agent existed, and a run that produced nothing announced *"Done — pull request #71"*. Filtering mentions by time proved only that one appeared **during** the run, never that this run **caused** it — correlation standing in for ownership. The question is now gone rather than qualified again, and the reason it could go is in the prompt: a research pull request is required to carry `Fixes #N` in the same words as an implementation one, so nothing compliant needed the fallback. A closing reference also no longer launders a failed run into a success — a pull request that exists over a run that died says both things. A cut-off run is also told, in words, that **nothing automated will come back for the unfinished part**: the watchdog scans issues, not pull requests, so no label on a pull request queues anything — the first version added `agent:ready` there and review pointed out the label was promising something that could not happen. The whole decision moved into `.github/scripts/handover-decision.sh` with a 37-case test, because every defect this step has had lived in shell embedded in a workflow where nothing could execute it. The mention path had therefore never worked in production and nothing said so. `CLAUDE_CODE_OAUTH_TOKEN` is configured, so the loop draws on a subscription rather than a metered API account. **And nobody had ever recorded which model was answering.** The action has no `model:` input, so the model is a string inside `claude_args` — and an absent string is not an error, it is a silent fall back to the CLI default. All three agent workflows had run that way since the day they were built, which makes every past result unattributable and any comparison between two runs meaningless. Now `--model claude-opus-5 --effort max` in the writer, the reviewer and the CI repairer, with the flags read off `claude --help` rather than guessed (`--effort` takes one of `low, medium, high, xhigh, max`; there is no `ultracode` level, and the test rejects one). The full model name is pinned rather than the `opus` alias so that a new Opus cannot quietly change what this loop is. Owner decision, 2026-08-22; `bot-actor-test.sh` now holds it, and fails both when a pin is missing and when the level is not one the CLI accepts. **And the last link in the queue had no automation in it at all.** An agent opens a pull request, CI goes green, the reviewer sets `ai-review:pass` — and then nothing happens, because [CLAUDE.md](CLAUDE.md) makes the merge an *orchestrator* act and an orchestrator is a live session. On 2026-08-22 six finished pull requests (#88, #92, #94, #95, #97, #103) sat green for hours, each carrying `Fixes #N`, and the six issues behind them stayed open — which is what the owner actually complained about, one link downstream of the cause. Two defects fed it: five of the six had been left as **drafts**, and nothing merges a draft (`claude-agent.yml`'s Hand over step now runs `gh pr ready` on the two outcome kinds that carry a pull request the run actually moved, and never `--undo`); and the unattended backstop merges `docs/` only, three per run, so a green pull request touching `core/` was waiting for a human-shaped event the design never scheduled. **`pr-merge-sweep.yml`** closes it, every half hour, on the same conditions the owner had already approved for the backstop — transcribed rather than reinvented, **including the path allowlist**. It invokes no model and costs nothing from Anthropic. **Not** GitHub's native auto-merge, which cannot read a label: `ai-review:blocking` is a label on purpose, because a verdict is a judgement and a red tick is a fact, so arming native auto-merge would merge exactly the pull requests the reviewer stopped. The decision is a file rather than shell inside a workflow — `.github/scripts/merge-candidate.sh`, 85 assertions in `.github/tests/merge-candidate-test.sh`, every condition asserted in both directions plus the *order* of two of them, proven to fail against four distinct real defects. **The first version of this dropped three conditions, all in the widening direction, and review caught every one.** It had no path condition at all, so it merged over `core/`, `.github/` and `docs/automation/` — an agent could have opened a pull request replacing this very rule and had the sweep merge it, and a gate that can widen itself is not a gate. It read `ai-review:pass` as present-or-absent, when the label records that a verdict was reached and never *which commit* it was reached on: a review that reaches no verdict — a spent quota, a cancellation, an actor refusal, the workflow-validation skip that reports **success** — leaves the previous commit's label in place, so the next commit would have merged reviewed by nothing. And it had no per-run cap. All three now hold, plus a `timeout-minutes`, a Codex condition that no longer counts a bot's own comment as an answer, and an API failure that no longer prints the same line as an empty queue. It also claimed undrafting starts a fresh review: it does not — GitHub raises no workflow run from a `GITHUB_TOKEN` event, and saying a second opinion was obtained when none was is worse than not splitting the passes at all. What guards the merge is the head-commit condition, which survives an undraft because undrafting changes no commit. **So a green pull request touching `core/` still waits for an orchestrator session**, exactly as [CLAUDE.md](CLAUDE.md) says: widening that is the owner's decision, not this rule's. **And a fifth widening was found on 2026-08-23: a commit status is not a check run.** GitHub returns both in one `statusCheckRollup` and the sweep flattened them, so a third-party app's green commit status counted toward "some check ran". The app in question is Devin, whose status on every head commit here reads *"Devin Review · success · Full review skipped: trial expired and no credits remaining"* — a green tick for a review that did not happen, and on a head whose own workflows were still `action_required`, the **only** context present, which made the combined state `success` over a pull request nothing had looked at. Statuses are now tagged `status:` in the query: a red or pending one still holds the merge, because a red third party is information, but a green one can no longer satisfy the condition that CI ran at all. Owner asked on 2026-08-23 for Devin to be removed as a reviewer outright — that is an app uninstall in repository settings and needs the owner's own hands; this rule is what stops it counting in the meantime. See [automation](docs/automation/CLAUDE_AUTOMATION.md) |
 
 Having ESP-IDF v5.5.5 on disk is not the same as having chosen it (T-004) — and
 that decision no longer blocks M1, because M1 is the simulator.
@@ -691,6 +744,82 @@ four more things at no cost:
   names no address; the bus scan above settles `0x6B` by measurement instead.
 
 ## Recently completed
+
+- **A degree of longitude at 89.9°N measured 1.96 km instead of 194 m, and it
+  got worse the closer you stood to the pole.**
+  [#28](https://github.com/hleserg/Attadipa/issues/28). `lon_e7_to_mm`
+  (`core/src/geo.cpp`) took the mean latitude, divided it by 1e7 to get a whole
+  degree, and used that as the index into `kCosTable1024` — so the fractional
+  part was discarded and every latitude in [89.0°, 90.0°) was scaled by
+  `cos 89°`. The overstatement is unbounded rather than merely large: inside
+  that last degree the true longitude scale falls from 0.01745 to zero while a
+  step function holds 0.01745, which is ten times over at 89.9° and a thousand
+  times over at 89.999°. **Below 89° the same defect is not sub-percent, and an
+  earlier version of this paragraph said it was — wrong by 100× at the very
+  boundary it named.** The worst error inside `[d, d+1)` sits at the top of the
+  interval and reads straight off the table: **+1.0%** at 29–30°, **+2.1%** at
+  50–51°, **+5.0%** at 70–71°, **+14.6%** at 82–83°, **+24.6%** at 85–86° and
+  **+101%** at 88–89° — so at 88.999°, one thousandth of a degree below the
+  stated boundary, the distance was already doubled. At **82.5°N — Alert,
+  Nunavut, the northernmost permanently inhabited place on earth** — the
+  overstatement was **+7.0%**, and this fix cuts the reported distance there by
+  6.3%. *Sub-percent* is true only below about **29°**. The movement is toward
+  truth, so nothing on a device is worse for it; what the wrong sentence cost
+  was the next person tuning `jump_while_still_mm` or auditing Arctic
+  behaviour, who would have read the blast radius as the last degree when it
+  was every latitude above ~29°. Found in review.
+  **What it would have cost:** ADR-0011 §6 makes implied speed and motion
+  disagreement evidence against a fix, and `TrustEvaluator::observe` computes
+  the first by dividing exactly this distance by an interval. A stationary
+  device at a high latitude, whose longitude wanders by the metre as any
+  receiver's does, would have produced kilometre-scale movement against an
+  accelerometer saying the wrist never moved — `PositionJump` and degraded
+  trust, for being at a high latitude, which is not a fault. **The fix** is
+  linear interpolation between the two bracketing table entries at the full
+  1e-7-degree resolution: integers throughout, no new table, no floating point
+  in the hot path, `kCosTable1024` and the `distance_mm()` contract untouched,
+  and every product bounded in the source — the widest is 2.0e10 × 2^24 ≈
+  3.4e17, a factor of 27 below the top of the type. Two details are load-bearing
+  and both are commented: the interpolation is written as a weighted mean rather
+  than the algebraically identical `lower + (upper − lower) · frac`, because the
+  latter subtracts two nearly equal numbers in the last degree and loses three
+  digits of a four-digit value; and the cosine is carried at 2^24 rather than the
+  table's 1024, because at 1024 the interpolated factor inside the last degree
+  rounds to *zero* — the same defect pointed the other way, and the direction
+  that silently passes a `distance > threshold` test.
+  **The envelope is measured, not claimed.** `tests/test_position.cpp` now
+  re-derives it on every run against an independent haversine reference — a
+  different method, no cosine table, no mean-latitude reduction, no
+  antimeridian case, because `sin(dlon/2)` is periodic and wraps for free.
+  Within **0.9%** from the equator to 89.999°, worst case 0.76%, flat rather
+  than growing towards the pole; inside the last 111 m the fixed-point quantum
+  takes over and the relative error eventually reaches 100%, where a whole
+  degree of longitude is a third of a millimetre — so what is bounded there is
+  the absolute error, under 20 mm, and the test says so instead of widening a
+  tolerance. The residual 0.7% is *not* the interpolation: it is
+  `kCosTable1024[89] = 18` against a true 17.871, and it is smaller than the
+  equirectangular approximation's own error at the same latitude, so a finer
+  table would buy nothing that survives the method it feeds.
+  Regression matrix covering 0°/45°/80°/89°/89.5°/89.9°/89.99°/89.999° in both
+  hemispheres, a swept envelope, the antimeridian at 89.9°N as well as at the
+  equator, the grid corners, coincident points, symmetry and saturation. **10 017 assertions fail
+  against the pre-fix code — but that is a count of failing assertions, not of
+  discriminating checks, and an earlier version of this sentence said "every new
+  check" when twenty-one new check sites are green against it.** Two whole new
+  test functions are among them: all eleven `CHECK`s of
+  `test_the_grid_boundaries_are_answers`, none of which reaches the cosine index
+  at all (zero deltas, a wrap to zero, pole-to-pole saturation, and coordinates
+  `in_range` rejects before any arithmetic), and all three invariants of
+  `test_the_longitude_scale_is_monotonic_symmetric_and_bounded`, which hold for
+  a step function as readily as for an interpolated one. They are worth keeping
+  — a boundary that is an answer rather than a crash is a property — but they
+  are not evidence that this defect existed. Meanwhile every **pre-existing**
+  distance test passed against the pre-fix code, which is exactly why the suite
+  could not see this: they only ever asked whole degrees. Found in review. Host, strict
+  warnings (`-Werror -Wconversion -Wsign-conversion -Wold-style-cast`), Clang,
+  ASan+UBSan with `-fno-sanitize-recover=all`, and the simulator build all
+  clean. **No hardware involved and none needed** — the defect and its fix are
+  entirely host-reproducible arithmetic.
 
 - **T-009's invariant was a property of the formatting, not of the code.**
   [#68](https://github.com/hleserg/Attadipa/issues/68).
@@ -876,9 +1005,42 @@ four more things at no cost:
 
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
-  job. **Five** checks: relative links resolve, inline code spans close, task
-  IDs are unique, a live task has a body while finished work is filed under
-  `## DONE`, and nothing unexpected is tracked at the repository root. The last two exist because the review of
+  job. **Seven** checks: relative links resolve **and their `#anchor` lands on a
+  real heading**, inline code spans close, task
+  IDs are unique, **one OD number names one owner decision**, a live task has a
+  body while finished work is filed under `## DONE`, nothing unexpected is
+  tracked at the repository root, and **a `file:line` citation lands where it
+  says it does** — meaning it is inside the file, on a line that is not blank,
+  over a range that reads first-to-last. A citation that lands on a real but
+  *wrong* line is invisible to that, which is what happened to two citations
+  into `HARDWARE_MATRIX.md`: both were thirteen lines out, both pointed at a
+  real row, and nothing went red for weeks. So a citation may now carry a
+  **fingerprint** — `EXAMPLE.md:357 "Display FPC"` — and where one is
+  written the check reads the cited line and reports where the text actually
+  went. That example uses `EXAMPLE.md` deliberately: a fingerprint is an
+  assertion, so an illustration written with a real path is one too, and this
+  paragraph would otherwise be asserting a line number in a document it is not
+  about. `EXAMPLE.md` is the reserved spelling that resolves to nothing, and
+  the check reports the day a file by that name appears. It is opt-in: adding a fingerprint is a promise the check then keeps,
+  and the citations this repository has been burned by are the ones to add it
+  to first. The count said Six on the commit that added the seventh, so
+  it is no longer typed: `check_docs.py` holds its checks as a list, the suite
+  holds this sentence to `len(CHECKS)`, and the same guard holds the case count
+  in this file, in `TASKS.md` and in the CI comment. The decision check was added 2026-08-23 for a
+  failure that was in flight rather than shipped: four open pull requests each
+  inserted `## OD-16` into `OWNER_DECISIONS.md` at the same line, for four
+  different decisions. Git conflicts on that, and a person resolves it — which is
+  the problem, not the safeguard. *Keep both* is the obvious resolution and is
+  right for the prose; it leaves the register people read to find out what the
+  owner decided carrying two OD-16 headings with two ambiguous anchors, CI green.
+  A first version of this entry said the branches shared no file and merged
+  silently; review refuted it with one counterexample, and the corrected model is
+  worse rather than better — a conflict a human resolves is a decision point
+  nothing checks. The task-ID check is TASKS.md-only and could
+  not see it. The other half — that a link's `#anchor` is captured and then
+  never verified, so a citation survives its heading being renumbered — is
+  **T-127**, deliberately not folded in here because its first run will find
+  pre-existing breakage. The two body checks exist because the review of
   [#65](https://github.com/hleserg/Attadipa/pull/65) found the pull request had
   spliced a `### T-102` heading into the middle of an unclosed code span in
   T-100's first bullet — T-100 lost its whole field list to T-102, and **the two
@@ -891,8 +1053,52 @@ four more things at no cost:
   the #48 review established for T-064 and T-073; all four are now under
   `## DONE`. Under `## BLOCKED` the body is the `BLOCKED:` block CLAUDE.md
   specifies rather than a priority, so T-010 and T-011 are correct and not
-  flagged. Twenty-five mutation tests, thirteen of which assert the checker does
-  *not* fire.
+  flagged. **67 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
+  sub-heading is not a second decision, a range straddling a blank line is
+  how a table is cited, and a line number in somebody else's tree is not
+  ours to verify. The
+  suite prints its own count, because the three documents quoting it were all
+  stale within a day of the last time cases were added.
+
+  **A re-review found the count load-bearing and the coverage behind it
+  missing**: `check_root_files` had no case at all, so six of seven checks were
+  covered while three documents quoted the number as the evidence that a
+  checker which passes everything is worse than none. The suite now wraps every
+  function in `CHECKS` and reports any that no case calls — coverage recorded
+  rather than annotated, because an annotation is a second thing to keep in
+  step. Four cases for that check followed. The same round found the mechanism
+  reddening CI for true sentences twice over: the citation separator accepted
+  whitespace, so a sentence of the shape *"`EXAMPLE.md:843` - 26 lines below"*
+  parsed as a descending range — and the sentence that actually did it named
+  this file, from inside this file, which is the same defect one paragraph
+  further on — and a fingerprint written to **illustrate** the syntax was a live
+  assertion about a third document — the two files CLAUDE.md tells the next
+  agent to read first were both making one. The separator is closed up now, and
+  `EXAMPLE.md` is the reserved placeholder an illustration is written with; a
+  file by that name appearing is itself reported, because it would turn every
+  illustration in the repository live.
+
+  **A third round found the checker's own reach short of what three documents
+  claimed for it**, in two places that had never matched anything. A citation
+  into a dot-directory — `.github/workflows/ci.yml:281` — matched at no position
+  at all: the path pattern admitted `./` and `../` and nothing else, and the
+  word-boundary look-behind is there precisely to refuse a start inside a path.
+  And a bare basename resolved only beside the citing document or at the
+  repository root, so a citation from `docs/research/` into
+  `docs/architecture/ARCHITECTURE.md` was skipped as somebody else's tree —
+  one of them pointing at a `HardwareFeature` enum member while claiming to cite
+  the section about `has()`. Both are fixed, and the immediate effect is the
+  count in T-140: **twenty-three bare citations became forty-nine**, because the
+  scan that produced twenty-three had been written to imitate the checker and
+  imitated its blind spots too. It now imports the checker instead. The same
+  round closed **T-127**, the anchor half of check 1: a link's `#anchor` had
+  always been captured and never looked at, which is what lets an OD-number
+  collision survive a merge with CI green. The first run over the whole
+  repository found exactly one broken anchor — and one illustration. The record
+  closing T-127 wrote the link syntax in backticks and the new check read it as
+  a link, which is the `EXAMPLE.md` defect one check over, so `check_links` now
+  blanks inline code spans first: GitHub renders a code span as characters, not
+  as a link.
 
 - **T-070 research — the watch as a tracker detector, and the honest limit is
   now sourced rather than deferred.**

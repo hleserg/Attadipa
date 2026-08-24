@@ -512,6 +512,32 @@ regression), `test_minmea_parse_rmc1/rmc2`, `test_minmea_checksum`,
 `test_minmea_check` — MIT, portable wholesale. GeographicLib's `GeodTest.dat` is
 data from an MIT library and freely usable as reference vectors.
 
+**The distance function stayed ours — `REIMPLEMENT`, re-examined 2026-08-23.**
+Issue #28 found that `distance_mm()` (`core/src/geo.cpp`) discarded the
+fractional latitude before its cosine lookup and so overstated a polar longitude
+difference by up to a thousand times, which put the choice back on the table:
+fix it locally, or take **GeographicLib** (MIT), which is already named in this
+entry and would be correct at every latitude by construction.
+
+Kept local, and the fix was fifteen lines of integer interpolation. Reasons, in
+the order they mattered: the consumer is the jump detector comparing two fixes
+taken seconds apart, and at that baseline the equirectangular approximation is
+already inside the error of the fixes being compared, so a geodesic would be
+*more* precise about a quantity nobody needs precisely; GeographicLib is C++ with
+`<cmath>` and `double` throughout, and this runs on every fix on a battery, where
+the whole point of the 91-entry table is not linking libm into that path; and the
+defect was quantization, not method — the fix is arithmetic the existing design
+already implied rather than a different design.
+
+What the decision costs, so the next person can weigh it rather than inherit it:
+the residual error is **0.9% to 89.999°**, measured on every test run against an
+independent haversine reference, and it is dominated by the rounding of
+`kCosTable1024`'s own entries. Anything that needs better than a percent — a
+route distance, a bearing, a track length — must not reach for `distance_mm()`,
+and this is the entry that says GeographicLib is where to go instead. That
+boundary is written into `core/include/attadipa/core/geo.h` as well, because a
+ledger nobody opens does not stop anybody.
+
 **Open:** whether the node carries a magnetometer decides whether this is the
 fallback plan or the only plan ([NODE_PROFILE](../node/NODE_PROFILE.md) N3). The
 speed gate below which course-over-ground is not trustworthy is unresolved and
