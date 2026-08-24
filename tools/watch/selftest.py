@@ -768,6 +768,233 @@ def an_abandoned_transfer_evicts_the_oldest_id() -> None:
           "and what it keeps is the newest, which is what the eviction claims")
 
 
+class FakeClock:
+    """The monotonic clock and `sleep`, made of arithmetic.
+
+    Patched over `watch.client.time`, so the schedule an input path produces
+    is decided by the code rather than by how busy the machine was, and a test
+    that asserts six hundred milliseconds costs none of them. Everything the
+    module reads from `time` and this does not define falls through to the
+    real one.
+
+    `sleep` refuses a negative interval instead of raising `ValueError` from
+    inside the library, because the two are the same bug seen from different
+    ends and only one of them says which call site did it.
+    """
+
+    def __init__(self, start: float = 0.0) -> None:
+        self.now = float(start)
+        self.slept: list[float] = []
+        self._reads = 0
+
+    def monotonic(self) -> float:
+        # A clock that only moves when someone sleeps cannot run a timeout
+        # out, so a wait for a reply that never comes would spin here for
+        # ever and take the CI job's whole budget with it. Bounded on purpose,
+        # the way `Trickle` bounds its chunks: a regression fails, slowly and
+        # legibly, rather than hanging.
+        self._reads += 1
+        if self._reads > 100_000:
+            raise AssertionError(
+                "the fake clock was read 100000 times with no sleep between -- "
+                "something is waiting on a reply the scripted device never sends")
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        if seconds < 0:
+            raise AssertionError(f"asked to sleep for {seconds!r} seconds")
+        self.slept.append(seconds)
+        self.now += seconds
+        self._reads = 0
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
+class InputLog(ScriptedDevice):
+    """Every injected event, stamped with the clock it arrived on.
+
+    The device side of a timing test: what matters is not only which events
+    were sent and in which order, but *when* -- and the wire carries no
+    timestamp of its own, so it is taken here, on arrival, from the same clock
+    the sender is sleeping against.
+    """
+
+    def __init__(self, clock: FakeClock) -> None:
+        super().__init__(self._answer)
+        self._clock = clock
+        self.events: list[tuple] = []
+
+    def _answer(self, envelope):
+        if envelope.op is not p.Op.INPUT_EVENT:
+            return []
+        # Unpacked against `input_event_encode`'s documented layout rather
+        # than through a decoder that shares its mistakes -- the same argument
+        # the fixed vectors at the top of this file are here for.
+        kind, _button, x, y, _touch, _at = struct.unpack("<BBhhBI", envelope.body)
+        self.events.append((self._clock.now, p.EventType(kind), x, y))
+        return [_reply_to(envelope, p.Op.INPUT_OK, b"\0\0")]
+
+
+def _gesture_schedule(points, duration, size=(240, 240)):
+    """Run one gesture on a fake clock; return the stamped events it produced."""
+    from watch import client as client_module  # noqa: PLC0415
+    from watch.client import Watch  # noqa: PLC0415
+
+    clock = FakeClock()
+    device = InputLog(clock)
+    watch = Watch(device, timeout=1.0)
+    watch.capabilities = p.Capabilities(width=size[0], height=size[1],
+                                        format=p.PixelFormat.RGB888)
+
+    real, client_module.time = client_module.time, clock
+    try:
+        watch.gesture(points, duration=duration)
+    finally:
+        client_module.time = real
+    return device.events
+
+
+def _about(value: float, expected: float, tolerance: float = 1e-6) -> bool:
+    return abs(value - expected) <= tolerance
+
+
+def a_gesture_takes_the_time_it_was_given() -> None:
+    """`duration` is the whole path, `PointerDown` to `PointerUp`.
+
+    Three things were wrong at once and only the first is visible in a long
+    path. The sleep was attached to the intermediate points, so an `N`-point
+    gesture waited `N - 2` times instead of `N - 1`; it came *after* each
+    point was sent, so the first segment had no length; and a two-point
+    gesture -- which has no intermediate points at all -- ignored `duration`
+    completely and delivered `Down` and `Up` back to back, however slow it was
+    asked to be. A recogniser reads speed, so that is a swipe reported as a
+    flick while the run says it asked for neither.
+    """
+    # Two points: the case with nothing in the middle, which is the one the
+    # old shape could not express at all.
+    events = _gesture_schedule([(10, 10), (60, 80)], 0.6)
+    kinds = [kind for _, kind, _, _ in events]
+    check(kinds == [p.EventType.POINTER_DOWN, p.EventType.POINTER_UP],
+          f"a two-point gesture is a down and an up ({[k.name for k in kinds]})")
+    if len(events) == 2:
+        check(_about(events[0][0], 0.0), "the down is at the start")
+        check(_about(events[1][0], 0.6),
+              f"and the up is a whole 0.6s later, not immediately ({events[1][0]:.4f}s)")
+        check((events[0][2], events[0][3]) == (10, 10)
+              and (events[1][2], events[1][3]) == (60, 80),
+              "with the coordinates it was given")
+
+    # Five points, 0.6s: four equal intervals of 0.15, the last of them before
+    # the `PointerUp`. This is the shipped file's shape, and it used to take
+    # 0.45s with a zero-length first segment.
+    path = [(10, 10), (10, 40), (10, 70), (40, 90), (80, 90)]
+    events = _gesture_schedule(path, 0.6)
+    kinds = [kind for _, kind, _, _ in events]
+    check(kinds == [p.EventType.POINTER_DOWN] + [p.EventType.POINTER_MOVE] * 3
+          + [p.EventType.POINTER_UP],
+          f"a five-point gesture is down, three moves and an up ({[k.name for k in kinds]})")
+    check([(x, y) for _, _, x, y in events] == path,
+          "in the order and at the coordinates it was given")
+    stamps = [stamp for stamp, _, _, _ in events]
+    gaps = [round(b - a, 6) for a, b in zip(stamps, stamps[1:])]
+    check(all(_about(gap, 0.15) for gap in gaps),
+          f"four equal intervals of 0.15s, the last one before the up ({gaps})")
+    check(_about(stamps[-1], 0.6),
+          f"and the path as a whole takes the 0.6s asked for ({stamps[-1]:.4f}s)")
+
+    # A path that does not divide evenly still lands on its duration: the
+    # deadlines are absolute, so rounding cannot accumulate along a long path.
+    long_path = [(i, i) for i in range(0, 70, 7)]
+    stamps = [stamp for stamp, _, _, _ in _gesture_schedule(long_path, 1.0)]
+    check(len(stamps) == len(long_path) and _about(stamps[-1], 1.0),
+          f"a ten-point second-long path ends at 1.0s ({stamps[-1]:.6f}s)")
+
+    # Zero is a real request -- the shape without a claim about its speed --
+    # and it must not become a refusal or a wait.
+    stamps = [stamp for stamp, _, _, _ in _gesture_schedule(path, 0.0)]
+    check(len(stamps) == 5 and all(_about(stamp, 0.0) for stamp in stamps),
+          f"a zero duration sends the whole path at once ({stamps})")
+
+
+def a_gesture_that_cannot_be_timed_is_refused_before_the_finger_lands() -> None:
+    """And refused *before* the `PointerDown`, which is the half that matters.
+
+    `time.sleep` rejects a negative interval with a `ValueError` from inside
+    the standard library -- after the finger is down, naming neither the
+    gesture nor the caller. `sleep(nan)` does not reject it at all: it returns
+    immediately, so a gesture asked to take an unreadable length of time takes
+    none and the run reports success. `inf` blocks for ever with an input
+    held. All three are the same mistake and all three now stop before
+    anything is on the wire.
+    """
+    from watch import client as client_module  # noqa: PLC0415
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    for duration, name in ((-1.0, "a negative duration"),
+                           (float("nan"), "a NaN duration"),
+                           (float("inf"), "an infinite duration"),
+                           ("later", "a duration that is not a number")):
+        clock = FakeClock()
+        device = InputLog(clock)
+        watch = Watch(device, timeout=1.0)
+        watch.capabilities = p.Capabilities(width=240, height=240,
+                                            format=p.PixelFormat.RGB888)
+        real, client_module.time = client_module.time, clock
+        try:
+            check_raises(WatchError, f"{name} is refused",
+                         lambda: watch.gesture([(10, 10), (60, 80)], duration=duration))  # noqa: B023
+        finally:
+            client_module.time = real
+        check(device.events == [],
+              f"and {name} left nothing on the wire, so no input is held "
+              f"({len(device.events)} event(s) sent)")
+
+    # Still two points minimum, and that refusal also predates the wire.
+    watch = Watch(InputLog(FakeClock()), timeout=1.0)
+    watch.capabilities = p.Capabilities(width=240, height=240, format=p.PixelFormat.RGB888)
+    check_raises(WatchError, "a one-point gesture is still refused",
+                 lambda: watch.gesture([(10, 10)], duration=0.5))
+
+
+def the_shipped_gesture_keeps_its_timing_on_both_panels() -> None:
+    """The file both documents point at, timed on the host, at both geometries.
+
+    `scenarios_load` proves it *resolves* on a 240x240 and on a 410x502 panel.
+    That was the whole check, and it is a check on the coordinates: the file
+    carries a `duration` as well, and nothing read it. Run here rather than
+    only in the simulator job, because the end-to-end test is gated behind
+    ATTADIPA_BUILD_SIMULATOR and this defect is entirely in the host.
+    """
+    from watch import scenario  # noqa: PLC0415
+
+    root = HERE.parent.parent
+    gesture = root / "tests" / "ui" / "gestures" / "example.json"
+    if not gesture.exists():
+        check(False, "the shipped gesture file is missing")
+        return
+
+    for width, height, board in ((240, 240, "t-watch-s3-plus"),
+                                 (410, 502, "waveshare-amoled-206")):
+        points, duration = scenario.load_gesture(str(gesture), _FakeScreen(width, height))
+        events = _gesture_schedule(points, duration, size=(width, height))
+        if len(events) != len(points):
+            check(False, f"the shipped gesture sent {len(events)} events for "
+                         f"{len(points)} points on the {board}")
+            continue
+        stamps = [stamp for stamp, _, _, _ in events]
+        gaps = [round(b - a, 6) for a, b in zip(stamps, stamps[1:])]
+        expected = duration / (len(points) - 1)
+        check(all(_about(gap, expected) for gap in gaps),
+              f"the shipped gesture keeps {len(points) - 1} equal intervals "
+              f"of {expected:.3f}s on the {board} ({gaps})")
+        check(_about(stamps[-1], duration),
+              f"and finishes at the {duration}s it declares on the {board} "
+              f"({stamps[-1]:.4f}s)")
+        check(events[-1][1] is p.EventType.POINTER_UP,
+              f"ending on the up, on the {board}")
+
+
 def an_error_code_this_build_does_not_know_is_still_a_sentence() -> None:
     from watch.client import Watch  # noqa: PLC0415
 
@@ -846,6 +1073,9 @@ CASES = (
     a_finished_screenshot_blacklists_nothing,
     a_frame_that_never_finishes_gives_up_at_the_deadline,
     an_abandoned_transfer_evicts_the_oldest_id,
+    a_gesture_takes_the_time_it_was_given,
+    a_gesture_that_cannot_be_timed_is_refused_before_the_finger_lands,
+    the_shipped_gesture_keeps_its_timing_on_both_panels,
     an_error_code_this_build_does_not_know_is_still_a_sentence,
 )
 

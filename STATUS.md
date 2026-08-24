@@ -714,6 +714,35 @@ Unreachable over a Unix socket that never blocks; on `SerialTransport` at T-114
 it is the ordinary case. The host self-test now holds it: 0.7 s with the check,
 20.5 s and red without.
 
+**And a gesture now takes the time it was asked for.** `duration` was the one
+number in the input path that nothing measured. The wait hung off the
+*intermediate* points and came after each was sent, so an `N`-point path waited
+`N - 2` times instead of `N - 1`, its first segment had no length at all, and a
+**two-point** gesture — which has no intermediate points — went `PointerDown`,
+`PointerUp`, back to back, however slow it was asked to be. The shipped
+`tests/ui/gestures/example.json` declares 0.6 s and spent 0.45 s of it. A
+recogniser reads speed, so the effect is a swipe arriving as a flick while the
+run reports it asked for neither — the one failure a debug input path exists to
+make impossible. The deadlines are now absolute, from one `time.monotonic()` at
+the `PointerDown`, so round trips come out of the intervals they happened in
+rather than lengthening the path; a negative, infinite or NaN duration is
+refused *before* the press goes out, so a mistyped gesture file cannot leave a
+finger down; `duration: 0` stays legal and means as fast as the connection
+manages. Three host self-test groups pin the schedule on a fake clock — the two-
+point case, the five-point case, and the shipped file resolved at **both** board
+geometries — and all three fail on `fc69c26`. The end-to-end test adds the
+coarse version with the real clock and the real socket in it: **0.602 s** on the
+Waveshare geometry and **0.601 s** on the T-Watch for a file declaring 0.6.
+Reported as [#186](https://github.com/hleserg/Attadipa/issues/186), and the
+semantics `duration` now has are written down in
+[WATCH_CONTROL](docs/testing/WATCH_CONTROL.md#what-duration-measures) because
+nothing had ever stated them. Verified with `ctest --test-dir build` (28/28) and
+`ctest --test-dir build-sim` (33/33, `-DATTADIPA_BUILD_SIMULATOR=ON`), and by
+looking at the diagnostic screen's touch trail on both geometries after running
+the shipped file. `swipe()` has a smaller relative of the same defect — `steps`
+intervals, `steps - 1` sleeps, the first of length zero, so it runs
+`1/steps` short — left alone here rather than folded into an unrelated diff.
+
 [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md) ·
 [REUSE_LEDGER](docs/research/REUSE_LEDGER.md) · **T-114** is what remains: the
 firmware endpoint, the day there is firmware.

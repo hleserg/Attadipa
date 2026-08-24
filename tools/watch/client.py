@@ -17,6 +17,7 @@ was rotated.
 
 from __future__ import annotations
 
+import math
 import os
 import socket
 import stat
@@ -169,6 +170,46 @@ def _is_ours(path: str) -> bool:
     if info.st_uid != os.geteuid():
         return False
     return not info.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+
+
+def _duration_seconds(value, what: str) -> float:
+    """A length of time an input may be asked to take, or a refusal.
+
+    Zero is allowed and means "as fast as the wire allows" -- there is a real
+    use for it, sending a shape without asserting anything about its speed.
+    Everything else here is a mistake to be named rather than absorbed: a
+    negative gap reaches `time.sleep` as a `ValueError` from inside the
+    library, and a NaN one does not raise at all -- `sleep(nan)` returns
+    immediately, so a gesture asked to take an unreadable time takes none and
+    reports success. `inf` is worse: it hangs the run with an input held.
+    """
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError) as exc:
+        raise WatchError(
+            f"{what} needs a duration in seconds, and {value!r} is not a number") from exc
+    if not math.isfinite(seconds):
+        raise WatchError(
+            f"{what} needs a duration in seconds, and {seconds} is not a length of time")
+    if seconds < 0:
+        raise WatchError(
+            f"{what} cannot take {seconds:g} seconds. Zero is allowed and means "
+            f"as fast as the connection manages")
+    return seconds
+
+
+def _sleep_until(deadline: float) -> None:
+    """Wait for a point on the monotonic clock, never for a negative interval.
+
+    Deadlines are absolute so that the work between them -- a request, a
+    reply, a scheduler -- comes out of the interval it happened in instead of
+    being added to the path. When something overruns its interval the next
+    point is already due, and this returns rather than trying to sleep back in
+    time.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining > 0:
+        time.sleep(remaining)
 
 
 @dataclass
@@ -664,17 +705,45 @@ class Watch:
         self.swipe(start, end, duration=duration, steps=steps)
 
     def gesture(self, points, duration: float = 0.5) -> None:
-        """An arbitrary path: down at the first point, up at the last."""
+        """An arbitrary path: down at the first point, up at the last.
+
+        `duration` is the **whole** path, from the `PointerDown` to the
+        `PointerUp`. An `N`-point path has `N - 1` intervals between adjacent
+        points and every one of them is waited out, the last one included --
+        the two-point case, where there is nothing in the middle at all, is
+        the one that says whether that is true.
+
+        It was not. The sleep hung off the *intermediate* points and came
+        after each was sent, so a five-point 0.6 s gesture spent 0.45 s and
+        began with a zero-length first segment, and a two-point one was a
+        `Down` immediately followed by an `Up` however long it was asked to
+        take. A recogniser reads speed: that is the difference between a
+        swipe, a drag and a flick, reported as whichever the timing happened
+        to fall into while the run said it had asked for something else.
+
+        The deadlines are absolute, from one `time.monotonic()` taken at the
+        `PointerDown`, so the round trips do not accumulate into the path
+        length -- summing `sleep(gap)` makes an `N`-point gesture late by
+        `N - 1` round trips, and the longer the path the further out it is.
+        """
         if len(points) < 2:
             raise WatchError("a gesture needs at least two points")
+        # Both refusals happen before the `PointerDown`. A duration checked
+        # afterwards would raise with a finger already down and leave the
+        # cleanup to `watch_control.py`'s `finally` -- which does run, but a
+        # `live` session or a scenario step recovering from the exception
+        # would be holding an input nobody asked for in the meantime.
+        seconds = _duration_seconds(duration, "a gesture")
         checked = [self._check_point(int(x), int(y)) for x, y in points]
-        gap = duration / max(1, len(checked) - 1)
+        gap = seconds / (len(checked) - 1)
 
+        started = time.monotonic()
         self._event(p.EventType.POINTER_DOWN, x=checked[0][0], y=checked[0][1])
-        for x, y in checked[1:-1]:
-            self._event(p.EventType.POINTER_MOVE, x=x, y=y)
-            time.sleep(gap)
-        self._event(p.EventType.POINTER_UP, x=checked[-1][0], y=checked[-1][1])
+        last = len(checked) - 1
+        for index, (x, y) in enumerate(checked[1:], start=1):
+            _sleep_until(started + gap * index)
+            self._event(p.EventType.POINTER_UP if index == last
+                        else p.EventType.POINTER_MOVE, x=x, y=y)
 
     def input_reset(self) -> tuple[int, int]:
         """Lift everything this connection is holding. Returns (released, still_held).
