@@ -251,21 +251,26 @@ stale silently. The protocol is
 - **Acceptance:** either a committed source asset with its provenance recorded,
   or a written decision that the mascot is redrawn and by whom. Not a scaled
   crop committed quietly.
-- **Does NOT carry D19, and an earlier version of this bullet said it did.**
+- **Does NOT carry D21, and an earlier version of this bullet said it did.**
   A mascot in `RGB565A8` is the first asset in this repository whose bytes have
   an order — true — but that order is not a fact about the panel. It is fixed by
   LVGL's colour-format contract and must match the framebuffer the software
   renderer writes into; the wire order is absorbed once, at flush, by the
   display port's `swap_bytes` flag. So **this task emits the asset in LVGL's
-  format and reads nothing off D19**. Following the old instruction was not even
+  format and reads nothing off D21**. Following the old instruction was not even
   possible for `RGB565A8`: the vendored converter packs it `uint16_t(color)` in
   host order and has no swapped variant to select — `--cf` offers
   `RGB565_SWAPPED` and no `RGB565A8_SWAPPED`. And for plain `RGB565` it would
-  have produced wrong colours in both directions, either double-swapping against
-  a port that also swaps, or matching the asset by turning the port's swap off
-  and breaking every glyph, arc and `A8` icon LVGL renders into the same
-  framebuffer. D19 governs one board-level knob, in `boards/`/`platform/`, and
-  the first line of display bring-up. Found in review.
+  have bought nothing: a pre-swapped asset renders **correctly**, because LVGL
+  un-swaps a swapped source while blending it into a native framebuffer
+  (`lvgl@85aa60d1 src/draw/sw/blend/lv_draw_sw_blend_to_rgb565.c:935`), so all
+  it costs is a conversion per blend that a native-order asset does not pay.
+  Matching the asset by turning the **port's** swap off is the branch that does
+  break things — every glyph, arc and `A8` icon LVGL renders into the same
+  framebuffer. D21 governs one board-level knob, in `boards/`/`platform/`, and
+  the first line of display bring-up. Found in review; the *"wrong colours in
+  both directions"* half of an earlier version of this bullet was over-stated
+  and is withdrawn.
 - **Hardware required:** no. **Owner required:** yes.
 
 ### T-037 · The first Clock
@@ -2285,12 +2290,12 @@ A1's schematic-revision
   **order** half was an inference across a boundary the render never crossed, and
   the one display path readable in pinned source **swaps every pixel** before
   transfer (`.swap_bytes = 1` → `lv_draw_sw_rgb565_swap()` → `tx_color()`
-  verbatim). The transfer order is now **`UNKNOWN`**, registered as **D19**, with
+  verbatim). The transfer order is now **`UNKNOWN`**, registered as **D21**, with
   two routes to close it in
   [WAVESHARE_FLASH_LAYOUT](docs/research/WAVESHARE_FLASH_LAYOUT.md) §7. Nothing
   shipped is wrong — T-034 emits `A8` masks, which have no byte order — but the
   first line of display bring-up must not read its answer off this task. (Nor
-  must the first colour **asset** read it off D19: an asset's byte order follows
+  must the first colour **asset** read it off D21: an asset's byte order follows
   LVGL's framebuffer format, and the wire order is absorbed at flush. Corrected
   in review; see VERIFIED_FACTS.) Issue
   [#109](https://github.com/hleserg/Attadipa/issues/109).
@@ -2305,8 +2310,9 @@ A1's schematic-revision
 
 ### T-102 · Documentation consistency in CI — **DONE** 2026-08-22
 - `tools/docs/check_docs.py`, run by the `Documentation consistency` job.
-  Seven checks: relative links, inline code spans, task IDs, owner-decision
-  numbers, task bodies, root files, and `file:line` citations. Four at first,
+  Eight checks: relative links, inline code spans, task IDs, owner-decision
+  numbers, task bodies, root files, `file:line` citations, and open-question
+  IDs. Four at first,
   each of a failure that had already happened here. **A fifth was
   added 2026-08-23** — nothing unexpected is tracked at the repository root —
   after `git add -A` swept a scraped vendor page into `main` through
@@ -2358,7 +2364,16 @@ A1's schematic-revision
   this is the one place in the checker that reads fenced lines — everywhere else
   a `**Priority:**` inside a fence is an example and does not count as a body.
 - **Mutation-tested**, and CI runs those tests before it runs the checker:
-  **67 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  **An eighth check landed 2026-08-24**: one open-question ID names one
+  question. Check 4 does that for OD numbers in `OWNER_DECISIONS.md` and
+  stopped there; `OPEN_QUESTIONS.md` carries about four times as many
+  identifiers and had nothing. A branch filed the panel's wire byte order as
+  `D19` while `main` took `D19` for the display-FPC part marking, the branch
+  merged `main`, and nineteen citations in eight files then pointed at two
+  different questions with CI green. Struck rows count — a retired number is
+  spent, not free. Found in review of
+  [#152](https://github.com/hleserg/Attadipa/pull/152).
+  **73 cases** in `tools/docs/test_check_docs.py`, several of which assert the
   checker does *not* fire where firing would be wrong — a `###` sub-heading is
   not a second decision, a range straddling a blank line is how a table is
   cited, and a line number in somebody else's tree is not ours to verify. The
@@ -2400,13 +2415,22 @@ A1's schematic-revision
   format; `idf.py size` is the only thing that settles cost after alignment.
 - **A prerequisite that was closed on an unproven fact, reopened 2026-08-23.**
   T-103 told this task the panel's byte order was settled; it was not — only the
-  vendor *files*' on-disk order was, and D19 now holds the real question. **This
+  vendor *files*' on-disk order was, and D21 now holds the real question. **This
   task is unaffected in fact**: every asset it emits is `LV_COLOR_FORMAT_A8`
   (`tools/assets/generate_images.py:134`), one byte per pixel, no byte order to
   get wrong — so `DONE` is still honest and no output needs regenerating. It is
-  affected in *inheritance*: the first task to add a colour format —
-  `RGB565`/`RGB565A8`, so T-034a's mascot is the likely first — inherits D19 and
-  must take the swap setting from a datasheet or a measurement. Issue
+  **not affected in inheritance either, and an earlier version of this bullet
+  said it was.** *"The first task to add a colour format inherits D21 and must
+  take the swap setting from a datasheet or a measurement"* was the instruction
+  this correction exists to withdraw, and it survived here — 2 100 lines from
+  the bullet that corrects it, in the entry an agent picking up T-034a reads to
+  find out what it inherited. An asset's byte order follows LVGL's colour-format
+  contract and the framebuffer the software renderer writes into; the wire order
+  is absorbed once at flush by the port's `swap_bytes` flag, which is a **board**
+  fact living in `boards/`/`platform/`. For `RGB565A8` the old instruction was
+  not even executable: the vendored converter has no swapped variant of that
+  format. Found in the second review round of
+  [#152](https://github.com/hleserg/Attadipa/pull/152). Issue
   [#109](https://github.com/hleserg/Attadipa/issues/109).
 
 ### T-060 · What each IMU actually does about steps — **DONE** 2026-08-22

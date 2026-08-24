@@ -59,6 +59,16 @@
    -- upstream MeshCore sources and the like -- are skipped, because their line
    numbers are facts about somebody else's tree.
 
+8. One open-question ID names one question. Check 5 does this for OWNER_DECISIONS
+   and nothing did it for OPEN_QUESTIONS, which is the same register one step
+   earlier and has four times as many identifiers in it. A branch filed the
+   panel's wire byte order as `D19` while `main` was taking `D19` for the
+   display-FPC part marking; the branch merged `main` and nothing re-checked the
+   number, so two unrelated questions shared one ID across nineteen citations in
+   eight files, with every check green. Struck rows count: `~~D12~~` is still
+   spent, and reusing a retired number is the same ambiguity with a subtler
+   cause. Found in review of #152.
+
 Run: python3 tools/docs/check_docs.py [root]
 Exits non-zero on the first category that has findings, after printing all of
 them. Invoke through `python3`, never as `./check_docs.py` -- the working copies
@@ -765,6 +775,58 @@ def check_root_files(root: str) -> list[str]:
     return sorted(problems)
 
 
+# `| D19 | ...` or `| ~~D19~~ | ...` at the head of a table row in
+# OPEN_QUESTIONS.md. Letter-and-number, optionally with a lowercase suffix
+# (`D12a`), because that is how the file already sub-divides a question that
+# split in two.
+QUESTION_ROW = re.compile(r"^\|\s*(?:~~)?\s*([A-Z]+\d+[a-z]?)\s*(?:~~)?\s*\|")
+
+
+def check_question_ids(root: str) -> list[str]:
+    """One open-question ID, one question.
+
+    Check 5 does this for OWNER_DECISIONS.md. Nothing did it for
+    OPEN_QUESTIONS.md, which is the register one step earlier -- the questions
+    that become owner decisions -- and carries about four times as many
+    identifiers.
+
+    The failure it exists for: a branch filed the panel's wire byte order as
+    `D19` while `main`, independently, took `D19` for the display-FPC part
+    marking. The branch merged `main` afterwards and the number was not
+    re-checked, because nothing re-checks a number. Two unrelated questions then
+    shared one ID across nineteen citations in eight files, including
+    `OWNER_DECISIONS.md` -- and every check passed, since the rows are in
+    different tables and neither is a heading, a task or a link.
+
+    Struck rows are counted. `~~D12~~` is a retired number, not a free one, and
+    reusing it produces the same ambiguity with a subtler cause: a reader
+    following a citation lands on a question marked RESOLVED and concludes the
+    thing they were asking about is settled.
+    """
+    path = os.path.join(root, "docs", "research", "OPEN_QUESTIONS.md")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    seen: dict[str, int] = {}
+    problems = []
+    for lineno, line in strip_fences(text):
+        match = QUESTION_ROW.match(line)
+        if not match:
+            continue
+        number = match.group(1)
+        if number in seen:
+            problems.append(
+                f"docs/research/OPEN_QUESTIONS.md:{lineno}: {number} is already "
+                f"used at line {seen[number]}. One ID names one question; "
+                f"renumber this row and update every citation of it. A struck "
+                f"row still owns its number."
+            )
+        else:
+            seen[number] = lineno
+    return sorted(problems)
+
+
 # The checks this file runs, as data. How many there are is quoted in STATUS.md,
 # TASKS.md and the CI comment, and the copy in STATUS.md said Six on the very
 # commit that added the seventh -- so the number now has one source, and
@@ -780,6 +842,7 @@ CHECKS = (
         "Citations pointing at a blank line or past the end of a file",
         "check_citation_lines",
     ),
+    ("Duplicate open-question IDs", "check_question_ids"),
 )
 
 

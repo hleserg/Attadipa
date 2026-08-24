@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
@@ -147,7 +147,7 @@ One to two steps ahead, per final §68 — not twenty.
 on a display bus nobody has timed, and nine masks are 14 kB. `RGB565A8` is
 present and unused: every asset so far is an `A8` mask, because an icon with a
 baked colour cannot follow a theme. That also means **no asset in this repository
-has a byte order yet** — one byte per pixel — which is why D19, the panel's
+has a byte order yet** — one byte per pixel — which is why D21, the panel's
 transfer byte order, blocks nothing today and blocks **the first line of display
 bring-up**. Not the first colour asset: an asset's byte order follows LVGL's
 colour-format contract and the framebuffer the software renderer writes into,
@@ -387,7 +387,7 @@ came off the unit the same day —
   `esp-bsp@2f51931 esp_lvgl_port_disp.c:739-741` acts on it, and
   `esp_lcd_sh8601.c:279-280` then transfers verbatim. The **pixel format** half
   stands (`COLMOD 3Ah = 0x55`); the **transfer byte order is `UNKNOWN`**, now
-  **D19**, closable by the CO5300 datasheet or by a measurement. Nothing shipped
+  **D21**, closable by the CO5300 datasheet or by a measurement. Nothing shipped
   is wrong — every generated asset is an `A8` mask with no byte order — and what
   inherits the question is **the first line of display bring-up**, not the first
   colour asset: an asset's byte order is LVGL's, and the wire order is absorbed
@@ -1005,12 +1005,12 @@ four more things at no cost:
 
 - **T-102 — documentation consistency in CI, and the defect its own pull request
   shipped.** `tools/docs/check_docs.py`, run by the `Documentation consistency`
-  job. **Seven** checks: relative links resolve **and their `#anchor` lands on a
+  job. **Eight** checks: relative links resolve **and their `#anchor` lands on a
   real heading**, inline code spans close, task
   IDs are unique, **one OD number names one owner decision**, a live task has a
   body while finished work is filed under `## DONE`, nothing unexpected is
-  tracked at the repository root, and **a `file:line` citation lands where it
-  says it does** — meaning it is inside the file, on a line that is not blank,
+  tracked at the repository root, **a `file:line` citation lands where it
+  says it does**, and **one open-question ID names one question** — meaning it is inside the file, on a line that is not blank,
   over a range that reads first-to-last. A citation that lands on a real but
   *wrong* line is invisible to that, which is what happened to two citations
   into `HARDWARE_MATRIX.md`: both were thirteen lines out, both pointed at a
@@ -1053,7 +1053,25 @@ four more things at no cost:
   the #48 review established for T-064 and T-073; all four are now under
   `## DONE`. Under `## BLOCKED` the body is the `BLOCKED:` block CLAUDE.md
   specifies rather than a priority, so T-010 and T-011 are correct and not
-  flagged. **67 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
+  flagged.
+
+  **An eighth check landed 2026-08-24, and the failure it is for was a merge
+  nobody could have seen.** A branch filed the panel's wire byte order as `D19`
+  in `OPEN_QUESTIONS.md` while `main`, independently, took `D19` for the
+  display-FPC part marking. The branch merged `main` afterwards; nothing
+  re-checks a number, so two unrelated questions shared one ID across nineteen
+  citations in eight files — including `OWNER_DECISIONS.md`, the file
+  [CLAUDE.md](CLAUDE.md) calls not ours to overturn — with every check green,
+  because the rows sit in different tables and neither is a heading, a task or a
+  link. Check 5 does exactly this for OD numbers and stopped at that file; check
+  8 does it for `OPEN_QUESTIONS.md`, which carries about four times as many
+  identifiers. Struck rows count: `~~D12~~` is spent, not free, and reusing it
+  sends a reader to a question marked RESOLVED and tells them their own subject
+  is settled. Six new cases, and the coverage guard below is what noticed the
+  check had none. Found in review of
+  [#152](https://github.com/hleserg/Attadipa/pull/152).
+
+  **73 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
   sub-heading is not a second decision, a range straddling a blank line is
   how a table is cited, and a line number in somebody else's tree is not
   ours to verify. The

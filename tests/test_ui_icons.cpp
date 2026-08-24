@@ -109,21 +109,24 @@ int main()
         // decision is recorded here, where the next person to trip this line
         // will read it: an asset's byte order follows LVGL's colour-format
         // contract and the framebuffer the software renderer writes into. It is
-        // NOT read off D19. D19 is the panel's WIRE order, absorbed exactly
+        // NOT read off D21. D21 is the panel's WIRE order, absorbed exactly
         // once at flush by the display port's `swap_bytes` flag, which is a
-        // board fact living in `boards/`/`platform/`. Taking it from D19 is
+        // board fact living in `boards/`/`platform/`. Taking it from D21 is
         // not executable for RGB565A8 (the vendored converter has no swapped
-        // variant) and produces wrong colours for RGB565 in either direction --
-        // double-swapped against a port that also swaps, or matched by turning
-        // the port's swap off and breaking every glyph, arc and A8 icon LVGL
-        // renders into the same framebuffer.
+        // variant) and pointless for RGB565: LVGL un-swaps a swapped source
+        // while blending it into a native framebuffer, so a pre-swapped asset
+        // renders correctly and merely pays a conversion per blend. The branch
+        // that does break things is matching the asset by turning the PORT's
+        // swap off, which breaks every glyph, arc and A8 icon LVGL renders into
+        // the same framebuffer. An earlier version of this comment said RGB565
+        // was wrong in either direction; that was over-stated and is withdrawn.
         //
         // So when this line is relaxed to admit a colour format, the assertion
         // that replaces it is that the format is LVGL's NATIVE one, never a
         // pre-swapped variant. Found in review of #152.
         check(l.dsc->header.cf == LV_COLOR_FORMAT_A8,
               "every linked asset is an A8 mask; a colour asset takes its byte "
-              "order from LVGL's framebuffer format, never from D19",
+              "order from LVGL's framebuffer format, never from D21",
               __LINE__);
         CHECK(static_cast<int>(l.dsc->header.w) == l.pixels);
         CHECK(static_cast<int>(l.dsc->header.h) == l.pixels);

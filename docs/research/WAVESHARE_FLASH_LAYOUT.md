@@ -412,7 +412,7 @@ So on that path the CO5300 receives the **opposite** order to the host-native
   and has never been selected. Its `swap_bytes` is not readable, so whether the
   producer of these bytes swapped is `UNKNOWN`.
 
-Registered as **D19** in [OPEN_QUESTIONS](OPEN_QUESTIONS.md). §7 below gives the
+Registered as **D21** in [OPEN_QUESTIONS](OPEN_QUESTIONS.md). §7 below gives the
 bench step that would close it, and it is `NOT EXECUTED — HARDWARE REQUIRED`.
 
 ### 4.2 What it means for T-034
@@ -441,7 +441,12 @@ into, and the wire order is absorbed once, at flush, by the port's `swap_bytes`
 flag — which is exactly what §4.1a's own four-step trace shows. An earlier
 version of this paragraph named the asset too, and following it was not possible
 for `RGB565A8` (the vendored converter has no swapped variant of that format) and
-wrong for `RGB565` in either direction. Found in review.
+merely pointless for `RGB565` — a pre-swapped source renders correctly, LVGL
+un-swapping it while blending into a native framebuffer, and only pays a
+conversion the native-order asset does not. An earlier version of this sentence
+said *"wrong for `RGB565` in either direction"*, which was over-stated and is
+withdrawn; see [VERIFIED_FACTS](VERIFIED_FACTS.md) for the traced version. Found
+in review.
 
 ### 4.3 The music settles an argument two sections down
 
@@ -487,7 +492,7 @@ committed is the extractor and the measurements.
 | `factory` cannot be restored by OTA | **VERIFIED** — 9 MB image, 6 MB slots |
 | `model` is ESP-SR / xiaozhi | **VERIFIED** — the two model names are in the container |
 | `storage` is SPIFFS holding three raw images | **Superseded.** It holds **six** files — three images and three MP3s. The **stored** format is **VERIFIED**: a 12-byte header, then 410 × 502 RGB565 **little-endian on disk**, confirmed by rendering the file. §4.1 |
-| Those files prove the panel's native byte order | **Withdrawn 2026-08-23** — §4.1a. A host render never crosses the display driver, and the one path readable in pinned source **swaps every pixel** before transfer. The transfer order is `UNKNOWN`, registered as D19 |
+| Those files prove the panel's native byte order | **Withdrawn 2026-08-23** — §4.1a. A host render never crosses the display driver, and the one path readable in pinned source **swaps every pixel** before transfer. The transfer order is `UNKNOWN`, registered as D21 |
 | `AAC210602A1` is a haptic module | **CONFLICTING** — §6 |
 | The battery connector is MX1.25 | **LIKELY**, photo-derived — §6 |
 
@@ -528,7 +533,7 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
 ## 7. Still open
 
 - ~~Confirm the image format~~ — **done**, §4. `tools/flash/spiffs_extract.py` did it without mkspiffs.
-- **Settle the panel's transfer byte order — D19, §4.1a.** `NOT EXECUTED —
+- **Settle the panel's transfer byte order — D21, §4.1a.** `NOT EXECUTED —
   HARDWARE REQUIRED`. Two routes, and the cheap one is not the conclusive one:
 
   1. **Read the CO5300 datasheet** on `3Ah` (`COLMOD`) and `2Ch` (`RAMWR`) 16-bit
@@ -547,8 +552,17 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
      answer to this question.
 
   Until one of those runs, the first line of display bring-up must treat the
-  swap as a **configurable** with an `UNKNOWN` default, not as a constant read
-  off §4.1 — and *configurable* here means a **board fact**, so it lives in
+  swap as a **configurable whose correct value is `UNKNOWN`** — not as a
+  constant read off §4.1. A boolean has no unknown default, and an earlier
+  version of this sentence said *"a configurable with an `UNKNOWN` default"*,
+  which leaves the next person to invent one. **Start it at `swap_bytes = true`
+  and say why in the code**: that is the setting on the one complete path
+  readable in pinned source (§4.1a's four-step trace), so it is the value with
+  evidence behind it rather than the value that reads as neutral. Being wrong
+  that way is loud — red renders blue-ish green on the first pattern anyone
+  draws — whereas starting from `false` on a panel that wants the swap is the
+  same wrongness with a plausible-looking screen in front of it. And
+  *configurable* here means a **board fact**, so it lives in
   `boards/`/`platform/` rather than in settings or a build flag. It is not the
   first colour asset's question at all: see §4.2. Found in review.
 - **Check `xiaozhi-esp32`'s licence** before reading it for the audio path, and

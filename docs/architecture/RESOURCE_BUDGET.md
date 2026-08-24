@@ -108,19 +108,34 @@ the flushed region, on the CPU. At full frame that is a second traversal of the
 against the cache-coherency requirement in the same sentence. Per-frame CPU time
 is also battery.
 
-Two things about it are **`UNKNOWN`** and neither may be assumed away:
+**Three** things about it are **`UNKNOWN`** and none may be assumed away. The
+third was added in the second review round, because an earlier version of this
+paragraph priced the pass as a fixed property of the panel:
 
 | | Question | Where it is tracked |
 |---|---|---|
-| Necessity | does *this* panel need the swap at all — the CO5300's wire byte order | **D19**, [`OPEN_QUESTIONS`](../research/OPEN_QUESTIONS.md); closable by the datasheet or by a photographed pattern |
+| Necessity | does *this* panel need the swap at all — the CO5300's wire byte order | **D21**, [`OPEN_QUESTIONS`](../research/OPEN_QUESTIONS.md); closable by the datasheet or by a photographed pattern |
 | Cost | what the pass costs per frame, internal SRAM versus PSRAM | not measured; belongs in §4's table when somebody measures it |
+| Avoidability | whether the pass is a property of the **panel** or of the **flush-time-swap strategy** | not settled; an input to T-093 rather than a constant it designs around |
+
+The third exists because LVGL can render straight into a swapped destination:
+`lv_draw_sw_blend_to_rgb565_swapped.c` is a whole blend target at the pinned
+`lvgl@85aa60d1`, and `sim/lv_conf_simulator.h:216`
+"LV_DRAW_SW_SUPPORT_RGB565_SWAPPED       1" compiles it in. On that strategy the
+conversion folds into the blend that already runs and there is no second
+traversal at all — it is paid per blended pixel rather than per frame pixel,
+which for a watch face that redraws a small region is a different number
+entirely, and possibly a larger one for a full-screen redraw. Neither has been
+measured, which is the point: **T-093 should see the swap priced as an option,
+not inherit it as a cost.**
 
 Recorded because the source trace that established the swap filed it as a
 correctness question only, and the draw-buffer ADR would otherwise be written
-against a frame time with a mandatory full-buffer software pass missing from it —
-the swap then resurfacing later as an unexplained regression on the one board
-that cannot afford it. Found in review of
-[#152](https://github.com/hleserg/Attadipa/pull/152).
+against a frame time with a full-buffer software pass either missing from it or
+nailed into it — the swap then resurfacing later as an unexplained regression on
+the one board that cannot afford it. Found in review of
+[#152](https://github.com/hleserg/Attadipa/pull/152), corrected in its second
+round.
 
 The T-Watch numbers are comfortable enough that the same strategy will fit
 whatever the Waveshare board forces. Design for the harder board.
