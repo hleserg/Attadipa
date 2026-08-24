@@ -2485,7 +2485,8 @@ A1's schematic-revision
   that did not cause the problem.
 - **Research status:** n/a
 - **Implementation status:** done. Both checks live in
-  `.github/tests/gh-api-usage-test.sh`, which CI already runs at `ci.yml:360` —
+  `.github/tests/gh-api-usage-test.sh`, which CI already runs at
+  `.github/workflows/ci.yml:360` "bash .github/tests/gh-api-usage-test.sh" —
   a new script would have needed a line in `ci.yml`, which is the file an agent
   cannot write, which is the whole reason patches are parked in the first place.
   The `gh api` scan now also reads `docs/automation/pending/*.patch`, as each
@@ -2524,7 +2525,7 @@ A1's schematic-revision
   reaches the same audience from inside a test script. An empty pending
   directory is a pass with its own line, not a skip; an unreadable patch is a
   failure, not a clean read.
-- **Tests:** the suite goes 7 → 29 cases. The patch scan is covered in both
+- **Tests:** the suite goes 7 → 42 cases. The patch scan is covered in both
   directions and over the shape this repository actually writes: an added
   offender on one line, an added offender split across a continuation, a
   *removed* offender, a good call, and a Markdown patch that documents the rule
@@ -2548,9 +2549,53 @@ A1's schematic-revision
   **green** with a warning naming `docs/research/WAVESHARE_ARRIVAL.md`.
   Mutation-verified against the shipping code too: dropping the
   `.github/`-only precheck fails four cases, inverting the stale condition
-  fails six. Restored, 29/29.
+  fails six. Restored, 42/42.
+
+  **What the second review round added, all of it about the guard turning
+  itself off rather than about the guard being wrong.** The fixtures wrote
+  their warnings into the *real* `$GITHUB_STEP_SUMMARY` — `out=$("$@" 2>&1)`
+  captures stdout and stderr and a redirection is neither — so every CI run on
+  every pull request ended with four stale-parked-patch lines naming a `mktemp`
+  directory the `EXIT` trap had already deleted. The job summary and the
+  annotation are the **only** channel the non-fatal half has, and filling it
+  with permanent false positives is how the run where the real patch drifted
+  goes unread. Redirected at a scratch file, and the summary is now asserted
+  in both directions — written for a drifted patch, silent for one that fits,
+  and its path relative rather than the runner's absolute one.
+
+  Both halves also read one enumeration now. `find` was recursive and the
+  globs were not, so a patch parked in a **subdirectory** — an ordinary way to
+  group a multi-file change, and #128 parked 516 lines across six files — made
+  the emptiness test say *not empty* while both scans opened nothing, and each
+  then printed its strongest green line about a file neither had read. A
+  `.diff` was invisible the same way, and a **missing** directory reported in
+  the same words as an empty one, which is the distinction that matters:
+  empty is a state somebody chose, missing is one nobody noticed. All three
+  are failures now, with a case each.
+
+  Two more that read as clean and were not: a file with **no `+++` line at
+  all** — truncated, half-written, saved in the wrong format — had no target
+  to match, so the scan emitted nothing and the caller read that as no
+  offenders; and a **corrupt** patch arrived in the same words as a drifted
+  one, whose first suggested remedy is `git rm`, which for an unreadable patch
+  means deleting work nobody has read. `patch_postimage` exits non-zero without
+  a target, and `git`'s own wordings — `corrupt patch at line N`,
+  `No valid patches in input`, checked against `git` rather than guessed —
+  route to a separate fatal message whose remedy is a rebuild and explicitly
+  never `git rm`.
+
+  And the three new `ci.yml` citations this task added carried no fingerprint,
+  in a task whose subject is a parked patch that moves exactly those lines: the
+  patch inserts eleven lines above them, so its own landing would have shifted
+  359/360 to 370/371 and left three citations on unrelated shell.
+  `pending/README.md`'s own rule — *"A patch carries every edit its own
+  landing forces"* — was nine lines away. All three are fingerprinted and
+  mutation-verified, and **the parked patch now carries the edits**: verified
+  by landing it into a scratch copy of the tree and running `check_docs.py` on
+  the result, which is clean.
 - **Hardware required:** no.
-- **Known gap, recorded rather than fixed:** `ci.yml:359`'s step name still
+- **Known gap, recorded rather than fixed:**
+  `.github/workflows/ci.yml:359` "The gh calls in the workflows are ones gh accepts"'s step name still
   reads *"The gh calls in the workflows are ones gh accepts"*, which is now
   narrower than what the step runs. The failure messages name the parked patch,
   so an operator is not sent to the wrong file, and correcting the name needs a

@@ -462,10 +462,40 @@ index 4e21eda..eaf6fc3 100644
  action has no label feature of its own. That citation read `:846` until
  2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
  asserts this stays in`, an unrelated comment — so a reader checking the evidence
+diff --git a/TASKS.md b/TASKS.md
+--- a/TASKS.md
++++ b/TASKS.md
+@@ -2486,7 +2486,7 @@
+ - **Research status:** n/a
+ - **Implementation status:** done. Both checks live in
+   `.github/tests/gh-api-usage-test.sh`, which CI already runs at
+-  `.github/workflows/ci.yml:360` "bash .github/tests/gh-api-usage-test.sh" —
++  `.github/workflows/ci.yml:371` "bash .github/tests/gh-api-usage-test.sh" —
+   a new script would have needed a line in `ci.yml`, which is the file an agent
+   cannot write, which is the whole reason patches are parked in the first place.
+   The `gh api` scan now also reads `docs/automation/pending/*.patch`, as each
+@@ -2595,7 +2595,7 @@
+   the result, which is clean.
+ - **Hardware required:** no.
+ - **Known gap, recorded rather than fixed:**
+-  `.github/workflows/ci.yml:359` "The gh calls in the workflows are ones gh accepts"'s step name still
++  `.github/workflows/ci.yml:370` "The gh calls in the workflows are ones gh accepts"'s step name still
+   reads *"The gh calls in the workflows are ones gh accepts"*, which is now
+   narrower than what the step runs. The failure messages name the parked patch,
+   so an operator is not sent to the wrong file, and correcting the name needs a
 diff --git a/docs/automation/pending/README.md b/docs/automation/pending/README.md
 index 4882e57..157e9d4 100644
 --- a/docs/automation/pending/README.md
 +++ b/docs/automation/pending/README.md
+@@ -40,7 +40,7 @@
+ 
+ **CI checks that it still applies**, on every push, in
+ `.github/tests/gh-api-usage-test.sh`
+-([`.github/workflows/ci.yml:360`](../../.github/workflows/ci.yml) "bash .github/tests/gh-api-usage-test.sh") — `git apply --check` over
++([`.github/workflows/ci.yml:371`](../../.github/workflows/ci.yml) "bash .github/tests/gh-api-usage-test.sh") — `git apply --check` over
+ every `*.patch` in this directory. Until T-158 that sentence read *"check it
+ before trusting it"* and nothing did, which is the shape of every defect this
+ directory's own patches were written to fix.
 @@ -47,13 +47,15 @@ waiting on a person.
  
  ## Waiting now

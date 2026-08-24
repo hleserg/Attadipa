@@ -84,9 +84,17 @@ offenders() {
 # documents the `--slurp`/`--jq` rule constantly, in prose with no `#` to strip,
 # and a parked patch that edits a README explaining the rule would otherwise be
 # reported for breaking it.
+# EXITS NON-ZERO IF THE FILE HAS NO `+++` LINE AT ALL. Without that, a file
+# that is not a patch -- truncated, half-written, saved in the wrong format --
+# has no target to match, so `want` stays 0, the scan emits nothing, and the
+# caller reads "no offenders found" from a file it never parsed. That is the
+# `|| VAR=""` shape this whole file exists to refuse, and the caller already
+# knows how to fail on a non-zero exit. Found in the second review round of
+# #180.
 patch_postimage() {
   awk '
     /^\+\+\+ /{
+      seen_target = 1
       target = $2
       sub(/^b\//, "", target)
       want = (target ~ /^\.github\/(workflows|scripts|tests)\//)
@@ -96,6 +104,7 @@ patch_postimage() {
     /^@@/    { next }
     !want    { next }
     /^[+ ]/  { text = $0; sub(/^./, "", text); printf "%d\t%s\n", FNR, text }
+    END      { if (!seen_target) exit 3 }
   ' "$1"
 }
 
@@ -104,8 +113,16 @@ patch_postimage() {
 # until review of #180 and which drifts further from the truth the longer the
 # patch is.
 patch_offenders() {
-  local patch=$1
-  patch_postimage "$patch" | awk -v patch="$patch" '
+  local patch=$1 image
+  # Captured rather than piped. `set -o pipefail` at the top of this file would
+  # also carry `patch_postimage`'s refusal out of a pipeline, and mutating this
+  # back to `a | b` leaves the suite green for exactly that reason -- so this is
+  # belt and braces, not the load-bearing half, and saying otherwise would be
+  # the kind of claim this file exists to catch. What it buys is that the
+  # refusal survives somebody removing `pipefail`, which is one line at the top
+  # of a 700-line file and no test would notice.
+  image=$(patch_postimage "$patch") || return 3
+  printf '%s\n' "$image" | awk -v patch="$patch" '
     {
       n = $0; sub(/\t.*$/, "", n)
       t = $0; sub(/^[0-9]+\t/, "", t)
@@ -120,6 +137,27 @@ patch_offenders() {
   '
 }
 
+# Did `git` refuse because the PATCH ITSELF is malformed, rather than because
+# the tree moved under it? The two are different problems with opposite
+# remedies -- a moved context line is answered with `git rm` or a rebuild, a
+# corrupt hunk header is answered by rebuilding and never by `git rm`, because
+# `git rm`-ing a patch nobody can read throws away work nobody has read either.
+# `:130` discarded git's stderr until the second review round of #180, so the
+# two arrived as one message and the first remedy offered was the wrong one.
+patch_is_corrupt() {
+  # The wordings git actually produces, checked against git rather than
+  # guessed: `corrupt patch at line N` for a hunk header whose counts do not
+  # match its body, and `No valid patches in input` for a file with nothing
+  # parseable in it at all. `unrecognized input` and `fatal:` are kept as a
+  # widening for a git that words it differently; misclassifying a drift as
+  # corrupt costs a wrong remedy in a message and never a wrong verdict, since
+  # both branches fail the suite.
+  case "$1" in
+    *"corrupt patch"*|*"No valid patches in input"*|*"unrecognized input"*|*"fatal:"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Which files `git apply` named in its refusal, deduplicated onto one line.
 # This only enriches a message and never decides anything, so a `git` that
 # words its errors differently costs a file name rather than a verdict.
@@ -127,6 +165,39 @@ refused_files() {
   sed -n 's/^error: \(.*\): patch does not apply$/\1/p;
           s/^error: \(.*\): No such file or directory$/\1/p' \
     | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//'
+}
+
+# THE ONE ENUMERATION both halves read, so neither can be silently switched off
+# by a file the other can see. `find` and a `"$dir"/*.patch` glob disagreed until
+# review of #180: `find` is recursive and the globs were not, so a patch parked
+# in a subdirectory -- an ordinary way to group a multi-file change, and #128
+# parked 516 lines across six files -- made the emptiness test say "not empty"
+# while both scans opened nothing, and each then printed its strongest green
+# line about a file neither had read.
+#
+# It refuses rather than ignores, in three cases that are all "somebody parked
+# something this cannot judge": a subdirectory, a file that is not `*.patch`,
+# and a missing directory. A missing directory is NOT an empty one -- empty is a
+# state somebody chose, missing is one nobody noticed -- and reporting them
+# alike is the same swallow this file exists to refuse.
+parked_patches() {
+  local dir=$1 f bad_entry=""
+  if [ ! -d "$dir" ]; then
+    printf 'MISSING\n'
+    return
+  fi
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in
+      "$dir"/*/*)  bad_entry="$bad_entry$f (in a subdirectory)"$'\n' ;;
+      *.patch)     printf '%s\n' "$f" ;;
+      *README.md)  ;;
+      *)           bad_entry="$bad_entry$f (not a .patch)"$'\n' ;;
+    esac
+  done <<EOF
+$(find "$dir" -type f 2>/dev/null | sort)
+EOF
+  [ -z "$bad_entry" ] || printf 'UNREADABLE\n%s' "$bad_entry"
 }
 
 # Every parked patch in DIR that no longer applies to TREE, one per line as
@@ -140,13 +211,20 @@ refused_files() {
 # when it breaks -- see 1c.
 patch_apply_states() {
   local dir=$1 tree=$2 patch err
-  [ -d "$dir" ] || return 0
-  for patch in "$dir"/*.patch; do
+  for patch in $(parked_patches "$dir" | grep -v '^MISSING$\|^UNREADABLE$\|(in a subdirectory)$\|(not a .patch)$'); do
     [ -e "$patch" ] || continue
     if ! err=$(git -C "$tree" apply --check --include='.github/*' -- "$patch" 2>&1); then
-      printf 'stale-workflow\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | refused_files)"
+      if patch_is_corrupt "$err"; then
+        printf 'corrupt\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | head -1)"
+      else
+        printf 'stale-workflow\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | refused_files)"
+      fi
     elif ! err=$(git -C "$tree" apply --check -- "$patch" 2>&1); then
-      printf 'drifted\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | refused_files)"
+      if patch_is_corrupt "$err"; then
+        printf 'corrupt\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | head -1)"
+      else
+        printf 'drifted\t%s\t%s\n' "$patch" "$(printf '%s\n' "$err" | refused_files)"
+      fi
     fi
   done
 }
@@ -173,8 +251,20 @@ fi
 #     FATAL, unlike 1c below, because this only fires when somebody wrote the
 #     bad call into a patch. It does not drift on its own.
 check_parked_shell() {
-  local dir=$1 patch found all=""
-  for patch in "$dir"/*.patch; do
+  local dir=$1 patch found all="" entries
+  entries=$(parked_patches "$dir")
+  case "$entries" in
+    MISSING*)
+      bad "$dir does not exist -- a missing pending directory is not an empty one, \
+and reporting them alike is how a guard turns itself off"
+      return ;;
+    UNREADABLE*)
+      bad "something is parked here that this cannot read, so neither half of the \
+guard covers it:"
+      printf '%s\n' "$entries" | sed '1d;/^$/d;s/^/       /'
+      return ;;
+  esac
+  for patch in $entries; do
     [ -e "$patch" ] || continue
     if ! found=$(patch_offenders "$patch"); then
       bad "could not scan $patch -- treating an unreadable patch as clean is the \
@@ -223,14 +313,30 @@ check_parked_shell() {
 #     `git apply --check --include='.github/*'` separates them, needs no history
 #     and no `fetch-depth`, and works in the shallow checkout `ci.yml` makes.
 check_parked_applies() {
-  local dir=$1 tree=$2 states stale drifted patch refused
+  local dir=$1 tree=$2 states stale drifted patch refused entries
+  entries=$(parked_patches "$dir")
+  case "$entries" in
+    MISSING*|UNREADABLE*) return ;;   # 1b already failed the suite for these
+  esac
   states=$(patch_apply_states "$dir" "$tree")
-  if [ ! -d "$dir" ] || [ -z "$(find "$dir" -name '*.patch' 2>/dev/null)" ]; then
+  if [ -z "$entries" ]; then
     ok "no patches parked under ${dir#"$root/"}"
     return
   fi
+  local corrupt
+  corrupt=$(printf '%s\n' "$states" | grep '^corrupt')
   stale=$(printf '%s\n' "$states" | grep '^stale-workflow')
   drifted=$(printf '%s\n' "$states" | grep '^drifted')
+  # Fatal, and reported FIRST and separately: a malformed patch is not a moved
+  # context line, and the remedy for it is never `git rm`. Somebody parked work
+  # nobody can read; deleting it is deleting the work.
+  if [ -n "$corrupt" ]; then
+    bad "a parked patch is malformed -- git cannot parse it, so neither half of this guard has read it:"
+    printf '%s\n' "$corrupt" \
+      | awk -F'\t' -v root="$root/" '{ p = $2; sub(root, "", p); printf "       %s\n         git said: %s\n", p, $3 }'
+    printf '       rebuild it against the current tree. Do NOT git rm it -- a patch\n'
+    printf '       nobody can read is work nobody has read either.\n'
+  fi
   if [ -n "$stale" ]; then
     bad "a parked patch no longer applies under .github/ -- the workflow half it would land has moved:"
     printf '%s\n' "$stale" \
@@ -248,14 +354,18 @@ check_parked_applies() {
   ok "$(printf '%s\n' "$drifted" | wc -l | tr -d ' ') no longer apply in full (warning, not a failure)"
   printf '%s\n' "$drifted" | while IFS=$'\t' read -r _ patch refused; do
     [ -n "$patch" ] || continue
+    # Workspace-relative, both here and in the summary. `file=` is matched
+    # against workspace-relative paths, so an absolute runner path does not
+    # anchor the annotation in Files changed -- and a summary line naming
+    # /home/runner/work/... is meaningless the moment the container is gone.
     printf '::warning file=%s::this parked patch still applies under .github/ but not in full: %s moved under it. If it has already been landed, git rm it -- pending/README.md says a patch is deleted in the commit that applies it. If it has not, update that hunk, or land it with git apply -3 from a full clone.\n' \
-      "$patch" "${refused:-something it also edits}"
+      "${patch#"$root/"}" "${refused:-something it also edits}"
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       # shellcheck disable=SC2016  # the backticks are Markdown code spans in
       # the job summary, not command substitution; single quotes are what keeps
       # them literal.
       printf -- '- **drifted parked patch**: `%s` still applies under `.github/`, but `%s` moved under it. Landed already? `git rm` it. Not landed? Update that hunk, or `git apply -3`.\n' \
-        "$patch" "${refused:-something it also edits}" >> "$GITHUB_STEP_SUMMARY"
+        "${patch#"$root/"}" "${refused:-something it also edits}" >> "$GITHUB_STEP_SUMMARY"
     fi
   done
 }
@@ -488,9 +598,23 @@ cat > "$tree/workflow-gone/a.patch" <<'FIXTURE'
  gamma
 FIXTURE
 
+# Runs one of the shipping checks over a fixture and matches its output.
+#
+# GITHUB_STEP_SUMMARY IS REDIRECTED AT A SCRATCH FILE, and that is not tidiness.
+# `out=$("$@" 2>&1)` captures stdout and stderr; a `>> "$GITHUB_STEP_SUMMARY"`
+# redirection is neither. Actions sets that variable for every step and
+# `ci.yml:360` runs this suite as an ordinary one, so without this every CI run
+# -- every pull request, every push to main -- ended with four stale-parked-patch
+# lines in its job summary, naming a `mktemp` directory the EXIT trap had already
+# deleted. The job summary and the annotation are the ONLY channel 1c has,
+# because it is deliberately not fatal; filling it with permanent false
+# positives is how the hundred-and-first run, the one where the real patch
+# drifted, goes unread. That is the swallowed-signal shape this file's header
+# names as its own reason for existing, rebuilt inside its test section. Found
+# in the second review round of #180.
 expect() {  # $1 = what, $2 = expected substring, rest = command
   local what=$1 want=$2; shift 2
-  local out; out=$("$@" 2>&1)
+  local out; out=$(GITHUB_STEP_SUMMARY="$tree/summary" "$@" 2>&1)
   case "$out" in
     *"$want"*) ok "$what" ;;
     *) bad "$what -- got: $(printf '%s' "$out" | head -2 | tr '\n' ' ')" ;;
@@ -515,7 +639,9 @@ expect "a clean pending directory passes the shell scan" \
 # "failure" are told apart by which of `ok`/`bad` was called and nothing else.
 verdict() {  # $1 = what, $2 = ok|FAIL, $3 = fixture dir
   local out first
-  out=$(check_parked_applies "$tree/$3" "$tree" 2>&1)
+  # Same scratch redirection as `expect`, and for the same reason: the fixtures
+  # must never reach the real job summary.
+  out=$(GITHUB_STEP_SUMMARY="$tree/summary" check_parked_applies "$tree/$3" "$tree" 2>&1)
   first=${out%%$'\n'*}
   case "$first" in
     "$2"*) ok "$1" ;;
@@ -529,6 +655,109 @@ expect "the warning names the file that actually moved, not just the patch" \
   "target.txt moved under it" check_parked_applies "$tree/both-halves" "$tree"
 expect "the failure names the file that actually moved, not just the patch" \
   "git refused: .github/workflows/w.yml" check_parked_applies "$tree/workflow-drifted" "$tree"
+
+# 5. The job summary, which is the only operator-facing side effect in the file
+#    and was both untested and leaking into the real one until review of #180.
+#    `expect` cannot see it -- a redirection is not command substitution -- so
+#    these read the file.
+: > "$tree/summary"
+GITHUB_STEP_SUMMARY="$tree/summary" check_parked_applies "$tree/both-halves" "$tree" >/dev/null 2>&1
+if grep -q 'drifted parked patch' "$tree/summary"; then
+  ok "a drifted patch writes its line to the job summary"
+else
+  bad "nothing reached the job summary -- the warning has no channel left, and 1c is not fatal"
+fi
+# The path is printed as `${patch#"$root/"}`. The fixtures live outside `$root`,
+# so nothing is stripped from them and asserting on their text proves nothing --
+# run the check with `root` pointed at the fixture parent instead, which is the
+# same relationship the real patch has to the real repository.
+: > "$tree/summary"
+( root=$tree; GITHUB_STEP_SUMMARY="$tree/summary" \
+  check_parked_applies "$tree/both-halves" "$tree" >/dev/null 2>&1 )
+# shellcheck disable=SC2016  # the backticks are the Markdown code span the
+# summary line writes; single quotes are what keeps them literal.
+if grep -q '`both-halves/a.patch`' "$tree/summary"; then
+  ok "the summary line's path is relative to the tree, not the runner's"
+else
+  bad "the summary line carries an absolute path: $(head -1 "$tree/summary") \
+-- file= will not anchor in Files changed, and the path is meaningless once the runner is gone"
+fi
+: > "$tree/summary"
+GITHUB_STEP_SUMMARY="$tree/summary" check_parked_applies "$tree/fits" "$tree" >/dev/null 2>&1
+if [ -s "$tree/summary" ]; then
+  bad "a patch that fits wrote to the job summary -- a false warning there is how the true one goes unread"
+else
+  ok "a patch that fits writes nothing to the job summary"
+fi
+
+# 6. What is parked but cannot be judged. Each of these made BOTH halves print
+#    their strongest green line about a file neither had opened.
+sub=$(mktemp -d) || exit 1
+trap 'rm -rf "$probe" "$tree" "$sub"' EXIT
+# A CLEAN patch in each case, deliberately. Seeding with `adds-bad.patch` would
+# make the case pass for the wrong reason -- the scan would flag its `--slurp`
+# pair once the file became visible, so the assertion could not tell "refused
+# because it is in a subdirectory" from "read it and found the bad call".
+mkdir -p "$sub/nested/inner"
+cp "$probe/adds-good.patch" "$sub/nested/inner/hidden.patch"
+out=$(check_parked_shell "$sub/nested" 2>&1)
+case "$out" in
+  *FAIL*) ok "a patch parked in a subdirectory is a failure, not an unread pass" ;;
+  *)      bad "a patch in a subdirectory is invisible to both halves while the emptiness test sees it" ;;
+esac
+mkdir -p "$sub/odd"
+cp "$probe/adds-good.patch" "$sub/odd/change.diff"
+out=$(check_parked_shell "$sub/odd" 2>&1)
+case "$out" in
+  *FAIL*) ok "a parked file that is not .patch is a failure, not an unread pass" ;;
+  *)      bad "a .diff is invisible to both halves -- the glob is *.patch and nothing says so" ;;
+esac
+out=$(check_parked_shell "$sub/does-not-exist" 2>&1)
+case "$out" in
+  *FAIL*) ok "a MISSING pending directory is a failure, not the same pass as an empty one" ;;
+  *)      bad "a missing directory reports as a pass -- empty is chosen, missing is unnoticed" ;;
+esac
+mkdir -p "$sub/empty-dir"
+out=$(check_parked_shell "$sub/empty-dir" 2>&1)
+case "$out" in
+  *FAIL*) bad "an EMPTY pending directory failed -- empty is the normal state" ;;
+  *)      ok "an empty pending directory is still a pass, as it should be" ;;
+esac
+
+# 7. A file that is not a patch at all, and one git cannot parse. Both used to
+#    read as clean: the first has no `+++` so the scan matched nothing and the
+#    caller saw an empty result, the second was reported in the same words as a
+#    moved context line, whose first suggested remedy is `git rm` -- deleting
+#    work nobody has read.
+mkdir -p "$sub/notapatch"
+printf 'this is prose, not a patch\nsomebody saved the wrong buffer\n' \
+  > "$sub/notapatch/a.patch"
+out=$(check_parked_shell "$sub/notapatch" 2>&1)
+case "$out" in
+  *FAIL*) ok "a file with no diff target in it is refused, not scanned clean" ;;
+  *)      bad "a file with no +++ line scans as clean -- nothing was parsed and the result read as no offenders" ;;
+esac
+mkdir -p "$sub/corrupt"
+# A hunk header whose counts do not match its body. `git apply` answers this
+# with `corrupt patch at line N`, which is a different sentence from the
+# `patch does not apply` a moved context line produces -- checked against git,
+# not assumed.
+cat > "$sub/corrupt/a.patch" <<'FIXTURE'
+--- a/.github/workflows/w.yml
++++ b/.github/workflows/w.yml
+@@ -1,99 +1,99 @@
+ alpha
++beta
+FIXTURE
+out=$(GITHUB_STEP_SUMMARY="$tree/summary" check_parked_applies "$sub/corrupt" "$tree" 2>&1)
+case "$out" in
+  *"malformed"*) ok "a malformed patch is reported as malformed, not as drifted" ;;
+  *)             bad "a corrupt patch reads as a moved context line -- got: $(printf '%s' "$out" | head -1)" ;;
+esac
+case "$out" in
+  *"Do NOT git rm"*) ok "and its remedy is a rebuild, never git rm" ;;
+  *)                 bad "a corrupt patch is offered git rm, which deletes work nobody has read" ;;
+esac
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

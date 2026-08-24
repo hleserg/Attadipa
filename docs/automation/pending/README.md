@@ -39,7 +39,8 @@ that holds the citation rather than the workflow that moved it. `git apply`
 then `python3 tools/docs/check_docs.py .` before parking a patch says which.
 
 **CI checks that it still applies**, on every push, in
-`.github/tests/gh-api-usage-test.sh` (`ci.yml:360`) — `git apply --check` over
+`.github/tests/gh-api-usage-test.sh`
+([`.github/workflows/ci.yml:360`](../../.github/workflows/ci.yml) "bash .github/tests/gh-api-usage-test.sh") — `git apply --check` over
 every `*.patch` in this directory. Until T-158 that sentence read *"check it
 before trusting it"* and nothing did, which is the shape of every defect this
 directory's own patches were written to fix.
@@ -76,6 +77,19 @@ touching only the flag line has no `gh api` among its added lines. Removing a
 bad call is still not an offence — take `--jq` out and the post-image no longer
 holds one — and only hunks targeting `.github/` are read, so a patch that
 *documents* the rule in prose is left alone.
+
+**What is parked here must be one flat directory of `*.patch` files**, and CI
+now refuses anything else rather than skipping it. A patch in a subdirectory, a
+file saved as `.diff`, a directory that has been renamed away, a file with no
+diff target in it at all — each of those used to leave *both* halves of the
+guard reading nothing while each printed its strongest green line. Group a
+multi-file change into one patch, not into a folder. And a **missing**
+directory is a failure where an **empty** one is a pass: empty is a state
+somebody chose, missing is one nobody noticed.
+
+**A patch `git` cannot parse is reported separately, and its remedy is never
+`git rm`.** Rebuild it. Deleting a patch nobody can read is deleting work
+nobody has read.
 
 What CI still cannot judge: a patch that applies cleanly onto a job that has
 been rewritten underneath it. `--check` says the context matches, not that the

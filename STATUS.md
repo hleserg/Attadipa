@@ -1092,7 +1092,7 @@ four more things at no cost:
   can move workflow context, while the docs a patch pins move under ordinary
   work — often work CI itself demands — and one stale patch must not red `main`
   and every open pull request. `git apply --check --include='.github/*'`
-  separates them without a `fetch-depth` or a workflow write. 29 cases, both
+  separates them without a `fetch-depth` or a workflow write. 42 cases, both
   halves mutation-verified against the real parked patch, and the queue-stopping
   scenario reproduced end to end before the split was written.
   The general lesson is the one that produced this: **dispatch a new
