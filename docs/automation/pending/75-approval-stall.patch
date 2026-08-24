@@ -492,7 +492,7 @@ index 4e21eda..eaf6fc3 100644
  checker reads a fingerprint only from the citation's own physical line:
 -`claude-agent.yml:819` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
 +`claude-agent.yml:847` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
- `claude-pr-review.yml:112` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+ `claude-pr-review.yml:116` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
  `claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
  `display_report: "true"` posts the agent's summary **on the triggering issue**
  over it, and the
