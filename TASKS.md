@@ -481,7 +481,7 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
-### T-153 · A node's own retained coordinate is still a comparable side
+### T-154 · A node's own retained coordinate is still a comparable side
 - **Priority:** P2 — the mirror of a defect already fixed on the local half, and
   reachable by the same ordinary event: a receiver losing its fix.
 - **Dependencies:** `core/src/trust.cpp` — the local half is

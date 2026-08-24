@@ -373,7 +373,7 @@ second provider's frame arrives as a bare `GnssObservation`, which carries no
 `PositionValidity` — that is a `classify()` verdict a caller reaches with a
 policy — so a *node* relaying its own retained coordinate is still comparable,
 and the fix above is one-sided until the call learns the other side's verdict.
-`fix_type` is present in the frame and is not the same question. **T-153.**
+`fix_type` is present in the frame and is not the same question. **T-154.**
 
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 

@@ -782,7 +782,7 @@ four more things at no cost:
   and it stays green under all three mutations, which is the whole of its job:
   a gate welded shut would satisfy every other assertion here. GCC, GCC `-Werror` strict, Clang, ASan+UBSan with
   `-fno-sanitize-recover=all`, and both documentation checkers: clean.
-  **What it does not close, deliberately: T-153.** The second provider's frame
+  **What it does not close, deliberately: T-154.** The second provider's frame
   arrives as a bare `GnssObservation`, which carries no `PositionValidity`, so a
   *node* relaying its own retained coordinate is still comparable — the same
   defect on the far side of the same function, needing a decision about where
