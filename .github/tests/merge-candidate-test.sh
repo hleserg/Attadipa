@@ -11,6 +11,17 @@
 # draft reads `draft` in mergeStateStatus, never `clean`, so a rule that checked
 # the state before the draft flag would decline every candidate it was written
 # for -- with a message about the wrong condition.
+#
+# AND SINCE #170 IT ALSO COVERS WHAT THE CALLER READ, not only what the rule did
+# with it. Every argument to the rule is a summary, and a summary carries no
+# trace of how much was read before summarising: `reviewThreads(first:100)` over
+# a pull request with 101 threads returns a hundred, so an unresolved
+# hundred-and-first arrives as `UNRESOLVED=0` -- the value that merges. No
+# assertion phrased in the rule's own arguments could ever have caught that,
+# which is why the sections below build documents shaped like GitHub's replies
+# and run the filter that ships (.github/scripts/merge-facts.jq, through
+# .github/scripts/merge-facts.sh) rather than passing in numbers somebody
+# normalised by hand.
 
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
@@ -18,19 +29,19 @@ SCRIPT_UNDER_TEST=.github/scripts/merge-candidate.sh
 
 pass=0; fail=0
 
-# run_rule ARGS... -- calls the rule, filling in the two arguments the older
+# run_rule ARGS... -- calls the rule, filling in the arguments the older
 # assertions predate.
 #
-# CHANGED_PATHS defaults to STATUS.md and PASS_AFTER_HEAD to `true`, so every
-# assertion written before those conditions existed still tests exactly the
-# condition it names rather than being refused by a new one first. Both new
-# conditions have sections of their own below.
+# CHANGED_PATHS defaults to STATUS.md, PASS_AFTER_HEAD and FACTS_COMPLETE to
+# `true`, so every assertion written before those conditions existed still tests
+# exactly the condition it names rather than being refused by a new one first.
+# Each new condition has a section of its own below.
 run_rule() {
   local checks="$1" labels="$2" unresolved="$3" codex="$4"
   local mergeable="$5" is_draft="$6" head_age="$7"
-  local paths="${8-STATUS.md}" pass_after="${9-true}"
+  local paths="${8-STATUS.md}" pass_after="${9-true}" complete="${10-true}"
   bash "$SCRIPT_UNDER_TEST" "$checks" "$labels" "$unresolved" "$codex" \
-       "$mergeable" "$is_draft" "$head_age" "$paths" "$pass_after"
+       "$mergeable" "$is_draft" "$head_age" "$paths" "$pass_after" "$complete"
 }
 
 # ok NAME EXPECTED ARGS...
@@ -96,6 +107,29 @@ ok "an in-flight run refuses"    "HOLD check run is pending" \
 ok "and an unknown conclusion refuses rather than being assumed benign" \
                                 "HOLD check run is action_required" \
                                  "action_required" "ai-review:pass" 0 0 clean false "$OLD"
+
+# A COMMIT STATUS IS NOT A CHECK RUN. Both arrive in one `statusCheckRollup`,
+# and flattening them let a third-party app stand in for CI having run: the
+# only context on some head commits was "Devin Review / success / Full review
+# skipped: trial expired and no credits remaining", so the combined state read
+# `success` over a pull request whose workflows were all still waiting for
+# approval. A green status is evidence about that app. A red one is still
+# information and still refuses.
+ok "a green commit status alone is not a check having run" \
+                                "HOLD no check run on the head commit" \
+                                 "status:success" "ai-review:pass" 0 0 clean false "$OLD"
+ok "several green statuses are still not a check having run" \
+                                "HOLD no check run on the head commit" \
+                                 "status:success status:success" "ai-review:pass" 0 0 clean false "$OLD"
+ok "a red commit status refuses, and says it was a status" \
+                                "HOLD commit status is failure" \
+                                 "success status:failure" "ai-review:pass" 0 0 clean false "$OLD"
+ok "a pending commit status refuses too" \
+                                "HOLD commit status is pending" \
+                                 "success status:pending" "ai-review:pass" 0 0 clean false "$OLD"
+ok "and a green status beside a real green check run does not block the merge" \
+                                "MERGE" \
+                                 "success status:success" "ai-review:pass" 0 0 clean false "$OLD"
 
 echo
 echo "The other reviewer"
@@ -260,9 +294,327 @@ ok "a draft touching a refused path is not undrafted either" \
                                  "success" "ai-review:pass" 0 0 draft true "$OLD" "core/x.c"
 
 echo
+echo "Whether the caller read all of it"
+# A GraphQL connection is a page. `reviewThreads(first:100)` over a pull request
+# with 101 threads returns a hundred, and if the unresolved one is the
+# hundred-and-first then UNRESOLVED arrives here as `0` -- the value that
+# merges. No condition on the arguments above can see that, because every one of
+# them is a summary carrying no trace of how much was read. Issue #170.
+ok "a proven-complete snapshot merges"  MERGE \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true
+ok "a truncated one refuses"     "HOLD the facts read about this pull request were truncated" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true false
+ok "an unreadable answer refuses rather than being assumed complete" \
+                                "HOLD could not tell whether the facts read about this pull request are complete" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true unknown
+ok "an empty answer is unknown, not true" \
+                                "HOLD could not tell whether the facts read about this pull request are complete" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true ""
+ok "and neither is a stray word" \
+                                "HOLD could not tell whether the facts read about this pull request are complete" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true yes
+ok "a draft whose facts are truncated is not undrafted either" \
+                                "HOLD the facts read about this pull request were truncated" \
+                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "STATUS.md" true false
+
+# THE OLD CALLER IS THE DEFECT, so it is refused by arity rather than reinstated
+# by a default. Nine arguments is a caller that read bounded pages and never
+# asked whether there were more; there is no reading of those nine under which
+# this may merge. The message names the fix, because this line is what a reader
+# sees in the sweep log until somebody applies it.
+got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>/dev/null)"
+case "$got" in
+  "HOLD this caller cannot prove it read all of the pull request"*)
+    printf '  ok    a nine-argument caller cannot merge, and is told what to apply\n'; pass=$((pass + 1)) ;;
+  *)
+    printf '  FAIL  a nine-argument caller is the pre-#170 sweep and must not merge\n        got: %s\n' "$got"
+    fail=$((fail + 1)) ;;
+esac
+
+# The redirect above is deliberate, and so is this. `ci.yml` runs this suite as
+# a plain `run:` step, so an unredirected fixture prints `::warning::the merge
+# sweep is holding every pull request` into the log of every CI run of every
+# pull request, and keeps printing it after the patch lands and the state is no
+# longer true. The one signal that separates a disabled sweep from an idle one
+# would be buried in its own noise long before the day it matters. Discarding it
+# there means asserting it here, or the remedy is inert and nothing would say so.
+#
+# WHETHER THE RUNNER PARSES A WORKFLOW COMMAND OFF STDERR IS **NOT ESTABLISHED**
+# in this repository, and an earlier version of this comment stated that it does
+# as though it were a fact. `75-approval-stall.patch`, parked in the same
+# directory, says the opposite in as many words -- "whether the runner parses
+# workflow commands off stderr at all is not established anywhere in this
+# repository" -- and moved a warning to stdout rather than rest a diagnostic on
+# it, in the fifth review round of #128.
+#
+# Nothing here needs it decided, and the two files are not actually in conflict
+# about what to DO. #128 had somewhere else to put its warning: its block's
+# stdout is a comment body, so it emitted the line earlier, outside the block.
+# `merge-candidate.sh` has no such place -- its stdout IS the verdict the caller
+# captures, so a workflow command written there corrupts the value the gate is
+# computed from. stderr is the only stream left, and the assertion below holds
+# either way: if the runner does parse it, the line is an annotation; if it does
+# not, the line still reaches the log as text and the caller re-emits it as a
+# `::notice::`. What is at stake is the SEVERITY, not the information.
+#
+# One `workflow_dispatch` of the sweep after the patch lands settles it, and
+# whoever lands it should look: `merge-candidate.sh` has never run on `main`.
+warned="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>&1 >/dev/null)"
+case "$warned" in
+  *"::warning::"*"merge sweep is holding every pull request"*)
+    printf '  ok    and it warns on stderr, which is where the sweep log shows it\n'; pass=$((pass + 1)) ;;
+  *)
+    printf '  FAIL  the nine-argument refusal is silent on stderr, so a disabled sweep reads as an idle one\n        got: %s\n' "$warned"
+    fail=$((fail + 1)) ;;
+esac
+
+# The order is asserted, as it is for draft-before-mergeable above: an
+# unreadable snapshot is reported as unreadable, not as whichever condition
+# happened to be evaluated first over facts nobody could trust.
+ok "completeness is answered before the verdict, because the verdict was read out of the same snapshot" \
+                                "HOLD the facts read about this pull request were truncated" \
+                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "STATUS.md" true false
+
+echo
+echo "What the sweep actually reads — the GraphQL contract, over response shapes"
+# These do not hand the rule a normalised value. They build a document shaped
+# like GitHub's own reply -- the shapes were taken from live responses for this
+# repository's #173 and #176 on 2026-08-24 -- and run the filter that ships,
+# .github/scripts/merge-facts.jq, through the wrapper that ships.
+FACTS_RULE=.github/scripts/merge-facts.sh
+FACTS_QUERY=.github/scripts/merge-facts.graphql
+
+if ! command -v jq >/dev/null 2>&1; then
+  printf '  FAIL  jq is not installed, so the GraphQL contract was not tested at all\n'
+  fail=$((fail + 1))
+fi
+
+# facts JQ-MUTATION... -- a healthy, complete, mergeable response, then the
+# mutations that make it the case under test.
+facts() {
+  local doc mutation
+  doc="$(jq -nc '{data:{repository:{pullRequest:{
+    isDraft: false,
+    mergeStateStatus: "CLEAN",
+    labels: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{name:"ai-review:pass"}]},
+    reviewThreads: {totalCount:0, pageInfo:{hasNextPage:false}, nodes:[]},
+    files: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{path:"STATUS.md"}]},
+    timelineItems: {totalCount:15, pageInfo:{hasNextPage:false, hasPreviousPage:false},
+                    nodes:[{createdAt:"2026-08-24T00:00:00Z", label:{name:"ai-review:pass"}}]},
+    commits: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{commit:{
+      committedDate:"2026-08-23T00:00:00Z", pushedDate:"2026-08-23T00:00:00Z",
+      statusCheckRollup:{contexts:{totalCount:1, pageInfo:{hasNextPage:false},
+        nodes:[{__typename:"CheckRun", conclusion:"SUCCESS", status:"COMPLETED"}]}}}}]}
+  }}}}')" || return 1
+  for mutation in "$@"; do
+    doc="$(printf '%s' "$doc" | jq -c "$mutation")" || return 1
+  done
+  printf '%s' "$doc"
+}
+
+# complete_says NAME EXPECTED-PREFIX DOCUMENT
+complete_says() {
+  local name="$1" expected="$2" doc="$3"
+  local got; got="$(printf '%s' "$doc" | bash "$FACTS_RULE")"
+  case "$got" in
+    "$expected"*) printf '  ok    %s\n' "$name"; pass=$((pass + 1)) ;;
+    *) printf '  FAIL  %s\n        expected prefix: %s\n        got:             %s\n' \
+         "$name" "$expected" "$got"; fail=$((fail + 1)) ;;
+  esac
+}
+
+# THE FINDING ITSELF. 101 review threads, the first hundred resolved, the
+# hundred-and-first not -- so the page that comes back is a hundred resolved
+# threads and nothing else.
+TRUNCATED_THREADS="$(facts '.data.repository.pullRequest.reviewThreads =
+  {totalCount:101, pageInfo:{hasNextPage:true}, nodes:[range(0;100)|{isResolved:true}]}')"
+
+# And here is what the sweep used to compute over it, quoted verbatim from
+# pr-merge-sweep.yml at 6965191. It is a historical constant on purpose: it
+# records the defect rather than tracking the file, so it cannot quietly start
+# agreeing with a fixed workflow.
+OLD_UNRESOLVED="$(printf '%s' "$TRUNCATED_THREADS" | jq -r \
+  '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length')"
+if [ "$OLD_UNRESOLVED" = "0" ]; then
+  printf '  ok    the old extraction really did answer 0 unresolved over 101 threads\n'
+  pass=$((pass + 1))
+else
+  printf '  FAIL  the fixture does not reproduce the finding: old extraction said %s, not 0\n' "$OLD_UNRESOLVED"
+  fail=$((fail + 1))
+fi
+# Same fixture, same numbers, through the rule that ships now. This pair is the
+# regression: the left-hand side is what merged, the right-hand side is what
+# refuses.
+complete_says "and the same document is refused as truncated" \
+  "HOLD the review-thread list is truncated at 100 of 101" "$TRUNCATED_THREADS"
+ok "so the verdict over it is a HOLD and not a MERGE" \
+                                "HOLD the facts read about this pull request were truncated" \
+                                 "success" "ai-review:pass" "$OLD_UNRESOLVED" 0 clean false "$OLD" "STATUS.md" true false
+
+# 101 GREEN check runs. Nothing is hiding on the second page and it still
+# refuses, because "nothing is hiding there" is precisely what a truncated page
+# cannot say. Explicit HOLD, never silent acceptance of the first hundred.
+complete_says "101 green check runs are refused too, because the second page was never read" \
+  "HOLD the check list is truncated at 100 of 101" \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts =
+      {totalCount:101, pageInfo:{hasNextPage:true},
+       nodes:[range(0;100)|{__typename:"CheckRun", conclusion:"SUCCESS", status:"COMPLETED"}]}')"
+
+# THE LABELS ARE THE WORST OF THE FIVE: the only truncation that turns a refusal
+# into a merge rather than into a hold. Asserted at both page sizes -- 51 over
+# the `first:50` the query used to ask for, and 101 over the 100 it asks for now
+# -- so raising the page size did not quietly become the fix.
+complete_says "a blocking label past the old fiftieth refuses" \
+  "HOLD the label list is truncated at 50 of 51" \
+  "$(facts '.data.repository.pullRequest.labels =
+      {totalCount:51, pageInfo:{hasNextPage:true},
+       nodes:([{name:"ai-review:pass"}] + [range(0;49)|{name:"filler"}])}')"
+complete_says "and one past the hundredth refuses the same way" \
+  "HOLD the label list is truncated at 100 of 101" \
+  "$(facts '.data.repository.pullRequest.labels =
+      {totalCount:101, pageInfo:{hasNextPage:true},
+       nodes:([{name:"ai-review:pass"}] + [range(0;99)|{name:"filler"}])}')"
+
+complete_says "a truncated changed-file list refuses, because the path off the allowlist is on the page nobody read" \
+  "HOLD the changed-file list is truncated at 100 of 140" \
+  "$(facts '.data.repository.pullRequest.files =
+      {totalCount:140, pageInfo:{hasNextPage:true}, nodes:[range(0;100)|{path:"docs/research/a.md"}]}')"
+
+# EXACTLY AT THE LIMIT, SAYING SO. This is the assertion that stops anybody
+# reintroducing `nodes | length == 100` as the test: a hundred nodes with
+# `hasNextPage: false` is a complete set, and holding it would be guessing
+# conservatively rather than reading the answer.
+complete_says "exactly 100 threads with hasNextPage false is complete, not assumed truncated" COMPLETE \
+  "$(facts '.data.repository.pullRequest.reviewThreads =
+      {totalCount:100, pageInfo:{hasNextPage:false}, nodes:[range(0;100)|{isResolved:true}]}')"
+complete_says "exactly 100 contexts with hasNextPage false is complete too" COMPLETE \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts =
+      {totalCount:100, pageInfo:{hasNextPage:false},
+       nodes:[range(0;100)|{__typename:"CheckRun", conclusion:"SUCCESS", status:"COMPLETED"}]}')"
+complete_says "and exactly 50 labels with hasNextPage false is complete" COMPLETE \
+  "$(facts '.data.repository.pullRequest.labels =
+      {totalCount:50, pageInfo:{hasNextPage:false},
+       nodes:([{name:"ai-review:pass"}] + [range(0;49)|{name:"filler"}])}')"
+
+# A MISSING OR MALFORMED pageInfo IS NOT AN EMPTY SET. Every one of these must
+# hold: "nothing there" is `0 unresolved threads`, and `0` merges.
+complete_says "a connection with no pageInfo at all refuses" \
+  "HOLD the label list came back without pageInfo" \
+  "$(facts 'del(.data.repository.pullRequest.labels.pageInfo)')"
+complete_says "a null pageInfo refuses" \
+  "HOLD the review-thread list came back without pageInfo" \
+  "$(facts '.data.repository.pullRequest.reviewThreads.pageInfo = null')"
+complete_says "a pageInfo that is not an object refuses" \
+  "HOLD the changed-file list came back with a pageInfo that is not an object" \
+  "$(facts '.data.repository.pullRequest.files.pageInfo = "false"')"
+complete_says "a pageInfo with no hasNextPage refuses" \
+  "HOLD the label list came back with no usable hasNextPage" \
+  "$(facts '.data.repository.pullRequest.labels.pageInfo = {hasPreviousPage:false}')"
+complete_says "a hasNextPage that is a string rather than a boolean refuses" \
+  "HOLD the label list came back with no usable hasNextPage" \
+  "$(facts '.data.repository.pullRequest.labels.pageInfo.hasNextPage = "false"')"
+complete_says "a null connection refuses" \
+  "HOLD the review-thread list could not be read at all" \
+  "$(facts '.data.repository.pullRequest.reviewThreads = null')"
+complete_says "a connection with no nodes refuses, rather than counting as none" \
+  "HOLD the review-thread list came back without a list of its own contents" \
+  "$(facts 'del(.data.repository.pullRequest.reviewThreads.nodes)')"
+complete_says "and a missing head commit refuses" \
+  "HOLD the head commit is missing from the response" \
+  "$(facts '.data.repository.pullRequest.commits.nodes = []')"
+
+# THE TIMELINE. Both documents below are hypothetical: a `last:`-only connection
+# answers `hasNextPage: false` under the Relay contract whatever it holds, so
+# GitHub will not return the first one. These assert that the *extraction* treats
+# the flag uniformly across every connection -- not that the case can arise. The
+# timeline's real safety is downstream: an event outside the window is older than
+# everything in it, so a truncated window yields no date and the caller holds.
+complete_says "a label timeline flagged truncated refuses, uniformly with every other connection" \
+  "HOLD the label timeline is truncated" \
+  "$(facts '.data.repository.pullRequest.timelineItems.pageInfo.hasNextPage = true')"
+complete_says "but older label events beyond the window are not a refusal, and must not become one" COMPLETE \
+  "$(facts '.data.repository.pullRequest.timelineItems.pageInfo.hasPreviousPage = true')"
+
+# A NULL ROLLUP IS A REAL STATE, NOT AN UNREADABLE ONE -- GitHub returns it when
+# the head commit carries no check run and no commit status at all, observed on
+# #176. It already has a precise answer waiting downstream, and this must not
+# replace that with a vaguer one.
+complete_says "a head commit with no checks at all is complete, not unreadable" COMPLETE \
+  "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup = null')"
+ok "and the rule still refuses it for the reason that is actually true" \
+                                "HOLD no check run on the head commit" \
+                                 "" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true
+
+# The read that did not happen.
+complete_says "an empty document refuses" "HOLD the pull request's facts came back empty" ""
+complete_says "whitespace refuses"        "HOLD the pull request's facts came back empty" "   "
+complete_says "unparseable output refuses" "HOLD the pull request's facts could not be parsed" "not json at all"
+complete_says "a GraphQL error document with no pull request refuses" \
+  "HOLD the response carries no pull request" \
+  '{"data":{"repository":{"pullRequest":null}},"errors":[{"message":"Something went wrong"}]}'
+complete_says "and a healthy document is not refused for sport" COMPLETE "$(facts)"
+
+# The filter is a separate file, so its absence is a separate failure and must
+# not be reported as GitHub having answered badly.
+got="$(ATTADIPA_MERGE_FACTS_JQ=/nonexistent/merge-facts.jq bash "$FACTS_RULE" "$(facts)")"
+case "$got" in
+  "HOLD the completeness filter /nonexistent/merge-facts.jq is missing"*)
+    printf '  ok    a missing filter refuses, and says it was the filter\n'; pass=$((pass + 1)) ;;
+  *) printf '  FAIL  a missing filter must not read as a pull request with nothing wrong\n        got: %s\n' "$got"
+     fail=$((fail + 1)) ;;
+esac
+
+echo
+echo "The query asks for what the rule reads"
+# The rule can only refuse on a `pageInfo` the query asked for. These two files
+# are one mechanism split across two languages, and the join between them is the
+# thing nothing else would notice going missing.
+if [ -f "$FACTS_QUERY" ]; then
+  printf '  ok    %s exists\n' "$FACTS_QUERY"; pass=$((pass + 1))
+else
+  printf '  FAIL  %s is missing, so the rule has nothing to read\n' "$FACTS_QUERY"; fail=$((fail + 1))
+fi
+# COMMENT LINES ARE DROPPED FIRST, and that is not tidiness. The first version
+# of this scan read the whole file, and the query's own prose quotes the defect
+# it fixed -- "it asked for `labels(first:50)` ... and for no `pageInfo` at all"
+# -- so every connection was "found" inside a paragraph describing the bug.
+# Deleting `pageInfo` from the real `labels(first: 100)` block left the scan
+# green. Caught by mutating the query and watching nothing happen.
+QUERY_BODY="$(grep -vE '^[[:space:]]*#' "$FACTS_QUERY")"
+for connection in labels reviewThreads files timelineItems contexts; do
+  # From the connection to its own `nodes`, which is the field it is being read
+  # for, `pageInfo` has to appear in between -- and the connection has to appear
+  # at all, so deleting one outright is a failure and not a vacuous pass.
+  if printf '%s\n' "$QUERY_BODY" | awk -v c="$connection" '
+      $0 ~ "(^|[^A-Za-z])" c "[[:space:]]*\\(" { inside = 1; found = 0; seen = 1; next }
+      inside && /pageInfo/ { found = 1 }
+      inside && /nodes/ { inside = 0; if (!found) bad = 1 }
+      END { exit((seen && !bad) ? 0 : 1) }'; then
+    printf '  ok    %s asks for pageInfo\n' "$connection"; pass=$((pass + 1))
+  else
+    printf '  FAIL  %s does not ask for pageInfo, so its truncation is invisible again\n' "$connection"
+    fail=$((fail + 1))
+  fi
+done
+# A page over a hundred is not a bigger page, it is a GraphQL error -- and an
+# error here is a fail-closed HOLD on every pull request, 48 times a day.
+if [ -z "$(printf '%s\n' "$QUERY_BODY" | grep -oE '(first|last): *[0-9]+' | grep -oE '[0-9]+' | awk '$1 > 100')" ]; then
+  printf '  ok    no connection asks for more than the 100 GitHub allows\n'; pass=$((pass + 1))
+else
+  printf '  FAIL  a connection asks for more than 100, which GitHub rejects outright\n'; fail=$((fail + 1))
+fi
+# a192a89 separated the two things the rollup holds. Keep it separated.
+if grep -q 'on CheckRun' "$FACTS_QUERY" && grep -q 'on StatusContext' "$FACTS_QUERY" \
+   && grep -q '__typename' "$FACTS_QUERY"; then
+  printf '  ok    a commit status is still distinguishable from a check run\n'; pass=$((pass + 1))
+else
+  printf '  FAIL  the query no longer separates CheckRun from StatusContext (a192a89)\n'; fail=$((fail + 1))
+fi
+
+echo
 echo "The rule does not grow a seventh condition or lose one of the six"
 for condition in 'ai-review:pass' 'ai-review:blocking' 'agent:blocked' 'needs-owner' \
-                 'MIN_HEAD_AGE_SECONDS' 'mergeable' 'is_draft'; do
+                 'MIN_HEAD_AGE_SECONDS' 'mergeable' 'is_draft' 'facts_complete'; do
   if grep -q -- "$condition" "$SCRIPT_UNDER_TEST"; then
     printf '  ok    %s is still checked\n' "$condition"; pass=$((pass + 1))
   else
@@ -275,6 +627,112 @@ if grep -qE 'MIN_HEAD_AGE_SECONDS=[0-9]+' "$SCRIPT_UNDER_TEST" \
   printf '  ok    the settling window is still six hours\n'; pass=$((pass + 1))
 else
   printf '  FAIL  the settling window is no longer six hours\n'; fail=$((fail + 1))
+fi
+
+echo
+echo "A rule nothing calls, and nothing tracks, is the state this must never be in"
+# THIS IS THE ASSERTION THAT KEEPS THE FIX HONEST WHILE HALF OF IT IS PARKED.
+#
+# Agents here run as `claude[bot]`, and that installation token holds no
+# `workflows` permission -- a push touching `.github/workflows/` is refused by
+# the remote, verified on 2026-08-24:
+#
+#   ! [remote rejected] (refusing to allow a GitHub App to create or update
+#     workflow `.github/workflows/pr-merge-sweep.yml` without `workflows`
+#     permission)
+#
+# So the caller half of #170 travels as a patch. There are exactly two states
+# this repository may be in, and this asserts it is in one of them: either the
+# sweep already calls the rule, or the patch that makes it do so is still here
+# waiting. What it refuses is the third state -- a tested rule, an unchanged
+# caller, and nothing on disk that remembers the two are meant to meet.
+SWEEP=.github/workflows/pr-merge-sweep.yml
+PENDING=docs/automation/pending/170-merge-sweep-completeness.patch
+# COMMENT LINES ARE DROPPED FIRST, for the reason the query scan above gives and
+# for one more concrete than a principle: hunk 1 of the parked patch inserts
+# `# is .github/scripts/merge-facts.jq, driven by .github/scripts/merge-facts.sh,`
+# into the workflow's own header comment. A scan that reads the whole file is
+# therefore satisfied by the patch's own prose, so the third state this block
+# exists to refuse -- rule tested, caller unchanged, patch gone -- passed both
+# assertions. Match a CALL, not a mention.
+SWEEP_BODY="$(grep -vE '^[[:space:]]*#' "$SWEEP" 2>/dev/null)"
+# The verdict call itself, from the line naming the script to the first line that
+# does not continue. Its ARITY is the one line everything here depends on and
+# nothing read: nine arguments is the pre-#170 caller, which merge-candidate.sh
+# now refuses outright, and ten is the caller that passes "$COMPLETE". A hand
+# resolution that drops that hunk while keeping the header comment is how the two
+# permitted states quietly become the forbidden one.
+VERDICT_CALL="$(printf '%s\n' "$SWEEP_BODY" | awk '
+  /merge-candidate[.]sh/ { inside = 1 }
+  inside { print; if ($0 ~ /[)]"[[:space:]]*$/) exit }')"
+VERDICT_ARGC="$(printf '%s\n' "$VERDICT_CALL" | grep -oE '"\$[A-Za-z_][A-Za-z0-9_]*"' | wc -l | tr -d ' ')"
+if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-facts.sh'; then
+  printf '  ok    the sweep calls the rule that has a test\n'; pass=$((pass + 1))
+  if [ -e "$PENDING" ]; then
+    printf '  FAIL  the sweep calls the rule, so %s has landed and should be deleted\n' "$PENDING"
+    fail=$((fail + 1))
+  else
+    printf '  ok    and the pending patch has been cleared away\n'; pass=$((pass + 1))
+  fi
+  if [ "$VERDICT_ARGC" = "10" ]; then
+    printf '  ok    and the verdict call passes the completeness argument\n'; pass=$((pass + 1))
+  else
+    printf '  FAIL  the sweep calls merge-facts.sh but hands merge-candidate.sh %s arguments, not 10\n' "$VERDICT_ARGC"
+    fail=$((fail + 1))
+  fi
+elif [ -f "$PENDING" ]; then
+  printf '  ok    the sweep does not call the rule yet, and %s says so\n' "$PENDING"
+  pass=$((pass + 1))
+  if git --no-pager apply --check "$PENDING" >/dev/null 2>&1; then
+    printf '  ok    and that patch still applies cleanly to this tree\n'; pass=$((pass + 1))
+  else
+    printf '  FAIL  %s no longer applies; the parked half has rotted\n' "$PENDING"
+    fail=$((fail + 1))
+  fi
+  if [ "$VERDICT_ARGC" = "9" ]; then
+    printf '  ok    and the caller is still the nine-argument one the patch replaces\n'; pass=$((pass + 1))
+  else
+    printf '  FAIL  the patch is still parked but the caller passes %s arguments, not 9\n' "$VERDICT_ARGC"
+    fail=$((fail + 1))
+  fi
+else
+  printf '  FAIL  merge-facts.sh is tested but nothing calls it and no patch is pending\n'
+  fail=$((fail + 1))
+fi
+
+echo
+echo "Every patch parked in pending/ still applies"
+# THE ASSERTION ABOVE PROTECTED ONLY THE PATCH THAT WROTE IT. 75-approval-stall.patch
+# had been parked since #128 and nothing checked it, so an edit to a table one of
+# its hunks deleted as a contiguous block broke it silently -- and it carries
+# three workflow edits that would have gone down with the README hunk, because
+# `git apply` is all-or-nothing. A directory whose whole purpose is holding work
+# a person has to finish later is exactly where rot is invisible.
+# ONE ASSERTION, NOT ONE PER PATCH, on purpose: parking a patch must not change
+# how many assertions this suite reports. Six documents quote that number, and a
+# count that moves when somebody adds a file to a directory is a count nobody
+# can keep true. The names go in the failure message instead, which is where
+# they are actually needed.
+rotted=""
+found_patch=0
+for patch in docs/automation/pending/*.patch; do
+  [ -f "$patch" ] || continue
+  found_patch=$((found_patch + 1))
+  git --no-pager apply --check "$patch" >/dev/null 2>&1 || rotted="$rotted $patch"
+done
+if [ ! -d docs/automation/pending ]; then
+  printf '  FAIL  docs/automation/pending/ is not here, so nothing was checked\n'
+  printf '        (a sparse checkout without docs/ is indistinguishable from an empty\n'
+  printf '        directory, and a vacuous pass is what this suite refuses elsewhere)\n'
+  fail=$((fail + 1))
+elif [ -z "$rotted" ]; then
+  printf '  ok    all %d of them apply to this tree\n' "$found_patch"; pass=$((pass + 1))
+else
+  printf '  FAIL  these parked patches no longer apply:%s\n' "$rotted"
+  printf '        a rotted patch is work nobody can finish, and git apply is all-or-nothing,\n'
+  printf '        so one stale hunk takes its workflow edits down with it. Refresh it, or\n'
+  printf '        turn the hunk that broke into an instruction in its header.\n'
+  fail=$((fail + 1))
 fi
 
 echo

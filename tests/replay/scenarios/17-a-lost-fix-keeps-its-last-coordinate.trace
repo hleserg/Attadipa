@@ -1,0 +1,139 @@
+scenario a receiver that loses its fix keeps its last coordinate on the wire
+describe The position field of a GNSS frame is not emptied when the solution
+describe goes away. The receiver keeps sending the coordinate it last solved
+describe for, with a fix type of `none` in the same frame saying there is no
+describe position at all — so the frame arrives looking exactly like an answer,
+describe once a second, for as long as the dropout lasts.
+describe
+describe This trace is that frame meeting the OTHER provider. The wearer walks
+describe away from where the fix was lost; the node still has a receiver and
+describe reports where they actually are. Those two are not in conflict — only
+describe one of them is claiming to know anything — and a device that reports
+describe `provider-disagreement` here is telling its wearer that its two
+describe sources contradict each other when one of them has stopped answering.
+describe
+describe The dropout is the ordinary case, not the exotic one: a doorway, a
+describe canopy, a wrist turned away from the sky. Found by the review of
+describe `6965191..8d757a7`, issue #178.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  expect validity valid
+  expect trust trusted
+
+# The fix goes. The coordinate does not: still 0.5°N 1.0°E, and `acc` is
+# retained along with it, because a field nobody rewrote keeps its old value.
+# `fix-lost` is the honest reason and it weighs 20 — below `degrade_at`, so it
+# says "no position" without also saying "somebody is lying".
+at 6000
+  fix none
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  expect validity nofix
+  expect reason fix-lost
+  expect trust trusted
+
+# The node, half a kilometre north, with a fix of its own. That is where the
+# wearer now is. Our own last real measurement was taken six seconds ago, which
+# is outside the comparison window, so there is nothing here to compare it
+# with — and the retained coordinate is not a substitute for one.
+at 6500
+  fix 3d
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect no-reason provider-disagreement
+  expect trust trusted
+
+at 7000
+  fix none
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  expect validity nofix
+  expect reason fix-lost
+
+# And again a second later, which is the half that outlives one frame: a
+# retained coordinate does not refresh anything, so this does not become a
+# fresh answer by being repeated. Before the fix each of these frames restamped
+# the local side of the comparison with its arrival time, and the disagreement
+# was renewed for the whole dropout rather than for one epoch.
+at 7500
+  fix 3d
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect no-reason provider-disagreement
+  expect trust trusted
+
+# Half a minute of it.
+at 30000
+  fix none
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  expect validity nofix
+  expect reason fix-lost
+  expect trust trusted
+
+at 30500
+  fix 3d
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect no-reason provider-disagreement
+  expect trust trusted
+
+# The sky opens and the receiver solves again — at the node's position, because
+# that is where this device has been for half a minute. Five hundred metres over
+# thirty-one seconds is 16 m/s, which is a bus, not a teleport.
+at 31000
+  fix 3d
+  pos 5045000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  expect validity valid
+  expect no-reason fix-lost
+  expect no-reason position-jump
+  expect trust trusted
+
+# The comparison reopens with it. This one agrees, and the agreement is a real
+# one: both sides measured a position within the window.
+at 31500
+  fix 3d
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect no-reason provider-disagreement
+  expect trust trusted
+
+# And a real disagreement is still reported. The gate was shut for the dropout,
+# not for the session — a device that stopped comparing after its first dropout
+# would have thrown the second source away for the rest of the boot.
+at 32000
+  fix 3d
+  pos 5090000 10000000
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect reason provider-disagreement
+  expect trust degraded

@@ -19,6 +19,22 @@
 //     because it looks like it considered something;
 //   * hysteresis, so one bad epoch does not flip the state and one good one
 //     does not clear it;
+//   * and the other half of that same rule: recovery is earned from a
+//     *retraction*, never from the clock **while the detector is still there**.
+//     A score that fell to nothing because a detector said the condition was
+//     over and a score that fell to nothing because a detector stopped talking
+//     are not the same fact, and only the first may move the state upwards
+//     (OD-5 §4 and §8, and `clear()` below). The qualifier is not a softening:
+//     a detector whose SUBJECT has gone is a third case, it does let the state
+//     climb on the clock afterwards, and it is `stop_awaiting()` below --
+//     reachable by exactly one reason, for the reason written there. An earlier
+//     version of this list stated the rule absolutely and the code had already
+//     stopped honouring it. And "still there" is ITSELF measured in time, which
+//     is where the care goes: judged on one uncomparable frame it read a node
+//     under canopy as a node that had left, so `provider_departure_grace` is
+//     the bound and `provider_detached()` is the answer whenever an owner can
+//     give it. What the clock decides is whether anyone remains who COULD
+//     retract -- never whether a retraction happened;
 //   * reason codes, kept. A user-facing sentence, an application's decision to
 //     hide the compass, and a diagnostic screen are three consumers of the same
 //     evidence, and a collapsed verdict serves none of them;
@@ -134,6 +150,25 @@ struct TrustPolicy {
     // several minutes ago, and disagreement is reported for two answers that
     // were both correct when they were given.
     Millis        provider_comparison_window{5000};
+
+    // How long the second source must be UNABLE to answer before its own
+    // allegation stops being awaited. `provider_comparison_window` above asks
+    // whether one frame is comparable; this asks whether the source has stopped
+    // being one, and they are different questions — a node under canopy, in a
+    // doorway, or between its own GNSS duty cycles relays fix-less frames for
+    // seconds to minutes and has not gone anywhere. Keying the lift on a single
+    // uncomparable frame let one such frame retract an allegation nobody
+    // withdrew; found in the fourth review round of #153.
+    //
+    // `ESTIMATED`. Two minutes is chosen to sit above an ordinary urban dropout
+    // and well below a boot, and it is a guess: nobody has measured how long a
+    // node's receiver stays fixless under cover, and the duty cycle of the
+    // second source is not ours to know. It is deliberately NOT the exit for a
+    // node that actually leaves — `provider_detached()` is that, immediately —
+    // so being generous here costs a pinned `Degraded` for a node that
+    // disappears without telling us, and being stingy costs a false all-clear.
+    // Measuring it is part of T-152.
+    Millis        provider_departure_grace{120000};
     std::uint32_t accuracy_poor_mm                = 50000;  // 50 m
 
     // What to assume when the receiver did not publish an accuracy at all.
@@ -176,10 +211,61 @@ public:
 
     // A detector says the condition is over. Distinct from letting it expire:
     // this is positive evidence of absence, the TTL is merely silence.
+    //
+    // That distinction is load-bearing and not only documentation. This is the
+    // only call that *retracts* an allegation, and only a retracted allegation
+    // lets the state climb again — see `unconfirmed_reasons()`.
     void clear(TrustReason reason);
+
+    // A third thing, and it is neither of the two above: the allegation is no
+    // longer ABOUT anything, so nobody can either repeat it or withdraw it.
+    //
+    // `report()` says the condition is on, `clear()` says a detector looked and
+    // it is off. This says the detector's subject has gone: the reason stops
+    // being awaited without ever having been retracted, and a live one is left
+    // strictly alone — if the evidence is still fresh it still counts, and this
+    // call cannot be used to talk a device out of a current allegation.
+    //
+    // It exists for exactly one shape, and adding a second use is a decision,
+    // not a convenience. `ProviderDisagreement` is evidence about a **pair**,
+    // and only `compare_provider()` can produce or withdraw it. When the two
+    // sides stop being comparable — one of them is older than the comparison
+    // window, which happens whenever the receiver is duty-cycled or the node
+    // link delivers a backlog — the retraction becomes unreachable while the
+    // TTL has already moved the bit into `unconfirmed_`. Left as it was, the
+    // device is pinned below `Trusted` for the rest of the boot with
+    // `score() == 0` and `reasons() == 0`: no timer, no exit, and nothing on a
+    // screen to explain it. Found in review of #153.
+    //
+    // This is NOT the silence-is-an-all-clear rule coming back. A reason whose
+    // detector is still there and merely quiet keeps waiting, which is the whole
+    // of that rule; and refusing to be compared is not the same as being
+    // exonerated. What a node gains by going uncomparable is only that it stops
+    // *contradicting* the local receiver — never that its own position is
+    // believed, because a fix's own trust comes from the detectors that ran on
+    // it. A permanent pin, by contrast, punishes the local receiver for the
+    // second source's behaviour, for ever, with no way back that is not
+    // `reset()`.
+    //
+    // It does not re-evaluate, and that leaves a **one-tick window** with
+    // exactly the shape `GnssStatus::trust_unconfirmed` was added to remove:
+    // between this call and the next `observe()` or `refresh()`, a snapshot
+    // reads `trust != Trusted`, `trust_reasons == 0` **and**
+    // `trust_unconfirmed == 0` — a device stuck with nothing on a screen to
+    // explain it. Not re-evaluating is deliberate: this path carries no new
+    // evidence, and running the TTL here would turn "the subject went away"
+    // into "and therefore the live allegation expired". The window is
+    // self-healing and bounded by the caller's own tick, so it is stated rather
+    // than closed. Found in review of #153.
+    void stop_awaiting(TrustReason reason);
 
     // Expire stale evidence and re-evaluate. Safe and cheap to call often; the
     // state only moves when the score crosses a threshold or a hold completes.
+    //
+    // Calling it is not itself evidence of anything. A poll that carries no new
+    // detector output can lower the score, by expiry, and can never raise the
+    // state: a service ticking once a second while its receiver says nothing
+    // must not be able to talk the device back into `Trusted`.
     void update(MonotonicTime now);
 
     // Record this observation as the last position worth remembering. The
@@ -190,6 +276,28 @@ public:
     std::uint32_t reasons() const { return live_; }
     std::uint16_t score() const { return score_; }
     bool          holds(TrustReason reason) const;
+
+    // The allegations that lapsed without anybody withdrawing them.
+    //
+    // A reason that expires stops counting towards the score — evidence has to
+    // decay, or a device that walks out of an interference source stays suspect
+    // for ever. What it does not become is an all-clear: the detector did not
+    // say the condition was over, it stopped saying anything, and those are
+    // different inputs. While any bit is set here the state cannot climb, and
+    // the bit says *which* detector is being waited on, so a diagnostic screen
+    // can name it rather than showing a device stuck for no visible reason.
+    //
+    // Per reason rather than one flag, deliberately: "recovery is blocked" is
+    // not an answer anybody can act on, and a single boolean would lose both
+    // the source and — because the hold restarts from the retraction — the
+    // instant that mattered.
+    //
+    // Like `holds()` and `reasons()`, this reads state that only `update()`
+    // advances, so a reader that has not called `update(now)` is looking at the
+    // answer as of the last one. That is a property of the whole class and it
+    // is a separate open finding in T-062, not a new one here.
+    std::uint32_t unconfirmed_reasons() const { return unconfirmed_; }
+    bool          awaiting_confirmation(TrustReason reason) const;
 
     bool                    has_last_trusted() const { return has_last_trusted_; }
     std::optional<Position> last_trusted_position() const;
@@ -205,8 +313,23 @@ public:
 
     const TrustPolicy& policy() const { return policy_; }
 
-    // Everything back to boot state, including the log. Used when a provider
-    // detaches or the link resets — ADR-0004 §3: no state survives implicitly.
+    // Everything back to boot state, including the log, the remembered position
+    // and every reason live or lapsed. Used when **the link resets** —
+    // ADR-0005 §5: "the epoch is reset unconditionally on link loss — no state
+    // survives a reconnect implicitly". Not ADR-0004 §3, which an earlier
+    // version cited and which is *Availability is not validity — and a remote
+    // datum has two ages*.
+    //
+    // NOT the call for a provider going away. `TrustEvaluator::provider_detached()`
+    // is that one, and the difference is whose history is being discarded: a
+    // link reset invalidates everything stamped with the epoch, including this
+    // device's own observations of its own receiver; a node walking off the end
+    // of the garden invalidates one allegation and nothing else. Reaching for
+    // this one there throws away the local receiver's entire evidence and the
+    // last trusted position with it, and asserts `Trusted` outright — which is
+    // the all-clear this class exists to refuse. An earlier version of this
+    // comment named both triggers and left the choice to whoever read the names
+    // first; found in the fourth review round of #153.
     void reset();
 
 private:
@@ -216,6 +339,30 @@ private:
     TrustPolicy   policy_;
     TrustState    state_ = TrustState::Trusted;
     std::uint32_t live_  = 0;
+
+    // Reasons that left `live_` by the TTL rather than by clear(). Four bytes,
+    // and they are the difference between "nothing is wrong" and "nobody has
+    // said anything for a while" — see unconfirmed_reasons().
+    std::uint32_t unconfirmed_ = 0;
+
+    // Reasons whose SUBJECT has gone. `stop_awaiting()` sets a bit here and
+    // `update()`'s TTL loop consults it, so a live allegation whose subject
+    // left never becomes an unconfirmed one — it simply ends when its evidence
+    // does. Without the latch `stop_awaiting()` was a one-shot that had to be
+    // timed against another subsystem's constant: at a detach edge the reason
+    // is usually still `live_`, the call did nothing, `evidence_ttl` later the
+    // bit moved into `unconfirmed_`, and nothing called again because the node
+    // had already gone — pinning `Degraded` with `score() == 0`, `reasons() == 0`
+    // and no exit but `reset()`, which is the pin this branch exists to remove,
+    // reached through the branch's own new hook. Whether that happened depended
+    // on whether the link-loss timeout exceeded `evidence_ttl`: an accidental
+    // coupling between two constants in two subsystems, documented in neither.
+    // Found in the fourth review round of #153.
+    //
+    // Cleared by `report()` and `clear()`: a new allegation, or a retraction,
+    // means there is a subject again.
+    std::uint32_t abandoned_ = 0;
+
     std::uint16_t score_ = 0;
 
     MonotonicTime evidence_at_[kTrustReasonCount] = {};
@@ -284,6 +431,48 @@ public:
     // disagreement is evidence about both of them and belongs to neither.
     void compare_provider(const GnssObservation& other, MonotonicTime now);
 
+    // The second source is gone — the node detached, the link dropped, the
+    // capability was withdrawn. Whoever owns the provider knows this; nothing
+    // inside the evaluator can.
+    //
+    // NOT `TrustEngine::reset()`, which is for a link reset and discards this
+    // device's own history along with the node's. Here the local receiver has
+    // seen nothing new and its evidence still counts; exactly one allegation
+    // loses the party that could withdraw it.
+    //
+    // It exists because `compare_provider()` only *approximates* it. That path
+    // reaches `stop_awaiting()` when the other side has been unable to answer
+    // for `provider_departure_grace`, which is a decent proxy for a provider
+    // that has left and a poor one for a provider that is still there and
+    // merely stale: a node relaying fixes at 1 Hz whose measurement times are
+    // consistently older than `provider_comparison_window` is present, is
+    // disagreeing, and would still stop being awaited. Review of #153 named
+    // that gap and it is real; closing it inside `compare_provider()` would
+    // need a reason meaning "a second source is present and permanently
+    // uncomparable", which is a new enumerator and a decision — **T-152**.
+    // Until then this is the call that says the subject actually went, and it
+    // is the one to prefer wherever the owner can make it — the grace exists to
+    // bound the damage when nobody does, not to substitute for it.
+    //
+    // Idempotent, and it does not re-evaluate: like the path it replaces, it
+    // carries no new evidence, so running the TTL here would turn "the provider
+    // left" into "and therefore the live allegation expired". A live
+    // `ProviderDisagreement` is left strictly alone — see `stop_awaiting()`.
+    //
+    // **It latches.** The documented trigger is an EDGE, and at that edge a
+    // disagreement reported inside `evidence_ttl` is `live_`, which
+    // `stop_awaiting()` deliberately does not touch — so as a one-shot this
+    // call did nothing, the TTL moved the bit into `unconfirmed_` fifteen
+    // seconds later, and nothing called again because the node had already
+    // gone. Pinned `Degraded` for the rest of the boot, reached through the
+    // very hook added to prevent it, and whether it happened at all depended on
+    // whether the link-loss timeout exceeded `evidence_ttl` — two constants in
+    // two subsystems, coupled by accident and documented in neither. The latch
+    // is `TrustEngine::abandoned_`; it clears the moment anything reports that
+    // reason again, because a node that comes back is a subject again. Found in
+    // the fourth review round of #153.
+    void provider_detached();
+
     TrustEngine&       engine() { return engine_; }
     const TrustEngine& engine() const { return engine_; }
 
@@ -328,9 +517,48 @@ private:
     bool        have_previous_in_view_ = false;
     std::uint8_t previous_in_view_     = 0;
 
-    bool          have_latest_position_ = false;
-    Position      latest_position_{};
-    MonotonicTime latest_position_at_{};
+    // The local side of `compare_provider()`: a coordinate this receiver
+    // MEASURED, and the instant it measured it.
+    //
+    // Not "the last position field that arrived", which is what stood here and
+    // is a different fact. A receiver that loses its fix keeps sending the
+    // coordinate it last solved for, with a `PositionValidity` of `NoFix`
+    // beside it saying there is no position at all — the shape the rate
+    // baselines above already refuse, and which `tests/test_trust.cpp` already
+    // reproduces. Stored unconditionally and stamped with ARRIVAL time, one
+    // such frame per second kept this side of the comparison permanently
+    // "fresh": a node reporting the place the wearer had actually walked to was
+    // measured against a coordinate the local receiver had disowned, and the
+    // difference was reported as `ProviderDisagreement` — 30 points, which
+    // reaches `degrade_at` unaided — refreshed for as long as the dropout
+    // lasted. The evaluator had two models of the same observation's fitness,
+    // and only one of them read `validity`. Found by the review of
+    // `6965191..8d757a7`, issue #178.
+    //
+    // So the invariant is the name. This is present only while the local
+    // receiver has produced a comparable measurement, and `measured_at` is
+    // `observation.observed_at` and never `now` — the same discipline as the
+    // baselines above and for the same reason, so that a comparison is between
+    // two measurement ages rather than between one measurement and one arrival.
+    //
+    // It advances in lockstep with `previous_position_` and is deliberately
+    // still its own field: the two answer different questions — the fix a rate
+    // is computed FROM, and this device's current answer to *where are you* —
+    // and collapsing them would make any later change to one silently change
+    // the other.
+    struct ComparablePosition {
+        Position      position{};
+        MonotonicTime measured_at{};
+    };
+    std::optional<ComparablePosition> local_comparable_;
+
+    // When the second source last produced a frame this device could compare
+    // against — the anchor `provider_departure_grace` is measured from. Not
+    // "when a frame last arrived": a node relaying fix-less frames at 1 Hz is
+    // arriving constantly and answering nothing, and that difference is the
+    // whole of the fourth review round's finding.
+    bool          have_other_comparable_    = false;
+    MonotonicTime other_last_comparable_at_{};
 };
 
 }  // namespace attadipa::core
