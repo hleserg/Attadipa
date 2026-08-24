@@ -110,6 +110,9 @@ attadipa_wip_say() {
 # The filter runs inside `gh`, not through a `jq` binary, because this script is
 # also meant to be typed in an ordinary shell -- and a Windows checkout has `gh`
 # and no `jq`.
+# shellcheck disable=SC2016
+# The \(...) below are jq's string interpolation, not the shell's. Single
+# quotes are the point: the shell must hand this to gh untouched.
 ATTADIPA_WIP_JQ='
   [ .[] | select(.isCrossRepository | not) ] as $ours
   | ( [ $ours[] | select([ .labels[].name ]
