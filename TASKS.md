@@ -281,12 +281,15 @@ stale silently. The protocol is
   moved.
 - **Hardware required:** no.
 
-### T-141 · Should co-location scope the two cross-body trust detectors? An ADR, not an amendment
+### T-141 · Should co-location scope the three cross-body trust detectors? An ADR, not an amendment
 - **Priority:** P2
 - **Dependencies:** [ADR-0009](docs/adr/0009-heading.md) §3a (**done**), which
   defines the state and deliberately does not use it here.
-- **Goal:** **two** detectors in the tree judge a position using evidence from a
-  body it may not belong to, and an earlier version of this task named one.
+- **Goal:** **three** detectors in the tree judge a position using evidence from a
+  body it may not belong to. This task has now been short twice — the first
+  version named one, the second two — which is itself the point: a list of
+  detectors that reads as complete is worth less than one that says how it was
+  arrived at, so the count is stated with its history rather than as a fact.
   `TrustEvaluator::compare_provider` raises `ProviderDisagreement`
   when two fixes inside the 5 s window are more than 250 m apart, with no notion
   of which body either came from. ADR-0009 §3a makes two bodies far apart the
@@ -307,7 +310,25 @@ stale silently. The protocol is
   it failed its own fixture, it contradicted two passing tests, and because
   nothing produced any co-location value but `Unknown` it would have disabled
   the signal for every pair including local-versus-local.
-- **Acceptance:** an ADR that decides, **for both detectors**, one of — scope the
+  **And `PositionJump` is the third, at weight 40, found in the tenth review
+  round.** `observe()` divides `distance_mm(*observation.position,
+  previous_position_)` by the elapsed time and raises the bit past
+  `implausible_speed_mm_s` (55 000 mm/s); `previous_position_` is a bare
+  `Position`, exactly as `latest_position_` is — which this task's own *Watch
+  for* bullet says, having drawn the conclusion for only one of the two. It is
+  **conditional** where the other two are not: it needs consecutive `observe()`
+  calls carrying positions from different bodies, which requires a
+  `LocationService` that folds across providers and does not exist yet. That is
+  why ADR-0009 §3a now states the premise — a `TrustEvaluator` sees one body's
+  positions, and a change of primary provider is a `reset()` — rather than
+  leaving it to be discovered. **This task may still decide it wants the source
+  test in the detector instead**, and if it does, it says why a constraint on the
+  caller was not enough. What the premise buys is the OD-8 arithmetic staying
+  where §3a puts it: without it, a wearer at a desk and a node 300 m away
+  alternating at 1 Hz raise `PositionJump` (40) and `MotionDisagreement` (45)
+  together, 85 clears `untrust_at` (60), and the device is `Untrusted` with no
+  remembered position rather than the `Degraded` §3a predicts.
+- **Acceptance:** an ADR that decides, **for all three detectors**, one of — scope the
   comparison by co-location; keep raising the bit but stop weighting it when
   co-location is anything other than `SameBody`; report the separation without a
   reason bit; or leave it exactly as it is and say why. Note that *known not to
@@ -1366,11 +1387,20 @@ stale silently. The protocol is
   produced it. Every other assertion in this task passes, because nothing is
   ever stamped `SameBody`. Found in review. Without it a driver, a fixture or a new trace can stamp
   `SameBody` on a `NodeGnss` observation and every other assertion in this task
-  still passes — two fields that must agree, no invariant. Note this does not
-  make the field redundant: the invariant is what keeps a *derived* value from
-  drifting away from the thing it is derived from, and ADR-0009 §3a wants the
-  question answerable without a reader inferring it from an enumerator whose
-  meaning is provenance rather than proximity. Found in review. A node-supplied fix whose
+  still passes — two fields that must agree, no invariant.
+  **And that argument runs the other way too, which is this task's to settle.**
+  If the two must agree in both directions then the second carries no state, and
+  an **accessor** over `PositionSource` gives ADR-0009 §3a exactly the
+  readability it asks for — the question answerable without a reader inferring it
+  from an enumerator whose meaning is provenance rather than proximity — while
+  making the disagreement unrepresentable rather than merely asserted. A stored
+  field buys one thing an accessor does not: a place for a future producer that
+  is neither of today's two. There is no such producer and §3a's producer rule
+  says there deliberately are exactly two. So **T-026 chooses, and says which**:
+  an accessor, or a stored field with the biconditional enforced where the
+  observation is constructed. ADR-0011 §2 states the axis and no longer states
+  the representation. Found in the tenth review round of
+  [#94](https://github.com/hleserg/Attadipa/pull/94). A node-supplied fix whose
   co-location is `Unknown` reaches the screen labelled with the source it
   actually has, and the label is `LocationService`'s rather than an
   application's, per
@@ -1727,7 +1757,20 @@ stale silently. The protocol is
     ([ADR-0009](docs/adr/0009-heading.md) §3a), which says the separation is
     unmeasured, not that it is zero. Added 2026-08-24; ADR-0009 §3a had been
     observing this case in passing and attributing the observation to this
-    task, which did not contain it. Found in review.
+    task, which did not contain it. Found in review;
+  - **and the field is already named for one body.**
+    `core/include/attadipa/core/gnss_power.h:70`
+    "bool             device_moving      = false;" is a single boolean consumed
+    at `gnss_power.cpp:114` and `:126` under a comment about *the wrist* not
+    moving, while the receiver it gates sits on the node. So the conflation is
+    not only in the reasoning, it is in `core/`, in a field name that says
+    *device* and means *wearer*. The trust side of the same confusion got T-141
+    and T-142; this is the power side of it and it belongs here rather than in a
+    task of its own, because the same acceptance decides both. `next_state()`
+    has no caller outside `tests/test_power.cpp` today, which is the window in
+    which renaming the field costs nothing — a model, not a live regression.
+    Found in the tenth review round of
+    [#94](https://github.com/hleserg/Attadipa/pull/94).
 - **Composes with:** T-071 (dead reckoning covers the interval this opens) and
   T-077 (assistance held ready is the other half of avoiding the cold start).
 - **Hardware required:** yes, for every number in it
@@ -2255,13 +2298,19 @@ stale silently. The protocol is
   closes it. Until one of them lands, the survey may be *taken* and recorded —
   motor-idle numbers are still worth having — but the part **is not chosen from
   it**, and the record says `NOT MEASURABLE ON CURRENT HARDWARE` for the driven
-  half rather than leaving a blank that reads as zero. That phrase is a value in
-  a **survey record**, for one half of one measurement; it is not
-  [`INTERFERENCE_MATRIX`](docs/hardware/INTERFERENCE_MATRIX.md)'s row status
-  `BLOCKED`, which is a whole pair with a named blocker. The two arrived in the
-  same commit and a reader may take them for one state, so: a `BLOCKED` row has
-  nothing to record yet, a `NOT MEASURABLE` field is a record with a hole in it
-  that is labelled rather than left blank.
+  half rather than leaving a blank that reads as zero. **The two labels mean the
+  same thing and differ in scope, which an earlier version of this bullet got
+  wrong in the other direction** — it said the phrase *"is not*
+  [`INTERFERENCE_MATRIX`](docs/hardware/INTERFERENCE_MATRIX.md)*'s row status
+  `BLOCKED`"*, while that file says `BLOCKED` *"means precisely what the
+  specification's fifth value means"*. Both are the specification's fifth
+  evidence level (final §29). What differs is what they are attached to: a
+  `BLOCKED` **row** is a whole interference pair with a named blocker and
+  nothing recorded yet; a `NOT MEASURABLE ON CURRENT HARDWARE` **field** is one
+  half of one measurement inside a record that otherwise has numbers in it. The
+  two arrived in the same commit and a reader may take the difference for a
+  difference in certainty, which it is not. Found in the tenth review round of
+  [#94](https://github.com/hleserg/Attadipa/pull/94).
 - **Acceptance:** the `CAD` strap fitted and **verified low** before any address
   is written down, and each module scanned on its own so the ACK is unambiguous;
   both module footprints recorded as `MEASURED` with the caliper

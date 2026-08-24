@@ -70,8 +70,20 @@ default anyway.
 A5 is answered as **dormant, not dead**: the five epics in §67 have a physical
 part in prospect and stay gated on placement (T-109), not on the owner.
 
-Until A1–A3 are answered: simulator, architecture, host tests and protocol work
-proceed; hardware work does not.
+**That gate is satisfied and this line records it rather than enforcing it.**
+A1–A3 are struck twelve lines above, answered 2026-08-22 by the owner
+([OWNER_DECISIONS](OWNER_DECISIONS.md) OD-16), so *"until A1–A3 are answered:
+simulator, architecture, host tests and protocol work proceed; hardware work
+does not"* is a condition met by this file's own table — and a standing
+project-wide gate that reads as live while its condition is spent is worse than
+no gate. It was also circular: what remains of A1 is **D20**, reading the board
+revision off the unit, which is itself hardware work.
+
+What actually gates hardware work now is per-question and below: a board that is
+`ORDERED` rather than `PRESENT`, a part not fitted, a rail not chosen. Those are
+named in the rows that carry them, which is where somebody looking for the
+obstacle will be. Found in the tenth review round of
+[#94](https://github.com/hleserg/Attadipa/pull/94).
 
 ## Hardware — measurement required
 

@@ -667,6 +667,54 @@ CJMCU-9911 and GY-271 are **breakout modules** and commonly populate their own
 pull-ups, which would sit in *parallel*; whether either does is `UNKNOWN`, since
 the retrofit's evidence is *about labels, not about nets*.
 
+**The tenth review round found the same failure twice more, and both times it was
+an enumeration that read as complete.** §3a's fourth Testable item asked for a
+compile-time assertion that `kPositionValidityCount`, the `TrustState`
+enumerators and `kTrustReasonCount` *"all still hold exactly their documented
+values, so appending `Unknown` to any of the three is a build failure"* — and it
+is not one. Both counts are defined from whichever enumerator is currently last
+(`kTrustReasonCount` is `FixLost + 1`), so appending after it leaves the count
+unchanged and the assertion passes: it restates the count's own definition.
+Insertion is caught, appending is not, and appending is the shape §3a names. The
+guard that does work was already in the tree and was **run** rather than reasoned
+about: `to_string(TrustReason)`, `to_string(TrustState)` and
+`to_string(PositionValidity)` are switches with no `default:`, so a new
+enumerator makes one non-exhaustive and CI's `-Werror` job stops — appending
+`NotColocated` after `FixLost` gives *"error: enumeration value 'NotColocated'
+not handled in switch [-Werror=switch]"*, reproduced. The item now asks for the
+property that holds: those three switches keep complete case lists and never
+grow a `default:`. It matters because `weight[kTrustReasonCount]` and
+`evidence_at_[kTrustReasonCount]` stay sized to the old count while `index_of()`
+is a raw cast, so the first weight written for an appended reason lands one past
+the end of a member array.
+
+**And there is a third cross-body detector.** §3a and T-141 closed the list at
+two; `TrustReason::PositionJump`, weight **40**, is the third — `observe()`
+divides `distance_mm(*observation.position, previous_position_)` by the elapsed
+time against a 55 000 mm/s limit, and `previous_position_` is a bare `Position`
+exactly as `latest_position_` is. It is conditional, needing consecutive
+`observe()` calls carrying positions from different bodies, which is why it was
+missed: no `LocationService` exists to produce them yet. `position.h`'s own
+header invites the pattern — *"a fold over several providers can take the best
+without a table"* — and nothing said the winner of that fold may not change
+without a `reset()`. §3a now states that premise, which is a constraint on
+`LocationService` when it is written, and T-141 may still decide it wants a
+source test in the detector instead. Without it the OD-8 configuration is worse
+than §3a predicted: a wearer at a desk and a node 300 m away alternating at 1 Hz
+raise `PositionJump` (40) and `MotionDisagreement` (45) together, 85 clears
+`untrust_at` (60), and the board is **`Untrusted`** with no remembered position
+rather than `Degraded`. Four smaller ones from the same round: `device_moving`
+in `gnss_power.h` is one boolean for two bodies and is named for the wrong one,
+now a T-080 bullet beside the gate finding; `OPEN_QUESTIONS.md`'s standing
+*"until A1–A3 are answered, hardware work does not proceed"* was satisfied by
+its own table twelve lines above and is recorded as spent rather than left
+reading as live; the specification's fifth evidence level and
+`INTERFERENCE_MATRIX`'s `BLOCKED` are the same state at different scopes, not
+two states, and T-109 said otherwise; and ADR-0011 §2 no longer prescribes
+whether co-location is a stored field or an accessor over `PositionSource`,
+because a biconditional makes it derivable and T-026 is where that choice
+belongs.
+
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as
 [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature).

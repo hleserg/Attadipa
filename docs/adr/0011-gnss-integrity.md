@@ -87,7 +87,21 @@ These are separate, and no two of them may be stored in the same field:
 | interference | is the band jammed, and is the receiver mitigating |
 | spoofing suspicion | does anything believe these signals are fabricated |
 | trust | the fused verdict, §5 below |
-| co-location | is this position about **the body this device is on**, or about a different one — [ADR-0009](0009-heading.md) §3a, a field of its own beside [`PositionSource`](../../core/include/attadipa/core/position.h), defaulting to `Unknown`. *On*, not *wearing*: §3a's producer rule is about the instrument, and neither board detects wear |
+| co-location | is this position about **the body this device is on**, or about a different one — [ADR-0009](0009-heading.md) §3a, beside [`PositionSource`](../../core/include/attadipa/core/position.h), defaulting to `Unknown`. *On*, not *wearing*: §3a's producer rule is about the instrument, and neither board detects wear. **Whether it is a stored field or an accessor over `PositionSource` is T-026's to decide, and this row no longer says** — see below |
+
+**And the eleventh is the one axis this register may not be able to keep.** The
+rule two paragraphs up is that no two of these may be stored in the same field,
+and co-location is a **function** of `PositionSource` — T-026 makes it a
+biconditional, `SameBody` if and only if `LocalGnss`. A value definitionally
+derivable from another carries no state of its own; the only thing storing it
+separately can add is a disagreement between the two, and the biconditional
+defines every such disagreement as a bug. So the readability argument §3a makes
+is real and an **accessor** over `PositionSource` serves it at no risk, while a
+stored field buys a field that can be forgotten. This ADR states the axis and
+declines to choose the representation: **T-026 decides**, and if it stores the
+value it says what a `SameBody`/`RemoteGnss` pair would mean, because that is
+the pair the biconditional forbids and nothing would refuse. Found in the tenth
+review round of [#94](https://github.com/hleserg/Attadipa/pull/94).
 
 **Eleven, and the last one arrived from the other side.** A position can be
 fresh, accurate, high-integrity and unspoofed and still be about a node in a bag

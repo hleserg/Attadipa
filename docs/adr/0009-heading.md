@@ -240,11 +240,13 @@ screen says which, in words."* So a node-supplied *position* reaches the wearer'
 screen, labelled as the node's; a node-supplied *heading* does not reach the
 arrow at all.
 
-**Two detectors already in the tree fire on this configuration, and an earlier
-version of this section named one of them and tried to legislate it away.** The
-one it named is the lighter of the two, and the one it missed needs only a
-single provider — which is the Waveshare board's ordinary day. Both are below;
-neither is changed here.
+**Three detectors already in the tree fire on this configuration, and this
+section has now named too few of them twice.** The first version named one and
+tried to legislate it away; the second named two; review found a third. That
+pattern is the finding — a list of detectors that reads as complete is worth
+less than one that says how long it is and how it was arrived at. All three are
+below, none is changed here, and the third is the one that turns a `Degraded`
+into an `Untrusted`.
 `TrustEvaluator::compare_provider`
 ([`core/src/trust.cpp`](../../core/src/trust.cpp)) raises
 `TrustReason::ProviderDisagreement` when two positions inside the 5 s comparison
@@ -303,10 +305,44 @@ says it did not. No second provider is involved and no 250 m threshold applies.
 `Unknown` co-location withholds nothing here, because this section governs the
 claim and this is arithmetic.
 
-**Both belong to T-141, and it is the enumeration rather than the behaviour that
-this section had wrong.** An implementer reading *"one detector"* builds to a
-list short by the likeliest case and reads the silence as coverage.
-[#112](https://github.com/hleserg/Attadipa/issues/112) is already on the code
+**And the third is heavier still, and needs two providers only in the sense that
+something upstream chose between them.** `TrustReason::PositionJump` — weight
+**40** — is raised in `TrustEvaluator::observe()`
+([`core/src/trust.cpp`](../../core/src/trust.cpp)) from
+`distance_mm(*observation.position, previous_position_)` divided by the elapsed
+time, against `implausible_speed_mm_s` (55 000 mm/s). `previous_position_` is a
+bare `Position`, exactly as `latest_position_` is in `compare_provider` — this
+branch already says so in T-141's *Watch for* bullet and drew the conclusion for
+only one of the two. It is **conditional**, which is why it is third rather than
+first: it needs consecutive `observe()` calls carrying positions from different
+bodies, and no `LocationService` exists yet to produce them.
+
+The invitation is in `position.h`'s own header — *"Ordered worst to best … so a
+fold over several providers can take the best without a table"* — and nothing in
+the tree, or in this section, says the winner of that fold may not change
+without a `reset()`. **So this ADR states the premise rather than leaving it
+implied: a `TrustEvaluator` sees one body's positions, and a change of primary
+provider is a `reset()`, not a new sample.** That is a constraint on
+`LocationService` when it is written, and it is the cheaper half of the fix —
+the alternative is `PositionJump` growing a source test of its own, which T-141
+may still decide it wants.
+
+The reproduction if the premise is not honoured is the OD-8 configuration T-142
+names: wearer at a desk, node in a bag by the door 300 m away, both `Valid`, the
+fold alternating at 1 Hz. 300 000 mm over 1 000 ms is 300 000 mm/s against a
+55 000 limit, so `PositionJump` (40) raises; the wrist is still and the position
+moved more than `jump_while_still_mm`, so `MotionDisagreement` (45) raises too;
+85 clears `untrust_at` (60) and the device is **`Untrusted`**, not the
+`Degraded` this section predicted. `remember()` requires `Trusted`, so there is
+no last-trusted position either — the board has no navigation at all, which is
+the outcome this section exists to prevent.
+
+**All three belong to T-141, and it is the enumeration rather than the behaviour
+that this section had wrong — twice.** An implementer reading *"one detector"*,
+or *"two"*, builds to a list short by the likeliest case and reads the silence
+as coverage.
+[#112](https://github.com/hleserg/Attadipa/pull/112) — an open **pull request**,
+not an issue, which an earlier version of this line got wrong — is already on the code
 side of the second one — *a wrist's stillness stops judging a node's position* —
 which sharpens the point rather than closing it: this ADR must not read as
 settled-and-singular while another branch removes a case it does not mention.
@@ -577,13 +613,37 @@ two fixtures the trust suite already holds still pass unchanged — a `NodeGnss`
 fix ~550 m out raises `ProviderDisagreement`, and a live bit is left standing by
 a comparison that could not be made. An implementation of §3a that reddens
 either has changed something §3a did not ask for. **Four:** the field is not
-`PositionValidity`, not `TrustState` and not a reason bit — a compile-time
-assertion that `kPositionValidityCount`, the `TrustState` enumerators and
-`kTrustReasonCount` all still hold exactly their documented values, so appending
-`Unknown` to any of the three is a build failure rather than a silent
-reordering. The third of those is the one the earlier draft omitted, and the
-reason-bit reading is the one §3a calls *the worst of the three, because it
-looks right*. On hardware: `NOT EXECUTED — HARDWARE REQUIRED`.
+`PositionValidity`, not `TrustState` and not a reason bit — and the guard for
+that is **the exhaustive `to_string` switch, not a count assertion**. An earlier
+version of this item specified *"a compile-time assertion that
+`kPositionValidityCount`, the `TrustState` enumerators and `kTrustReasonCount`
+all still hold exactly their documented values, so appending `Unknown` to any of
+the three is a build failure"*. **It is not, and review reproduced it.** Both
+counts are defined from whichever enumerator is currently last —
+`kPositionValidityCount` is `PositionValidity::Valid + 1` and
+`kTrustReasonCount` is `TrustReason::FixLost + 1` — so appending after that
+enumerator leaves the count unchanged and `static_assert(kTrustReasonCount ==
+15)` passes. The assertion restates the count's own definition. *Insertion* is
+caught, because it moves `Valid` and `FixLost`; appending is exactly the shape
+§3a names, and it was the shape with no guard.
+
+What does catch it is already in the tree and had to be **run** rather than
+reasoned about: `to_string(TrustReason)`, `to_string(TrustState)` and
+`to_string(PositionValidity)` are switches over every enumerator with **no
+`default:`**, so a new one makes the switch non-exhaustive and `-Wswitch` fires
+— and CI's strict job compiles with `-Werror`. Appending `NotColocated` after
+`FixLost` gives *"error: enumeration value 'NotColocated' not handled in switch
+[-Werror=switch]"* and the build stops. So the testable item is: **every one of
+those three switches keeps its complete case list and never grows a
+`default:`**, which is a property somebody can break in one line and which no
+count assertion protects.
+
+Why appending a `TrustReason` in particular must be a build failure rather than
+a runtime surprise: `TrustEngine`'s `weight[kTrustReasonCount]` and
+`evidence_at_[kTrustReasonCount]` stay sized to the old count while `index_of()`
+is a raw cast, so the first `policy.weight[index_of(TrustReason::NotColocated)]`
+writes one past the end of a member array. The reason-bit reading is the one
+§3a calls *the worst of the three, because it looks right*, and this is why. On hardware: `NOT EXECUTED — HARDWARE REQUIRED`.
 
 **Open.** **H10** — the speed gate, per GNSS module. **A5 and A6 are answered**
 (2026-08-22, [OWNER_DECISIONS](../research/OWNER_DECISIONS.md) OD-17): a

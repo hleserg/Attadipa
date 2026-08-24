@@ -107,7 +107,7 @@ here because the assessment of the advice depends on it having been real.
 proposal, and the repository has deliberately left the question open.** It is
 recorded by name in three places that agree with each other: T6, "Use the
 Waveshare BSP as a dependency, or take only its pin facts?", UNKNOWN
-([OPEN_QUESTIONS.md:179](OPEN_QUESTIONS.md)); decision row 6, "open"
+([OPEN_QUESTIONS.md:216](OPEN_QUESTIONS.md) "| T6 | Use the Waveshare BSP as a dependency"); decision row 6, "open"
 ([../architecture/ARCHITECTURE.md:654](../architecture/ARCHITECTURE.md)); and
 "This is a reuse-ledger decision, not a default"
 ([DEPENDENCIES.md:171-174](DEPENDENCIES.md)). The surrounding facts were already
