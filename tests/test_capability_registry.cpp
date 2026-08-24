@@ -113,6 +113,80 @@ void test_board_profiles()
     CHECK(!twatch(platform::RadioChip::Sx1262).present(platform::HardwareFeature::MagnetometerSensor));
 }
 
+// THE SHIPPED PROFILE, which every case above overrides before looking at it.
+//
+// `twatch()` replaces `.radio` on its way out, so nothing else in this file
+// reads what `make_twatch()` actually built -- and that field is the one an
+// owner answer puts pressure on. A2 is now ANSWERED and struck through in the
+// register, reading "SX1262 (868 MHz)" from an order listing; the enum must not
+// move on that, because a listing is a seller's claim and this value is what
+// the firmware bets a radio on (ADR-0003). Until this test existed, setting
+// `board_profiles.cpp:95` to `RadioChip::Sx1262` left the suite green at 24/24
+// and the device advertised MeshMessaging as Ready on a watch nobody has held.
+// The comment saying not to was the only thing in the way, and a comment is not
+// a check. Found in review.
+void test_shipped_twatch_radio_is_unread()
+{
+    const platform::BoardProfile* shipped = platform::find_board_profile("t-watch-s3-plus");
+    CHECK(shipped != nullptr);
+    if (shipped == nullptr) {
+        return;
+    }
+
+    // Not "some chip we are unsure about" -- the marking has not been read.
+    CHECK(shipped->radio.chip == platform::RadioChip::Unknown);
+    CHECK(shipped->radio.meshcore != platform::MeshCoreSupport::Supported);
+
+    // And the consequence, which is the sentence that reaches a user: the
+    // launcher may offer mesh through an Attadipa node, never through this
+    // watch's own radio.
+    platform::ProfileInventory inventory(*shipped);
+    bring_up(inventory);
+    core::CapabilityRegistry caps(inventory);
+    CHECK_AVAIL(caps, core::Capability::MeshMessaging, core::Availability::Unprovisioned);
+}
+
+// THE BAND TRAP, pinned so it cannot stop being true quietly.
+//
+// Reading the marking off the part settles the CHIP and nothing else. Band is
+// set by the matching network and the antenna fitted, and is readable neither
+// over SPI nor off the package -- so A2's "SX1262 at 868 MHz" rests, for its
+// second half, on the same seller's listing the chip half refuses.
+//
+// What that costs if the checklist is done by halves is exactly this: set
+// `RadioChip::Sx1262` from the marking alone and `radio_info_for()` publishes
+// RadioLib's DRIVER limits as this unit's coverage, so `covers()` answers yes
+// for EU868, US915 and AS433 at once -- three mutually exclusive regional
+// networks -- and `MeshMessaging` goes Ready with nobody having looked at the
+// matching network. The code is not lying; the checklist would be incomplete.
+//
+// This test asserts the trap rather than closing it, because closing it needs
+// a band observation the data model has nowhere to put yet -- filed as T-143.
+// What it buys is that the sentence stops being prose: narrow those numbers to
+// a real unit's band, or add the observation, and this test says so.
+void test_sx1262_bands_are_the_drivers_not_this_units()
+{
+    const platform::RadioInfo info = platform::radio_info_for(platform::RadioChip::Sx1262);
+
+    // RadioLib's SX1262 driver range, verbatim. Not a regulatory band, not a
+    // measurement, and not a fact about any board in this project.
+    CHECK(info.band_count == 1);
+    CHECK(info.bands[0].lo_hz == 150'000'000u);
+    CHECK(info.bands[0].hi_hz == 960'000'000u);
+
+    // Three regions a single unit cannot all be built for, all answered yes.
+    const platform::BandRange eu868{863'000'000u, 870'000'000u};
+    const platform::BandRange us915{902'000'000u, 928'000'000u};
+    const platform::BandRange as433{433'050'000u, 434'790'000u};
+    CHECK(info.covers(eu868));
+    CHECK(info.covers(us915));
+    CHECK(info.covers(as433));
+
+    // And the reason the shipped profile is safe today is the enum, not the
+    // band: nothing consults these numbers while the chip is unread.
+    CHECK(platform::radio_info_for(platform::RadioChip::Unknown).band_count == 0);
+}
+
 // Owning a part is not initialising it. A part that has not been brought up
 // must read as Off — something the user can act on — and never as Failed.
 void test_untouched_is_not_failed()
@@ -159,7 +233,8 @@ void test_radio_is_not_lora()
         {platform::RadioChip::Lr1121, core::Availability::Unprovisioned,
          "LoRa, but the pinned MeshCore needs driver work"},
         {platform::RadioChip::Unknown, core::Availability::Unprovisioned,
-         "nobody has told us which chip is fitted (open question A2)"},
+         "no marking has been read off the fitted chip; A2's answer is a "
+         "seller's listing, which does not move this enum"},
     };
 
     for (const Case& c : cases) {
@@ -405,6 +480,8 @@ void test_launcher_gating()
 int main()
 {
     test_board_profiles();
+    test_shipped_twatch_radio_is_unread();
+    test_sx1262_bands_are_the_drivers_not_this_units();
     test_untouched_is_not_failed();
     test_radio_is_not_lora();
     test_waveshare_position_comes_from_a_node();

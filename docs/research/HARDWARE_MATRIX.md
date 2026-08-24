@@ -75,7 +75,8 @@ dated Friday 8 January 2021 — a 2020-era title block the vendor never updated.
 The contents are unambiguously S3-class (`ESP32-S3-R8`, `W25Q128JW`), so the
 drawing is the right board with the wrong nameplate. **Cite the filename for
 provenance, never the title block for revision.** Board revision of a *physical*
-unit is still unknown — see OPEN_QUESTIONS A1.
+unit is still unknown — see OPEN_QUESTIONS **D20**. (Not A1: A1 is struck and
+marked ANSWERED, and the revision half of it was carved out into D20.)
 
 ### Core
 
@@ -134,7 +135,14 @@ from RadioLib's drivers and MeshCore's build configuration, not from the TI and
 Silicon Labs datasheets, which refused automated retrieval. Confirming them from
 primary sources is open question **R1**. The schematic itself fits an
 SX1262-class module (HPD16B3), so the most likely fitted part is also the one
-that works — but "most likely" is not A2 answered.
+that works.
+
+**A2 is answered as of 2026-08-22** — SX1262 at 868 MHz, from the order listing
+(`OWNER_DECISIONS.md`, A1–A3, issue #54). It is answered in the *record*, and
+that is the whole distinction this section has to keep: a seller's listing is
+not a marking read off the part, so `RadioChip::Unknown` does not move and
+nothing here is upgraded from PARTIAL. Reading the marking off the fitted chip,
+once the watch arrives, is what closes both.
 
 ### AXP2101 rail map
 
@@ -301,8 +309,15 @@ as a target to reproduce — not as evidence about Attadipa's own firmware.
 
 ## Waveshare ESP32-S3-Touch-AMOLED-2.06
 
-Revision: schematic `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**,
-3 sheets; pin map from vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0.
+Revision: **of the document, not of the unit.** Schematic
+`ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` — **read**, 3 sheets; pin map from
+vendor BSP `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0. The received board's
+own revision is unread: its silkscreen carries the product name, whose `2.06` is
+the panel diagonal, and a V1.1 unit would carry the same string. This section's
+own rule above — *cite the filename for provenance, never the title block for
+revision* — is written under the T-Watch and applies here identically. See
+OPEN_QUESTIONS **D20**, which is the revision question itself; A1 is struck and
+answered, and sends a reader nowhere.
 Where the two differ, the schematic wins on *what exists* and the BSP wins on
 *which pin firmware should use* — the BSP was demonstrably written to a subset
 of the board.
