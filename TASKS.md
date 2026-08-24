@@ -165,7 +165,24 @@ stale silently. The protocol is
     points, `steps - 1` sleeps, the first of them zero — so it runs `1/steps`
     short of the duration asked for and begins with a zero-length segment,
     where the gesture defect was categorical. Bounded and not urgent; it wants
-    its own change and its own test rather than a widened diff.
+    its own change and its own test rather than a widened diff. Two things go
+    with it when it is picked up: `watch_control.py`'s `swipe`/`drag` print the
+    *requested* duration (`"drag … in 1.2s"`) whatever was achieved, which is
+    the misleading half; and `long_tap`, `button_click` and `swipe` still pass
+    a duration straight to `time.sleep`, so a negative one surfaces as a
+    `ValueError` from inside the standard library after the press has gone out.
+    `gesture` refuses ahead of the press through `_duration_seconds`; the other
+    three do not. Raised in review of
+    [#187](https://github.com/hleserg/Attadipa/pull/187).
+  - **A slow wire is silent, and that is a T-114 question.** `gesture` sends a
+    point that is already overdue immediately rather than sleeping backwards,
+    and says nothing about having done so. Over a Unix socket it never
+    happens; over `SerialTransport` a five-point path at `duration: 0.05`
+    gives a 12.5 ms budget per round trip and every point goes out late.
+    Covered by a host test today (`a gesture absorbs its round trips rather
+    than adding them`) but not *reported* to the operator — decide with the
+    transport, where the achieved duration is worth printing beside the
+    requested one.
 - **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
   task after that point is supposed to end with a real screenshot, and this is
   what makes one possible.

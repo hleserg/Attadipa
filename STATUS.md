@@ -728,11 +728,21 @@ the `PointerDown`, so round trips come out of the intervals they happened in
 rather than lengthening the path; a negative, infinite or NaN duration is
 refused *before* the press goes out, so a mistyped gesture file cannot leave a
 finger down; `duration: 0` stays legal and means as fast as the connection
-manages. Three host self-test groups pin the schedule on a fake clock — the
-two-point case, the five-point case, and the shipped file resolved at **both**
-board geometries — and all three fail on `fc69c26`. The end-to-end test adds the
-coarse version with the real clock and the real socket in it: **0.602 s** on the
-Waveshare geometry and **0.601 s** on the T-Watch for a file declaring 0.6.
+manages. **And a gesture longer than the device's own `max_hold_ms` is refused
+in a sentence**, because holding the pointer down for the whole duration made
+that bound reachable for the first time: past it the bridge expires the hold,
+the interface takes a click nobody asked for, and the real release is then
+refused as impossible from the current state. `button_hold` has refused for
+that reason since it was written. Read from the capabilities, never hardcoded —
+a T-114 firmware choosing a tighter limit than the simulator's 30 s is the case
+a number in the host would get wrong. Five host self-test groups pin the
+schedule on a fake clock — the two-point case, the five-point case, the shipped
+file resolved at **both** board geometries, the hold bound, and one that gives
+the wire a price so that **absolute** deadlines can be told from a `sleep(gap)`
+loop at all, which the first four could not. All five fail on `fc69c26`. The
+end-to-end test adds the coarse version with the real clock and the real socket
+in it: **0.602 s** on the Waveshare geometry and **0.601 s** on the T-Watch for
+a file declaring 0.6.
 Reported as [#186](https://github.com/hleserg/Attadipa/issues/186), and the
 semantics `duration` now has are written down in
 [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md#what-duration-measures) because
