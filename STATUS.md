@@ -762,7 +762,7 @@ four more things at no cost:
   numbers settle nothing because the SDMMC slots route through the GPIO matrix.
   **No card has ever enumerated on this board.** D14 is `PARTIAL`; the
   non-destructive bench procedure is
-  [SD_CARD_MODE_TEST](docs/hardware/SD_CARD_MODE_TEST.md) — **T-127**,
+  [SD_CARD_MODE_TEST](docs/hardware/SD_CARD_MODE_TEST.md) — **T-162**,
   `NOT EXECUTED — HARDWARE REQUIRED`.
 - **And the procedure written to close D14 cannot close it either** — the fifth
   review round of [#155](https://github.com/hleserg/Attadipa/pull/155), which
@@ -1303,7 +1303,7 @@ four more things at no cost:
   nothing checks. The task-ID check is TASKS.md-only and could
   not see it. The other half — that a link's `#anchor` is captured and then
   never verified, so a citation survives its heading being renumbered — is
-  **T-127**, deliberately not folded in here because its first run will find
+  **T-162**, deliberately not folded in here because its first run will find
   pre-existing breakage. The two body checks exist because the review of
   [#65](https://github.com/hleserg/Attadipa/pull/65) found the pull request had
   spliced a `### T-102` heading into the middle of an unclosed code span in

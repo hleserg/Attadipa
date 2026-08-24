@@ -463,7 +463,7 @@ Recorded here because it is the part of §1 that has an architectural answer, an
 it is small.
 
 `platform::PanelTechnology` already exists and the Waveshare profile already sets
-`Amoled` ([`platform/src/board_profiles.cpp:107`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
+`Amoled` ([`platform/src/board_profiles.cpp:109`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
 **Nothing reads it.** A grep across `platform/`, `core/`, `ui/` and `apps/`
 returns the two assignments and no consumers, so no code in this project can
 behave differently on an emissive panel today, whatever is decided.
@@ -697,7 +697,7 @@ answer a vendor file already contains.
 | 10 | Whether 120 MHz PSRAM is viable here, given the vendor ships 80 MHz | Build at `CONFIG_SPIRAM_SPEED_120M` and run the same benchmark |
 | 11 | Which GPIO each tactile key uses (D5) | Step 9 |
 | 12 | Which loads sit on ALDO1/ALDO2/ALDO3, and what runs on the 1.8 V ALDO4 rail (D13) | Cut one rail at a time and watch which addresses drop off the step-5 scan — deferred past evening one |
-| 13 | Whether the SD card is wired for SDMMC 1-bit or SPI (D14) | A **card in the slot**, enumerating. The 2026-08-23 boot log is not this: it shows the vendor's firmware choosing the SDMMC host driver and then timing out into an **empty** socket, which every wiring does identically. Written up as a non-destructive procedure — [`../hardware/SD_CARD_MODE_TEST.md`](../hardware/SD_CARD_MODE_TEST.md), T-127 |
+| 13 | Whether the SD card is wired for SDMMC 1-bit or SPI (D14) | A **card in the slot**, enumerating. The 2026-08-23 boot log is not this: it shows the vendor's firmware choosing the SDMMC host driver and then timing out into an **empty** socket, which every wiring does identically. Written up as a non-destructive procedure — [`../hardware/SD_CARD_MODE_TEST.md`](../hardware/SD_CARD_MODE_TEST.md), T-162 |
 | 14 | Whether `AXP_IRQ` reaches any SoC GPIO — it appears in no row of the schematic's GPIO table | Continuity from AXP2101 pin 38, or a probe while forcing a PMU interrupt |
 | 15 | Whether GPIO45 is held low across every reset path — it is the `VDD_SPI` voltage strap **and** this board's I2S word-select | A scope on GPIO45 through a reset. Getting this wrong switches `VDD_SPI` to 1.8 V and takes down flash and PSRAM together |
 | 16 | Battery capacity and charge-path details (D2) | The cell's own label |

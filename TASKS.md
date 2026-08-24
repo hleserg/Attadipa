@@ -2309,7 +2309,14 @@ stale silently. The protocol is
   BSP's touch bring-up with a comment saying why a level will not do.
 - **Hardware required:** no for (1), yes to re-verify (2).
 
-### T-127 · The SD slot needs a card in it, because an empty one answers nothing
+### T-162 · The SD slot needs a card in it, because an empty one answers nothing
+- **This task was filed as T-127 and renumbered on merge.** `main` took its
+  own T-127 — *a link's `#anchor` is captured and then never checked* — while
+  this branch was open, so two unrelated tasks arrived at one ID. `main`'s
+  keeps the number because it landed first; every reference to the *anchor*
+  half still reads T-127 and is correct. Same resolution as T-149, one
+  collision earlier, and `check_docs.py`'s duplicate task-ID check is what
+  caught this one at merge — which is what it is for.
 - **Filed from [#131](https://github.com/hleserg/Attadipa/issues/131)**, which
   found D14 closed on evidence that could not close it.
 - **Priority:** P2 — nothing depends on the SD card today. It is here because a
