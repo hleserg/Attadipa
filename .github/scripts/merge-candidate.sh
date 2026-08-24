@@ -50,7 +50,7 @@ set -uo pipefail
 
 # attadipa_merge_candidate CHECKS LABELS UNRESOLVED CODEX_UNANSWERED \
 #                          MERGEABLE_STATE IS_DRAFT HEAD_AGE_SECONDS \
-#                          CHANGED_PATHS PASS_AFTER_HEAD
+#                          CHANGED_PATHS PASS_AFTER_HEAD FACTS_COMPLETE
 #
 # CHECKS               one token per check run on the head commit, space
 #                      separated, each the run's conclusion lowercased:
@@ -104,6 +104,44 @@ set -uo pipefail
 #                      backstop routine guards this and calls it "the likeliest
 #                      of these to recur"; the first version of this file did
 #                      not transcribe it. Found in review.
+#
+# FACTS_COMPLETE       `true` when the caller PROVED it read all of every set
+#                      the arguments above were computed from. `false` when it
+#                      proved it had not; anything else, including the argument
+#                      not being passed at all, is a caller that cannot say.
+#                      Only `true` merges.
+#
+#                      AND ITS REACH IS THE GRAPHQL DOCUMENT, WHICH IS NARROWER
+#                      THAN THAT SENTENCE SOUNDS. `merge-facts.sh` sees one
+#                      reply and answers about the five connections in it.
+#                      CODEX_UNANSWERED is computed in the caller from two REST
+#                      reads the filter never sees (pr-merge-sweep.yml around
+#                      :268-291), so a `true` beside it is a statement about the
+#                      GraphQL half only. That is safe TODAY -- both are
+#                      `--paginate --slurp`, and an error on either holds -- and
+#                      it is written here because this repository has already
+#                      shipped exactly one silent `first: N` ceiling, and the
+#                      next `?per_page=100` added there would arrive underneath
+#                      a `true` that reads as having ruled it out. If a REST
+#                      read here ever stops paginating, this argument stops
+#                      covering it and something else has to.
+#
+#                      WHY THE CALLER HAS TO PROVE THIS, AND WHY NO CONDITION
+#                      ON THE OTHER ARGUMENTS COULD HAVE. Every one of them is
+#                      a summary: `UNRESOLVED` is a count, `LABELS` is a list,
+#                      `CHECKS` is a string of tokens -- and not one of them
+#                      carries any trace of how much the caller managed to read
+#                      before summarising. A GraphQL connection is a PAGE.
+#                      `reviewThreads(first:100)` over a pull request with 101
+#                      threads returns a hundred, and if the unresolved one is
+#                      the hundred-and-first then `UNRESOLVED` arrives as `0` --
+#                      which is the value that merges. This rule cannot see that
+#                      in the `0`, and never could. The fail-open was not in the
+#                      decision, it was at the boundary, which is why the fix is
+#                      a new argument rather than another test on the old ones.
+#                      Issue #170. `.github/scripts/merge-facts.sh` is what
+#                      establishes it, out of `pageInfo` rather than out of the
+#                      length of whatever came back.
 #
 # Prints exactly one line:
 #   MERGE                      every condition holds; merge it
@@ -174,9 +212,44 @@ attadipa_merge_path_allowed() {
 }
 
 attadipa_merge_candidate() {
+  local argc="$#"
   local checks="${1-}" labels="${2-}" unresolved="${3-}" codex="${4-}"
   local mergeable="${5-}" is_draft="${6-}" head_age="${7-}"
-  local paths="${8-}" pass_after_head="${9-}"
+  local paths="${8-}" pass_after_head="${9-}" facts_complete="${10-}"
+
+  # -- did the caller read all of it? ------------------------------------------
+  # BEFORE EVERYTHING ELSE, because every condition below is computed from the
+  # snapshot this one is about. A count of unresolved threads taken over the
+  # first page of them is not a smaller fact than the real one, it is a
+  # different fact wearing its clothes -- and it is wrong in the merging
+  # direction. See FACTS_COMPLETE above and issue #170.
+  #
+  # NINE ARGUMENTS IS THE OLD CALLER, AND THE OLD CALLER IS THE DEFECT. It read
+  # bounded pages and never asked whether there were more, so there is no
+  # reading of its nine arguments under which this rule may merge. Refusing it
+  # by arity rather than by an empty tenth argument is deliberate: an empty
+  # string is something a caller can pass by accident, while nine arguments is
+  # a caller that predates the condition entirely, and the two deserve
+  # different sentences in the log. The message names the fix because this line
+  # is what a reader will see 48 times a day until somebody applies it.
+  if [ "$argc" -lt 10 ]; then
+    # Also to **stderr**, as a workflow warning. The caller turns every HOLD
+    # into a `::notice::` and carries on, so the job stays green and reads
+    # "sweep finished, 0 merged" -- the same line a sweep with nothing to do
+    # prints, 48 times a day, while the sweep is in fact disabled. This file
+    # already carries that lesson for the empty-repository case; it was not
+    # applied to the one state in which the gate refuses *everything*. Only
+    # stdout is captured into the caller's verdict and compared by the tests,
+    # so this reaches the run log without changing either.
+    echo "::warning::the merge sweep is holding every pull request: its caller predates the completeness condition. Apply docs/automation/pending/170-merge-sweep-completeness.patch (T-144)." >&2
+    echo "HOLD this caller cannot prove it read all of the pull request; apply docs/automation/pending/170-merge-sweep-completeness.patch"
+    return 0
+  fi
+  case "${facts_complete:-}" in
+    true) : ;;
+    false) echo "HOLD the facts read about this pull request were truncated"; return 0 ;;
+    *)     echo "HOLD could not tell whether the facts read about this pull request are complete"; return 0 ;;
+  esac
 
   # -- the reviewer's verdict, first, because it is the only judgement here ----
   # Absence of `ai-review:pass` is no verdict, never a silent yes. The reviewer
