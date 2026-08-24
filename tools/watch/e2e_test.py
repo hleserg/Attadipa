@@ -399,6 +399,35 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
               f"returned, and must produce 1 -- zero means wait_stable answered "
               f"about LVGL's idle timer while the tap was still in flight")
 
+        print("\nhow long a gesture takes")
+        # The shipped gesture file, resolved for this board's geometry, over a
+        # real socket -- and timed. `selftest.py` pins the schedule exactly on
+        # a fake clock; this is the coarse version of the same claim with the
+        # real clock and the real transport in it.
+        #
+        # **It runs here, after the click accounting, and not next to the
+        # swipe where it reads better.** A gesture ends in a release, so LVGL
+        # counts a click for it, and that click lands one indev read *after*
+        # the `PointerUp` returns -- late enough to be counted on the far side
+        # of a `lvgl_clicks` taken immediately afterwards. Put this before the
+        # two-taps check and it reports three clicks for two taps: a real
+        # race, blamed on the wrong subsystem.
+        #
+        # A lower bound only. An upper bound is what would flake: a loaded
+        # runner can stretch any interval, and being slower than asked is not
+        # this defect. Being instant is. 0.9 leaves scheduling noise alone
+        # while the shape this replaces spent 0.75 of the duration on this
+        # file and none of it on any two-point path.
+        gesture_file = str(HERE.parent.parent / "tests" / "ui" / "gestures" / "example.json")
+        gesture_points, gesture_duration = scenario_mod.load_gesture(gesture_file, watch)
+        started = time.monotonic()
+        watch.gesture(gesture_points, gesture_duration)
+        elapsed = time.monotonic() - started
+        check(elapsed >= gesture_duration * 0.9,
+              f"the shipped {len(gesture_points)}-point gesture took {elapsed:.3f}s of the "
+              f"{gesture_duration}s it declares -- `duration` covers the whole path, "
+              f"the down and the up included")
+
         print("\nbuttons")
         check(bool(caps.buttons), "the board declares at least one button")
         injectable = [b for b in caps.buttons if b.injectable]
