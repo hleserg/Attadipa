@@ -63,6 +63,7 @@ waiting on a person.
 |---|---|---|
 | `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
 | `170-merge-sweep-completeness.patch` | [#170](https://github.com/hleserg/Attadipa/issues/170) **and** [#199](https://github.com/hleserg/Attadipa/issues/199) — the caller half of the completeness rule and of the head-trust rule, all in `pr-merge-sweep.yml`. **While this waits, the half-hourly merge sweep merges nothing at all**: the rule refuses the nine-argument caller by arity and holds every pull request, once per sweep, naming this file. See [CLAUDE_AUTOMATION.md](../CLAUDE_AUTOMATION.md) and T-144 | 2026-08-24 |
+| `129-report-path-claim-release.patch` | [#129](https://github.com/hleserg/Attadipa/issues/129) — the hand-over's `report` path releasing its own `agent:working`, `/ci-repair reset` clearing a stranded claim, and two tests that existed and were never run. **While this waits, a run that ends on the `report` path leaves a claim nobody holds**, and `queue-scan.jq`, `intake-decision.sh` and `pr-conflict-decision.sh` all read it as a live writer. See [RECOVERY.md](../RECOVERY.md) and T-173 | 2026-08-24 |
 
 Verified before it was parked: `actionlint` clean over all seven workflows with
 the patch applied, `shellcheck -x` clean, and the `approvals` job's body
@@ -82,6 +83,26 @@ it points the sweep at was run read-only against this repository's #173, #176,
 replies. What none of that proves is the sweep running on its schedule with the
 patch applied, which is `NOT EXECUTED` until it lands — T-126.
 
+For `129-report-path-claim-release.patch`: the whole of it was run here before
+it was parked — `blocked-restart-test.sh` at 83 assertions with the patch
+applied and 4 of them red without it, the other sixteen `.github/tests/` suites,
+`shellcheck -x`, `actionlint`, `check_docs.py`, and a host build with all 33
+tests. The four red ones are the fix itself, so the patch carries its own
+mutation proof rather than a claim of one. What that does **not** prove is the
+hand-over running on a real run under its own permissions, or `/ci-repair reset`
+against real `gh`: both are exercised against a stub `gh` on `PATH`, which
+models `gh pr edit --remove-label` failing on a label that is not there and
+models `gh issue edit` refusing to resolve a pull request, and neither is the
+live API. `NOT EXECUTED` until it is deployed.
+
+**It carries three documents and a test, which the paragraph at the top of this
+file says a patch should avoid.** Every one of them is red on `main` without the
+workflow half beside it: the test asserts the label set the hand-over leaves,
+two documents hold fingerprinted citations that the insertions push down, and
+three describe an exit that would not exist. Splitting them puts a red commit on
+`main` whichever half lands first. The patch's own header lists them with the
+reason for each.
+
 **Two issues, one patch, and that is the decision rather than an accident.**
 #199 landed its rule while #170's caller edits were still parked here, and both
 fixes edit `pr-merge-sweep.yml`. A second patch would have meant two apply
@@ -99,3 +120,17 @@ collide with is `130-merge-sweep-caller.patch` on
 if it lands while this is still parked, apply both in one commit and resolve the
 one overlap by hand — T-144. Every patch here `git rm`s only its own file;
 none removes this directory, which three links in `APPROVAL_STALLS.md` point at.
+
+**Two patches here edit `ci.yml` and `claude-agent.yml`** — `75-approval-stall`
+and `129-report-path-claim-release` — and they may land in either order or
+apart. The regions do not touch: #75 adds a `ci.yml` step after
+*What the agent decides it did* and edits `claude-agent.yml`'s writer checkout;
+#129 adds a `ci.yml` step after *The gh calls in the workflows are ones gh
+accepts* and edits `claude-agent.yml`'s hand-over, several hundred lines below.
+`git apply` absorbs the offsets. The one thing that was **not** left to that:
+`approval-stall-decision-test.sh` is a test on `main` that nothing runs, and it
+would have been natural for #129 to add its line to `ci.yml` while it was adding
+`ci-repair-reset-test.sh`'s. It deliberately does not, because #75 already
+carries that line — two patches adding the same step run it twice and nothing
+would have said so. #129's `ci.yml` hunk says this in a comment where the next
+person to notice the gap will read it.

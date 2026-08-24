@@ -1,0 +1,623 @@
+THE WORKFLOW HALF OF #129, PARKED. `claude[bot]` holds no `workflows`
+permission, so the three files under `.github/workflows/` in this diff cannot be
+pushed from a cloud session:
+
+    ! [remote rejected] claude/report-path-claim-release-129 -> ...
+      (refusing to allow a GitHub App to create or update workflow
+       `.github/workflows/ci.yml` without `workflows` permission)
+
+Both tokens in the run were tried -- the App token in GH_TOKEN and the job's own
+GITHUB_TOKEN -- and neither is accepted. This is the same refusal that closed
+pull request #135 unmerged on 2026-08-24.
+
+WHY THE OTHER SEVEN FILES ARE IN HERE TOO, and not in the pull request. Each one
+is red on `main` until the workflow half lands beside it, so splitting them
+would put a red commit on `main` either way round:
+
+  .github/tests/blocked-restart-test.sh
+        asserts the label set the hand-over LEAVES. Four of its 83 assertions
+        are red without claude-agent.yml and claude-ci-repair.yml.
+  docs/automation/APPROVAL_STALLS.md
+  docs/research/WAVESHARE_ARRIVAL.md
+        fingerprinted citations that the insertions push down
+        claude-ci-repair.yml and ci.yml. `check_docs.py` reports these on the
+        landing commit, naming the document rather than the workflow.
+  docs/automation/pending/75-approval-stall.patch
+        one context line, which is the same citation. Without it that patch
+        stops applying and merge-candidate-test.sh says so.
+  docs/automation/RECOVERY.md
+  docs/automation/CI_AND_REVIEW_PIPELINE.md
+  docs/automation/AI_TASK_PROTOCOL.md
+        describe the behaviour these workflows have AFTER this lands. On `main`
+        without it they would describe an exit that does not exist, which is the
+        class of defect #129 is about.
+
+TO APPLY:
+
+    git checkout main && git pull
+    git apply docs/automation/pending/129-report-path-claim-release.patch
+    git rm docs/automation/pending/129-report-path-claim-release.patch
+    #  This file only. `git rm -r docs/automation/pending` would also delete
+    #  every other parked patch and the README that links them.
+
+THEN, IN THE SAME COMMIT:
+
+    docs/automation/pending/README.md
+                         delete this patch's row from *Waiting now*. Leave every
+                         other row alone -- the table is shared, and a hunk that
+                         rewrites it breaks the moment anybody parks another
+                         patch. If the table ends up with no rows at all, then
+                         and only then say "Nothing -- the normal state
+                         described above".
+    STATUS.md, TASKS.md  T-173 says the fix is parked. Say it is deployed.
+
+VERIFY, ALL OF WHICH WAS RUN BEFORE THIS WAS PARKED:
+
+    bash .github/tests/blocked-restart-test.sh    # 83 assertions, 4 red before
+    bash .github/tests/ci-repair-reset-test.sh
+    bash .github/tests/handover-decision-test.sh
+    bash .github/tests/gh-label-test.sh
+    bash .github/tests/merge-candidate-test.sh    # parked patches still apply
+    shellcheck -x .github/scripts/*.sh .github/tests/*.sh
+    actionlint -color
+    python3 tools/docs/check_docs.py .
+
+    git commit -m "Land the report-path claim release from a cloud session"
+
+WHAT IT CHANGES, below.
+
+diff --git a/.github/tests/blocked-restart-test.sh b/.github/tests/blocked-restart-test.sh
+index af32d5e..2700980 100755
+--- a/.github/tests/blocked-restart-test.sh
++++ b/.github/tests/blocked-restart-test.sh
+@@ -447,11 +447,33 @@ sub="${1-}"; shift || true
+ case "$sub" in
+   api)
+     if [ "${ATTADIPA_STUB_API_FAILS:-no}" = yes ]; then exit 1; fi
+-    case "${1-}" in
++    endpoint="${1-}"
++    # `--jq EXPR` is pulled out of the argument list and applied with the REAL
++    # jq, rather than the one projection a caller happens to want being
++    # special-cased into the stub. The claim step and the hand-over ask for
++    # different ones, and a stub that answers a projection it was not given is
++    # a test that passes for the wrong reason.
++    jqexpr=""
++    while [ $# -gt 0 ]; do
++      case "$1" in
++        --jq) jqexpr="${2-}"; shift 2 ;;
++        *) shift ;;
++      esac
++    done
++    case "$endpoint" in
++      # The hand-over's "which open pull request closes this issue" lookup.
++      # Empty means "found nothing", which is what handover-decision.sh reads
++      # as done_nopr on a clean conclusion -- no pull request is involved in
++      # any scenario below, and the blocked decision does not read the kind.
++      graphql) printf '%s\n' "${ATTADIPA_STUB_FOUND-}"; exit 0 ;;
+       */collaborators/*/permission)
+         printf '%s\n' "${ATTADIPA_STUB_PERMISSION:-none}"; exit 0 ;;
+     esac
+-    emit
++    if [ -n "$jqexpr" ]; then
++      emit | jq -r "$jqexpr"
++    else
++      emit
++    fi
+     exit 0 ;;
+   issue|pr)
+     # `gh issue edit` resolves repository.issue(number:), which does not
+@@ -466,6 +488,12 @@ case "$sub" in
+         # so the projection is assumed rather than applied.
+         paste -sd, "$state/labels"; exit 0 ;;
+       comment)
++        # A comment that cannot be written is the case the hand-over's ordering
++        # is chosen for, so the stub can be told to refuse one.
++        if [ "${ATTADIPA_STUB_COMMENT_FAILS:-no}" = yes ]; then
++          echo "could not create comment" >&2
++          exit 1
++        fi
+         shift
+         while [ $# -gt 0 ]; do
+           case "$1" in
+@@ -611,14 +639,12 @@ else
+      "nothing was extracted from claude-ci-repair.yml's reset step; the assertions below would pass vacuously"
+ fi
+ 
+-# run_reset ACTOR PERMISSION BODY -- an escalated pull request, and one comment
+-run_reset() {
+-  scenario=$((scenario + 1))
+-  state="$work/s$scenario"
+-  mkdir -p "$state"
+-  printf 'pr\n' > "$state/kind"
+-  printf '%s\n' "$ESCALATED" > "$state/labels"
+-  : > "$state/calls"
++# exec_reset ACTOR PERMISSION BODY -- run the real reset step against WHATEVER
++# state is current, without setting one up. Split out so the reset can be run
++# over the labels a hand-over actually left behind, rather than only over a
++# hand-written label set: "the escalated pull request gets back out" is a claim
++# about a sequence, and the sequence is what #129 asked to see executed.
++exec_reset() {
+   # shellcheck disable=SC2030,SC2031
+   (
+     PATH="$work/bin:$PATH"
+@@ -628,7 +654,18 @@ run_reset() {
+     export GH_TOKEN=stub REPO=hleserg/Attadipa PR=7
+     export ACTOR="$1" COMMENT_BODY="$3"
+     bash "$RESET_STEP"
+-  ) > "$state/log" 2>&1
++  ) > "$state/reset.log" 2>&1
++}
++
++# run_reset ACTOR PERMISSION BODY -- an escalated pull request, and one comment
++run_reset() {
++  scenario=$((scenario + 1))
++  state="$work/s$scenario"
++  mkdir -p "$state"
++  printf 'pr\n' > "$state/kind"
++  printf '%s\n' "$ESCALATED" > "$state/labels"
++  : > "$state/calls"
++  exec_reset "$@"
+ }
+ 
+ run_reset hleserg write '/ci-repair reset'
+@@ -676,6 +713,178 @@ ATTADIPA_STUB_API_FAILS=yes run_claim issue
+ is "an unreadable object records unknown, not a guess" "$(claimed_state)" unknown
+ agent_blocks
+ is "and unknown reports rather than falling silent" "$(decide)" report
++# A variable assignment in front of a FUNCTION call persists in the shell after
++# the function returns, which is bash and not a mistake -- but every scenario
++# below would then run against a GitHub that refuses every read.
++unset ATTADIPA_STUB_API_FAILS
++
++# ---------------------------------------------------------------------------
++# What a run LEAVES on the object, which is a different question from what it
++# decides.
++#
++# Everything above stops at blocked-outcome.sh's one word. That word was right
++# on 945c16a and the hand-over still got the state wrong: `report` wrote its
++# comment and returned with `agent:working` -- this job's own claim, applied by
++# this job's own claim step -- still on the object. `silent` released it and
++# every ordinary path released it; `report` was the one exit that did not, so a
++# finished run looked like a running one to queue-scan.jq, intake-decision.sh
++# and pr-conflict-decision.sh alike. Reported against 945c16a on #129.
++#
++# A test that asked blocked-outcome.sh for `report` could never have seen that,
++# because the defect is not in the decision -- it is in what the caller does
++# with it. So the hand-over step's own shell is extracted and run too, exactly
++# as the claim step's is, and the scenarios below assert the LABEL SET each path
++# leaves rather than the word that produced it.
++# ---------------------------------------------------------------------------
++echo
++echo "What each hand-over path leaves behind, run end to end"
++
++HANDOVER_STEP="$work/handover.sh"
++step_script "$AGENT" "Hand over" > "$HANDOVER_STEP"
++if [ -s "$HANDOVER_STEP" ] && grep -q 'blocked-outcome.sh' "$HANDOVER_STEP"; then
++  ok "the hand-over step's shell can be extracted and run ($(wc -l < "$HANDOVER_STEP") lines)"
++else
++  no "the hand-over step's shell can be extracted and run" \
++     "nothing was extracted from the 'Hand over' step of $AGENT, or it does not call blocked-outcome.sh; every scenario below would pass vacuously -- point this at the step's new name rather than deleting it"
++  printf '  %d passed, %d failed\n' "$pass" "$fail"
++  exit 1
++fi
++
++handover_status=0
++
++# run_handover [CONCLUSION] -- the real hand-over, over the state the claim step
++# left, with the environment the claim step exported. GitHub hands a later step
++# what an earlier one wrote to $GITHUB_ENV; `set -a` around the file is that,
++# modelled rather than retyped, so a renamed export breaks this instead of being
++# quietly replaced by a default.
++run_handover() {
++  # shellcheck disable=SC2030,SC2031
++  (
++    PATH="$work/bin:$PATH"
++    export PATH
++    export ATTADIPA_STUB_STATE="$state"
++    export GH_TOKEN=stub REPO=hleserg/Attadipa ISSUE=7
++    export HEAD_BEFORE="" CONCLUSION="${1:-success}" REASON=""
++    export RUN_URL="https://example.invalid/actions/runs/1"
++    set -a
++    # shellcheck disable=SC1091  # written by the claim step at run time.
++    . "$state/env"
++    set +a
++    bash "$HANDOVER_STEP"
++  ) > "$state/handover.log" 2>&1
++  handover_status=$?
++}
++
++commented()   { [ -s "$state/comment.md" ]; }
++holds()       { if has "$1"; then ok "$2"; else no "$2" "$1 is gone; labels are now $(labels_now)"; fi; }
++released()    { if has "$1"; then no "$2" "$1 is still on the object; labels are now $(labels_now)"; else ok "$2"; fi; }
++
++echo
++echo "  6. the reported case: an escalated pull request, restarted with @claude"
++run_claim pr agent:claude ci:failed agent:blocked needs-owner ai-review:pass
++is "the claim records the pre-existing blocker" "$(claimed_state)" true
++run_handover success
++is "the hand-over completes" "$handover_status" 0
++if commented; then
++  ok "and says what the run did, because silence is the original defect"
++else
++  no "and says what the run did, because silence is the original defect" \
++     "no outcome comment was written on the report path"
++fi
++released agent:working "and RELEASES ITS OWN CLAIM, which is what #129 reported"
++holds agent:blocked "while the escalation it did not set stays put"
++holds ci:failed     "and so does ci:failed"
++holds needs-owner   "and so does needs-owner"
++holds ai-review:pass "and so does every unrelated label"
++released agent:review "and the run is not reported as finished work"
++
++echo "     ...and then a person clears the escalation"
++exec_reset hleserg write '/ci-repair reset'
++released agent:blocked "the trusted reset clears the blocker"
++released ci:failed     "and clears ci:failed"
++released agent:working "and leaves no claim behind either"
++holds ai-review:pass   "and still touches nothing it does not own"
++holds needs-owner      "including the decision that is the owner's to make"
++# The blocker hold is gone and the only thing left is the label a person owns.
++# That sentence is the difference between "documented exit" and "permanently
++# ineligible", so it is executed against the rule rather than argued.
++# One label per line, as merge-candidate.sh matches them -- its check is
++# anchored to a whole line precisely so that `x ai-review:pass` cannot pass the
++# verdict check, and handing it the comma-joined form silently matches nothing.
++is "so the sweep now holds on nothing but the owner's own decision" \
++   "$(green_verdict "$(cat "$state/labels")")" "HOLD needs-owner is set"
++
++echo
++echo "  7. a claim stranded by a run that never reached its hand-over"
++# The cancelled job, the dead runner, the timeout past `if: always()`. The
++# watchdog's two-hour sweep does not reach this one: it selects numbers from
++# `repos/{repo}/issues?labels=agent:working`, which returns pull requests, and
++# then edits them with `gh issue edit`, which cannot resolve one. So the trusted
++# reset is the only exit, and it has to clear all three.
++scenario=$((scenario + 1))
++state="$work/s$scenario"
++mkdir -p "$state"
++printf 'pr\n' > "$state/kind"
++printf 'agent:claude\nci:failed\nagent:blocked\nagent:working\n' > "$state/labels"
++: > "$state/calls"
++exec_reset hleserg write '/ci-repair reset'
++released agent:working "the reset clears a claim its own hand-over never released"
++released agent:blocked "and the blocker with it"
++if grep -q 'agent:working' "$state/comment.md" 2>/dev/null; then
++  ok "and names it in the comment, so a released lock is on the record"
++else
++  no "and names it in the comment, so a released lock is on the record" \
++     "the comment does not mention agent:working: $(cat "$state/comment.md" 2>/dev/null)"
++fi
++
++echo
++echo "  8. the same object, an ordinary run: the paths differ in one thing only"
++run_claim issue agent:ready source:chatgpt
++run_handover success
++is "the hand-over completes" "$handover_status" 0
++released agent:working "an ordinary run releases the claim too"
++if has agent:review; then
++  ok "and THIS one is finished work waiting for a reader"
++else
++  no "and THIS one is finished work waiting for a reader" \
++     "agent:review was not applied to an ordinary run; labels are $(labels_now)"
++fi
++
++echo
++echo "  9. the agent blocked itself, and has already said why"
++run_claim issue agent:blocked needs-owner agent:ready
++agent_blocks
++run_handover success
++is "the hand-over completes" "$handover_status" 0
++released agent:working "the silent path releases the claim"
++holds agent:blocked "and leaves the blocker the agent just set"
++holds needs-owner   "and the owner's decision with it"
++if commented; then
++  no "and does not talk over the agent's own BLOCKED comment" \
++     "an outcome comment was written beside it"
++else
++  ok "and does not talk over the agent's own BLOCKED comment"
++fi
++released agent:review "and a blocked task is not finished work"
++
++echo
++echo " 10. the outcome comment cannot be written"
++# THE ORDER IS THE ASSERTION. The release happens AFTER the comment, and the
++# comment is not `|| true` under `set -euo pipefail`, so a hand-over that cannot
++# report fails loudly with the claim still standing -- a stuck task the watchdog
++# returns to the queue in two hours. Releasing first would turn that into a task
++# that looks finished and said nothing, which is the defect this whole file is
++# about.
++run_claim pr agent:claude ci:failed agent:blocked
++ATTADIPA_STUB_COMMENT_FAILS=yes run_handover success
++if [ "$handover_status" -ne 0 ]; then
++  ok "the step fails rather than pretending it reported"
++else
++  no "the step fails rather than pretending it reported" \
++     "it exited 0 after the comment call failed"
++fi
++holds agent:working "and the claim stays, so the watchdog can see a stuck task"
++holds agent:blocked "and the blocker is still untouched"
+ 
+ echo
+ printf '  %d passed, %d failed\n' "$pass" "$fail"
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 86597c9..b8a4263 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -370,6 +370,22 @@ jobs:
+       - name: The gh calls in the workflows are ones gh accepts
+         run: bash .github/tests/gh-api-usage-test.sh
+ 
++      # THIS TEST EXISTED AND NOTHING RAN IT. It arrived with the rule it
++      # guards and was never added to this list, so the trust boundary on
++      # `/ci-repair reset` -- who may dissolve a human escalation, and on what
++      # exact text -- was held by a file no run had ever executed. That is the
++      # same shape as a rule embedded in a YAML block, which is what the
++      # decision scripts are files to avoid: a test nothing runs is a test that
++      # is already failing and has not said so. Found while implementing #129,
++      # whose own check list names it.
++      #
++      # `approval-stall-decision-test.sh` is in the same state and is NOT added
++      # here, because `docs/automation/pending/75-approval-stall.patch` already
++      # carries its line -- adding it here as well would run it twice the moment
++      # that patch lands.
++      - name: A human escalation is undone by a human, deliberately
++        run: bash .github/tests/ci-repair-reset-test.sh
++
+   docs:
+     name: Documentation consistency
+     runs-on: ubuntu-latest
+diff --git a/.github/workflows/claude-agent.yml b/.github/workflows/claude-agent.yml
+index 8c6b84b..577d7d9 100644
+--- a/.github/workflows/claude-agent.yml
++++ b/.github/workflows/claude-agent.yml
+@@ -1247,6 +1247,37 @@ jobs:
+           attadipa_label_comment "$TARGET" "$ISSUE" "$REPO" --body-file /tmp/outcome.md
+ 
+           if [ "$BLOCKED_OUTCOME" = "report" ]; then
++            # THE CLAIM IS NOT PART OF THE STATE THIS PATH PRESERVES, and that
++            # distinction is the whole of #129's second half. `report` means
++            # "somebody else's blocker, or nobody can tell" -- so `agent:blocked`,
++            # `ci:failed`, `needs-owner` and every other label on the object are
++            # left exactly as they were found, because this run did not earn the
++            # right to change any of them.
++            #
++            # `agent:working` is not one of those. It is not a fact about the
++            # object at all; it is this job saying "I am holding this", written
++            # by this job's own claim step when the run started, and it stops
++            # being true the moment this step returns. Leaving it behind made a
++            # finished run indistinguishable from a running one -- and three
++            # separate readers believe it: queue-scan.jq skips a claimed task
++            # forever, intake-decision.sh refuses a labelled restart on it, and
++            # pr-conflict-decision.sh reports a conflicted branch as held rather
++            # than re-queueing it. The `silent` path above has always released
++            # it; this one is the only exit that did not, which is why it read
++            # as a state-preservation rule rather than as the omission it was.
++            # Reported against 945c16a on #129, and confirmed there.
++            #
++            # AFTER THE COMMENT, DELIBERATELY. `attadipa_label_comment` is not
++            # `|| true` and this step runs under `set -euo pipefail`, so a
++            # comment that cannot be written aborts here with the claim still
++            # standing -- a red job beside a task that visibly still says it is
++            # held, rather than a silently released one that looks finished and
++            # said nothing. On an issue the watchdog also returns it to the
++            # queue two hours later; on a pull request it cannot, which is
++            # T-174. Releasing first would trade a loud
++            # failure for a quiet one, and this whole protocol is about which of
++            # those a person gets to see.
++            attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --remove-label agent:working || true
+             exit 0
+           fi
+ 
+diff --git a/.github/workflows/claude-ci-repair.yml b/.github/workflows/claude-ci-repair.yml
+index b880dee..04f8503 100644
+--- a/.github/workflows/claude-ci-repair.yml
++++ b/.github/workflows/claude-ci-repair.yml
+@@ -29,7 +29,9 @@ jobs:
+   # A CI escalation is cleared only by an explicit command from a collaborator
+   # with write-equivalent permission.  This job neither invokes Claude nor
+   # checks out PR code: it reads the decision script from main and changes only
+-  # the two labels that the give-up path owns.
++  # the labels that stand between an escalated pull request and a normal
++  # lifecycle -- the two the give-up path owns, plus a stranded `agent:working`
++  # claim, which has no other exit on a pull request.  The step below says why.
+   reset:
+     name: Clear an acknowledged CI escalation
+     if: >-
+@@ -67,12 +69,63 @@ jobs:
+             exit 0
+           fi
+ 
+-          for label in ci:failed agent:blocked; do
+-            gh pr edit "$PR" --repo "$REPO" --remove-label "$label" || true
++          # THREE LABELS, AND THE THIRD WAS MISSING. `ci:failed` and
++          # `agent:blocked` are what the give-up path writes, so clearing them
++          # is what "undo the escalation" obviously means. It was not enough,
++          # and #129 says why against 945c16a: an escalated pull request that
++          # somebody restarts with `@claude` gets a run whose hand-over takes
++          # the `report` path -- it comments and returns without releasing
++          # `agent:working`, because the pre-existing blocker means it must
++          # change no state label. So the pull request ends up carrying a claim
++          # with nobody behind it, and this command, the only documented way
++          # back to a normal lifecycle, left it there.
++          #
++          # The hand-over now releases its own claim on that path, which fixes
++          # the case where the run reached its hand-over. This covers the case
++          # where it did not -- a cancelled job, a runner that died, a timeout
++          # past `if: always()`. The watchdog's two-hour sweep does not: it
++          # picks numbers out of `repos/{repo}/issues?labels=agent:working`,
++          # which returns pull requests too, and then edits them with
++          # `gh issue edit`, which cannot resolve one (see
++          # .github/scripts/gh-label.sh). A claim stranded on a pull request has
++          # no automatic exit at all, so this one is deliberate.
++          #
++          # AND IT IS A LOCK BEING RELEASED BY SOMEBODY WHO IS NOT HOLDING IT,
++          # which is worth saying plainly rather than burying. If a run really
++          # is in flight on this pull request when the command is typed, this
++          # frees it to be claimed again and two writers become possible. That
++          # is accepted because every other property of this path already
++          # assumes a deliberate human: the command must be the whole of a line,
++          # the actor must not be a bot, and they must hold write access. A
++          # person who types it is asserting the automation has stopped. The
++          # comment below names every label it removed so the assertion is on
++          # the record and wrong ones are visible.
++          removed=()
++          for label in ci:failed agent:blocked agent:working; do
++            if gh pr edit "$PR" --repo "$REPO" --remove-label "$label"; then
++              removed+=("$label")
++            fi
+           done
+           {
+-            echo "Cleared the CI-repair escalation after an explicit /ci-repair reset"
+-            printf 'from a collaborator with %s permission.\n' "$PERMISSION"
++            if [ "${#removed[@]}" -eq 0 ]; then
++              # Say the true thing rather than the usual one. A command that
++              # found nothing to do and reported "cleared the escalation" would
++              # be the same sort of lie as the run this whole issue is about.
++              printf "An explicit \`/ci-repair reset\` from a collaborator with %s\n" "$PERMISSION"
++              echo "permission, and there was nothing to clear: this pull request carried"
++              echo "none of \`ci:failed\`, \`agent:blocked\` or \`agent:working\`."
++            else
++              echo "Cleared the CI-repair escalation after an explicit \`/ci-repair reset\`"
++              printf 'from a collaborator with %s permission.\n' "$PERMISSION"
++              echo
++              printf 'Removed:'
++              # Double quotes and escaped backticks, not single quotes: a
++              # backtick inside single quotes is what shellcheck reads as an
++              # unexpanded command substitution (SC2016), and this is markdown
++              # for a code span rather than a shell construct either way.
++              printf " \`%s\`" "${removed[@]}"
++              printf '\n'
++            fi
+           } > /tmp/reset.md
+           gh pr comment "$PR" --repo "$REPO" --body-file /tmp/reset.md
+ 
+diff --git a/docs/automation/AI_TASK_PROTOCOL.md b/docs/automation/AI_TASK_PROTOCOL.md
+index 5cf761c..8bbb72f 100644
+--- a/docs/automation/AI_TASK_PROTOCOL.md
++++ b/docs/automation/AI_TASK_PROTOCOL.md
+@@ -411,7 +411,19 @@ recommendation. "What should I do?" is not a question, it is an absence of one.
+   the three-label state is refused, and that the escalation comment says so.
+ - **CI failures**: repaired automatically at most twice per problem chain, from
+   the actual failing log. After that the pull request gets `ci:failed` and
+-  `agent:blocked` and a human is asked. `/ci-repair reset` clears the counter.
++  `agent:blocked` and a human is asked. `/ci-repair reset`, on a line of its own
++  and from a non-bot actor with write access, clears the counter, both of those
++  labels, and a stranded `agent:working` claim — the trusted way back to a
++  normal lifecycle. A plain `@claude` clears none of them.
++- **The claim is released on every exit.** A run whose hand-over takes the
++  `report` path — a pre-existing blocker it did not set, so it comments and
++  changes no state label — still removes its own `agent:working`, after the
++  comment is written and not before. `agent:working` is not state about the
++  object; it is this run saying it is holding it, and that stops being true when
++  the run ends. It was the one exit that left it behind, and a finished run then
++  read as a running one to `queue-scan.jq`, `intake-decision.sh` and
++  `pr-conflict-decision.sh` alike. `.github/tests/blocked-restart-test.sh` runs
++  the hand-over step itself and asserts the label set each path leaves.
+ - **Cost**: every workflow checks the `CLAUDE_AUTOMATION_ENABLED` repository
+   variable before anything billable, the queue watchdog costs nothing when the
+   queue is empty, and one writer runs at a time.
+diff --git a/docs/automation/APPROVAL_STALLS.md b/docs/automation/APPROVAL_STALLS.md
+index e6e0277..10f5e6c 100644
+--- a/docs/automation/APPROVAL_STALLS.md
++++ b/docs/automation/APPROVAL_STALLS.md
+@@ -240,7 +240,7 @@ omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
+ checker reads a fingerprint only from the citation's own physical line:
+ `claude-agent.yml:819` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+ `claude-pr-review.yml:112` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+-`claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
++`claude-ci-repair.yml:342` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
+ `display_report: "true"` posts the agent's summary **on the triggering issue**
+ over it, and the
+ agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
+diff --git a/docs/automation/CI_AND_REVIEW_PIPELINE.md b/docs/automation/CI_AND_REVIEW_PIPELINE.md
+index d3c853b..a7a96b2 100644
+--- a/docs/automation/CI_AND_REVIEW_PIPELINE.md
++++ b/docs/automation/CI_AND_REVIEW_PIPELINE.md
+@@ -126,6 +126,15 @@ told to find the root cause before changing anything. Two attempts per problem
+ chain; then `ci:failed`, `agent:blocked` and a comment saying what it could not
+ work out. `/ci-repair reset` clears the counter.
+ 
++That command is also the way back out. On its own line, from a non-bot actor
++with write access, it removes `ci:failed`, `agent:blocked` and a stranded
++`agent:working` claim, and comments saying which of the three were there. The
++third is on the list because a pull request has no other exit from a stale
++claim — the watchdog's two-hour sweep cannot edit one; see
++[RECOVERY.md](RECOVERY.md#a-pull-request-is-stuck-on-agentworking). A plain
++`@claude` clears none of them, deliberately: an escalation to a person is undone
++by a person.
++
+ The failure mode being designed against is *`CI failed → change something →
+ rerun`*, which is a random walk with a budget attached. The attempt marker is
+ written **before** the attempt for the same reason: a counter that only
+diff --git a/docs/automation/RECOVERY.md b/docs/automation/RECOVERY.md
+index 4e18795..bfd1f25 100644
+--- a/docs/automation/RECOVERY.md
++++ b/docs/automation/RECOVERY.md
+@@ -62,6 +62,32 @@ The run died, or was cancelled. The watchdog clears it after two hours. To
+ force it, use the command above. The agent's branch, if it made one, is still
+ there — `git branch -r | grep claude/`.
+ 
++### A *pull request* is stuck on `agent:working`
++
++The same symptom with none of the same recovery, so it gets its own heading.
++The watchdog's two-hour sweep does not reach a pull request: it selects numbers
++from `repos/{repo}/issues?labels=agent:working`, which returns pull requests
++too, and then edits them with `gh issue edit`, which cannot resolve one. So a
++claim stranded on a pull request stays there.
++
++```bash
++gh pr edit <n> --remove-label agent:working
++```
++
++or, if the pull request also carries the CI-repair escalation, comment
++`/ci-repair reset` on it — that clears `ci:failed`, `agent:blocked` **and**
++`agent:working` in one deliberate act, and says in a comment which of the three
++were actually there. It is a lock being released by somebody who is not holding
++it: if a run really is still in flight, this frees the pull request to be
++claimed again. Type it when you have decided the automation has stopped, not to
++find out whether it has.
++
++A run that reaches its own hand-over now releases the claim on every exit,
++including the `report` path — an escalated pull request restarted with
++`@claude`, where the run must comment but must change no state label, because
++the blocker is somebody else's. This heading is for the run that never reached
++its hand-over: a cancelled job, a dead runner, a timeout past `if: always()`.
++
+ ### The same pull request is being repaired over and over
+ 
+ It cannot be: two attempts per problem chain, and the marker is written before
+diff --git a/docs/automation/pending/75-approval-stall.patch b/docs/automation/pending/75-approval-stall.patch
+index 20bcd47..4020ed5 100644
+--- a/docs/automation/pending/75-approval-stall.patch
++++ b/docs/automation/pending/75-approval-stall.patch
+@@ -493,7 +493,7 @@ index 4e21eda..eaf6fc3 100644
+ -`claude-agent.yml:819` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+ +`claude-agent.yml:847` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+  `claude-pr-review.yml:112` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+- `claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
++ `claude-ci-repair.yml:342` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
+  `display_report: "true"` posts the agent's summary **on the triggering issue**
+  over it, and the
+  agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
+diff --git a/docs/research/WAVESHARE_ARRIVAL.md b/docs/research/WAVESHARE_ARRIVAL.md
+index 8430371..c45e79f 100644
+--- a/docs/research/WAVESHARE_ARRIVAL.md
++++ b/docs/research/WAVESHARE_ARRIVAL.md
+@@ -121,7 +121,7 @@ Whatever is decided, wrapping the BSP does not cover the board.
+ "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
+ ([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
+ `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
+-([`.github/workflows/ci.yml:511`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
++([`.github/workflows/ci.yml:527`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+ What exists
+ is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
+ installed is not decided.
+@@ -750,7 +750,7 @@ does not, kept because an uncorrected claim propagates.
+     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
+     Both live citations are written above with fingerprints —
+     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
+-    [`.github/workflows/ci.yml:511`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
++    [`.github/workflows/ci.yml:527`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+     — and the numbers in this paragraph are
+     deliberately **not** citations: it is a record of where two claims used to
+     point, and writing that record in the live syntax would make it four more

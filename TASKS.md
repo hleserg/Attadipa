@@ -821,6 +821,41 @@ stale silently. The protocol is
 
 ## READY
 
+### T-174 · The watchdog cannot unstick a pull request, and does not say so
+- **Priority:** P2. It is a recovery path that silently covers half of what it
+  is documented to cover; nothing is lost while it is broken, but the thing
+  people are told to rely on is not there.
+- **Dependencies:** none. Found while fixing T-173 and deliberately not fixed
+  with it — a different mechanism in a different file, and #129's required
+  change did not include it.
+- **Goal:** `agent-queue-watchdog.yml:309` selects numbers from
+  `repos/{repo}/issues?state=open&labels=agent:working&per_page=100`. That REST
+  endpoint returns **pull requests as well as issues** — it is the same
+  conflation `.github/scripts/gh-label.sh` exists to undo. Line 317 then calls
+  `gh issue edit "$n" --remove-label agent:working --add-label agent:ready`,
+  which resolves through GraphQL `repository.issue(number:)` and cannot resolve
+  a pull request. It is `|| true`, so nothing is reported. Line 315's
+  `gh issue comment` *does* resolve a pull request, so the observable behaviour
+  is a comment saying the task has been returned to the queue, followed by a
+  label edit that fails, on a claim that stays exactly where it was — and the
+  comment bumps `updated_at`, so the next tick re-selects it two hours later and
+  says it again.
+- **Acceptance:** the sweep asks which object each number is and edits it with
+  `attadipa_label_edit`, exactly as the claim step and the hand-over already do.
+  A pull request's claim is released; whether it also gets `agent:ready` is a
+  decision, not a transcription — `queue-scan.jq:58` drops every pull request
+  before it reads a label and this workflow does not listen for
+  `pull_request.labeled`, so the label would be inert, which the hand-over
+  already refuses to write for that reason (see `claude-agent.yml`'s
+  `done_pr_cut` comment). A test in `.github/tests/watchdog-filter-test.sh` that
+  **executes** the sweep against the stub `gh` in
+  `blocked-restart-test.sh`, rather than asserting the shape of the command.
+- **Watch for:** the comment is written before the edit, so a fix that only
+  corrects the edit still leaves the repeat-every-two-hours behaviour if the
+  edit can fail for another reason. And the two-hour cutoff is measured on
+  `updated_at`, which any comment moves — including the workflow's own.
+- **Hardware required:** no.
+
 ### T-062 · The branch audit's remaining findings
 - **Priority:** P1. These are defects in code that already exists and that other
   work is about to build on, which makes them cheaper now than later.
@@ -2789,7 +2824,109 @@ Recommended next action:
   reason: that unit has **no vibration motor fitted**, so there is nothing to
   interfere with the compass even once the compass exists.
 
-### T-144 · An agent cannot land a change to `.github/workflows/`, and two fixes are parked behind it
+### T-173 · A finished run that still says it is running — **WRITTEN, PARKED** 2026-08-24
+- **The work is finished and it is in BLOCKED, which is the honest place for
+  it.** Three of the files are under `.github/workflows/`, which `claude[bot]`
+  may not push — **T-144 below is that blocker** and this is the third fix
+  parked on it. It is the refusal that closed pull request
+  [#135](https://github.com/hleserg/Attadipa/pull/135) unmerged on 2026-08-24
+  and that `docs/automation/pending/README.md` exists for. The whole change is
+  parked as `docs/automation/pending/129-report-path-claim-release.patch`, which
+  carries the workflow half, the test, and the four documents its landing
+  forces. Three commands from a local session apply it; the patch's own header
+  lists them and what to change in this file afterwards — including moving this
+  entry to DONE. **Until then a run that ends on the `report` path still leaves
+  a claim nobody holds.**
+- **Priority:** P1 (issue [#129](https://github.com/hleserg/Attadipa/issues/129),
+  second half, reported by the owner against `945c16a`).
+- **Dependencies:** the first half, which landed as
+  [#214](https://github.com/hleserg/Attadipa/pull/214) — `blocked-outcome.sh`
+  and the trusted `/ci-repair reset`.
+- **Goal:** the hand-over's three exits release the claim in two of the three
+  cases. `silent` removes `agent:working` and returns; every ordinary path
+  removes it alongside `agent:review` or `agent:failed`. `report` — a blocker
+  the run did not set, or a label read that failed — wrote its outcome comment
+  and returned with the claim still on the object. It was written that way on
+  purpose, and the purpose was right: `report` means *change no state label*,
+  because `agent:blocked`, `ci:failed` and `needs-owner` all belong to somebody
+  else. `agent:working` was swept up by a rule it does not belong to.
+- **What came of it.** `agent:working` is not state about the object at all: it
+  is this job saying it is holding the object, written by this job's own claim
+  step, and it stops being true when the step returns. The `report` path now
+  removes it — **after** the outcome comment and not before, because
+  `attadipa_label_comment` is not `|| true` under `set -euo pipefail`, so a
+  hand-over that cannot report aborts with the claim standing and the watchdog
+  sees a stuck task rather than a released one that looks finished and said
+  nothing. Nothing else on the object is touched.
+
+  The consequence was not cosmetic: `queue-scan.jq:58` skips a claimed task,
+  `intake-decision.sh:206` refuses a labelled restart on one, and
+  `pr-conflict-decision.sh:134` reports a conflicted branch as held instead of
+  re-queueing it. Three readers, all believing a claim with nobody behind it.
+
+  **And the other half was the exit.** `/ci-repair reset` cleared `ci:failed`
+  and `agent:blocked` — the two the give-up path writes — so a pull request
+  whose run *never reached* its hand-over (a cancelled job, a dead runner, a
+  timeout past `if: always()`) kept its claim through the one command documented
+  to return it to a normal lifecycle. It now clears `agent:working` too, and its
+  comment names which of the three were actually there. That is a lock being
+  released by somebody who is not holding it, which is written down in the
+  workflow and in [RECOVERY](docs/automation/RECOVERY.md) rather than left to be
+  discovered: it is accepted because every other property of that path already
+  requires a deliberate human — the command must be the whole of a line, the
+  actor must not be a bot, and they must hold write access.
+- **The test executes the transition rather than describing it**, which is what
+  #129 asked for the first time and had only got for the claim step.
+  `blocked-restart-test.sh` now lifts the **hand-over** step's own shell out of
+  `claude-agent.yml` too and runs it against the same stub `gh`, so each of the
+  five scenarios asserts the *label set a path leaves* instead of the word that
+  produced it — which is the only kind of assertion that could have seen this
+  defect, since `blocked-outcome.sh` was returning `report` correctly the whole
+  time. 83 assertions; the four that matter are red on `945c16a`.
+- **Hardware required:** no. Automation-only path.
+- **Found and not fixed here:** the watchdog cannot unstick a pull request at
+  all — **T-174**, with the evidence.
+
+```
+BLOCKED:
+Reason:         The fix edits three files under `.github/workflows/`
+                (claude-agent.yml, claude-ci-repair.yml, ci.yml). Agents here
+                run as `claude[bot]` through the Claude GitHub App, whose
+                installation token holds no `workflows` permission — T-144.
+Evidence:       2026-08-24, this branch, both tokens the run held:
+                  ! [remote rejected] claude/report-path-claim-release-129
+                    (refusing to allow a GitHub App to create or update
+                     workflow `.github/workflows/ci.yml` without `workflows`
+                     permission)
+                The App token in GH_TOKEN and the job's own GITHUB_TOKEN are
+                refused identically. Pull request #135 was closed unmerged for
+                the same reason on the first half of this issue.
+Impact:         A run that ends on the `report` path leaves `agent:working` on
+                the object it has finished with. queue-scan.jq skips it,
+                intake-decision.sh refuses a labelled restart on it, and
+                pr-conflict-decision.sh reports a conflicted branch as held.
+                On a pull request nothing clears it at all — the watchdog
+                cannot (T-174) and `/ci-repair reset` does not yet.
+                Everything else in this task is on `main` and green.
+Possible options:
+                1. Apply the parked patch from a local session with the owner's
+                   own `gh` login — three commands, in the patch's header.
+                   Fixes this task and nothing else.
+                2. Set ATTADIPA_AGENT_TOKEN to a token with the `workflow`
+                   scope (a classic PAT with `workflow`, or a fine-grained PAT
+                   with Workflows: read and write). claude-agent.yml already
+                   passes it as `github_token`, and CLAUDE_AUTOMATION.md
+                   documents it as deliberately allowed to be empty, which is
+                   why this run fell back to the App token. Fixes T-144 and
+                   every future task that touches a workflow.
+                3. Grant the Claude GitHub App "Workflows: read and write" on
+                   this repository. Same effect as (2), wider blast radius.
+Recommended next action:
+                (1) now, because it is three commands and the patch is verified;
+                (2) as the standing fix, tracked as T-144.
+```
+
+### T-144 · An agent cannot land a change to `.github/workflows/`, and three fixes are parked behind it
 - **Priority:** P1
 - **Dependencies:** none. This is a token permission, not a design problem.
 - **Goal:** let a fix that has to touch a workflow file actually reach `main`.
@@ -2807,9 +2944,16 @@ Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
                     (refusing to allow a GitHub App to create or update
                      workflow `.github/workflows/pr-merge-sweep.yml` without
                      `workflows` permission)
-                Two fixes are parked on it, both against the same file:
+                Three fixes are parked on it; the last two are against the
+                same file and the first is not:
                   · #170 — docs/automation/pending/170-merge-sweep-completeness.patch
                     (the merge sweep proving it read the whole pull request)
+                  · #129 — docs/automation/pending/129-report-path-claim-release.patch
+                    (the hand-over's `report` path releasing its own claim, and
+                    `/ci-repair reset` clearing a stranded one). Against
+                    claude-agent.yml, claude-ci-repair.yml and ci.yml, so it
+                    collides with NEITHER of the two below and may land alone,
+                    before them or after them — T-173.
                   · #130 — docs/automation/pending/130-merge-sweep-caller.patch
                     on pull request #154, which files this same blocker as
                     "T-127" — a number already taken by the anchor check in
