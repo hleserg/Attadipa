@@ -9,7 +9,12 @@ by one at both ends and every round trip passes while the last byte of every
 frame goes unprotected.
 
 `selftest.py` holds them against fixed byte vectors for that reason, not only
-against each other.
+against each other -- and the vectors cover this protocol and not just the
+framing under it: a whole `HelloOk`, a whole `ScreenInfo`, a whole `InputEvent`,
+and the `Op` and `ErrorCode` tables spelled out value by value. The tables are
+mirrored here by hand rather than generated, so a number moved on the device
+side is a silently mistranslated error message; writing them out on both sides
+is what makes that a failing test instead.
 
 Nothing here talks to a socket or a serial port; `client.py` does. Keeping the
 format pure is what lets the tests run with no device, no simulator and no

@@ -316,6 +316,12 @@ set_tests_properties(debug_channel PROPERTIES LABELS input)
 # identically, so the two independent implementations are pinned to the same
 # bytes rather than to each other. An encoder and a decoder that share a mistake
 # agree perfectly; a hex literal does not.
+#
+# The vectors cover the framing *and* this protocol: a whole HelloOk, a whole
+# ScreenInfo, a whole InputEvent, and both numbering tables. They did not until
+# 2026-08-23, and this comment claimed they did -- the envelope and the bodies
+# were compared only to themselves, on each side, and only here in the
+# simulator-gated job.
 if(Python3_Interpreter_FOUND)
     add_test(NAME watch_tool
              COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/watch/selftest.py)

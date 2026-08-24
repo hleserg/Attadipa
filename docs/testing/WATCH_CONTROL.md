@@ -93,8 +93,9 @@ python3 tools/watch_control.py gesture --file tests/ui/gestures/example.json
 #   the shipped file is written in fractions of the panel, so it runs on both
 #   boards; whole numbers in a gesture file are pixels, same rule as a scenario
 
-python3 tools/watch_control.py button button-1 click
-python3 tools/watch_control.py button button-1 hold --duration 1.5
+python3 tools/watch_control.py button power click        # T-Watch
+python3 tools/watch_control.py button power hold --duration 1.5
+#   the Waveshare declares no button it will simulate -- see `info` below
 python3 tools/watch_control.py input-reset
 python3 tools/watch_control.py run tests/ui/scenarios/diagnostic_tour.yaml
 python3 tools/watch_control.py live --screenshot-after
@@ -131,6 +132,16 @@ are worth reading every time:
   by pressing them; which of `Key1`, `Key3` and the PMU's `PWRON` each one
   reaches is **open question D5**. They are `button-1` and `button-2` because
   calling one "power" would be inventing the answer.
+- **`not simulated`** beside those same two. `injectable` says the harness may
+  synthesise a press, and on the Waveshare it is `false` for both, for the same
+  reason `role_known` is: `HARDWARE_MATRIX` calls its key list "a floor, not a
+  census" and says `Key1` may never be brought out at all. So the T-Watch runs
+  the button step of a scenario and the Waveshare prints `skip` — coverage that
+  did not happen, counted separately from the passes and never as one. Flip
+  either to `true` in `platform/src/board_profiles.cpp` when D5 closes, with the
+  evidence beside it. The T-Watch's `boot` carries the same flag for the
+  opposite reason: its role **is** established, and it is a boot-mode strap that
+  produces no software event.
 
 ### Series, for animations
 
@@ -181,6 +192,14 @@ is the worked example.
 
 The run stops at the first failure and keeps every image taken so far.
 
+**A step has three outcomes, not two.** `ok`, `FAIL`, and `skip` — a step this
+board cannot run. Today that is the `button` step with `button: first-injectable`
+on the Waveshare, which declares no button it will simulate while D5 is open. It
+is counted separately in the summary line and in `--json`, and it is never
+counted as a pass: a skipped step that reads as green is how a scenario reports
+coverage it never had, and that is the failure this repository keeps finding in
+its own tests.
+
 ---
 
 ## The diagnostic screen
@@ -220,9 +239,10 @@ the expectation would move together.
 | `nothing has been rendered yet` | the screen has not been drawn | take the screenshot after the first frame. **This is now the only capture failure that waiting fixes**, and no shipped source returns it: `lv_snapshot_take` re-renders, so it succeeds before the first `lv_timer_handler` too. A device source may still need it |
 | `the device could not produce a frame at all…` | the renderer is out of memory | **waiting will not fix it.** The simulator fixes `LV_MEM_SIZE` at 1 MiB on purpose, and a 410 × 502 screenshot asks that pool for 617,460 bytes plus stride over the widget tree and the display buffers. Its own code because it used to answer with the row above, which sent you to wait for a frame that had already been drawn |
 | `the screen the device is showing is not the panel's size…` | the active screen is smaller or larger than the display | look at what built that screen. Reporting the board's dimensions over the snapshot's pixels would produce a skewed image that still looked like a picture, so the capture is refused instead |
+| `the frame did not finish arriving in time…` | the device is still sending after the whole transfer's budget ran out | `--timeout` to allow longer, then look at why it is trickling. **Distinct from the row below:** this one means chunks are still coming, not that they stopped. It also used never to fire — the deadline bounded each individual wait and nothing bounded the transfer, so a trickling device was awaited for ever |
 | `the frame is incomplete: N bytes never arrived` | a torn transfer | **not retried automatically** — run the command again. The retry in `request()` covers a lost request, not a torn stream, and a screenshot does not go through it |
 | `the assembled frame does not match its checksum` | chunks assembled wrongly | same — the framing already proved each chunk was intact, so this is an assembly bug |
-| `this build of the firmware cannot do that` | the debug channel is compiled out, **or** the frame buffer is smaller than the panel, **or** the button is one this board will not simulate | for a button, `info` prints which are simulated; the T-Watch's `boot` is a boot-mode strap and produces no software event on real hardware |
+| `this build of the firmware cannot do that` | the debug channel is compiled out, **or** the frame buffer is smaller than the panel, **or** the button is one this board will not simulate | for a button, `info` prints which are simulated; the T-Watch's `boot` is a boot-mode strap and produces no software event on real hardware, and the Waveshare simulates neither of its two while D5 is open |
 | the screen is stuck mid-gesture | a crashed run left a finger down | `input-reset` |
 
 `input-reset` lifts only what the **remote** is holding, never what a person is

@@ -141,6 +141,30 @@ stale silently. The protocol is
        invisible; on a board with 8 MB of PSRAM and a draw buffer already in it,
        it is a number to have decided about rather than discovered. Snapshot
        into the bridge's own buffer, or size the budget for two.
+  7. **Two things the simulator gets away with and a device will not.** Both
+     were raised in review on
+     [#121](https://github.com/hleserg/Attadipa/pull/121) and deliberately left
+     here rather than fixed there, because both are answers the firmware end
+     has to give and neither has a right answer on a host socket.
+     - **Bound the injected coordinates at the device.** `_check_point` in
+       `tools/watch/client.py:599` refuses a point outside the panel, and that
+       is the *host* being polite. `Bridge::handle_input` validates the event
+       type, the button index, the rate and the hold, and never looks at `x`
+       and `y` — a client that does not use this tool, or a resync landing
+       mid-body, injects a pointer wherever it likes. On the simulator LVGL
+       clamps and nothing shows; on a device the coordinate reaches a driver.
+       The device is the only end that knows the panel, so the check belongs
+       there whatever the host does.
+     - **Decide the poll cadence rather than inherit it.** `sim/main.cpp:289`
+       runs the loop at 5 ms with a client attached and 50 ms without. Those
+       two numbers were chosen so a 600 kB screenshot over a Unix socket does
+       not take a minute, and they are a *desktop* answer: on ESP-IDF the
+       interface task has a priority, a watchdog and a tick rate, and the
+       transport is USB-Serial/JTAG rather than a socket that never blocks.
+       Copying the numbers across is the failure this file keeps naming — a
+       host measurement worn as a device fact. Pick the pacing from the
+       watchdog and the transport's own back-pressure, and write down which.
+
 - **Acceptance:** `tools/watch_control.py info` answers over a port **resolved
   from the unit's USB serial and not named on the command line** — `ttyACM0` is
   not an identity on this host and T-116 is the resolver — a

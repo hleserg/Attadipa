@@ -644,7 +644,25 @@ rather than merging it, and what the FT3168 itself can do stays UNKNOWN (T-113).
 **The Waveshare's buttons are `button-1` and `button-2`** — the owner counted
 two by pressing them, and which named input each reaches is open question D5, so
 naming one "power" would be inventing the answer. `info` prints
-`role NOT established` beside both.
+`role NOT established` beside both, **and now `not simulated` as well.** The
+profile said `injectable = true` for both, which was the one board fact on it
+asserted permissively and unargued, on the board where the question is open:
+`HARDWARE_MATRIX` calls its key list "a floor, not a census" and says `Key1` may
+never be brought out at all. It is `false` for both until D5 closes, so the
+button step of the diagnostic tour runs on the T-Watch and prints `skip` on the
+Waveshare — coverage that did not happen, counted separately by the scenario
+runner and the end-to-end test and never as a pass. Flipping it green by
+asserting the flag would have been this repository's own named failure, one
+board over from `boot`, which carries the same flag because its role **is**
+established.
+
+**And a screenshot that never finishes now ends.** The deadline `screenshot()`
+computes was handed to each individual wait and read by nothing else, so a
+device that trickled chunks kept the collect loop alive indefinitely — every
+wait answered inside its own tenth of a second, the transfer itself unbounded.
+Unreachable over a Unix socket that never blocks; on `SerialTransport` at T-114
+it is the ordinary case. The host self-test now holds it: 0.7 s with the check,
+20.5 s and red without.
 
 [WATCH_CONTROL](docs/testing/WATCH_CONTROL.md) ·
 [REUSE_LEDGER](docs/research/REUSE_LEDGER.md) · **T-114** is what remains: the
@@ -659,7 +677,18 @@ design-token suite and the two checks that keep raw colours and pixel counts out
 of screen code, plus the three added on 2026-08-23 for the input layer, the
 debug wire format and the host tool -- the last of which holds an independent
 Python implementation of the format against the same fixed byte literals the C++
-suite asserts, so the two cannot drift into agreeing on a mistake. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+suite asserts, so the two cannot drift into agreeing on a mistake. **For a while
+that sentence over-claimed and it now does not:** the shared literals were the
+`link::frame_codec` framing only, while the 10-byte envelope, the four bodies
+and the `Opcode`/`ErrorCode` numbering were round-tripped on each side and
+compared nowhere — pinned to each other, which is the one thing a fixed literal
+exists to rule out. A whole `HelloOk`, a whole `ScreenInfo` and a whole
+`InputEvent` are now literals both suites assert, and both numbering tables are
+spelled out on both sides. Proved by two mutations: swapping `QueueFull` and
+`CaptureFailed` used to leave everything green while an operator read *"the
+renderer could not produce a frame"* for a swipe point the input queue dropped;
+transposing `op` and `body_len` at both ends of the envelope used to pass every
+round trip. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
 | Simulator | **builds and runs**, and now also **serves the debug channel** so the interface can be screenshotted and driven from another process (`--debug-socket`, off by default). The end-to-end test starts it, injects input over a real socket and checks the resulting pictures. on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |

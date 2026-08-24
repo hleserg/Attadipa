@@ -24,6 +24,7 @@ import os
 import struct
 import sys
 import tempfile
+import time
 import zlib
 from pathlib import Path
 
@@ -60,6 +61,44 @@ CRC16_CHECK = 0x29B1
 # crc32(b"123456789")
 CRC32_CHECK = 0xCBF43926
 
+# One whole message per body kind, envelope included.
+#
+# The three above are `link::frame_codec`, which is the framing and not this
+# protocol -- so until these existed, four documents claimed the two
+# implementations were "pinned to the same bytes" while the envelope, the
+# bodies and the two enum tables were only ever compared to *each other*, and
+# only in the simulator-gated job. A mistake made identically on both sides --
+# a swapped field, a wrong width -- round-tripped green on both.
+#
+# Every field below is a distinct value on purpose, so a transposed pair cannot
+# survive: `x` is negative so the sign crosses the wire, `width` and `height`
+# differ, and `frame_id` is `0x11223344`.
+MSG_HELLO_OK = bytes.fromhex(
+    "01023412018031007b28017761766573686172652d616d6f6c65642d3230360000"
+    "000073696d20302e302e31000000000000000000000000000000")
+MSG_SCREEN_INFO = bytes.fromhex(
+    "01027856108016008e4b443322119a01f6010201144b06002639f4cb4e61bc00")
+MSG_INPUT_EVENT = bytes.fromhex(
+    "0102bc9a20000b00a1a00301feff2c0107feff0000")
+
+# The two numbering tables, spelled out rather than read from the enums, so a
+# renumber fails here instead of silently mistranslating an operator's error
+# message. `protocol.h` says these are appended and never renumbered; this is
+# what makes that a check rather than a wish.
+OPCODE_VALUES = {
+    "HELLO": 0x0001, "CAPABILITIES": 0x0002, "SCREEN_REQUEST": 0x0010,
+    "INPUT_EVENT": 0x0020, "INPUT_RESET": 0x0021, "WAIT_STABLE": 0x0030,
+    "HELLO_OK": 0x8001, "CAPABILITIES_OK": 0x8002, "SCREEN_INFO": 0x8010,
+    "SCREEN_DATA": 0x8011, "SCREEN_END": 0x8012, "INPUT_OK": 0x8020,
+    "STABLE_OK": 0x8030, "ERROR": 0x80FF,
+}
+ERROR_VALUES = {
+    "NONE": 0, "UNKNOWN_OPCODE": 1, "BAD_BODY": 2, "UNSUPPORTED": 3,
+    "BAD_INPUT": 4, "TOO_MANY_TOUCHES": 5, "NO_SCREEN": 6, "BUSY": 7,
+    "RATE_LIMITED": 8, "VERSION_MISMATCH": 9, "QUEUE_FULL": 10,
+    "CAPTURE_FAILED": 11, "SCREEN_GEOMETRY": 12,
+}
+
 
 def fixed_vectors() -> None:
     check(p.crc16_ccitt(b"123456789") == CRC16_CHECK,
@@ -70,6 +109,43 @@ def fixed_vectors() -> None:
           f"a frame around b'hello' is {FRAME_HELLO.hex()}")
     check(p.length_check(0) == 0x5A, "the length check is salted, so 0 does not map to 0")
     check(p.length_check(0xFFFF) == 0x5A, "0xFFFF does not map to 0 either")
+
+    # --- the protocol itself, not the framing around it --------------------
+
+    hello = p.Envelope(op=p.Op.HELLO_OK, req_id=0x1234,
+                       body=p.Hello(protocol_version=p.PROTOCOL_VERSION,
+                                    board_id="waveshare-amoled-206",
+                                    build="sim 0.0.1").encode())
+    check(p.envelope_encode(hello) == MSG_HELLO_OK,
+          "a whole HelloOk message is the literal the C++ suite asserts")
+
+    event = p.Envelope(op=p.Op.INPUT_EVENT, req_id=0x9ABC,
+                       body=p.input_event_encode(p.EventType(3), button=1, x=-2, y=300,
+                                                 touch_id=7, at_ms=0x0000FFFE))
+    check(p.envelope_encode(event) == MSG_INPUT_EVENT,
+          "and so is a whole InputEvent, negative coordinate included")
+
+    # No Python encoder for ScreenInfo -- the device sends it and the host reads
+    # it -- so this direction pins the decode instead. Same literal, opposite
+    # end, which is the point: the bytes are the contract, not either side.
+    info_env = p.envelope_decode(MSG_SCREEN_INFO)
+    check(info_env.op is p.Op.SCREEN_INFO and info_env.req_id == 0x5678,
+          "the ScreenInfo literal decodes to the opcode and request id it was built with")
+    info = p.ScreenInfo.decode(info_env.body)
+    check((info.frame_id, info.width, info.height, info.total_bytes, info.crc32, info.at_ms)
+          == (0x11223344, 410, 502, 0x00064B14, 0xCBF43926, 0x00BC614E),
+          "and to every field, with none of them transposable")
+    check(info.format is p.PixelFormat.RGB565_LE and info.orientation is p.Orientation.DEG90,
+          "including the two single-byte enums, which sit next to each other")
+
+    for name, value in OPCODE_VALUES.items():
+        check(int(getattr(p.Op, name)) == value, f"Op.{name} is 0x{value:04X}")
+    check(len(list(p.Op)) == len(OPCODE_VALUES),
+          f"and there are exactly {len(OPCODE_VALUES)} opcodes -- a new one has to be pinned here too")
+    for name, value in ERROR_VALUES.items():
+        check(int(getattr(p.ErrorCode, name)) == value, f"ErrorCode.{name} is {value}")
+    check(len(list(p.ErrorCode)) == len(ERROR_VALUES),
+          f"and exactly {len(ERROR_VALUES)} error codes")
 
 
 # --- framing ---------------------------------------------------------------
@@ -602,6 +678,68 @@ def a_finished_screenshot_blacklists_nothing() -> None:
           "and it leaves no req_id blacklisted")
 
 
+def a_frame_that_never_finishes_gives_up_at_the_deadline() -> None:
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    width, height = 16, 16
+    total = width * height * 3
+
+    class Trickle(ScriptedDevice):
+        """Answers every wait, and never finishes the frame.
+
+        The deadline `screenshot()` computes was passed to each `_await` and
+        read by nothing else, so a device like this one kept the collect loop
+        alive indefinitely: every individual wait was answered inside its own
+        tenth of a second, and the transfer as a whole had no bound at all.
+        """
+
+        def __init__(self) -> None:
+            super().__init__(self._answer)
+            self.chunks = 0
+            self._request = None
+
+        def _answer(self, envelope):
+            if envelope.op is not p.Op.SCREEN_REQUEST:
+                return []
+            self._request = envelope
+            info = struct.pack("<IHHBBIII", 1, width, height,
+                               int(p.PixelFormat.RGB888), int(p.Orientation.DEG0),
+                               total, 0, 0)
+            return [_reply_to(envelope, p.Op.SCREEN_INFO, info)]
+
+        def recv(self, timeout: float) -> bytes:
+            queued = super().recv(timeout)
+            if queued or self._request is None:
+                return queued
+            # Bounded, so a regression fails slowly instead of hanging for
+            # ever. Always offset 0: the same sixteen bytes, so `seen` never
+            # fills and SCREEN_END never comes.
+            if self.chunks >= 400:
+                return b""
+            self.chunks += 1
+            time.sleep(timeout)
+            return p.frame_encode(_reply_to(
+                self._request, p.Op.SCREEN_DATA, struct.pack("<I", 0) + b"\0" * 16))
+
+    device = Trickle()
+    watch = Watch(device, timeout=5.0)
+    watch.capabilities = p.Capabilities(width=width, height=height,
+                                        format=p.PixelFormat.RGB888)
+
+    started = time.monotonic()
+    check_raises(WatchError, "a frame that never finishes is refused rather than awaited",
+                 lambda: watch.screenshot(0.4))
+    elapsed = time.monotonic() - started
+
+    # The refusal is the easy half. This is the finding: it must arrive at the
+    # deadline it was given, not after the device stops talking. Without the
+    # check in `_collect_frame` this takes the 400 chunks plus a five-second
+    # `_await` timeout on top.
+    check(elapsed < 3.0,
+          f"and it gives up at its own deadline ({elapsed:.2f}s for a 0.4s budget, "
+          f"{device.chunks} chunk(s) consumed)")
+
+
 def an_abandoned_transfer_evicts_the_oldest_id() -> None:
     from watch.client import Watch  # noqa: PLC0415
 
@@ -696,6 +834,7 @@ CASES = (
     a_stability_wait_actually_waits,
     a_stability_wait_that_never_settles_says_so,
     a_finished_screenshot_blacklists_nothing,
+    a_frame_that_never_finishes_gives_up_at_the_deadline,
     an_abandoned_transfer_evicts_the_oldest_id,
     an_error_code_this_build_does_not_know_is_still_a_sentence,
 )

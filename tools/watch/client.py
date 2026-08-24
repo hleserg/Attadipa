@@ -413,6 +413,21 @@ class Watch:
 
     def _collect_frame(self, req_id, info, buffer, seen, deadline) -> Screenshot:
         while True:
+            # The deadline bounds the **transfer**, and this is the only place
+            # that reads it as one. The floor below keeps a single `_await`
+            # from being handed a negative timeout -- and without this check it
+            # also kept the loop alive for ever, a tenth of a second at a time,
+            # for as long as chunks kept arriving. Every individual wait
+            # succeeded, so nothing underneath could notice that the transfer
+            # as a whole had run out of time. On a Unix socket that is a device
+            # that trickles; on `SerialTransport` at T-114 it is a slow link,
+            # which is exactly what `--timeout` is for.
+            if time.monotonic() >= deadline:
+                arrived = len(buffer) - seen.count(0)
+                raise WatchError(
+                    f"the frame did not finish arriving in time: {arrived} of "
+                    f"{len(buffer)} bytes are in and the device is still sending. "
+                    f"Raise --timeout, or look at why the transfer is trickling.")
             envelope = self._await(req_id, (p.Op.SCREEN_DATA, p.Op.SCREEN_END),
                                    max(0.1, deadline - time.monotonic()))
             if envelope.op is p.Op.SCREEN_END:
@@ -507,9 +522,19 @@ class Watch:
         for index, button in enumerate(caps.buttons):
             if button.id == name:
                 if not button.injectable:
+                    # Two reasons, and the sentence must not merge them: a
+                    # known service key (the T-Watch's boot strap) is not the
+                    # same as a key whose role nobody has traced yet. And a
+                    # board may declare none at all -- "Injectable: " with
+                    # nothing after it read as a truncated message.
+                    others = ", ".join(b.id for b in caps.buttons if b.injectable)
+                    why = ("is a service key on this board"
+                           if button.role_known
+                           else "has no established role on this board")
                     raise WatchError(
-                        f"'{name}' is a service key on this board and is not simulated. "
-                        f"Injectable: {', '.join(b.id for b in caps.buttons if b.injectable)}")
+                        f"'{name}' {why} and is not simulated. "
+                        + (f"Injectable: {others}" if others
+                           else "This board declares no injectable button."))
                 return index
         names = ", ".join(b.id for b in caps.buttons) or "none"
         raise WatchError(f"this board has no button called '{name}'. It has: {names}")

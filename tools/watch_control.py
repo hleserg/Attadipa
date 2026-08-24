@@ -155,7 +155,13 @@ def cmd_info(watch: Watch, args) -> int:
         for button in caps.buttons:
             notes = []
             if not button.injectable:
-                notes.append("service key, not simulated")
+                # Two different reasons wear this flag, and calling both
+                # "service key" would state as known the very thing the next
+                # note says is not. The T-Watch's `boot` is a boot-mode strap
+                # and produces no software event; the Waveshare's two are
+                # unset because D5 is open.
+                notes.append("service key, not simulated" if button.role_known
+                             else "not simulated")
             if not button.role_known:
                 notes.append("role NOT established -- the board has it, "
                              "nobody has traced what it does")
@@ -254,7 +260,9 @@ def cmd_run(watch: Watch, args) -> int:
     def announce(result):
         if args.json:
             return
-        mark = "ok  " if result.ok else "FAIL"
+        # Three outcomes, not two. A step this board cannot run reads as
+        # `skip`, so the line does not claim a press that never happened.
+        mark = "FAIL" if not result.ok else ("skip" if result.skipped else "ok  ")
         line = f"  {mark} {result.index:2d} {result.action}"
         if result.detail:
             line += f"  -- {result.detail}"
@@ -286,8 +294,11 @@ def cmd_run(watch: Watch, args) -> int:
             "steps": [vars(step) for step in report.steps],
         }, indent=2))
     else:
+        ran = sum(1 for s in report.steps if s.ok and not s.skipped)
+        skipped = sum(1 for s in report.steps if s.skipped)
         print(f"{'PASSED' if report.ok else 'FAILED'}: "
-              f"{sum(1 for s in report.steps if s.ok)}/{len(steps)} steps, "
+              f"{ran}/{len(steps)} steps"
+              f"{f', {skipped} skipped' if skipped else ''}, "
               f"{len(report.artefacts)} image(s) in {os.path.abspath(output_dir)}")
     # `report.steps` as well as `report.ok`: a run that executed nothing must
     # not exit 0. `load()` now refuses an empty scenario outright, so this is

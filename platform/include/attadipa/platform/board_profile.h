@@ -20,7 +20,14 @@ namespace attadipa::platform {
 struct ButtonSpec {
     const char* id         = "";     // stable, lowercase; what a tool names on the command line
     bool        role_known = false;  // false: it is pressable, and what it does is not established
-    bool        injectable = true;   // false: a service key a debug channel must not simulate
+    // false: this key cannot be simulated -- either it is a service key a debug
+    // channel must not touch, or nothing establishes that a press reaches
+    // software at all. The default is the *restrictive* direction on purpose:
+    // it used to be `true`, so a new profile inherited "a host may synthesise
+    // this press" by saying nothing, and a board whose wiring is an open
+    // question would answer for it by omission. `role_known` next door already
+    // defaults to the honest side; this now matches.
+    bool        injectable = false;
 };
 
 inline constexpr std::uint8_t kMaxBoardButtons = 3;

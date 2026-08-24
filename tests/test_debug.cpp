@@ -326,6 +326,145 @@ void the_wire_bytes_are_pinned_to_a_literal()
     CHECK(empty_frame[4] == 0x5A);
 }
 
+// One whole message per body kind, envelope included, byte for byte.
+//
+// `the_wire_bytes_are_pinned_to_a_literal` above pins `link::frame_codec` --
+// the framing, which this channel did not write. The envelope, the bodies and
+// the two numbering tables were round-tripped independently on each side and
+// compared nowhere, while four documents said the two implementations were
+// "pinned to the same bytes". They were pinned to each other, which is the one
+// thing a fixed literal exists to rule out: a mistake made identically on both
+// sides -- a swapped field, a wrong width -- passes every round trip.
+//
+// The same hex appears in `tools/watch/selftest.py`. Neither side generated it
+// from the other at review time: it was produced here and then decoded by the
+// Python implementation, which arrived at the same field values through its own
+// `struct` formats. Every field is a distinct value on purpose, so a transposed
+// pair cannot survive -- `x` is negative, `width` and `height` differ.
+const char* const kHelloOkHex =
+    "01023412018031007b28017761766573686172652d616d6f6c65642d3230360000"
+    "000073696d20302e302e31000000000000000000000000000000";
+const char* const kScreenInfoHex =
+    "01027856108016008e4b443322119a01f6010201144b06002639f4cb4e61bc00";
+const char* const kInputEventHex =
+    "0102bc9a20000b00a1a00301feff2c0107feff0000";
+
+std::vector<std::uint8_t> from_hex(const char* hex)
+{
+    std::vector<std::uint8_t> out;
+    for (std::size_t i = 0; hex[i] != '\0'; i += 2) {
+        auto nibble = [](char c) -> int {
+            return c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10;
+        };
+        out.push_back(static_cast<std::uint8_t>(nibble(hex[i]) * 16 + nibble(hex[i + 1])));
+    }
+    return out;
+}
+
+void whole_messages_are_pinned_to_literals_the_other_implementation_also_holds()
+{
+    std::uint8_t msg[512] = {};
+
+    HelloBody hello;
+    hello.protocol_version = kDebugProtocolVersion;
+    std::strncpy(hello.board_id, "waveshare-amoled-206", sizeof(hello.board_id) - 1);
+    std::strncpy(hello.build, "sim 0.0.1", sizeof(hello.build) - 1);
+    std::uint8_t hello_body[kHelloBodyBytes] = {};
+    const std::size_t hn = encode_hello(hello, hello_body, sizeof(hello_body));
+    Envelope he;
+    he.op     = Opcode::HelloOk;
+    he.req_id = 0x1234;
+    const std::size_t hlen     = encode_message(he, hello_body, hn, msg, sizeof(msg));
+    const auto        expected_hello = from_hex(kHelloOkHex);
+    CHECK(hlen == expected_hello.size());
+    CHECK(std::memcmp(msg, expected_hello.data(), expected_hello.size()) == 0);
+
+    ScreenInfoBody info;
+    info.frame_id    = 0x11223344;
+    info.width       = 410;
+    info.height      = 502;
+    info.format      = PixelFormat::Rgb565Le;
+    info.orientation = Orientation::Deg90;
+    info.total_bytes = 0x00064B14;
+    info.crc32       = 0xCBF43926;
+    info.at_ms       = 0x00BC614E;
+    std::uint8_t info_body[kScreenInfoBodyBytes] = {};
+    const std::size_t sn = encode_screen_info(info, info_body, sizeof(info_body));
+    Envelope se;
+    se.op     = Opcode::ScreenInfo;
+    se.req_id = 0x5678;
+    const std::size_t slen          = encode_message(se, info_body, sn, msg, sizeof(msg));
+    const auto        expected_info = from_hex(kScreenInfoHex);
+    CHECK(slen == expected_info.size());
+    CHECK(std::memcmp(msg, expected_info.data(), expected_info.size()) == 0);
+
+    InputEventBody event;
+    event.type     = 3;
+    event.button   = 1;
+    event.x        = -2;
+    event.y        = 300;
+    event.touch_id = 7;
+    event.at_ms    = 0x0000FFFE;
+    std::uint8_t event_body[kInputEventBodyBytes] = {};
+    const std::size_t in = encode_input_event(event, event_body, sizeof(event_body));
+    Envelope ee;
+    ee.op     = Opcode::InputEvent;
+    ee.req_id = 0x9ABC;
+    const std::size_t elen           = encode_message(ee, event_body, in, msg, sizeof(msg));
+    const auto        expected_event = from_hex(kInputEventHex);
+    CHECK(elen == expected_event.size());
+    CHECK(std::memcmp(msg, expected_event.data(), expected_event.size()) == 0);
+
+    // And the other direction, so a decoder that drifted alone is caught too.
+    Envelope            back;
+    const std::uint8_t* body = nullptr;
+    CHECK(decode_message(expected_event.data(), expected_event.size(), back, body));
+    InputEventBody decoded;
+    CHECK(decode_input_event(body, back.body_len, decoded));
+    CHECK(decoded.x == -2);  // the sign, which is the field a width bug eats
+    CHECK(decoded.y == 300);
+    CHECK(decoded.touch_id == 7);
+}
+
+void the_two_numbering_tables_are_spelled_out()
+{
+    // `protocol.h` says these are appended and never renumbered, because the
+    // Python side mirrors them by hand and a moved number is a silently
+    // mistranslated error message rather than a build failure. Writing the
+    // values out is what turns that from a wish into a check -- swapping
+    // `QueueFull` and `CaptureFailed` used to leave every suite green while an
+    // operator read "the renderer could not produce a frame" for a swipe point
+    // the input queue dropped.
+    CHECK(static_cast<std::uint16_t>(Opcode::Hello) == 0x0001);
+    CHECK(static_cast<std::uint16_t>(Opcode::Capabilities) == 0x0002);
+    CHECK(static_cast<std::uint16_t>(Opcode::ScreenRequest) == 0x0010);
+    CHECK(static_cast<std::uint16_t>(Opcode::InputEvent) == 0x0020);
+    CHECK(static_cast<std::uint16_t>(Opcode::InputReset) == 0x0021);
+    CHECK(static_cast<std::uint16_t>(Opcode::WaitStable) == 0x0030);
+    CHECK(static_cast<std::uint16_t>(Opcode::HelloOk) == 0x8001);
+    CHECK(static_cast<std::uint16_t>(Opcode::CapabilitiesOk) == 0x8002);
+    CHECK(static_cast<std::uint16_t>(Opcode::ScreenInfo) == 0x8010);
+    CHECK(static_cast<std::uint16_t>(Opcode::ScreenData) == 0x8011);
+    CHECK(static_cast<std::uint16_t>(Opcode::ScreenEnd) == 0x8012);
+    CHECK(static_cast<std::uint16_t>(Opcode::InputOk) == 0x8020);
+    CHECK(static_cast<std::uint16_t>(Opcode::StableOk) == 0x8030);
+    CHECK(static_cast<std::uint16_t>(Opcode::Error) == 0x80FF);
+
+    CHECK(static_cast<std::uint16_t>(ErrorCode::None) == 0);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::UnknownOpcode) == 1);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::BadBody) == 2);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::Unsupported) == 3);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::BadInput) == 4);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::TooManyTouches) == 5);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::NoScreen) == 6);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::Busy) == 7);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::RateLimited) == 8);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::VersionMismatch) == 9);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::QueueFull) == 10);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::CaptureFailed) == 11);
+    CHECK(static_cast<std::uint16_t>(ErrorCode::ScreenGeometry) == 12);
+}
+
 void crc32_matches_the_published_vector()
 {
     const char* check_string = "123456789";
@@ -1428,6 +1567,8 @@ int main()
     an_output_buffer_too_small_yields_nothing();
     the_message_fits_inside_one_frame();
     the_wire_bytes_are_pinned_to_a_literal();
+    whole_messages_are_pinned_to_literals_the_other_implementation_also_holds();
+    the_two_numbering_tables_are_spelled_out();
     crc32_matches_the_published_vector();
     the_bodies_survive_a_round_trip();
     bytes_per_pixel_is_defined_for_every_format();

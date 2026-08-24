@@ -135,8 +135,25 @@ BoardProfile make_waveshare()
     // application would read it as a fact, which is the failure ADR-0003 is
     // about. `role_known = false` is the honest field, and the debug tool
     // prints it.
-    p.buttons[0] = ButtonSpec{"button-1", /*role_known=*/false, /*injectable=*/true};
-    p.buttons[1] = ButtonSpec{"button-2", /*role_known=*/false, /*injectable=*/true};
+    //
+    // **And `injectable` is `false` for both, for the same reason `role_known`
+    // is.** It was `true` with nothing behind it -- the one board fact on this
+    // profile asserted permissively and unargued, on the board where the
+    // question is open. `HARDWARE_MATRIX` names the candidates as `Key1`, `Key3`
+    // and `PWRON`, says `Key1` is adjacent to `BOOT` and **may never be brought
+    // out at all**, and calls that list "a floor, not a census"; D5 leaves both
+    // the GPIO assignment and whether either press reaches the PMU unresolved.
+    // Under most readings a `PWRON` press is a PMU interrupt a host could
+    // synthesise -- and "most readings" is what this project spells `UNKNOWN`.
+    //
+    // The cost of the permissive default lands after T-114, not now: the
+    // diagnostic tour's `first-injectable` step resolves to `button-1` and
+    // passes green against an input that, on one live reading of D5, no finger
+    // can produce -- the exact failure `boot` is marked `injectable = false` to
+    // avoid, one board over. Flip either to `true` when D5 closes, with the
+    // evidence beside it.
+    p.buttons[0] = ButtonSpec{"button-1", /*role_known=*/false, /*injectable=*/false};
+    p.buttons[1] = ButtonSpec{"button-2", /*role_known=*/false, /*injectable=*/false};
     p.button_count = 2;
     return p;
 }

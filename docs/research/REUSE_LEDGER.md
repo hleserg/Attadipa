@@ -1739,8 +1739,11 @@ exist), `debug/` (protocol and bridge), `sim/remote_input.cpp`,
   `tests/test_input.cpp`, **PASSING**.
 - The host format, RGB565 and BGR888 conversion, orientation, PNG structure,
   non-zero exit codes — `tools/watch/selftest.py`, **PASSING**. Pinned to the
-  same fixed byte literals as the C++ suite, so the two independent
-  implementations cannot drift into agreeing on a mistake.
+  same fixed byte literals as the C++ suite — the framing, a whole `HelloOk`, a
+  whole `ScreenInfo`, a whole `InputEvent`, and both numbering tables written
+  out — so the two independent implementations cannot drift into agreeing on a
+  mistake. Until 2026-08-23 that covered the framing alone and the sentence said
+  otherwise.
 - The whole loop against the simulator — `tools/watch/e2e_test.py`,
   **PASSING**.
 - **On a physical watch: `NOT EXECUTED — HARDWARE REQUIRED`, and it cannot be

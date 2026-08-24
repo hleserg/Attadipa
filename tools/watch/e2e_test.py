@@ -39,12 +39,24 @@ from watch import scenario as scenario_mod  # noqa: E402
 from watch.client import WatchError, connect  # noqa: E402
 
 failures: list[str] = []
+skipped: list[str] = []
 
 
 def check(condition: bool, what: str) -> None:
     if not condition:
         failures.append(what)
     print(f"  {'ok  ' if condition else 'FAIL'} {what}")
+
+
+def skip(what: str, why: str) -> None:
+    """Record coverage that did not run, and say why.
+
+    A board that does not offer a capability is not a board that passed the
+    test for it. This prints and accumulates separately from `check` so the
+    run neither goes red nor quietly reads as if the coverage happened.
+    """
+    skipped.append(f"{what} -- {why}")
+    print(f"  skip {what} -- {why}")
 
 
 
@@ -388,18 +400,28 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
               f"about LVGL's idle timer while the tap was still in flight")
 
         print("\nbuttons")
+        check(bool(caps.buttons), "the board declares at least one button")
         injectable = [b for b in caps.buttons if b.injectable]
-        check(bool(injectable), "at least one button can be simulated")
-        watch.button_click(injectable[0].id, 0.05)
-        time.sleep(0.3)
-        _, clicked = watch.save_screenshot(os.path.join(workdir, "04.png"))
-        watch.button_hold(injectable[0].id, 0.9)
-        time.sleep(0.3)
-        _, held = watch.save_screenshot(os.path.join(workdir, "05.png"))
-        # The screen prints the measured hold, so a click and a hold cannot look
-        # the same. If they do, the duration never reached the device.
-        check(clicked.rgb != held.rgb,
-              "a click and a nine-hundred-millisecond hold produce different screens")
+        if not injectable:
+            # Not a failure and not a pass. `injectable` says the harness may
+            # synthesise a press for this button, and the Waveshare declares
+            # neither of its two -- D5 in HARDWARE_MATRIX leaves it open
+            # whether Key1 is brought out at all. Asserting one anyway would
+            # have this test fail on a fact about the board rather than on a
+            # fault in the bridge.
+            skip("a button press round-trips through the bridge",
+                 f"{board} declares no injectable button")
+        else:
+            watch.button_click(injectable[0].id, 0.05)
+            time.sleep(0.3)
+            _, clicked = watch.save_screenshot(os.path.join(workdir, "04.png"))
+            watch.button_hold(injectable[0].id, 0.9)
+            time.sleep(0.3)
+            _, held = watch.save_screenshot(os.path.join(workdir, "05.png"))
+            # The screen prints the measured hold, so a click and a hold cannot
+            # look the same. If they do, the duration never reached the device.
+            check(clicked.rgb != held.rgb,
+                  "a click and a nine-hundred-millisecond hold produce different screens")
 
         print("\nrefusals")
         try:
@@ -463,6 +485,10 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         except Exception:  # noqa: BLE001
             pass
 
+    if skipped:
+        print(f"\nnot executed ({len(skipped)}):")
+        for one in skipped:
+            print(f"  * {one}")
     if failures:
         print(f"\nend-to-end FAILED ({len(failures)}):", file=sys.stderr)
         for failure in failures:

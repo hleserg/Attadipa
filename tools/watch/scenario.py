@@ -49,6 +49,11 @@ class StepResult:
     detail: str = ""
     screenshot: str | None = None
     elapsed_ms: int = 0
+    # A step that could not apply to this board, as opposed to one that ran.
+    # Its own field rather than an `ok` with a note, because a skipped step that
+    # counts as a pass is how a scenario reports coverage it never had -- the
+    # failure this repository keeps finding in its own tests.
+    skipped: bool = False
 
 
 @dataclass
@@ -296,17 +301,28 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
                     # naming one and failing everywhere else.
                     injectable = [b for b in watch._caps().buttons if b.injectable]  # noqa: SLF001
                     if not injectable:
-                        raise WatchError("this board simulates no buttons at all")
-                    name = injectable[0].id
-                what = str(step.get("event", "click"))
-                if what == "press":
-                    watch.button_press(name)
-                elif what == "release":
-                    watch.button_release(name)
-                elif what == "hold":
-                    watch.button_hold(name, float(step.get("duration", 1.0)))
-                else:
-                    watch.button_click(name, float(step.get("duration", 0.05)))
+                        # Not a failure: the Waveshare declares none, because
+                        # whether either of its two keys reaches software is
+                        # open question D5 and `injectable` defaults to the
+                        # restrictive side. Marked skipped so it reads as
+                        # coverage that did not happen rather than as a press
+                        # that worked.
+                        result.skipped = True
+                        result.detail = (
+                            "skipped: this board declares no injectable button "
+                            "(the Waveshare's two are open question D5)")
+                    else:
+                        name = injectable[0].id
+                if not result.skipped:
+                    what = str(step.get("event", "click"))
+                    if what == "press":
+                        watch.button_press(name)
+                    elif what == "release":
+                        watch.button_release(name)
+                    elif what == "hold":
+                        watch.button_hold(name, float(step.get("duration", 1.0)))
+                    else:
+                        watch.button_click(name, float(step.get("duration", 0.05)))
             elif action == "input_reset":
                 released, still_held = watch.input_reset()
                 result.detail = f"released {released}"
