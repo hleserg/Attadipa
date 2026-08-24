@@ -35,6 +35,11 @@ jobs:
       issues: write
       actions: write
       contents: read
+      # `wip-limit.sh --count` calls `gh pr list` below.  With this job's
+      # explicit permissions block, leaving this out turns that call into an
+      # always-unreadable count and therefore makes the queue-incident hold
+      # unreachable.
+      pull-requests: read
     steps:
       # Pinned to the default branch, and sparse, for the same reason the intake
       # gate's checkout is: this job can dispatch a write-capable agent, so the

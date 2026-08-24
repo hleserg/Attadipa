@@ -111,6 +111,9 @@ check 3 "equal priority falls back to issue number" "" -- \
 check 9 "an owner's P0 outranks a listed producer" "$CHATGPT" -- \
       "$(issue 2 "$CHATGPT" NONE "" "$MARKER")" \
       "$(issue 9 hleserg OWNER "agent:ready,priority:P0" x)"
+check 200 "an emergency task outranks a lower-numbered ordinary task" "" -- \
+      "$(issue 100 hleserg OWNER "agent:ready,priority:P1" x)" \
+      "$(issue 200 hleserg OWNER "agent:ready,priority:P2,queue:emergency" x)"
 
 echo
 echo "  A failed task and the promise the hand-over makes about it — #82"

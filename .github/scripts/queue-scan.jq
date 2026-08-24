@@ -76,7 +76,11 @@
   | {
       number,
       failed: ((.labels | index("agent:failed")) != null),
-      rank: (if   (.labels | index("priority:P0")) then 0
+      # The caller permits a `queue:emergency` task through a queue incident.
+      # It must therefore participate in choosing the candidate, rather than
+      # being checked only after an unrelated lower-numbered P1/P2 was picked.
+      rank: (if   (.labels | index("queue:emergency")) then 0
+             elif (.labels | index("priority:P0")) then 0
              elif (.labels | index("priority:P1")) then 1
              elif (.labels | index("priority:P2")) then 2
              elif (.labels | index("priority:P3")) then 3
