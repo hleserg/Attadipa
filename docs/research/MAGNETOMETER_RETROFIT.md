@@ -10,6 +10,15 @@
 > 2026-08-22): *two* modules were ordered, not one — a **CJMCU-9911** carrying an
 > **AK09911C**, and a **GY-271** carrying a **QMC5883L**. The choice between them
 > is still open and this document exists to inform it.
+>
+> **Extended 2026-08-24** with the two owner corrections from
+> [#83, 19:49:50Z](https://github.com/hleserg/Attadipa/issues/83#issuecomment-5382281381)
+> that never reached the queue and are re-filed as
+> [#182](https://github.com/hleserg/Attadipa/issues/182): the AK09911C's reset
+> input (**§2.6**) and the pull-up arithmetic against the I²C sink limit
+> (**§4.3.1**–**§4.3.4**). Both are answered from primary sources, and the parts
+> of them that are about *the specific modules* stay `UNKNOWN` with the two
+> ohmmeter probes that settle each one named.
 
 ## 0. Why this document exists at all
 
@@ -35,11 +44,13 @@ This document does the first. The second is a separate task.
 
 | Key | Source |
 |---|---|
-| M1 | **AKM `AK09911` Short Datasheet**, `ShortDatasheet-E-00`, 2014/1, md5 `1d7e1960c86b2a1fb38ecc862196c4a7`. It is the right document for the ordered part — `AK09911C` is the only variant named, in the package line and again in the recommended-connection schematic. It is a *short* datasheet: it runs to §9 but contains **no register address map** (see §2.4) |
+| M1 | **AKM `AK09911` Short Datasheet**, `ShortDatasheet-E-00`, 2014/1, md5 `1d7e1960c86b2a1fb38ecc862196c4a7` — **re-fetched and the md5 re-checked on 2026-08-24**, so §2.6 below is quoting the same eighteen pages as the rest of this document and not a second copy that happens to share a title. It is the right document for the ordered part — `AK09911C` is the only variant named, in the package line and again in the recommended-connection schematic. It is a *short* datasheet: it runs to §9 but contains **no register address map** (see §2.4). It does, however, contain the pin table, the ball map and the reset specification — §2.6 |
 | M2 | **QST `QMC5883L` Datasheet Rev. B**, document `13-52-04`, `QST-PD-B002-22`, fetched from `qstcorp.com`, md5 `d13221b15c034c3f9b24befa48c8f4ab`. Rev B, not the Rev 1.0 that most of the internet mirrors |
 | M3 | **QST `QMI8658C` Rev 0.6**, md5 `3d2bd7b24172e5d3448f2c9ecf2ef752` — the IMU already on the board, consulted for §5. Marked `ADVANCE INFORMATION — CONFIDENTIAL AND PROPRIETARY` on every page; it is a pre-release document |
 | M5 | **QST `QMI8658A` Datasheet Rev A**, doc `13-52-25`, md5 `5a0fef65a358430d6499944a75d22e19`. Admissible here as evidence about **M3's own document lineage** and nothing else: its revision-history rows 0.4, 0.5 and 0.6 are *verbatim identical* to M3's, so it is the same document renamed at 0.7. Used only for what the vendor did to the documentation — **never** for an electrical characteristic, per §5.3 |
-| M4 | Owner's photographs of both AliExpress listings, 2026-08-22 — silkscreen, pin labels and the die marking only. A photograph of a module is evidence about *labels*, not about *nets* |
+| M4 | Owner's photographs of both AliExpress listings, 2026-08-22 — silkscreen, pin labels and the die marking only. A photograph of a module is evidence about *labels*, not about *nets*. The break-out pin lists it yielded are in [#83, 19:13:48Z](https://github.com/hleserg/Attadipa/issues/83#issuecomment-5382126078): **CJMCU-9911 → `VCC GND SCL SDA CAD RST TST`**, GY-271 → `VCC GND SCL SDA DRDY` |
+| M6 | **NXP `UM10204`, *I²C-bus specification and user manual*, Rev. 7.0 — 1 October 2021**, 62 pages, md5 `f0e2e0922efd7eed0aa86a6eee40801a`, sha256 `dc91f00f65584e06ef36e26c93bf9d91a95fb3c8a1830a9223e53caf678b36af`, from `nxp.com/docs/en/user-guide/UM10204.pdf`. **This is the document behind "the 3 mA sink limit I²C specifies"** and it is cited by clause below, never carried over on trust. Note that Rev. 7.0 renamed *master/slave* to *controller/target* throughout; the electrical tables did not change with it |
+| M7 | **The Waveshare schematic — the same file as `HARDWARE_MATRIX` S6**, `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`, md5 `b0cdcac0afb0c8605896d995676c4468`, sha256 `6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d`, re-read 2026-08-24. **The method is the news, not the file**: S6 was read by *text extraction*, which recovers designators and values but not the wires between them, and that is exactly why the pull-ups were never recovered from it. This reading **rendered** the region around `GPIO14`/`GPIO15` at 900 dpi and read the junction dots. §4.3 |
 
 ## 2. AK09911C — the purple CJMCU-9911
 
@@ -75,7 +86,10 @@ from is `UNKNOWN`, and inventing a part to explain a mistake is worse than the
 mistake.
 
 `VID` may be run below `VDD` if the host wants, but on this board there is no
-reason to: everything else on the main I2C bus is at 3.3 V.
+reason to: everything else on the main I2C bus is at 3.3 V. **The part has a
+reset pin and its input thresholds are referenced to `VID`, not `VDD`** — §2.6,
+which is where the reset material lives because it spans the electrical table,
+the ball map and a question about the module.
 
 **The same power-state prohibition that §3.5 describes for the QMC5883L applies
 here too**, and it is recorded in both places so that neither part looks like the
@@ -135,6 +149,115 @@ That is a wafer-level chip-scale ball grid array a bit over a millimetre on a
 side, with eight balls. It is not hand-solderable in any ordinary sense. This matters for §6: if
 the intention is to move the bare die off its breakout board and place it inside
 the watch, this part is the harder of the two by a wide margin.
+
+### 2.6 The reset input `RSTN`, and why the answer is five wires
+
+> Filed 2026-08-24 from [#182](https://github.com/hleserg/Attadipa/issues/182),
+> which re-files an owner correction made on
+> [#83, 19:49:50Z](https://github.com/hleserg/Attadipa/issues/83#issuecomment-5382281381)
+> and never carried into the repository. **The correction was right and the
+> reason it gave was the weaker of the two available**, which is worth stating
+> because it changes what may be relied on.
+
+The owner's correction rested on a comment in `drivers/iio/magnetometer/ak8975.c`
+in mainline Linux — *"According to AK09911 datasheet, if reset GPIO is provided
+then deassert reset on `ak8975_power_on()`…"* — and the owner marked the
+neighbouring supply figure `SECONDARY SOURCE`, adding that *"the primary
+datasheet has not been read here."* #182 restated that caution and expected the
+short datasheet might be unable to settle it.
+
+**It settles it.** `RSTN` occurs twelve times in M1.
+
+#### 2.6.1 What M1 says, by clause
+
+| Where | What it says |
+|---|---|
+| §4.3 Pin Function | **`C2` · `RSTN` · input · `VID` domain · CMOS.** *"Reset pin. Resets registers by setting to `L`."* |
+| §4.1 block diagram | `RSTN` appears as one of the eight external nets, beside `CAD` and `TST` |
+| §5.3.1 DC characteristics | `VIH1` and `VIL1` cover `RSTN` together with `SCL` and `SDA`: high ≥ **70 % `Vid`**, low ≤ **30 % `Vid`**. `IIN1` = **±10 µA** at `Vin` = `Vss` or `Vid` |
+| §5.3.2 AC characteristics | **`tRSTL`, reset input effective pulse width (`L`) — 5 µs minimum.** There is no maximum |
+| §6.2 Reset Functions | *"AK09911 has four types of reset: (1) Power on reset (POR) … (2) VID monitor … **(3) Reset pin (RSTN). AK09911 is reset by Reset pin. When Reset pin is not used, connect to VID.** (4) Soft reset … by setting `SRST` bit."* |
+| §7 recommended connection | `RSTN` is drawn **driven from a host CPU `GPIO`**, with an arrow into the ball. `SDA` and `SCL` get external pull-ups to the `VID` rail; `TST` is drawn as a dotted circle |
+| §8.2 pin assignment | the ball map, below |
+
+The eight balls, from M1 §8.2, top view — nothing in this repository had recorded
+them and the reset question cannot be discussed without them:
+
+|  | 3 | 2 | 1 |
+|---|---|---|---|
+| **C** | `SDA` | **`RSTN`** | `VID` |
+| **B** | `SCL` | *(no ball)* | `VSS` |
+| **A** | `TST` | `CAD` | `VDD` |
+
+So the part's reset input is real, documented, and specified down to a 5 µs
+minimum pulse. The driver comment agrees with the datasheet; it is simply no
+longer what we are standing on.
+
+#### 2.6.2 The consequence is not "four wires or five" — it removes an option
+
+The owner framed this as *"whether the module ties it high or brings it out to a
+pad … decides whether this is four wires or five."* Reading M1 narrows it
+differently, because **M1 forbids the third state**:
+
+> *"When Reset pin is not used, connect to VID."*
+
+That is not the same instruction as "leave it alone". `RSTN` is a CMOS input
+with 30 %/70 % `Vid` thresholds and ±10 µA leakage — a floating one sits at
+neither level, and this is a part whose only defence against a spurious reset is
+the level on that ball. So there are exactly three outcomes, and only one of them
+is four wires:
+
+| What the module does with `RSTN` | Wires | What we must do |
+|---|---|---|
+| ties it to `VID` on-module | 4 | nothing. The pad, if present, is a test point |
+| brings it out and ties it nowhere | **5** | tie the pad to `3V3` at minimum, or drive it from a GPIO |
+| brings it out **and** ties it | 4 | nothing — but do not then drive the pad, or a GPIO fights a resistor or a short |
+
+**Five wires is the default and four is the exception**, and the exception is
+conditional on a continuity check nobody has made.
+
+#### 2.6.3 What the module does — `OBSERVED`, and that is not `VERIFIED`
+
+The owner's M4 photograph reading of 2026-08-22 lists the CJMCU-9911's break-out
+pins as **`VCC GND SCL SDA CAD RST TST`**. So the pad exists and is silkscreened
+`RST`.
+
+**That is a label, not a net**, and M4's own definition in §1 says so. A pad
+marked `RST` beside an AK09911C is overwhelmingly likely to reach ball `C2`, and
+"overwhelmingly likely" is the standard this repository does not write code
+against. It equally cannot say whether the module *also* fits a pull-up to `VID`
+behind that pad, which is the whole question.
+
+| Question | Status | What settles it |
+|---|---|---|
+| Does the AK09911C have a reset input? | **`VERIFIED`** — M1 §4.3, §5.3.2, §6, §7, §8.2 | done |
+| Does the CJMCU-9911 break it out to a pad? | **`OBSERVED`**, M4 — a silkscreen `RST` | done to the strength a photograph allows |
+| Does that pad reach ball `C2`? | **`UNKNOWN`** | continuity, module unpowered: ohmmeter from the `RST` pad to the `VID`/`VCC` pad and to `GND` |
+| Does the module tie `RSTN` to `VID`? | **`UNKNOWN`** | the same two probes. A few kΩ or a short to `VCC` means tied; open to both means floating |
+| Wire count | **five unless the check says otherwise** | the above |
+
+`NOT EXECUTED — HARDWARE REQUIRED`. The modules have not arrived. This is two
+ohmmeter probes on a bare module and needs no board, no power and no soldering,
+which is why it belongs in T-109's acceptance rather than in a blocker.
+
+#### 2.6.4 The module also breaks out `TST`, and M1 says not to connect it
+
+The same M4 list ends `… CAD RST **TST**`. M1 is unusually blunt about that pin:
+
+- §4.3: *"Test pin. Pulled down by 100 kΩ internal resister. **Keep this pin
+  electrically non-connected.**"*
+- §7, of the dotted circle it draws around `TST`: *"Pins of dot circle should be
+  kept non-connected."*
+- §5.3.1: `IIN2` on `TST` is **100 µA** at `Vin` = `Vdd` — three orders of
+  magnitude above the ±10 µA on every other input, and 33× the part's own 3 µA
+  power-down current.
+
+So a `TST` pad on a hand-wired assembly is a hazard with a legend on it: strapping
+it high costs more current than the sensor idles at, and what it does to the part
+functionally is undocumented. **Leave the `TST` pad unwired and keep it away from
+anything it could short to.** Recorded here because a break-out board that
+exposes a pin the datasheet says to leave alone is exactly the kind of thing that
+looks like a feature.
 
 ## 3. QMC5883L — the blue GY-271
 
@@ -282,7 +405,9 @@ The rule to carry forward is therefore narrower than "both rails together":
 from one 3.3 V net, as they will on the breakout, none of this can arise.
 
 **And this is not a difference between the candidates.** M1 §6.1 imposes the
-identical prohibition on the AK09911C — see §2.2. Neither part is the safe one
+identical prohibition on the AK09911C — see §2.2. The AK09911C also has a
+**reset input**, which the QMC5883L has no equivalent of and which decides how
+many wires this retrofit takes — §2.6. Neither part is the safe one
 here.
 
 ## 4. The comparison that actually decides it
@@ -395,6 +520,170 @@ AK09911C can be `0x0C` or `0x0D`. **Strap `CAD` to `VSS`.** Then both parts can
 sit on the same bus at the same time — which is not a hypothetical, because
 having both present is the only way to compare them against each other in the
 same magnetic environment, on the same wrist, in one sitting.
+
+An address is not the only thing two modules bring to a shared bus. Each carries
+its own pull-ups, and those land in parallel with the board's.
+
+#### 4.3.1 What the board already has — `R23` and `R49`, **2.2 kΩ**
+
+Nothing in this repository recorded the Waveshare board's own `SDA`/`SCL`
+pull-ups until 2026-08-24, and the arithmetic below could not start without them.
+From M7, the V1.0 schematic — the revision the received unit's silkscreen matches
+([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1):
+
+| Designator | Value | From | To | Net |
+|---|---|---|---|---|
+| **`R23`** | **2.2 kΩ** | `VCC3V3` | `ESP32_SCL` | `GPIO14`, aliased `TP_SCL`/`RTC_SCL` |
+| **`R49`** | **2.2 kΩ** | `VCC3V3` | `ESP32_SDA` | `GPIO15`, aliased `TP_SDA`/`RTC_SDA` |
+| `C34` | **22 pF** | `ESP32_SCL` | `AGND` | — |
+| `C35` | **22 pF** | `ESP32_SDA` | `AGND` | — |
+
+Both resistors share one node on `VCC3V3` and drop to the two bus lines; the
+junction dots settle which goes where. There is **exactly one pull-up per line on
+the whole drawing** — the I²C net labels occur 28 times and all of them are on
+sheet 1, and no other resistor on any sheet touches them.
+
+**Two things here contradict what was assumed.** The owner's correction said
+*"typically 4.7 kΩ or 10 kΩ"* and explicitly flagged that as typical; the board
+is at **2.2 kΩ**, stiffer than either, so the arithmetic starts closer to the
+limit than expected. And the **22 pF per line** was unrecorded anywhere — it is a
+deliberate lump on top of pin and trace capacitance, and it matters to §4.3.4.
+
+*Why this was not found before:* `HARDWARE_MATRIX` S6 records the schematic as
+read "by text extraction", which recovers designators and values but not the
+wires between them. The values `2.2k` were in that extraction all along with
+nothing to attach them to. This reading rendered the sheet and read the junction
+dots — see M7.
+
+#### 4.3.2 What the specification actually requires
+
+The **3 mA** in the owner's correction is real and it is worth quoting rather
+than carrying over. M6 is `UM10204` Rev. 7.0:
+
+- **Table 10**, `VOL1`: *"LOW-level output voltage 1 (open-drain or
+  open-collector) at 3 mA sink current; `VDD` > 2 V"* — 0 to **0.4 V**, and the
+  same figures appear in the Standard-mode, Fast-mode and Fast-mode Plus columns.
+- **§7.1**: *"The supply voltage limits the minimum value of resistor `Rp` due to
+  the specified minimum sink current of **3 mA** for Standard-mode and Fast-mode,
+  or 20 mA for Fast-mode Plus."*
+- **Equation 2**, given in full by §7.2.4's worked example — *"with a supply
+  voltage of `VDD` = 5 V ± 10 % and `VOL(max)` = 0.4 V at 3 mA, `Rp(min)` =
+  (5.5 − 0.4) / 0.003 = 1.7 kΩ"*:
+
+  ```
+  Rp(min) = (VDD − VOL(max)) / IOL
+  ```
+
+  Note that NXP's own example uses the **top** of the supply tolerance, and
+  §4.3.3 does the same.
+- §4.2 states the number's provenance in one line: *"NXP devices have a higher
+  power set of electrical characteristics than SMBus 1.0 … **I²C-bus = 3 mA**"*.
+
+**The part we are adding is rated at exactly that and no more.** M1 §5.3.1:
+`VOL` on `SDA`, condition `IOL ≤ +3 mA` with `Vid ≥ 2 V`, max **0.4 V**. The
+AK09911C meets the I²C minimum and does not exceed it, so the specification's
+limit *is* this part's limit; there is no headroom hiding in the silicon.
+
+At 3.3 V, `Rp(min)` = (3.3 − 0.4) / 0.003 = **966.7 Ω**.
+
+#### 4.3.3 The arithmetic, done
+
+Pull-ups in parallel, one line at a time, sink current taken at `VOL` = 0.4 V.
+Exact arithmetic given the module values — and those values are assumptions, so
+read the warning under the table before using a row.
+
+| On the line | `Rp` | `I` at 3.3 V | of 3 mA | `I` at 3.6 V | of 3 mA |
+|---|---|---|---|---|---|
+| board alone (2.2 kΩ) | 2200 Ω | 1.318 mA | 44 % | 1.455 mA | 48 % |
+| + one module 10 kΩ | 1803 Ω | 1.608 mA | 54 % | 1.775 mA | 59 % |
+| + one module 4.7 kΩ | 1499 Ω | 1.935 mA | 65 % | 2.135 mA | 71 % |
+| + one module 2.2 kΩ | 1100 Ω | 2.636 mA | 88 % | 2.909 mA | 97 % |
+| + **both** at 10 kΩ | 1528 Ω | 1.898 mA | 63 % | 2.095 mA | 70 % |
+| + one 4.7 kΩ, one 10 kΩ | 1303 Ω | 2.225 mA | 74 % | 2.455 mA | 82 % |
+| + **both** at 4.7 kΩ | 1136 Ω | **2.552 mA** | **85 %** | 2.816 mA | 94 % |
+| + both at 3.3 kΩ | 943 Ω | 3.076 mA | **103 % — fails** | 3.394 mA | **113 % — fails** |
+| + both at 2.2 kΩ | 733 Ω | 3.955 mA | **132 % — fails** | 4.364 mA | **146 % — fails** |
+
+**The answer to the owner's question is that it passes**, for both values named
+in the correction and for every mixture of them. Both modules at 4.7 kΩ — the
+worse of the two named — puts the bus at 85 % of the limit at 3.3 V. The 3.6 V
+column is there because `VCC3V3`'s source rail is
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md) **D13**, still open, so its tolerance is not
+established: 3.6 V is the top of the AK09911C's whole `VDD` range and the answer
+survives even there, at 94 %. **No plausible rail tolerance overturns this.**
+
+**So do not lift the modules' resistors on account of the named values.** The
+owner's *conditional* was right — "if it comes out too low, the fix is to lift
+them" — and the condition is not met.
+
+**But the values are not read off the parts, and that is the honest status.**
+Neither module's fitted pull-up is traceable to a primary source: no schematic is
+published for either breakout — the one public GY-271 repository carries
+datasheets and no drawing — and the "typically 4.7 kΩ or 10 kΩ" in the correction
+was flagged as typical by the owner who wrote it. **`UNKNOWN`, per module,
+`NOT MEASURED`.**
+
+Rather than block on it, here is the pass line, so an ohmmeter reading answers it
+without anyone redoing the algebra:
+
+> **Threshold.** With the board's 2.2 kΩ fixed, the modules' *combined* pull-up
+> on each line must be **≥ 1.72 kΩ** at 3.3 V, or **≥ 2.07 kΩ** at 3.6 V.
+>
+> - **one module attached:** its resistor must be **≥ 1.8 kΩ** on the E24 series
+>   (**≥ 2.2 kΩ** if 3.6 V is assumed)
+> - **both attached, equal values:** each must be **≥ 3.45 kΩ** at 3.3 V, so
+>   **≥ 3.6 kΩ** on the E24 series — and **≥ 4.3 kΩ** if 3.6 V is assumed
+>
+> **4.7 kΩ passes. 3.3 kΩ fails. 2.2 kΩ fails badly.** Anything at or above
+> 4.7 kΩ passes with the rail still unresolved.
+
+**The measurement, which needs no board and no power:** an ohmmeter across each
+module's `SDA` pad to its `VCC` pad, and `SCL` pad to `VCC` pad, module unpowered
+and off the bus. Two readings per module. `NOT EXECUTED — HARDWARE REQUIRED`; the
+modules have not arrived.
+
+One residual this arithmetic does not cover: it holds every device on the bus to
+the specification's 3 mA. If any *fitted* device sinks less than that, it reaches
+0.4 V sooner and the margins above are optimistic for it. Of the devices on this
+bus only the AK09911C's own figure has been read here; the ES8311, ES7210,
+AXP2101, PCF85063ATL, FT3168 and QMI8658 have not been checked against it, and
+that is a per-datasheet question this document does not answer.
+
+#### 4.3.4 The constraint that is actually tight, and it is the other one
+
+Pull-up sizing has two limits pulling in opposite directions, and only one of them
+was asked about. `Rp(min)` guards sink current, above. `Rp(max)` guards rise
+time, and M6 §7.1's Equation 1 is `Rp(max) = tr / (0.8473 × Cb)`, with `tr` from
+Table 10 — **1000 ns Standard-mode, 300 ns Fast-mode** — and `Cb` the total bus
+capacitance, itself capped at 400 pF.
+
+Turned around, at a given `Rp` that is a ceiling on `Cb`:
+
+| `Rp` on the line | at 100 kHz | at 400 kHz |
+|---|---|---|
+| 2200 Ω — board alone | 537 pF, so the 400 pF cap binds first | **161 pF** |
+| 1136 Ω — both modules at 4.7 kΩ | 1039 pF | 311 pF |
+
+**Adding module pull-ups moves the bus *away* from this limit while moving it
+toward the sink limit**, which is why the two must be read together, and why
+lifting the modules' resistors is not a free "safe" choice.
+
+What is on the bus today, `ESTIMATED` and deliberately loose: M6 Table 10 caps
+`Ci` at **10 pF per I/O pin**, there are six slave pins plus the SoC's, and the
+board fits `C34`/`C35` at 22 pF each — so roughly **110 pF of parts alone**, and
+**100–150 pF** all in once traces are allowed for, part of it arriving over the
+display flex that carries the touch controller
+([OPEN_QUESTIONS](OPEN_QUESTIONS.md) D3). **At 400 kHz that is already close to
+the 161 pF ceiling**, and two modules on flying leads add two more pins and the
+wire.
+
+This costs nothing today: the bus scan that produced the address table above ran
+at **100 kHz** ([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md)
+§3.1), where the 400 pF cap binds long before `Rp` does. It is written down
+because "put it at 400 kHz, the parts support it" is the obvious next thought —
+M1 §2.4 records the AK09911C reaching 2.5 MHz only under 100 pF — and on this
+board that thought needs `Cb` measured first. `Cb` is **`UNKNOWN`** and wants a
+scope on a rising edge, not a calculation.
 
 ## 5. The IMU probably cannot do this for us — one good reason, not two
 
@@ -585,6 +874,23 @@ None of this is measurable from a datasheet. What *can* be said now:
 - `HARDWARE_MATRIX`'s "no magnetometer" rows stay true **for the board as
   shipped** and need a retrofit column, not a correction. A stock board still has
   no magnetometer, and the firmware must run on one.
+- **The wiring is not four wires and the plan should stop saying so.** #83's body
+  said *"four wires, no bus to invent"*; §2.6 makes five the default, because M1
+  forbids leaving `RSTN` floating and only a continuity check on the module can
+  show it is already tied. If the AKM part is fitted, the retrofit budget is
+  `SDA`, `SCL`, `3V3`, `GND`, `CAD` to ground **and** `RSTN` — and whether the
+  last of those reaches a GPIO or just a rail is a driver decision, not a wiring
+  one. Nothing above the capability registry learns about it either way.
+- **`RSTN` is the AKM part's only recovery path that a soft reset cannot
+  provide.** M1 §6.2 lists four resets, and the other three all need the part to
+  be answering: `SRST` needs a working bus, the `VID` monitor needs the interface
+  rail cycled, POR needs `VDD` cycled — and on this board every rail is behind
+  the PMU and shared. A wedged sensor with `RSTN` tied to `VID` can only be
+  recovered by cutting a rail that other devices are on. This is the same shape
+  as the touch controller's problem on the T-Watch, where the reset pull-up is
+  not fitted and the only recovery is cycling a display rail
+  ([HARDWARE_MATRIX](HARDWARE_MATRIX.md), the FT6336U row). Worth a GPIO if one
+  is free.
 
 ## 8. Recommendation, and what would overturn it
 

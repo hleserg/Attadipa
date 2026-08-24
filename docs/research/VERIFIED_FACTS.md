@@ -1139,6 +1139,52 @@ constants.
   firmware needs overwriting; read-only bench work on this unit costs no flash
   write at all.
 
+### The Waveshare main I2C bus is pulled up by 2.2 kΩ, not 4.7 or 10
+
+- **Claim:** on `ESP32-S3-Touch-AMOLED-2.06` V1.0, the main I2C bus pull-ups are
+  **`R49` = 2.2 kΩ on `SDA` (`GPIO15`)** and **`R23` = 2.2 kΩ on `SCL`
+  (`GPIO14`)**, both to `VCC3V3`. Each line also carries **22 pF to `AGND`** —
+  `C35` on `SDA`, `C34` on `SCL`. There is exactly one pull-up per line in the
+  whole drawing.
+- **Source:** the vendor schematic, `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`,
+  md5 `b0cdcac0afb0c8605896d995676c4468`, sha256
+  `6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d` —
+  `HARDWARE_MATRIX` S6, re-read by **rendering** the region around `GPIO14`/`GPIO15`
+  and reading the junction dots. The earlier text-only extraction had the value
+  string `2.2k` and no way to attach it to a net, which is why this was missing.
+- **Checked:** 2026-08-24. **Board revision:** V1.0, which is the revision the
+  received unit's silkscreen matches
+  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1).
+- **Not measured on the board.** This is a schematic reading. A fitted part can
+  differ from a drawing, and an ohmmeter across `IO15`↔`3V3` on the expansion pad
+  row with the board unpowered would settle it in one probe.
+- **Impact:** it is the input the magnetometer retrofit's parallel-pull-up
+  arithmetic was blocked on. At 2.2 kΩ the bus already sinks 1.32 mA at
+  `VOL` = 0.4 V, 44 % of the 3 mA that `UM10204` Rev. 7.0 §7.1 requires every
+  device to sink; two 4.7 kΩ module pull-ups take it to 85 %, which passes —
+  [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §4.3.
+
+### The AK09911C has a reset input, `RSTN`, and it may not be left floating
+
+- **Claim:** the `AK09911C` has a dedicated reset input `RSTN` at ball **`C2`**,
+  a `VID`-domain CMOS input that *"Resets registers by setting to `L`"*, with a
+  minimum effective low pulse `tRSTL` of **5 µs** and input thresholds of 30 % and
+  70 % of `Vid`. It is one of four reset paths, and the datasheet's instruction
+  for not using it is explicit: ***"When Reset pin is not used, connect to VID."***
+  AKM's own recommended external connection drives it from a host CPU GPIO.
+- **Source:** AKM `AK09911` `ShortDatasheet-E-00`, 2014/1, md5
+  `1d7e1960c86b2a1fb38ecc862196c4a7` — §4.3 pin table, §5.3.1, §5.3.2, §6, §7,
+  §8.2. The md5 matches the copy `MAGNETOMETER_RETROFIT` M1 already cited.
+- **Checked:** 2026-08-24.
+- **What this does *not* establish:** whether the CJMCU-9911 breakout routes the
+  ball to its silkscreened `RST` pad, and whether it ties it to `VID`. Both are
+  `UNKNOWN` and need an ohmmeter on a module nobody has yet —
+  [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §2.6.
+- **Impact:** the retrofit is **five wires by default, not four**. It also
+  supersedes the weaker source this was previously known from — a comment in
+  `drivers/iio/magnetometer/ak8975.c` — which was right and is no longer what
+  anything rests on.
+
 ### The main I2C bus, scanned from a RAM app — five devices, and 0x6B settles a conflict
 
 - **Claim:** on SDA 15 / SCL 14 at 100 kHz, exactly five devices acknowledge:

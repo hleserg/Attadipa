@@ -2345,6 +2345,28 @@ stale silently. The protocol is
     was an inference and it was wrong; Mode 2 is entered in firmware via `CTRL7`
     `mEN`. Whether `SDx`/`SCx` are actually tied off on this board is `UNKNOWN`
     and now merely interesting. §5.3.
+  - **It is five wires, not four** — added 2026-08-24 from
+    [#182](https://github.com/hleserg/Attadipa/issues/182). #83's body said
+    *"four wires, no bus to invent"* and that is wrong for the AKM part. The
+    `AK09911C` has a reset input `RSTN` at ball `C2`, and M1 §6.2 says in as many
+    words: *"When Reset pin is not used, connect to VID."* A floating CMOS input
+    at 30 %/70 %·`Vid` thresholds is not that, so the only way to spend four
+    wires is to prove the module already ties it —
+    [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md) §2.6.
+    `RSTN` is also the part's **only** recovery path that does not need the part
+    already answering or a shared PMU rail cycled, which is an argument for
+    spending a GPIO on it rather than a resistor.
+  - **The bus arithmetic passes, and the board's pull-up is 2.2 kΩ.** `R23` on
+    `SCL` and `R49` on `SDA`, both 2.2 kΩ to `VCC3V3`, plus 22 pF per line —
+    read off the V1.0 schematic 2026-08-24, previously unrecorded anywhere. That
+    is stiffer than the 4.7–10 kΩ #83 assumed, so the parallel combination
+    starts closer to the limit; it still passes at **85 %** of `UM10204`
+    Rev. 7.0's 3 mA with both modules at 4.7 kΩ. **Do not lift the modules'
+    resistors on account of the assumed values** — but the values are assumed,
+    and the pass line is: one module ≥ 1.8 kΩ, both ≥ 3.6 kΩ each. §4.3.3.
+  - **Do not wire the CJMCU-9911's `TST` pad.** The module breaks it out; M1
+    §4.3 and §7 both say to keep that pin electrically non-connected, and `IIN2`
+    on it is 100 µA — 33× the part's idle current. §2.6.4.
 - **The measurement that decides the part:** the field at the candidate mounting
   position, motor idle and motor driven. The QMC5883L is the recommendation on
   current alone — 250 µA against 2.4 mA at 100 Hz — but it saturates at ±800 µT
@@ -2352,8 +2374,25 @@ stale silently. The protocol is
   millimetres away is exactly the thing that closes a six-fold range advantage.
   If the QMC sits near overflow wherever it physically fits, the AKM part is not
   a fallback, it is the answer.
-- **Acceptance:** the `CAD` strap fitted and **verified low** before any address
+- **Four ohmmeter readings, before anything is soldered and before either module
+  meets the board.** No power, no host, no iron — this is a multimeter on a bare
+  module, and each answer is already written down as a pass line so nobody has
+  to redo the algebra ([OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md) **H16**):
+  - `SDA`↔`VCC` and `SCL`↔`VCC` on **each** module — the fitted pull-up.
+    **≥ 3.6 kΩ each passes** with both modules on the bus; 3.3 kΩ does not.
+    Below that, lift the resistors, which the owner's own #83 correction called
+    correctly as a conditional.
+  - `RST`↔`VCC` and `RST`↔`GND` on the **CJMCU-9911** — a few kΩ or a short to
+    `VCC` means the module ties `RSTN` and the retrofit is four wires; open to
+    both means it floats and the pad **must** be wired.
+  - Record all four as `MEASURED` with the meter named, or the numbers stay
+    `UNKNOWN` — [MAGNETOMETER_RETROFIT](docs/research/MAGNETOMETER_RETROFIT.md)
+    §2.6.3 and §4.3.3.
+- **Acceptance:** the four readings above taken and recorded before soldering;
+  the `CAD` strap fitted and **verified low** before any address
   is written down, and each module scanned on its own so the ACK is unambiguous;
+  `RSTN` at a defined level — tied or driven, never floating — and which of the
+  two written down; the `TST` pad left unwired;
   both module footprints recorded as `MEASURED` with the caliper
   named; the field at the chosen position recorded with the motor in both
   states; the rotation between module frame and board frame written down for

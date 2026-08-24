@@ -593,6 +593,27 @@ datasheet comparison and the one measurement that decides it. A6 stays open and
 stays independent: a node's magnetometer and a wrist's magnetometer answer
 different questions.
 
+**Two corrections the owner made on #83 reached the repository on 2026-08-24**,
+having spent two days in a comment thread that nothing read
+([#182](https://github.com/hleserg/Attadipa/issues/182)). Both were traced to
+primary sources and both changed the plan:
+
+- **The retrofit is five wires, not four.** The `AK09911C` has a reset input
+  `RSTN` at ball `C2`, and AKM's own short datasheet — the copy this repository
+  already cites, md5 re-checked — says *"When Reset pin is not used, connect to
+  VID."* That forbids leaving it floating, so four wires is now the exception
+  and needs a continuity check on the module to earn.
+- **The Waveshare bus is pulled up by 2.2 kΩ, not the 4.7–10 kΩ anyone assumed.**
+  `R23` and `R49`, plus 22 pF per line, read off schematic V1.0 and recorded
+  nowhere before. Two 4.7 kΩ module pull-ups in parallel with it reach **85 %**
+  of the 3 mA `UM10204` Rev. 7.0 requires every device to sink — so it passes,
+  and the modules' resistors do not come off.
+
+What stays `UNKNOWN` is only what a photograph cannot say and the parts are not
+here to answer: each module's fitted resistor, and whether the CJMCU-9911's
+`RST` pad reaches the die. Both are four ohmmeter probes on a bare module, both
+now have a published pass line, and both are **H16** and T-109's.
+
 **A7 is answered** — [#33](https://github.com/hleserg/Attadipa/issues/33), on
 2026-08-22, recorded as
 [OD-13](docs/research/OWNER_DECISIONS.md#od-13--no-tag-emulation-a-track-is-a-way-back-on-foot-and-saving-one-whole-is-a-separate-feature).
@@ -731,6 +752,9 @@ the unit is byte-identical to the T-099 backup with `verify-flash` over all
   A BSP that configures GPIO 9 as a high output at init would see an empty bus
   and report no error. T-113.
 - **`0x0C`, `0x0D` and `0x1E` are free** for the magnetometer retrofit (T-109).
+  The scan ran at **100 kHz**, which matters now that the bus's pull-ups are
+  known: at 2.2 kΩ the 400 pF ceiling binds long before the resistor does at
+  100 kHz, and at 400 kHz the resistor caps bus capacitance at 161 pF — H17.
 - **The AXP2101's rail registers are recorded raw** — `IC_TYPE = 0x4A`,
   `LDO_ON_OFF0 = 0xFF`, the DCDC and ALDO/BLDO voltage bytes — read from the
   powered board without writing anything. That is the input D13 and H8 were
