@@ -32,6 +32,16 @@ would put a red commit on `main` either way round:
         without it they would describe an exit that does not exist, which is the
         class of defect #129 is about.
 
+WRITTEN AGAINST `0a25505` (2026-08-24). It was first written against `945c16a`
+and rotted the same evening, when #215 landed and moved `ci.yml`,
+`APPROVAL_STALLS.md`, `WAVESHARE_ARRIVAL.md` and one context line of
+`75-approval-stall.patch` -- four of the seven non-workflow files it carries,
+all of them for the citation reason above. `merge-candidate-test.sh` turned CI
+red and named the file, which is what that assertion is for. Expect the same
+again: this patch's citation hunks rot every time an insertion lands above them
+in a workflow, and `git apply -3` plus `python3 tools/docs/check_docs.py .` is
+the whole repair.
+
 TO APPLY:
 
     git checkout main && git pull
@@ -346,10 +356,10 @@ index af32d5e..2700980 100755
  echo
  printf '  %d passed, %d failed\n' "$pass" "$fail"
 diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
-index 86597c9..b8a4263 100644
+index a93e6e1..cb557bd 100644
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
-@@ -370,6 +370,22 @@ jobs:
+@@ -373,6 +373,22 @@ jobs:
        - name: The gh calls in the workflows are ones gh accepts
          run: bash .github/tests/gh-api-usage-test.sh
  
@@ -523,13 +533,13 @@ index 5cf761c..8bbb72f 100644
    variable before anything billable, the queue watchdog costs nothing when the
    queue is empty, and one writer runs at a time.
 diff --git a/docs/automation/APPROVAL_STALLS.md b/docs/automation/APPROVAL_STALLS.md
-index e6e0277..10f5e6c 100644
+index 67a1c1a..2dcbf4f 100644
 --- a/docs/automation/APPROVAL_STALLS.md
 +++ b/docs/automation/APPROVAL_STALLS.md
 @@ -240,7 +240,7 @@ omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
  checker reads a fingerprint only from the citation's own physical line:
  `claude-agent.yml:819` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
- `claude-pr-review.yml:112` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+ `claude-pr-review.yml:116` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
 -`claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
 +`claude-ci-repair.yml:342` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
  `display_report: "true"` posts the agent's summary **on the triggering issue**
@@ -593,28 +603,28 @@ index 4e18795..bfd1f25 100644
  
  It cannot be: two attempts per problem chain, and the marker is written before
 diff --git a/docs/automation/pending/75-approval-stall.patch b/docs/automation/pending/75-approval-stall.patch
-index 20bcd47..4020ed5 100644
+index f3f264a..a5935bc 100644
 --- a/docs/automation/pending/75-approval-stall.patch
 +++ b/docs/automation/pending/75-approval-stall.patch
 @@ -493,7 +493,7 @@ index 4e21eda..eaf6fc3 100644
  -`claude-agent.yml:819` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
  +`claude-agent.yml:847` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
-  `claude-pr-review.yml:112` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+  `claude-pr-review.yml:116` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
 - `claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
 + `claude-ci-repair.yml:342` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
   `display_report: "true"` posts the agent's summary **on the triggering issue**
   over it, and the
   agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
 diff --git a/docs/research/WAVESHARE_ARRIVAL.md b/docs/research/WAVESHARE_ARRIVAL.md
-index 8430371..c45e79f 100644
+index 174ccb9..ecad91a 100644
 --- a/docs/research/WAVESHARE_ARRIVAL.md
 +++ b/docs/research/WAVESHARE_ARRIVAL.md
 @@ -121,7 +121,7 @@ Whatever is decided, wrapping the BSP does not cover the board.
  "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
  ([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
  `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
--([`.github/workflows/ci.yml:511`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
-+([`.github/workflows/ci.yml:527`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+-([`.github/workflows/ci.yml:514`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
++([`.github/workflows/ci.yml:530`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
  What exists
  is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
  installed is not decided.
@@ -622,8 +632,8 @@ index 8430371..c45e79f 100644
      line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
      Both live citations are written above with fingerprints —
      [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
--    [`.github/workflows/ci.yml:511`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
-+    [`.github/workflows/ci.yml:527`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+-    [`.github/workflows/ci.yml:514`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
++    [`.github/workflows/ci.yml:530`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
      — and the numbers in this paragraph are
      deliberately **not** citations: it is a record of where two claims used to
      point, and writing that record in the live syntax would make it four more
