@@ -656,7 +656,29 @@ been followed.
 this branch developed over eleven rounds; it must renumber `T-111` and its
 owner-decision record regardless, since `main` already holds both; and its A5/A6
 record is byte-identical in heading to this branch's **OD-17**, so once this
-lands #112's copy is a **duplicate to delete**, not to renumber. What #112 still
+lands #112's copy is a **duplicate to delete**, not to renumber.
+
+**And this branch had installed four tripwires of exactly the kind it spent
+round thirteen removing**, found in the fifteenth. Round thirteen's argument is
+right and repository-wide: a fingerprinted citation into code an open branch is
+about to change fails on `main` the moment that branch lands, CI does not re-run
+a pull request's checks when its base moves, and a pull request's CI builds the
+merge of its head into `main` — so from that commit every open pull request is
+red on a citation it never wrote and `pr-merge-sweep.yml` stops sweeping all of
+them. The same commits then fingerprinted `trust.cpp:534`, `trust.cpp:710` and
+`gnss_power.cpp:113` — all three inside #112's own hunks, and three of the four
+sites are in `docs/adr/`, which the sweep's allowlist forbids, so the repair
+would need an orchestrator session *while the queue is stalled*. #112's
+`gnss_power.cpp` hunk re-wraps the comment, so that snippet ends up on no line of
+the file and renumbering could not have repaired it. All four now name the
+expression and link the file **without a line number** — the form ADR-0009
+already uses where it names `provider_disagreement_mm = 250000` and links
+`tests/test_trust.cpp`, and the form `TASKS.md`'s own `gnss_power.cpp` bullet
+chose deliberately for this exact reason. It survives any insertion, and
+`check_docs.py`'s check 7 has nothing to bind to a line. `trust.cpp:515` keeps
+its fingerprint: #112 inserts below it. The obligation is here rather than in
+the ADR because round thirteen took the merge order out of an accepted ADR, on
+the grounds that process in an ADR is archaeology the day it is followed. What #112 still
 carries afterwards is everything §3a does not say. §3a's item *the two trust
 fixtures still pass unchanged* is now explicitly against the suite as it stands
 **when T-026 runs**, because #112 rewrites those fixtures on purpose and a

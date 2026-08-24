@@ -221,9 +221,9 @@ with someone competent reviewing it — not in a paragraph here.
 | # | Question | Status | Resolved by |
 |---|---|---|---|
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
-| Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83), [OD-17](OWNER_DECISIONS.md)). A6 also settles that the node will never be the source. The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
+| Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83), [OD-17](OWNER_DECISIONS.md)). A6 also settles that the node will never be the source. The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed, and **asked as [#138](https://github.com/hleserg/Attadipa/issues/138)** |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
-| Q4 | On the Waveshare board, does Child Mode show the position-provenance sentence at all? | OPEN, raised 2026-08-24 | a design decision, owned by whoever writes the Child Mode position screen |
+| Q4 | On the Waveshare board, does Child Mode show the position-provenance sentence at all? | OPEN, raised 2026-08-24 | a design decision, owned by whoever writes the Child Mode position screen — **and deliberately not an issue**, for the reason under this table. Raised in [ADR-0009](../adr/0009-heading.md) §3, which names it here rather than deciding it |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
 on 2026-08-21 in a way that reframed it. The board is not a lesser device that
@@ -271,6 +271,19 @@ is a `StringId` and not a literal, and that is a different question from whether
 Child Mode shows it. Named in the thirteenth review round of
 [#94](https://github.com/hleserg/Attadipa/pull/94), which found it stated as
 open in an accepted ADR with nothing anywhere to carry it.
+
+**Why one of these two carries an issue and the other deliberately does not.**
+The rule at the head of the `A`-table binds questions somebody *owes* an answer
+to, and here that somebody is the owner. Q2 is one of those: no amount of
+engineering settles whether the compass is a product path or one soldered
+wrist, so it is [#138](https://github.com/hleserg/Attadipa/issues/138) and it
+sits in `STATUS.md`'s *Waiting on the owner* beside A11 and D16. Q4 is not one:
+nobody owes it, and whoever writes the Child Mode position screen answers it by
+writing that screen — and nothing has scheduled that screen yet. An issue for it
+today would be a work package no agent can close, which is the one failure the
+queue exists to avoid. It is instead carried in the two places that author
+cannot miss — this row, and [ADR-0009](../adr/0009-heading.md) §3, which points
+back here — and it becomes a task the moment the screen does.
 
 ---
 

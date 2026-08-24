@@ -573,15 +573,17 @@ stale silently. The protocol is
   primary provider must not be allowed to produce one — rather than leaving it
   to be discovered. **The premise is this task's to build**, and §3a
   deliberately does not name the mechanism, because the only existing call that
-  clears `have_previous_` is `TrustEvaluator::reset()` and `trust.h` says on
-  that function that it throws away the local receiver's whole evidence and
-  asserts `Trusted` outright. **Nor may the mechanism simply clear
+  clears `have_previous_` is `TrustEvaluator::reset()`, which calls
+  `engine_.reset()`, and `trust.h` says on **`TrustEngine::reset()`** — the
+  function at the end of that hop, not on `TrustEvaluator::reset()`, which is
+  declared without a comment — that it throws away the local receiver's whole
+  evidence and asserts `Trusted` outright. **Nor may the mechanism simply clear
   `have_previous_`**, which is the same trap one level finer and the reason §3a
   now states the constraint against the *computation* rather than against the
   stored coordinate:
   `core/src/trust.cpp:515` "if (usable_for_rate && have_previous_) {"
-  opens one block over both `jumped` and `moved_at_rest`
-  (`core/src/trust.cpp:534` "moved_at_rest ="), and `moved_at_rest` is an
+  opens one block over both `jumped` and the `moved_at_rest = …` assignment
+  ([`core/src/trust.cpp`](core/src/trust.cpp)), and `moved_at_rest` is an
   absolute distance rather than a rate, so invalidating the baseline on every
   provider change takes `MotionDisagreement` (45) down with `PositionJump` (40)
   and leaves the OD-8 configuration below sitting **`Trusted`** — a false

@@ -199,6 +199,20 @@ conditions and refuses otherwise. Cross-body position gets the same shape:
 > co-location is `Unknown` may be shown, and must be shown with its actual
 > source — never as the wearer's own instrument's fix.**
 
+**And *shown with its source* is an obligation on `LocationService`, not a
+licence for an application to read `PositionSource`.** Stated here rather than
+550 lines below in Testable item One, because the unqualified sentence reads as
+an application-layer mandate and this repository's own rule says the opposite:
+[ADR-0004](0004-capability-sources.md) — `accepted` — is that *"an application
+asks `LocationService` for a position and never learns where it came from. This
+is the rule that makes everything else checkable by review,"* and `CLAUDE.md`
+says the same. The two are reconciled and the reconciliation is not a
+compromise: the *label* is part of what `LocationService` hands over, computed
+once where the source is known, and the application renders a label it was given
+rather than a source it inspected. An application that branches on
+`PositionSource` to decide what to draw has broken ADR-0004 while satisfying the
+letter of the sentence above.
+
 **Child Mode is open and this section does not answer it.** The rule above puts
 a provenance sentence on every position whose co-location is `Unknown`, and on
 the Waveshare board — which has no GNSS of its own — **every** position is
@@ -286,8 +300,10 @@ receiver, a fix relayed from a node on a roof, and a coordinate lifted out of
 somebody else's message are three different claims about where the wearer is, and
 exactly one of them is about the wearer. The user-facing consequence is that the
 screen says which, in words."* So a node-supplied *position* reaches the wearer's
-screen, labelled as the node's; a node-supplied *heading* does not reach the
-arrow at all.
+screen, labelled as the node's — the label supplied by `LocationService` with
+the position, per the qualifier at the head of this section, and not by an
+application reading `PositionSource`; a node-supplied *heading* does not reach
+the arrow at all.
 
 **Three detectors already in the tree fire on this configuration, and this
 section has now named too few of them twice.** The first version named one and
@@ -382,7 +398,8 @@ timestamps"* — which sounds like the narrower of the two and is the wider.
 `previous_position_` has a second consumer.
 `core/src/trust.cpp:515` "if (usable_for_rate && have_previous_) {" opens
 **one** block, and that block computes two things: `jumped`, which is a rate,
-and `moved_at_rest` (`core/src/trust.cpp:534` "moved_at_rest =") — which is not
+and the `moved_at_rest = …` assignment
+([`core/src/trust.cpp`](../../core/src/trust.cpp)) — which is not
 a rate at all. It is an absolute distance against `jump_while_still_mm`, and
 the tree says so in its own words directly above it: *"It needs no interval at
 all, which is exactly why gating it on `in_order` cost the most."* Clear
@@ -392,15 +409,53 @@ all, which is exactly why gating it on `in_order` cost the most."* Clear
 On this section's own configuration that is not a conservative failure but a
 **false all-clear**. With the fold alternating at 1 Hz every observation
 follows a change of primary provider, so a storage-scoped constraint leaves
-`have_previous_` false at *every* `observe()`: neither detector ever evaluates,
-the score stays 0, and the device sits **`Trusted`** — the opposite of the
-`Untrusted` the reproduction below predicts for the premise being ignored. On a
+`have_previous_` false at *every* `observe()`: neither of these two detectors
+ever evaluates, and the two heaviest position signals go dark — the opposite of
+the `Untrusted` the reproduction below predicts for the premise being ignored.
+
+**With one qualifier, which the section owes because its own detector one
+contradicts the unqualified sentence.** Where nothing calls `compare_provider`,
+the score really is 0 and the device really does sit **`Trusted`** — the false
+all-clear in its pure form. Where `compare_provider` *is* called, and §1 above
+establishes that it fires on exactly this configuration, its bit is raised
+independently of `have_previous_`: 30, and `degrade_at` is 30
+(`core/include/attadipa/core/trust.h:112` "degrade_at"), so the device sits
+**`Degraded` with a live reason bit** rather than `Trusted`. That is a materially
+better outcome than the all-clear, and it does not rescue the section's point:
+`Degraded` reached by a *third-party* detector while the two this section is
+about are dark is an accident of another provider being present, not a property
+of the constraint. Take the second provider away — a Waveshare board, where
+`NodeGnss` is the only position there is, so there is nothing to compare against
+— and the qualifier evaporates along with the detector, leaving `Trusted` and
+nothing raised at all. **The failure is worse on the board with fewer sources**,
+which is the reverse of the direction a safety argument may run in. On a
 Waveshare board, where there is no local receiver and `NodeGnss` is the only
 position there is, any fold that alternates for any reason would take with it
 the one position detector this section establishes as live there at all.
 
 **So what may not cross bodies is the rate — `jumped` and `climbed_absurd` —
-and not the stored coordinate.** Whether `moved_at_rest` should *also* be gated
+and not the stored coordinate.**
+
+**And this ADR owes the honoured outcome as well as the unhonoured one**, since
+the reproduction below computes only the second. Honour the constraint as scoped
+here and the OD-8 configuration is **still permanently `Degraded`**: 300 000 mm
+against a `jump_while_still_mm` of 50 000, with the wrist `known && !moving`, so
+`moved_at_rest` raises `MotionDisagreement` (45) on every observation and 45 is
+already past `degrade_at`. That is the *correct* verdict for a device that
+cannot tell two bodies apart, and it is not the end state anybody wants; naming
+it here is what stops a later reader taking the scoping as a fix rather than as
+the narrower of two wrong answers. `T-141` is where it stops being permanent,
+and the residual is deliberately recorded rather than discovered.
+
+**The justification below is about a different scenario, and that is worth
+saying rather than leaving to be noticed.** A body 300 m away that *walks* while
+this wrist is still is genuine OD-8 evidence. In the alternating fold nothing
+walks: the 300 m is an artefact of the fold picking a different body between two
+observations, and `moved_at_rest` cannot tell those two apart — which is
+precisely why gating it on the source is a real question rather than an obvious
+one.
+
+Whether `moved_at_rest` should *also* be gated
 on the source is a different question with a different answer available to it,
 and it is **T-141's** rather than this ADR's: a position from a body 300 m away
 that walks while this wrist is still is the OD-8 evidence, not the noise, and
@@ -412,8 +467,8 @@ trust signal in prose."*
 `reset()`.** An earlier version of this paragraph said it was, and that was
 wrong in a way worth recording, because `reset()` is the only call in `trust.h`
 that clears `have_previous_` and so is the one an implementer reaches for.
-`TrustEvaluator::reset()` (`core/src/trust.cpp:710` "void TrustEvaluator::reset()")
-calls `engine_.reset()`, and `trust.h` says on that function what that costs — *"NOT the call for a
+`TrustEvaluator::reset()` ([`core/src/trust.cpp`](../../core/src/trust.cpp))
+calls `engine_.reset()`, and `trust.h` says on **`TrustEngine::reset()`** what that costs — *"NOT the call for a
 provider going away … throws away the local receiver's entire evidence and the
 last trusted position with it, and asserts `Trusted` outright — which is the
 all-clear this class exists to refuse."* Under the very configuration this
@@ -516,8 +571,8 @@ confident number on an unobservable quantity that §3 exists to refuse.
 `SameBody` says the instrument and this device are the same body. It does not
 say the *wearer* is that body, because neither board detects wear. A watch left
 on a bedside table — the state
-`core/src/gnss_power.cpp:113` "of a watch on a bedside table, and it is where the charge is saved."
-names in exactly those words — still produces `LocalGnss`, therefore
+[`core/src/gnss_power.cpp`](../../core/src/gnss_power.cpp) names in exactly
+those words, calling it where the charge is saved — still produces `LocalGnss`, therefore
 `SameBody`, while the wearer is elsewhere with the node. That is today's
 behaviour and nothing here regresses it. What is being fixed is where the
 limit is written down: [ADR-0011](0011-gnss-integrity.md)'s register row
