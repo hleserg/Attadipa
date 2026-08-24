@@ -672,8 +672,20 @@ four more things at no cost:
   `cos 89°`. The overstatement is unbounded rather than merely large: inside
   that last degree the true longitude scale falls from 0.01745 to zero while a
   step function holds 0.01745, which is ten times over at 89.9° and a thousand
-  times over at 89.999°. Everywhere below 89° the same defect is a real but
-  unremarkable sub-percent error, which is why nothing noticed.
+  times over at 89.999°. **Below 89° the same defect is not sub-percent, and an
+  earlier version of this paragraph said it was — wrong by 100× at the very
+  boundary it named.** The worst error inside `[d, d+1)` sits at the top of the
+  interval and reads straight off the table: **+1.0%** at 29–30°, **+2.1%** at
+  50–51°, **+5.0%** at 70–71°, **+14.6%** at 82–83°, **+24.6%** at 85–86° and
+  **+101%** at 88–89° — so at 88.999°, one thousandth of a degree below the
+  stated boundary, the distance was already doubled. At **82.5°N — Alert,
+  Nunavut, the northernmost permanently inhabited place on earth** — the
+  overstatement was **+7.0%**, and this fix cuts the reported distance there by
+  6.3%. *Sub-percent* is true only below about **29°**. The movement is toward
+  truth, so nothing on a device is worse for it; what the wrong sentence cost
+  was the next person tuning `jump_while_still_mm` or auditing Arctic
+  behaviour, who would have read the blast radius as the last degree when it
+  was every latitude above ~29°. Found in review.
   **What it would have cost:** ADR-0011 §6 makes implied speed and motion
   disagreement evidence against a fix, and `TrustEvaluator::observe` computes
   the first by dividing exactly this distance by an interval. A stationary
@@ -708,10 +720,20 @@ four more things at no cost:
   table would buy nothing that survives the method it feeds.
   Regression matrix covering 0°/45°/80°/89°/89.5°/89.9°/89.99°/89.999° in both
   hemispheres, a swept envelope, the antimeridian at 89.9°N as well as at the
-  equator, the grid corners, coincident points, symmetry and saturation. Every
-  new check confirmed red against the pre-fix code — 10 017 of them — while
-  every pre-existing distance test passed against it, which is exactly why the
-  suite could not see this: they only ever asked whole degrees. Host, strict
+  equator, the grid corners, coincident points, symmetry and saturation. **10 017 assertions fail
+  against the pre-fix code — but that is a count of failing assertions, not of
+  discriminating checks, and an earlier version of this sentence said "every new
+  check" when twenty-one new check sites are green against it.** Two whole new
+  test functions are among them: all eleven `CHECK`s of
+  `test_the_grid_boundaries_are_answers`, none of which reaches the cosine index
+  at all (zero deltas, a wrap to zero, pole-to-pole saturation, and coordinates
+  `in_range` rejects before any arithmetic), and all three invariants of
+  `test_the_longitude_scale_is_monotonic_symmetric_and_bounded`, which hold for
+  a step function as readily as for an interpolated one. They are worth keeping
+  — a boundary that is an answer rather than a crash is a property — but they
+  are not evidence that this defect existed. Meanwhile every **pre-existing**
+  distance test passed against the pre-fix code, which is exactly why the suite
+  could not see this: they only ever asked whole degrees. Found in review. Host, strict
   warnings (`-Werror -Wconversion -Wsign-conversion -Wold-style-cast`), Clang,
   ASan+UBSan with `-fno-sanitize-recover=all`, and the simulator build all
   clean. **No hardware involved and none needed** — the defect and its fix are

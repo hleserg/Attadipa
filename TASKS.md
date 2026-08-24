@@ -291,9 +291,15 @@ stale silently. The protocol is
   an independent haversine reference rather than asserted in a comment: within
   0.9% from the equator to 89.999°, and under 20 mm inside the last 111 m where
   a whole degree of longitude is under two metres. Regression matrix in
-  `tests/test_position.cpp`; every new check confirmed red against the pre-fix
-  code, and the pre-existing distance tests all passed against it, which is why
-  the suite could not see this.
+  `tests/test_position.cpp`; **10 017 assertions** fail against the pre-fix
+  code, though **twenty-one new check sites are green against it** — the whole
+  of `test_the_grid_boundaries_are_answers`, which never reaches the cosine
+  index, and the three invariants of
+  `test_the_longitude_scale_is_monotonic_symmetric_and_bounded`, which a step
+  function satisfies too. Worth keeping, not evidence of this defect; an earlier
+  version of this line said *every* new check was red. The pre-existing distance
+  tests all passed against the pre-fix code, which is why the suite could not
+  see this.
 
 - **`holds()` and `reasons()` can report evidence that has expired.** Both read
   `live_`, which only `update()` prunes, and both are `const`. A caller that
