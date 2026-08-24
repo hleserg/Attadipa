@@ -71,8 +71,8 @@ jobs:
             gh pr edit "$PR" --repo "$REPO" --remove-label "$label" || true
           done
           {
-            echo 'Cleared the CI-repair escalation after an explicit `/ci-repair reset`'
-            printf 'from a collaborator with `%s` permission.\n' "$PERMISSION"
+            echo "Cleared the CI-repair escalation after an explicit /ci-repair reset"
+            printf 'from a collaborator with %s permission.\n' "$PERMISSION"
           } > /tmp/reset.md
           gh pr comment "$PR" --repo "$REPO" --body-file /tmp/reset.md
 
