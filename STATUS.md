@@ -1332,6 +1332,39 @@ four more things at no cost:
   provenance note whose whole subject is not glossing over how something was
   read.
 
+  **Round four found the check drifting on a commit that had already landed.**
+  `tools/assets/generate_images.py:134` was the `--cf A8` line when three
+  documents cited it, and [#139](https://github.com/hleserg/Attadipa/pull/139)
+  inserted 34 lines above it on `main` — true when written, false in the tree
+  that merges, and green, because a citation with no fingerprint is only checked
+  for existing. All three now cite `:168` **with** `"--cf"` on the citation's own
+  line, and moving the number by two reddens all three. Two fingerprints in
+  `RESOURCE_BUDGET.md` had wrapped onto the following line, which makes them
+  invisible — the T-153 shape again, in a fourth file — and are reflowed; the
+  suite now carries a case asserting that current behaviour explicitly, so the
+  day T-153 lands the case goes red and is rewritten deliberately rather than
+  the gap being forgotten. **`.cmake` was not a citable suffix at all**, so
+  `cmake/AttadipaLvgl.cmake:62` was never matched; it is one now, and moving that
+  number reddens CI. **And a version claim the correction called an inference was
+  still standing as a read**: the unchecked `tx_color()` is recorded at the two
+  revisions actually read rather than *"present in 1.0.2 … as well as in 2.0.0"*,
+  because two of the four commits in that window are unread and the version
+  strings do not identify whose versioning they are. Two absolutes in the icon
+  test — *the branch that does break things* and *never a pre-swapped variant* —
+  are replaced by the general rule they are consequences of: an asset's byte
+  order follows the framebuffer the renderer writes into, whichever T-093
+  decides, and `RESOURCE_BUDGET.md`'s own Avoidability row keeps the swapped
+  destination live. The slip that came with them is withdrawn too: turning the
+  port's swap off does not *match* a pre-swapped asset, because LVGL has
+  un-swapped it into native order by the time it is in the framebuffer — there is
+  no configuration that leaves the asset right and only the glyphs wrong. Also:
+  `check_docs.py` compiled with a `SyntaxWarning` on every run, from a `\d` in a
+  non-raw docstring; `ci.yml` described **seven** checks in a step name and
+  **four** failures in a comment, neither catchable because the count guard needs
+  a paragraph to *name* the checker and both only describe it — filed onto
+  **T-157**; and check 8 has a **fourth** bound, undecorated IDs, so a bolded or
+  backticked row silently leaves the register.
+
   **73 mutation tests**, several of which assert it does *not* fire where firing would be wrong — a `###`
   sub-heading is not a second decision, a range straddling a blank line is
   how a table is cited, and a line number in somebody else's tree is not

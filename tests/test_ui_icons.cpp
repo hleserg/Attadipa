@@ -115,15 +115,25 @@ int main()
         // not executable for RGB565A8 (the vendored converter has no swapped
         // variant) and pointless for RGB565: LVGL un-swaps a swapped source
         // while blending it into a native framebuffer, so a pre-swapped asset
-        // renders correctly and merely pays a conversion per blend. The branch
-        // that does break things is matching the asset by turning the PORT's
-        // swap off, which breaks every glyph, arc and A8 icon LVGL renders into
-        // the same framebuffer. An earlier version of this comment said RGB565
-        // was wrong in either direction; that was over-stated and is withdrawn.
+        // renders correctly and merely pays a conversion per blend. Matching
+        // the asset by turning the PORT's swap off instead breaks every glyph,
+        // arc and A8 icon LVGL renders into the same framebuffer. An earlier
+        // version of this comment said RGB565 was wrong in either direction;
+        // that was over-stated and is withdrawn.
         //
-        // So when this line is relaxed to admit a colour format, the assertion
-        // that replaces it is that the format is LVGL's NATIVE one, never a
-        // pre-swapped variant. Found in review of #152.
+        // BOTH OF THOSE HOLD ONLY WHILE THE LVGL DESTINATION IS NATIVE-ORDER,
+        // and that is an open question rather than a constant.
+        // docs/architecture/RESOURCE_BUDGET.md's Avoidability row hands T-093
+        // the swapped-destination strategy as a live input: LVGL has a whole
+        // `lv_draw_sw_blend_to_rgb565_swapped` target. Decide that way and the
+        // guidance inverts -- the pre-swapped asset becomes the free one and
+        // nothing breaks. So the rule is the general one and not the two
+        // absolutes: AN ASSET'S BYTE ORDER FOLLOWS THE FRAMEBUFFER THE RENDERER
+        // WRITES INTO, whichever that turns out to be, and never D21 directly.
+        // When this line is relaxed to admit a colour format, the assertion
+        // that replaces it names the format LVGL is configured to render into
+        // at that point. Found in review of #152, twice: once for the
+        // over-statement, once for the absolutes that replaced it.
         check(l.dsc->header.cf == LV_COLOR_FORMAT_A8,
               "every linked asset is an A8 mask; a colour asset takes its byte "
               "order from LVGL's framebuffer format, never from D21",

@@ -71,9 +71,13 @@ checker enumerates.
    means GNSS silently never starts. A citation with nothing at the end of it
    reads as a claim with no source.
 
-   This cannot check that the line still *says* the right thing; it checks that
-   there is something there. That is the difference between the two failures it
-   has seen, and it is the cheap half. Citations to paths outside the repository
+   Without a fingerprint this checks only that there is something there, not
+   that the line still *says* the right thing. WITH one -- a quoted snippet on
+   the citation's own physical line -- it checks the content too, which is what
+   `_report` below does and what this sentence denied until 2026-08-24: it was
+   written before fingerprints existed and never revisited. So a bare citation
+   is the cheap half and a fingerprinted one is not, and which you get is the
+   author's choice per citation. Citations to paths outside the repository
    -- upstream MeshCore sources and the like -- are skipped, because their line
    numbers are facts about somebody else's tree.
 
@@ -286,7 +290,7 @@ def check_links(root: str) -> list[str]:
 # in review; `\.?` before the first path character is the whole fix.
 CITATION = re.compile(
     r"(?<![A-Za-z0-9_./-])((?:\.{1,2}/)*\.?[A-Za-z0-9_][A-Za-z0-9_./-]*"
-    r"\.(?:md|cpp|h|hpp|py|sh|yml|yaml|json|jq|txt))"
+    r"\.(?:md|cpp|h|hpp|py|sh|yml|yaml|json|jq|txt|cmake))"
     # The `)` is a Markdown link closing before the line number:
     # `[ADR-0003](../adr/0003-radio-not-lora.md):109-111`. Not captured.
     #
@@ -352,7 +356,7 @@ def bare_document_index(root: str) -> dict[str, str]:
 # resolved.
 CITED_SUFFIXES = (
     ".md", ".cpp", ".h", ".hpp", ".py", ".sh", ".yml", ".yaml", ".json",
-    ".jq", ".txt",
+    ".jq", ".txt", ".cmake",
 )
 
 
@@ -821,8 +825,8 @@ def check_question_ids(root: str) -> list[str]:
     following a citation lands on a question marked RESOLVED and concludes the
     thing they were asking about is settled.
 
-    THREE BOUNDS, WRITTEN DOWN BECAUSE EACH IS INVISIBLE FROM THE OUTSIDE.
-    Named in the third review round of #152.
+    FOUR BOUNDS, WRITTEN DOWN BECAUSE EACH IS INVISIBLE FROM THE OUTSIDE.
+    Named in the third review round of #152; the fourth in the fourth.
 
     * It is bound to a PATH. A missing `OPEN_QUESTIONS.md` returns no findings,
       and the suite asserts that as intended -- so renaming or moving the file
@@ -830,12 +834,25 @@ def check_question_ids(root: str) -> list[str]:
       for a repository where the file may not exist yet and the wrong one for a
       rename, and nothing here can tell those apart.
     * It is bound to a TABLE SHAPE. Any row in that file whose first cell reads
-      `[A-Z]+\d+[a-z]?` is treated as a register entry, and the file already
+      `[A-Z]+` then digits then an optional letter is treated as a register
+      entry -- written out rather than as the pattern, because this docstring is
+      not raw and `\\d` in it is an invalid escape sequence: a SyntaxWarning on
+      every compile today and a SyntaxError in a future Python. The pattern
+      itself is `QUESTION_ROW` above. Found in review -- and it is the only
+      backslash of its kind in the file. And the file already
       holds nine tables. A future cross-reference table repeating register IDs
       would redden CI on a correct document, with a message telling the reader
       to renumber a row that is only being cited -- the exact harm this check
       exists to prevent. Clean today: every ID in the register is unique and no
       other table reuses the shape.
+    * It is bound to an UNDECORATED ID. `QUESTION_ROW` requires the first cell
+      to be the bare identifier, so `| **D22** |` and a backticked one are
+      invisible to it -- and this repository backticks identifiers nearly
+      everywhere else, including inside the D21 row #152 itself added. All 78
+      rows are undecorated today, so this is latent rather than live; it is a
+      bound and not a bug, because a register row is a definition and the plain
+      form is the one to insist on. Worth knowing that emphasising a row is how
+      you silently leave the register. Found in the fourth review round of #152.
     * It does NOT check that a `D<NN>` cited elsewhere resolves to a live row.
       That is the half that cost the nineteen hand-edits, and a citation to a
       retired or renumbered ID is exactly as invisible now as the collision was.

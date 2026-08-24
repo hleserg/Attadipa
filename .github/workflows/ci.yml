@@ -365,8 +365,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Four failures that have all already happened here, and none of which
-      # anything else catches. A relative link that 404s reads exactly like one
+      # Eight failures (said FOUR until 2026-08-24; T-157) that have all
+      # already happened here, and none of which anything else catches. A relative link that 404s reads exactly like one
       # that works until somebody clicks it, and these documents cite each other
       # constantly — a rename with a stale reference behind it is the normal way
       # it breaks. A stray backtick turns everything after it into code until
@@ -389,7 +389,7 @@ jobs:
 
       # The checker's own mutation tests, run before the checker. A checker that
       # passes everything is worse than no checker, because it reads as
-      # evidence. tools/docs/test_check_docs.py holds 73 cases; several assert
+      # evidence. tools/docs/test_check_docs.py holds 74 cases; several assert
       # it does *not* fire where firing would be wrong (a `###` sub-heading is not a second decision, a range
       # straddling a blank line is how a table is cited, a line number in
       # somebody else's tree is not ours to verify), and two reproduce the
@@ -417,7 +417,7 @@ jobs:
       # always captured and never looked at. A renamed heading leaves a link
       # that lands at the top of the right file, which reads as working, and it
       # is what makes an OD-number collision survive a merge.
-      - name: Links and anchors, spans, task IDs, OD numbers, task bodies, root files, citations
+      - name: Links and anchors, spans, task IDs, OD numbers, task bodies, root files, citations, open-question IDs
         run: python3 tools/docs/check_docs.py .
 
   simulator:

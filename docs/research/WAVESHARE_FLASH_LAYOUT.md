@@ -432,7 +432,7 @@ transfer byte order — §4.1a. Their header is worth *noticing* and not worth
 exactly the field you need the moment a second format exists.
 
 **Nothing T-034 has shipped is affected.** The pipeline emits
-`LV_COLOR_FORMAT_A8` masks only (`tools/assets/generate_images.py:134`,
+`LV_COLOR_FORMAT_A8` masks only (`tools/assets/generate_images.py:168` "--cf",
 `--cf A8`) — one byte per pixel, no byte order to get wrong. The cost of §4.1a
 lands on **the first line of display bring-up**, which does not exist yet. It
 does **not** land on the first colour asset: an asset's byte order follows

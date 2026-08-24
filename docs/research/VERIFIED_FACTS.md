@@ -943,7 +943,7 @@ same question, the datasheet wins and the entry says so.
   three wallpapers**. What that app's `swap_bytes` was is not readable, which is
   why D21 is `UNKNOWN` rather than resolved in either direction.
 - **Impact:** nothing in this repository is mis-encoded today — T-034 emits
-  `LV_COLOR_FORMAT_A8` masks (`tools/assets/generate_images.py:134`), one byte
+  `LV_COLOR_FORMAT_A8` masks (`tools/assets/generate_images.py:168` "--cf"), one byte
   per pixel, which have no byte order to get wrong. The cost lands on **the
   first line of display bring-up**, which must take the swap setting from a
   measurement or from the datasheet and must not take it from this file's
@@ -976,14 +976,24 @@ fast path at `:955-956` copies the line and then runs
 path in. So a pre-swapped asset renders correctly and merely pays a conversion
 per blend that a native-order one does not — which is a reason not to emit one,
 not a colour bug. The other half of the old claim stands and needed no
-correction: turning the **port's** swap off to match a pre-swapped asset does
-break everything LVGL draws itself — text, arcs, the watch face, and every `A8`
-icon — because the `ColorRole` colour a mask is blended with lands in the same
-framebuffer as native-order `lv_color16_t`. So: **the colour asset's byte order
-is settled today and follows LVGL's framebuffer format. D21 governs one
-board-level knob in the display port and nothing under `ui/assets/`** — and
-because that knob is a board fact it belongs in `boards/`/`platform/`, not in
-settings and not in a build flag. Found in review.
+correction: turning the **port's** swap off breaks everything LVGL draws itself
+— text, arcs, the watch face, and every `A8` icon — because the `ColorRole`
+colour a mask is blended with lands in the same framebuffer as native-order
+`lv_color16_t`. **It does not "match" a pre-swapped asset either**, which this
+sentence said until the fourth review round of
+[#152](https://github.com/hleserg/Attadipa/pull/152): by the time the asset is
+in the framebuffer LVGL has un-swapped it into native order along with
+everything else, so it breaks with everything else. There is no configuration
+that leaves the asset right and only the glyphs wrong. So: **the colour asset's
+byte order follows LVGL's framebuffer format. D21 governs one board-level knob
+in the display port and nothing under `ui/assets/`** — and because that knob is
+a board fact it belongs in `boards/`/`platform/`, not in settings and not in a
+build flag. Found in review. **Which framebuffer format that is, is T-093's**:
+`RESOURCE_BUDGET.md`'s Avoidability row keeps a swapped destination live as an
+open input, and on that branch a pre-swapped asset is the free one. The rule
+survives the decision either way; the two absolutes above do not, which is why
+they are stated as consequences of today's configuration rather than as
+constants.
 - **And it is a per-frame cost, not only a correctness question.** On the one
   readable path every pixel goes through `lv_draw_sw_rgb565_swap()` on the LVGL
   flush path — software, in place, over the flushed region. A Waveshare full

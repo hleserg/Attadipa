@@ -642,6 +642,25 @@ def main() -> int:
             not check_docs.check_citation_lines(root),
         )
 
+        # A WRAPPED FINGERPRINT IS NOT A FINGERPRINT, and this case exists to
+        # say so rather than to approve of it. `_report` reads the remainder of
+        # the citation's OWN physical line, so a snippet that wraps onto the
+        # next one is invisible and the citation silently falls back to the
+        # blank-line test -- protected in appearance only. Found three times by
+        # hand in one file before anyone noticed the shape; filed as T-153 on
+        # https://github.com/hleserg/Attadipa/pull/128, which is where the fix
+        # goes and where the task entry currently lives. Asserted as CURRENT
+        # BEHAVIOUR: the
+        # citation below is wrong by the fingerprint and passes anyway, so the
+        # day T-153 lands this case goes red and is rewritten deliberately,
+        # which is the only way a known gap stays known.
+        write(root, "docs/research/CITER.md",
+              'A row at `TARGET.md:2`\n"three".\n')
+        case(
+            "a fingerprint on the NEXT line is not read -- T-153, asserted so it cannot drift",
+            not check_docs.check_citation_lines(root),
+        )
+
         # A DOT-DIRECTORY IS A PATH. `(?:\.{1,2}/)*` admits `./` and `../` and
         # nothing else, so `.github/workflows/ci.yml:281` matched at no
         # position: the pattern could not start at the `.`, and starting at the

@@ -253,6 +253,17 @@ stale silently. The protocol is
   position, which is the half that produced the two wrong instructions; if that
   is judged too clever, say so in the docstring rather than leaving the gap
   unstated.
+- **And the count guard is narrower than it reads**, found in the fourth review
+  round of [#152](https://github.com/hleserg/Attadipa/pull/152). It requires the
+  *paragraph* to name the checker (`quoted_counts_that_disagree`), so prose that
+  **describes** `check_docs.py` without naming the file is uncovered — which is
+  where two stale claims were living, both in `ci.yml`: a step name listing
+  seven checks and omitting open-question IDs, so a check-8 failure surfaced
+  under a label that does not mention it, and a comment 24 lines above the one
+  that *was* kept in step, saying *"Four failures"* and describing four. Both
+  are corrected; neither was catchable. Widening the guard from "names the
+  filename" to "names the checker" is part of this task, or the docstring says
+  it does not.
 - **What must not be assumed:** that this is the same guard as the count. The
   count guard (`CLAIM_FILES` in `test_check_docs.py`) reads *how many* checks
   are claimed; this is about *which check is which*, and the count was right in
@@ -382,12 +393,24 @@ stale silently. The protocol is
   un-swaps a swapped source while blending it into a native framebuffer
   (`lvgl@85aa60d1 src/draw/sw/blend/lv_draw_sw_blend_to_rgb565.c:935`), so all
   it costs is a conversion per blend that a native-order asset does not pay.
-  Matching the asset by turning the **port's** swap off is the branch that does
-  break things — every glyph, arc and `A8` icon LVGL renders into the same
-  framebuffer. D21 governs one board-level knob, in `boards/`/`platform/`, and
-  the first line of display bring-up. Found in review; the *"wrong colours in
-  both directions"* half of an earlier version of this bullet was over-stated
-  and is withdrawn.
+  Turning the **port's** swap off breaks things instead — every glyph, arc and
+  `A8` icon LVGL renders into the same framebuffer, **and the asset with them**,
+  because LVGL has already un-swapped it into native order by the time it is in
+  the framebuffer. There is no configuration that leaves the asset right and
+  only the glyphs wrong. D21 governs one board-level knob, in
+  `boards/`/`platform/`, and the first line of display bring-up. Found in
+  review; the *"wrong colours in both directions"* half of an earlier version of
+  this bullet was over-stated and is withdrawn.
+  **All of that holds while the LVGL destination is native-order, which is
+  T-093's to decide and not a constant.** `RESOURCE_BUDGET.md`'s Avoidability
+  row keeps the swapped-destination strategy live — LVGL has a whole
+  `lv_draw_sw_blend_to_rgb565_swapped` target — and on that branch the guidance
+  inverts and the pre-swapped asset is the free one. So the rule this task
+  follows is the general one: **an asset's byte order follows the framebuffer
+  the renderer writes into**, whichever that turns out to be, and never D21
+  directly. Stated in the fourth review round of
+  [#152](https://github.com/hleserg/Attadipa/pull/152), which found the
+  absolutes bolted onto the correct rule going stale the moment T-093 decides.
 - **Hardware required:** no. **Owner required:** yes.
 
 ### T-037 · The first Clock
@@ -2631,7 +2654,7 @@ A1's schematic-revision
   different questions with CI green. Struck rows count — a retired number is
   spent, not free. Found in review of
   [#152](https://github.com/hleserg/Attadipa/pull/152).
-  **73 cases** in `tools/docs/test_check_docs.py`, several of which assert the
+  **74 cases** in `tools/docs/test_check_docs.py`, several of which assert the
   checker does *not* fire where firing would be wrong — a `###` sub-heading is
   not a second decision, a range straddling a blank line is how a table is
   cited, and a line number in somebody else's tree is not ours to verify. The
@@ -2677,7 +2700,7 @@ A1's schematic-revision
   T-103 told this task the panel's byte order was settled; it was not — only the
   vendor *files*' on-disk order was, and D21 now holds the real question. **This
   task is unaffected in fact**: every asset it emits is `LV_COLOR_FORMAT_A8`
-  (`tools/assets/generate_images.py:134`), one byte per pixel, no byte order to
+  (`tools/assets/generate_images.py:168` "--cf"), one byte per pixel, no byte order to
   get wrong — so `DONE` is still honest and no output needs regenerating. It is
   **not affected in inheritance either, and an earlier version of this bullet
   said it was.** *"The first task to add a colour format inherits D21 and must
@@ -3349,7 +3372,14 @@ A1's schematic-revision
   its own files carry Espressif's SPDX headers. At `:280`, inside
   `panel_sh8601_draw_bitmap`, `tx_color(...)` is called bare and the function
   then returns `ESP_OK` unconditionally: **a failed frame transfer is reported as
-  success.** Present in 1.0.2, which the published demo pins, and in 2.0.0.
+  success.** Present at the two revisions read — `694ece03` (2023-11-03) and
+  `5d75f3f0`, still bare — and fixed by `e5b9295a`. **Which released component
+  versions those correspond to is not derived**; this bullet said *"present in
+  1.0.2, which the published demo pins, and in 2.0.0"* until the fourth review
+  round of [#152](https://github.com/hleserg/Attadipa/pull/152), which is the
+  same inference-from-commit-count the *Sharpened* bullet below already
+  withdrew for its neighbour, and the version strings do not identify whose
+  versioning they are — the fork pins `==1.0.2` and upstream has a `1.0.2` too.
   Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named
   `esp_lcd_co5300` — QSPI, accepting a custom init table — under the same
   Apache-2.0. Take the pin map and the init table; depend on upstream.

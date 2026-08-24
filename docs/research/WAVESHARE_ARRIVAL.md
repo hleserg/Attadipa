@@ -282,8 +282,18 @@ scanline in a default init table the BSP overrides, and it is provably inert. Th
 second thing this paragraph named is not a difference at all: at `:280`, inside
 `panel_sh8601_draw_bitmap`, `tx_color(...)` is
 called bare and the function then returns `ESP_OK` unconditionally. **A failed
-frame transfer is reported as success.** It is present in 1.0.2, the version the
-published demo pins, as well as in 2.0.0. Espressif ships both an unforked
+frame transfer is reported as success.** It is present at the **two revisions
+actually read** — `694ece03` (2023-11-03), where the bare call appears, and
+`5d75f3f0`, where it is still bare — and fixed by `e5b9295a` (2025-12-10). Which
+released component versions those revisions correspond to **is not derived**:
+the sentence used to say *"present in 1.0.2, the version the published demo
+pins, as well as in 2.0.0"*, which is the same inference-from-commit-count the
+correction below withdraws for its neighbour, and the same block also records
+that the version strings do not identify whose versioning they are. Two of the
+four commits touching the file lie inside the window unread. Found in the fourth
+review round of [#152](https://github.com/hleserg/Attadipa/pull/152), which
+noted that the correction named the sin and left the sentence standing above
+it. Espressif ships both an unforked
 `esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300` — QSPI, accepting a custom
 init table — under the same Apache-2.0, which is the strongest concrete argument
 yet recorded for T6 resolving as "take the pin map and the init table, depend on
