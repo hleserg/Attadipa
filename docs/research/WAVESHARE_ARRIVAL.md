@@ -131,7 +131,7 @@ Whatever is decided, wrapping the BSP does not cover the board.
 
 **The ESP-IDF mechanics were already constrained by an undecided version.** T1 is
 "narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
-([TASKS.md:1023](../../TASKS.md)), and CI prints
+([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
 `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
 ([`.github/workflows/ci.yml:499`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
 What exists
