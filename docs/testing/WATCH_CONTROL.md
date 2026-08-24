@@ -127,6 +127,16 @@ So a two-point gesture — which has nothing in the middle at all — holds the
 pointer down for the whole `duration` before lifting it, and a `duration` of
 `0.6` means the device sees 0.6 s of gesture whatever the shape.
 
+**Up to the device's own hold limit, which `info` prints** — 30 s on the
+simulator, and a real firmware may choose less. A gesture holds the pointer
+down for its whole duration, so a longer one would have the device expire the
+hold, push a `PointerUp` nobody asked for, hand the interface a click on
+whatever is underneath, and then refuse the real release as *impossible from
+the current state* — a message about the wrong subsystem, after the fact. It
+is refused up front instead, in a sentence naming the limit, the same way
+`hold --duration` has always been. The number is read from the capabilities
+rather than assumed here, and a device declaring `0` is declaring no limit.
+
 This was not true before, which is why it is written down rather than assumed:
 the wait hung off the *intermediate* points and came after each was sent, so a
 five-point 0.6 s gesture spent 0.45 s with a zero-length first segment, and a

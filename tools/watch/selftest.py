@@ -807,6 +807,17 @@ class FakeClock:
         self.now += seconds
         self._reads = 0
 
+    def advance(self, seconds: float) -> None:
+        """Time passing that is *not* a wait -- a round trip, work, a scheduler.
+
+        Kept apart from `sleep` because the difference is the whole subject:
+        a schedule built on absolute deadlines spends this inside the interval
+        it happened in, and one built on `sleep(gap)` adds it to the path.
+        A clock that cannot tell them apart cannot test either.
+        """
+        self.now += seconds
+        self._reads = 0
+
     def __getattr__(self, name):
         return getattr(time, name)
 
@@ -818,16 +829,24 @@ class InputLog(ScriptedDevice):
     were sent and in which order, but *when* -- and the wire carries no
     timestamp of its own, so it is taken here, on arrival, from the same clock
     the sender is sleeping against.
+
+    `cost` is what one round trip takes. At the default of zero it takes none,
+    which is fine for counting intervals and wrong for testing the mechanism
+    that produces them -- with a free wire, absolute deadlines and a plain
+    `sleep(gap)` in a loop generate identical schedules. Give the wire a price
+    and the two come apart.
     """
 
-    def __init__(self, clock: FakeClock) -> None:
+    def __init__(self, clock: FakeClock, cost: float = 0.0) -> None:
         super().__init__(self._answer)
         self._clock = clock
+        self._cost = cost
         self.events: list[tuple] = []
 
     def _answer(self, envelope):
         if envelope.op is not p.Op.INPUT_EVENT:
             return []
+        self._clock.advance(self._cost)
         # Unpacked against `input_event_encode`'s documented layout rather
         # than through a decoder that shares its mistakes -- the same argument
         # the fixed vectors at the top of this file are here for.
@@ -836,23 +855,24 @@ class InputLog(ScriptedDevice):
         return [_reply_to(envelope, p.Op.INPUT_OK, b"\0\0")]
 
 
-def _gesture_schedule(points, duration, size=(240, 240)):
-    """Run one gesture on a fake clock; return the stamped events it produced."""
+def _gesture_schedule(points, duration, size=(240, 240), cost=0.0, max_hold_ms=0):
+    """Run one gesture on a fake clock. Returns `(stamped events, the clock)`."""
     from watch import client as client_module  # noqa: PLC0415
     from watch.client import Watch  # noqa: PLC0415
 
     clock = FakeClock()
-    device = InputLog(clock)
+    device = InputLog(clock, cost=cost)
     watch = Watch(device, timeout=1.0)
     watch.capabilities = p.Capabilities(width=size[0], height=size[1],
-                                        format=p.PixelFormat.RGB888)
+                                        format=p.PixelFormat.RGB888,
+                                        max_hold_ms=max_hold_ms)
 
     real, client_module.time = client_module.time, clock
     try:
         watch.gesture(points, duration=duration)
     finally:
         client_module.time = real
-    return device.events
+    return device.events, clock
 
 
 def _about(value: float, expected: float, tolerance: float = 1e-6) -> bool:
@@ -873,7 +893,7 @@ def a_gesture_takes_the_time_it_was_given() -> None:
     """
     # Two points: the case with nothing in the middle, which is the one the
     # old shape could not express at all.
-    events = _gesture_schedule([(10, 10), (60, 80)], 0.6)
+    events, _ = _gesture_schedule([(10, 10), (60, 80)], 0.6)
     kinds = [kind for _, kind, _, _ in events]
     check(kinds == [p.EventType.POINTER_DOWN, p.EventType.POINTER_UP],
           f"a two-point gesture is a down and an up ({[k.name for k in kinds]})")
@@ -889,7 +909,7 @@ def a_gesture_takes_the_time_it_was_given() -> None:
     # the `PointerUp`. This is the shipped file's shape, and it used to take
     # 0.45s with a zero-length first segment.
     path = [(10, 10), (10, 40), (10, 70), (40, 90), (80, 90)]
-    events = _gesture_schedule(path, 0.6)
+    events, _ = _gesture_schedule(path, 0.6)
     kinds = [kind for _, kind, _, _ in events]
     check(kinds == [p.EventType.POINTER_DOWN] + [p.EventType.POINTER_MOVE] * 3
           + [p.EventType.POINTER_UP],
@@ -906,15 +926,118 @@ def a_gesture_takes_the_time_it_was_given() -> None:
     # A path that does not divide evenly still lands on its duration: the
     # deadlines are absolute, so rounding cannot accumulate along a long path.
     long_path = [(i, i) for i in range(0, 70, 7)]
-    stamps = [stamp for stamp, _, _, _ in _gesture_schedule(long_path, 1.0)]
+    stamps = [stamp for stamp, _, _, _ in _gesture_schedule(long_path, 1.0)[0]]
     check(len(stamps) == len(long_path) and _about(stamps[-1], 1.0),
           f"a ten-point second-long path ends at 1.0s ({stamps[-1]:.6f}s)")
 
     # Zero is a real request -- the shape without a claim about its speed --
     # and it must not become a refusal or a wait.
-    stamps = [stamp for stamp, _, _, _ in _gesture_schedule(path, 0.0)]
+    stamps = [stamp for stamp, _, _, _ in _gesture_schedule(path, 0.0)[0]]
     check(len(stamps) == 5 and all(_about(stamp, 0.0) for stamp in stamps),
           f"a zero duration sends the whole path at once ({stamps})")
+
+
+def a_gesture_absorbs_its_round_trips_rather_than_adding_them() -> None:
+    """Absolute deadlines, and this is the only group that can tell.
+
+    Every check above runs against a device that answers in no time at all,
+    and on a free wire `_sleep_until(started + gap*i)` and a plain
+    `time.sleep(gap)` in a loop produce byte-identical schedules. So the
+    interval *count* was pinned and the mechanism introduced to fix it was
+    not: reverting to relative sleeps left the whole suite green. Found in
+    review of #187, which is exactly the kind of thing a second reader is for.
+
+    Give the round trip a price and the two come apart. Absolute deadlines
+    spend it inside the interval it happened in, so an `N`-point path still
+    spans `duration`; summing sleeps adds one round trip per point, and the
+    longer the path the further out it is -- which is the claim the docstring
+    and WATCH_CONTROL.md both make.
+    """
+    cost = 0.02
+    path = [(10, 10), (10, 40), (10, 70), (40, 90), (80, 90)]
+    events, clock = _gesture_schedule(path, 0.6, cost=cost)
+    stamps = [stamp for stamp, _, _, _ in events]
+    gaps = [round(b - a, 6) for a, b in zip(stamps, stamps[1:])]
+    check(all(_about(gap, 0.15) for gap in gaps),
+          f"a 20ms round trip comes out of its interval rather than onto it "
+          f"({gaps} -- relative sleeps would give 0.17)")
+    span = stamps[-1] - stamps[0] if stamps else float("nan")
+    check(_about(span, 0.6),
+          f"so the path still spans the 0.6s asked for ({span:.4f}s -- summing "
+          f"sleeps would make it {0.6 + 4 * cost:.2f}s)")
+    check(all(_about(slept, 0.15 - cost) for slept in clock.slept),
+          f"and every wait is short by exactly what the wire took ({clock.slept})")
+
+    # A wire slower than the interval it is being asked to keep. Every point is
+    # already due on arrival, so the path goes out as fast as the connection
+    # manages -- and nothing sleeps backwards to make the time up, which
+    # `FakeClock.sleep` would refuse anyway. Unreachable over a Unix socket
+    # and ordinary on `SerialTransport` at T-114, which is why it is tested
+    # here rather than filed as something a board would have to show.
+    events, clock = _gesture_schedule(path, 0.05, cost=cost)
+    stamps = [stamp for stamp, _, _, _ in events]
+    check(clock.slept == [],
+          f"a round trip longer than the interval waits for nothing ({clock.slept})")
+    span = stamps[-1] - stamps[0] if stamps else float("nan")
+    check(len(stamps) == 5 and _about(span, 4 * cost),
+          f"and the path takes what the wire took, not what was asked "
+          f"({span:.4f}s for a 0.05s request)")
+
+
+def a_gesture_longer_than_the_device_will_hold_is_refused() -> None:
+    """The bound is the device's, and it became reachable with this fix.
+
+    The bridge releases anything held past `max_hold_ms` -- 30 s on the
+    simulator -- and pushes its own `PointerUp` when it does. While a gesture
+    held the pointer for `duration * (N-2)/(N-1)`, and for *nothing at all*
+    over two points, that could not bite. Now the pointer stays down for the
+    whole path, so a long one gets an expiry nobody asked for, a click on
+    whatever is underneath, and then its real release refused as "impossible
+    from the current state" -- a message about the wrong subsystem, arriving
+    after the damage. `button_hold` has refused in a sentence for exactly this
+    reason since it was written; this now does too. Found in review of #187.
+
+    Read from the capabilities rather than hardcoded, because the number is
+    the device's to choose: a T-114 firmware with a tighter bound than the
+    simulator's turns an ordinary one-second gesture into this case.
+    """
+    from watch.client import WatchError  # noqa: PLC0415
+
+    # 2 s, which a real board might well pick. Refused, and the sentence says
+    # what the device does rather than naming an internal state.
+    try:
+        _gesture_schedule([(10, 10), (60, 80)], 3.0, max_hold_ms=2000)
+        check(False, "a gesture longer than the device will hold was accepted")
+    except WatchError as exc:
+        check("releases anything held longer than 2000 ms" in str(exc),
+              f"a 3s gesture against a 2s hold limit is refused: {exc}")
+        check("cut short" in str(exc),
+              "and the sentence says what would have happened, not which flag was false")
+
+    # The wire stays clean, like every other refusal here: nothing is held,
+    # because nothing was ever sent.
+    from watch import client as client_module  # noqa: PLC0415
+    from watch.client import Watch  # noqa: PLC0415
+    clock = FakeClock()
+    device = InputLog(clock)
+    watch = Watch(device, timeout=1.0)
+    watch.capabilities = p.Capabilities(width=240, height=240,
+                                        format=p.PixelFormat.RGB888, max_hold_ms=2000)
+    real, client_module.time = client_module.time, clock
+    try:
+        check_raises(WatchError, "and it is refused before anything is on the wire",
+                     lambda: watch.gesture([(10, 10), (60, 80)], duration=3.0))
+    finally:
+        client_module.time = real
+    check(device.events == [], f"leaving nothing held ({len(device.events)} event(s) sent)")
+
+    # At the bound and under it, nothing changes. `max_hold_ms = 0` means the
+    # device declared no limit, and a check that fired on that would refuse
+    # every gesture against a device that had not answered the question.
+    events, _ = _gesture_schedule([(10, 10), (60, 80)], 2.0, max_hold_ms=2000)
+    check(len(events) == 2, "a gesture exactly at the bound still runs")
+    events, _ = _gesture_schedule([(10, 10), (60, 80)], 90.0, max_hold_ms=0)
+    check(len(events) == 2, "and a device that declares no limit is not given one")
 
 
 def a_gesture_that_cannot_be_timed_is_refused_before_the_finger_lands() -> None:
@@ -977,7 +1100,7 @@ def the_shipped_gesture_keeps_its_timing_on_both_panels() -> None:
     for width, height, board in ((240, 240, "t-watch-s3-plus"),
                                  (410, 502, "waveshare-amoled-206")):
         points, duration = scenario.load_gesture(str(gesture), _FakeScreen(width, height))
-        events = _gesture_schedule(points, duration, size=(width, height))
+        events, _ = _gesture_schedule(points, duration, size=(width, height))
         if len(events) != len(points):
             check(False, f"the shipped gesture sent {len(events)} events for "
                          f"{len(points)} points on the {board}")
@@ -1074,6 +1197,8 @@ CASES = (
     a_frame_that_never_finishes_gives_up_at_the_deadline,
     an_abandoned_transfer_evicts_the_oldest_id,
     a_gesture_takes_the_time_it_was_given,
+    a_gesture_absorbs_its_round_trips_rather_than_adding_them,
+    a_gesture_longer_than_the_device_will_hold_is_refused,
     a_gesture_that_cannot_be_timed_is_refused_before_the_finger_lands,
     the_shipped_gesture_keeps_its_timing_on_both_panels,
     an_error_code_this_build_does_not_know_is_still_a_sentence,
