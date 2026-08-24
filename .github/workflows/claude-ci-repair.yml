@@ -282,9 +282,10 @@ jobs:
           # silently change what this loop is: the cost of that choice is that
           # somebody must come here to move it, which is the intended cost.
           #
-          # Owner decision, 2026-08-22: Opus 5 at the top effort level.
+          # Owner decision: automated Claude roles cap at xhigh.  `max` is
+          # reserved for an explicit owner-requested manual exception.
           claude_args: |
-            --model claude-opus-5 --effort max --max-turns 40 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,TodoWrite"
+            --model claude-opus-5 --effort xhigh --max-turns 40 --allowedTools "Read,Glob,Grep,Edit,Write,Bash,TodoWrite"
           prompt: |
             CI failed on branch `${{ needs.gate.outputs.branch }}`, pull request
             #${{ needs.gate.outputs.pr }}. The failing job is
