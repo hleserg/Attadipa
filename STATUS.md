@@ -14,9 +14,13 @@ items closed plus one the review did not list
 
 ## Current implementation
 
-**Attadipa has code.** As of 2026-08-23 the repository builds six libraries, a
-simulator and twenty-five tests, and has a font pipeline whose output has been
-compiled for the target and measured.
+**Attadipa has code.** As of 2026-08-24 the repository builds seven libraries and
+**twenty-eight tests** — **thirty-three** with the desktop simulator, which is off
+by default because it needs SDL2 — and has a font pipeline whose output has been
+compiled for the target and measured. Since 2026-08-23 it can also **drive its
+own interface and look at the result** — screenshot, inject a tap or a swipe or
+a button, screenshot again — over a debug channel the simulator serves today and
+a device will serve when there is firmware for one.
 
 | Library | What it is | Links |
 |---|---|---|
@@ -24,6 +28,7 @@ compiled for the target and measured.
 | `attadipa_core` | `Capability`, the seven-state `Availability`, and the capability registry that owns the mapping | platform, **PRIVATE** |
 | `attadipa_apps` | `AppManifest` and the launcher gating rule | core only |
 | `attadipa_link` | transport framing with a checksum and resynchronisation, a bounded frame queue, and the session state machine above them | core |
+| `attadipa_debug` | the development-time debug channel: the wire format and the device-side bridge behind `tools/watch_control.py`. A message class inside `attadipa_link`'s framing, not a second protocol | core, link |
 | `attadipa_ui` | the design tokens: `Dp` against a 160 dpi reference, twelve colour roles across two themes with WCAG contrast arithmetic, and the spacing, radius, motion, size and feedback scales | `attadipa_headers` only — **deliberately not platform** |
 | `attadipa_replay` | the deterministic navigation replay rig, in `tests/` | core |
 | `attadipa_sim` | the desktop simulator, and the composition root that is allowed to see both layers | all three, plus LVGL and SDL2 |
@@ -604,14 +609,137 @@ T-071 is not blocked, because "get me back on foot" is the one purpose that
 survives the physics. The three numbers the recording rule needs — threshold,
 hysteresis and dwell — are to be computed and shown, not chosen.
 
+## The interface can be looked at while it runs — 2026-08-23
+
+Owner request, filed as [#117](https://github.com/hleserg/Attadipa/issues/117):
+an agent should be able to drive the watch over USB the way a person does —
+screenshot, look at the picture, tap or swipe or press a button, wait,
+screenshot again, check, and fix.
+
+**It works, and the honest scope is: against the simulator.** There is no
+Attadipa firmware, so the vertical terminates in the desktop simulator — which
+is a real LVGL stack with a real framebuffer and a real input path, not a mock,
+but not a panel either. `tools/watch_control.py` prints the build it is talking
+to (`sim 0.0.1`) precisely so that no screenshot from it can be filed as a
+hardware result.
+
+What was built:
+
+- **The input layer this repository did not have.** Nothing under `core/`,
+  `platform/`, `ui/` or `apps/` modelled a press or a touch, because until now
+  the only thing driving the interface was a person in front of the simulator.
+  There is now one queue, and it reaches the interface through a real LVGL
+  input device, so a widget cannot tell an injected tap from a finger — which
+  is the whole point; a debug path that called screen handlers directly would
+  produce tests that pass against code no finger can reach. **The bridge is
+  that queue's only producer today**: the simulator's own mouse is LVGL's SDL
+  device and reaches LVGL separately, and `InputOrigin::Physical` is waiting for
+  T-114's touch controller. Recorded that way because the first version of this
+  entry said every source pushed into the queue, and the independent review of
+  [#121](https://github.com/hleserg/Attadipa/pull/121) was right that it did
+  not.
+- **A debug message class, not a second channel.** `link::frame_codec`'s framing
+  carries an [ADR-0005](docs/adr/0005-node-protocol.md) §4 envelope with a new
+  `class` value. `kMaxPayload` stays 192 and screenshots are chunked to fit,
+  because RESOURCE_BUDGET §4 requires the bound be declared rather than widened
+  for convenience. **Waiting on the owner, and deliberately not fixed here:**
+  ADR-0005 §4 lists six fields — `ver`, `class`, `req_id`, `op`, `body_len`,
+  `crc16` — which is ten bytes, and draws **twelve** column positions above
+  them. `debug/protocol.h:54-59` implements ten and argues why (a field list is
+  a specification; a column count is a picture), but that correction lives in a
+  comment in another module while the ADR still shows the diagram. ADRs are
+  outside the sweep allowlist and outside an agent's remit to amend, so this is
+  recorded rather than changed: **the diagram needs one edit or the field list
+  needs two more fields**, and only the owner can say which.
+- **A diagnostic test pattern** whose every element answers one way a screenshot
+  can be wrong while still looking like a picture — lettered corner markers for
+  rotation and mirror, an asymmetric F, pure primaries for a swapped channel, a
+  labelled grid for scale, the last button event **with its measured hold**, and
+  a touch trail. A swipe replayed as one artificial jump draws two dots; a real
+  `down → move… → up` draws a line, and the end-to-end test counts those pixels.
+  The trail is drawn by the queue drain, so it proves the **transport**; a
+  separate counter driven by LVGL's own click events proves the **interface**,
+  and the two are on the screen side by side because they genuinely came apart
+  — two rapid taps once reached the queue as four events and LVGL as one click,
+  and before that LVGL was receiving nothing at all because the test pattern's
+  own decorations were swallowing every press.
+- **`tools/watch_control.py`** — `info`, `screenshot` (single or a series),
+  `tap`, `long-tap`, `double-tap`, `swipe`, `drag`, `gesture`, `button`
+  press/release/click/hold, `input-reset`, `run <scenario>` and `live`.
+- **A rule in [CLAUDE.md](CLAUDE.md) and a skill agents read**, because a
+  mechanism nobody is told to use is a mechanism nobody uses. The skill's own
+  worked examples are held to the same standard as the code: making both
+  Waveshare buttons non-injectable turned three of its commands into `exit 1`
+  on the board its first section starts, which nothing in `check_docs.py` can
+  see — it checks links, task IDs, decision numbers and citations, never
+  whether a documented command is one the tool will run. Found in review.
+- **Two answers that had to stop being one number each.** `wait_stable` used to
+  ask only what LVGL had already *processed*, so a tap that had reached the
+  device and not yet the interface — a window one 33 ms read period wide,
+  against a 5 ms loop — was reported as a settled screen, and the next
+  screenshot showed the frame from before it. It now asks three things: the
+  device's own input queue, the transitions pumped but unread, and only then
+  LVGL's idle timer and animations. Proved by the end-to-end test, which counts
+  LVGL's own clicks after a bare tap and goes red on either half being removed.
+  And `input-reset` — the escape hatch for a stalled interface — answered with a
+  count that was least trustworthy exactly where it was most needed: the device
+  releases an input only if the release reaches the queue, so `0` meant both
+  "nothing was stuck" and "the queue is full and everything still is". It now
+  answers `released N, still_held M` and exits non-zero on `M`.
+
+Two limits are stated rather than worked around. **Single touch** — LVGL's
+pointer device carries one point, so nothing above the input layer could consume
+a second finger; the wire format keeps a `touch_id` and refuses a second point
+rather than merging it, and what the FT3168 itself can do stays UNKNOWN (T-113).
+**The Waveshare's buttons are `button-1` and `button-2`** — the owner counted
+two by pressing them, and which named input each reaches is open question D5, so
+naming one "power" would be inventing the answer. `info` prints
+`role NOT established` beside both, **and now `not simulated` as well.** The
+profile said `injectable = true` for both, which was the one board fact on it
+asserted permissively and unargued, on the board where the question is open:
+`HARDWARE_MATRIX` calls its key list "a floor, not a census" and says `Key1` may
+never be brought out at all. It is `false` for both until D5 closes, so the
+button step of the diagnostic tour runs on the T-Watch and prints `skip` on the
+Waveshare — coverage that did not happen, counted separately by the scenario
+runner and the end-to-end test and never as a pass. Flipping it green by
+asserting the flag would have been this repository's own named failure, one
+board over from `boot`, which carries the same flag because its role **is**
+established.
+
+**And a screenshot that never finishes now ends.** The deadline `screenshot()`
+computes was handed to each individual wait and read by nothing else, so a
+device that trickled chunks kept the collect loop alive indefinitely — every
+wait answered inside its own tenth of a second, the transfer itself unbounded.
+Unreachable over a Unix socket that never blocks; on `SerialTransport` at T-114
+it is the ordinary case. The host self-test now holds it: 0.7 s with the check,
+20.5 s and red without.
+
+[WATCH_CONTROL](docs/testing/WATCH_CONTROL.md) ·
+[REUSE_LEDGER](docs/research/REUSE_LEDGER.md) · **T-114** is what remains: the
+firmware endpoint, the day there is firmware.
+
 ## Build and test state
 
 | Target | State |
 |---|---|
-| Host / native | builds; **twenty-four tests** pass, locally and in CI on `main` since #12 merged — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
+| Host / native | builds; **twenty-eight tests** pass, locally and in CI on `main` since #12 merged — and **thirty-three** with `-DATTADIPA_BUILD_SIMULATOR=ON`, which is the *Simulator build and headless run* job and not this row: `CMakeLists.txt` defaults the option off and the host job configures without it, so a thirty-three here was counting another job's work — smoke, capability registry, both halves of the layer-boundary check, localization, and the six suites this milestone added: trust, transport, power, position, diagnostics, and the replay rig with its sixteen traces — fifteen replayed and one deliberately broken, for the rig's own test — plus the
 design-token suite and the two checks that keep raw colours and pixel counts out
-of screen code. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
-| Simulator | **builds and runs**, on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
+of screen code, plus the three added on 2026-08-23 for the input layer, the
+debug wire format and the host tool -- the last of which holds an independent
+Python implementation of the format against the same fixed byte literals the C++
+suite asserts, so the two cannot drift into agreeing on a mistake. **For a while
+that sentence over-claimed and it now does not:** the shared literals were the
+`link::frame_codec` framing only, while the 10-byte envelope, the four bodies
+and the `Opcode`/`ErrorCode` numbering were round-tripped on each side and
+compared nowhere — pinned to each other, which is the one thing a fixed literal
+exists to rule out. A whole `HelloOk`, a whole `ScreenInfo` and a whole
+`InputEvent` are now literals both suites assert, and both numbering tables are
+spelled out on both sides. Proved by two mutations: swapping `QueueFull` and
+`CaptureFailed` used to leave everything green while an operator read *"the
+renderer could not produce a frame"* for a swipe point the input queue dropped;
+transposing `op` and `body_len` at both ends of the envelope used to pass every
+round trip. Under GCC and Clang, under `-Werror` with `-Wshadow -Wconversion -Wsign-conversion -Wold-style-cast`, and under ASan+UBSan with `-fno-sanitize-recover=all`. The negative half of the boundary check is verified against two deliberate breakages: a fixture that fails for the *wrong* reason is a failure, not a pass |
+| Simulator | **builds and runs**, and now also **serves the debug channel** so the interface can be screenshotted and driven from another process (`--debug-socket`, off by default). The end-to-end test starts it, injects input over a real socket and checks the resulting pictures. on the development host and **in CI from nothing** — run `32462413273`, cold cache, no LVGL on the machine: clone 22.8 s, commit verified against the pin, build, 6/6 tests, a screenshot per geometry uploaded, 2 min 2 s for the job. LVGL v9.5.0 + SDL2 2.30.0. Headless under `SDL_VIDEODRIVER=dummy`. Off by default (`-DATTADIPA_BUILD_SIMULATOR=ON`), so a machine with no SDL2 still gets a green host build |
 | ESP32-S3 toolchain | **verified** — ESP-IDF `v5.5.5-496-gc197d718bcc`; `idf.py set-target esp32s3 && idf.py build` completes on a stock example |
 | ESP32-S3 firmware | not started — there is no Attadipa firmware to build yet |
 | Hardware tests | `NOT EXECUTED — HARDWARE REQUIRED`. Ten plans now exist with equipment, procedure and pass/fail criteria — [HIL_PLANS](docs/testing/HIL_PLANS.md) — so each unproven claim is visibly unproven rather than merely absent |
