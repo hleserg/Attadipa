@@ -1161,8 +1161,16 @@ stale silently. The protocol is
   states, and a model that collapses them reports a position the device does not
   have.
 - **Research status:** n/a
-- **Implementation status:** not started — the six adversarial agents allocated
-  to this terminated on an account spend limit and returned nothing
+- **Implementation status:** not started as a task — the six adversarial agents
+  allocated to this terminated on an account spend limit and returned nothing.
+  Two of its scenarios have since been resolved from the outside, by
+  [#174](https://github.com/hleserg/Attadipa/issues/174): *the link drops
+  mid-navigation* and *the node's firmware is too old to speak our version* both
+  produced a wrong answer, and it was the kind this task is looking for rather
+  than an omission — `provider()` reported a node that had merely gone out of
+  range as the local device. Fixed, and both are now host tests in
+  `tests/test_capability_registry.cpp`. The remaining scenarios are untouched,
+  and the sharpest one below is still open.
 - **Tests:** each scenario becomes a host test
 - **Hardware required:** no
 
@@ -1770,14 +1778,35 @@ stale silently. The protocol is
   `Unsupported` and that an I2C probe finding nothing is indistinguishable from
   a cold solder joint. "Probe at boot" is not by itself an answer to how a
   soldered-on source announces itself.
+- **Two more instances of the same shape, both found by
+  [#174](https://github.com/hleserg/Attadipa/issues/174) and neither an argument
+  on its own for widening the axis — they are here so the ADR has the full set
+  in front of it rather than deciding on the magnetometer alone.** First, `Origin`
+  has no value meaning *nobody*: a capability neither the board nor a node can
+  provide answers `Origin::Local`, which is the only thing two values allow and
+  is not what is true. `source()` names that case explicitly and
+  `Availability::Unsupported` is documented as the discriminator that says the
+  field is not an answer, which is as far as it can be taken without this
+  decision. Second, and sharper because it makes an ADR sentence false rather
+  than merely coarse: **the phone is already a third source in everything but
+  name.** `CompanionLink` and `NotificationRelay` reach `Unprovisioned` and
+  `Unreachable` — states ADR-0004 §2's invariant says imply a *remote* provider
+  — while reporting `Origin::Local`, because the invariant was written about
+  nodes. Which half is wrong is genuinely open: ADR-0002 forbids a phone from
+  *providing* a capability, so on that reading the provider is the on-board BLE
+  radio and `Local` is right and the invariant is over-stated; on the other
+  reading the axis is simply missing a value. `tests/test_capability_registry.cpp`
+  names the pair as an exception rather than skipping the states, so a third
+  capability entering them is a test failure and lands here.
 - **Acceptance:** an ADR, accepted or explicitly deferred with a reason, that
   says whether a third source class exists, what state a per-device (not
   per-board-type) capability is in before that specific unit has been probed,
-  and how [ADR-0004](docs/adr/0004-capability-sources.md) and
+  what a capability with **no** provider on any side reports, whether the phone
+  is on the axis, and how [ADR-0004](docs/adr/0004-capability-sources.md) and
   [ADR-0009](docs/adr/0009-heading.md) are superseded or amended once it does —
-  ADR-0004 because the two-source model and the terminal `Unsupported` state
-  are its, ADR-0009 because it is the document that assumes heading has no
-  on-board source on either board.
+  ADR-0004 because the two-source model, the terminal `Unsupported` state and
+  the remote-provider invariant are its, ADR-0009 because it is the document
+  that assumes heading has no on-board source on either board.
 - **Hardware required:** no.
 
 ### T-112 · The pedometer has a datasheet now; it still needs someone to walk
