@@ -32,11 +32,10 @@ is the part that makes this a different product rather than a lesser one:
 it is therefore a designed UI state rather than an absence. It never renders as
 0°.
 
-If A6 comes back *the node has a magnetometer*, that still does not give the
-watch a compass. A node in a backpack or clipped to a belt measures its own
-orientation, related to the watch's by a transform nobody has measured and which
-changes every time the node is set down. ADR-0009 §3 refuses the conversion
-unless a calibrated, still-valid transform exists, and none does.
+OD-17 resolves A6: the Attadipa node will not carry a magnetometer. A
+third-party node can still have one, but its orientation is not a watch compass:
+the required body transform is unknown and [ADR-0009](../adr/0009-heading.md)
+refuses that conversion.
 
 This does not make the backlog pointless — it makes it **design-only, and
 honest about why**. The capability model already treats the magnetometer as a
@@ -87,11 +86,12 @@ the arbiter is being built for the contention that actually exists here.
 
 | # | Question | Status |
 |---|---|---|
-| A5 | Is an external magnetometer intended at all — a variant board, a daughterboard, a different unit? | **owner decision** — [OPEN_QUESTIONS A5](../research/OPEN_QUESTIONS.md) |
-| A6 | Does the Attadipa node carry one? If it does, it is a *node* compass, not a watch compass — see [ADR-0009](../adr/0009-heading.md) §3 | **owner decision** — [OPEN_QUESTIONS A6](../research/OPEN_QUESTIONS.md) |
+| A5 | Is an external magnetometer intended at all — a variant board, a daughterboard, a different unit? | **ANSWERED — one Waveshare watch retrofit; not a stock-board capability.** [OD-17](../research/OWNER_DECISIONS.md#od-17--a5-and-a6-a-watch-retrofit-may-have-a-magnetometer-the-node-will-not) |
+| A6 | Does the Attadipa node carry one? | **ANSWERED — no.** [OD-17](../research/OWNER_DECISIONS.md#od-17--a5-and-a6-a-watch-retrofit-may-have-a-magnetometer-the-node-will-not) |
 | G-14 | If yes: which part, on which bus, at what address, on which rail? | conditional on A5; local to this backlog |
 | G-15 | If yes: is it on the same I2C bus as the PMU and RTC? | conditional on A5. Decides whether G-08–G-10 are even measurable |
 
-Until A5 has an answer, the honest state of this backlog is: **five epics can be
-designed usefully, three are research, five are blocked on hardware that does not
-exist yet.** Recorded as such rather than left to look like a plan in progress.
+With A5 and A6 answered, the honest state is unchanged operationally: physical
+work remains blocked on the selected part, placement, and a real sensor on the
+watch. The decision preserves that distinction rather than turning a planned
+retrofit into a shipping hardware claim.
