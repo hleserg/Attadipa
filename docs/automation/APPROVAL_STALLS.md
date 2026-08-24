@@ -177,13 +177,38 @@ silence, which is the part that made this expensive.
 
 **E — re-run the stalled run from the watchdog.** `POST
 /repos/{owner}/{repo}/actions/runs/{run_id}/rerun` with `actions: write`.
-**Not implemented and not recommended yet.** The only observation is that a
-*person's* re-run cleared it; whether a re-run dispatched by `GITHUB_TOKEN`
-clears an approval requirement caused by `GITHUB_TOKEN` is **UNKNOWN**, and a
-re-run loop that does not clear it is an hourly bill for the same answer. The
-sibling endpoint `/approve` is documented for *"a pull request from a public
-fork of a first time contributor"*, which is not this case. Settle it by
-observation on the next real stall before writing any code.
+**Not implemented and not recommended yet.** Whether a re-run dispatched by
+`GITHUB_TOKEN` clears an approval requirement caused by `GITHUB_TOKEN` is
+**UNKNOWN**, and a re-run loop that does not clear it is an hourly bill for the
+same answer. Settle that one by observation on the next real stall before
+writing any code.
+
+**Two things are no longer unknown, and both were established on
+[#173](https://github.com/hleserg/Attadipa/pull/173) on 2026-08-24 rather than
+read off documentation.**
+
+- `POST /repos/{owner}/{repo}/actions/runs/{run_id}/approve` **answered `403
+  Resource not accessible by integration`** for `claude[bot]` under this
+  repository's app installation. The endpoint is documented for *"a pull
+  request from a public fork of a first time contributor"*, which is not this
+  case — but the reason it is not a way out here is the 403, which is an
+  observation, not the documentation, which is an inference. An agent cannot
+  approve its own stalled run, and no permission an agent can grant itself
+  changes that.
+- **Closing and reopening the pull request re-queued all three runs on the same
+  head**, `gh pr close` then `gh pr reopen`. That is a second observed remedy
+  beside a maintainer's re-run, and unlike the re-run it is inside what an
+  agent with *Pull requests: write* can already do. It is **not** the same
+  event as a re-run — reopening raises `pull_request.reopened`, so a workflow
+  that does not listen for it will not start — and it costs a full CI cycle on
+  every workflow watching the pull request. Recorded because it works, not
+  recommended as a loop: an unattended job that closes and reopens pull
+  requests to clear its own stalls is a worse failure mode than the silence it
+  replaces.
+
+Both are in the guard's comment text, so the pull request that carries a stall
+now names the remedy that has been seen to work rather than only the one a
+maintainer has to be present for.
 
 ### What is recommended, as one action
 

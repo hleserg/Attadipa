@@ -150,11 +150,21 @@ echo "The field split in the pending patch, lifted out of the patch itself"
 # the head SHA in CONCLUSION and the workflow name in RUN_SHA. The decision
 # script then answers `quiet|unreadable` for a real stall. `|` is not IFS
 # whitespace and survives the empty field.
+# Read from whichever of the two currently holds the loop. Before the patch
+# lands the loop lives only in the patch; the documented landing procedure
+# (`docs/automation/pending/README.md`) applies the patch and `git rm`s it in
+# the same commit, which is also the commit that first runs this suite -- so a
+# test anchored on the patch alone would go red on the landing commit, blaming
+# the delimiter for a patch that was applied correctly. The same expression
+# reads both forms, because a patch's `+` and a workflow's leading space are
+# one character class. Neither containing it is still a hard FAIL: the guard is
+# retired only deliberately, never by a file moving.
 PATCH=docs/automation/pending/75-approval-stall.patch
-SPLIT=$(sed -n 's/^+ *\(while IFS=.*read -r RUN_ID .*; do\)$/\1/p' "$PATCH" | head -1)
+LANDED=.github/workflows/agent-queue-watchdog.yml
+SPLIT=$(sed -n 's/^[+ ] *\(while IFS=.*read -r RUN_ID .*; do\)$/\1/p' "$PATCH" "$LANDED" 2>/dev/null | head -1)
 
 if [ -z "$SPLIT" ]; then
-  printf '  FAIL  the patch no longer contains a recognisable field split\n'
+  printf '  FAIL  neither the patch nor %s contains a recognisable field split\n' "$LANDED"
   fail=$((fail + 1))
 else
   # `action_required` as a STATUS, which is the shape that arrives with an

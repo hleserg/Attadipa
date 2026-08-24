@@ -106,8 +106,8 @@ stale silently. The protocol is
   [APPROVAL_STALLS.md](docs/automation/APPROVAL_STALLS.md).
 - **Tests:** `actionlint` over seven workflows with shellcheck integration —
   clean; `shellcheck -x` over both scripts — clean; intake gate, 16 hostile
-  cases — 16/16; the approval-stall rule, 38 cases including both of #71's real
-  runs with the values the API actually returned — 38/38, **not yet wired into
+  cases — 16/16; the approval-stall rule, 40 cases including both of #71's real
+  runs with the values the API actually returned — 40/40, **not yet wired into
   CI** because that line is in `ci.yml` and rides the same blocked patch, and
   the watchdog job around it dry-run against the live repository (the jq, the
   pagination, the marker written and read back, the rendered comment) — which

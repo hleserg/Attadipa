@@ -2,7 +2,7 @@ diff --git a/.github/workflows/agent-queue-watchdog.yml b/.github/workflows/agen
 index 69dea3d..3098445 100644
 --- a/.github/workflows/agent-queue-watchdog.yml
 +++ b/.github/workflows/agent-queue-watchdog.yml
-@@ -289,6 +289,155 @@ jobs:
+@@ -289,6 +289,267 @@ jobs:
              fi
            done < /tmp/stranded
  
@@ -57,9 +57,27 @@ index 69dea3d..3098445 100644
 +
 +          jq -r '.[] | "\(.number) \(.head.sha) \(.head.repo.full_name // "")"' /tmp/pulls.json > /tmp/heads
 +
++          # Three per tick, the same bound `pr-merge-sweep.yml` puts on itself
++          # and for the same reason. Without it the FIRST tick after this lands
++          # comments on every open pull request with a stalled head at once --
++          # by this patch's own diagnosis, most agent-pushed heads here -- and
++          # `approval-stall-decision-test.sh` says what that costs: "a guard
++          # that comments on every run is read once and ignored afterwards".
++          # Each comment also bumps `updated_at`, which is the T-147 hazard
++          # below, so the debut is exactly when it is worst. Nothing is lost by
++          # waiting: the marker is per head, the schedule is hourly, and a head
++          # not reached this tick is reached on the next one. Found in review.
++          COMMENTS=0
++          COMMENT_CAP=3
++
 +          while read -r PR SHA HEADREPO; do
 +            if [ -z "$PR" ] || [ -z "$SHA" ]; then
 +              continue
++            fi
++
++            if [ "$COMMENTS" -ge "$COMMENT_CAP" ]; then
++              echo "::notice::Reached the $COMMENT_CAP-comment cap for this tick; the rest are left for the next one."
++              break
 +            fi
 +
 +            # A fork's pull request genuinely CAN require approval by policy,
@@ -149,17 +167,35 @@ index 69dea3d..3098445 100644
 +              # decision back in a `run:` block where nothing can execute it --
 +              # which is how every defect the hand-over step ever shipped got
 +              # in.
++              # `2>/dev/null` keeps the loop going, and on its own it also
++              # eats the reason: if a secondary rate limit takes out every jobs
++              # call on a head, STALLED and GATED come back empty and the tick
++              # is indistinguishable from one where nothing was stalled. Say so
++              # once per run. It changes no decision -- `unreadable` is still
++              # reached by the decision script, after the shape test -- it only
++              # makes a broken guard distinguishable from a quiet one. Found in
++              # review.
 +              JOBS=""
 +              JOBS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=1" \
-+                       --jq '.total_count' </dev/null 2>/dev/null) || JOBS=""
++                       --jq '.total_count' </dev/null 2>/dev/null) \
++                || { JOBS=""; echo "::warning::#$PR: could not read the job count for run $RUN_ID; its shape cannot be decided this tick."; }
 +
 +              # Called ONCE and both lines read off the result. Calling it twice
 +              # -- once for the decision, once for the reason -- would let the
 +              # two disagree if the inputs ever changed between them, which is a
 +              # bug that reads as correct code.
++              # And this one is sharper, because `OUT=""` yields an empty
++              # DECISION -- neither `say` nor `quiet|unreadable` -- so the
++              # UNREADABLE line below does not fire and the run is dropped. The
++              # job then walks every pull request, emits nothing and exits
++              # green: not a wrong answer, NO answer, with no line saying one
++              # could not be got. Reachable by the script being missing, or by
++              # `.github/scripts` falling out of the sparse-checkout pattern
++              # above. Found in review.
 +              OUT=""
 +              OUT=$(bash .github/scripts/approval-stall-decision.sh \
-+                      "$STATUS" "$CONCLUSION" "$JOBS" "$RUN_SHA" "$SAID") || OUT=""
++                      "$STATUS" "$CONCLUSION" "$JOBS" "$RUN_SHA" "$SAID") \
++                || { OUT=""; echo "::warning::#$PR: approval-stall-decision.sh did not run for $RUN_ID; this run is being skipped without a verdict."; }
 +              DECISION=$(printf '%s' "$OUT" | sed -n 1p)
 +              REASON=$(printf '%s' "$OUT" | sed -n 2p)
 +
@@ -202,7 +238,7 @@ index 69dea3d..3098445 100644
 +              if [ -n "$STALLED" ]; then
 +                printf '%s\n' "$STALLED"
 +                printf "A run that finishes as \`action_required\` with **no jobs** put no check on this pull request at all. Nothing is red, so nothing looks wrong — but the orchestrator merges once CI is green, and there is no verdict here to be green.\n\n"
-+                printf "The usual cause is that the last push was authenticated with the built-in \`GITHUB_TOKEN\`: GitHub creates the run in an approval-required state and waits. **What has actually been seen to clear one is a maintainer re-running the workflow** — from the run's own page, or the Checks tab of this pull request. An *approve and run* button may not be there: GitHub documents that control for a pull request from a public fork of a first-time contributor, which is not this case, and the run reads \`completed\` rather than waiting. The rule, the evidence and what it would cost to stop this happening are in [APPROVAL_STALLS.md](https://github.com/%s/blob/main/docs/automation/APPROVAL_STALLS.md).\n\n" "$REPO"
++                printf "The usual cause is that the last push was authenticated with the built-in \`GITHUB_TOKEN\`: GitHub creates the run in an approval-required state and waits. **Two things have actually been seen to clear one**: a maintainer re-running the workflow — from the run's own page, or the Checks tab of this pull request — and closing and reopening this pull request, which re-queues every run on the head. An *approve and run* button may not be there: GitHub documents that control for a pull request from a public fork of a first-time contributor, which is not this case, and the run reads \`completed\` rather than waiting. \`POST /actions/runs/{id}/approve\` is not a way out for an agent: it answered **403 Resource not accessible by integration** when tried under this repository's app installation. The rule, the evidence and what it would cost to stop this happening are in [APPROVAL_STALLS.md](https://github.com/%s/blob/main/docs/automation/APPROVAL_STALLS.md).\n\n" "$REPO"
 +              fi
 +              if [ -n "$GATED" ]; then
 +                printf '%s\n' "$GATED"
@@ -224,8 +260,11 @@ index 69dea3d..3098445 100644
 +            # patch is already blocked on a `workflows` permission and widening
 +            # it to change the orphan sweep would put two unrelated behaviours
 +            # behind one owner action. Found in review.
-+            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/approval-stall.md </dev/null \
-+              || echo "::warning::Could not comment on #$PR; leaving it for the next tick."
++            if gh pr comment "$PR" --repo "$REPO" --body-file /tmp/approval-stall.md </dev/null; then
++              COMMENTS=$((COMMENTS + 1))
++            else
++              echo "::warning::Could not comment on #$PR; leaving it for the next tick."
++            fi
 +          done < /tmp/heads
 +
    stuck:
@@ -257,7 +296,7 @@ diff --git a/.github/workflows/claude-agent.yml b/.github/workflows/claude-agent
 index 9a25754..d082ec0 100644
 --- a/.github/workflows/claude-agent.yml
 +++ b/.github/workflows/claude-agent.yml
-@@ -732,10 +732,41 @@ jobs:
+@@ -732,10 +732,53 @@ jobs:
                gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true ;;
            esac
  
