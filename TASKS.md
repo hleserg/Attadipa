@@ -486,6 +486,37 @@ stale silently. The protocol is
   rather than adding a reason for the same condition). Poisoning-sequence
   regression test added; confirmed red against the pre-review code.
 
+- **A degree of longitude near the pole measured a thousand times too far —
+  fixed, issue #28.** Not from this audit: a continuous review of
+  `259d4c8..10ab4fd` found it, and it is recorded here because this is where
+  defects in already-shipped code are tracked rather than because the two
+  reviews are the same. `lon_e7_to_mm` (`core/src/geo.cpp`) indexed
+  `kCosTable1024` with the *truncated* degree of the mean latitude, so every
+  latitude in [89.0°, 90.0°) was scaled by `cos 89°`. A degree of longitude at
+  89.9°N is about 194 m; the function returned 1 956 796 mm, ten times over,
+  and a thousand times over by 89.999° — the error grows without bound because
+  inside that last degree the true scale falls to zero while a step function
+  holds its last value. Downstream, `TrustEvaluator::observe` divides that
+  distance by an interval to get implied speed and compares it against a still
+  wrist, so a stationary device at a high latitude would have produced
+  kilometre-scale movement and a `PositionJump`, for being at a high latitude.
+  Fixed by interpolating between the two bracketing table entries at the full
+  1e-7-degree resolution, in integers, with the products bounded by hand and
+  the table, the units and the `distance_mm()` contract unchanged. The error
+  envelope is now stated in `geo.h` and **measured on every test run** against
+  an independent haversine reference rather than asserted in a comment: within
+  0.9% from the equator to 89.999°, and under 20 mm inside the last 111 m where
+  a whole degree of longitude is under two metres. Regression matrix in
+  `tests/test_position.cpp`; **10 017 assertions** fail against the pre-fix
+  code, though **twenty-one new check sites are green against it** — the whole
+  of `test_the_grid_boundaries_are_answers`, which never reaches the cosine
+  index, and the three invariants of
+  `test_the_longitude_scale_is_monotonic_symmetric_and_bounded`, which a step
+  function satisfies too. Worth keeping, not evidence of this defect; an earlier
+  version of this line said *every* new check was red. The pre-existing distance
+  tests all passed against the pre-fix code, which is why the suite could not
+  see this.
+
 - **`holds()` and `reasons()` can report evidence that has expired.** Both read
   `live_`, which only `update()` prunes, and both are `const`. A caller that
   reads without having called `update(now)` first gets past-TTL evidence and has
