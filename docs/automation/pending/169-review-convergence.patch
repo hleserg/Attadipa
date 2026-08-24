@@ -138,6 +138,11 @@ index 76e171b..a21c204 100644
 +          GH_TOKEN: ${{ github.token }}
 +          REPO: ${{ github.repository }}
 +          PR: ${{ github.event.pull_request.number }}
++          # The only account whose findings block may decide a label. Named
++          # here rather than in the query so that changing it is a workflow
++          # edit, which needs `workflows` permission and a human -- the same
++          # bar as any other change to who this pipeline trusts.
++          ATTADIPA_REVIEW_ACTOR: claude[bot]
 +        run: |
 +          set -euo pipefail
 +          : > /tmp/prev-ledger.md
@@ -174,10 +179,27 @@ index 76e171b..a21c204 100644
 +          # reviewer's comment -- but the ledger is excluded by name, so a
 +          # future ledger that quotes the findings marker cannot be read as a
 +          # round's findings.
++          # WHO wrote it decides the merge label, so the author is filtered
++          # first and the body second. Without this, any commenter supplies the
++          # input: paste a findings block into a comment and `tail -1` prefers
++          # it, one line reading `fixed` for every open id yields
++          # `nothing-holding`, and that strips `ai-review:blocking` and arms the
++          # sweep. No write access and no fork needed -- this pull request's own
++          # description carries a worked example block.
++          #
++          # `.user.login` rather than `author_association`: OWNER and MEMBER are
++          # the wrong test, because a findings block is written by the reviewer
++          # workflow and by nothing else, the owner included. Same actor-trust
++          # rule the rest of this repository applies (`queue-scan.jq`,
++          # `stranded-failures.jq`, `intake-decision.sh`), repeated here rather
++          # than shared for the reason those files give at the same place: a
++          # rule that lives in one file is a rule this path never goes through.
++          # Unknown author, no id, `have_block=no`, verdict holds at `unknown`.
 +          find_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
 +            --jq '.[]
++                  | select(.user.login == env.ATTADIPA_REVIEW_ACTOR)
 +                  | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not)
-+                  | select(.body | contains("<!-- attadipa-review-findings"))
++                  | select(.body | startswith("<!-- attadipa-review-findings"))
 +                  | .id' \
 +            | tail -1)
 +          if [ -n "$find_id" ]; then

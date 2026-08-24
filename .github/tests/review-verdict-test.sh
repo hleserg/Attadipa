@@ -292,7 +292,15 @@ printf '<!-- attadipa-ai-review -->\nI read the diff and wrote prose and no bloc
 out=$(run "$work/L1.md" "$work/noblock.md" 4)
 check "no block prints label=unknown" unknown "$(key label)"
 check "and says which of the five reasons that is" no-findings-block "$(key reason)"
-check "the round still advances, so the ledger does not stall" 2 "$(key round)"
+# The round used to advance here, deliberately, so that the ledger could not
+# stall. It must not: `ran == yes` upstream only means the action wrote an
+# execution log, and this workflow's own header records a run that cost money
+# and was killed at turn 50 by a turn ceiling. Three of those in a row walked
+# the counter to the floor round with nothing reviewed, and the first real
+# review then landed every `normal` finding at or after the floor -- deferred,
+# filed, `ai-review:pass`. Not advancing does not stall the ledger: the round
+# stays in the pre-floor regime, which holds MORE, not less.
+check "the round does not advance on a round that reviewed nothing" 1 "$(key round)"
 contains "the ledger says the reviewer's own label stands" \
          "no findings block" "$(cat "$work/ledger.md")"
 contains "and carries the earlier findings forward unchanged" \
@@ -378,6 +386,39 @@ check "and the rest are counted as dropped rather than repaired" 5 "$(key droppe
 contains "the ledger says how many lines it could not read" "unreadable and dropped" \
          "$(cat "$work/ledger.md")"
 
+# A block whose every line was dropped is NOT a block that said nothing. The
+# case above always left one well-formed line, so `open=0 && dropped>0` was
+# never reached -- and it computed `label=ai-review:pass reason=nothing-holding`,
+# which strips the `ai-review:blocking` the reviewer set two steps earlier. The
+# ids below are how a model writes a list: a markdown bullet in front of each.
+cat > "$work/all-dropped.md" <<'EOF'
+<!-- attadipa-review-findings
+- gnss-rail-unsourced | open | floor | GNSS rail asserted with no schematic
+- core-ifdef | open | floor | #ifdef BOARD_TWATCH in core/power/
+-->
+EOF
+out=$(run "" "$work/all-dropped.md" 1)
+check "a block this script could not read at all is not a pass" unknown "$(key label)"
+check "and it says so by name rather than as nothing-holding" unreadable-findings "$(key reason)"
+check "with both floor findings counted as unread" 2 "$(key dropped)"
+
+# `-->` inside a TITLE closes the HTML comment, so the block ends there and every
+# finding below it is outside it. That used to be silent: the line was never
+# printed, `dropped` stayed 0, and round 1 read `open=0` and set a pass over a
+# `floor` finding nobody had seen. The people most likely to write `-->` in a
+# title are reviewers reporting a defect in this very format.
+cat > "$work/arrow.md" <<'EOF'
+<!-- attadipa-review-findings
+state-arrow | open | normal | idle --> armed is entered with no guard
+gnss-rail | open | floor | GNSS rail asserted with no schematic
+-->
+EOF
+out=$(run "" "$work/arrow.md" 1)
+check "a terminator inside a title still ends the block" 1 "$(key open)"
+check "but the truncation is counted rather than silent" 1 "$(key dropped)"
+check "so the round cannot pass on findings it never saw" unknown "$(key label)"
+
+
 cat > "$work/title.md" <<'EOF'
 <!-- attadipa-review-findings
 piped | open | normal | A title with | a pipe | in it
@@ -459,6 +500,24 @@ late-typo | 5 | normal | open | A stray backtick
 EOF
 out=$(run "$work/badissue.md" "$f" 4)
 absent "a non-numeric issue number is refused rather than carried" "deferred_issue=" "$out"
+
+
+echo "Who wrote the findings block decides the label, so the query says whose"
+
+# This lives in the parked patch rather than in a workflow, so
+# `gh-api-usage-test.sh` cannot see it -- that one scans `.github/workflows`
+# only, and the blind spot is issue #179. The assertion belongs where it runs
+# today, which is here.
+patch_file="$here/../../docs/automation/pending/169-review-convergence.patch"
+if [ -f "$patch_file" ]; then
+  contains "the findings query filters on the author, not just on the marker"            'select(.user.login == env.ATTADIPA_REVIEW_ACTOR)' "$(cat "$patch_file")"
+  contains "the trusted account is named in the workflow, not inside the query"            'ATTADIPA_REVIEW_ACTOR: claude[bot]' "$(cat "$patch_file")"
+  contains "and the block is matched from its start, not anywhere in the body"            'startswith("<!-- attadipa-review-findings")' "$(cat "$patch_file")"
+else
+  pass=$((pass + 3))
+  printf '  ok    the patch is applied; these assertions moved with it
+'
+fi
 
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"

@@ -140,8 +140,29 @@ _attadipa_block() {
       }
       next
     }
-    index($0, "-->") { exit }
-    { print }
+    # A line containing the terminator ends the block -- `-->` closes the HTML
+    # comment, so whatever follows it is outside and must not be read. But a
+    # title with `-->` in it (a state machine, or a defect report about this
+    # very format) truncates the block MID-LIST, and that used to be silent:
+    # the line was never printed, nothing counted it, and every finding below
+    # it simply did not exist. Round 1 then saw `open=0` and set
+    # `ai-review:pass` over a `floor` finding nobody could see.
+    #
+    # So: end the block, keep the part of the line still inside it, and emit
+    # one line that cannot parse. The caller counts it as dropped, which is
+    # what makes the truncation audible instead of silent.
+    {
+      line = $0
+      sub(/^[ \t]+/, "", line)
+      if (index(line, "-->") == 1) exit
+      cut = index($0, "-->")
+      if (cut > 0) {
+        print substr($0, 1, cut - 1)
+        print "attadipa-block-truncated-at-a-title-containing-the-terminator"
+        exit
+      }
+      print
+    }
   '
 }
 
@@ -219,8 +240,6 @@ attadipa_review_verdict() {
     status["$id"]="$st";     title["$id"]="$ti"
   done <<< "$prev_block"
 
-  local round=$((prev_round + 1))
-
   # ---- what the reviewer said this round -------------------------------------
   local have_block=no findings_block
   if [ -n "$findings" ] && [ -f "$findings" ] \
@@ -228,6 +247,18 @@ attadipa_review_verdict() {
     have_block=yes
   fi
   findings_block="$(_attadipa_block "$findings" "$ATTADIPA_FINDINGS_OPEN")"
+
+  # The round advances only when a round actually happened. `ran == yes` upstream
+  # means the action wrote an execution log -- the model was reached, not that it
+  # posted a verdict; this workflow's own header records a run that cost money and
+  # was killed at turn 50 by a turn ceiling. Counting those pushed the floor round
+  # closer with nothing reviewed, so the first real review could land every
+  # `normal` finding at or after the floor: deferred, filed, `ai-review:pass`. A
+  # round with no block simply stays in the pre-floor regime, which blocks MORE --
+  # the ledger does not stall, it holds. This was the one place an unusable input
+  # moved the state toward less blocking.
+  local round=$prev_round
+  [ "$have_block" = yes ] && round=$((prev_round + 1))
 
   local dropped=0
   if [ "$have_block" = yes ]; then
@@ -247,6 +278,10 @@ attadipa_review_verdict() {
       # a markdown table cell: a pipe would add a column, a newline cannot get
       # here but a backtick run can still swallow the rest of the row.
       ti="${ti//|/ }"; ti="${ti//\`/\'}"
+      # And the terminator itself. The ledger this title is written into is
+      # an HTML comment too, so `-->` in a title would close it early and
+      # truncate the ledger exactly the way it truncated the findings block.
+      ti="${ti//-->/->}"
       [ "${#ti}" -le 160 ] || ti="${ti:0:157}..."
       if [ -z "${first_round[$id]+set}" ]; then
         order+=("$id"); first_round["$id"]="$round"
@@ -280,6 +315,16 @@ attadipa_review_verdict() {
   local label reason
   if [ "$have_block" = no ]; then
     label=unknown; reason='no-findings-block'
+  elif [ "$dropped" -gt 0 ] && [ "$blocking_n" -eq 0 ]; then
+    # "The block said nothing" and "the block said things I could not read" are
+    # different sentences, and only the first may pass. Every line dropped means
+    # this script does not know what was in it -- a capitalised id, a markdown
+    # bullet, a title over the length cap, a block truncated by its own
+    # terminator. Reading that as `nothing-holding` strips the `ai-review:blocking`
+    # the reviewer set two steps earlier, so an unparseable block could clear a
+    # floor finding. `unknown` is the token this file already has for exactly
+    # this, and it holds.
+    label=unknown; reason='unreadable-findings'
   elif [ "$blocking_n" -eq 0 ]; then
     label=ai-review:pass; reason='nothing-holding'
   elif [ "$floor_hits" -gt 0 ] && [ "$pre_hits" -gt 0 ]; then

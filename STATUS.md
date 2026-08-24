@@ -755,12 +755,25 @@ four more things at no cost:
   `.github/workflows/`, probed and rejected on this branch, so it is
   `docs/automation/pending/169-review-convergence.patch` and every round is still
   a first round until a local session applies it.
-  **Tests:** 87 assertions, offline, proven to fail against six deliberate
+  **Tests:** 96 assertions, offline, proven to fail against six deliberate
   defects — the literal `carry-over` reading (15 failed), an unknown kind
   defaulting to `normal` (2), model-supplied dating (4), silence closing a
   finding (3), an unknown state read as `fixed` (1), a category downgrade (1),
   and a `sed` range in place of the block reader (3). `actionlint` clean over all
   seven workflows **with the patch applied**; `shellcheck -x` clean.
+  **Four ways it could be made to pass, all found in review and closed.** The
+  findings block decided the merge label and **nothing checked who wrote it** —
+  any commenter could paste one, mark every open id `fixed`, and take the
+  `ai-review:blocking` off; the query now filters on the reviewer account, named
+  in the workflow rather than in the query. A block whose lines all failed to
+  parse computed `nothing-holding` rather than `unknown`, so two `floor`
+  findings written as markdown bullets read as a pass. A `-->` inside a title
+  closed the block silently, so every finding below it did not exist. And the
+  round counter advanced on rounds that reviewed nothing — a run killed by a
+  turn ceiling spent floor budget — so the first real review could land every
+  finding at or after the floor and defer it. Each has a test; none was
+  reachable by the suite as it stood.
+
   **The other two halves of #169 are not in that change and are not lost:** the
   branch-sync job is ordered behind
   [#128](https://github.com/hleserg/Attadipa/pull/128) by the issue itself, and

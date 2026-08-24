@@ -156,6 +156,32 @@ open, a corrupt ledger restarts at round 1. A review that publishes no findings
 block gets no computed verdict at all: the label the reviewer set itself stands,
 and the ledger comment says so.
 
+Three cases where that sentence was true of every ambiguity the rule enumerates
+and false of the ones it did not, found in review and now closed. **A block whose
+lines could not be parsed** is not a block that said nothing: it used to compute
+`nothing-holding` and strip the reviewer's own `ai-review:blocking`, so two
+`floor` findings written as markdown bullets read as a pass. It is `unknown`.
+**A `-->` inside a finding's title** closes the HTML comment, so the block ends
+there and everything below it is outside — silently, because the line was never
+printed and nothing counted it. The truncation is now counted, which makes the
+round `unknown` rather than a pass over findings nobody saw. And **the round
+counter no longer advances on a round that did not review**: upstream `ran` means
+only that the action wrote an execution log, and a run killed by a turn ceiling
+used to spend floor budget having reviewed nothing.
+
+**Retiring a finding that will not close.** A finding closes when a later round
+names the same id and marks it `fixed`, and ids come from the model, so a drifted
+id — `gnss-trust` in round 2, `gnss-trust-source` in round 3 — leaves the original
+open with nothing able to close it. Before the floor round that costs a round;
+after it, the branch blocks indefinitely. The remedy is deliberate and it is a
+person's: **edit the ledger comment's state block and set the stale id to
+`fixed`**, in the same edit naming why in the comment body, so the next reader
+sees a retirement rather than a mismatch. An agent must not do this to its own
+pull request — it is the one place where the thing being judged could clear its
+own judgement — so it belongs to the owner or to an orchestrator session acting
+on a branch that is not its own. The convergence claim rests on id stability, and
+this is what to do on the day that fails.
+
 **Not deployed yet.** The rule and its tests are on `main`; the workflow half is
 `docs/automation/pending/169-review-convergence.patch`, because a GitHub App
 cannot push `.github/workflows/`. Until a local session applies it, every round
