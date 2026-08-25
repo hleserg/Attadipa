@@ -9,14 +9,15 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s: %s\n' "$1" "$2"; }
 
 ADMISSION=.github/scripts/writer-admission.sh
 CLAIM=.github/scripts/claim.sh
+START=.github/scripts/writer-start.sh
 AGENT=.github/workflows/claude-agent.yml
 REPAIR=.github/workflows/claude-ci-repair.yml
 WATCHDOG=.github/workflows/agent-queue-watchdog.yml
 
-for required in "$ADMISSION" "$CLAIM"; do
+for required in "$ADMISSION" "$CLAIM" "$START"; do
   if [ -f "$required" ]; then ok "$required exists"; else bad "$required exists" missing; fi
 done
-if [ ! -f "$ADMISSION" ] || [ ! -f "$CLAIM" ]; then
+if [ ! -f "$ADMISSION" ] || [ ! -f "$CLAIM" ] || [ ! -f "$START" ]; then
   printf '\n%d passed, %d failed\n' "$pass" "$fail"
   exit 1
 fi
@@ -84,6 +85,8 @@ case "$method:$path" in
     labels=$(jq -Rsc 'split("\n") | map(select(length > 0) | {name:.})' "$state/labels")
     if [ "$(cat "$state/kind")" = pr ]; then pr='{"url":"x"}'; else pr=null; fi
     jq -nc --argjson labels "$labels" --argjson pr "$pr" '{state:"open", labels:$labels, pull_request:$pr}' ;;
+  GET:repos/o/r/issues/7/timeline?per_page=100)
+    jq -nc --arg date "$(cat "$state/timeline-date")" '[[{event:"labeled",label:{name:"agent:working"},created_at:$date}]]' ;;
   POST:repos/o/r/git/tags)
     token=$(field message); date=$(field 'tagger[date]')
     sha=$(printf '%s' "$token" | sha1sum | cut -c1-40)
@@ -91,6 +94,8 @@ case "$method:$path" in
       '{sha:$sha,message:$message,tagger:{date:$date}}' > "$state/tag.$sha"
     printf '{"sha":"%s"}\n' "$sha" ;;
   POST:repos/o/r/git/refs)
+    ref=$(field ref); suffix=${ref##*/}
+    prefix=ref; [ "$suffix" = writer ] && prefix=writer
     if [ "${ATTADIPA_STUB_BARRIER:-0}" = 1 ]; then
       : > "$state/ready.$$"
       for _ in $(seq 1 200); do
@@ -98,19 +103,24 @@ case "$method:$path" in
         sleep 0.01
       done
     fi
-    if mkdir "$state/ref.lock" 2>/dev/null; then
-      field sha > "$state/ref.sha"
-      printf '{"ref":"refs/tags/attadipa-claims/7"}\n'
+    if mkdir "$state/$prefix.lock" 2>/dev/null; then
+      field sha > "$state/$prefix.sha"
+      printf '{"ref":"%s"}\n' "$ref"
     else
       echo 'Reference already exists' >&2; exit 1
     fi ;;
   GET:repos/o/r/git/ref/tags/attadipa-claims/7)
     [ -d "$state/ref.lock" ] || exit 1
     printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/ref.sha")" ;;
+  GET:repos/o/r/git/ref/tags/attadipa-claims/writer)
+    [ -d "$state/writer.lock" ] || exit 1
+    printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/writer.sha")" ;;
   GET:repos/o/r/git/tags/*)
     cat "$state/tag.${path##*/}" ;;
   DELETE:repos/o/r/git/refs/tags/attadipa-claims/7)
     rm -rf "$state/ref.lock"; rm -f "$state/ref.sha" ;;
+  DELETE:repos/o/r/git/refs/tags/attadipa-claims/writer)
+    rm -rf "$state/writer.lock"; rm -f "$state/writer.sha" ;;
   *) echo "unexpected api call: $method $path" >&2; exit 64 ;;
 esac
 STUB
@@ -171,6 +181,32 @@ tag=$(cat "$work/state/ref.sha"); jq '.tagger.date="2000-01-01T00:00:00Z"' "$wor
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null
 [ ! -d "$work/state/ref.lock" ] && ok 'a crashed writer is reaped after the stale bound' || bad 'a crashed writer is reaped after the stale bound' 'lock remains'
 
+reset_state; printf 'agent:working\n' > "$work/state/labels"; printf '2000-01-01T00:00:00Z\n' > "$work/state/timeline-date"
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null
+! grep -Fxq agent:working "$work/state/labels" && grep -Fxq agent:ready "$work/state/labels" \
+  && ok 'a legacy stale working label is recovered from its label event' || bad 'a legacy stale working label is recovered from its label event' remains
+
+echo 'The local entrypoint holds both admission and claim'
+reset_state
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  bash "$START" start o/r 7 local-a >/dev/null
+[ -d "$work/state/writer.lock" ] && [ -d "$work/state/ref.lock" ] \
+  && ok 'local start owns the global lease and task claim' || bad 'local start owns the global lease and task claim' missing
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  bash "$START" finish o/r 7 local-a >/dev/null
+[ ! -d "$work/state/writer.lock" ] && [ ! -d "$work/state/ref.lock" ] \
+  && ok 'local finish releases both locks' || bad 'local finish releases both locks' remains
+
+reset_state
+printf '[%s,%s]\n' "$(pr 1)" "$(pr 2)" > "$work/state/prs"
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  bash "$START" start o/r 7 local-full >/dev/null 2>&1
+local_full_rc=$?
+set -e
+[ "$local_full_rc" -eq 3 ] && [ ! -d "$work/state/writer.lock" ] && [ ! -d "$work/state/ref.lock" ] \
+  && ok 'full admission leaves no local writer or claim' || bad 'full admission leaves no local writer or claim' "rc=$local_full_rc"
+
 step_script() {
   awk -v wanted="$2" '
     $0 == "      - name: " wanted { seen=1; next }
@@ -187,7 +223,7 @@ PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_OUTPUT="$work/ou
   bash "$work/admission-step.sh" >/dev/null 2>&1
 grep -q '^allow=true$' "$work/output" && ok 'the shipping admission step calls the guard' || bad 'the shipping admission step calls the guard' 'no allow output'
 
-sed 's#bash ".github/scripts/writer-admission.sh"#true # admission removed#' "$AGENT" > "$work/no-admission.yml"
+sed 's#bash ".github/scripts/writer-admission.sh"#true :#' "$AGENT" > "$work/no-admission.yml"
 step_script "$work/no-admission.yml" 'Check writer admission' > "$work/no-admission.sh"
 reset_state; : > "$work/output"
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_OUTPUT="$work/output" REPO=o/r ISSUE=7 \
@@ -197,6 +233,10 @@ if grep -q '^allow=' "$work/output"; then bad 'removing admission makes the muta
 grep -q 'group: attadipa-agent-writer' "$REPAIR" && ok 'CI repair shares the one-writer concurrency group' || bad 'CI repair shares the one-writer concurrency group' missing
 grep -q 'bash .*claim.sh.*acquire' "$AGENT" && grep -q 'bash .*claim.sh.*release' "$AGENT" \
   && ok 'the task writer acquires and releases the repository claim' || bad 'the task writer acquires and releases the repository claim' missing
+grep -q 'bash /tmp/writer-admission.sh' "$AGENT" && grep -q 'claim.sh acquire "$REPO" writer' "$AGENT" \
+  && ok 'the real writer rechecks admission while holding the global lease' || bad 'the real writer rechecks admission while holding the global lease' missing
+grep -q 'claim.sh.*acquire.*writer' "$START" && grep -q 'writer-admission.sh' "$START" \
+  && ok 'local writers use the same lease and admission path' || bad 'local writers use the same lease and admission path' missing
 grep -q 'wip-limit.sh --admit' "$WATCHDOG" && ok 'the watchdog checks admission before dispatch' || bad 'the watchdog checks admission before dispatch' missing
 
 mutant="$work/check-then-set.sh"

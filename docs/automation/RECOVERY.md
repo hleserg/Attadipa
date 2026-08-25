@@ -46,21 +46,36 @@ gh run list --limit 10
 gh run cancel <run-id>
 ```
 
-Cancelling a *writer* mid-run can leave a branch half-pushed and an issue stuck
-on `agent:working`. The watchdog returns such an issue to the queue after two
-hours; to do it immediately:
+Cancelling a *writer* mid-run can leave a branch half-pushed and a repository
+claim behind. The watchdog releases a claim after two hours using the annotated
+tag's timestamp (or the historical label event for a legacy claim). Do not
+remove only `agent:working`: that would hide a live lock. Inspect or deliberately
+break it with the shared rule:
 
 ```bash
-gh issue edit <n> --remove-label agent:working --add-label agent:ready
+bash .github/scripts/claim.sh owner OWNER/REPO <n>
+bash .github/scripts/claim.sh reap OWNER/REPO <n> 7200
+# trusted manual recovery only:
+bash .github/scripts/claim.sh break OWNER/REPO <n>
 ```
 
 ## Common situations
 
 ### An issue is stuck on `agent:working`
 
-The run died, or was cancelled. The watchdog clears it after two hours. To
-force it, use the command above. The agent's branch, if it made one, is still
-there — `git branch -r | grep claude/`.
+The run died, was cancelled, or is still live. The watchdog clears only a claim
+whose evidence is at least two hours old. `/ci-repair reset` also breaks the PR
+claim after its existing collaborator/whole-command checks. The agent's branch,
+if it made one, remains — `git branch -r | grep claude/`.
+
+### The queue is full or in incident mode
+
+At two active ordinary PRs, no new ordinary writer starts. At three or more,
+the watchdog dispatches nothing and automation is in drain/recovery mode.
+Existing PR repair remains admissible; a gate repair may be labelled
+`queue:emergency`. Parked work does not spend a slot and must not be resumed
+until admission returns `ok`. If the count is `unknown`, treat it exactly like
+a closed gate and repair the diagnostic before doing product work.
 
 ### The same pull request is being repaired over and over
 

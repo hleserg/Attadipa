@@ -172,9 +172,9 @@ a task whose event was lost.
                  └──────┬───────┘
                         │  claude-agent.yml accepts it
                  ┌──────▼───────┐
-                 │ agent:working│  one writer at a time, and the writer job
-                 └──┬────┬──────┘  sets this label itself — so a claim never
-      draft PR      │    │         outlives the agent that made it. A receipt
+                 │ agent:working│  visible mirror of an atomic repository ref;
+                 └──┬────┬──────┘  only the winning run token may release it.
+      draft PR      │    │         A receipt
                     │    │         comment lands here within seconds
                  ┌──▼──┐ │ ┌────▼─────────┐
                  │review│ │ │agent:blocked │ + needs-owner / needs-hardware
@@ -186,10 +186,13 @@ a task whose event was lost.
                  └──────────┘
 ```
 
-The labels are the state. There is no separate database, and no field in a
-comment that has to be kept in step with reality: if an issue is labelled
-`agent:working`, an agent has it, and if that stops being true for two hours
-the watchdog says so and puts it back.
+Labels are the visible state; the lock itself is a GitHub git ref. Creating
+`refs/tags/attadipa-claims/<number>` is the compare-and-set operation, and the
+annotated tag message is the owner/run token. A second writer cannot win the
+same ref and exits `held` before checkout. If a run disappears, the watchdog
+reaps the ref after two hours and returns an issue to `agent:ready`; legacy
+label-only claims use the timestamp of the actual `agent:working` label event,
+never the issue's mutable `updated_at`.
 
 ### Labels
 
@@ -204,11 +207,13 @@ the watchdog says so and puts it back.
 | review | `ai-review:pass` `ai-review:blocking` |
 | queue width | `queue:parked` `queue:emergency` `queue:over-limit` |
 
-The last row is the WIP limit's, and it is on pull requests rather than on
-issues: `queue:parked` and `queue:emergency` are exemptions a human sets, and
-`queue:over-limit` is set by `pr-wip-limit.yml` on a pull request opened while
-the queue was already full. It was missing from this table, and all three were
-missing from `setup-labels.sh`, until #239.
+The last row is the WIP limit's, and it is on pull requests rather than issues.
+An active ordinary PR is open, same-repository, and has neither `queue:parked`
+nor `queue:emergency`; a fork is excluded. Zero or one admits, two is `full`,
+three or more is `incident`. Parked work is deliberately dormant. Emergency
+work is explicitly limited to draining the queue or repairing admission. Any
+unreadable count is `unknown`, which refuses a writer. `queue:over-limit` is a
+diagnostic backstop, not permission to create first and count afterwards.
 
 The intake workflow derives the `type:`, `priority:` and `source:` labels from
 the marker, so a producer does not have to set them and cannot set them

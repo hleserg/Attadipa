@@ -346,6 +346,9 @@ jobs:
       - name: The pull-request queue has a bounded width
         run: bash .github/tests/wip-limit-test.sh
 
+      - name: Writer admission and exclusive claims are fail-closed
+        run: bash .github/tests/admission-claim-test.sh
+
       # Taking a pull request out of draft is not a sentence in a comment: a
       # draft can never read `mergeable_state: clean`, so undrafting is the step
       # that makes a branch eligible for an unattended merge. The number it is
