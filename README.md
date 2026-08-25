@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="pics/AttadipaBanner.png"
+  <img src="pics/atta-dipa-banner.png"
        alt="Atta-dipa — Lumar, a firefly with a glowing amber abdomen, beside the wordmark and the motto Independent by design"
        width="820">
 </p>
