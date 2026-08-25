@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from watch import protocol as p            # noqa: E402
 from watch import scenario as scenario_mod  # noqa: E402
 from watch.client import Watch, WatchError, connect  # noqa: E402
+from flash.ramhold import DEFAULT_SERIAL, resolve_port  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = os.path.join("artifacts", "watch")
 
@@ -157,9 +158,9 @@ def cmd_info(watch: Watch, args) -> int:
             if not button.injectable:
                 # Two different reasons wear this flag, and calling both
                 # "service key" would state as known the very thing the next
-                # note says is not. The T-Watch's `boot` is a boot-mode strap
-                # and produces no software event; the Waveshare's two are
-                # unset because D5 is open.
+                # note says is not. `boot` is a boot-mode strap on both current
+                # profiles; the Waveshare `power` key is injectable and also
+                # arrives physically through AXP2101 edge status.
                 notes.append("service key, not simulated" if button.role_known
                              else "not simulated")
             if not button.role_known:
@@ -445,10 +446,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Screenshot a watch, press its buttons, touch its screen, and look "
                     "at what happened.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="With no --port and no --socket the tool looks for a simulator socket in "
-               "./.attadipa-sim.sock and /tmp/attadipa-sim.sock. The simulator only "
-               "listens when started with --debug-socket.")
-    parser.add_argument("--port", help="a serial device, for firmware (none exists yet)")
+        epilog="With no --port and no --socket the tool first resolves the bench watch "
+               "by USB serial, then falls back to the simulator sockets.")
+    parser.add_argument("--port", help="a serial device; overrides USB-serial lookup")
+    parser.add_argument("--serial", default=os.environ.get("ATTADIPA_WATCH_SERIAL",
+                                                           DEFAULT_SERIAL),
+                        help=f"USB serial of the watch (default {DEFAULT_SERIAL})")
     parser.add_argument("--socket", dest="socket_path", help="a Unix socket, for the simulator")
     parser.add_argument("--timeout", type=float, default=10.0, help="seconds to wait for a reply")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
@@ -528,6 +531,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if not args.port and not args.socket_path:
+        try:
+            args.port = resolve_port(args.serial)
+        except SystemExit:
+            pass
     try:
         watch = connect(port=args.port, socket_path=args.socket_path, timeout=args.timeout)
     except (WatchError, p.ProtocolError) as exc:

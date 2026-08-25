@@ -14,8 +14,13 @@
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
+#include "sdkconfig.h"
 
 #include "attadipa/platform/board_profile.h"
+
+#if CONFIG_ATTADIPA_WATCH_CONTROL
+#include "watch_control.h"
+#endif
 
 namespace {
 
@@ -72,6 +77,7 @@ struct BoardState {
   i2c_master_dev_handle_t pmu = nullptr;
   i2c_master_dev_handle_t rtc = nullptr;
   esp_lcd_panel_handle_t panel = nullptr;
+  esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
   lv_obj_t *rtc_label = nullptr;
   lv_obj_t *touch_label = nullptr;
@@ -166,8 +172,7 @@ constexpr unsigned days_in_month(unsigned year, unsigned month) {
 }
 
 static_assert(valid_bcd(0x59) && !valid_bcd(0x5A) && from_bcd(0x59) == 59 &&
-              days_in_month(2024, 2) == 29 &&
-              days_in_month(2023, 2) == 28 &&
+              days_in_month(2024, 2) == 29 && days_in_month(2023, 2) == 28 &&
               days_in_month(2024, 4) == 30 && days_in_month(2024, 0) == 0);
 
 esp_err_t read_rtc(RtcDateTime *time) {
@@ -331,16 +336,16 @@ esp_err_t initialize_touch() {
   touch_config.levels.reset = 0;
   touch_config.levels.interrupt = 0;
 
-  esp_lcd_touch_handle_t touch = nullptr;
   ESP_RETURN_ON_ERROR(
-      esp_lcd_touch_new_i2c_ft5x06(touch_io, &touch_config, &touch), kTag,
+      esp_lcd_touch_new_i2c_ft5x06(touch_io, &touch_config, &state.touch), kTag,
       "initialize FT3168 via FT5x06 driver");
-
+#if !CONFIG_ATTADIPA_WATCH_CONTROL
   lvgl_port_touch_cfg_t lv_touch{};
   lv_touch.disp = state.display;
-  lv_touch.handle = touch;
+  lv_touch.handle = state.touch;
   ESP_RETURN_ON_FALSE(lvgl_port_add_touch(&lv_touch) != nullptr, ESP_ERR_NO_MEM,
                       kTag, "add LVGL touch");
+#endif
   ESP_LOGI(kTag, "FT3168: I2C 0x38, reset GPIO 9, interrupt GPIO 38");
   return ESP_OK;
 }
@@ -411,7 +416,14 @@ esp_err_t start_waveshare_ui() {
 
   ESP_RETURN_ON_FALSE(lvgl_port_lock(1000), ESP_ERR_TIMEOUT, kTag, "lock LVGL");
   create_ui();
+#if CONFIG_ATTADIPA_WATCH_CONTROL
+  const esp_err_t watch_control_result =
+      start_watch_control(state.touch, state.pmu);
+#endif
   lvgl_port_unlock();
+#if CONFIG_ATTADIPA_WATCH_CONTROL
+  ESP_RETURN_ON_ERROR(watch_control_result, kTag, "start watch control");
+#endif
 
   ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(state.panel, true), kTag,
                       "turn display on");

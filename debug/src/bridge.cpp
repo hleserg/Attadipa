@@ -399,6 +399,23 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
     // are kept.
     event.at_ms = incoming.at_ms == 0 ? now_ms : incoming.at_ms;
 
+    if (event.type == core::InputEventType::PointerDown ||
+        event.type == core::InputEventType::PointerMove ||
+        event.type == core::InputEventType::PointerUp) {
+        std::uint16_t width = 0;
+        std::uint16_t height = 0;
+        PixelFormat format = PixelFormat::Unknown;
+        Orientation orientation = Orientation::Deg0;
+        std::size_t bytes = 0;
+        ScreenSource::Failure why = ScreenSource::Failure::None;
+        (void)source_.capture(nullptr, 0, width, height, format, orientation, bytes, why);
+        if (event.x < 0 || event.y < 0 || event.x >= width || event.y >= height) {
+            ++stats_.events_refused;
+            send_error(req_id, ErrorCode::BadInput, emit, ctx);
+            return;
+        }
+    }
+
     // The state machine decides whether this event is possible before it is
     // queued, so an impossible one is an answerable error rather than a
     // confusing screen. A second finger is separated out because "your stack

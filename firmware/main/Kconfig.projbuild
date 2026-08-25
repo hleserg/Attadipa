@@ -1,0 +1,10 @@
+menu "Attadipa firmware"
+
+config ATTADIPA_WATCH_CONTROL
+    bool "USB watch-control endpoint"
+    default n
+    help
+        Enable screenshots and physical/remote input over USB-Serial/JTAG.
+        The feature owns one full RGB565 frame in PSRAM while running.
+
+endmenu
