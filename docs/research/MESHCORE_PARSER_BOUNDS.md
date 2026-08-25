@@ -1,8 +1,18 @@
 # MeshCore parser bounds at the pinned revision
 
 Research for [issue #142](https://github.com/hleserg/Attadipa/issues/142).
-Read on 2026-08-23. **Research only — no Attadipa production code changed, and
-none should on the strength of this document alone.**
+Read on 2026-08-23; re-checked and extended 2026-08-24 (§1's freshness row, the
+`#3269` column in §4, the harness's revision binding in §7, and §8, which is a
+second ecosystem arriving at the same invariant). **Research only — no Attadipa
+production code changed, and none should on the strength of this document
+alone.**
+
+*This document reached `main` in two pieces. `a7624b0` took it and the harness —
+14 of the 19 files of [#160](https://github.com/hleserg/Attadipa/pull/160) — and
+left the five index files behind, so for a few hours the References below pointed
+at open questions that belong to a different piece of research. The second pull
+request carries `STATUS.md`, `TASKS.md`, `VERIFIED_FACTS.md`, `OPEN_QUESTIONS.md`
+and `REUSE_LEDGER.md`, along with the review fixes and §8.*
 
 Three upstream pull requests filed on 2026-08-21 and 2026-08-22 claim missing
 length checks in MeshCore's frame and advertisement parsers, found by fuzzing.
@@ -32,11 +42,19 @@ could not be executed at all it says so in its own row rather than in a footnote
 | Attadipa's pin | `d92964352441e53b93e8667b802e04f6e072b39e` |
 | What that is upstream | tag `companion-v1.17.1` (also `repeater-`, `room-server-`), released 2026-08-14 |
 | `meshcore-dev/MeshCore` `main`, 2026-08-23 | `d92964352441e53b93e8667b802e04f6e072b39e` — **the same commit** |
+| `meshcore-dev/MeshCore` `main`, 2026-08-24 | `0679dbeffc504d562d2f09eb072fdc223f8ffc2a` — 2 commits ahead, **both `docs/faq.md`** |
 | `meshcore-dev/MeshCore` `dev`, 2026-08-23 | `9d7cee66394fffd6e8c6e9f39fe03660cb314f64`, 2026-08-22 |
+| `meshcore-dev/MeshCore` `dev`, 2026-08-24 | `12998cba8969e4004d94ed94b5e8e5bbdfa05571` |
 | Licence | **MIT**, `license.txt` in the clone |
 
-So the pin is not lagging: it *is* the current release and the current `main`.
-Nothing has been released that contains any of these guards.
+So the pin is not lagging: it *is* the current release, and it was the tip of
+`main` when this was written. It stopped being the literal tip a day later and
+that changes nothing here — `git diff d929643...0679dbe` is `docs/faq.md` and no
+second file, so the pin is still upstream's newest **code**, and the newest
+release is still `v1.17.1` of 2026-08-14. Nothing has been released that contains
+any of these guards. The distinction is kept because "our pin is `main`" is the
+kind of sentence that stays in a document after it stops being true; the way to
+re-check it is `compare/<pin>...main` and to read the file list, not the count.
 
 The pull requests are based on `dev`, which made the issue's own framing cautious
 about comparing them to our pin. That caution turns out to be unnecessary, and it
@@ -77,6 +95,10 @@ head tree is a measurement of our pin plus that pull request's guards.
 
 None is merged. None is in a release. Nothing below may be written up anywhere as
 "upstream fixed it".
+
+**Re-checked 2026-08-24**, the whole row set: five states, five heads, five bases,
+all unchanged, and the three open ones last touched 2026-08-22. So a day has not
+moved any of it, which is worth one line and not a second table.
 
 ---
 
@@ -259,18 +281,32 @@ negative becomes a large positive, and `extra`/`extra_len` are then handed to
 is a multiple of 16. Over every `(len, path_len)` pair that reaches this code
 with `len` in 16…176:
 
+`build/path_arith`, run against `d929643` on 2026-08-24, verbatim:
+
 ```
-accepted (len, path_len) pairs            : 1309
-pairs where k > len (extra_len underflows):  187
-  of those, &data[k] + extra_len > 184    :  187      <- all of them
-smallest underflowing input               : len=16 path_len=0x0F
-                                            -> k=17, extra_len=255,
-                                               window data[17..271] against data[0..183]
-                                               (88 bytes past the end)
+revision under test : d92964352441e53b93e8667b802e04f6e072b39e
+MAX_PACKET_PAYLOAD  : 184   (from the tree's MeshCore.h)
+MAX_PATH_SIZE       : 64   (from the tree's MeshCore.h)
+len domain          : 16..176 step 16
+
+accepted (len, path_len) pairs           : 1309
+pairs where k > len (extra_len underflows): 187
+  of those, &data[k] + extra_len > 184   : 187
+smallest underflowing input              : len=16 path_len=0x0F -> k=17 extra_len=255, i.e. data[17..271] against data[0..183] (88 bytes past the end)
+largest over-read window                 : len=16 path_len=0x0F -> k=17 extra_len=255, i.e. data[17..271] against data[0..183] (88 bytes past the end)
 ```
 
 Every underflow produces a window past the end of the 184-byte stack buffer.
-There is no benign corner of this one.
+There is no benign corner of this one. The smallest input and the largest window
+are the same input, which is not a printing bug: `extra_len` is `uint8_t`, so
+255 is its ceiling, and the shortest accepted plaintext reaches it.
+
+*(An earlier revision of this document paraphrased those lines inside the same
+fence — the numbers were right, the labels were not the tool's, and one
+continuation line was printed by nothing. In a passage arguing the result was
+computed, that is the one place a reader cannot tell a transcript from a
+retelling. Found by the independent review of
+[#160](https://github.com/hleserg/Attadipa/pull/160).)*
 
 **Reachable from:** the radio, addressed to this node, from a source hash that
 matches a contact, **and past the MAC check**. That last gate is `CIPHER_MAC_SIZE`
@@ -437,18 +473,25 @@ cases had to be made to work.
 Ten sequences. Each is the whole input; each is fed as a buffer of exactly its own
 length with a guard page behind it. `base` is `d929643`.
 
-| # | Parser | Bytes (hex) | `len` | Reads, and where the tool stops it | base | `#3267` head | `#3270` head |
-|---|---|---|---|---|---|---|---|
-| A1 | `tryParsePacket` | `01` | 1 | 1 B at `Dispatcher.cpp:165` | **OOB** | clean, `false` | **OOB** |
-| A2 | `tryParsePacket` | `00` | 1 | 2 B at `Dispatcher.cpp:159` | **OOB** | clean, `false` | **OOB** |
-| A3 | `tryParsePacket` | *(empty)* | 0 | 1 B at `Dispatcher.cpp:152` | **OOB** | clean, `false` | **OOB** |
-| B1 | `Packet::readFrom` | `01 3F` | 2 | **63 B** at `Packet.cpp:78` | **OOB** | clean, `false` | **OOB** |
-| B2 | `Packet::readFrom` | `01` | 1 | 1 B at `Packet.cpp:74` | **OOB** | clean, `false` | **OOB** |
-| B3 | `Packet::readFrom` | `00` | 1 | 2 B at `Packet.cpp:69` | **OOB** | clean, `false` | **OOB** |
-| C1 | `AdvertDataParser` | `91` | 1 | 4 B at `AdvertDataHelpers.cpp:40` | **OOB** | **OOB** | clean, `invalid` |
-| C2 | `AdvertDataParser` | `F1` | 1 | 4 B at `AdvertDataHelpers.cpp:40` | **OOB** | **OOB** | clean, `invalid` |
-| C3 | `AdvertDataParser` | *(empty)* | 0 | 1 B at `AdvertDataHelpers.cpp:34` | **OOB** | **OOB** | **OOB** |
-| C4 | `AdvertDataParser` | `21` | 1 | 2 B at `AdvertDataHelpers.cpp:44` | **OOB** | **OOB** | clean, `invalid` |
+| # | Parser | Bytes (hex) | `len` | Reads, and where the tool stops it | base | `#3267` head | `#3269` head | `#3270` head |
+|---|---|---|---|---|---|---|---|---|
+| A1 | `tryParsePacket` | `01` | 1 | 1 B at `Dispatcher.cpp:165` | **OOB** | clean, `false` | **OOB** | **OOB** |
+| A2 | `tryParsePacket` | `00` | 1 | 2 B at `Dispatcher.cpp:159` | **OOB** | clean, `false` | **OOB** | **OOB** |
+| A3 | `tryParsePacket` | *(empty)* | 0 | 1 B at `Dispatcher.cpp:152` | **OOB** | clean, `false` | **OOB** | **OOB** |
+| B1 | `Packet::readFrom` | `01 3F` | 2 | **63 B** at `Packet.cpp:78` | **OOB** | clean, `false` | **OOB** | **OOB** |
+| B2 | `Packet::readFrom` | `01` | 1 | 1 B at `Packet.cpp:74` | **OOB** | clean, `false` | **OOB** | **OOB** |
+| B3 | `Packet::readFrom` | `00` | 1 | 2 B at `Packet.cpp:69` | **OOB** | clean, `false` | **OOB** | **OOB** |
+| C1 | `AdvertDataParser` | `91` | 1 | 4 B at `AdvertDataHelpers.cpp:40` | **OOB** | **OOB** | **OOB** | clean, `invalid` |
+| C2 | `AdvertDataParser` | `F1` | 1 | 4 B at `AdvertDataHelpers.cpp:40` | **OOB** | **OOB** | **OOB** | clean, `invalid` |
+| C3 | `AdvertDataParser` | *(empty)* | 0 | 1 B at `AdvertDataHelpers.cpp:34` | **OOB** | **OOB** | **OOB** | **OOB** |
+| C4 | `AdvertDataParser` | `21` | 1 | 2 B at `AdvertDataHelpers.cpp:44` | **OOB** | **OOB** | **OOB** | clean, `invalid` |
+
+**The `#3269` column is ten rows of "no change", and it was measured rather than
+argued.** Added 2026-08-24: the column is byte-for-byte the `base` column,
+including the two lines where the sanitizer stops. That is the expected result —
+its diff touches only `src/Mesh.cpp`, which the corpus does not reach — but §3 P3
+says its head does not close its own finding, and "its diff is a log line" is a
+reading of a diff while this is a run. Both now say it.
 
 The read widths are the `memcpy` and subscript widths in the source; a
 multi-field read is attributed to the statement that first crosses the boundary,
@@ -463,13 +506,22 @@ Plus two experiments that are not single byte sequences:
 
 | # | What | Result |
 |---|---|---|
-| P3 | every `(len, path_len)` reaching `Mesh.cpp:161-172`, `len` ∈ 16…176 | 187 of 1309 underflow `extra_len`; **all 187** give a window past `data[184]`; smallest `len=16, path_len=0x0F` |
+| P3 | every `(len, path_len)` reaching `Mesh.cpp:160-172`, `len` ∈ 16…176 | 187 of 1309 underflow `extra_len`; **all 187** give a window past `data[184]`; smallest `len=16, path_len=0x0F` |
 | P4 | `Utils::decrypt` into a 184-byte destination | clean at `src_len=176`; faults at `src_len` 177, 180, 182 at `Utils.cpp:77` |
 
+**Neither of those two is in `run.sh`'s matrix, and neither could be measured
+against an arbitrary revision until 2026-08-24.** `build-extras.sh` took no
+argument and always built from `tree-base`, so running it after pointing
+`build.sh` at a candidate measured the pin under the candidate's name. It now
+takes the tag, prints the resolved SHA, and refuses outright when the lines
+`path_arith` hand-copies have changed — see §7. A green `run.sh` is still not a
+clean revision; that part was always true and is now enforced rather than
+footnoted.
+
 **Nine of ten cases over-read on the pinned revision. No head fixes all of them:**
-`#3267` closes A and B and leaves C untouched; `#3270` closes C1, C2, C4 and
-leaves A, B and **C3** untouched. Vendoring any one of them would buy part of the
-problem.
+`#3267` closes A and B and leaves C untouched; `#3269` changes nothing in this
+matrix at all; `#3270` closes C1, C2, C4 and leaves A, B and **C3** untouched.
+Vendoring any one of them would buy part of the problem.
 
 ---
 
@@ -548,6 +600,18 @@ and that is a separate, executable task, not this one.
   reproduces in one command. Recorded as a recommendation, deliberately not acted
   on.
 
+  **What is not still open is whether P4 is public: it is.** This repository is
+  public, §3 P4 names the affected versions, the triggering range and the
+  faulting line, §7 gives a one-command reproduction, and `decrypt_bounds.cpp`
+  *is* that reproduction. Publication happened when the pull request carrying
+  this document was opened, and merging it does not add to that — it makes it
+  permanent in `main`. So the decision left to the owner is an **ordering** one
+  and it is live now rather than at some later point: tell upstream first, or
+  accept publication-without-notice as a deliberate choice. Either is defensible.
+  Arriving at the second by not deciding is the one outcome nobody chose. Raised
+  by the independent review of [#160](https://github.com/hleserg/Attadipa/pull/160)
+  and carried here so that it does not live only in a review comment.
+
 No ADR changes. The trust boundary these findings press on is
 [ADR-0008](../adr/0008-mesh-service-providers.md)'s and it already holds; nothing
 here moved it, and an ADR edited to say what it already said is churn.
@@ -580,28 +644,165 @@ git clone --filter=blob:none https://github.com/meshcore-dev/MeshCore /tmp/meshc
 cd docs/research/meshcore-parser-bounds
 ./build.sh base   d92964352441e53b93e8667b802e04f6e072b39e
 ./build.sh pr3267 05da523ebd32980a1c28b11f2928d351796b9737
+./build.sh pr3269 5ebf8ef9cf1a0df28118c47460277857e0e675b2
 ./build.sh pr3270 f80d805ee8b20f77ff5b3ca6bc3a9021989aafd2
 ./run.sh                      # the ten-case matrix in §4
-./build-extras.sh
+./build-extras.sh base        # the tag names the tree to measure
 ./build/path_arith            # P3
 ./build/decrypt_bounds 180    # P4; 176 is clean
 ```
 
-The two pull request heads have to be fetched by SHA before they resolve —
-`git -C /tmp/meshcore-src fetch origin <sha>`; `build.sh` says so if they have not
-been. **`run.sh` does not cover P3 or P4**, so a green matrix is not a clean
-revision.
+The pull request heads have to be fetched before they resolve —
+`git -C /tmp/meshcore-src fetch origin <sha>`, or
+`fetch origin pull/<n>/head:pr<n>` where the SHA alone is refused; `build.sh`
+says so if they have not been.
+
+**`run.sh` does not cover P3 or P4**, so a green matrix is not a clean revision.
+That is the one way this artifact could mislead a future pin, so both halves of
+it are now mechanical rather than remembered:
+
+- **`build-extras.sh` takes the tag**, defaulting to `base`, and prints the SHA
+  it resolved from the tree's own `.revision` file. It used to hardcode
+  `tree-base`, which meant `./build.sh cand <sha> && ./build-extras.sh` measured
+  the *pin* and printed nothing to say so — the failure the entry condition
+  exists to prevent, reintroduced inside the tool written to prevent it.
+- **It refuses a revision whose `PAYLOAD_TYPE_PATH` branch has moved.**
+  `path_arith` takes `MAX_PACKET_PAYLOAD`, `MAX_PATH_SIZE` and `isValidPathLen`
+  from the built tree, but the index arithmetic itself cannot be executed on a
+  host and is copied by hand — and a hand-copy cannot notice upstream *fixing*
+  what it copied. So those lines are extracted between two anchors,
+  whitespace-normalised, hashed, and compared. `#3269`'s head is exactly such a
+  revision and is refused by name:
+
+  ```
+  $ ./build-extras.sh pr3269
+  The PAYLOAD_TYPE_PATH branch in src/Mesh.cpp has changed at 5ebf8ef9…
+
+      expected 5eee273c0079c2e6332f42b0d3d285f7b8eaf55ecdf81602941b4eb48a09fbc2
+      found    e97ef1642ef638b8e1f7fff843a806ba82ea9201199b6466bbb527ef76d7251b
+  …
+  $ echo $?
+  65
+  ```
 
 Needs `clang++` with AddressSanitizer. Measured on clang 18.1.3, Ubuntu 24.04,
-2026-08-23. It reads the upstream clone and writes only inside its own directory.
+2026-08-23; the whole sequence above re-run 2026-08-24 on clang 18.1.3 after the
+`build-extras.sh` change, reproducing §4 unchanged. It reads the upstream clone
+and writes only inside its own directory.
+
+---
+
+## 8. The same invariant, reached independently, in a stack we may not copy from
+
+Added 2026-08-24. The owner brought
+[meshtastic/firmware#11573](https://github.com/meshtastic/firmware/pull/11573) to
+[issue #142](https://github.com/hleserg/Attadipa/issues/142) as an upstream delta
+and asked for the invariant rather than the code. Everything below was re-read
+from the merged diff rather than taken from the summary; the summary held.
+
+| | |
+|---|---|
+| Pull request | `meshtastic/firmware#11573`, *"fix(radio): MeshBeacon heap leak and runtime packet payload size check"* |
+| State | **MERGED** 2026-08-23, merge commit `ac330e6a6b9fca267fe3faab27ee50c4e91bee28` |
+| Base | `develop` (`05f64741`), which is that repository's default branch |
+| Head | `6094d148` |
+| Size | 4 files, +58 −5 |
+| Licence | **GPL-3.0** — `meshtastic/firmware`'s own `LICENSE` |
+| In a release? | **No.** `master` does not contain the merge commit — `compare/master...ac330e6a` answers `diverged`, ahead 828 / behind 103 — and the newest release, `v2.7.26.54e0d8d`, was published 2026-06-24 |
+
+**What it actually changes**, `src/mesh/RadioInterface.cpp::beginSending()`:
+
+```diff
+-    assert(p->encrypted.size <= sizeof(radioBuffer.payload));
++    // Runtime packet payload size bounds check against radioBuffer to prevent overflow in memcpy()
++    if (static_cast<size_t>(p->encrypted.size) > sizeof(radioBuffer.payload)) {
++        LOG_ERROR("Packet payload size %u exceeds radioBuffer capacity %u", …);
++        packetPool.release(p);
++        return 0;
++    }
+     memcpy(radioBuffer.payload, p->encrypted.bytes, p->encrypted.size);
+```
+
+and three consequences of that rejection which are the interesting half, because
+a bounds check that leaves the caller wedged has moved the failure rather than
+handled it:
+
+- **The caller unwinds.** `RadioLibInterface::startSend` now treats `numbytes == 0`
+  as an abort: `completeSending()`, `powerMon->clearState(…Lora_TXOn)`,
+  `startReceive()`, `return false`.
+- **The radio goes home even when there was no packet.**
+  `MeshBeaconModule::reconfigureForBeaconTX(this, nullptr)` moved out of the
+  `if (p)` arm of `completeSending()` to after it.
+- **The packet is not leaked.** Both `router->send(p)` sites in
+  `MeshBeaconModule.cpp` now release on `ERRNO_SHOULD_RELEASE`, and
+  `beginSending` releases the packet it rejects.
+
+**And a regression test that asserts the rejection rather than the crash** —
+`test/test_radio/test_main.cpp::test_beginSending_oversizedPayloadAbortsSafely()`.
+It sets `encrypted.size` to capacity + 10, then checks three separate things:
+the return is 0, `sendingPacket` is still null, and **the pool slot is reusable**
+— by allocating again and asserting the same pointer comes back. That third
+assertion is the one worth copying: "it rejected" and "it rejected without losing
+the buffer" are different claims, and only the second one keeps a long-running
+node alive.
+
+### What this is evidence for, and what it is not
+
+**It is independent confirmation of the class.** Two unrelated mesh firmwares, on
+different radios, in different code, both had a wire-supplied length reaching a
+fixed-size destination with nothing executable in between — MeshCore at P4 via
+`Utils::decrypt`'s block rounding, Meshtastic at `beginSending`'s `memcpy`. The
+finding in §3 P4 was a single-project observation until 2026-08-23. It is now a
+pattern with two instances, which changes how much weight a future
+`LocalMeshProvider` design should give it.
+
+**It is not a fact about Attadipa's code**, which has no production radio stack
+at all, and not a defect report against `attadipa_link`, whose decoder validates
+the declared length before reading (§5, and `frame_codec.cpp:139`, `:147`).
+
+**Two things are deliberately not claimed.** Whether Meshtastic's `assert()` was
+compiled out in shipping firmware is **UNKNOWN** from this reading: `NDEBUG`
+appears in three files of that repository and in none of its build flags, and
+whether the Arduino/ESP-IDF toolchain defines it for those environments was not
+traced. And **NOT EXECUTED — HARDWARE REQUIRED** for everything physical: the
+pull request's author lists Heltec LoRa32 V3, LilyGo T-Deck, Seeed T-1000E and
+Wio-E5, none of which was checked here and none of which is a board this project
+has.
+
+The claim that survives without either is narrower and enough: an `assert` is a
+statement about a program's own consistency, and a length that arrived from
+outside is not that. Whatever the build flags do, the pre-fix code turns a
+hostile length into either a silent overflow or an abort, and neither is a
+rejection.
+
+### Decision — `ADAPT` the invariant, `IGNORE` the code
+
+**The code cannot come here.** `meshtastic/firmware` is GPL-3.0 with no linking
+exception, which is the same bar that closed the Meshtastic protocol path in
+[OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence).
+Read-only evidence, no derivation, no transcription of a hunk.
+
+What is adopted is an invariant and a test *shape*, both of which are ours to
+state in our own words:
+
+> A length that arrived from outside the device is checked at the point of use,
+> in the shipping build, by code that rejects — and the rejection leaves the
+> caller in a state it can continue from, with every buffer it borrowed returned.
+
+That belongs to whichever task first gives Attadipa a radio or a local provider,
+as an entry condition rather than as new work now — recorded on **T-013** and
+**T-050** in [`TASKS.md`](../../TASKS.md) alongside the corpus condition. No
+Attadipa code changed, and none should on the strength of this section: there is
+nothing yet for it to change.
 
 ---
 
 ## References
 
 - Upstream: `meshcore-dev/MeshCore`, MIT, pinned `d92964352441e53b93e8667b802e04f6e072b39e`
+- Upstream, read-only: `meshtastic/firmware`, **GPL-3.0**, `ac330e6a` — §8, evidence only, never a source of code
 - [`REUSE_LEDGER.md`](REUSE_LEDGER.md) — the pin and the monitored deltas
-- [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — M10–M14 from the first reading; M15–M17 from this one
+- [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — M10–M14 from the first reading; **M20–M23** from this one, M23 being the one that scopes the follow-up. Filed as M15–M18 and renumbered on merge, because the frame-capacity research took those on `main` in the same week
 - [`VERIFIED_FACTS.md`](VERIFIED_FACTS.md) — what is now traced to executed evidence
 - [`../upstream/meshcore-1.17-review.md`](../upstream/meshcore-1.17-review.md) — T-041, the review this continues
 - [`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) — the wire format on the client side

@@ -50,6 +50,13 @@ rm -rf "$tree"
 mkdir -p "$tree"
 git -C "$MESHCORE_SRC" archive "$ref" src | tar -x -C "$tree"
 
+# Record what this tree actually is, so that anything built from it later can
+# say so rather than assume. build-extras.sh reads this and prints it; without
+# it, a second tool built against tree-<tag> can only name the tag, and a tag is
+# a label somebody chose rather than a revision.
+resolved=$(git -C "$MESHCORE_SRC" rev-parse "$ref")
+printf '%s\n' "$resolved" > "$tree/.revision"
+
 # Four upstream translation units, unmodified, plus the harness and the shim.
 # -O0 so the sanitizer's line numbers name the statement rather than whatever a
 # pass hoisted it into; the findings are about bounds, not about codegen.
@@ -61,4 +68,4 @@ clang++ -std=c++17 -g -O0 -fsanitize=address -fno-omit-frame-pointer \
     "$tree/src/helpers/AdvertDataHelpers.cpp" \
     -o "$out/harness-$tag"
 
-echo "built build/harness-$tag from $(git -C "$MESHCORE_SRC" rev-parse "$ref")"
+echo "built build/harness-$tag from $resolved"
