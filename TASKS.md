@@ -944,9 +944,10 @@ stale silently. The protocol is
   stays fail-safe: no `Backup`, no `PowerSave`, no warm start promised. The
   provenance survives the decision rather than being flattened into it —
   `is_established()` and `fully_established()` are how "T-051 is finished"
-  becomes a check a machine makes instead of a field somebody remembers, and
-  `to_string(SupportState)` keeps `Unknown` sayable on a diagnostics screen. A
-  scoped enum also means `GnssCapabilities{false, false, false, false}` no
+  becomes a check a machine makes instead of a field somebody remembers.
+  `to_string(SupportState)` is log-only; a future screen uses
+  `label_of(SupportState) -> StringId`. A scoped enum also means
+  `GnssCapabilities{false, false, false, false}` no
   longer compiles, and `tests/CMakeLists.txt` pins that with a compile-fail test
   beside the two layer boundaries, so the collision cannot return quietly.
 
@@ -3818,6 +3819,9 @@ A1's schematic-revision
   with nothing in it; and `start_kind()` read *having* a backup domain as
   evidence the domain had been *powered*, reporting a warm start where the truth
   was cold. `GnssContext` gained `backup_retained`, the fact that was missing.
+  `ephemeris_retained` is separately direct evidence, never inferred from a
+  recent fix, and its owner must clear it whenever both retaining rails are cut;
+  that is why Hot need not depend on the backup-domain capability Warm requires.
 - **Also pinned:** no wake source that exists only while the radio is powered may
   be armed in `DeepSleep` — the rule the MeshCore review found broken upstream.
 - **Tests:** `tests/test_power.cpp`.
