@@ -1686,6 +1686,15 @@ stale silently. The protocol is
   adapter is also where a malformed-frame consequence stops being MeshCore's and
   starts being ours. That does not change this task's acceptance; it says which
   boundary the corpus in T-013's entry condition is protecting.
+- **Entry condition added 2026-08-24 (T-173):** the boundary test must include the
+  case where the far side's declared length exceeds what the receiving buffer
+  holds, and must assert the **rejection** — that the frame is refused, that no
+  partially-consumed state is left behind, and that whatever buffer the attempt
+  borrowed is returned — rather than only that nothing crashed. Two unrelated mesh
+  firmwares shipped that defect and one of them, Meshtastic, shipped the test
+  first ([MESHCORE_PARSER_BOUNDS §8](docs/research/MESHCORE_PARSER_BOUNDS.md));
+  its code is GPL-3.0 and may not be copied, its *shape* is not copyrightable and
+  is what is being adopted.
 
 ### T-013 · The local mesh integration spike
 - **Priority:** P0
@@ -1720,6 +1729,23 @@ stale silently. The protocol is
   ([MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md)). That is
   not a reason to avoid MeshCore; it is the thing a pin has to be chosen with
   knowledge of, and a version number does not carry it.
+  **Sharpened 2026-08-24:** those two are reached by `./build-extras.sh <tag>`,
+  and the tag is the point — it used to be hardcoded to the pin's tree, so the
+  candidate was never what got measured. It also refuses outright, exit 65, when
+  the `PAYLOAD_TYPE_PATH` lines `path_arith` hand-copies have moved at the
+  candidate; that refusal means "re-read P3 by hand here", not "the tool is
+  broken".
+- **Entry condition added 2026-08-24 (T-173), and it is not about MeshCore:** the
+  radio path this spike produces must check a wire-supplied length **at the point
+  of use, in the shipping build, in code that rejects** — not in an `assert`, and
+  not only in the parser upstream of it — and the rejection must leave the caller
+  able to continue, with every borrowed buffer returned. Two unrelated mesh
+  firmwares shipped the same defect class
+  ([MESHCORE_PARSER_BOUNDS §8](docs/research/MESHCORE_PARSER_BOUNDS.md)), which
+  is why it is written as an invariant here rather than as a note about somebody
+  else's bug. The test that proves it should assert the *rejection* — return
+  value, no half-started transmit, and the buffer back in the pool — not merely
+  that nothing crashed.
 
 ### T-016 · Benchmark the node protocol encoding, then accept or replace it
 - **Priority:** P1
@@ -3003,7 +3029,23 @@ renumbered with it, M15–M18 → **M20–M23**, same collision one file along.
   the authentication gate it looks like.
 - **Reporting the `Utils::decrypt` defect upstream is the owner's call.** Filing
   on a third-party repository is outward-facing and this run had no authority for
-  it. The evidence reproduces in one command.
+  it. The evidence reproduces in one command. **What is not open is whether it is
+  public — it is**, from the moment #160 was opened, so the decision left is the
+  *ordering*: notify upstream first, or accept publication-without-notice
+  deliberately. `needs-owner`, and it is live now rather than later.
+- **A second ecosystem reached the same invariant, added 2026-08-24.** The owner
+  brought Meshtastic
+  [firmware#11573](https://github.com/meshtastic/firmware/pull/11573) — merged
+  `ac330e6a`, base `develop`, **not in any release** — which replaces an
+  `assert()` on a wire-supplied payload length with an executable rejection that
+  releases the packet and unwinds the transmit state, plus a test asserting the
+  rejection rather than the absence of a crash. Every claim re-read from the
+  merged diff and confirmed. **GPL-3.0: read-only evidence, no code**, the same
+  bar as [OD-12](docs/research/OWNER_DECISIONS.md). The invariant and the test
+  shape are adopted as entry conditions on T-013 and T-050;
+  [MESHCORE_PARSER_BOUNDS §8](docs/research/MESHCORE_PARSER_BOUNDS.md) is the
+  record. It also upgrades P4 from one project's defect to a two-instance
+  pattern, which is why it is written as an invariant and not as a note.
 - **`attadipa_link`'s decoder was checked, not assumed.** It validates the
   declared length before reading (`frame_codec.cpp:139`, `:147`) behind a length
   check and a CRC. The finding does not transplant, and nothing in `link/`

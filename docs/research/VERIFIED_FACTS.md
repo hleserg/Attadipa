@@ -34,10 +34,10 @@ An entry that cannot name its source does not belong here. It belongs in
 ### The pinned MeshCore revision is upstream's current release, not a lagging one
 
 - **Claim:** `d92964352441e53b93e8667b802e04f6e072b39e` is simultaneously
-  Attadipa's pin, the tip of `meshcore-dev/MeshCore`'s `main`, and the newest
-  release (`companion-v1.17.1`, `repeater-v1.17.1`, `room-server-v1.17.1`,
-  published 2026-08-14). `dev` is at `9d7cee66394fffd6e8c6e9f39fe03660cb314f64`,
-  2026-08-22.
+  Attadipa's pin, the tip of `meshcore-dev/MeshCore`'s `main` **as of 2026-08-23**,
+  and the newest release (`companion-v1.17.1`, `repeater-v1.17.1`,
+  `room-server-v1.17.1`, published 2026-08-14). `dev` was at
+  `9d7cee66394fffd6e8c6e9f39fe03660cb314f64`, 2026-08-22.
 - **Source:** GitHub API `repos/meshcore-dev/MeshCore/branches/{main,dev}`,
   `/releases` and `/commits?per_page=1`.
 - **Checked:** 2026-08-23, independently the same day by two pieces of research
@@ -45,6 +45,12 @@ An entry that cannot name its source does not belong here. It belongs in
   ([#142](https://github.com/hleserg/Attadipa/issues/142)) and the BLE
   frame-capacity work ([#143](https://github.com/hleserg/Attadipa/issues/143)) —
   which agreed.
+- **Amended 2026-08-24:** `main` has moved to
+  `0679dbeffc504d562d2f09eb072fdc223f8ffc2a`, two commits ahead, and
+  `compare/<pin>...main` lists exactly one file: `docs/faq.md`. So the pin is **no
+  longer the tip** and is still upstream's newest **code** and newest release.
+  `dev` is `12998cba8969e4004d94ed94b5e8e5bbdfa05571`. The two halves are recorded
+  separately because only one of them ages.
 - **Note:** `pushed_at` is more recent than either, because it counts pushes to
   any branch. It is not a claim about `main`.
 - **Consequence for the BLE frame-sizing finding:** there is no superseding
@@ -111,6 +117,47 @@ An entry that cannot name its source does not belong here. It belongs in
   whether the end-to-end path through `Mesh::onRecvPacket` runs — both need
   builds this project has not made. See
   [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) M22.
+
+### Meshtastic shipped the same defect class and fixed it on 2026-08-23
+
+- **Claim:** `meshtastic/firmware` PR **#11573** is **merged** — merge commit
+  `ac330e6a6b9fca267fe3faab27ee50c4e91bee28`, head `6094d148`, base `develop`
+  (`05f64741`), 4 files, +58 −5. It replaces
+  `assert(p->encrypted.size <= sizeof(radioBuffer.payload))` in
+  `src/mesh/RadioInterface.cpp::beginSending()` with a runtime check that logs,
+  calls `packetPool.release(p)` and returns 0 *before* the `memcpy`; makes
+  `RadioLibInterface::startSend` unwind on that zero (`completeSending()`,
+  `powerMon->clearState(…Lora_TXOn)`, `startReceive()`); moves
+  `reconfigureForBeaconTX(this, nullptr)` out of `completeSending()`'s `if (p)`
+  arm so the radio is restored even with no packet; and releases the beacon
+  packet on `ERRNO_SHOULD_RELEASE` at both `router->send(p)` sites in
+  `src/modules/MeshBeaconModule.cpp`. `test/test_radio/test_main.cpp` gains
+  `test_beginSending_oversizedPayloadAbortsSafely()`, which asserts the return is
+  0, `sendingPacket` is null, **and the pool slot is reusable**.
+- **Source:** the merged diff, `GET /repos/meshtastic/firmware/pulls/11573` with
+  `Accept: application/vnd.github.v3.diff`, plus `/pulls/11573` and
+  `/pulls/11573/files` for the metadata.
+- **Checked:** 2026-08-24, independently of the owner's summary of the same
+  change; every claim in that summary held.
+- **Not in a release.** `compare/master...ac330e6a` answers `diverged`, ahead 828
+  / behind 103, so `master` does not contain it, and the newest release
+  `v2.7.26.54e0d8d` was published 2026-06-24. The shipping firmware still has the
+  assertion.
+- **Licence: GPL-3.0** (`repos/meshtastic/firmware` → `license.spdx_id`).
+  **Read-only evidence. No code from it may enter this repository**, which is the
+  same bar as [OD-12](OWNER_DECISIONS.md).
+- **Not established, and deliberately not claimed:** whether that `assert()` was
+  compiled out in shipping builds. `NDEBUG` appears in three files of that
+  repository and in none of its build flags; whether the Arduino/ESP-IDF
+  toolchain defines it for those environments was not traced.
+- **Hardware:** **NOT EXECUTED — HARDWARE REQUIRED.** The pull request's author
+  lists Heltec LoRa32 V3, LilyGo T-Deck, Seeed T-1000E and Wio-E5. None was
+  checked here and this project has none of them.
+- **Why it is here:** it makes the `Utils::decrypt` finding above a
+  **two-instance pattern** rather than one project's defect — two unrelated mesh
+  firmwares, different radios, different code, both with a wire-supplied length
+  reaching a fixed destination with nothing executable in between. See
+  [MESHCORE_PARSER_BOUNDS §8](MESHCORE_PARSER_BOUNDS.md).
 
 ### Attadipa's own frame decoder validates length before reading
 
@@ -183,9 +230,10 @@ An entry that cannot name its source does not belong here. It belongs in
 **Merged upward, 2026-08-25.** This entry and *"The pinned MeshCore revision is
 upstream's current release, not a lagging one"* were the same claim, reached by
 two research runs a few hours apart with different API calls. They are now one
-entry near the top of this section, carrying both sources. Kept as a signpost
-rather than deleted, because two entries saying the same thing is how a reader
-ends up citing the one that was not updated.
+entry near the top of this section, carrying both sources and the 2026-08-24
+amendment that `main` has since moved by two documentation commits. Kept as a
+signpost rather than deleted, because two entries saying the same thing is how a
+reader ends up citing the one that was not updated.
 
 ---
 

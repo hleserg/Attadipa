@@ -90,6 +90,24 @@ in both cases.
   Attadipa code changed and none should**: we link no MeshCore. It moves the
   criteria for a future local provider's pin, nothing else. `attadipa_link`'s own
   decoder was checked and is not analogous. Left open as M20–M23.
+
+  **A second ecosystem reached the same invariant from the other end, and it is
+  not ours to copy.** The owner brought Meshtastic
+  [firmware#11573](https://github.com/meshtastic/firmware/pull/11573) on
+  2026-08-24; it is **merged** (`ac330e6a`, 2026-08-23) and every claim about it
+  checks out against the merged diff. It replaces an `assert()` on an on-air
+  payload length with an executable rejection that also releases the packet and
+  unwinds the transmit state, and it lands a unit test that asserts the rejection
+  rather than the crash. Two things it changes for us and two it does not: the
+  bounds-and-cleanup invariant is now **independently confirmed** rather than
+  inferred from one project's parsers, and a test *shape* is available to copy;
+  but the code is **GPL-3.0** and cannot enter this repository, and it is
+  **not in any release** — `master` does not contain the merge commit, so the
+  shipping firmware still has the assertion.
+  [MESHCORE_PARSER_BOUNDS §8](docs/research/MESHCORE_PARSER_BOUNDS.md) is the
+  record, and the invariant it yields is an entry condition on T-013 and
+  T-050 rather than work to start now — there is no radio stack for it to
+  constrain yet.
 - **T-041 — MeshCore 1.17 upstream review — done.**
   [`docs/upstream/meshcore-1.17-review.md`](docs/upstream/meshcore-1.17-review.md).
   Ten of the thirteen owner-named pull requests are **still open**, so most of
