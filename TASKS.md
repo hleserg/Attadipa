@@ -2994,6 +2994,17 @@ closed. Caught by the independent review of
 see an ID that is consistent here and wrong there. Its four open questions were
 renumbered with it, M15–M18 → **M20–M23**, same collision one file along.
 
+**It also landed in two pieces, and the second piece is this entry.** `a7624b0`
+merged #160 as **14 of its 19 files** — the report and the harness, everything
+under `docs/research/meshcore-parser-bounds/` — and left `STATUS.md`, `TASKS.md`,
+`VERIFIED_FACTS.md`, `OPEN_QUESTIONS.md` and `REUSE_LEDGER.md` behind. For a few
+hours `main` therefore held a research document that no status file mentioned and
+whose References line sent a reader to `OPEN_QUESTIONS` M15–M17, which on `main`
+are the frame-capacity questions and not these. Nothing was wrong with the
+evidence; the index around it was missing. That is what the second pull request
+restores, and it is worth knowing that a green partial merge looks exactly like a
+whole one from the commit list.
+
 - **The pin is not lagging.** `d929643` is simultaneously our pin, upstream's
   `main` tip and the newest release. Every file the three pull requests touch is
   byte-identical between the pin and both of their `dev` bases, so their diffs

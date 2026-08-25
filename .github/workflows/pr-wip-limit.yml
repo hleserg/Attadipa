@@ -1,0 +1,49 @@
+name: PR WIP limit
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+permissions: {}
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    if: >-
+      vars.CLAUDE_AUTOMATION_ENABLED != 'false' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - id: wip
+        name: Count active pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # The first pull request that introduces this trusted rule cannot run
+          # a file which is intentionally absent from main until that PR merges.
+          if [ ! -f .github/scripts/wip-limit.sh ]; then
+            echo "state=bootstrap" >> "$GITHUB_OUTPUT"
+            echo "count=unknown" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bash .github/scripts/wip-limit.sh
+      - name: Report an over-limit queue
+        if: steps.wip.outputs.state == 'full' || steps.wip.outputs.state == 'incident' || steps.wip.outputs.state == 'unknown'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          STATE: ${{ steps.wip.outputs.state }}
+          COUNT: ${{ steps.wip.outputs.count }}
+        run: |
+          set -euo pipefail
+          body="$(bash .github/scripts/wip-limit.sh --say "$STATE" "$COUNT")"
+          if ! gh pr view "$PR" --repo "$REPO" --json comments --jq '[.comments[].body] | any(contains("<!-- attadipa-wip-limit -->"))' | grep -qx true; then
+            printf '<!-- attadipa-wip-limit -->\n%s\n' "$body" | gh pr comment "$PR" --repo "$REPO" --body-file -
+          fi
+          if [ "$STATE" != unknown ]; then gh pr edit "$PR" --repo "$REPO" --add-label queue:over-limit || true; fi

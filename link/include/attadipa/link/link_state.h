@@ -109,6 +109,26 @@ public:
     LinkState() = default;
     explicit LinkState(const Config& config) : config_(config) {}
 
+    // `reason` is the caller's answer to "why", and only two events ask it:
+    // `Detach` and `PeerGone`. They are the two whose cause lives outside this
+    // machine — a rail, a cable, a stack, a peer — and which no amount of local
+    // state can reconstruct. Every other event carries its own cause by
+    // definition (`LocalClose` is `LocalRequest`, `Fault` is `Fault`,
+    // `SubsystemRestart` is `SubsystemRestart`, a `tick()` that expires is
+    // `LivenessTimeout`) and ignores the argument rather than inviting a caller
+    // to contradict it.
+    //
+    // The default is `Unknown` and it is a real answer, not a placeholder to be
+    // improved on. A transport that cannot distinguish "the user unplugged it"
+    // from "the regulator browned out" is *supposed* to say `Unknown`; an
+    // adapter that guesses a specific reason to avoid saying so has turned a
+    // gap in the evidence into a false field report, which is the more expensive
+    // of the two. Pass the most precise reason the transport actually
+    // established, and nothing else.
+    //
+    // `DisconnectReason::None` is not sayable here. It means "there has not been
+    // a disconnect", so as an argument to one it is a contradiction, and it is
+    // recorded as `Unknown`.
     EventOutcome apply(LinkEvent event, MonotonicTime now,
                        DisconnectReason reason = DisconnectReason::Unknown);
 
@@ -119,6 +139,21 @@ public:
 
     TransportPhase   phase() const { return phase_; }
     bool             ready() const { return phase_ == TransportPhase::Ready; }
+
+    // Why the last *session* ended — and a session is a period spent in `Ready`,
+    // which is the same thing `sessions()` counts. So this moves when `Ready` is
+    // left and at no other time: a `Detach` from `Attached` or `Connecting`
+    // ends no session, and must not overwrite the reason the previous one
+    // ended with a report about a link that was already idle. `reset()` is the
+    // exception, and it is not one really — a subsystem restart ends whatever
+    // was going on, including nothing.
+    //
+    // It answers the first question anyone asks about an intermittent link,
+    // which is who let go first. That only works if every route in is honest,
+    // so the reason is either the caller's or one this machine can derive; it is
+    // never assumed. Before issue #162 the `Detach` route assumed `PeerClosed`,
+    // and a device that had switched its own peripheral rail off blamed the peer
+    // for the disconnect it had itself caused.
     DisconnectReason last_disconnect() const { return last_disconnect_; }
 
     // Increments every time a session begins. Anything that outlives a session

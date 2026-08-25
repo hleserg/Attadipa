@@ -18,10 +18,18 @@ void LinkState::enter(TransportPhase next, MonotonicTime now, DisconnectReason r
 
     // A session ends whenever we leave Ready, whatever the route out. The epoch
     // moves here and nowhere else, so there is exactly one place that can
-    // forget to move it.
+    // forget to move it — and it is the same one place that records why, so an
+    // epoch that has moved can never be paired with a reason that has not.
+    //
+    // `None` means "there has not been a disconnect", so it cannot also be the
+    // reason one happened; a caller that offers it is saying nothing, and
+    // `Unknown` is what saying nothing is called here. No route in `apply()`
+    // reaches this branch with `None` today, which is exactly why the guard is
+    // cheap: it costs nothing now and stops a future adapter from recording a
+    // session that ended for no reason at all.
     if (phase_ == TransportPhase::Ready) {
         ++epoch_;
-        last_disconnect_ = reason;
+        last_disconnect_ = reason == DisconnectReason::None ? DisconnectReason::Unknown : reason;
     }
     if (next == TransportPhase::Ready) {
         ++sessions_;
@@ -72,10 +80,22 @@ EventOutcome LinkState::apply(LinkEvent event, MonotonicTime now, DisconnectReas
             // is #2333's first defect inverted: a disconnect that arrives in an
             // unexpected state must still clear the state, because the
             // alternative is a device that believes in a peer that is gone.
+            //
+            // The clearing is unconditional; the *attribution* is not, and the
+            // two were once the same line. A detach is the peripheral leaving —
+            // a rail switched off, a cable pulled, a subsystem torn down — and
+            // which of those it was is knowable only to the caller, so the
+            // caller's reason is what gets recorded. It used to be recorded as
+            // `PeerClosed`, which is the one thing a detach is *not*: it names
+            // the peer as the party that let go, when the peer may still be
+            // sitting there waiting for a device that has powered its own radio
+            // down. A caller that genuinely does not know says so by leaving the
+            // default `Unknown` in place, and `Unknown` is a better field report
+            // than a confident wrong answer.
             if (phase_ == TransportPhase::Absent) {
                 return EventOutcome::Redundant;
             }
-            enter(TransportPhase::Absent, now, DisconnectReason::PeerClosed);
+            enter(TransportPhase::Absent, now, reason);
             return EventOutcome::Applied;
 
         case LinkEvent::PeerArriving:

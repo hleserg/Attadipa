@@ -7,6 +7,13 @@ second ecosystem arriving at the same invariant). **Research only — no Attadip
 production code changed, and none should on the strength of this document
 alone.**
 
+*This document reached `main` in two pieces. `a7624b0` took it and the harness —
+14 of the 19 files of [#160](https://github.com/hleserg/Attadipa/pull/160) — and
+left the five index files behind, so for a few hours the References below pointed
+at open questions that belong to a different piece of research. The second pull
+request carries `STATUS.md`, `TASKS.md`, `VERIFIED_FACTS.md`, `OPEN_QUESTIONS.md`
+and `REUSE_LEDGER.md`, along with the review fixes and §8.*
+
 Three upstream pull requests filed on 2026-08-21 and 2026-08-22 claim missing
 length checks in MeshCore's frame and advertisement parsers, found by fuzzing.
 The question this answers is not "are they right" — they are — but the three

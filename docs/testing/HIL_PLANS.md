@@ -306,6 +306,19 @@ actually delivers those events in that order is not a host question.
 3. Kill the BLE stack and re-initialise it while connected. Confirm
    `SubsystemRestart` and that nothing above the link keeps a stale handle.
 4. Turn Bluetooth off on the phone mid-transfer.
+5. Make the *device* end it, twice, while the peer sits there doing nothing: once
+   by asking the transport to stop, and once by cutting the peripheral's supply
+   under it. Confirm `last_disconnect()` reports the local reason both times.
+
+**Step 5 is a different question from the four above it, which is why it is
+listed separately.** Those ask what phase the link lands in; this one asks who it
+says let go, and until issue #162 the answer was `PeerClosed` for every detach
+whatever had actually happened. The transport is what has to be honest here now:
+`LinkState` records what the adapter hands it, so a `Detach` raised from a rail
+being switched off must carry `LocalRequest`, and one raised because a stack
+reported the peripheral gone with no cause must carry `Unknown` rather than a
+guess. `Unknown` is a pass. `PeerClosed` for a disappearance the device caused
+is a fail, and it is a fail in the adapter, not in the state machine.
 
 **Expected.** Every case ends in a phase the model has a name for, and
 `ignored_events` is zero or explained.
