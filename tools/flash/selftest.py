@@ -76,6 +76,14 @@ MUST_REJECT: dict[str, tuple[str, str]] = {
         "factory, app, factory, 0x101000, 4M\n",
         "app partition must start",
     ),
+    "an app partition written as numeric type 0x00": (
+        "factory, 0x00, factory, 0x101000, 4M\n",
+        "app partition must start",
+    ),
+    "an app partition written as numeric type 00": (
+        "factory, 00, factory, 0x101000, 4M\n",
+        "app partition must start",
+    ),
     "a partition sitting on top of the partition table": (
         "nvs, data, nvs, 0x8000, 24K\n",
         "inside the bootloader",
@@ -104,6 +112,24 @@ MUST_REJECT: dict[str, tuple[str, str]] = {
     "a size with a suffix ESP-IDF does not use": (
         "nvs, data, nvs, 0x9000, 24G\n",
         "not a number",
+    ),
+    "a comments-only table": (
+        "# no partition rows survived\n",
+        "contains no partitions",
+    ),
+    "a duplicate partition name": (
+        "storage, data, nvs, 0x9000, 4K\n"
+        "storage, data, nvs, 0xa000, 4K\n",
+        "duplicate partition name",
+    ),
+    "partition names that collide after 16 bytes": (
+        "attadipa_storage_a, data, nvs, 0x9000, 4K\n"
+        "attadipa_storage_b, data, nvs, 0xa000, 4K\n",
+        "maximum is 16",
+    ),
+    "a multibyte partition name longer than 16 bytes": (
+        "хранилище, data, nvs, 0x9000, 4K\n",
+        "maximum is 16",
     ),
 }
 
@@ -224,7 +250,7 @@ def check_discovery(tmp: Path) -> list[str]:
     # spelt the other way and reported the checker broken. The separator
     # is not what this case is about.
     found = {path.relative_to(root).as_posix() for path in module.discover(root)}
-    expected = {"boards/waveshare/partitions.csv"}
+    expected = {"firmware/partitions.csv", "boards/waveshare/partitions.csv"}
     if found != expected:
         return [f"discover() picked up {sorted(found)}, expected "
                 f"{sorted(expected)}"]
@@ -235,6 +261,40 @@ def check_discovery(tmp: Path) -> list[str]:
         return [f"the ceiling is {module.ADDRESSING_CEILING:#x}; moving it is a "
                 f"hardware claim and needs a measurement, not an edit"]
     return []
+
+
+def check_unreadable_inputs(tmp: Path) -> list[str]:
+    failures = []
+    invalid_utf8 = tmp / "invalid-partitions.csv"
+    invalid_utf8.write_bytes(b"\xff\xfe")
+    for case, path, phrase in (
+        ("non-UTF-8 input", invalid_utf8, "not valid UTF-8"),
+        ("a directory passed as a table", tmp, "not a regular file"),
+    ):
+        result = run(str(path))
+        output = result.stdout + result.stderr
+        if result.returncode == 0:
+            failures.append(f"ACCEPTED but must be refused: {case}")
+        elif phrase not in output:
+            failures.append(f"{case} was refused by a traceback rather than "
+                            f"a deterministic diagnostic: {output.strip()!r}")
+    return failures
+
+
+def check_overflow_does_not_cascade(tmp: Path) -> list[str]:
+    path = write(
+        tmp, "overflow-with-later-row",
+        "huge, data, spiffs, 0x10000, 0x100000000\n"
+        "later, data, nvs, 0x20000, 4K\n",
+    )
+    result = run(str(path))
+    output = result.stdout + result.stderr
+    failures = []
+    if result.returncode == 0 or "overflows the 32-bit" not in output:
+        failures.append(f"the overflowing row was not refused: {output.strip()!r}")
+    if "inside huge" in output:
+        failures.append("a 32-bit-overflow row caused a spurious overlap finding")
+    return failures
 
 
 def check_the_flash_size_is_a_rule_of_its_own(tmp: Path) -> list[str]:
@@ -288,6 +348,8 @@ def main() -> int:
         tmp = Path(raw)
         failures = (check_rejections(tmp) + check_acceptances(tmp)
                     + check_vendor_table() + check_discovery(tmp)
+                    + check_unreadable_inputs(tmp)
+                    + check_overflow_does_not_cascade(tmp)
                     + check_the_flash_size_is_a_rule_of_its_own(tmp))
 
     if failures:
@@ -296,7 +358,7 @@ def main() -> int:
             print(f"  - {failure}")
         return 1
 
-    cases = len(MUST_REJECT) + len(MUST_ACCEPT) + 3
+    cases = len(MUST_REJECT) + len(MUST_ACCEPT) + 7
     print(f"partition_check selftest: {cases} cases, all as expected.")
     return 0
 

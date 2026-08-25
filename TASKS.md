@@ -2947,7 +2947,9 @@ A1's schematic-revision
 - **Acceptance:** the separate `firmware/` project builds flash and PURE_RAM
   variants from a clean checkout, links the existing core/platform/link/l10n
   libraries, enforces the 16 MB address ceiling and documents reproducible
-  flash/RAM procedures.
+  flash/RAM procedures. CI checks both final ELFs for a callable symbol from
+  every required library and fails configuration if a direct dependency is
+  removed, so unused archives do not count as linkage evidence.
 - **Hardware:** both variants booted on the physical Waveshare unit; 32 MB flash,
   8 MB octal PSRAM, the development partition table and stable heartbeat were
   measured. Full transcript:
