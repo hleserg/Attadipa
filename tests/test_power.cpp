@@ -405,13 +405,77 @@ void test_the_start_kind_follows_what_was_retained()
     unchecked.backup_retained = true;
     CHECK(start_kind(unchecked) == StartKind::Cold);
 
-    // Hot is a different fact and does not go through the capability at all: it
-    // is about retained ephemeris and a recent fix. An unchecked receiver that
-    // demonstrably still holds ephemeris is still hot, because that is an
-    // observation rather than a promise.
+    // Hot is a different fact and does not go through the capability at all:
+    // `ephemeris_retained` is direct evidence that a rail which stayed up kept
+    // the data, not an inference from the recent fix two lines below. The owner
+    // clears it when neither rail did, and the test after this one is where
+    // that half of the contract is checked rather than asserted in prose.
     unchecked.ephemeris_retained = true;
     unchecked.since_last_fix     = Millis{60000};
     CHECK(start_kind(unchecked) == StartKind::Hot);
+}
+
+// The half of the retention contract a comment cannot hold on its own.
+//
+// The header says `ephemeris_retained` is direct evidence and that clearing it
+// is the owner's job once nothing stays powered. Both sentences are worth only
+// what the checks below make them worth: the first refuses the inference a
+// future driver is most likely to make, and the rest walk the scenario that
+// inference produces.
+void test_retained_ephemeris_is_evidence_and_not_an_inference()
+{
+    // A fix one second old and nothing kept. Whatever the backup domain says,
+    // and whether or not it was powered, this is never Hot — recency is not
+    // retention. A driver deriving the flag from `since_last_fix` would turn
+    // every one of these into a promise of seconds.
+    for (const GnssCapabilities& caps : {kUnknown, kNone, kFull}) {
+        for (bool retained : {false, true}) {
+            GnssContext recent;
+            recent.capabilities       = caps;
+            recent.backup_retained    = retained;
+            recent.ephemeris_retained = false;
+            recent.since_last_fix     = Millis{1000};
+            CHECK(start_kind(recent) != StartKind::Hot);
+        }
+    }
+
+    // The scenario the asymmetry was filed over. A tracking receiver whose
+    // backup domain nobody has established goes into deep sleep: next_state()
+    // has nowhere to retain anything, so it cuts the rail.
+    GnssContext sleeping;
+    sleeping.capabilities       = kUnknown;
+    sleeping.ephemeris_retained = true;
+    sleeping.since_last_fix     = Millis{30000};
+    sleeping.device_power       = PowerState::DeepSleep;
+    CHECK(next_state(GnssState::Tracking, sleeping) == GnssState::Off);
+
+    // So the owner clears the flag, and the receiver waking thirty seconds
+    // later is told the truth: minutes, not seconds.
+    GnssContext woken        = sleeping;
+    woken.device_power       = PowerState::Active;
+    woken.ephemeris_retained = false;
+    woken.backup_retained    = false;
+    CHECK(start_kind(woken) == StartKind::Cold);
+
+    // This is where that line of the contract is load-bearing rather than
+    // decorative. An owner who skips it gets Hot out of a receiver holding
+    // nothing, and every wait quoted or timeout sized from it is wrong by
+    // minutes. Asserted rather than described, so "the header says so" has
+    // something underneath it.
+    GnssContext skipped        = woken;
+    skipped.ephemeris_retained = true;
+    CHECK(start_kind(skipped) == StartKind::Hot);
+
+    // And the reason the fix is not "make Hot require the backup domain too".
+    // A receiver with no backup domain at all whose own rail never dropped is
+    // still holding valid ephemeris, and it is the one most certain to deserve
+    // a hot start. Requiring `backup_retained` here would refuse it.
+    GnssContext never_slept;
+    never_slept.capabilities       = kNone;
+    never_slept.backup_retained    = false;
+    never_slept.ephemeris_retained = true;
+    never_slept.since_last_fix     = Millis{60000};
+    CHECK(start_kind(never_slept) == StartKind::Hot);
 }
 
 // §8 of the brief, and it is a prohibition rather than a feature: assistance
@@ -648,6 +712,7 @@ int main()
     test_a_receiver_can_always_be_switched_off();
     test_an_unchecked_capability_is_not_a_missing_one();
     test_the_start_kind_follows_what_was_retained();
+    test_retained_ephemeris_is_evidence_and_not_an_inference();
     test_assistance_is_never_required();
     test_the_device_state_outranks_the_receiver();
     test_motion_evidence_is_scoped_to_the_receiver_body();
