@@ -5,6 +5,19 @@ Last updated: 2026-08-24
 Shape fixed by [final §93](docs/master-prompt-final.md). It is a status file,
 not a history — what changed and why lives in git and in the ADRs.
 
+## Site integrity guards
+
+The public site keeps static metadata, the runtime language switcher and the
+no-JavaScript reveal fallback under deterministic checks.
+
+`tools/site/test_check_head_sync.py` holds 44 cases: 34 break the pair and 10
+leave it valid. The head-sync guard runs with 44 mutation tests.
+
+The site-facts suite (`tools/site/test_check_site_facts.py`) holds 25 cases: 21
+demand a report, 4 demand silence.
+
+The reveal-contract suite (`tools/site/test_check_reveal_contract.py`) holds 13 cases: 9 demand a report, 4 demand silence.
+
 ## Current milestone
 
 **M1 — simulator and the product design foundation.** M0.5, the reconciliation

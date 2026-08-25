@@ -461,6 +461,33 @@ jobs:
       - name: Links and anchors, spans, task IDs, OD numbers, task bodies, root files, citations, open-question IDs
         run: python3 tools/docs/check_docs.py .
 
+      # The public site has two render paths: static HTML for non-JavaScript
+      # crawlers and the runtime language switcher. Keep their metadata and
+      # reveal fallback as explicit invariants, and test the checkers with the
+      # historical mutations they are meant to reject. The head-sync suite
+      # holds 44 cases: 34 break the pair and 10 leave it valid.
+      - name: The site head-sync check actually checks
+        run: python3 tools/site/test_check_head_sync.py
+
+      - name: The rendered site head matches its static HTML
+        run: python3 tools/site/check_head_sync.py .
+
+      # The site-facts suite holds 25 cases: 21 demand a report, 4 demand
+      # silence.
+      - name: The site-facts check actually checks
+        run: python3 tools/site/test_check_site_facts.py
+
+      - name: SEO image facts match repository assets
+        run: python3 tools/site/check_site_facts.py .
+
+      # The reveal-contract suite holds 13 cases: 9 demand a
+      # report, 4 demand silence.
+      - name: The reveal-contract check actually checks
+        run: python3 tools/site/test_check_reveal_contract.py
+
+      - name: The site remains readable without JavaScript
+        run: python3 tools/site/check_reveal_contract.py .
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest
