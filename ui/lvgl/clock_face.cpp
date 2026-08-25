@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "attadipa_fonts.h"
+#include "generated/attadipa_images.h"
 
 namespace attadipa::ui {
 namespace {
@@ -26,9 +27,11 @@ void circle(lv_obj_t *object, int size, lv_color_t colour, lv_opa_t opacity) {
   lv_obj_set_style_bg_opa(object, opacity, LV_PART_MAIN);
 }
 
-int wave(unsigned value) {
-  const unsigned phase = value % 200;
-  return static_cast<int>(phase <= 100 ? phase : 200 - phase);
+void pulse_firefly(void *object, int32_t opacity) {
+  auto *dot = static_cast<lv_obj_t *>(object);
+  lv_obj_set_style_bg_opa(dot, static_cast<lv_opa_t>(opacity), LV_PART_MAIN);
+  lv_obj_set_style_shadow_opa(dot, static_cast<lv_opa_t>(opacity / 2),
+                              LV_PART_MAIN);
 }
 
 } // namespace
@@ -45,12 +48,7 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
   }
   screen_ = screen;
   config_ = config;
-  phase_ = 0;
-  ripple_step_ = 0;
-  touch_ticks_ = 0;
-  brand_firefly_ = nullptr;
-  brand_wings_[0] = nullptr;
-  brand_wings_[1] = nullptr;
+  touch_glow_ticks_ = 0;
   lv_obj_clean(screen);
   lv_obj_remove_style_all(screen);
   lv_obj_set_size(screen, config.width_px, config.height_px);
@@ -66,10 +64,6 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
       resolved(ColorRole::AccentPrimary, config.theme, config.pixel_cost);
   const lv_color_t glow =
       resolved(ColorRole::AccentGlow, config.theme, config.pixel_cost);
-  const lv_color_t meadow =
-      resolved(ColorRole::Success, config.theme, config.pixel_cost);
-  const lv_color_t teal =
-      resolved(ColorRole::Navigation, config.theme, config.pixel_cost);
   const lv_color_t border =
       resolved(ColorRole::BorderSubtle, config.theme, config.pixel_cost);
 
@@ -80,14 +74,49 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
   lv_obj_add_event_cb(screen, touch_event, LV_EVENT_PRESSED, this);
 
   const bool large = config.width_px >= 400;
+
+  if (config.theme == Theme::Night) {
+    lv_obj_t *background = lv_image_create(screen);
+    bare(background);
+    lv_image_set_src(background,
+                     &attadipa_background_clock_meadow_night_410x502);
+    if (!large) {
+      const unsigned scale = std::max(config.width_px * 256U / 410U,
+                                      config.height_px * 256U / 502U);
+      lv_image_set_scale(background, scale);
+    }
+    lv_obj_align(background, LV_ALIGN_CENTER, 0, 0);
+
+    const int firefly_x[] = {13, 28, 77, 88};
+    const int firefly_y[] = {77, 84, 78, 86};
+    const int duration[] = {1250, 1780, 2130, 1570};
+    const int delay[] = {0, 430, 900, 1300};
+    for (unsigned i = 0; i < 4; ++i) {
+      lv_obj_t *dot = lv_obj_create(screen);
+      circle(dot, large ? 5 : 4, glow, LV_OPA_20);
+      lv_obj_set_pos(dot, config.width_px * firefly_x[i] / 100,
+                     config.height_px * firefly_y[i] / 100);
+      lv_obj_set_style_shadow_color(dot, glow, LV_PART_MAIN);
+      lv_obj_set_style_shadow_width(dot, large ? 10 : 7, LV_PART_MAIN);
+      lv_anim_t pulse;
+      lv_anim_init(&pulse);
+      lv_anim_set_var(&pulse, dot);
+      lv_anim_set_exec_cb(&pulse, pulse_firefly);
+      lv_anim_set_values(&pulse, LV_OPA_20, LV_OPA_COVER);
+      lv_anim_set_duration(&pulse, duration[i]);
+      lv_anim_set_playback_duration(&pulse, duration[i]);
+      lv_anim_set_repeat_count(&pulse, LV_ANIM_REPEAT_INFINITE);
+      lv_anim_set_delay(&pulse, delay[i]);
+      lv_anim_start(&pulse);
+    }
+  }
+
   const lv_font_t *numeral =
-      large ? &attadipa_nunito_sans_96 : &attadipa_nunito_sans_64;
+      large ? &attadipa_nunito_sans_84 : &attadipa_nunito_sans_64;
   const lv_font_t *date_font =
       large ? &attadipa_nunito_sans_28 : &attadipa_nunito_sans_20;
   const lv_font_t *status_font =
       large ? &attadipa_nunito_sans_20 : &attadipa_nunito_sans_16;
-  const lv_font_t *caption_font =
-      large ? &attadipa_nunito_sans_16 : &attadipa_nunito_sans_14;
   lv_obj_set_style_text_font(screen, date_font, LV_PART_MAIN);
   const int horizontal_margin = large ? 28 : 14;
   const int row_width =
@@ -95,86 +124,12 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
   const int colon_width = large ? 30 : 18;
   const int digit_width = (row_width - colon_width) / 4;
 
-  // Two soft organic fields and moving points carry the reference board's
-  // meadow/firefly language without scaling a desktop illustration onto a
-  // watch. They stay behind all information and use only semantic colours.
-  lv_obj_t *meadow_blob = lv_obj_create(screen);
-  circle(meadow_blob, large ? 260 : 150, meadow, LV_OPA_20);
-  lv_obj_set_pos(meadow_blob, large ? -90 : -55, large ? 270 : 125);
-  lv_obj_t *teal_blob = lv_obj_create(screen);
-  circle(teal_blob, large ? 210 : 130, teal, LV_OPA_10);
-  lv_obj_set_pos(teal_blob, large ? 275 : 165, large ? -65 : -45);
-
-  for (unsigned i = 0; i < kFireflyCount; ++i) {
-    firefly_halos_[i] = lv_obj_create(screen);
-    fireflies_[i] = lv_obj_create(screen);
-    const int dot_size =
-        (large ? 5 : 3) + (text.mode == apps::ClockMode::Child ? 2 : 0);
-    circle(firefly_halos_[i], dot_size * 4, glow, LV_OPA_20);
-    circle(fireflies_[i], dot_size, i % 3 == 0 ? accent : glow, LV_OPA_COVER);
-  }
-
-  ripple_ = lv_obj_create(screen);
-  bare(ripple_);
-  lv_obj_set_style_radius(ripple_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(ripple_, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(ripple_, large ? 3 : 2, LV_PART_MAIN);
-  lv_obj_set_style_border_color(ripple_, glow, LV_PART_MAIN);
-  lv_obj_set_style_border_opa(ripple_, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_add_flag(ripple_, LV_OBJ_FLAG_HIDDEN);
-
-  // A tiny, deliberately geometric echo of the firefly mark. The 240 px face
-  // has no honest room for it; on the tall panel its wings can breathe.
-  if (large) {
-    brand_firefly_ = lv_obj_create(screen);
-    bare(brand_firefly_);
-    lv_obj_remove_flag(brand_firefly_, LV_OBJ_FLAG_CLICKABLE);
-    constexpr int mark_width = 76;
-    constexpr int mark_height = 80;
-    lv_obj_set_size(brand_firefly_, mark_width, mark_height);
-    brand_x_ = (static_cast<int>(config.width_px) - mark_width) / 2;
-    brand_y_ = 276;
-    lv_obj_set_pos(brand_firefly_, brand_x_, brand_y_);
-
-    lv_obj_t *tail_halo = lv_obj_create(brand_firefly_);
-    circle(tail_halo, 36, glow, LV_OPA_20);
-    lv_obj_set_pos(tail_halo, config.metrics.px(Dp{10}),
-                   config.metrics.px(Dp{20}));
-    for (unsigned i = 0; i < 2; ++i) {
-      brand_wings_[i] = lv_obj_create(brand_firefly_);
-      bare(brand_wings_[i]);
-      lv_obj_set_size(brand_wings_[i], config.metrics.px(Dp{14}),
-                      config.metrics.px(Dp{19}));
-      lv_obj_set_style_radius(brand_wings_[i], LV_RADIUS_CIRCLE, LV_PART_MAIN);
-      lv_obj_set_style_bg_color(brand_wings_[i], accent, LV_PART_MAIN);
-      lv_obj_set_style_bg_opa(brand_wings_[i], LV_OPA_70, LV_PART_MAIN);
-      lv_obj_set_pos(brand_wings_[i],
-                     config.metrics.px(i == 0 ? Dp{2} : Dp{23}),
-                     config.metrics.px(Dp{11}));
-    }
-    lv_obj_t *body = lv_obj_create(brand_firefly_);
-    bare(body);
-    lv_obj_set_size(body, config.metrics.px(Dp{8}), config.metrics.px(Dp{15}));
-    lv_obj_set_style_radius(body, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(body, muted, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(body, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(body, config.metrics.px(Dp{16}), config.metrics.px(Dp{10}));
-    lv_obj_t *head = lv_obj_create(brand_firefly_);
-    circle(head, 16, muted, LV_OPA_COVER);
-    lv_obj_set_pos(head, config.metrics.px(Dp{16}), config.metrics.px(Dp{4}));
-    for (int x : {22, 51}) {
-      lv_obj_t *antenna_tip = lv_obj_create(brand_firefly_);
-      circle(antenna_tip, 6, glow, LV_OPA_COVER);
-      lv_obj_set_pos(antenna_tip, x, 0);
-    }
-    lv_obj_t *tail = lv_obj_create(brand_firefly_);
-    bare(tail);
-    lv_obj_set_size(tail, config.metrics.px(Dp{9}), config.metrics.px(Dp{15}));
-    lv_obj_set_style_radius(tail, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(tail, glow, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(tail, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(tail, config.metrics.px(Dp{15}), config.metrics.px(Dp{22}));
-  }
+  touch_glow_halo_ = lv_obj_create(screen);
+  touch_glow_dot_ = lv_obj_create(screen);
+  circle(touch_glow_halo_, large ? 18 : 14, glow, LV_OPA_TRANSP);
+  circle(touch_glow_dot_, large ? 6 : 4, glow, LV_OPA_TRANSP);
+  lv_obj_add_flag(touch_glow_halo_, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(touch_glow_dot_, LV_OBJ_FLAG_HIDDEN);
 
   date_ = lv_label_create(screen);
   bare(date_);
@@ -220,64 +175,36 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
   lv_obj_set_style_text_color(seconds_, muted, LV_PART_MAIN);
   lv_obj_set_style_text_align(seconds_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
   lv_obj_set_style_pad_top(seconds_, large ? 7 : 4, LV_PART_MAIN);
-  lv_obj_align(seconds_, LV_ALIGN_CENTER, large ? 155 : 0, large ? 46 : 34);
+  lv_obj_align(seconds_, LV_ALIGN_CENTER, large ? 155 : 91, large ? 46 : 34);
 
-  timeline_ = lv_obj_create(screen);
-  bare(timeline_);
-  const int timeline_height = large ? 104 : 58;
-  lv_obj_set_size(timeline_, row_width, timeline_height);
-  lv_obj_set_style_radius(timeline_, large ? 28 : 18, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(timeline_, surface, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(timeline_, LV_OPA_60, LV_PART_MAIN);
-  lv_obj_set_style_border_width(timeline_, config.metrics.px(Dp{1}),
-                                LV_PART_MAIN);
-  lv_obj_set_style_border_color(timeline_, border, LV_PART_MAIN);
-  lv_obj_set_style_border_opa(timeline_, LV_OPA_30, LV_PART_MAIN);
-  lv_obj_align(timeline_, LV_ALIGN_BOTTOM_MID, 0, large ? -36 : -12);
+  steps_ = lv_obj_create(screen);
+  bare(steps_);
+  lv_obj_set_size(steps_, large ? 84 : 62, large ? 30 : 20);
+  lv_obj_align(steps_, LV_ALIGN_CENTER, 0, large ? 20 : 34);
 
-  const int inset = large ? 26 : 16;
-  timeline_width_ = static_cast<unsigned>(row_width - inset * 2);
-  lv_obj_t *timeline_track = lv_obj_create(timeline_);
-  bare(timeline_track);
-  lv_obj_set_size(timeline_track, timeline_width_, large ? 4 : 3);
-  lv_obj_set_style_radius(timeline_track, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(timeline_track, border, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(timeline_track, LV_OPA_30, LV_PART_MAIN);
-  lv_obj_set_pos(timeline_track, inset, large ? 58 : 33);
-
-  timeline_fill_ = lv_obj_create(timeline_);
-  bare(timeline_fill_);
-  lv_obj_set_height(timeline_fill_, large ? 4 : 3);
-  lv_obj_set_style_radius(timeline_fill_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(timeline_fill_, accent, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(timeline_fill_, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_pos(timeline_fill_, inset, large ? 58 : 33);
-
-  timeline_dot_ = lv_obj_create(timeline_);
-  circle(timeline_dot_, large ? 14 : 10, glow, LV_OPA_COVER);
-
-  timeline_value_ = lv_label_create(timeline_);
-  bare(timeline_value_);
-  lv_obj_set_style_text_font(timeline_value_, caption_font, LV_PART_MAIN);
-  lv_obj_set_style_text_color(timeline_value_, muted, LV_PART_MAIN);
-  lv_obj_align(timeline_value_, LV_ALIGN_TOP_RIGHT, -inset, large ? 16 : 7);
-
-  year_ = lv_label_create(timeline_);
-  bare(year_);
-  lv_obj_set_style_text_font(year_, caption_font, LV_PART_MAIN);
-  lv_obj_set_style_text_color(year_, muted, LV_PART_MAIN);
-  lv_obj_set_style_text_letter_space(year_, config.metrics.px(Dp{1}),
-                                     LV_PART_MAIN);
-  lv_obj_align(year_, LV_ALIGN_TOP_LEFT, inset + (large ? 134 : 86),
-               large ? 16 : 7);
-
-  for (unsigned i = 0; i < 7; ++i) {
-    weekday_dots_[i] = lv_obj_create(timeline_);
-    circle(weekday_dots_[i], large ? 7 : 5, border, LV_OPA_50);
-    lv_obj_set_pos(weekday_dots_[i],
-                   inset + static_cast<int>(i) * (large ? 17 : 11),
-                   large ? 21 : 11);
+  lv_obj_t *paw = lv_obj_create(steps_);
+  bare(paw);
+  lv_obj_set_size(paw, large ? 28 : 19, large ? 25 : 17);
+  lv_obj_set_pos(paw, 0, large ? 2 : 1);
+  const int toe_size = large ? 5 : 4;
+  const int toe_x[] = {0, large ? 7 : 5, large ? 14 : 10, large ? 21 : 15};
+  const int toe_y[] = {large ? 4 : 3, 0, 0, large ? 4 : 3};
+  for (unsigned i = 0; i < 4; ++i) {
+    lv_obj_t *toe = lv_obj_create(paw);
+    circle(toe, toe_size, glow, LV_OPA_COVER);
+    lv_obj_set_pos(toe, toe_x[i], toe_y[i]);
   }
+  lv_obj_t *pad = lv_obj_create(paw);
+  circle(pad, large ? 14 : 10, glow, LV_OPA_COVER);
+  lv_obj_set_height(pad, large ? 10 : 7);
+  lv_obj_set_pos(pad, large ? 7 : 5, large ? 13 : 9);
+
+  lv_obj_t *steps_value = lv_label_create(steps_);
+  bare(steps_value);
+  lv_label_set_text(steps_value, "7777");
+  lv_obj_set_style_text_font(steps_value, status_font, LV_PART_MAIN);
+  lv_obj_set_style_text_color(steps_value, muted, LV_PART_MAIN);
+  lv_obj_align(steps_value, LV_ALIGN_RIGHT_MID, 0, 0);
 
   status_ = lv_label_create(screen);
   bare(status_);
@@ -292,8 +219,8 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
 
   built_ = true;
   update(text);
-  animate();
   motion_timer_ = lv_timer_create(motion_tick, 50, this);
+  lv_timer_pause(motion_timer_);
 }
 
 void ClockFace::update(const apps::ClockText &text) {
@@ -304,37 +231,15 @@ void ClockFace::update(const apps::ClockText &text) {
     lv_label_set_text_fmt(digits_[i], "%c", text.time[i]);
   }
   lv_label_set_text(seconds_, text.seconds);
-  lv_label_set_text(year_, text.year);
   lv_label_set_text(date_, text.date);
   lv_label_set_text(status_, text.status);
-  const unsigned progress = std::min(text.day_progress_minutes, 1439U);
-  const unsigned fill = timeline_width_ * progress / 1439U;
-  lv_obj_set_width(timeline_fill_, std::max(fill, 1U));
-  const int inset = config_.width_px >= 400 ? 26 : 16;
-  const int y = config_.width_px >= 400 ? 53 : 29;
-  lv_obj_set_pos(
-      timeline_dot_,
-      inset + static_cast<int>(fill) - lv_obj_get_width(timeline_dot_) / 2, y);
-  lv_label_set_text_fmt(timeline_value_, "%u%%", progress * 100 / 1439U);
-  for (unsigned i = 0; i < 7; ++i) {
-    lv_obj_set_style_bg_color(weekday_dots_[i],
-                              i == text.weekday
-                                  ? resolved(ColorRole::AccentPrimary,
-                                             config_.theme, config_.pixel_cost)
-                                  : resolved(ColorRole::BorderSubtle,
-                                             config_.theme, config_.pixel_cost),
-                              LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(weekday_dots_[i],
-                            i == text.weekday ? LV_OPA_COVER : LV_OPA_40,
-                            LV_PART_MAIN);
-  }
   text.date[0] == '\0' ? lv_obj_add_flag(date_, LV_OBJ_FLAG_HIDDEN)
                        : lv_obj_remove_flag(date_, LV_OBJ_FLAG_HIDDEN);
   text.status[0] == '\0' ? lv_obj_add_flag(status_, LV_OBJ_FLAG_HIDDEN)
                          : lv_obj_remove_flag(status_, LV_OBJ_FLAG_HIDDEN);
   text.ready && text.status[0] == '\0'
-      ? lv_obj_remove_flag(timeline_, LV_OBJ_FLAG_HIDDEN)
-      : lv_obj_add_flag(timeline_, LV_OBJ_FLAG_HIDDEN);
+      ? lv_obj_remove_flag(steps_, LV_OBJ_FLAG_HIDDEN)
+      : lv_obj_add_flag(steps_, LV_OBJ_FLAG_HIDDEN);
   text.ready ? lv_obj_remove_flag(seconds_, LV_OBJ_FLAG_HIDDEN)
              : lv_obj_add_flag(seconds_, LV_OBJ_FLAG_HIDDEN);
 }
@@ -354,65 +259,68 @@ void ClockFace::touch(lv_event_t *event) {
   }
   lv_point_t point{};
   lv_indev_get_point(indev, &point);
-  touch_x_ = point.x;
-  touch_y_ = point.y;
-  touch_ticks_ = 32;
-  ripple_step_ = 1;
-  lv_obj_move_foreground(ripple_);
-  lv_obj_remove_flag(ripple_, LV_OBJ_FLAG_HIDDEN);
+  static constexpr int kDxQ4[] = {32, 26, 0, -26, -32, -26, 0, 26};
+  static constexpr int kDyQ4[] = {0, 20, 32, 20, 0, -20, -32, -20};
+  const unsigned direction =
+      (static_cast<unsigned>(point.x) * 31U +
+       static_cast<unsigned>(point.y) * 17U + ++touch_sequence_ * 47U) %
+      8U;
+  touch_glow_x_q4_ = point.x * 16;
+  touch_glow_y_q4_ = point.y * 16;
+  touch_glow_dx_q4_ = kDxQ4[direction];
+  touch_glow_dy_q4_ = kDyQ4[direction];
+  touch_glow_ticks_ = 32;
+  lv_obj_move_foreground(touch_glow_halo_);
+  lv_obj_move_foreground(touch_glow_dot_);
+  lv_obj_remove_flag(touch_glow_halo_, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_remove_flag(touch_glow_dot_, LV_OBJ_FLAG_HIDDEN);
+  lv_timer_resume(motion_timer_);
 }
 
 void ClockFace::animate() {
   if (!built_) {
     return;
   }
-  ++phase_;
-  const int width = static_cast<int>(config_.width_px);
-  const int height = static_cast<int>(config_.height_px);
-  for (unsigned i = 0; i < kFireflyCount; ++i) {
-    const int margin = config_.width_px >= 400 ? 22 : 12;
-    int x = margin +
-            wave(phase_ * (i % 3 + 1) + i * 31) * (width - margin * 2) / 100;
-    const int band = config_.width_px >= 400 ? 105 : 48;
-    const int travel = wave(phase_ * ((i + 1) % 3 + 1) + i * 47) * band / 100;
-    int y = i < 3 ? margin + travel : height - margin - travel;
-    if (touch_ticks_ > 0) {
-      x = (x * 2 + touch_x_) / 3;
-      y = (y * 2 + touch_y_) / 3;
-    }
-    const int halo = lv_obj_get_width(firefly_halos_[i]);
-    const int dot = lv_obj_get_width(fireflies_[i]);
-    lv_obj_set_pos(firefly_halos_[i], x - halo / 2, y - halo / 2);
-    lv_obj_set_pos(fireflies_[i], x - dot / 2, y - dot / 2);
+  if (touch_glow_ticks_ == 0) {
+    lv_timer_pause(motion_timer_);
+    return;
   }
-  if (brand_firefly_ != nullptr) {
-    const int bob = wave(phase_ * 2) / 12;
-    const int pull_x = touch_ticks_ > 0 ? (touch_x_ - width / 2) / 12 : 0;
-    const int pull_y = touch_ticks_ > 0 ? (touch_y_ - height / 2) / 18 : 0;
-    lv_obj_set_pos(brand_firefly_, brand_x_ + pull_x, brand_y_ + bob + pull_y);
-    const int flutter = wave(phase_ * 7) * 2;
-    lv_obj_set_style_transform_rotation(brand_wings_[0], -200 - flutter,
-                                        LV_PART_MAIN);
-    lv_obj_set_style_transform_rotation(brand_wings_[1], 200 + flutter,
-                                        LV_PART_MAIN);
+
+  const unsigned pulse_phase = touch_glow_ticks_ % 8U;
+  const int pulse =
+      static_cast<int>(pulse_phase <= 4U ? pulse_phase : 8U - pulse_phase);
+  const bool large = config_.width_px >= 400;
+  const int dot_size = (large ? 5 : 3) + pulse / 2;
+  const int halo_size = (large ? 15 : 11) + pulse;
+  const lv_opa_t opacity =
+      static_cast<lv_opa_t>(std::min(touch_glow_ticks_ * 12U, 255U));
+  const int x = touch_glow_x_q4_ / 16;
+  const int y = touch_glow_y_q4_ / 16;
+  lv_obj_set_size(touch_glow_halo_, halo_size, halo_size);
+  lv_obj_set_pos(touch_glow_halo_, x - halo_size / 2, y - halo_size / 2);
+  lv_obj_set_style_bg_opa(touch_glow_halo_, opacity / 4, LV_PART_MAIN);
+  lv_obj_set_size(touch_glow_dot_, dot_size, dot_size);
+  lv_obj_set_pos(touch_glow_dot_, x - dot_size / 2, y - dot_size / 2);
+  lv_obj_set_style_bg_opa(touch_glow_dot_, opacity, LV_PART_MAIN);
+
+  touch_glow_x_q4_ += touch_glow_dx_q4_;
+  touch_glow_y_q4_ += touch_glow_dy_q4_;
+  const int margin_q4 = (large ? 10 : 7) * 16;
+  if (touch_glow_x_q4_ < margin_q4 ||
+      touch_glow_x_q4_ >
+          (static_cast<int>(config_.width_px) * 16 - margin_q4)) {
+    touch_glow_dx_q4_ = -touch_glow_dx_q4_;
   }
-  if (touch_ticks_ > 0) {
-    --touch_ticks_;
+  if (touch_glow_y_q4_ < margin_q4 ||
+      touch_glow_y_q4_ >
+          (static_cast<int>(config_.height_px) * 16 - margin_q4)) {
+    touch_glow_dy_q4_ = -touch_glow_dy_q4_;
   }
-  if (ripple_step_ > 0) {
-    const int size =
-        10 + static_cast<int>(ripple_step_ * (config_.width_px >= 400 ? 9 : 6));
-    lv_obj_set_size(ripple_, size, size);
-    lv_obj_set_pos(ripple_, touch_x_ - size / 2, touch_y_ - size / 2);
-    lv_obj_set_style_border_opa(
-        ripple_,
-        static_cast<lv_opa_t>(
-            std::max(0, 180 - static_cast<int>(ripple_step_ * 13))),
-        LV_PART_MAIN);
-    if (++ripple_step_ > 13) {
-      ripple_step_ = 0;
-      lv_obj_add_flag(ripple_, LV_OBJ_FLAG_HIDDEN);
-    }
+
+  if (--touch_glow_ticks_ == 0) {
+    lv_obj_add_flag(touch_glow_halo_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(touch_glow_dot_, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_pause(motion_timer_);
   }
 }
 

@@ -5,7 +5,7 @@
 # its own headers. The design system names a `TypeRole`; this is one of the
 # places a role can be resolved into something that draws.
 #
-# The two display sizes are intentionally full Cyrillic subsets too. The Clock
+# The three display sizes are intentionally full Cyrillic subsets too. The Clock
 # only draws digits with them today, but the role is a product font contract,
 # not a private numeric asset.
 
@@ -15,6 +15,7 @@ add_library(attadipa_fonts STATIC
   generated/attadipa_nunito_sans_20.c
   generated/attadipa_nunito_sans_28.c
   generated/attadipa_nunito_sans_64.c
+  generated/attadipa_nunito_sans_84.c
   generated/attadipa_nunito_sans_96.c
 )
 

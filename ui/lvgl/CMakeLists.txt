@@ -6,5 +6,6 @@ target_link_libraries(attadipa_clock_ui PUBLIC
     attadipa_apps
     attadipa_ui
     attadipa_fonts
+    attadipa_images
     ${ATTADIPA_LVGL_TARGET}
 )

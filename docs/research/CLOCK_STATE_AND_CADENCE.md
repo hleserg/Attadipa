@@ -570,7 +570,7 @@ table: Inter at 48 px bpp 4 compressed is 34 997 B, which is affordable and not
 free.
 
 T-037 resolved this gap: `tools/font/generate_ui_fonts.py:50` now generates
-64 and 96 px display sizes as well, and the Clock pins each numeral into a
+64, 84 and 96 px display sizes as well, and the Clock pins each numeral into a
 fixed-width cell rather than allowing proportional figures to move the face.
 
 ---

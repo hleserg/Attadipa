@@ -3,7 +3,7 @@
 Three directories and two arrows, which is what final §45 asks for:
 
 ```
-ui/assets/source/     the art, committed, one file per icon per pixel size
+ui/assets/source/     the art, committed, exact target size
         ↓  tools/assets/generate_images.py   (the pipeline)
 ui/assets/generated/  LVGL C arrays, committed, plus INPUTS.sha256 — which
                       records the inputs *and* a hash of every file here
@@ -13,7 +13,7 @@ a screen asks for an IconSize and a Metrics, and gets an lv_image_dsc_t or nothi
 
 ## The rules, and where each is enforced
 
-**An icon has no colour.** Every asset is `LV_COLOR_FORMAT_A8` — a mask.
+**An icon has no colour.** Every icon is `LV_COLOR_FORMAT_A8` — a mask.
 Colour arrives at draw time through a `ColorRole`, the same way it does for
 text, so a theme reaches an icon and `legible_as_graphic()` can refuse a role
 that cannot carry a thin shape on that theme's page. A baked colour would be a
@@ -58,6 +58,11 @@ required even though compression is off. `apt install python3-pil` plus
 Nothing in the build runs any of them. The generated tree is committed and four
 tests notice when it goes stale.
 
+The full-screen Clock background is deliberately different: original Attadipa
+art at the panel's exact 410x502 geometry, converted to uncompressed RGB565.
+It is not reference-sheet art and it is not a vendor image. Its prompt and
+provenance live beside the source PNG in `source/backgrounds/README.md`.
+
 `ui_images_are_current` is the primary gate and it **needs nothing installed**.
 It compares two things, and the second one was missing until issue #69:
 
@@ -65,8 +70,8 @@ It compares two things, and the second one was missing until issue #69:
   the **drawings** — an encoder that changes its output is the asset changing,
   and hashing `icon_drawings.py` means an edited stroke weight with nothing
   regenerated is caught by arithmetic rather than by a package;
-* the **outputs**, each of the nine masks and the generated header against its
-  recorded SHA-256. An inputs digest alone says the tree was once built from
+* the **outputs**, each mask, the background and the generated header against
+  its recorded SHA-256. An inputs digest alone says the tree was once built from
   these sources and nothing at all about the bytes in it, so a hand-edited
   bitmap byte used to pass green — verified as a reproducer, not a worry. The
   format is `tools/integrity/stamp.py`, and the font tree is bound by the same
@@ -92,9 +97,9 @@ not applied, and waiting on a permission — `tools/integrity/README.md`, T-128.
 
 ## Cost
 
-14 457 B of `.rodata` for all nine masks — `A8` is one byte per pixel with
-`stride == width`, so an icon costs exactly its pixel count. Every declaration
-in `generated/attadipa_images.h` carries its own number, and
+426 097 B of `.rodata`: 14 457 B for the nine A8 masks and 411 640 B for the
+410x502 RGB565 Clock background. Every declaration in
+`generated/attadipa_images.h` carries its own number, and
 [RESOURCE_BUDGET](../../docs/architecture/RESOURCE_BUDGET.md) carries the
 reasoning about why three sizes and not seven.
 

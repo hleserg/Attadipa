@@ -55,7 +55,7 @@ SANDBOX_TREE = (
 FONT_CHECK = ("tools/font/generate_ui_fonts.py", "--check")
 IMAGE_CHECK = ("tools/assets/generate_images.py", "--check")
 
-FONT_SIZES = (14, 16, 20, 28, 64, 96)
+FONT_SIZES = (14, 16, 20, 28, 64, 84, 96)
 FONT_OUTPUTS = [f"assets/fonts/generated/attadipa_nunito_sans_{size}.c" for size in FONT_SIZES]
 FONT_STAMP = "assets/fonts/generated/INPUTS.sha256"
 
@@ -63,6 +63,8 @@ ICONS = ("mesh", "position", "warning")
 ICON_SIZES = (33, 39, 47)
 IMAGE_OUTPUTS = [f"ui/assets/generated/attadipa_icon_{name}_{size}.c"
                  for name in ICONS for size in ICON_SIZES]
+IMAGE_OUTPUTS.append(
+    "ui/assets/generated/attadipa_background_clock_meadow_night_410x502.c")
 IMAGE_OUTPUTS.append("ui/assets/generated/attadipa_images.h")
 IMAGE_STAMP = "ui/assets/generated/INPUTS.sha256"
 
@@ -201,8 +203,8 @@ def font_cases(sandbox: Path) -> None:
          ["the inputs changed"])
     case(sandbox, "an added size", FONT_CHECK, [FONT_CHECK[0]],
          lambda: substitute(sandbox / FONT_CHECK[0],
-                            "SIZES = (14, 16, 20, 28, 64, 96)",
-                            "SIZES = (14, 16, 20, 28, 32, 64, 96)"),
+                            "SIZES = (14, 16, 20, 28, 64, 84, 96)",
+                            "SIZES = (14, 16, 20, 28, 32, 64, 84, 96)"),
          ["the inputs changed"])
     case(sandbox, "a changed bit depth", FONT_CHECK, [FONT_CHECK[0]],
          lambda: substitute(sandbox / FONT_CHECK[0], "BPP = 4", "BPP = 2"),

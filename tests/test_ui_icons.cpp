@@ -30,7 +30,6 @@ void check(bool condition, const char* what, int line)
         ++failures;
     }
 }
-
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 // The two panels, by density. Same reasoning as `test_ui_tokens.cpp`: a test
@@ -101,7 +100,7 @@ int main()
         // FORMAT, and deliberately not byte order -- the two are different
         // questions and only one of them has a subject yet.
         //
-        // Every asset here is an A8 mask: one byte per pixel, nothing to get
+        // Every icon listed here is an A8 mask: one byte per pixel, nothing to get
         // the wrong way round. The first COLOUR asset is the first thing in
         // this repository whose bytes have an order, and this assertion is what
         // stops one arriving unnoticed. What it does NOT do is check that
@@ -152,6 +151,16 @@ int main()
         CHECK(l.dsc->data_size ==
               static_cast<std::uint32_t>(l.pixels) * static_cast<std::uint32_t>(l.pixels));
     }
+
+    const lv_image_dsc_t& background =
+        attadipa_background_clock_meadow_night_410x502;
+    CHECK(background.header.magic == LV_IMAGE_HEADER_MAGIC);
+    CHECK(background.header.cf == LV_COLOR_FORMAT_RGB565);
+    CHECK(background.header.w == 410);
+    CHECK(background.header.h == 502);
+    CHECK(background.header.stride == 820);
+    CHECK(background.data != nullptr);
+    CHECK(background.data_size == 410U * 502U * 2U);
 
     // ---------------------------------------------------------------------
     // Each mask is a drawing.
@@ -245,7 +254,8 @@ int main()
     CHECK(names.size() == listed().size());
 
     if (failures == 0) {
-        std::printf("ui_icons: %zu asset(s), all A8, all drawn, no substitution\n",
+        std::printf("ui_icons: %zu A8 icon(s) plus RGB565 Clock background, all "
+                    "descriptors valid\n",
                     listed().size());
     }
     return failures == 0 ? 0 : 1;

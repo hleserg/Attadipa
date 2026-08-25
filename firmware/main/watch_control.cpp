@@ -38,7 +38,7 @@ constexpr std::uint32_t kPollMs = 5;
 constexpr std::uint8_t kButtonDebounceSamples = 2;
 constexpr std::uint32_t kPmuPollMs = 20;
 constexpr gpio_num_t kTouchInterrupt = GPIO_NUM_38;
-constexpr gpio_num_t kPowerWake = GPIO_NUM_10;
+constexpr std::uint64_t kPmuSleepPollUs = 100'000;
 constexpr std::uint64_t kDebugWakeDelayUs = 750'000;
 constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;
 constexpr std::uint8_t kAxpInterruptStatus2 = 0x49;
@@ -160,7 +160,7 @@ public:
 
   esp_err_t attach() {
     gpio_config_t buttons{};
-    buttons.pin_bit_mask = (1ULL << GPIO_NUM_0) | (1ULL << kPowerWake);
+    buttons.pin_bit_mask = 1ULL << GPIO_NUM_0;
     buttons.mode = GPIO_MODE_INPUT;
     buttons.pull_up_en = GPIO_PULLUP_DISABLE;
     buttons.pull_down_en = GPIO_PULLDOWN_DISABLE;
@@ -225,6 +225,24 @@ private:
   esp_err_t write_pmu(std::uint8_t reg, std::uint8_t value) const {
     const std::uint8_t bytes[] = {reg, value};
     return i2c_master_transmit(pmu_, bytes, sizeof(bytes), 100);
+  }
+
+  bool consume_sleep_power_edge() const {
+    std::uint8_t status = 0;
+    const esp_err_t read_result = read_pmu(kAxpInterruptStatus2, status);
+    if (read_result != ESP_OK) {
+      ESP_LOGW(kTag, "read PMU while asleep: %s", esp_err_to_name(read_result));
+      return false;
+    }
+    const std::uint8_t edges = status & kAxpPowerEdges;
+    if (edges == 0) {
+      return false;
+    }
+    const esp_err_t clear_result = write_pmu(kAxpInterruptStatus2, edges);
+    if (clear_result != ESP_OK) {
+      ESP_LOGW(kTag, "clear PMU power edge: %s", esp_err_to_name(clear_result));
+    }
+    return true;
   }
 
   std::size_t output_free() const { return output_.size() - output_count_; }
@@ -355,8 +373,7 @@ private:
     if (!sleep_requested_ || !input_queue_.empty() ||
         input_state_.held_count(attadipa::core::InputOrigin::Physical) != 0 ||
         input_state_.held_count(attadipa::core::InputOrigin::Remote) != 0 ||
-        pointer_pressed_ || gpio_get_level(kTouchInterrupt) == 0 ||
-        gpio_get_level(kPowerWake) != 0) {
+        pointer_pressed_ || gpio_get_level(kTouchInterrupt) == 0) {
       return;
     }
 
@@ -364,9 +381,7 @@ private:
     const std::uint16_t wake_plan =
         attadipa::core::wake_bit(attadipa::core::WakeSource::Button) |
         attadipa::core::wake_bit(attadipa::core::WakeSource::Touch) |
-        (debug_timer_wake_
-             ? attadipa::core::wake_bit(attadipa::core::WakeSource::Timer)
-             : 0);
+        attadipa::core::wake_bit(attadipa::core::WakeSource::Timer);
     if (!attadipa::core::wake_plan_is_legal(
             attadipa::core::PowerState::LightSleep, wake_plan)) {
       ESP_LOGE(kTag, "refused illegal LightSleep wake plan 0x%04x", wake_plan);
@@ -375,13 +390,11 @@ private:
 
     esp_err_t result = gpio_wakeup_enable(kTouchInterrupt, GPIO_INTR_LOW_LEVEL);
     if (result == ESP_OK) {
-      result = gpio_wakeup_enable(kPowerWake, GPIO_INTR_HIGH_LEVEL);
-    }
-    if (result == ESP_OK) {
       result = esp_sleep_enable_gpio_wakeup();
     }
-    if (result == ESP_OK && debug_timer_wake_) {
-      result = esp_sleep_enable_timer_wakeup(kDebugWakeDelayUs);
+    if (result == ESP_OK) {
+      result = esp_sleep_enable_timer_wakeup(
+          debug_timer_wake_ ? kDebugWakeDelayUs : kPmuSleepPollUs);
     }
     if (result != ESP_OK) {
       ESP_LOGE(kTag, "arm LightSleep wake sources: %s",
@@ -402,25 +415,45 @@ private:
 
     ESP_LOGI(kTag,
              "display off; Active -> Idle -> LightSleep "
-             "(touch + PMU PWR%s)",
-             debug_timer_wake_ ? " + debug timer" : "");
-    const esp_err_t sleep_result = esp_light_sleep_start();
-    if (debug_timer_wake_) {
-      (void)esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+             "(touch + %s)",
+             debug_timer_wake_ ? "debug timer" : "PMU polling");
+    esp_err_t sleep_result = ESP_OK;
+    esp_sleep_wakeup_cause_t cause = ESP_SLEEP_WAKEUP_UNDEFINED;
+    bool by_button = false;
+    bool by_touch = false;
+    bool by_timer = false;
+    for (;;) {
+      sleep_result = esp_light_sleep_start();
+      if (sleep_result != ESP_OK) {
+        break;
+      }
+      cause = esp_sleep_get_wakeup_cause();
+      by_touch = cause == ESP_SLEEP_WAKEUP_GPIO &&
+                 gpio_get_level(kTouchInterrupt) == 0;
+      if (by_touch) {
+        (void)consume_sleep_power_edge();
+        break;
+      }
+      if (cause != ESP_SLEEP_WAKEUP_TIMER) {
+        break;
+      }
+      if (debug_timer_wake_) {
+        by_timer = true;
+        break;
+      }
+      if (consume_sleep_power_edge()) {
+        by_button = true;
+        break;
+      }
+      sleep_result = esp_sleep_enable_timer_wakeup(kPmuSleepPollUs);
+      if (sleep_result != ESP_OK) {
+        break;
+      }
     }
+    (void)esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
     debug_timer_wake_ = false;
 
-    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-    const bool by_button =
-        cause == ESP_SLEEP_WAKEUP_GPIO && gpio_get_level(kPowerWake) != 0;
-    const bool by_touch =
-        cause == ESP_SLEEP_WAKEUP_GPIO && gpio_get_level(kTouchInterrupt) == 0;
-    const bool by_timer = cause == ESP_SLEEP_WAKEUP_TIMER;
-    const std::uint64_t pins = (by_button ? 1ULL << kPowerWake : 0) |
-                               (by_touch ? 1ULL << kTouchInterrupt : 0);
-    if (by_button) {
-      suppress_next_power_sleep_ = true;
-    }
+    const std::uint64_t pins = by_touch ? 1ULL << kTouchInterrupt : 0;
 
     esp_err_t restore_result = esp_lcd_panel_disp_on_off(panel_, true);
     if (restore_result == ESP_OK) {
@@ -634,13 +667,9 @@ private:
         }
         if (event.button == 0 &&
             event.type == attadipa::core::InputEventType::ButtonUp) {
-          if (suppress_next_power_sleep_) {
-            suppress_next_power_sleep_ = false;
-          } else {
-            sleep_requested_ = true;
-            debug_timer_wake_ =
-                event.origin == attadipa::core::InputOrigin::Remote;
-          }
+          sleep_requested_ = true;
+          debug_timer_wake_ =
+              event.origin == attadipa::core::InputOrigin::Remote;
         }
         break;
       }
@@ -686,7 +715,6 @@ private:
   std::uint32_t sleep_cycles_ = 0;
   bool sleep_requested_ = false;
   bool debug_timer_wake_ = false;
-  bool suppress_next_power_sleep_ = false;
   PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};
 };
 

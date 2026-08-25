@@ -22,8 +22,6 @@ public:
   void update(const apps::ClockText &text);
 
 private:
-  static constexpr unsigned kFireflyCount = 6;
-
   static void motion_tick(lv_timer_t *timer);
   static void touch_event(lv_event_t *event);
   void animate();
@@ -35,26 +33,16 @@ private:
   lv_obj_t *date_ = nullptr;
   lv_obj_t *seconds_ = nullptr;
   lv_obj_t *status_ = nullptr;
-  lv_obj_t *timeline_ = nullptr;
-  lv_obj_t *timeline_fill_ = nullptr;
-  lv_obj_t *timeline_dot_ = nullptr;
-  lv_obj_t *timeline_value_ = nullptr;
-  lv_obj_t *year_ = nullptr;
-  lv_obj_t *weekday_dots_[7]{};
-  lv_obj_t *firefly_halos_[kFireflyCount]{};
-  lv_obj_t *fireflies_[kFireflyCount]{};
-  lv_obj_t *brand_firefly_ = nullptr;
-  lv_obj_t *brand_wings_[2]{};
-  lv_obj_t *ripple_ = nullptr;
+  lv_obj_t *steps_ = nullptr;
+  lv_obj_t *touch_glow_halo_ = nullptr;
+  lv_obj_t *touch_glow_dot_ = nullptr;
   lv_timer_t *motion_timer_ = nullptr;
-  unsigned timeline_width_ = 0;
-  unsigned phase_ = 0;
-  unsigned ripple_step_ = 0;
-  unsigned touch_ticks_ = 0;
-  int touch_x_ = 0;
-  int touch_y_ = 0;
-  int brand_x_ = 0;
-  int brand_y_ = 0;
+  unsigned touch_glow_ticks_ = 0;
+  unsigned touch_sequence_ = 0;
+  int touch_glow_x_q4_ = 0;
+  int touch_glow_y_q4_ = 0;
+  int touch_glow_dx_q4_ = 0;
+  int touch_glow_dy_q4_ = 0;
   bool built_ = false;
 };
 

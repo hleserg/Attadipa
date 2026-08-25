@@ -31,6 +31,8 @@ endforeach()
 set(ATTADIPA_LVGL_TARGET __idf_lvgl__lvgl)
 add_subdirectory(${ATTADIPA_ROOT}/assets/fonts
                  ${CMAKE_CURRENT_BINARY_DIR}/attadipa_fonts)
+add_subdirectory(${ATTADIPA_ROOT}/ui/assets
+                 ${CMAKE_CURRENT_BINARY_DIR}/attadipa_images)
 add_subdirectory(${ATTADIPA_ROOT}/ui/lvgl
                  ${CMAKE_CURRENT_BINARY_DIR}/attadipa_clock_ui)
 

@@ -67,12 +67,14 @@ TREE = (
 COPIES = ("a", "a-second-checkout-with-a-deliberately-longer-absolute-path")
 
 FONT_OUTPUTS = [f"assets/fonts/generated/attadipa_nunito_sans_{size}.c"
-                for size in (14, 16, 20, 28, 64, 96)]
+                for size in (14, 16, 20, 28, 64, 84, 96)]
 FONT_OUTPUTS.append("assets/fonts/generated/INPUTS.sha256")
 
 IMAGE_OUTPUTS = [f"ui/assets/generated/attadipa_icon_{name}_{size}.c"
                  for name in ("mesh", "position", "warning")
                  for size in (33, 39, 47)]
+IMAGE_OUTPUTS.append(
+    "ui/assets/generated/attadipa_background_clock_meadow_night_410x502.c")
 IMAGE_OUTPUTS += ["ui/assets/generated/attadipa_images.h",
                   "ui/assets/generated/INPUTS.sha256"]
 

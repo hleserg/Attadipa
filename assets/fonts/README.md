@@ -1,8 +1,8 @@
 # Generated UI fonts
 
-Six subsets of **Nunito Sans Regular 400**, covering exactly the 177 codepoints in
-[`tools/font/charset.py`](../../tools/font/charset.py), at 14, 16, 20, 28, 64 and 96 px,
-4 bits per pixel.
+Seven subsets of **Nunito Sans Regular 400**, covering exactly the 177 codepoints in
+[`tools/font/charset.py`](../../tools/font/charset.py), at 14, 16, 20, 28, 64, 84
+and 96 px, 4 bits per pixel.
 
 ## Why these files are committed
 
@@ -50,6 +50,7 @@ A generated `.c` is a modified form of the font and stays under OFL-1.1.
 | 20 px | 18 504 B |
 | 28 px | 29 160 B |
 | 64 px | 120 440 B |
+| 84 px | 200 376 B |
 | 96 px | 259 360 B |
 
 `MEASURED` on the host compiler at `-Os`, which is the right order of magnitude
