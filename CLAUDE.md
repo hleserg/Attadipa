@@ -270,6 +270,67 @@ and accurate statement that there is none yet.**
 
 A screen with the right elements on it is not done. Design is part of Done.
 
+## The tooling around the work
+
+Three tools sit between an agent and this repository. Each is useful and each
+has a place where it must not be let in.
+
+**The rules have one home, and it is this file.** `AGENTS.md`, `GEMINI.md`,
+`.clinerules`, `.windsurfrules`, `.kilocode/rules/` and `.agents/rules/` are
+pointers to it. They are pointers rather than symlinks because `rtk` and `graft`
+rewrite their own marker-delimited blocks *inside* those files, so a symlink
+would send the next `rtk init` straight into `CLAUDE.md`. `AGENTS.md` is the one
+that matters most: Codex, Cline, Windsurf, Kilo Code, Antigravity and opencode
+all read it first, and before this was written it told them about two tools and
+nothing about the boards. If a tool overwrites a pointer with its own manual,
+put the pointer back.
+
+**`ponytail` is in force in `tools/`, `firmware/`, `core/` and `apps/`, and it
+is off in `docs/research/`.** The line is code against evidence, so the rest of
+the source — `platform/`, `link/`, `l10n/`, `sim/`, `tests/` — falls on the same
+side as the four named. Where code is the product, the shortest thing that
+works is the right thing. In the research notes the
+*explanation* is the product — which fact was checked, against which document,
+and which plausible reading was refuted — and "if the explanation is longer than
+the code, delete the explanation" would delete exactly the evidence this
+repository exists to keep. `STATUS.md`, `TASKS.md`, the ADRs and
+`OWNER_DECISIONS.md` sit on the research side of that line for the same reason.
+Brevity there is still a virtue; it is just not the deciding one.
+
+**`graft` indexes code and does not index prose, and that is settled rather than
+deferred.** Its parsers cover source extensions only — a `.md` file is refused
+with *"no parser registered for this extension"* — so `STATUS.md`, `TASKS.md`
+and `docs/research/` are invisible to `graft ask`, while C++ and Python living
+*under* `docs/research/` are indexed like any other code. Do not go looking for
+the setting that would fix this: for prose, `rg` over the tree is the tool, and
+`.ignore` exists so that ripgrep still searches `graft/` after `.gitignore`
+hides it from git. The graph refreshes itself before a query — `graft ask` says
+so in its first line — so a stale index is not a thing to guard against with a
+commit hook, and `graft/` is generated, git-ignored and rebuilt with
+`graft build`.
+
+**`rtk` compacts command output, and never the hardware's.** The compaction is a
+`PreToolUse` hook, not something an agent opts into per command, and it is
+configured on the host rather than in the repository: `[hooks] exclude_commands`
+in `~/.config/rtk/config.toml`, which is the only file read — a project-local
+`.rtk/config.toml` is ignored, tested. `esptool`, `idf.py`, `tools/flash/` and
+`tools/watch_control.py` are excluded there, because a bench diagnosis is read
+out of raw tool output: the block that stalls a stub flash read was found in the
+tail of an esptool progress log, in the `Reading from 0x0023d000` lines a filter
+would drop as noise. `rtk 0.45.0` rewrites none of those commands anyway, which
+is what the exclusions are there to keep true.
+
+**Codex gets the same three, and one of them is not proven.** `~/.codex/`
+registers the `graft` MCP server and its hooks and enables the `ponytail`
+plugin, all installed by the tools themselves; what it had no route to was
+`rtk`, whose hook processor speaks Claude Code's payload — one command string —
+while Codex sends argv. `tools/agents/rtk-codex-hook.cjs` translates between
+them and is installed at `~/.codex/hooks/rtk/rtk-hook.cjs`. Its own shapes are
+covered by `--self-test`; **that Codex fires the hook at all is NOT VERIFIED**,
+because the account is rate-limited until 2026-09-01. The check when it is not:
+`codex exec --sandbox read-only "run: git status"` and look for `rtk git status`
+in what it executed.
+
 ## Conventions
 
 - **Language follows the reader, not the surface.** Repository artefacts read
