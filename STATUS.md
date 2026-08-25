@@ -1025,6 +1025,38 @@ Waveshare `ESP32-S3-Touch-AMOLED-2.06`; nothing here is about the T-Watch.
 
 ## Recently completed
 
+- **The queue's width limit had never counted a single pull request.**
+  `.github/scripts/wip-limit.sh` asked `gh pr list --json` for
+  `baseRepository` — a name from the REST API, which the CLI does not have.
+  `gh` answers `Unknown JSON field: "baseRepository"` and exits 1 *before making
+  a request*; `2>/dev/null || true` threw that away, the empty payload
+  normalised to nothing, and the rule fell through to `unknown`. `full` and
+  `incident` were unreachable, so the WIP policy *2 normal / 3 hard* was
+  enforced on nothing from #216 onwards — visible on #219, #236 and #237, each
+  of which was told `Could not determine the active pull-request count`. Codex
+  had named the exact field reviewing #216. The transport now asks for
+  `number,isCrossRepository,labels`, takes the base repository from the trusted
+  `GITHUB_REPOSITORY` instead of from the payload, and no longer swallows `gh`'s
+  stderr: a transient API failure still fails closed to `unknown`, while a CLI
+  schema error raises a distinct `::error::` naming the field, because one is
+  worth retrying and the other will refuse every run until somebody edits the
+  file.
+  **Its own suite was 6/6 green throughout**, because it called the pure
+  decision function with hand-built JSON and never executed the transport —
+  which is the same shape as the convergence guard below, one layer down.
+  There is now an executable caller test: the shipping script runs end to end
+  against a stub `gh` that refuses an unknown `--json` field exactly as `gh`
+  does, and three of its cases put the old field list back and require the suite
+  to go red. `gh-api-usage-test.sh` carries the same rule as a static scan over
+  workflows, scripts and parked patches. No workflow file changed, which is why
+  this could land at all — `pr-wip-limit.yml` reads `state` and `count` and
+  nothing else. **The first live numeric count cannot land on the pull request
+  that fixes this**: the workflow checks out `ref: default_branch`, so it always
+  runs main's copy of the script. Run from a shell against the live repository
+  the fixed script answers `full 3`; that is a real `gh` call and not a workflow
+  run, and it is written down as the one rather than the other. No hardware was
+  touched and no hardware claim is made.
+
 - **The eight agent-config files at the root were not copies of this
   repository's rules, and now they point at them.** `AGENTS.md`, `GEMINI.md`,
   `.clinerules`, `.windsurfrules`, `.kilocode/rules/`, `.agents/rules/`,
