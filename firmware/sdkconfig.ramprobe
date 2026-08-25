@@ -28,6 +28,10 @@
 CONFIG_APP_BUILD_TYPE_RAM=y
 CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y
 
+# Keep the debug endpoint and its full-frame PSRAM snapshot out of the minimal
+# RAM probe. The normal flash build enables it explicitly.
+CONFIG_ATTADIPA_WATCH_CONTROL=n
+
 # A RAM app has no partition table to read, and asking for one is a boot-time
 # failure rather than an empty answer.
 CONFIG_PARTITION_TABLE_CUSTOM=n

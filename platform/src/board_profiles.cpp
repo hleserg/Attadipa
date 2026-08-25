@@ -128,37 +128,15 @@ BoardProfile make_waveshare()
     p.present_mask                = kWaveshareFeatures;
     p.radio                       = {};  // no radio is fitted; the struct is meaningless
 
-    // **Two, counted by the owner pressing them** on the assembled case,
-    // 2026-08-23 (source S13). What that does not settle is which named input
-    // each one reaches: the schematic lists `Key1`, `Key3` and `PWRON`, a key
-    // may sit on `PWRON` *and* a GPIO at once, and `PWRON` may reach neither --
-    // on the T-Watch it wires to SW7 with no GPIO at all. That is open question
-    // D5, and until it closes these are numbered rather than named.
-    //
-    // Numbering them is not a placeholder to be tidied up later. A profile that
-    // said "power" and "back" would put a guess about wiring where an
-    // application would read it as a fact, which is the failure ADR-0003 is
-    // about. `role_known = false` is the honest field, and the debug tool
-    // prints it.
-    //
-    // **And `injectable` is `false` for both, for the same reason `role_known`
-    // is.** It was `true` with nothing behind it -- the one board fact on this
-    // profile asserted permissively and unargued, on the board where the
-    // question is open. `HARDWARE_MATRIX` names the candidates as `Key1`, `Key3`
-    // and `PWRON`, says `Key1` is adjacent to `BOOT` and **may never be brought
-    // out at all**, and calls that list "a floor, not a census"; D5 leaves both
-    // the GPIO assignment and whether either press reaches the PMU unresolved.
-    // Under most readings a `PWRON` press is a PMU interrupt a host could
-    // synthesise -- and "most readings" is what this project spells `UNKNOWN`.
-    //
-    // The cost of the permissive default lands after T-114, not now: the
-    // diagnostic tour's `first-injectable` step resolves to `button-1` and
-    // passes green against an input that, on one live reading of D5, no finger
-    // can produce -- the exact failure `boot` is marked `injectable = false` to
-    // avoid, one board over. Flip either to `true` when D5 closes, with the
-    // evidence beside it.
-    p.buttons[0] = ButtonSpec{"button-1", /*role_known=*/false, /*injectable=*/false};
-    p.buttons[1] = ButtonSpec{"button-2", /*role_known=*/false, /*injectable=*/false};
+    // The current official schematic and product page name the two case keys
+    // PWR and BOOT. PWR reaches the AXP2101 PWRON input; its edge status comes
+    // from the PMU, while SYS_OUT/GPIO10 is the resulting power state rather
+    // than the key level. BOOT pulls GPIO0 low. The owner physically counted
+    // the same two case buttons, so D5's earlier ambiguity came from the old
+    // text extraction, not the drawing. BOOT stays restrictive because it is
+    // also a boot-mode strap.
+    p.buttons[0] = ButtonSpec{"power", /*role_known=*/true, /*injectable=*/true};
+    p.buttons[1] = ButtonSpec{"boot", /*role_known=*/true, /*injectable=*/false};
     p.button_count = 2;
     return p;
 }

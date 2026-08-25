@@ -2,6 +2,10 @@
 
 #include <cstring>
 
+#ifdef ESP_PLATFORM
+#include "esp_rom_crc.h"
+#endif
+
 #include "attadipa/link/frame_codec.h"
 
 namespace attadipa::debug {
@@ -275,19 +279,13 @@ bool decode_input_event(const std::uint8_t* body, std::size_t len, InputEventBod
 
 // --- CRC-32 ---------------------------------------------------------------
 
-// Bitwise rather than table-driven. A 1 KiB table would be the largest constant
-// in the debug subsystem, and this runs once per screenshot on a part where
-// RESOURCE_BUDGET counts every kilobyte of flash.
-//
-// The cost is **not** microseconds, and an earlier version of this comment said
-// it was. Eight iterations per byte over a 617 kB frame is 4.94 million inner
-// loops: milliseconds on a desktop, and on an ESP32-S3 the dominant term in a
-// capture that already blocks the interface. Recorded here rather than fixed
-// because moving the CRC or the capture off the interface thread is a design
-// change T-114 owns, and because a wrong number in a comment is how the next
-// person decides not to measure.
 std::uint32_t crc32(const std::uint8_t* data, std::size_t length, std::uint32_t seed)
 {
+#ifdef ESP_PLATFORM
+    // The ESP32-S3 ROM already owns the 1 KiB lookup table. Its API has the
+    // same reflected CRC-32/ISO-HDLC seed/result convention used on the wire.
+    return esp_rom_crc32_le(seed, data, static_cast<std::uint32_t>(length));
+#else
     std::uint32_t crc = ~seed;
     for (std::size_t i = 0; i < length; ++i) {
         crc ^= data[i];
@@ -297,6 +295,7 @@ std::uint32_t crc32(const std::uint8_t* data, std::size_t length, std::uint32_t 
         }
     }
     return ~crc;
+#endif
 }
 
 }  // namespace attadipa::debug

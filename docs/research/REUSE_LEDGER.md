@@ -2026,10 +2026,11 @@ exist), `debug/` (protocol and bridge), `sim/remote_input.cpp`,
   otherwise.
 - The whole loop against the simulator — `tools/watch/e2e_test.py`,
   **PASSING**.
-- **On a physical watch: `NOT EXECUTED — HARDWARE REQUIRED`, and it cannot be
-  executed yet.** T-165 boots, but nothing on the far end of a USB cable speaks
-  this protocol because the T-114 endpoint is not implemented.
-  `SerialTransport` is written and has never spoken to a device.
+- **On the physical Waveshare: EXECUTED 2026-08-25.** `SerialTransport`
+  negotiated the endpoint, captured complete 410 × 502 RGB565 frames, injected
+  a tap into the live LVGL UI, and automatically selected the unit by USB serial.
+  Measured transcript and evidence boundary:
+  [`WATCH_CONTROL_2026-08-25`](../hardware/WATCH_CONTROL_2026-08-25.md).
 
 ---
 

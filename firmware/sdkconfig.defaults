@@ -64,6 +64,11 @@ CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 # so anything that turns the console off silently takes it with it.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
+# T-114 captures the LVGL object tree into caller-owned PSRAM and streams it
+# through the existing debug protocol. No panel readback or second renderer.
+CONFIG_ATTADIPA_WATCH_CONTROL=y
+CONFIG_LV_USE_SNAPSHOT=y
+
 # A development table, and partitions.csv says so in its own header.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

@@ -410,6 +410,31 @@ def the_tool_fails_loudly_with_no_device() -> None:
     check("could not connect" in stderr.getvalue(), "and the message names the cause")
 
 
+def serial_disconnects_are_reported_without_tracebacks() -> None:
+    from watch.client import SerialTransport, WatchError  # noqa: PLC0415
+
+    class BrokenSerial:
+        @property
+        def in_waiting(self):
+            raise OSError("unplugged")
+
+        def write(self, _data):
+            raise OSError("unplugged")
+
+        def close(self):
+            raise OSError("unplugged")
+
+    transport = SerialTransport.__new__(SerialTransport)
+    transport._serial = BrokenSerial()
+    transport._port = "/dev/fake-watch"
+    check_raises(WatchError, "a serial send disconnect is handled",
+                 lambda: transport.send(b"request"))
+    check_raises(WatchError, "a serial read disconnect is handled",
+                 lambda: transport.recv(0.01))
+    check_raises(WatchError, "a serial close disconnect is handled",
+                 transport.close)
+
+
 class _FakeScreen:
     """Just enough of `Watch` for `resolve_point` -- a geometry, no socket.
 
@@ -1190,6 +1215,7 @@ CASES = (
     png_is_a_real_png,
     a_screenshot_survives_the_whole_chain,
     the_tool_fails_loudly_with_no_device,
+    serial_disconnects_are_reported_without_tracebacks,
     scenarios_load,
     a_scenario_that_runs_nothing_is_not_a_pass,
     an_unknown_wire_value_is_reported_not_raised,

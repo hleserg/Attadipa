@@ -433,10 +433,8 @@ def _drive(process, socket_path: str, workdir: str, board: str, log_path: str) -
         injectable = [b for b in caps.buttons if b.injectable]
         if not injectable:
             # Not a failure and not a pass. `injectable` says the harness may
-            # synthesise a press for this button, and the Waveshare declares
-            # neither of its two -- D5 in HARDWARE_MATRIX leaves it open
-            # whether Key1 is brought out at all. Asserting one anyway would
-            # have this test fail on a fact about the board rather than on a
+            # synthesise a press for this button. Asserting one anyway would
+            # have this test fail on a board-profile fact rather than on a
             # fault in the bridge.
             skip("a button press round-trips through the bridge",
                  f"{board} declares no injectable button")
