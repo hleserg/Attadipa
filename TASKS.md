@@ -96,8 +96,9 @@ stale silently. The protocol is
 - **Tests:** the CI job `firmware-build` builds both variants on
   `espressif/idf:v5.5.5`, which is what makes "reproducible from a clean
   checkout" a proof rather than a sentence in a pull request. It runs
-  `partition_check.py` before the compiler, because that is the check no ESP-IDF
-  tool performs. `tools/flash/ramhold_selftest.py` covers the port resolver's
+  `partition_check.py` before the toolchain as an independent repository check;
+  ESP-IDF separately validates the generated table against the declared 16 MB
+  size. `tools/flash/ramhold_selftest.py` covers the port resolver's
   refusals — the cases where guessing would load a watch image into the other
   board.
 - **Non-goals, and they were kept:** the second board, any driver, LVGL, OTA,

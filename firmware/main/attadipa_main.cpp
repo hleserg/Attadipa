@@ -46,12 +46,6 @@ constexpr char kTag[] = "attadipa";
 // is already the seam for it.
 constexpr char kBoardProfileId[] = "waveshare-amoled-206";
 
-// The flash addressing ceiling, restated here rather than assumed: 24-bit
-// addressing in the ROM and the second-stage bootloader wraps 0x1000000 to 0x0.
-// A partition above it is well-formed, correctly sized and dead.
-// docs/research/WAVESHARE_RUNNING_OUR_CODE.md §1.
-constexpr std::uint32_t kAddressingCeiling = 0x1000000u;
-
 // ESP-IDF's reset reason is a device fact; core::ResetReason is the vocabulary
 // the rest of Attadipa reports in. Translating here rather than passing the
 // ESP-IDF enum upwards is the same rule as everywhere else: nothing above the
@@ -200,11 +194,9 @@ void report_silicon()
 #endif
 }
 
-// Walk the partition table the device actually booted with and check every
-// entry against the addressing ceiling. ESP-IDF validates a great deal about a
-// partition table and knows nothing about this limit; tools/flash/partition_check.py
-// checks the CSV in the repository, which is not the same thing as the bytes on
-// the part. This is the only check that sees what was really flashed.
+// Log the partition table the bootloader accepted. The build declares 16 MB, so
+// ESP-IDF rejects an on-device table that crosses that size before app_main;
+// tools/flash/partition_check.py independently checks the repository CSV.
 //
 // A PURE_RAM_APP image has no partition table to read, and that is not a fault.
 void report_partitions()
@@ -230,23 +222,13 @@ void report_partitions()
         return;
     }
 
-    int above_ceiling = 0;
     for (; it != nullptr; it = esp_partition_next(it)) {
         const esp_partition_t* part = esp_partition_get(it);
-        const bool             over = (part->address + part->size) > kAddressingCeiling;
-        above_ceiling += over ? 1 : 0;
         ESP_LOGI(kTag, "Partition  : %-8s type %u/%-2u  0x%06" PRIx32
-                       " + 0x%06" PRIx32 "%s",
-                 part->label, part->type, part->subtype, part->address, part->size,
-                 over ? "   *** ABOVE THE 16 MB ADDRESSING CEILING ***" : "");
+                       " + 0x%06" PRIx32,
+                 part->label, part->type, part->subtype, part->address, part->size);
     }
     esp_partition_iterator_release(it);
-
-    if (above_ceiling > 0) {
-        ESP_LOGE(kTag, "Partitions : %d partition(s) reach past 0x%06" PRIx32
-                       " and cannot be relied on — WAVESHARE_RUNNING_OUR_CODE.md §1",
-                 above_ceiling, kAddressingCeiling);
-    }
 #endif
 }
 

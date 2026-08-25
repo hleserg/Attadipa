@@ -46,6 +46,10 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
+# Reach app_main even when PSRAM does not answer so the serial diagnostic names
+# the failure. Every future PSRAM consumer must still check initialisation before
+# use; ignoring discovery failure is not permission to use absent memory.
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 
 # The only console this board exposes. There is no UART bridge: USB D-/D+ land
 # straight on GPIO 19/20, the SoC's native USB pins — HARDWARE_MATRIX.md "USB".

@@ -78,10 +78,11 @@ grep CONFIG_APP_BUILD_TYPE_PURE_RAM_APP build-ram/sdkconfig
 ```
 
 **Use `ramhold.py` and not `esptool load-ram`.** The CLI tool loads the image
-correctly and then kills it a few milliseconds later by exiting: on a
-USB-Serial/JTAG board DTR and RTS are GPIO0 and EN, and the kernel drops the
-modem lines on the *last* close of a `ttyACM`. Four runs were read as "the board
-rejects RAM images" before that was traced to the host.
+correctly and then kills it a few milliseconds later by exiting: the kernel
+changes the DTR/RTS CDC control state on the *last* close of a `ttyACM`, and the
+native USB-Serial/JTAG peripheral resets the digital core. These are USB control
+bits, not GPIO0/EN pins on this board. Four runs were read as "the board rejects
+RAM images" before that was traced to the host.
 [WAVESHARE_RUNNING_OUR_CODE](../research/WAVESHARE_RUNNING_OUR_CODE.md) §2.
 
 Two consequences worth carrying:
@@ -136,7 +137,7 @@ Read four lines before anything else:
 | `rst:0x15 (USB_UART_CHIP_RESET)` | Host-driven, by definition. Something closed or opened the port. Not the board |
 | `rst:0x8 (TG1WDT_SYS_RST)` and a loop | A real firmware fault. The `Saved PC` says where |
 | `PSRAM configured but NOT initialised` | The build is octal and the part did not answer. Do not "fix" it by switching to quad — that contradicts the eFuse read, and the honest outcome is a blocker |
-| A partition line with `*** ABOVE THE 16 MB ADDRESSING CEILING ***` | The table on the part is not the table in the repository. `python3 tools/flash/partition_check.py` checks the CSV; that line checks what actually booted |
+| Partition-table validation fails before the Attadipa banner | The flashed table crosses the build's declared 16 MB size. ESP-IDF rejects it before `app_main`; `python3 tools/flash/partition_check.py` checks the repository CSV before flashing |
 | The board enumerates but `ramhold.py` says no such serial | The other ESP32-S3. Check `ls /dev/serial/by-id/` against [BENCH_DEVICES](../research/BENCH_DEVICES.md) |
 
 ## 4. The flash route

@@ -285,9 +285,9 @@ to every unit of the same model.
   path is pinned to the older 2.0.17 (IDF 4.4.7).
 - **Source:** S5, S7, S1.
 - **Impact:** feeds the ESP-IDF and LVGL version decisions in
-  [DEPENDENCIES.md](DEPENDENCIES.md). Nothing is pinned yet. The LilyGO
-  PlatformIO constraint likely does not bind Attadipa, which is ESP-IDF-native
-  and does not use the Arduino layer.
+  [DEPENDENCIES.md](DEPENDENCIES.md). Attadipa now pins ESP-IDF v5.5.5; this
+  vendor support corroborates that choice but did not make it. The LilyGO
+  PlatformIO constraint does not bind the current ESP-IDF-native build.
 
 ### Vendor-published power figures exist for the T-Watch
 
@@ -1237,8 +1237,9 @@ constants.
 - **Claim:** `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y` images load over
   USB-Serial/JTAG and **run**, writing nothing to flash. The four earlier runs
   that reset within milliseconds were killed by `esptool` exiting: the kernel
-  drops DTR and RTS on the *last* close of a `ttyACM`, and on this board those
-  lines are GPIO0 and EN.
+  changes the DTR/RTS CDC control state on the *last* close of a `ttyACM`, and
+  the native USB-Serial/JTAG peripheral resets the digital core. These are USB
+  control bits, not GPIO0/EN pins on this board.
 - **Source:** S13. Decisive test — `esptool` used as a library in one process so
   the port is never closed (`detect_chip` → `cmds.load_ram` → read `esp._port`
   directly), run against the *same* minimal driverless image that had failed as

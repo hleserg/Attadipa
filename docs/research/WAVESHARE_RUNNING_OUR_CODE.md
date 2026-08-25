@@ -195,9 +195,10 @@ to, through the CDC control lines. That should have been the first clue rather
 than a footnote — nothing about a misbehaving image produces `0x15`.
 
 Every one of the four runs ended the same way: `esptool` finished and exited. On
-the last close of a `ttyACM` device the kernel drops DTR and RTS, and on this
-board those are GPIO0 and EN. **The tool that delivered the image killed it a few
-milliseconds later by closing the port.**
+the last close of a `ttyACM` device the kernel changes the DTR/RTS CDC control
+state, and the native USB-Serial/JTAG peripheral resets the digital core. These
+are USB control bits, not GPIO0/EN pins on this board. **The tool that delivered
+the image killed it a few milliseconds later by closing the port.**
 
 Two host-side explanations *were* tested before the wrong conclusion was drawn,
 and neither one touched this:
@@ -668,9 +669,10 @@ writing a byte to the owner's flash.
   MAC, and that is the owner's, not the repository's — see
   [`WAVESHARE_EFUSE_READ.md`](WAVESHARE_EFUSE_READ.md) §0.
 - **Opening the serial port resets this board.** pyserial asserts DTR and RTS on
-  `open()`; on a USB-Serial/JTAG board those are GPIO0 and EN. Two RAM images
-  were destroyed by the tool sent to observe them before this was noticed. Set
-  both `False` on the `Serial` object *before* `open()`.
+  `open()`; on this native-USB board those are CDC control bits handled by the
+  USB-Serial/JTAG peripheral, not GPIO0/EN pins. Two RAM images were destroyed by
+  the tool sent to observe them before this was noticed. Set both `False` on the
+  `Serial` object *before* `open()`.
 - **Closing it resets the board too, and that is the one that cost a wrong
   conclusion.** The kernel drops the modem lines on the *last* close of a
   `ttyACM`, so `esptool` exiting is itself a reset. Anything loaded into RAM must

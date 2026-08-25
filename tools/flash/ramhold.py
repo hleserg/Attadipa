@@ -9,13 +9,13 @@ entirely in IRAM and DRAM, so this route costs nothing to undo — which is why
 this project brought up first.
 
 **Why this exists rather than `esptool load-ram`.** The CLI tool works. What
-does not work is letting it exit: on a USB-Serial/JTAG board DTR and RTS are
-GPIO0 and EN, and the kernel drops the modem lines on the *last* close of a
-`ttyACM`. So `esptool load-ram` reports success and then kills the image it just
-loaded, a few milliseconds later, by closing the port. Four runs were read as
-"the board rejects RAM images" before the reset was traced to this host; the
-`rst:0x15 (USB_UART_CHIP_RESET)` in those transcripts is by definition a
-host-driven reset and should have been the first clue.
+does not work is letting it exit: the kernel changes the DTR/RTS CDC control
+state on the *last* close of a `ttyACM`, and the native USB-Serial/JTAG
+peripheral resets the digital core. These are USB control bits, not GPIO0/EN
+pins on this board. So `esptool load-ram` reports success and then kills the
+image it just loaded, a few milliseconds later, by closing the port. Four runs
+were read as "the board rejects RAM images" before the reset was traced to this
+host; `rst:0x15 (USB_UART_CHIP_RESET)` is the direct evidence.
 
 Using esptool as a library keeps the port open across the load, so esptool's own
 close is never the last one. `docs/research/WAVESHARE_RUNNING_OUR_CODE.md` §2 is
