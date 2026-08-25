@@ -103,14 +103,15 @@ An entry that cannot name its source does not belong here. It belongs in
 
 ## Toolchain / host environment
 
-### Development host currently lacks an embedded toolchain
+### The development host lacked an embedded toolchain on 2026-08-21
 
 - **Claim:** on the development machine (WSL2, Ubuntu 24.04) the following are
   present: cmake 3.28.3, gcc/g++ 13.3.0, Python 3.12.3. The following are
   absent: ESP-IDF (`IDF_PATH` unset), ninja, SDL2, clang-format, ccache.
 - **Source:** direct probe of the host, 2026-08-21.
-- **Impact:** neither an embedded build nor an LVGL simulator build can be run
-  until these are installed. The plain-CMake host build works.
+- **Historical scope:** this was a direct probe on that date, not a statement
+  about the current host. T-165 subsequently built both flash and PURE_RAM
+  firmware with the pinned ESP-IDF v5.5.5 toolchain.
 
 ---
 
@@ -127,8 +128,45 @@ carries, so for that board neither existed while this sentence said they did —
 which sends a reader looking for data rather than for its absence. The addresses
 are there now, each cited. The rails are still D13.
 
-**Neither board has been physically inspected.** Nothing requiring measurement
-is verified.
+The T-Watch has not been physically inspected. The Waveshare unit has now been
+physically probed and has booted Attadipa firmware; the measurements below are
+scoped to USB serial `28:84:85:B2:18:A4` and do not generalise to the T-Watch or
+to every unit of the same model.
+
+### Attadipa's T-165 firmware booted on the physical Waveshare unit
+
+- **MEASURED:** the unit booted Attadipa from flash and continued emitting its
+  one-second heartbeat. The boot log reported ESP32-S3 revision v0.2 and loaded
+  the app from the repository's `factory` partition at `0x10000`.
+- **MEASURED:** JEDEC ID `c8 40 19` identified 32 MB of physical flash while the
+  bootloader and firmware deliberately declared 16 MB. This is the addressing
+  ceiling chosen for the build, not a claim that the upper flash does not exist.
+- **MEASURED:** the octal PSRAM driver identified AP vendor `0x0d`, 64 Mbit
+  (8 MB), 3.3 V PSRAM at 80 MHz; initialisation and the ESP-IDF SRAM test both
+  succeeded.
+- **MEASURED:** the running firmware enumerated `nvs`, `phy_init` and `factory`;
+  every reported end address was below `0x1000000`.
+- **MEASURED failure boundary:** an early PURE_RAM build called
+  `esp_partition_find()` without a flash driver and panicked in
+  `spi_flash_mmap`. The corrected build avoids flash ID and partition APIs in
+  PURE_RAM mode, reports them as unavailable, and ran for 30 heartbeats. This
+  does not measure flash, PSRAM or partitions from the RAM image.
+- **VERIFIED recovery asset:** before flashing, 33 554 432 bytes were captured
+  to a host-local factory backup, SHA-256
+  `c423dad3f0d33d56fa96f8590b3da583b05584e85bc2701a7c48c031ad747dbd`.
+  `esptool verify-flash` checked all 33 554 432 bytes against the device. The
+  binary is intentionally not committed.
+- **MEASURED later bench state:** after the acceptance run, the complete backup
+  was restored to the serial-identified unit. The write's integrated hash check
+  succeeded; a separate post-restore full `verify_flash` was interrupted and
+  produced no verdict. The owner observed the factory UI at high brightness,
+  confirmed touch worked, and set brightness to minimum. The unit currently
+  runs that factory image; this is not evidence for an Attadipa touch driver.
+- **Source:** physical transcript and probe record
+  [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md), 2026-08-25.
+- **Not established by T-165:** display output, touch, PMU/rail ownership, RTC, audio,
+  radio, current draw, sleep/wake behaviour or long-term stability. Those were
+  not exercised by T-165.
 
 ### The two boards share almost nothing but the SoC and the PMU
 
@@ -253,9 +291,9 @@ is verified.
   path is pinned to the older 2.0.17 (IDF 4.4.7).
 - **Source:** S5, S7, S1.
 - **Impact:** feeds the ESP-IDF and LVGL version decisions in
-  [DEPENDENCIES.md](DEPENDENCIES.md). Nothing is pinned yet. The LilyGO
-  PlatformIO constraint likely does not bind Attadipa, which is ESP-IDF-native
-  and does not use the Arduino layer.
+  [DEPENDENCIES.md](DEPENDENCIES.md). Attadipa now pins ESP-IDF v5.5.5; this
+  vendor support corroborates that choice but did not make it. The LilyGO
+  PlatformIO constraint does not bind the current ESP-IDF-native build.
 
 ### Vendor-published power figures exist for the T-Watch
 
@@ -811,8 +849,9 @@ still to take.
 - **Source:** S9, corroborating S6's `GD25Q256EYIGR` at `U3`.
 - **Impact:** modest but structural. Whatever is in the SoC package is **not
   flash**, which is what an `R8` suffix means. It corroborates the octal-PSRAM
-  conclusion without re-deriving it. Capacity remains the schematic's 32 MB,
-  unconfirmed on silicon — `esptool.py flash_id` settles it.
+  conclusion without re-deriving it. Capacity is now also measured on silicon:
+  `flash-id` and Attadipa's flash boot both reported JEDEC `c8 40 19`, 32 MB —
+  [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md).
 
 ### Both microphones are populated
 
@@ -1204,8 +1243,9 @@ constants.
 - **Claim:** `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y` images load over
   USB-Serial/JTAG and **run**, writing nothing to flash. The four earlier runs
   that reset within milliseconds were killed by `esptool` exiting: the kernel
-  drops DTR and RTS on the *last* close of a `ttyACM`, and on this board those
-  lines are GPIO0 and EN.
+  changes the DTR/RTS CDC control state on the *last* close of a `ttyACM`, and
+  the native USB-Serial/JTAG peripheral resets the digital core. These are USB
+  control bits, not GPIO0/EN pins on this board.
 - **Source:** S13. Decisive test — `esptool` used as a library in one process so
   the port is never closed (`detect_chip` → `cmds.load_ram` → read `esp._port`
   directly), run against the *same* minimal driverless image that had failed as

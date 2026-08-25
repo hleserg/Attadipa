@@ -1,0 +1,35 @@
+name: Attadipa Issue Janitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 2 * * *'
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  janitor:
+    name: Clean stale issues
+    runs-on: ubuntu-latest
+    steps:
+      - name: Review and close stale issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue list --repo "$REPO" --state open --limit 100 --json number,title,body | jq -c '.[]' > /tmp/issues.jsonl
+
+          while read -r issue; do
+            NUMBER=$(echo "$issue" | jq -r '.number')
+            TITLE=$(echo "$issue" | jq -r '.title')
+            BODY=$(echo "$issue" | jq -r '.body // ""')
+
+            # Conservative automatic cleanup only.
+            # Close only explicit stale markers or obvious generated leftovers.
+            if echo "$BODY" | grep -qiE 'status:[[:space:]]*(done|completed|obsolete)|\[x\][[:space:]]*completed'; then
+              gh issue comment "$NUMBER" --repo "$REPO" --body "Closing: issue marked as completed/obsolete by Attadipa Issue Janitor."
+              gh issue close "$NUMBER" --repo "$REPO"
+            fi
+          done < /tmp/issues.jsonl

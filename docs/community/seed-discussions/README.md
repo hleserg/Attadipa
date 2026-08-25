@@ -11,7 +11,7 @@ posted into the **Ideas** category with the title given at the top.
 
 They are ideas, not commitments. Nothing here describes a capability Attadipa
 already has — see [STATUS.md](../../../STATUS.md) for what actually exists,
-which today is a simulator and no firmware.
+which today is a simulator plus a minimal booting firmware, not these apps.
 
 Once posted, these files can be deleted or left as a style reference. They are
 not a second copy of the Discussions; they are the seed.

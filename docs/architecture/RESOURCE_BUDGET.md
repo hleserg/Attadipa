@@ -1,8 +1,10 @@
 # Resource budget
 
-**Nothing in this document has been measured.** No Attadipa firmware has been
-built for either target, so every figure here is one of three things, and each
-is labelled:
+**No product resource budget in this document has been measured.** T-165 now
+builds and boots a minimal Waveshare firmware, but it does not contain the
+display, touch, PMU, RTC or application tasks whose budgets this file exists to
+measure. Every figure here is therefore one of three things, and each is
+labelled:
 
 - **CEILING** — a hardware limit from the part number or datasheet. Fixed.
 - **ARITHMETIC** — computed from a CEILING and a resolution. Correct by
@@ -18,7 +20,7 @@ the mitigation. That applies to memory exactly as it applies to interference.
 
 ---
 
-## 1. Why this file exists before there is any firmware
+## 1. Why this file exists before there is product firmware
 
 The two targets are not the same size of problem. The Waveshare panel has
 **3.57× the pixels** of the T-Watch panel. A framebuffer strategy that is
@@ -242,8 +244,8 @@ that is not the deepest path: it is called from inside a **4 KB receive buffer**
 `sim/debug_server.cpp:432` puts `chunk[4096]` on the stack and calls
 `dispatch_ready` from within its scope, which adds `payload[link::kMaxPayload]`
 and, under `emit`, `queue`'s `frame[link::kMaxFrame]`. The whole chain is about
-**5 KB**, `ESTIMATED` by reading the frames rather than measured, because there
-is no firmware to measure on.
+**5 KB**, `ESTIMATED` by reading the frames rather than measured, because the
+T-114 device endpoint and its task do not exist yet.
 
 That changes what the row means rather than merely making it bigger. The task
 that services the interface is, on ESP-IDF, routinely created with 4 KB — so the

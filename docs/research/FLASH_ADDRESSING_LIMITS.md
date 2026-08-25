@@ -302,15 +302,17 @@ effect — which is a reason to be more careful with it, not less.
 |---|---|---|
 | `partition_check.py` | [`tools/flash/partition_check.py`](../../tools/flash/partition_check.py), run by `ctest` as `flash_partitions_below_ceiling` | every `*partition*.csv` in the tree — starts, ends, crossings, overflow, overlap |
 | its self-test | [`tools/flash/selftest.py`](../../tools/flash/selftest.py), run by `ctest` as `flash_partition_check_rejects_mistakes` | that the checker refuses each of those, including the vendor's own shipped table |
-| **nothing yet** | — | **runtime `esp_partition_*` calls**, because there is no firmware project to put a guard in |
+| ESP-IDF bootloader | `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` | rejects an actual flashed table that crosses the declared 16 MB size before `app_main` |
+| boot diagnostic | `firmware/main/attadipa_main.cpp`, `report_partitions()` | lists the table the bootloader accepted; it does not duplicate the bootloader's unreachable failure branch |
+| **nothing yet** | — | arbitrary application flash read/write/erase calls; T-165 has no such call to wrap |
 
-That last row is honest rather than comfortable. There is no ESP-IDF project in
-this repository — issue [#127](https://github.com/hleserg/Attadipa/issues/127)
-opens by saying so — so there is no `esp_partition_read` call to wrap. When the
-firmware skeleton lands, the platform layer takes a wrapper that refuses the
-range, and until then the layout check is the whole of the enforcement. Writing
-the wrapper now would be a subsystem invented against a build that does not
-exist, which the task protocol asks agents not to do.
+That last row is honest rather than comfortable. T-165 has no application flash
+read/write/erase path, so a universal wrapper would still be a subsystem
+invented for calls that do not exist. The repository table check is enforced in
+CI and the bootloader fail-closes on a mismatched over-ceiling table before the
+diagnostic can run. Listing the accepted table remains useful evidence, but is
+not a guard around future flash operations. The first such path must take the
+range check with it.
 
 **The T-Watch is unaffected**: a 16 MB part has nothing above the line to reach.
 This is a Waveshare constraint that the shared codebase inherits, in the same
