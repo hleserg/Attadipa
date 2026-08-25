@@ -405,10 +405,10 @@ void test_the_start_kind_follows_what_was_retained()
     unchecked.backup_retained = true;
     CHECK(start_kind(unchecked) == StartKind::Cold);
 
-    // Hot is a different fact and does not go through the capability at all: it
-    // is about retained ephemeris and a recent fix. An unchecked receiver that
-    // demonstrably still holds ephemeris is still hot, because that is an
-    // observation rather than a promise.
+    // Hot is a different fact and does not go through the capability at all:
+    // `ephemeris_retained` is direct evidence that continuously powered main or
+    // backup storage kept the data, not an inference from this recent fix. The
+    // owner must clear it when both rails are cut.
     unchecked.ephemeris_retained = true;
     unchecked.since_last_fix     = Millis{60000};
     CHECK(start_kind(unchecked) == StartKind::Hot);

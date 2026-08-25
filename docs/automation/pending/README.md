@@ -62,7 +62,7 @@ waiting on a person.
 | Patch | For | Written |
 |---|---|---|
 | `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
-| `170-merge-sweep-completeness.patch` | [#170](https://github.com/hleserg/Attadipa/issues/170) **and** [#199](https://github.com/hleserg/Attadipa/issues/199) — the caller half of the completeness rule and of the head-trust rule, all in `pr-merge-sweep.yml`. **While this waits, the half-hourly merge sweep merges nothing at all**: the rule refuses the nine-argument caller by arity and holds every pull request, once per sweep, naming this file. See [CLAUDE_AUTOMATION.md](../CLAUDE_AUTOMATION.md) and T-144 | 2026-08-24 |
+| `170-merge-sweep-completeness.patch` | [#170](https://github.com/hleserg/Attadipa/issues/170), [#199](https://github.com/hleserg/Attadipa/issues/199) **and** [#130](https://github.com/hleserg/Attadipa/issues/130) — the caller half of the completeness rule, of the head-trust rule and of the Codex answer rule, all in `pr-merge-sweep.yml`. **While this waits, the half-hourly merge sweep merges nothing at all**: the rule refuses the nine-argument caller by arity and holds every pull request, once per sweep, naming this file. See [CLAUDE_AUTOMATION.md](../CLAUDE_AUTOMATION.md) and T-144 | 2026-08-24, extended 2026-08-25 |
 | `240-review-invalidation-order.patch` | [#240](https://github.com/hleserg/Attadipa/issues/240) — the caller half, and `claude-pr-review.yml` alone: the two steps that invalidate a stale verdict do it **before** the fallible notification. **While this waits, a silent review whose `gh pr comment` fails still leaves the previous head's `ai-review:pass` on the pull request** — the rule is on `main` and nothing calls it. Unusually, the fix here is not unexecuted while it waits: `review-invalidate-workflow-test.sh` applies this patch to a scratch copy and runs the two steps against a stub `gh` on every push. See [CI_AND_REVIEW_PIPELINE.md](../CI_AND_REVIEW_PIPELINE.md) and T-168 | 2026-08-25 |
 
 Verified before it was parked: `actionlint` clean over all seven workflows with
@@ -73,34 +73,43 @@ is the job running on a schedule under its own permissions, which no local run
 can prove and which is therefore `NOT EXECUTED` until it is deployed.
 
 For `170-merge-sweep-completeness.patch`: the rules, their filters, their query
-and their 182 assertions are already on `main` and run in CI on every push — only
-the eight edits that make the sweep *call* them are in the patch. `git apply
+and their 184 assertions are already on `main` and run in CI on every push — only
+the eleven edits that make the sweep *call* them are in the patch. `git apply
 --check` is asserted by `merge-candidate-test.sh` itself, so a patch that stops
 applying turns CI red rather than rotting quietly, and the suite reports the same
-182 either way, in the parked state and in the applied one. The GraphQL document
+184 either way, in the parked state and in the applied one.
+`codex-answered-test.sh` keys on the same two states and reports 104 parked
+against 103 applied, because the parked state has one more thing to assert —
+that the live caller is still the shape the patch replaces. The GraphQL document
 it points the sweep at was run read-only against this repository's #173, #176,
 #180, #188 and #193 on 2026-08-24, and both rules answered over the real
 replies. What none of that proves is the sweep running on its schedule with the
 patch applied, which is `NOT EXECUTED` until it lands — T-126.
 
-**Two issues, one patch, and that is the decision rather than an accident.**
-#199 landed its rule while #170's caller edits were still parked here, and both
-fixes edit `pr-merge-sweep.yml`. A second patch would have meant two apply
-orders against one file and a `merge-candidate.sh` arity moving twice — nine to
-ten to eleven, with a middle state somebody could land and CI could not
-recognise. Folding them keeps one transition: nine arguments today, eleven the
-moment this lands.
+**Three issues, one patch, and that is the decision rather than an accident.**
+#199 landed its rule while #170's caller edits were still parked here, #130's
+reopened half arrived while both were, and all three fixes edit
+`pr-merge-sweep.yml`. Separate patches would have meant three apply orders
+against one file and a `merge-candidate.sh` arity moving twice — nine to ten to
+eleven, with a middle state somebody could land and CI could not recognise.
+Folding them keeps one transition: nine arguments today, eleven the moment this
+lands.
 
-**One patch in this directory edits `pr-merge-sweep.yml`** — this one.
-`75-approval-stall.patch` beside it edits `agent-queue-watchdog.yml`, `ci.yml`,
-`claude-agent.yml` and two documents, and never the sweep, so the two are
-independent and may land in either order or apart. So does
-`240-review-invalidation-order.patch`, which carries `claude-pr-review.yml` and
-nothing else. The patch this **does**
-collide with is `130-merge-sweep-caller.patch` on
-[#154](https://github.com/hleserg/Attadipa/pull/154), which is not here yet:
-if it lands while this is still parked, apply both in one commit and resolve the
-one overlap by hand — T-144. Every patch here `git rm`s only its own file;
+**And #130's three edits are what make the other eight safe to apply.** The
+patch as it stood before them deleted `COMMITTED` while two calls further down
+still read `"$COMMITTED"`, under `set -u` — so applying it alone aborted the
+step on the first pull request whose comments it read. Found by applying the
+patch and running what came out, which is the argument for `git apply` before
+parking rather than after.
+
+**One patch in this directory edits `pr-merge-sweep.yml`** — this one, and
+nothing collides with it. `75-approval-stall.patch` beside it edits
+`agent-queue-watchdog.yml`, `ci.yml`, `claude-agent.yml` and two documents, and
+never the sweep, so the two are independent and may land in either order or
+apart. The one that used to collide was `130-merge-sweep-caller.patch` on
+[#154](https://github.com/hleserg/Attadipa/pull/154); that pull request was
+closed unmerged in the recovery, and #130's caller edits are inside this patch
+now rather than beside it — T-144. Every patch here `git rm`s only its own file;
 none removes this directory, which three links in `APPROVAL_STALLS.md` point at.
 
 **No two patches here may carry the same `.github/workflows/` file, and
