@@ -433,6 +433,15 @@ private:
     lv_obj_invalidate(lv_screen_active());
     lv_refr_now(nullptr);
 
+    if (sleep_result != ESP_OK) {
+      ESP_LOGE(kTag, "LightSleep failed: %s", esp_err_to_name(sleep_result));
+      if (restore_result != ESP_OK) {
+        ESP_LOGE(kTag, "restore AMOLED after failed LightSleep: %s",
+                 esp_err_to_name(restore_result));
+      }
+      return;
+    }
+
     const std::uint32_t now_ms =
         static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
     reset_remote(now_ms, "light-sleep cycle completed");
@@ -452,9 +461,6 @@ private:
              static_cast<unsigned>(sleep_cycles_),
              wake_known ? attadipa::core::to_string(wake.by) : "UNKNOWN",
              static_cast<int>(cause), static_cast<unsigned long long>(pins));
-    if (sleep_result != ESP_OK) {
-      ESP_LOGE(kTag, "LightSleep failed: %s", esp_err_to_name(sleep_result));
-    }
     if (restore_result != ESP_OK) {
       ESP_LOGE(kTag, "restore AMOLED after LightSleep: %s",
                esp_err_to_name(restore_result));
