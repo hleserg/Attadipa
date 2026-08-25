@@ -609,6 +609,81 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-175 · `main` is red, every pull request inherits it, and the fix is one line
+- **Priority:** P1 — this is the "automation defect that actually stalls the
+  queue" CLAUDE.md ranks ahead of other work. Nothing merges while it holds:
+  the sweep refuses a red head and so does an orchestrator.
+- **Dependencies:** T-144. It is a `.github/workflows/` file, so no agent here
+  can push it.
+- **Goal:** CI's `Workflow lint` job fails on `main` at `d150f34`, and therefore
+  on every open pull request that has merged `main`:
+
+```
+.github/workflows/issue-janitor.yml:21:9: shellcheck reported issue in this
+script: SC2034:warning:5:3: TITLE appears unused. Verify use (or export if used
+externally) [shellcheck]
+```
+
+  `issue-janitor.yml` was pushed straight to `main` on 2026-08-25, so no pull
+  request ran `actionlint` over it first. Every other CI job on that head is
+  green, including the new firmware build; this one line is the whole failure.
+- **Acceptance:** `actionlint -color` clean on `main`. The smallest change that
+  keeps the author's intent is to use the variable that was clearly meant to be
+  used, inside the branch that closes an issue:
+
+```
+              echo "::notice::#$NUMBER ($TITLE): closing, marked completed or obsolete"
+```
+
+  one line above the `gh issue comment`. Verified locally with `actionlint`
+  1.7.7, the version CI pins: clean. Deleting the `TITLE=` assignment instead is
+  equally green and loses the log line, which for an unattended issue closer is
+  the only record of what it touched.
+- **Not parked as a patch**, deliberately: a one-line change needs the owner
+  either way, and `pending/` asks a patch to carry every edit its own landing
+  forces — more machinery than the fix. T-144 is the standing blocker; this is
+  an instance of it, urgent enough to name separately.
+- **What must not be assumed:** that the janitor's *behaviour* is in scope here.
+  It closes any open issue whose body matches `status: done|completed|obsolete`,
+  and this repository writes structured markers into issue bodies. Whether that
+  is what the owner wants is the owner's question, not this task's.
+- **Hardware required:** no.
+
+
+### T-176 · The intake gate recognises `@claude` with the stripper #130 had to replace
+- **Priority:** P2 — same class of defect as [#130](https://github.com/hleserg/Attadipa/issues/130)'s
+  second path, on a boundary that costs a run rather than a merge.
+- **Dependencies:** none. `.github/scripts/intake-decision.sh` and its test.
+- **Goal:** `attadipa_strip_code()` removes exactly two markdown forms — a
+  fenced block whose fence starts in column one, and a matched pair of single
+  backticks — and `attadipa_asks_for_agent()` then asks whether `@claude`
+  survives. Everything else markdown can do with a string goes straight
+  through: a double-backtick span, four spaces of indent, an HTML comment, a
+  fence indented one to three spaces, a tilde run inside a backtick fence. Each
+  of those was proved to pass on `main@36e1ba9` while #130 was being fixed, run
+  rather than read; the difference is only that here the consequence is a
+  billable agent run started by somebody writing *about* asking for one, not an
+  unattended merge. Write access is still required, so this is not an
+  authorisation hole.
+- **Why it was not fixed alongside #130.** The Codex acknowledgement could
+  become an exact standalone line, and did — that is what makes its recogniser
+  simple and total. `@claude` is a mention *inside a sentence* and an exact-line
+  rule would refuse every real one, including the owner's. So the two boundaries
+  now have two recognisers on purpose (`codex-answered.sh` says so where it
+  declines to source this file), and closing this one needs its own answer: a
+  conservative block-level pass that drops fenced, indented, quoted and
+  commented regions, and then a mention test over what is left.
+- **Acceptance:** `intake-gate-test.sh` covers each of the five forms above as
+  a **refusal**, plus the passing cases that must not regress — a mention in
+  ordinary prose, a mention after a closed fence, a mention in a sentence that
+  also quotes one in a code span. A mutant that restores the two-form stripper
+  turns them red.
+- **What must not be assumed:** that the fix is to reuse #130's recogniser.
+  It answers a different question and returning 1 for every real mention is how
+  it would fail.
+- **Hardware required:** no.
+
+
 ### T-152 · A present provider that is permanently uncomparable still releases the hold
 - **Priority:** P2 — narrow, and it is the residual of a fix rather than a new
   defect.
@@ -2776,7 +2851,7 @@ Recommended next action:
   reason: that unit has **no vibration motor fitted**, so there is nothing to
   interfere with the compass even once the compass exists.
 
-### T-144 · An agent cannot land a change to `.github/workflows/`, and two fixes are parked behind it
+### T-144 · An agent cannot land a change to `.github/workflows/`, and three fixes are parked behind it
 - **Priority:** P1
 - **Dependencies:** none. This is a token permission, not a design problem.
 - **Goal:** let a fix that has to touch a workflow file actually reach `main`.
@@ -2794,37 +2869,39 @@ Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
                     (refusing to allow a GitHub App to create or update
                      workflow `.github/workflows/pr-merge-sweep.yml` without
                      `workflows` permission)
-                Two fixes are parked on it, both against the same file:
-                  · #170 — docs/automation/pending/170-merge-sweep-completeness.patch
-                    (the merge sweep proving it read the whole pull request)
-                  · #130 — docs/automation/pending/130-merge-sweep-caller.patch
-                    on pull request #154, which files this same blocker as
-                    "T-127" — a number already taken by the anchor check in
-                    DONE. Whichever of the two lands second should fold its
-                    entry into this one rather than leave three numbers for
-                    one problem.
-                Apply both **in one commit**, not in either order: they edit the
-                same workflow. `merge-candidate-test.sh` hard-fails CI for every
-                open pull request if #154's patch lands first — but **not** in the
-                other direction: its state machine keys on the 170 patch, and
-                #154's is on that pull request rather than in `pending/`, so
-                landing 170 alone goes green while leaving #154's patch stale.
-                The order this entry recommends is the unguarded one. Each `git rm`s only its own file, so neither deletes the
-                other's while it is still parked.
+                THREE FIXES ARE PARKED ON IT AND THEY ARE NOW ONE FILE:
+                docs/automation/pending/170-merge-sweep-completeness.patch
+                carries #170 (the sweep proving it read the whole pull
+                request), #199 (the head timed by GitHub rather than by the
+                committer clock) and, since 2026-08-25, #130 (the Codex answer
+                bound to the head's object id). Eleven edits, one apply, one
+                `merge-candidate.sh` arity transition — nine arguments to
+                eleven, with no middle state anybody can land.
+                It was two files until #154 was closed unmerged in the
+                recovery. `130-merge-sweep-caller.patch` never reached
+                `pending/`, and the ordering hazard this entry used to describe
+                — CI hard-failing if that one landed first, and going green
+                while leaving it stale in the other direction — went with it.
+                `75-approval-stall.patch` beside it edits four other files and
+                never the sweep, so the two are independent and may land in
+                either order. Each `git rm`s only its own file.
 Impact:         #170 is closed fail-closed rather than fixed: until the patch
                 lands, `merge-candidate.sh` refuses the pre-#170 nine-argument
                 caller by arity, so the sweep merges NOTHING and logs the file
                 to apply once per open pull request per run. Correct, and not
                 finished. Everything still merges through an orchestrator
                 session, which is unaffected.
-                The two patches touch the same file and will conflict with
-                each other, not with `main`.
+                #130 holds the same way and on a second line: the live caller
+                hands `codex-answered.sh` a timestamp where it now requires an
+                object id, so any pull request carrying a Codex finding answers
+                `unknown`. Both end on the same apply.
 Possible options:
-                1. An orchestrator session applies both patches in one
-                   commit, resolving the one overlap by hand, and `git rm`s
-                   the two patch files it applied — not the directory, which
-                   also holds README.md, the target of three links in
-                   APPROVAL_STALLS.md. Costs one live session.
+                1. An orchestrator session applies the patch and `git rm`s
+                   that one file — not the directory, which also holds
+                   README.md, the target of three links in APPROVAL_STALLS.md,
+                   and `75-approval-stall.patch`. No overlap to resolve by hand
+                   since the three issues were folded into one patch. Costs one
+                   live session.
                 2. Owner grants the Claude GitHub App `workflows: write` on
                    this installation. Fixes the class, not just these two —
                    and widens what an agent may change to include the files
@@ -2835,7 +2912,7 @@ Possible options:
                 4. Leave both parked. The merge sweep stays a no-op, and the
                    next workflow-level finding parks behind these two.
 Recommended next action:
-                Option 1 for these two, then decide 2 or 3 at leisure. It
+                Option 1 for what is parked, then decide 2 or 3 at leisure. It
                 needs no permission change and no new trust boundary, and the
                 sweep is back the same day. Options 2 and 3 hand an agent
                 write access to the workflows that constrain agents, which is
@@ -2954,6 +3031,67 @@ A1's schematic-revision
   8 MB octal PSRAM, the development partition table and stable heartbeat were
   measured. Full transcript:
   [BRINGUP_2026-08-25](docs/hardware/BRINGUP_2026-08-25.md).
+### T-174 · The queue's width limit asked `gh` for a field it does not have — **DONE** 2026-08-25
+- **Priority:** P1
+- **Dependencies:** none. Issue
+  [#239](https://github.com/hleserg/Attadipa/issues/239), reviewing
+  `945c16a..36e1ba9`.
+- **Goal:** `.github/scripts/wip-limit.sh` asked `gh pr list --json` for
+  `baseRepository`, a name that belongs to the REST API and that the CLI does
+  not have. `gh` answers `Unknown JSON field: "baseRepository"` and exits 1
+  before making a request; `2>/dev/null || true` discarded that, the empty
+  payload normalised to nothing, and the decision fell through to `unknown`.
+  So `full` and `incident` were unreachable states and the WIP policy
+  *2 normal / 3 hard* was enforced on nothing from #216 onwards — observed on
+  #219, #236 and #237, each of which got
+  `Could not determine the active pull-request count`. Codex named the exact
+  field reviewing #216 and the merged implementation did not carry the
+  correction.
+- **Why nothing caught it:** the suite called the pure decision function with
+  hand-built JSON, six cases, 6/6 green on every run. The transport was never
+  executed. `shellcheck` saw a well-formed command, `actionlint` saw valid YAML,
+  and the `--slurp`/`--jq` scan looks at a different pair of flags.
+- **Acceptance:** the transport asks for `number,isCrossRepository,labels`; the
+  base repository comes from the trusted `GITHUB_REPOSITORY` rather than from
+  the payload; a fork is decided by `isCrossRepository`; the `queue:parked` and
+  `queue:emergency` exemptions and the 2/3 limits are unchanged; a transient API
+  failure still fails closed to `unknown` while a CLI schema error raises a
+  distinct `::error::` diagnostic naming the field, since one is worth retrying
+  and the other will refuse every run until somebody edits the file.
+- **Research status:** n/a. The field lists were read off `gh` 2.97.0 itself
+  (`gh <command> --json` with no value is a flag-parse error `gh` answers with
+  the list, before any network call).
+- **Implementation status:** done. `.github/scripts/wip-limit.sh`. **No workflow
+  change was needed**, which is deliberate: `pr-wip-limit.yml` reads `state` and
+  `count` and nothing else, so the fix lands entirely in a file an agent token
+  can write.
+- **Tests:** `.github/tests/wip-limit-test.sh` — **26 pass, up from 6**. Seven
+  are pure-rule cases, one of them new (`queue:emergency` was exempt in the code
+  and asserted nowhere). The other nineteen run the shipping script end to end
+  against a stub `gh` on `PATH` which refuses an unknown `--json` field exactly
+  as `gh` does, with `gh`'s real fifty-line refusal rather than a tidy one-liner.
+  Five of those put the pre-#239 field list back into a copy of the script and
+  require `unknown` **with** the hard diagnostic, on one line, and `gh`'s full
+  stderr in the log; regressing the shipping file turns 9 of the 26 red, which
+  was checked by doing it rather than reasoned about.
+  `.github/tests/gh-api-usage-test.sh` — **82 pass, up from 68**: the same rule
+  as a static scan over workflows, scripts and parked-patch post-images. It
+  resolves a one-line shell assignment, so it reads
+  `--json "$ATTADIPA_WIP_JSON_FIELDS"` rather than skipping it, and it names what
+  it cannot resolve instead of reporting it clean. Run against the pre-fix file
+  it reports `wip-limit.sh:33 unknown-field baseRepository`. Every
+  `.github/tests/*.sh` suite green, `shellcheck -x` clean, `actionlint` clean,
+  `check_docs.py` clean, `ctest` 33/33 once Pillow is installed — without it
+  `ui_image_checks_unavailable` is the deliberate placeholder failure, on `main`
+  as much as here.
+- **Not verified here, and it cannot be:** `pr-wip-limit.yml` checks out
+  `ref: default_branch`, so a live run always executes **main's** copy of the
+  script. The first live numeric count therefore lands on the first pull request
+  opened after this merges, not on the pull request that fixes it. The fixed
+  script *was* run against the live repository from this session and returned
+  `full 3` for #238, #218 and #217 — a real `gh` call, not a stub, but from a
+  shell rather than from the workflow.
+- **Hardware required:** none. GitHub and host only.
 
 ### T-004 · ESP-IDF version decision — **DONE** 2026-08-25
 - **Priority:** P1 — lowered from P0 when it was open. It blocked embedded work
