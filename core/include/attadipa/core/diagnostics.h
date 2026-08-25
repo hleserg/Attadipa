@@ -113,8 +113,57 @@ struct GnssStatus {
     GnssState                     state   = GnssState::Off;
     StartKind                     last_start = StartKind::Cold;
     PositionValidity              validity   = PositionValidity::NoFix;
-    TrustState                    trust      = TrustState::Trusted;
-    std::uint32_t                 trust_reasons = 0;   // the TrustReason bitmask
+
+    // Empty means no verdict has been reached, and that is the default.
+    //
+    // `TrustState` is the *output* of an evaluation: `Untrusted`, `Degraded`
+    // and `Trusted` are three conclusions somebody drew after weighing evidence
+    // (ADR-0011 §5). None of them can say "the evaluator has not run" — so
+    // while this defaulted to `TrustState::Trusted`, a snapshot taken at boot,
+    // in a panic handler, or on a board with no receiver at all made the most
+    // reassuring claim in the set about a position that does not exist. That is
+    // rule 1 at the top of this header broken by an enum rather than by a zero;
+    // `validity` on the line above defaults to `NoFix` for exactly this reason.
+    //
+    // Not `Untrusted` instead, safe though that would have been: `Untrusted`
+    // says a verdict *was* reached and it was bad, and anything counting
+    // integrity alarms across a fleet of support bundles would believe it.
+    // The fact is that there is no verdict, and `std::optional` is how the rest
+    // of this header states one.
+    //
+    // Not a fourth `TrustState` either. That enum is ordered — thresholds,
+    // recovery and the transition log in trust.cpp all compare its values — and
+    // a member with no place in that order would need one invented at every
+    // comparison site.
+    //
+    // **Read this through `trust_or()` (trust.h), not by comparing it.** The
+    // optional does not stop a comparison against a bare `TrustState` from
+    // compiling, and it silently answers several of them in the unsafe
+    // direction: `!= Untrusted` is true while empty, and `< Degraded` is true
+    // while empty, which sorts "nobody looked" below the worst verdict there
+    // is. `trust_or(gnss.trust, TrustState::Untrusted)` makes the caller say
+    // what absence means before any of that can happen.
+    std::optional<TrustState>     trust;
+
+    // The `TrustReason` bitmask behind that verdict, and zero while there is
+    // none: reasons are what an evaluation produced, so evidence without an
+    // evaluation is nobody's conclusion. Kept beside the verdict rather than
+    // collapsed into it, because "jamming *and* a jump while stationary" is a
+    // different situation from either alone (ADR-0011 §5).
+    std::uint32_t                 trust_reasons = 0;
+
+    // The allegations that lapsed and were never withdrawn --
+    // `TrustEngine::unconfirmed_reasons()`. A separate field because it answers
+    // a different question from `trust_reasons`, and a screen that shows only
+    // the first can show a device that is not `Trusted` with an empty reason
+    // set: nothing is currently alleged, and the state still cannot climb
+    // because a detector stopped talking without ever saying the condition had
+    // ended. `trust.h` promises that the per-reason mask exists so a diagnostic
+    // screen "can name it rather than showing a device stuck for no visible
+    // reason", and until this field existed the struct such a screen reads
+    // could not carry it -- the promise was kept by an accessor nothing outside
+    // the tests could see. Found in review of #153.
+    std::uint32_t                 trust_unconfirmed = 0;
     PositionSource                source     = PositionSource::Unknown;
     std::optional<std::uint8_t>   satellites_used;
     std::optional<std::uint8_t>   satellites_in_view;
@@ -123,6 +172,44 @@ struct GnssStatus {
     std::optional<Millis>         fix_age;
     ReceiverIndication            jamming  = ReceiverIndication::Unknown;
     ReceiverIndication            spoofing = ReceiverIndication::Unknown;
+
+    // The verdict and its reasons are one fact, so write them in one call. A
+    // producer assigning the two fields separately can leave them out of step
+    // in both directions — a mask with no verdict is evidence nobody weighed,
+    // and a verdict with an empty mask is the collapsed answer ADR-0011 §5
+    // exists to refuse — and neither is visible at the call site.
+    //
+    // **This is a call-site discipline, not an atomicity guarantee**, and the
+    // difference matters for the one consumer this header was written for. Two
+    // stores are two instructions; a panic landing between them writes a
+    // snapshot holding exactly the pairing the paragraph above says cannot
+    // exist. Nothing single-threaded can reach that and no store order avoids
+    // both interleavings — making the pair indivisible means packing the
+    // verdict into the mask, which is a change to the wire shape of this field
+    // and is filed as such in TASKS.md rather than assumed here.
+    void record_trust(TrustState verdict, std::uint32_t reasons)
+    {
+        trust         = verdict;
+        trust_reasons = reasons;
+    }
+
+    // And the way back to "no verdict", for a receiver whose verdict is now
+    // about nothing — a provider detaching, or a reset (ADR-0004 §3).
+    //
+    // **It clears the verdict and its reasons, and nothing else.** Every other
+    // field here — `present`, `state`, `validity`, `fix_age`, the satellite
+    // counts, the two receiver indications — is the producer's to retire, and
+    // leaving them is worse than the bug this pairing was introduced to fix: a
+    // `NotEvaluated` verdict beside `present = true`, `validity = Valid` and a
+    // `fix_age` that has stopped advancing still describes a live, recent,
+    // healthy fix from a receiver that has gone, and ADR-0004 §3 is the section
+    // about exactly that — a remote datum has two ages and the interface shows
+    // the larger.
+    void forget_trust()
+    {
+        trust.reset();
+        trust_reasons = 0;
+    }
 };
 
 struct DiagnosticsSnapshot {

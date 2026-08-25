@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Restarting a blocked task must produce an outcome, not silence.
+# Restarting a blocked task must produce an outcome, not silence -- and a real
+# blocker must not come back out of the pipeline as a success.
 #
 # THE PAIR, AGAIN. The watchdog's bounded retry escalates a task that has failed
 # more than once since a person queued it: agent:blocked + needs-owner, plus a
@@ -27,11 +28,38 @@
 # a human escalation and hand the branch to the unattended backstop, which
 # requires agent:blocked absent and does not look at ci:failed.
 #
-# So the fact is recorded rather than inferred: the claim step reads the labels
-# BEFORE it changes any, writes ATTADIPA_BLOCKED_BEFORE, and strips
-# agent:blocked from issues only. Hand over branches on that variable. This file
-# asserts the whole chain, because any one link silently restores the silence.
+# So the fact was recorded rather than inferred: the claim step read the labels
+# BEFORE it changed any and wrote ATTADIPA_BLOCKED_BEFORE. AND THAT IS THE
+# DEFECT #129 REPORTED, because the claim step then strips the very label it
+# has just recorded. A pre-mutation snapshot cannot answer a post-mutation
+# question, and on the exact route the escalation comment recommends it
+# answered it backwards:
+#
+#   agent:blocked + needs-owner   the watchdog escalates
+#   `@claude`                     a person restarts it, as instructed
+#   BLOCKED_BEFORE=true           the claim step reads
+#   agent:blocked removed         the claim step strips, snapshot now stale
+#   agent:blocked + BLOCKED       the agent re-confirms the blocker and says why
+#   "Done" + agent:review         the hand-over reads a `true` that describes a
+#                                 label that no longer existed when it was read
+#
+# A first-class blocked outcome reported as a finished one. The claim step now
+# re-reads AFTER its own edits and exports ATTADIPA_BLOCKED_AT_CLAIM, and the
+# hand-over asks .github/scripts/blocked-outcome.sh.
+#
+# AND THIS FILE NOW EXECUTES THAT TRANSITION rather than asserting that its
+# pieces are present. The previous version checked, separately, that something
+# read the state, that something stripped the label and that the hand-over
+# bailed on a variable -- three true statements about a sequence that was
+# broken. #129 is right that a green structural test proved nothing here. The
+# claim step's own shell is extracted out of the workflow and run against a stub
+# `gh`, so the thing under test is the code that ships and not a transcription
+# of it.
 
+# The scripts this file sources are named relative to the repository root at
+# run time, because of the `cd` below; shellcheck resolves them from this
+# file's own directory, so it is told where that is before anything else runs.
+# shellcheck source-path=SCRIPTDIR
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -41,6 +69,7 @@ ok() { printf '  ok    %s\n' "$1"; pass=$((pass + 1)); }
 no() { printf '  FAIL  %s\n     %s\n' "$1" "$2"; fail=$((fail + 1)); }
 
 AGENT=.github/workflows/claude-agent.yml
+REPAIR=.github/workflows/claude-ci-repair.yml
 WATCHDOG=.github/workflows/agent-queue-watchdog.yml
 INTAKE=.github/scripts/intake-decision.sh
 
@@ -95,42 +124,75 @@ else
 fi
 
 echo
-echo "Hand over still bails on agent:blocked -- that half is deliberate"
-if grep -q '\*,agent:blocked,\*' "$AGENT"; then
-  ok "the Hand over step still treats agent:blocked as the agent's own word"
+echo "...and it records the state it LEAVES, not the state it found"
+
+if grep -q 'ATTADIPA_BLOCKED_AT_CLAIM=' "$AGENT"; then
+  ok "the claim step exports ATTADIPA_BLOCKED_AT_CLAIM"
 else
-  no "the Hand over step still treats agent:blocked as the agent's own word" \
-     "the check is gone; an agent that blocks itself will now be talked over by a generated outcome comment"
+  no "the claim step exports ATTADIPA_BLOCKED_AT_CLAIM" \
+     "nothing writes it; the hand-over is back to inferring whose label agent:blocked is, which is false on every pull request claude-ci-repair.yml has escalated and backwards on every issue the watchdog has"
+fi
+
+# THE ORDERING IS THE FIX. The end-to-end run below catches a read moved back
+# above the strip, because it would report `true` again -- but the property is
+# worth naming, so that a person reading the failure is told what the rule is
+# rather than only that a scenario broke.
+READ_LINE=$(grep -n 'ATTADIPA_BLOCKED_AT_CLAIM=' "$AGENT" | grep -v '::notice' | tail -n 1 | cut -d: -f1)
+# shellcheck disable=SC2016  # `$stale` is the workflow's variable, matched literally
+STRIP_LINE=$(grep -n 'label_edit --remove-label "\$stale"' "$AGENT" | tail -n 1 | cut -d: -f1)
+if [ -n "$READ_LINE" ] && [ -n "$STRIP_LINE" ] && [ "$READ_LINE" -gt "$STRIP_LINE" ]; then
+  ok "and it reads the labels after the strip (line $READ_LINE, strip at $STRIP_LINE), not before"
+else
+  no "and it reads the labels after the strip, not before" \
+     "the read at line ${READ_LINE:-?} does not follow the removal loop at line ${STRIP_LINE:-?}; a snapshot taken before the claim mutates the labels cannot say whose label agent:blocked is afterwards -- that is #129"
 fi
 
 echo
-echo "...and it asks a recorded fact rather than inferring one"
-
-# THE HALF THE SECOND REVIEW FOUND. Bailing on agent:blocked is right only when
-# THIS run applied it. Every other case -- a pull request carrying
-# claude-ci-repair.yml's escalation, an issue whose read failed -- must produce
-# an outcome, because silence is the defect this whole file is about.
-if grep -q 'ATTADIPA_BLOCKED_BEFORE=' "$AGENT"; then
-  ok "the claim step records whether agent:blocked was there before the run"
+echo "Hand over asks the decision file rather than reading the label itself"
+HANDOVER_STEP="$(sed -n '/name: Hand over/,$p' "$AGENT")"
+if printf '%s' "$HANDOVER_STEP" | grep -q 'blocked-outcome.sh'; then
+  ok "the Hand over step calls .github/scripts/blocked-outcome.sh"
 else
-  no "the claim step records whether agent:blocked was there before the run" \
-     "nothing writes ATTADIPA_BLOCKED_BEFORE; Hand over is back to inferring that the label is this run's, which is false on every pull request claude-ci-repair.yml has escalated"
+  no "the Hand over step calls .github/scripts/blocked-outcome.sh" \
+     "the decision is back inside the workflow, where nothing can execute it; both of this rule's defects lived in exactly that YAML block"
+fi
+if [ -f .github/scripts/blocked-outcome.sh ]; then
+  ok "and that file exists"
+else
+  no "and that file exists" ".github/scripts/blocked-outcome.sh is missing"
 fi
 
-BAIL="$(sed -n '/\*,agent:blocked,\*/,/esac/p' "$AGENT")"
-if printf '%s' "$BAIL" | grep -q 'ATTADIPA_BLOCKED_BEFORE'; then
-  ok "and Hand over's bail is gated on it"
+# ...without being able to take the step down with it. The hand-over runs under
+# `set -e` on whatever tree the action left behind, which on a run started from
+# an old pull request is that branch (#133). A missing decision file must not
+# turn into an aborted hand-over, because that is the silence being fixed.
+# Structural, and it says so: nothing here can execute a step that has already
+# died. The fallback must never be `silent`.
+# shellcheck disable=SC2016  # `$(bash` is the workflow's text, matched literally
+FALLBACK="$(printf '%s\n' "$HANDOVER_STEP" | sed -n '/BLOCKED_OUTCOME=\$(bash/,/^ *esac/p')"
+if printf '%s\n' "$FALLBACK" | grep -q 'silent|report|normal' \
+   && printf '%s\n' "$FALLBACK" | grep -q 'BLOCKED_OUTCOME=report' \
+   && ! printf '%s\n' "$FALLBACK" | grep -q 'BLOCKED_OUTCOME=silent'; then
+  ok "and an unrunnable decision file falls back to reporting, never to silence"
 else
-  no "and Hand over's bail is gated on it" \
-     "the bail does not consult ATTADIPA_BLOCKED_BEFORE; a run started by @claude on a pull request that repair escalated will do the work and report nothing"
+  no "and an unrunnable decision file falls back to reporting, never to silence" \
+     "the call does not validate its answer against the three words and fall back from the labels alone; under set -e a missing script aborts the whole hand-over and the run reports nothing"
 fi
 
-# Fail toward reporting: an unreadable pre-run state must not buy silence.
-if printf '%s' "$BAIL" | grep -q '= "false"'; then
-  ok "and only an explicit false -- unknown reports rather than falls silent"
+# A BLOCKED OBJECT MUST NOT COME OUT LABELLED agent:review, AND `report` IS THE
+# case that could. `silent` returns before the comment; `report` writes the
+# comment -- because silence is the older defect -- and must then stop, since
+# `agent:review` means "finished, somebody read this" and agent:failed +
+# agent:ready means "back in the queue", neither of which is true of an object
+# somebody has been asked to look at. The guard is a line-order property: its
+# `exit 0` has to come before the first state label the step applies.
+GUARD_LINE=$(printf '%s\n' "$HANDOVER_STEP" | grep -n 'BLOCKED_OUTCOME" = "report"' | head -n 1 | cut -d: -f1)
+REVIEW_LINE=$(printf '%s\n' "$HANDOVER_STEP" | grep -n -- '--add-label agent:review' | head -n 1 | cut -d: -f1)
+if [ -n "$GUARD_LINE" ] && [ -n "$REVIEW_LINE" ] && [ "$GUARD_LINE" -lt "$REVIEW_LINE" ]; then
+  ok "and a reported blocker returns before any state label is applied"
 else
-  no "and only an explicit false -- unknown reports rather than falls silent" \
-     "the bail is not gated on the value being exactly \"false\"; an unreadable read would restore the silence it was added to remove"
+  no "and a reported blocker returns before any state label is applied" \
+     "the 'report' guard is at line ${GUARD_LINE:-absent} of the Hand over step and the first --add-label agent:review at line ${REVIEW_LINE:-absent}; a run that found agent:blocked already set would label the object as finished work"
 fi
 
 echo
@@ -140,7 +202,6 @@ echo "Every label edit knows which object it is editing"
 # requests -- this repository has already had an error document from that field
 # end up inside an outcome comment. Three of five triggers here fire on pull
 # requests, and every call is `|| true`, so neither outcome would be reported.
-HANDOVER_STEP="$(sed -n '/name: Hand over/,$p' "$AGENT")"
 if printf '%s' "$HANDOVER_STEP" | grep -qE '^\s*gh issue (edit|comment) '; then
   no "the Hand over step edits and comments through the object-aware helper" \
      "a bare 'gh issue edit/comment' survives in Hand over; on a pull request it either silently edits one while reasoning about issues, or silently does nothing -- see .github/scripts/gh-label.sh"
@@ -182,6 +243,46 @@ if grep -qE 'issues|workflow_dispatch' "$INTAKE"; then
 else
   no "$INTAKE still scopes its claimed-state check by event" \
      "the gate no longer distinguishes events; re-read whether a comment on a blocked issue still starts a run at all"
+fi
+
+echo
+echo "The other half of the same contract: a pull request can get back out"
+# claude-ci-repair.yml raises `ci:failed` + `agent:blocked` when it gives up.
+# Nothing removed them until #129, so a diagnosed and fixed pull request stayed
+# permanently ineligible for an unattended merge. The exit exists, and it is a
+# command rather than any `@claude`.
+if grep -q 'ci-repair-reset.sh' "$REPAIR"; then
+  ok "claude-ci-repair.yml has a reset path, and it is the executable decision"
+else
+  no "claude-ci-repair.yml has a reset path, and it is the executable decision" \
+     "nothing calls .github/scripts/ci-repair-reset.sh; the escalation is a one-way door again -- merge-candidate.sh holds on agent:blocked by name"
+fi
+RESET_JOB="$(sed -n '/^  reset:/,$p' "$REPAIR")"
+# shellcheck disable=SC2016  # `$label` is the workflow's variable, matched literally
+if printf '%s' "$RESET_JOB" | grep -q 'remove-label "\$label"'; then
+  ok "and it removes labels rather than only clearing a counter"
+else
+  no "and it removes labels rather than only clearing a counter" \
+     "the reset job does not remove a label; the counter alone was the defect -- it is read on the NEXT CI failure and never touches agent:blocked"
+fi
+# WHICH labels, read out of the loop rather than assumed -- the same shape as
+# the stale-label list above, and for the same reason: the list is the rule.
+RESET_LABELS="$(printf '%s\n' "$RESET_JOB" | sed -n 's/^[[:space:]]*for label in \(.*\); do[[:space:]]*$/\1/p' | head -n 1)"
+if [ -z "$RESET_LABELS" ]; then
+  no "and the labels it clears can be read" \
+     "no 'for label in ...; do' in the reset job; if the loop moved, point this test at it rather than deleting it"
+else
+  ok "and the labels it clears can be read ($RESET_LABELS)"
+  case " $RESET_LABELS " in
+    *" agent:blocked "*) ok "and agent:blocked is one of them, which is the hold the sweep reads" ;;
+    *) no "and agent:blocked is one of them, which is the hold the sweep reads" \
+          "the reset clears $RESET_LABELS; merge-candidate.sh holds on agent:blocked by name, so a green pull request stays ineligible" ;;
+  esac
+  case " $RESET_LABELS " in
+    *" needs-owner "*) no "and needs-owner is not" \
+                          "a decision only the owner can make is not undone by a repair command -- the claim step leaves it alone for the same reason" ;;
+    *) ok "and needs-owner is not" ;;
+  esac
 fi
 
 echo
@@ -270,6 +371,311 @@ if printf '%s' "$HANDOVER" | grep -q 'gh pr ready.*--undo'; then
 else
   ok "and it never puts one back to draft"
 fi
+
+# ---------------------------------------------------------------------------
+# The transition itself, executed.
+#
+# Everything above reads the files. That is what #129 objected to and it was
+# right: each of those statements was true on 7558728, where the sequence they
+# describe was broken. So the claim step's own shell is lifted out of the
+# workflow and RUN, against a stub `gh` that keeps a label set in a file. The
+# code under test is therefore the code that ships -- extract a step that no
+# longer exists and the harness says so rather than passing vacuously.
+# ---------------------------------------------------------------------------
+echo
+echo "The transition, run end to end against a stub GitHub"
+
+# step_script FILE "step name" -- the body of that step's `run: |` block,
+# dedented. Nothing else in this repository needs it, so it lives here.
+step_script() {
+  awk -v want="$2" '
+    $0 ~ "^[[:space:]]*- name: " want "[[:space:]]*$" { instep = 1; next }
+    instep && /^[[:space:]]*- name: / { exit }
+    instep && /^[[:space:]]*run: \|[[:space:]]*$/ {
+      match($0, /^[[:space:]]*/); runindent = RLENGTH; inrun = 1; next
+    }
+    inrun {
+      if ($0 ~ /^[[:space:]]*$/) { print ""; next }
+      match($0, /^[[:space:]]*/)
+      if (RLENGTH <= runindent) exit
+      print substr($0, runindent + 3)
+    }
+  ' "$1"
+}
+
+work=$(mktemp -d) || exit 1
+trap 'rm -rf "$work"' EXIT
+
+CLAIM="$work/claim.sh"
+step_script "$AGENT" "Normalise labels" > "$CLAIM"
+if [ -s "$CLAIM" ] && grep -q 'stale_labels' "$CLAIM"; then
+  ok "the claim step's shell can be extracted and run ($(wc -l < "$CLAIM") lines)"
+else
+  no "the claim step's shell can be extracted and run" \
+     "nothing was extracted from the 'Normalise labels' step of $AGENT, or it does not look like the claim; every scenario below would pass vacuously -- point this at the step's new name rather than deleting it"
+  printf '  %d passed, %d failed\n' "$pass" "$fail"
+  exit 1
+fi
+
+mkdir -p "$work/bin"
+cat > "$work/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+# A very small GitHub: one object, its labels in a file, and the calls the claim
+# step actually makes. Every invocation is logged so a scenario can assert WHICH
+# of `gh issue edit` and `gh pr edit` was used -- the split .github/scripts/
+# gh-label.sh exists for, modelled here rather than assumed away.
+set -u
+state="${ATTADIPA_STUB_STATE:?stub state directory not set}"
+printf '%s\n' "$*" >> "$state/calls"
+kind=$(cat "$state/kind")
+
+emit() {
+  local names="" line
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    names="$names{\"name\":\"$line\"},"
+  done < "$state/labels"
+  names="${names%,}"
+  if [ "$kind" = pr ]; then
+    printf '{"number":7,"state":"open","pull_request":{"url":"u"},"labels":[%s]}\n' "$names"
+  else
+    printf '{"number":7,"state":"open","labels":[%s]}\n' "$names"
+  fi
+}
+
+sub="${1-}"; shift || true
+case "$sub" in
+  api)
+    if [ "${ATTADIPA_STUB_API_FAILS:-no}" = yes ]; then exit 1; fi
+    case "${1-}" in
+      */collaborators/*/permission)
+        printf '%s\n' "${ATTADIPA_STUB_PERMISSION:-none}"; exit 0 ;;
+    esac
+    emit
+    exit 0 ;;
+  issue|pr)
+    # `gh issue edit` resolves repository.issue(number:), which does not
+    # resolve a pull request, and the reverse fails too.
+    if [ "$sub" != "$kind" ]; then
+      echo "could not resolve to a $sub" >&2
+      exit 1
+    fi
+    case "${1-}" in
+      view)
+        # The only `--json labels --jq ...` this repository asks for. A stub,
+        # so the projection is assumed rather than applied.
+        paste -sd, "$state/labels"; exit 0 ;;
+      comment)
+        shift
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --body-file) cp "$2" "$state/comment.md"; shift 2 ;;
+            *) shift ;;
+          esac
+        done
+        exit 0 ;;
+    esac
+    [ "${1-}" = edit ] || exit 0
+    shift
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --add-label)
+          grep -Fxq -- "$2" "$state/labels" || printf '%s\n' "$2" >> "$state/labels"
+          shift 2 ;;
+        --remove-label)
+          # Real `gh` errors when the label is not there, and the workflow's
+          # `|| true` is what makes that survivable. Modelled rather than
+          # smoothed over: the post-claim read exists because a removal can
+          # fail, and a stub that always succeeds would hide that.
+          if grep -Fxq -- "$2" "$state/labels"; then
+            grep -Fxv -- "$2" "$state/labels" > "$state/labels.tmp" || true
+            mv "$state/labels.tmp" "$state/labels"
+          else
+            echo "label $2 not found" >&2
+            exit 1
+          fi
+          shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    exit 0 ;;
+esac
+exit 0
+STUB
+chmod +x "$work/bin/gh"
+
+state=""
+scenario=0
+
+# run_claim KIND [LABEL...] -- set the object up and execute the real claim step
+run_claim() {
+  local kind="$1"; shift
+  scenario=$((scenario + 1))
+  state="$work/s$scenario"
+  mkdir -p "$state"
+  printf '%s\n' "$kind" > "$state/kind"
+  : > "$state/labels"
+  : > "$state/calls"
+  : > "$state/env"
+  local l
+  for l in "$@"; do printf '%s\n' "$l" >> "$state/labels"; done
+  # Each scenario runs in a subshell so the stub PATH and the fake environment
+  # cannot leak into the next one. That is the point, not an accident.
+  # shellcheck disable=SC2030,SC2031
+  (
+    PATH="$work/bin:$PATH"
+    export PATH
+    export ATTADIPA_STUB_STATE="$state"
+    export GITHUB_ENV="$state/env"
+    export GH_TOKEN=stub REPO=hleserg/Attadipa ISSUE=7
+    export TASK_TYPE=continuous-review PRIORITY=P1 PRODUCER=chatgpt
+    bash "$CLAIM"
+  ) > "$state/log" 2>&1
+}
+
+# What the agent does next, and then what the hand-over decides.
+agent_blocks()  { printf 'agent:blocked\n' >> "$state/labels"; }
+labels_now()    { paste -sd, "$state/labels"; }
+has()           { grep -Fxq -- "$1" "$state/labels"; }
+claimed_state() { sed -n 's/^ATTADIPA_BLOCKED_AT_CLAIM=//p' "$state/env" | tail -n 1; }
+decide()        { bash .github/scripts/blocked-outcome.sh "$(labels_now)" "$(claimed_state)"; }
+is()            { if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "wanted '$3', got '$2'"; fi; }
+
+echo
+echo "  1. an issue the watchdog escalated, restarted with @claude, blocked again"
+run_claim issue agent:blocked needs-owner agent:ready source:chatgpt
+if has agent:blocked; then
+  no "the claim clears agent:blocked from the issue" "it is still there after the claim step ran"
+else
+  ok "the claim clears agent:blocked from the issue"
+fi
+if has agent:working; then ok "and takes the claim"; else no "and takes the claim" "agent:working was not added"; fi
+if has needs-owner; then ok "and leaves needs-owner alone"; else no "and leaves needs-owner alone" "needs-owner was removed; only the owner undoes that"; fi
+if grep -q '^pr edit' "$state/calls"; then
+  no "and edits it as an issue" "the claim used 'gh pr edit' on an issue"
+else
+  ok "and edits it as an issue"
+fi
+is "the recorded state is what the claim LEFT, not what it found" "$(claimed_state)" false
+agent_blocks
+is "so when the agent re-confirms the blocker, the hand-over stays quiet" "$(decide)" silent
+
+echo
+echo "  2. the same issue, but the agent finishes the work"
+run_claim issue agent:blocked needs-owner agent:ready
+is "the claim records the same cleared state" "$(claimed_state)" false
+is "and an ordinary run gets an ordinary outcome" "$(decide)" normal
+
+echo
+echo "  3. a pull request carrying claude-ci-repair.yml's escalation, plus @claude"
+run_claim pr ci:failed agent:blocked agent:claude
+if has agent:blocked; then
+  ok "the claim leaves the escalation on the pull request"
+else
+  no "the claim leaves the escalation on the pull request" \
+     "agent:blocked was stripped; merge-candidate.sh holds on that label by name and the backstop requires it absent, so a comment would have made an escalated branch unattended-merge eligible"
+fi
+if has agent:working; then ok "and still takes the claim"; else no "and still takes the claim" "agent:working was not added"; fi
+if grep -q '^issue edit' "$state/calls"; then
+  no "and edits it as a pull request" "the claim used 'gh issue edit' on a pull request"
+else
+  ok "and edits it as a pull request"
+fi
+is "the recorded state says the label was already there" "$(claimed_state)" true
+is "so the run reports what it did and changes no state label" "$(decide)" report
+
+echo
+echo "  4. the trusted exit: a person clears it, and the pull request is eligible again"
+# shellcheck source=../scripts/merge-candidate.sh
+. .github/scripts/merge-candidate.sh
+
+# The pull request from scenario 3, now diagnosed and fixed: green checks, the
+# reviewer's pass on the head commit, an old enough head, a path on the
+# allowlist. Everything an unattended merge needs except the stale blocker --
+# which is the whole complaint: nothing removed it, so this verdict was the
+# permanent one.
+green_verdict() {
+  attadipa_merge_candidate "success success" "$1" 0 0 clean false 30000 \
+    "docs/research/REUSE_LEDGER.md" true true 0123456789abcdef0123456789abcdef01234567
+}
+ESCALATED=$(printf 'agent:claude\nci:failed\nagent:blocked\nai-review:pass\n')
+is "before the reset, the sweep holds on the stale blocker" \
+   "$(green_verdict "$ESCALATED")" "HOLD agent:blocked is set"
+
+RESET_STEP="$work/reset.sh"
+step_script "$REPAIR" "Decide, and clear what the escalation put there" > "$RESET_STEP"
+if [ -s "$RESET_STEP" ] && grep -q 'ci-repair-reset.sh' "$RESET_STEP"; then
+  ok "the reset step's shell can be extracted and run too"
+else
+  no "the reset step's shell can be extracted and run too" \
+     "nothing was extracted from claude-ci-repair.yml's reset step; the assertions below would pass vacuously"
+fi
+
+# run_reset ACTOR PERMISSION BODY -- an escalated pull request, and one comment
+run_reset() {
+  scenario=$((scenario + 1))
+  state="$work/s$scenario"
+  mkdir -p "$state"
+  printf 'pr\n' > "$state/kind"
+  printf '%s\n' "$ESCALATED" > "$state/labels"
+  : > "$state/calls"
+  # shellcheck disable=SC2030,SC2031
+  (
+    PATH="$work/bin:$PATH"
+    export PATH
+    export ATTADIPA_STUB_STATE="$state"
+    export ATTADIPA_STUB_PERMISSION="$2"
+    export GH_TOKEN=stub REPO=hleserg/Attadipa PR=7
+    export ACTOR="$1" COMMENT_BODY="$3"
+    bash "$RESET_STEP"
+  ) > "$state/log" 2>&1
+}
+
+run_reset hleserg write '/ci-repair reset'
+if has agent:blocked || has ci:failed; then
+  no "the command from a person with write access clears both labels" \
+     "still carrying $(labels_now)"
+else
+  ok "the command from a person with write access clears both labels"
+fi
+if has ai-review:pass && has agent:claude; then
+  ok "and touches nothing else"
+else
+  no "and touches nothing else" "the reset removed a label it does not own: $(labels_now)"
+fi
+if [ -s "$state/comment.md" ]; then
+  ok "and says on the pull request what it did"
+else
+  no "and says on the pull request what it did" \
+     "no comment was written; a person who typed a documented command got a label change and silence"
+fi
+# The labels the step ACTUALLY left, handed to the rule that reads them. This
+# is the sentence the Definition of Done asks for, executed rather than argued.
+is "and the sweep now merges the very pull request it was holding" \
+   "$(green_verdict "$(cat "$state/labels")")" MERGE
+
+run_reset stranger read '/ci-repair reset'
+if has agent:blocked; then
+  ok "a stranger typing the same command changes nothing"
+else
+  no "a stranger typing the same command changes nothing" \
+     "read access cleared a human escalation; the branch is now unattended-merge eligible"
+fi
+
+run_reset hleserg write '@claude have another go at this'
+if has agent:blocked; then
+  ok "and neither does a plain @claude from the owner"
+else
+  no "and neither does a plain @claude from the owner" \
+     "any comment now dissolves the escalation -- that is the hole claude-agent.yml's claim step refuses to open, reopened one file over"
+fi
+
+echo
+echo "  5. the pre-run read fails outright"
+ATTADIPA_STUB_API_FAILS=yes run_claim issue
+is "an unreadable object records unknown, not a guess" "$(claimed_state)" unknown
+agent_blocks
+is "and unknown reports rather than falling silent" "$(decide)" report
 
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"

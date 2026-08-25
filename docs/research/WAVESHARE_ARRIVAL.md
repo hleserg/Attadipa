@@ -74,10 +74,10 @@ Most of the advice was already answered here, and one part of it this repository
 flatly contradicts.
 
 **The claim that the board's PSRAM is absent or undeclared is false, and was
-false before the advice arrived.** [HARDWARE_MATRIX.md:303](HARDWARE_MATRIX.md)
-records 8 MB of PSRAM — now also octal-VERIFIED — and
-[VERIFIED_FACTS.md:399-402](VERIFIED_FACTS.md) records the same as the resolution
-of D1. No line anywhere in the repository says the part is missing — the
+false before the advice arrived.** [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md)
+"8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
+[VERIFIED_FACTS.md:697](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
+records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
 ([HARDWARE_MATRIX.md:330](HARDWARE_MATRIX.md)). The only true reading of "not
@@ -118,10 +118,11 @@ the AXP2101 or the PCF85063 that are on the board — which
 Whatever is decided, wrapping the BSP does not cover the board.
 
 **The ESP-IDF mechanics were already constrained by an undecided version.** T1 is
-"narrowed" ([OPEN_QUESTIONS.md:174](OPEN_QUESTIONS.md)), T-004 is open
-([TASKS.md:1023](../../TASKS.md)), and CI prints
+"narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
+([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
 `| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
-([`.github/workflows/ci.yml:281`](../../.github/workflows/ci.yml)). What exists
+([`.github/workflows/ci.yml:514`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
+What exists
 is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
 installed is not decided.
 
@@ -212,8 +213,16 @@ in any collision check.
 | 0x51 | PCF85063ATL RTC | **Datasheet-fixed.** NXP PCF85063A Rev. 7 §9.5.1: "One I2C-bus slave address (1010001) is reserved for the PCF85063A" |
 | 0x6B | QMI8658C IMU | Schematic prints `0X6B` inside the U5 block; pin 1 SDO/SA0 is tied to GND and pin 12 CS to VCC3V3, selecting I2C. See the conflict below |
 
-Nothing collides, and 0x6A is unoccupied — which is what makes one scan
-decisive.
+Five of the six are fixed or confirmed and none of them collides. **The sixth
+address was the IMU's, and it is settled: `0x6A` does not answer, the IMU is at
+`0x6B`, measured 2026-08-23**
+([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1). The
+paragraph below reports the datasheet conflict and is kept as the record of what
+was in doubt and why — but the doubt is closed, and the sentence that used to
+stand here (*"whether 0x6A is occupied or free is exactly what is in conflict
+below"*, *"a scan **is supposed to** answer"*) survived the scan by three
+documents. `0x6A` **is** free, and it is free because a NACK was observed rather
+than because a datasheet was believed. Found in review.
 
 **A datasheet conflict on the IMU, reported rather than resolved.** The board
 grounds SA0. QMI8658C Rev 0.6 (2021-01-13, marked ADVANCE INFORMATION) maps
@@ -224,7 +233,8 @@ own product wiki links as "QMI8658 Datasheet", so following the vendor's link an
 reading the strap honestly yields 0x6A and an IMU that never answers. The weight
 is three later revisions plus the schematic's printed `0X6B` plus both vendor
 driver call sites against one superseded document, but a NACK is the only thing
-that closes it.
+that closes it — **and the NACK was observed on 2026-08-23. Rev 0.6 is
+retired.**
 
 **A naming trap worth not re-deriving.** Two vendor-shipped drivers use opposite
 conventions: SensorLib's `QMI8658_L_SLAVE_ADDRESS` is 0x6B (L = the SA0 *pin
@@ -266,16 +276,67 @@ constraint; internal SRAM, PSRAM bandwidth and cache coherency are.
 
 **A live defect in the panel driver the vendor depends on.**
 `waveshare/esp_lcd_sh8601` is a fork of `espressif/esp_lcd_sh8601` — its own files
-carry Espressif's SPDX headers — differing by exactly two lines. One is a tear
+carry Espressif's SPDX headers — differing by ~~exactly two lines~~ (that count is
+withdrawn; see the correction below). One difference is a tear
 scanline in a default init table the BSP overrides, and it is provably inert. The
-other is not: at `:280` the fork calls `tx_color(...)` bare where upstream wraps
-it in `ESP_RETURN_ON_ERROR`, inside `panel_sh8601_draw_bitmap`, which then
-returns `ESP_OK` unconditionally. **A failed frame transfer is reported as
-success.** It is present in 1.0.2, the version the published demo pins, as well
-as in 2.0.0. Espressif ships both an unforked `esp_lcd_sh8601` and a
-purpose-named `esp_lcd_co5300` — QSPI, accepting a custom init table — under the
-same Apache-2.0, which is the strongest concrete argument yet recorded for T6
-resolving as "take the pin map and the init table, depend on upstream."
+second thing this paragraph named is not a difference at all: at `:280`, inside
+`panel_sh8601_draw_bitmap`, `tx_color(...)` is
+called bare and the function then returns `ESP_OK` unconditionally. **A failed
+frame transfer is reported as success.** It is present at the **two revisions
+whose source was actually read** — `694ece03` (2023-11-03), where the bare call
+appears, and `5d75f3f0`, where it is still bare. A third, `e5b9295a`
+(2025-12-10), **fixes it according to the changelog**, sourced in the correction
+block below; its source was not read, and the sentence read as though all three
+had been until the fifth review round of
+[#152](https://github.com/hleserg/Attadipa/pull/152). Which
+released component versions those revisions correspond to **is not derived**:
+the sentence used to say *"present in 1.0.2, the version the published demo
+pins, as well as in 2.0.0"*, which is the same inference-from-commit-count the
+correction below withdraws for its neighbour, and the same block also records
+that the version strings do not identify whose versioning they are. Two of the
+four commits touching the file lie inside the window unread. Found in the fourth
+review round of [#152](https://github.com/hleserg/Attadipa/pull/152), which
+noted that the correction named the sin and left the sentence standing above
+it. Espressif ships both an unforked
+`esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300` — QSPI, accepting a custom
+init table — under the same Apache-2.0, which is the strongest concrete argument
+yet recorded for T6 resolving as "take the pin map and the init table, depend on
+upstream."
+
+> **Corrected 2026-08-23 — the defect is real, the attribution was wrong.** This
+> paragraph used to read *"the fork calls `tx_color(...)` bare **where upstream
+> wraps it in `ESP_RETURN_ON_ERROR`**"*, and that half is false for the period it
+> matters. Upstream's own `esp_lcd_sh8601.c` carried the bare call at the
+> identical line 280 from `694ece03` (2023-11-03) until `e5b9295a` (2025-12-10),
+> and the changelog dates the fix to **`v2.0.1`** — *"Fix draw_bitmap not
+> propagating tx_color errors."* Four commits have ever touched that file, and
+> the two bounding this window are the two named above; what lies **between**
+> those two dates was not read commit-by-commit against the tag dates, so
+> *"nothing changed across 1.0.0, 1.0.2 and 2.0.0"* is an inference from the
+> commit count rather than a read, and an earlier version of this paragraph
+> stated it as a read — inside the section whose subject is exactly that
+> mistake. The version numbers are **`esp-iot-solution`'s component versions**,
+> not upstream LVGL's or the fork's own; the fork pins `==1.0.2` and upstream
+> has a `1.0.2` too, so the string alone does not identify which. What is
+> **read** is the state at the two revisions named. Found in review. **The check the fork was
+> said to have dropped did not exist upstream to drop**, over exactly the period
+> the comparison was about. Read at `espressif/esp-iot-solution@5d75f3f0` and
+> `@694ece03`, source **S14** — and note that upstream is `esp-iot-solution`, not
+> `esp-bsp`, whose `components/lcd` contains no `esp_lcd_sh8601` at all.
+>
+> **Stated as narrowly as the evidence allows:** what was read here is upstream,
+> at two revisions. The Waveshare fork's own source was **not** re-read — its
+> registry host does not resolve from this environment — so this corrects the
+> claim *about upstream* and leaves the fork's contents on the earlier record's
+> authority. That is also why the line count cannot simply be re-stated as one.
+>
+> The conclusion for **T6 is unchanged and if anything firmer**: the fix exists
+> upstream and does not exist in the pinned fork, so "depend on upstream" now
+> buys a specific, dated bug fix rather than a hypothetical one. What changes is
+> the count — the "exactly two differing lines" figure was derived against
+> current upstream and should not be quoted until it is re-derived against the
+> revision the fork was actually taken from. Nobody has done that; the fork's own
+> source is on a registry host unreachable from CI.
 
 ### 3.4 A correction to the schematic reading: J3 is the display FPC
 
@@ -290,7 +351,8 @@ and D3 is struck as mis-stated at
 [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md). This retires the hot-unplug and
 bus-capacitance worry that D3 inherited from the T-Watch, where main-I2C `SDA`
 genuinely does reach a detachable GNSS connector
-([HARDWARE_MATRIX.md:208](HARDWARE_MATRIX.md)) — but it confirms that the touch
+([HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), *"The GNSS daughterboard is not only
+GNSS"*) — but it confirms that the touch
 half of the main I2C bus leaves the mainboard over a flex cable, which is a
 mechanical reliability fact rather than a design one.
 
@@ -401,7 +463,7 @@ Recorded here because it is the part of §1 that has an architectural answer, an
 it is small.
 
 `platform::PanelTechnology` already exists and the Waveshare profile already sets
-`Amoled` ([`platform/src/board_profiles.cpp:102`](../../platform/src/board_profiles.cpp)).
+`Amoled` ([`platform/src/board_profiles.cpp:122`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
 **Nothing reads it.** A grep across `platform/`, `core/`, `ui/` and `apps/`
 returns the two assignments and no consumers, so no code in this project can
 behave differently on an emissive panel today, whatever is decided.
@@ -494,21 +556,49 @@ working init sequence is now observable; and real evidence for T6.
 console: `i2cconfig --port=0 --sda=15 --scl=14 --freq=100000`, then `i2cdetect`.
 Run this **early in the session**, because the FT3168 datasheet documents that
 the touch controller stops answering after the host addresses another slave on
-the same bus while it is in Monitor or Sleep mode. *Expected:* six ACKs — 0x18,
-0x34, 0x38, 0x40, 0x51 and 0x6B. *Failure:* fewer. A missing device is **not**
+the same bus while it is in Monitor or Sleep mode. *Expected:* **exactly five**
+ACKs — 0x18, 0x34, 0x40, 0x51 and 0x6B — **and 0x38 absent**, which is the
+correct result for this step and not a failure. `i2c_tools` has four verbs,
+`i2cconfig`, `i2cdetect`, `i2cget`, `i2cset` and `i2cdump` — and **none of the
+five can drive a GPIO**: the FT3168 is held in reset until GPIO 9 is pulsed low and
+back, an *edge* rather than a level, so from this console the touch controller
+cannot be made to answer at all. That is why this step used to fail on a
+known-good board — it demanded six ACKs from a tool that can only ever see
+five. Getting 0x38 is **step 5b**, below, and needs a different binary.
+Measured 2026-08-23; found in review, twice.
+*Failure:* fewer than five, or **anything at 0x6A** — which on this unit means
+a part this board is not documented to carry, not a Rev 0.6 IMU. The scan was
+taken on **one unit**, the same caution `HARDWARE_MATRIX` writes as *"OBSERVED
+on one unit"* for the motor, so if a future board does ACK 0x6A the answer is
+that the strap-to-address rule inverts between QMI8658 datasheet revisions —
+Rev 0.6 maps SA0-low to 0x6A, Revs 0.8/0.9/A map it to 0x6B — and the part is
+being read under the wrong document. Record it, do not treat it as a broken
+board. A missing device is **not**
 proof of absence: the AXP2101 may not have enabled the rail feeding it, and D13
 leaves rail assignment unknown, so record a missing part as UNKNOWN rather than
 ABSENT. `UU` in the table means a timeout, which points at pull-ups rather than
 at a device. *Unblocks:* every driver on this board, and §3.2's whole address
 table.
 
+**Step 5b — bring the touch controller up, which needs a GPIO and therefore its
+own binary.** Not `i2c_tools`. The record of how this was taken is
+[WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.3: a RAM-loaded
+app scans, drives GPIO 9 **high** and holds it 200 ms — 0x38 still absent — then
+pulses it **low 10 ms and back**, waits 300 ms and scans again. *Expected:*
+**six** devices, 0x38 among them. *Failure:* still five after a genuine
+low-then-high pulse, which would move the reset off GPIO 9 and reopen D-touch.
+The distinction that matters and cost one review round: driving the pin high is
+not enough, the falling edge is what brings the controller up.
+
 **Step 6 — settle the QMI8658 datasheet conflict.** Stay in the same `i2c_tools`
 console as step 5, so nothing new has to be built. If step 5 showed 0x6B, run
 `i2cget -c 0x6b -r 0x00 -l 1`; *expected:* `WHO_AM_I = 0x05`, which confirms
-the Rev A mapping and retires Rev 0.6. If step 5 showed 0x6A instead, the
-silicon follows Rev 0.6 and Waveshare's own wiki link was right — record that,
-because it inverts a strap-to-address rule the next agent will otherwise
-re-derive wrongly. While here, read the FocalTech identity block —
+the Rev A mapping and retires Rev 0.6. The branch that used to sit here — *"if
+step 5 showed 0x6A instead"* — is dead: the scan ran and 0x6A did not answer, so
+this step now confirms `WHO_AM_I` rather than choosing between two datasheet
+revisions. **The FocalTech half of this step is not in this console either** —
+0x38 does not acknowledge here, so every read below belongs to step 5b's binary,
+after the pulse. Read the FocalTech identity block —
 `i2cget -c 0x38 -r 0xa3 -l 1` and the same for `0xa6`, `0xa8` and `0xa1` — and
 **record the raw bytes** rather than comparing them to a remembered constant,
 since no FT3168 datasheet publishes a register map. Then write and read back one
@@ -590,7 +680,7 @@ answer a vendor file already contains.
 
 | # | What is unknown | The one measurement that settles it |
 |---|---|---|
-| 1 | Does the QMI8658C answer 0x6B or 0x6A — i.e. which datasheet revision the silicon follows | Step 5's scan; 0x6A is unoccupied, so whichever address ACKs *is* the answer |
+| 1 | ~~Does the QMI8658C answer 0x6B or 0x6A~~ — **settled 2026-08-23** | The scan ran: 0x6B ACKs, 0x6A does not. Rev A mapping, Rev 0.6 retired |
 | 2 | Does the FT3168 answer 0x38 at all | The same scan. No datasheet states this address; it is driver-source-only |
 | 3 | Does the FT3168 accept the nine blind writes to 0x80–0x89 that `touch_ft5x06_init()` performs | Step 6's write-and-read-back of 0x80 |
 | 4 | Is the flash 16 MB or 32 MB — vendor `sdkconfig` against schematic and wiki | `Detected flash size` in step 2 |
@@ -618,8 +708,9 @@ The advice was useful and most of it holds. What follows is only the part that
 does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
-   [HARDWARE_MATRIX.md:303](HARDWARE_MATRIX.md) and
-   [VERIFIED_FACTS.md:399-402](VERIFIED_FACTS.md). Only the build-configuration
+   [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md) "8 MB **octal**" and
+   [VERIFIED_FACTS.md:697](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
+   Only the build-configuration
    reading is true, and it is vacuous — no target has a build configuration here.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
    asked of it. `CONFIG_SPIRAM_MODE` defaults to QUAD, and a quad image on this
@@ -654,11 +745,16 @@ does not, kept because an uncorrected claim propagates.
     and the companion 150 h white-pattern lifetime line was omitted; the Wear OS
     15 % and 85 % rules govern ambient mode, not interactive themes; ACL-off is
     LIKELY, not VERIFIED, because the panel's MTP defaults are not public; the
-    I2C pins were cited to [HARDWARE_MATRIX.md:315-316](HARDWARE_MATRIX.md),
-    which are the display and touch rows, where the bus row is
-    [:326](HARDWARE_MATRIX.md); and the CI status line was cited at
-    `ci.yml:330`, where the file is 295 lines long and the line is
-    [`:281`](../../.github/workflows/ci.yml).
+    I2C pins were cited to lines 315-316 of `HARDWARE_MATRIX`, which were the
+    display and touch rows, where the bus row was line 326; and the CI status
+    line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
+    Both live citations are written above with fingerprints —
+    [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
+    [`.github/workflows/ci.yml:514`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+    — and the numbers in this paragraph are
+    deliberately **not** citations: it is a record of where two claims used to
+    point, and writing that record in the live syntax would make it four more
+    assertions to keep in step, which is the defect it describes.
 
 And the defects that are ours. **Five** of them were repaired on this branch —
 four in `e5b7791`, the same commit that introduced this document, and the D12
@@ -671,8 +767,9 @@ twice. **Two are still live.**
 1. HARDWARE_MATRIX called J3 an "Expansion connector … at least 29 pins", and D3
    asked for its pinout. J3 is the 34-pin AMOLED display FPC and there is no
    expansion header. Now a Display FPC row at
-   [HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md), with D3 struck as mis-stated
-   rather than answered at [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md).
+   [HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md) "Display FPC", with D3 struck
+   as mis-stated rather than answered at
+   [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md).
 2. REUSE_LEDGER recorded the Waveshare BSP as coming from
    `github.com/espressif/esp-bsp`. It does not: `esp-bsp/bsp` holds 26 board
    entries and none is a Waveshare AMOLED board. The confusion was understandable
@@ -690,10 +787,10 @@ twice. **Two are still live.**
    read `—` until it is answered.
 
 5. **Splitting D12 left three places behind, and all three are now closed.**
-   `HARDWARE_MATRIX.md:303` reads VERIFIED/octal;
+   `HARDWARE_MATRIX.md:331` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
-   open-question row at `STATUS.md:266` is struck and split the same way.
+   open-question row at `STATUS.md:868` is struck and split the same way.
 
    The third took one more commit and is the one worth remembering.
    [VERIFIED_FACTS.md](VERIFIED_FACTS.md) still concluded, twenty-five lines

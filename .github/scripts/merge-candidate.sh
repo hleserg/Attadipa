@@ -50,13 +50,29 @@ set -uo pipefail
 
 # attadipa_merge_candidate CHECKS LABELS UNRESOLVED CODEX_UNANSWERED \
 #                          MERGEABLE_STATE IS_DRAFT HEAD_AGE_SECONDS \
-#                          CHANGED_PATHS PASS_AFTER_HEAD
+#                          CHANGED_PATHS PASS_AFTER_HEAD FACTS_COMPLETE \
+#                          HEAD_OID
 #
 # CHECKS               one token per check run on the head commit, space
 #                      separated, each the run's conclusion lowercased:
 #                      `success`, `skipped`, `failure`, `cancelled`, ... An
 #                      in-flight run has no conclusion and must be passed as
 #                      `pending`. An EMPTY string means no check run exists.
+#
+#                      A COMMIT STATUS IS NOT A CHECK RUN, and the two arrive
+#                      in one rollup. A third-party app posting a green commit
+#                      status is evidence about that app, not evidence that
+#                      this repository's CI ran: "Devin Review / success /
+#                      Full review skipped: trial expired and no credits
+#                      remaining" was, for a while, the ONLY context on a head
+#                      commit whose workflows were all still waiting for
+#                      approval -- so the combined state read `success` over a
+#                      pull request nothing had looked at. Commit statuses are
+#                      therefore passed with a `status:` prefix
+#                      (`status:success`, `status:failure`). They still HOLD the
+#                      merge when they are not green -- a red third party is
+#                      information -- but they cannot satisfy the "some check
+#                      ran" condition below, because they are not one.
 # LABELS               label names currently on the pull request, ONE PER LINE.
 #                      Newline separated rather than space separated because
 #                      GitHub permits a space inside a label name, and a label
@@ -67,15 +83,38 @@ set -uo pipefail
 #                      no reply after them, review thread or not.
 # MERGEABLE_STATE      GitHub's mergeStateStatus, lowercased.
 # IS_DRAFT             `true` or `false`.
-# HEAD_AGE_SECONDS     now minus the head commit's committedDate, in seconds.
+# HEAD_AGE_SECONDS     how long ago GITHUB saw this head arrive, in seconds.
+#
+#                      NOT `committedDate`, AND THE DIFFERENCE IS THE WHOLE
+#                      POINT. Until #199 this was `(.pushedDate //
+#                      .committedDate)` -- and `pushedDate` is deprecated and
+#                      answers `null` for every commit this repository has, so
+#                      the fallback was the only branch taken and the settling
+#                      window was measured on the git committer clock. A commit
+#                      made with `GIT_COMMITTER_DATE` six hours in the past
+#                      cleared the window at the moment it was created. The
+#                      caller now derives this from
+#                      `workflowRun.createdAt` on the head commit's own check
+#                      suites -- see .github/scripts/merge-head-trust.jq -- and
+#                      holds outright where GitHub has stamped nothing.
 # CHANGED_PATHS        every path the pull request touches, ONE PER LINE,
 #                      repository-relative. EMPTY means the caller could not
 #                      read them, which holds -- an unknown change set is not a
 #                      permitted one.
 # PASS_AFTER_HEAD      `true` when the most recent `labeled ai-review:pass`
-#                      event is not older than the head commit; `false` when it
-#                      is older; `unknown` when the caller could not tell. Only
-#                      `true` merges.
+#                      event is not older than GITHUB'S OWN RECORD of this head
+#                      arriving; `false` when it is older; `unknown` when the
+#                      caller could not tell. Only `true` merges.
+#
+#                      "Not older than the head commit" was the first wording
+#                      and it hid the defect in #199: the head commit's date is
+#                      whatever its committer put there, so a backdated commit
+#                      B made the previous head's label look like a verdict
+#                      about B. Both sides of the comparison are now GitHub's
+#                      own -- a `LabeledEvent.createdAt` against a
+#                      `workflowRun.createdAt` on that object id -- so a change
+#                      of head invalidates the previous verdict whatever date
+#                      the new commit carries.
 #
 #                      WHY THIS IS A CONDITION AND NOT AN ASSUMPTION. The label
 #                      records that a verdict was reached, not WHICH COMMIT it
@@ -89,6 +128,61 @@ set -uo pipefail
 #                      backstop routine guards this and calls it "the likeliest
 #                      of these to recur"; the first version of this file did
 #                      not transcribe it. Found in review.
+#
+# FACTS_COMPLETE       `true` when the caller PROVED it read all of every set
+#                      the arguments above were computed from. `false` when it
+#                      proved it had not; anything else, including the argument
+#                      not being passed at all, is a caller that cannot say.
+#                      Only `true` merges.
+#
+#                      AND ITS REACH IS THE GRAPHQL DOCUMENT, WHICH IS NARROWER
+#                      THAN THAT SENTENCE SOUNDS. `merge-facts.sh` sees one
+#                      reply and answers about the six connections in it.
+#                      CODEX_UNANSWERED is computed in the caller from two REST
+#                      reads the filter never sees (pr-merge-sweep.yml around
+#                      :268-291), so a `true` beside it is a statement about the
+#                      GraphQL half only. That is safe TODAY -- both are
+#                      `--paginate --slurp`, and an error on either holds -- and
+#                      it is written here because this repository has already
+#                      shipped exactly one silent `first: N` ceiling, and the
+#                      next `?per_page=100` added there would arrive underneath
+#                      a `true` that reads as having ruled it out. If a REST
+#                      read here ever stops paginating, this argument stops
+#                      covering it and something else has to.
+#
+#                      WHY THE CALLER HAS TO PROVE THIS, AND WHY NO CONDITION
+#                      ON THE OTHER ARGUMENTS COULD HAVE. Every one of them is
+#                      a summary: `UNRESOLVED` is a count, `LABELS` is a list,
+#                      `CHECKS` is a string of tokens -- and not one of them
+#                      carries any trace of how much the caller managed to read
+#                      before summarising. A GraphQL connection is a PAGE.
+#                      `reviewThreads(first:100)` over a pull request with 101
+#                      threads returns a hundred, and if the unresolved one is
+#                      the hundred-and-first then `UNRESOLVED` arrives as `0` --
+#                      which is the value that merges. This rule cannot see that
+#                      in the `0`, and never could. The fail-open was not in the
+#                      decision, it was at the boundary, which is why the fix is
+#                      a new argument rather than another test on the old ones.
+#                      Issue #170. `.github/scripts/merge-facts.sh` is what
+#                      establishes it, out of `pageInfo` rather than out of the
+#                      length of whatever came back.
+#
+# HEAD_OID             the object id of the commit this decision is about, as
+#                      GitHub named it in the same snapshot the arguments above
+#                      came from. Forty (or sixty-four) lowercase hex digits;
+#                      anything else, including an empty string, holds.
+#
+#                      WHY A RULE WITH NO REPOSITORY ACCESS IS GIVEN A SHA. It
+#                      cannot verify one, and it is not asked to. What it can do
+#                      is refuse a caller that reached this point without ever
+#                      establishing WHICH COMMIT it was about -- and that is a
+#                      caller whose `PASS_AFTER_HEAD` was computed against
+#                      nothing. #199 is the shape: two security properties were
+#                      derived from a date the commit carried rather than from
+#                      the commit's identity, and no argument in the list above
+#                      made that visible, because a boolean carries no trace of
+#                      what it was a boolean ABOUT. The log line naming the
+#                      merged commit is the smaller half of the reason.
 #
 # Prints exactly one line:
 #   MERGE                      every condition holds; merge it
@@ -159,9 +253,65 @@ attadipa_merge_path_allowed() {
 }
 
 attadipa_merge_candidate() {
+  local argc="$#"
   local checks="${1-}" labels="${2-}" unresolved="${3-}" codex="${4-}"
   local mergeable="${5-}" is_draft="${6-}" head_age="${7-}"
-  local paths="${8-}" pass_after_head="${9-}"
+  local paths="${8-}" pass_after_head="${9-}" facts_complete="${10-}"
+  local head_oid="${11-}"
+
+  # -- did the caller read all of it? ------------------------------------------
+  # BEFORE EVERYTHING ELSE, because every condition below is computed from the
+  # snapshot this one is about. A count of unresolved threads taken over the
+  # first page of them is not a smaller fact than the real one, it is a
+  # different fact wearing its clothes -- and it is wrong in the merging
+  # direction. See FACTS_COMPLETE above and issue #170.
+  #
+  # NINE ARGUMENTS IS THE OLD CALLER, AND THE OLD CALLER IS THE DEFECT. It read
+  # bounded pages and never asked whether there were more, so there is no
+  # reading of its nine arguments under which this rule may merge. Refusing it
+  # by arity rather than by an empty tenth argument is deliberate: an empty
+  # string is something a caller can pass by accident, while nine arguments is
+  # a caller that predates the condition entirely, and the two deserve
+  # different sentences in the log. The message names the fix because this line
+  # is what a reader will see 48 times a day until somebody applies it.
+  #
+  # ELEVEN SINCE #199, AND STILL ONE PATCH AND ONE TRANSITION. That fix parked
+  # its caller edits in the same file rather than beside it, precisely so that
+  # this number moves once. The live sweep passes nine today and eleven the
+  # moment the patch lands; there is no state in between, and no second "apply
+  # this one first" to reconcile. T-144.
+  if [ "$argc" -lt 11 ]; then
+    # Also to **stderr**, as a workflow warning. The caller turns every HOLD
+    # into a `::notice::` and carries on, so the job stays green and reads
+    # "sweep finished, 0 merged" -- the same line a sweep with nothing to do
+    # prints, 48 times a day, while the sweep is in fact disabled. This file
+    # already carries that lesson for the empty-repository case; it was not
+    # applied to the one state in which the gate refuses *everything*. Only
+    # stdout is captured into the caller's verdict and compared by the tests,
+    # so this reaches the run log without changing either.
+    echo "::warning::the merge sweep is holding every pull request: its caller predates the completeness condition. Apply docs/automation/pending/170-merge-sweep-completeness.patch (T-144)." >&2
+    echo "HOLD this caller cannot prove it read all of the pull request; apply docs/automation/pending/170-merge-sweep-completeness.patch"
+    return 0
+  fi
+  case "${facts_complete:-}" in
+    true) : ;;
+    false) echo "HOLD the facts read about this pull request were truncated"; return 0 ;;
+    *)     echo "HOLD could not tell whether the facts read about this pull request are complete"; return 0 ;;
+  esac
+
+  # -- and WHICH COMMIT is this a decision about? -------------------------------
+  # Beside the completeness question and for the same reason: a rule that cannot
+  # name the commit it is deciding on cannot have bound anything to it. See
+  # HEAD_OID above and issue #199. Shape only -- nothing here can verify a SHA,
+  # and the caller that establishes it is
+  # .github/scripts/merge-head-trust.sh.
+  case "${head_oid:-}" in
+    *[!0-9a-f]*|"") echo "HOLD the head commit could not be identified"; return 0 ;;
+  esac
+  case "${#head_oid}" in
+    40|64) : ;;
+    *) echo "HOLD the head commit could not be identified"; return 0 ;;
+  esac
 
   # -- the reviewer's verdict, first, because it is the only judgement here ----
   # Absence of `ai-review:pass` is no verdict, never a silent yes. The reviewer
@@ -210,18 +360,22 @@ EOF
 
   # -- the checks --------------------------------------------------------------
   # "All green" over an empty list is vacuously true, and a pull request no
-  # workflow touched has proved nothing. So the count is a condition of its own.
-  if [ -z "${checks// /}" ]; then
+  # workflow touched has proved nothing. So the count is a condition of its own
+  # -- and it counts CHECK RUNS, never commit statuses. See the CHECKS contract
+  # above: a third-party app's green status is evidence about that app.
+  local c runs=0
+  for c in $checks; do
+    case "$c" in
+      status:success|status:skipped) : ;;
+      status:*)   echo "HOLD commit status is ${c#status:}"; return 0 ;;
+      success|skipped) runs=$((runs + 1)) ;;
+      *)          echo "HOLD check run is $c"; return 0 ;;
+    esac
+  done
+  if [ "$runs" -eq 0 ]; then
     echo "HOLD no check run on the head commit"
     return 0
   fi
-  local c
-  for c in $checks; do
-    case "$c" in
-      success|skipped) : ;;
-      *) echo "HOLD check run is $c"; return 0 ;;
-    esac
-  done
 
   # -- the other reviewer ------------------------------------------------------
   # Codex is configured on ChatGPT's side, not in this repository, and it does
@@ -240,10 +394,15 @@ EOF
   fi
 
   # -- how old is the code -----------------------------------------------------
-  # `committedDate` on the head, never the pull request's `updatedAt`. This
-  # establishes that no session is still pushing, and `updatedAt` cannot answer
-  # that: a label, a bot comment or this workflow's own note bumps it. What
-  # matters is when code last arrived.
+  # WHEN GITHUB SAW THE HEAD ARRIVE, which is neither of the two things this
+  # comment used to offer. Not the pull request's `updatedAt`, which a label, a
+  # bot comment or this workflow's own undrafting bumps -- that answers "has
+  # anything happened here", not "has code arrived". And no longer
+  # `committedDate` either: that is the git committer clock, an input, and
+  # `GIT_COMMITTER_DATE=2020-01-01` cleared this window at the moment the commit
+  # was made. Both properties that depended on it are now derived from
+  # `workflowRun.createdAt` on the head's own check suites, which GitHub writes.
+  # Issue #199.
   case "${head_age:-}" in
     ''|*[!0-9]*) echo "HOLD head commit age unknown"; return 0 ;;
   esac

@@ -25,9 +25,12 @@ Deliberate properties, each of which had to be chosen rather than inherited:
   concept sheets that the specification says are never compiled into firmware.
   A dimension cap turns that sentence into a check.
 
-`--check` compares the recorded digest against the current inputs and needs
-neither the converter nor a configured build to run, so CI can fail a stale
-tree in a second.
+`--check` needs neither the converter nor a configured build to run, so CI can
+fail a stale tree in a second. It compares the recorded digest against the
+current inputs **and** every committed output against its recorded SHA-256 —
+`tools/integrity/stamp.py` holds that contract, and the font pipeline is bound
+by the same one. An inputs digest alone says the tree was once made from these
+sources and nothing about the bytes in it, so a hand-edited mask used to pass.
 """
 
 import argparse
@@ -41,8 +44,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(ROOT / "tools" / "integrity"))
 
 import manifest  # noqa: E402
+import stamp  # noqa: E402
 
 SOURCE_DIR = ROOT / "ui" / "assets" / "source" / "icons"
 OUT_DIR = ROOT / "ui" / "assets" / "generated"
@@ -94,6 +99,35 @@ def digest() -> str:
         h.update(f.read_bytes())
         h.update(b"\0")
     return h.hexdigest()
+
+
+def outputs() -> list:
+    """Every file this pipeline is responsible for: nine masks and the header.
+
+    The header is in the list because it is generated too. It declares the nine
+    symbols and carries the X-macro the C++ lookup is built from, so a truncated
+    or hand-edited header is a firmware defect exactly as a corrupted mask is —
+    and it was the one output the old existence check could not tell apart from
+    a correct one.
+    """
+    return [OUT_DIR / f"{manifest.symbol(n, s)}.c" for n, s in manifest.assets()] + [HEADER]
+
+
+STAMP_EXPLANATION = """\
+What the generated image tree was built from, and what was built. The file is
+still called INPUTS.sha256 because several documents cite it by name; it has
+recorded outputs as well since issue #69, and this line is here so that nobody
+has to infer that from the name.
+
+`inputs` covers the source art, the manifest, the drawings and the vendored
+converter — an encoder that changes its output *is* the asset changing. Each
+`output` line is the SHA-256 of a committed file, so an edited bitmap byte, a
+truncated header or a deleted mask fails `--check` on a machine with neither
+Pillow nor a build.
+
+Written only by tools/assets/generate_images.py. Editing a line here to make a
+check pass is the one repair that fixes nothing.\
+"""
 
 
 def check_source(path: Path) -> None:
@@ -191,23 +225,16 @@ def main() -> int:
     want = digest()
 
     if args.check:
-        if not DIGEST_FILE.exists():
-            print("generate_images: no INPUTS.sha256 — the tree has never been generated",
-                  file=sys.stderr)
+        problems = stamp.verify(DIGEST_FILE, want, outputs())
+        if problems:
+            print(f"generate_images: {OUT_DIR.relative_to(ROOT)} does not match its "
+                  f"stamp:\n", file=sys.stderr)
+            for problem in problems:
+                print(f"  * {problem}", file=sys.stderr)
+            print("\n  run: python3 tools/assets/generate_images.py", file=sys.stderr)
             return 1
-        have = DIGEST_FILE.read_text(encoding="utf-8").split()[0]
-        if have != want:
-            print("generate_images: inputs changed since the last generation.\n"
-                  f"  recorded {have}\n  current  {want}\n"
-                  "  run: python3 tools/assets/generate_images.py", file=sys.stderr)
-            return 1
-        expected = [OUT_DIR / f"{manifest.symbol(n, s)}.c" for n, s in manifest.assets()]
-        absent = [p.name for p in expected + [HEADER] if not p.exists()]
-        if absent:
-            print(f"generate_images: digest matches but {', '.join(absent)} are absent",
-                  file=sys.stderr)
-            return 1
-        print(f"images: inputs unchanged, {len(expected) + 1} generated file(s) present")
+        print(f"images: {len(outputs())} generated file(s) match their recorded hashes, "
+              f"inputs unchanged")
         return 0
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -224,7 +251,11 @@ def main() -> int:
         total += sizes[sym]
         print(f"  {c.name:38s} {size:3d}x{size:<3d} {sizes[sym]:6d} B")
     write_header(sizes)
-    DIGEST_FILE.write_text(want + "\n", encoding="utf-8", newline="\n")
+    # Last, and in one replace: the stamp binds the inputs to the bytes that
+    # were just written, so it must not exist in a state that describes half of
+    # them. `want` was computed before anything was generated, which is correct
+    # — the inputs are what they were when the run started.
+    stamp.write(DIGEST_FILE, STAMP_EXPLANATION, want, outputs())
     print(f"images: {len(sizes)} asset(s), {total} B of .rodata "
           f"({total / 1024.0:.1f} kB), A8, uncompressed")
     return 0

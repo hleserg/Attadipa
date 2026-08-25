@@ -63,14 +63,17 @@ want to inherit the experience, not only the code.
 | `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API |
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
-| `lvgl` | github.com/lvgl/lvgl | `7cc13aafaa2e7acab6cf3c1977ab6ca70b6c2ed7` | 2026-08-20 | the UI toolkit; version choice is open question T2 |
+| `lvgl` | github.com/lvgl/lvgl | `85aa60d1` (**v9.5.0**) | 2026-08-23 | the UI toolkit. **T2 is settled**: [`DEPENDENCIES.md`](DEPENDENCIES.md) pins v9.5.0 = `85aa60d1…`, verified by `git ls-remote` and observed in CI, and source **S14** in [`VERIFIED_FACTS`](VERIFIED_FACTS.md) reads that revision. This row carried `7cc13aaf…` with *"version choice is open question T2"* until 2026-08-24, so the ledger and the dependency record named two different revisions of the same dependency — the ledger being the file `CLAUDE.md` sends an agent to before implementing anything. Found in review |
 | `T-Watch-S3` | github.com/Xinyuan-LilyGO/TTGO_TWatch_Library | `e5a0f825a21198f97d2bafee03ea853766483d20` | 2025-02-28 | LilyGO vendor library for one of the two target boards |
 | `esp-bsp` | github.com/espressif/esp-bsp | `2f519317d5375f7bbb0190b29a4988c2ea2453e2` | 2026-08-13 | Espressif's BSP collection and the source of the `esp_lcd_touch_ft5x06` dependency. **It does not contain the Waveshare board** — `esp-bsp/bsp` holds 26 board entries and none is a Waveshare AMOLED. Recorded here as `waveshare-bsp` until 2026-08-22, which sent readers to the wrong repository |
-| `waveshare-components` | github.com/waveshareteam/Waveshare-ESP32-components | — | 2026-08-22 | where the Waveshare BSP actually lives. Drives display, touch, audio and SD only: `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`, and it never touches the QMI8658, AXP2101 or PCF85063 on the board. Its `esp_lcd_sh8601` is a two-line fork of Espressif's, and one of those lines drops the error check on `tx_color()` so a failed frame reports success — see [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.3. Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300`, same Apache-2.0 |
+| `waveshare-components` | github.com/waveshareteam/Waveshare-ESP32-components | — | 2026-08-22 | where the Waveshare BSP actually lives. Drives display, touch, audio and SD only: `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`, and it never touches the QMI8658, AXP2101 or PCF85063 on the board. Its `esp_lcd_sh8601` is a fork of Espressif's in which `tx_color()` goes unchecked, so a failed frame reports success — **inherited from upstream rather than introduced by the fork**, and fixed upstream in `v2.0.1` (2025-12-10); the "two-line" count is withdrawn pending a re-derivation against the right base, see [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.3. Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300`, same Apache-2.0, in `esp-iot-solution` |
 | `Gadgetbridge` | codeberg.org/Freeyourgadget/Gadgetbridge | `40326980ca871989961ba2442e7cabd4d204b1b6` | 2026-08-21 | host side of many watch protocols; companion protocol prior art |
 | `WatchyOS` | github.com/sqfmi/Watchy | `d1d233c43b36cac23bccc6abeae998aa3e27724e` | 2025-08-18 | ESP32 watch firmware |
 | `lv_i18n` | github.com/lvgl/lv_i18n | `08944ec6dc2faed83121c53e9cf9ba05013a6686` | 2026-03-30 | LVGL's own localization generator — the closest existing answer to T-033 |
-| `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model |
+| `esp-brookesia` | github.com/espressif/esp-brookesia | `01939b5e58fd50d18339b1c35fb74c4e808962c7` | 2026-08-10 | ESP32 UI framework with an application model. **Also the ancestor of the app the bench unit actually runs** — `phone_s3_box_3 v0.4.2-92-g5c6be6c-dirty`, Waveshare's port, 92 commits past a tag and unpublished, so the running binary cannot be read from here |
+| `esp-iot-solution` | github.com/espressif/esp-iot-solution | `5d75f3f0dc499d9ed4b69284a3741187c2b75a70` | 2026-08-23 | **where `esp_lcd_sh8601` and `esp_lcd_co5300` upstream actually live** — not `esp-bsp`, whose `components/lcd` holds neither. Read 2026-08-23 for the byte-order trace (D21): both drivers pass the framebuffer to `esp_lcd_panel_io_tx_color()` **verbatim**, so any swap is above them. Apache-2.0. **Read, not depended on** |
+| `xiaozhi-esp32` | github.com/78/xiaozhi-esp32 | `bb9122ab08c3083eeb4f67b3974b7afe771723b8` | 2026-08-22 | MIT; carries `main/boards/waveshare/esp32-s3-touch-amoled-2.06/` — this exact board. Evaluated for the audio path below; **re-read 2026-08-23 for the display path**, where `SpiLcdDisplay` sets `.swap_bytes = 1`. The commit is the one the licence check was run against. Note the version on the unit is **1.8.5**, in `ota_0`, never selected |
+| `meshcore-firmware` (Offband) | github.com/OffbandMesh/meshcore-firmware | `4f5e8b7aa63408370d95d44cdf60ba4125f07ea0` (branch `firmware-base`) | 2026-08-23 | a MeshCore derivative that measured the BLE frame-capacity defect on hardware; T-127. Examined at three revisions — `fda4cdd8`, `4f5e8b7a`, `7549cf30`. **Not** a GitHub fork of `meshcore-dev/MeshCore`: the API reports `fork: false` and no parent, so it is an independent tree, and its divergence has to be read rather than diffed |
 
 ### Upstream deltas being monitored, and not taken
 
@@ -118,6 +121,7 @@ badge or a recollection.
 | Project | Licence | Where it was read | What Attadipa may do with it |
 |---|---|---|---|
 | MeshCore | **MIT** | `license.txt`, and the README's licence section | anything |
+| `meshcore-firmware` (Offband) | **MIT** | the GitHub API's `license.spdx_id` for the repository, plus `license.txt` in the tree; the README applies the same terms to Offband's own additions | anything — but see the record below: what is being taken is an invariant and two test suites, not the tree |
 | RadioLib | **MIT** | `license.txt`; `library.json` agrees | anything |
 | LVGL | **MIT** | `LICENCE.txt` | anything |
 | LilyGO T-Watch library | **MIT** | `LICENSE` | anything |
@@ -181,7 +185,7 @@ anything equivalent is written by hand.
 | `meshcore-dev/MeshCore` | the mesh protocol the product is specified around | MIT |
 | `Xinyuan-LilyGO/LilyGoLib` | vendor library for the T-Watch family; schematics and authoritative pin map | MIT |
 | `waveshare/esp32_s3_touch_amoled_2_06` | vendor BSP for the second board — display, touch, audio, SD only | Apache-2.0 |
-| `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | to check |
+| `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | **Apache-2.0** at the pinned `==1.0.2`, checked 2026-08-22 (§ the xiaozhi record). Upstream is `espressif/esp-iot-solution`, **not** `esp-bsp`, whose `components/lcd` contains neither this driver nor `esp_lcd_co5300`. Read 2026-08-23 for D21. **The unchecked `tx_color()` was upstream's own code, not a fork divergence** — see the correction in [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §3.3 — and upstream fixed it in `v2.0.1`, 2025-12-10 |
 | XPowersLib | AXP2101 driver used by **both** vendors — covers the one shared part | to check |
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
 | ~~`78/xiaozhi-esp32`~~ | **evaluated 2026-08-22 — see the record below.** MIT, and it carries a board directory for this exact board. Its *audio-path dependencies* are the finding: `esp-sr`, `esp_audio_codec` and `esp_audio_effects` are **not** MIT | MIT; deps vary |
@@ -546,6 +550,32 @@ regression), `test_minmea_parse_rmc1/rmc2`, `test_minmea_checksum`,
 `test_minmea_check` — MIT, portable wholesale. GeographicLib's `GeodTest.dat` is
 data from an MIT library and freely usable as reference vectors.
 
+**The distance function stayed ours — `REIMPLEMENT`, re-examined 2026-08-23.**
+Issue #28 found that `distance_mm()` (`core/src/geo.cpp`) discarded the
+fractional latitude before its cosine lookup and so overstated a polar longitude
+difference by up to a thousand times, which put the choice back on the table:
+fix it locally, or take **GeographicLib** (MIT), which is already named in this
+entry and would be correct at every latitude by construction.
+
+Kept local, and the fix was fifteen lines of integer interpolation. Reasons, in
+the order they mattered: the consumer is the jump detector comparing two fixes
+taken seconds apart, and at that baseline the equirectangular approximation is
+already inside the error of the fixes being compared, so a geodesic would be
+*more* precise about a quantity nobody needs precisely; GeographicLib is C++ with
+`<cmath>` and `double` throughout, and this runs on every fix on a battery, where
+the whole point of the 91-entry table is not linking libm into that path; and the
+defect was quantization, not method — the fix is arithmetic the existing design
+already implied rather than a different design.
+
+What the decision costs, so the next person can weigh it rather than inherit it:
+the residual error is **0.9% to 89.999°**, measured on every test run against an
+independent haversine reference, and it is dominated by the rounding of
+`kCosTable1024`'s own entries. Anything that needs better than a percent — a
+route distance, a bearing, a track length — must not reach for `distance_mm()`,
+and this is the entry that says GeographicLib is where to go instead. That
+boundary is written into `core/include/attadipa/core/geo.h` as well, because a
+ledger nobody opens does not stop anybody.
+
 **Open:** whether the node carries a magnetometer decides whether this is the
 fallback plan or the only plan ([NODE_PROFILE](../node/NODE_PROFILE.md) N3). The
 speed gate below which course-over-ground is not trustworthy is unresolved and
@@ -824,6 +854,79 @@ in C++, that every linked descriptor is `A8` with `stride == width` and carries
 a drawing rather than a blank rectangle.
 ---
 
+### Binding a committed generated tree to the bytes in it
+
+**Problem:** two asset trees are generated and committed —
+`assets/fonts/generated/` and `ui/assets/generated/` — so that a build needs
+neither Node nor Pillow. Something then has to fail when the committed bytes
+stop being what the sources produce, on a machine with nothing installed, and it
+has to distinguish "the inputs moved", "an output was edited" and "the record
+itself is damaged", because those need three different repairs.
+
+**Projects investigated:** `sha256sum` and its `-c` verify mode (coreutils, the
+obvious answer) · `git hash-object` and `git diff --exit-code` after a
+regeneration · `pre-commit` with `check-added-large-files`-style hooks ·
+content-addressed build systems, Bazel and DVC, which solve exactly this and
+several other problems nobody here has · the existing `INPUTS.sha256` mechanism
+in both pipelines, which is what had to be extended.
+
+**Useful implementation:** `sha256sum -c` is a real candidate and was close.
+It reads a `SHA256SUMS` file, verifies every listed file, exits non-zero on any
+mismatch, and is on every machine that already has coreutils.
+
+**License:** n/a — nothing was taken. `hashlib` is the Python standard library.
+
+**Strengths of the candidate:** universally available, universally understood, a
+format anyone can read and re-verify by hand.
+
+**Weaknesses:** three, and together they decide it. It verifies only the files
+it lists, so deleting an asset and leaving a stale line passes for every file
+still there while a *newly generated* file nobody stamped is invisible —
+the check has to compare both directions, and `-c` compares one. It has nowhere
+to put the inputs digest, so a tree would need two files that must agree and can
+be updated separately, which is the same class of defect one file down. And its
+failure output is `FAILED` per line, with nothing about which of the three
+faults occurred or what command repairs it; both pipelines already compute an
+inputs digest in Python, so wrapping a second process to get a worse message
+costs more code than not doing it.
+
+**Decision:** `REIMPLEMENT` — `tools/integrity/stamp.py`, about 200 lines of
+standard library, shared by both pipelines rather than copied into each.
+
+**Reason.** The thing being written is not "hash some files": it is a small
+format with a strict parser and three distinguishable verdicts, whose whole
+value is that it refuses ambiguity. A `SHA256SUMS` beside an `INPUTS.sha256`
+would be two records that must agree, maintained by two code paths, which is the
+shape the finding in issue #69 was already about. One file, one writer, one
+parse — and a deliberate absence of any "re-stamp what is on disk" command,
+because a tool that blesses whatever bytes it finds reopens the hole while
+looking like maintenance.
+
+**Source revision:** n/a. The two things it is pinned against are recorded
+elsewhere and stay there: `lv_font_conv` **1.5.3** and LVGL **v9.5.0** at
+`85aa60d18b3d5e5588d7b247abf90198f07c8a63`, both in
+[DEPENDENCIES](DEPENDENCIES.md), and the vendored `LVGLImage.py` hash in
+`tools/assets/vendor/README.md`. The font generator now refuses a converter
+whose `--version` is not the pinned one, so the pin is enforced rather than
+documented.
+
+**Attadipa integration:** `tools/integrity/stamp.py`, used by
+`tools/font/generate_ui_fonts.py` and `tools/assets/generate_images.py`.
+
+**Tests required, and present:** `tools/integrity/selftest.py` — forty-five
+cases, registered as `ui_generated_outputs_reject_mutations`. Each of the
+fourteen committed outputs is mutated in turn in a copy of the tree and the real
+check must reject it and name it; so are a deleted output, a changed input, a
+doctored hash, a dropped line, a stamp with no inputs line, a stamp naming a
+file nobody generates, and a deleted stamp. A control case at each end asserts
+an untouched tree passes, which is what catches a harness that has broken the
+sandbox and is therefore rejecting everything for free. Reproducibility across
+checkout paths is `tools/integrity/reproducibility.py` rather than this file,
+because it needs the pinned converter; it has been run and its CI job is written
+and waiting on a permission (T-128).
+
+---
+
 ### Speaking the vanilla MeshCore companion protocol
 
 **Problem:** a watch must talk to a MeshCore node that is running **stock**
@@ -856,6 +959,17 @@ frame and delivers it as complete (the same defect already recorded under
 path requests a 176-byte MTU and never checks the negotiated one; and a stock
 build answers `CMD_EXPORT_PRIVATE_KEY`.
 
+> **The MTU weakness is worse than this line implied, corrected 2026-08-23.**
+> Requesting 176 and getting it is the failure case, not the miss: an MTU of 176
+> delivers 173, so the frame buffer is three bytes larger than the link it asked
+> for. Four vanilla producers size against the buffer, one of them exactly. A
+> MeshCore derivative measured the resulting loss on ESP32 hardware — record
+> below, evidence in
+> [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md). It adds one
+> requirement to the *Tests required* list at the end of this record: **a frame
+> at the link's exact ceiling arrives whole, and one above it is refused rather
+> than silently shortened.**
+
 **Decision:** `REIMPLEMENT` — an Attadipa-side **client**, written fresh against
 the documented protocol, behind [ADR-0008](../adr/0008-mesh-service-providers.md)'s
 provider interface. Explicitly **not** `PORT`, **not** `USE AS DEPENDENCY`, and
@@ -885,6 +999,100 @@ reported to the user as an unsupported node; a telemetry response whose
 `LPP_GPS` record is absent because permission was denied, which is a normal
 outcome and not an error; and a position from a companion carrying no better
 provenance than "arrived at time T from key K".
+
+---
+
+### How a transport says how much it can carry
+
+**Problem:** a wrapper sits between an application and one or more concrete
+transports. The application asks how much fits in a frame. Which number is
+right, and what happens when the wrapper answers instead of the transport?
+
+**Projects investigated:** `OffbandMesh/meshcore-firmware` (MIT), a MeshCore
+derivative, at three revisions — `fda4cdd8` (PR #937), `4f5e8b7a` (PR #939) and
+`7549cf30` (the beta5 changelog carrying the hardware evidence) · vanilla
+MeshCore at our pin `d929643` (MIT), for whether the same shape exists there ·
+the Bluetooth Core specification's ATT notification sizing, which is where the
+`− 3` comes from and is not either project's to define.
+
+**Useful implementation:** two invariants and two test suites. Not a subsystem.
+
+- `src/helpers/MultiSerialInterface.h` at `4f5e8b7a` — *a wrapper's capacity is
+  the minimum over exactly the sinks its write reaches.* Twelve lines.
+- `src/helpers/BleFrameSizing.h` — *capacity is the link's number, floored by the
+  buffer, never raised by it,* plus a refusal to trust a reported MTU below the
+  23-byte spec floor.
+- `test/test_frame_size/test_ble_frame_sizing.cpp` — the arithmetic cases,
+  including the exact field figures.
+- `test/test_multiserial/test_multiserial_framesize.cpp` — six wrapper-level
+  cases: the field case, the minimum rule, the disabled-sink predicate, and that
+  a generous sink cannot exceed the buffer.
+
+> Issue [#143](https://github.com/hleserg/Attadipa/issues/143) named the first of
+> those as `test/test_ble_frame_sizing/`. **That directory does not exist**; the
+> file is `test/test_frame_size/test_ble_frame_sizing.cpp`, verified in the file
+> lists of both `fda4cdd8` and `4f5e8b7a`. Recorded because a reuse candidate
+> looked up at the wrong path reads as a candidate that is not there.
+
+**Licence:** **MIT**, checked at the repository and in the tree. Nothing here is
+copied verbatim into Attadipa in any case — the harness compiles upstream's
+headers *in place*, under `docs/research/`, and links none of them into a build.
+
+**Strengths:** the arithmetic is isolated into a pure, dependency-free header
+precisely so a test can pin it, and the commit messages record what was tried and
+refuted rather than only what was kept. That is why the correction chain could be
+reconstructed at all.
+
+**Weaknesses**, and both are ours not to inherit:
+
+- `writeFrame()` **returns full success when no sink is enabled.** The fan-out
+  loop body never runs, so `allSuccessful` stays `true`. Reproduced by our
+  harness.
+- `maxFrameSize()` returns the buffer size when nothing is enabled, so a capacity
+  query can never express *"there is no sink"*. Safe upstream; in Attadipa's model
+  that has to be a state, not a number.
+
+Also: upstream's comment claims the capacity predicate is identical to
+`writeFrame()`'s. It is not — `writeFrame()` additionally tests the wrapper's own
+`_enabled`. The difference is conservative in every case, so it is not a defect
+there, but it is not the invariant the comment states.
+
+**Decision:** **ADAPT** the two invariants and **port the two test suites as
+specifications**. Explicitly **not** adopt the fork: Offband carries its own
+features (caplog, observer views, block lists), is on **NimBLE** while the vanilla
+node Attadipa will actually talk to is on **Bluedroid**, and none of that is
+needed to speak a protocol. **MONITOR** vanilla for convergence — there is
+nothing to converge yet, since `meshcore-dev/MeshCore` `main` is still `d929643`
+and has no `maxFrameSize` concept at all.
+
+**Reason.** The transferable finding is not the number 173. It is that a correct
+leaf implementation behind a wrapper that does not delegate is indistinguishable
+from no implementation — and worse than none, because the leaf's own tests
+testify that the behaviour exists. Four upstream fixes were merged, tested and
+shipped against code the firmware never called. Attadipa's capability registry is
+a wrapper by construction, and every capability query added to it inherits that
+hazard the day it is not forwarded.
+
+**Source revision:** `4f5e8b7aa63408370d95d44cdf60ba4125f07ea0`, branch
+`firmware-base`. Read on 2026-08-23. Full reading, matrix and correction chain in
+[MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md); the executable
+half is [`meshcore-ble-frame-capacity/`](meshcore-ble-frame-capacity/), which
+compiles upstream's real headers at both revisions and shows the defect as the
+difference between them.
+
+**Hardware:** upstream's bench evidence is a Heltec V4.3 on their firmware and
+their BLE stack. On Attadipa hardware: **`NOT EXECUTED — HARDWARE REQUIRED`.**
+
+**Attadipa integration:** none today, and none until a companion client exists.
+When one does, this is a constraint on its transport interface, not a component
+of it.
+
+**Tests required**, when there is something to test them against: a capacity
+query returns the minimum over the enabled sinks and not over the registered
+ones; a disabled sink neither lowers nor raises it; a sink claiming more than the
+buffer cannot raise it; a capacity below a builder's own header floors at zero
+rather than wrapping; and — the one upstream does not have — **no active sink is
+reported as a completed write**.
 
 ---
 
@@ -962,7 +1170,28 @@ receiver's own verdict enters the model as the heaviest single input, and OD-5
 is why `Unknown` and `Unsupported` are distinct from `None`.
 
 **Tests required, and present:** `tests/test_trust.cpp`, mutation-checked
-against four real regressions, plus the twelve replay traces.
+against five real regressions, plus the replay traces — sixteen fixtures, of
+which fifteen are replayed and one is deliberately broken for the rig's own
+test.
+
+**Nothing was taken for the 2026-08-23 recovery fix either, and the decision
+above is why.** The defect — silence completing a recovery hold, issue #151 —
+is a defect in *policy*, in a state machine whose whole reason for existing is
+that the policy is ours and explicit. There is no library to reach for and
+reaching for one would have been the mistake this entry already rejected.
+`REIMPLEMENT` stands, unchanged.
+
+**How a stored verdict says "not evaluated" (issue #164, 2026-08-23):**
+`REUSE` — internal, and no upstream candidate was reached for. The question is
+how a diagnostics field holds the absence of a verdict, and this repository had
+already answered it twice: `std::optional<T>` throughout `DiagnosticsSnapshot`
+for facts nobody produced, and `ReceiverIndication::{Unknown, Unsupported,
+None}` for the three-state case OD-5 forced. `GnssStatus::trust` became
+`std::optional<TrustState>` on that precedent rather than on a new dependency.
+Nothing external offers a better answer to a one-field representation question,
+so nothing external was examined and no licence is involved. Recorded here
+because "we already had this" is a reuse decision and an unrecorded one is
+indistinguishable from not having looked.
 
 ---
 
@@ -1648,3 +1877,315 @@ mutation-checked three ways: disabling the comment/string blanking, loosening
 the colour rule back to where it would read `Rgb make_colour()\n{...}` as a
 colour literal, and dropping the zero exemption each turn it red. No hardware —
 this is a source-tree checker and touches no board.
+
+---
+
+### Remote UI testing: screenshot a running interface and inject input into it
+
+**Problem:** an agent, or a person over ssh, has to be able to see what is on the
+watch's screen and drive it the way a finger does — screenshot, look, tap or
+swipe or press, wait, screenshot again. Owner request, 2026-08-23, filed as
+[#117](https://github.com/hleserg/Attadipa/issues/117).
+
+**Projects investigated:**
+
+- **LVGL 9.5 itself**, at the revision this build pins
+  (`cmake/AttadipaLvgl.cmake`). Two facilities are directly relevant and both
+  are used rather than reimplemented:
+  - `lv_snapshot_take(obj, LV_COLOR_FORMAT_RGB888)` (`src/others/snapshot/`) —
+    re-renders an object tree into a fresh buffer. This is the "штатный
+    screenshot API графической библиотеки" the request asks to prefer, and it
+    is preferred.
+  - `lv_indev_create` + `LV_INDEV_TYPE_POINTER` with a read callback, and
+    `lv_indev_data_t::continue_reading` to hand LVGL a queue of transitions in
+    one pass (`src/indev/lv_indev.c`: the read timer is created at `:132` with
+    `LV_DEF_REFR_PERIOD`, and `:253-287` is the
+    `do { read; process } while (continue_reading)` loop).
+    Several indevs may be registered at once, **each with its own read timer
+    and its own press state**, and each dispatches independently to whatever
+    lies under its own point — which is what lets a person's SDL mouse and an
+    injected touch coexist without either knowing about the other. LVGL does
+    **not** arbitrate between them: `LV_STATE_PRESSED` is per widget, so a
+    release from one clears the state the other is holding. An earlier version
+    of this entry said "LVGL arbitrates" and cited the header; the word was
+    wrong and the citation was to the API rather than to the behaviour.
+    Read 2026-08-23.
+- **LVGL's own `lv_test_indev_*` harness** (`tests/src/`) — rejected, and worth
+  saying why. It drives LVGL's simulator inside LVGL's own unit-test build with
+  a fake tick, which is the opposite of what is wanted: the point here is a
+  *live* interface at real speed, in this project's binary, reachable from
+  another process.
+- **`esp_lcd`'s panel read-back path** — rejected on hardware grounds, not on
+  preference. The Waveshare's AMOLED sits behind QSPI and the CO5300's read path
+  is not established; [D7](OPEN_QUESTIONS.md) has not even settled its
+  initialisation sequence. The request says explicitly not to read pixels back
+  from an SPI display when the controller and wiring do not properly support it.
+- **`espressif/esp-idf`'s `esp_console`** — considered as the command channel
+  and rejected: it is a line-oriented text REPL over the same UART as the log,
+  and a 617 kB binary image does not belong in one. The framing this project
+  already has solves the interleaving problem properly.
+- **Android's `adb shell input` / `screencap`** — studied as a *shape*, not as
+  code (Apache-2.0, but it is an Android system service). Two things were taken
+  as ideas: separating low-level `down`/`move`/`up` from convenience verbs like
+  `tap` and `swipe`, and expressing a swipe as a duration rather than as a
+  single event. Its worst property was avoided deliberately: `adb shell input
+  swipe` synthesises the intermediate points *on the device*, which makes the
+  host unable to control the gesture's speed profile.
+- **`pytest-embedded`, `Appium`, `Squish`** — rejected as frameworks. The
+  request says not to build a large test framework where the project already has
+  one, and this project's runner is CTest. A scenario here is a data file CTest
+  can point at.
+
+**Useful implementation:** LVGL's snapshot and input-device APIs, used as APIs.
+Nothing was copied.
+
+**License:** LVGL is MIT (`LICENCE.txt` at the pinned revision), already a
+dependency of the simulator target, and no new dependency was added. PyYAML is
+optional and only for `.yaml` scenarios; JSON works without it. `pyserial` is
+optional and only for a serial device, of which there is none yet.
+
+**Strengths of reusing LVGL's own facilities:** `lv_snapshot_take` gives one
+internally consistent frame, which reading a driver's partial draw buffers
+cannot; and a second registered pointer device is the supported way to have two
+sources of touch, so physical input keeps working while remote input is
+connected.
+
+**Weaknesses, recorded rather than discovered later:** `lv_indev_data_t` carries
+**one** point, so the graphics stack is single-touch regardless of what any
+panel can do. That is asserted about LVGL and about nothing else — whether the
+Waveshare's controller can report two fingers is still open ([T-113], no FT3168
+datasheet obtained). The wire format keeps a `touch_id` field and refuses a
+second point rather than silently merging it.
+
+**Decision: reuse LVGL's snapshot and input-device APIs; reuse this project's
+own `link::frame_codec` framing and [ADR-0005](../adr/0005-node-protocol.md) §4
+envelope; write our own message bodies.**
+
+**Reason:** the framing question was already answered in this repository, and
+answering it twice is how a project acquires two incompatible debug channels —
+which the request forbids by name. `link::frame_codec` already provides exactly
+what a debug stream sharing a link with a text log needs: resynchronisation on a
+sync pattern that ASCII does not contain, a length checked before it is trusted,
+a CRC over length and payload, and an over-long frame treated as an error rather
+than truncated. The envelope's `class` field is the extension point ADR-0005
+provided for precisely this.
+
+The message **bodies** are ours and are fixed little-endian rather than TLV,
+which is a deliberate narrowing rather than a departure: ADR-0005's TLV body is
+recorded as provisional pending the encoding benchmark (T-016), and the debug
+class must not pre-empt that decision. Its messages are fixed-shape and one of
+them is high-volume — a screenshot is thousands of chunks, and a tag and a
+length on every field of every chunk is overhead paid ten thousand times to
+describe a layout that never varies. `class` and `ver` are what let the two
+version independently.
+
+`kMaxPayload` was **not** raised for screenshots. It is 192 bytes and
+RESOURCE_BUDGET §4 requires the bound be declared; images are chunked to fit, so
+every buffer in the system stays the size it was reviewed at.
+
+**Source revision:** LVGL v9.5.0, the tag pinned in `cmake/AttadipaLvgl.cmake`
+and reported by the build (`LVGL 9.5.0 at build/_deps/lvgl-src`). Read
+2026-08-23: `src/others/snapshot/lv_snapshot.h`, `src/indev/lv_indev.h`,
+`src/misc/lv_color.h` (which is where `LV_COLOR_FORMAT_RGB888` being **B, G, R**
+in memory comes from — the fact the wire format names as `Bgr888` rather than
+swapping silently).
+
+**Attadipa integration:** `core/input.{h,cpp}` (the input layer, which did not
+exist), `debug/` (protocol and bridge), `sim/remote_input.cpp`,
+`sim/screen_source.cpp`, `sim/debug_server.cpp`, `sim/diagnostic_screen.cpp`,
+`tools/watch/` and `tools/watch_control.py`.
+
+**Tests required, and their status:**
+
+- Protocol round trips, corruption, length disagreement, chunk reassembly,
+  rate limiting, hold expiry, disconnect cleanup — `tests/test_debug.cpp`,
+  **PASSING**, no device needed.
+- The input queue and state machine, including every refusal —
+  `tests/test_input.cpp`, **PASSING**.
+- The host format, RGB565 and BGR888 conversion, orientation, PNG structure,
+  non-zero exit codes — `tools/watch/selftest.py`, **PASSING**. Pinned to the
+  same fixed byte literals as the C++ suite — the framing, a whole `HelloOk`, a
+  whole `ScreenInfo`, a whole `InputEvent`, and both numbering tables written
+  out — so the two independent implementations cannot drift into agreeing on a
+  mistake. Until 2026-08-23 that covered the framing alone and the sentence said
+  otherwise.
+- The whole loop against the simulator — `tools/watch/e2e_test.py`,
+  **PASSING**.
+- **On a physical watch: `NOT EXECUTED — HARDWARE REQUIRED`, and it cannot be
+  executed.** There is no Attadipa firmware, so nothing on the far end of a USB
+  cable speaks this protocol. `SerialTransport` is written and has never spoken
+  to a device.
+
+---
+
+### Proving a GraphQL connection was read in full
+
+**Problem:** the unattended merge sweep decides whether a robot may write to
+`main`, out of one GraphQL round trip — and every fact in it arrives in a
+*connection*, which is a page. `reviewThreads(first:100)` over a pull request
+with 101 threads returns a hundred, so `[ .nodes[] | select(.isResolved | not) ]
+| length` answers **zero** when the unresolved one is the hundred-and-first, and
+zero is the value that merges. Past the fiftieth label the same shape hid
+`ai-review:blocking`; past the hundredth context, a failing check
+([#170](https://github.com/hleserg/Attadipa/issues/170)). The question is
+therefore not "how do we paginate" but "how does a caller *prove* it read the
+whole set, in a way a test can execute".
+
+**Projects investigated:**
+
+| Candidate | Licence, at revision | Why it was not taken |
+|---|---|---|
+| GitHub's own `pageInfo { hasNextPage }` — the Relay Cursor Connections contract | the schema, no code taken | **Taken.** The schema already answers exactly the question being asked, per connection, and answers it about the *filtered* set |
+| `gh api --paginate` | MIT (`cli/cli`) | Already used in this workflow for REST, and it does not apply: `--paginate` follows REST `Link` headers and GraphQL `pageInfo` **only for a query written to accept `$endCursor`** — one connection per query. Five connections in one document is exactly the shape it cannot walk |
+| `octokit/plugin-paginate-graphql.js` | MIT; `octokit/plugin-paginate-graphql.js` | Real, maintained and the right tool for a Node action. This job is `bash` + `gh` in a sparse checkout with no `node_modules` and no `npm install` step, and it must stay that way: adding a package manager to a workflow holding `contents: write` on `main` is a bigger change than the defect it would fix |
+| Hand-rolled pagination loops, one per connection | — | `REJECT` for now, with the reason recorded below rather than left as taste |
+| `nodes \| length == first` as the truncation test | — | `REJECT`. It cannot tell an exactly-full page from a truncated one, so it either lets truncation through or holds every pull request landing on the boundary — guessing in both directions while the schema answers exactly. The workflow already had one instance of this (`FILE_COUNT >= 100`) and it is removed |
+| `totalCount` as the truncation test | — | `REJECT`, and this one is not a matter of taste: on a **filtered** connection GitHub does not count the filtered set. Measured against this repository's #173 on 2026-08-24, `timelineItems(last:100, itemTypes:[LABELED_EVENT])` answered `totalCount: 15` beside a single node, while `pageInfo` on the same response respected the filter. A `length < totalCount` rule would have held every pull request in the repository, forever |
+| This repository's own "the rule is a file, the workflow calls it" shape | — | Taken. `merge-candidate.sh`, `intake-decision.sh`, `queue-scan.jq`, `failure-count.jq` |
+
+**Decision:** `USE AS-IS` the schema's `pageInfo`; `REIMPLEMENT` the completeness
+check as `.github/scripts/merge-facts.jq` behind `merge-facts.sh`, in the shape
+this repository already uses for every other decision an unattended workflow
+makes; `REJECT` full pagination, for now and with a condition on when to revisit.
+
+**Reason:** for an *unattended* gate the bounded fail-closed answer is the one
+worth having. Paginating five connections adds request loops, partial-failure
+states and a second way to be wrong, in order to raise a ceiling that the
+three-per-run cap and a documentation-only path allowlist make almost
+unreachable — a hundred labels or 101 review threads on a `docs/` pull request is
+not a case to optimise, it is a case for an orchestrator session, which is where
+everything off the allowlist already goes. The condition for revisiting is
+written into `merge-facts.sh`: if refusals on truncation stop being rare, the
+change is to paginate **there**, not to widen what counts as complete.
+
+The second half of the reason is testability, which is why the filter is a file.
+A query and a `jq` program inside a YAML block cannot be executed, so nothing can
+assert what they ask for — and what this query asks for *is* the security
+property. Both files are now driven by `.github/tests/merge-candidate-test.sh`
+over documents shaped like GitHub's own replies, and the shapes were taken from
+live responses rather than imagined.
+
+**Where the knowledge came from instead of the code:** the responses themselves.
+The query was run read-only against `hleserg/Attadipa` pull requests #173 and
+#176 on 2026-08-24 before anything depended on it, which is what established
+three things that were otherwise assumptions: that `totalCount` ignores
+`itemTypes` while `pageInfo` respects it; that `statusCheckRollup` is **null**,
+not empty, on a head commit with no checks at all; and that a `last:`-only
+connection answers `hasNextPage: false`.
+
+**And the mechanism the caller depends on, which is `gh`'s and not GitHub's.**
+The parked workflow half submits the query as `gh api graphql -F
+query=@.github/scripts/merge-facts.graphql`, and nothing on `main` executes that
+form: the filter takes a document on stdin, so the suite never reaches `gh`, and
+the only place the flag appears is inside the patch. It was therefore run
+directly, read-only, against `hleserg/Attadipa` #176 on 2026-08-24 — the exact
+invocation from the patch, with the three variables **bound as literals**.
+The caller's own `${REPO%%/*}` and `${REPO##*/}` expansion is **NOT EXECUTED** —
+it is the one link in this chain that nothing exercises, and this run did not
+exercise it either. Exit 0, one complete document, every connection present.
+So `-F query=@FILE` does read a file and does bind alongside the other `-F`
+variables, which was previously asserted only in a pull request body.
+
+The same reply re-established two of the three facts above on a **different**
+pull request than the one they were found on: `statusCheckRollup` came back
+`null` on #176's head commit, which has never had a check run at all, and
+`timelineItems` answered `totalCount: 6` beside `nodes: []` under
+`itemTypes: [LABELED_EVENT]` — the count ignoring the filter that the nodes
+respect, in one document.
+
+What this does **not** establish is the filter's verdict over that document.
+`jq` is absent on the host that ran it, so `merge-facts.sh` answered *HOLD the
+pull request's facts could not be parsed* — its designed fail-closed answer to a
+`jq` that will not run, and a statement about the host rather than about the
+reply. The verdict over a live document is `NOT EXECUTED` until CI or the sweep
+itself runs one.
+
+That third one was first written down as evidence that the flag is the right one
+to assert on the timeline. It is not, and the observation could not have shown
+it either way: #173's filtered connection held a **single** node, nowhere near
+the limit, so `false` there cannot be told apart from `false` by construction.
+Under the Relay contract `hasNextPage` is true only when paginating forward with
+`first:` or when `before:` is set, so on a `last:`-only page it is a constant and
+the completeness refusal on that connection can never fire. What the timeline is
+actually safe on is downstream: an event outside the window is older than
+everything in it and cannot raise the maximum, so a truncated window yields no
+date and the caller holds. Recorded as a correction rather than edited away,
+because this file is what the next agent is told to trust.
+
+**Weakness, stated rather than discovered:** a pull request that genuinely
+exceeds a page is now unmergeable by the sweep rather than merged wrongly, and it
+will say so every half hour until a person looks. That is the intended direction
+and it is still a cost. No hardware — this is repository automation and touches
+no board.
+
+---
+
+### Checking a partition table against the 16 MB addressing ceiling
+
+**Problem:** on the Waveshare's 32 MB part, `0x1000000` aliases to `0x0` for the
+bootloader — measured, on the unit. Any partition table this project writes has
+to be held against that line, and
+[WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §1.4 already said the
+uncomfortable part out loud: *"A partition table is not self-validating. `ota_1`
+is well-formed, correctly sized and correctly typed. It is also dead."* So the
+question is not whether to write a partition-table validator — there is a large,
+Apache-2.0, battle-tested one in ESP-IDF — but whether the check we actually need
+is inside it.
+
+**Projects investigated:**
+
+| Candidate | What it is | What it does about the ceiling |
+|---|---|---|
+| `espressif/esp-idf` `components/partition_table/gen_esp32part.py`, Apache-2.0 | **The** partition-table tool: parses the CSV, validates types, subtypes, alignment, overlap, uniqueness, size against `CONFIG_ESPTOOLPY_FLASHSIZE`, and emits the binary | **Nothing.** It has no notion of an addressing ceiling below the flash size, because on every part Espressif supports the whole part is nominally addressable. It would pass the vendor's own table, `ota_1` and all — and the vendor's table is the proof, since it was generated by this tool |
+| `espressif/esp-idf` `components/esptool_py/esptool/esptool.py` | flashes and verifies | Refuses > 16 MB **only** on the ROM loader path; the stub addresses 32 bits and verified a write to `0x1000000` on this unit. So it is not a check either — it is the thing that made the defect invisible |
+| ESP-IDF's `check_sizes.py` / build-time size checks | app image vs partition size | Orthogonal. Answers "does the image fit", not "is the partition reachable" |
+
+**Useful implementation:** the CSV dialect, from `gen_esp32part.py` — five or
+six comma-separated fields, `#` comments, `K`/`M` suffixes, hex offsets — and
+the two alignment rules ESP-IDF enforces (4 KiB sectors everywhere, 64 KiB for
+app partitions). Read from the upstream source, not guessed.
+
+**License:** Apache-2.0. Nothing is copied, so nothing is inherited.
+
+**Strengths (of the rejected option):** `gen_esp32part.py` is correct, exercised
+by every ESP-IDF project in existence, and does far more than we do.
+
+**Weaknesses:** it does not do the one thing this repository needs, and it
+cannot be run here at all — there is no ESP-IDF project in this tree yet
+([#127](https://github.com/hleserg/Attadipa/issues/127) opens by saying so), so
+there is no build step for it to be part of. A check that only exists inside a
+build we have not started is not a check.
+
+**Decision:** `WRITE OUR OWN`, deliberately small —
+`tools/flash/partition_check.py`, and it says in its own docstring that it is
+**not** a replacement for `gen_esp32part.py`. When the firmware project exists,
+both run: ours first, because it is the one that knows about this board.
+
+**Reason:** the check we need is absent from the only upstream candidate, and
+the ceiling is a property of *this board* that no general tool will ever grow.
+The overlap with `gen_esp32part.py` is kept as narrow as the job allows — sector
+alignment, overlap and flash-size overflow are duplicated only because nothing
+else will run until there is a firmware build, and the docstring says so rather
+than letting a future reader discover two sources of truth. One deliberate
+divergence: **blank offsets are refused rather than computed**, because an
+implicit offset is exactly how a table drifts across the line with nothing in
+the diff to show for it.
+
+**Source revision:** ESP-IDF `v5.5.5`, read at that tag for the CSV dialect, the
+alignment rules and the whole of
+[FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md)'s path trace.
+
+**Attadipa integration:** `tools/flash/partition_check.py`, run by the
+`flash_partitions_below_ceiling` test; `tools/flash/selftest.py`, run by
+`flash_partition_check_rejects_mistakes`.
+
+**Tests required:** the boundary as four separate cases — a partition that ends
+exactly on the line and must pass, one that starts on it, one wholly above it,
+one that crosses it — plus 32-bit overflow, flash-size overflow, both alignment
+rules, overlap, and five malformed rows that must be errors rather than skips.
+And the vendor's own shipped table as a fixture, which must be refused naming
+both `ota_1` and `storage` and neither of the six partitions below the line. The
+self-test was mutation-checked four ways: `>=` loosened to `>` at the ceiling,
+the crossing check removed, the crossing check tightened so that ending exactly
+on the line fails, and unparseable rows silently skipped — each turned it red.
+No hardware; this reads CSV files and touches no board.

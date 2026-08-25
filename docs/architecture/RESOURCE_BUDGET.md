@@ -100,6 +100,56 @@ bandwidth and add a cache-coherency requirement for DMA; partial buffers trade
 tearing behaviour and redraw complexity. **That is an ADR, not a default**, and
 it is listed as a pending decision in [TASKS.md](../../TASKS.md).
 
+**And a third cost belongs in that ADR, in time rather than in bytes.** The one
+complete display path readable in pinned source sets `swap_bytes` and therefore
+runs `lv_draw_sw_rgb565_swap()` on every flush — a software, in-place pass over
+the flushed region, on the CPU. At full frame that is a second traversal of the
+402 KiB above, and on PSRAM-backed buffers it is a second traversal *of PSRAM*,
+against the cache-coherency requirement in the same sentence. Per-frame CPU time
+is also battery.
+
+**Three** things about it are **`UNKNOWN`** and none may be assumed away. The
+third was added in the second review round, because an earlier version of this
+paragraph priced the pass as a fixed property of the panel:
+
+| | Question | Where it is tracked |
+|---|---|---|
+| Necessity | does *this* panel need the swap at all — the CO5300's wire byte order | **D21**, [`OPEN_QUESTIONS`](../research/OPEN_QUESTIONS.md); closable by the datasheet or by a photographed pattern |
+| Cost | what the pass costs per frame, internal SRAM versus PSRAM | not measured; belongs in §4's table when somebody measures it |
+| Avoidability | whether the pass is a property of the **panel** or of the **flush-time-swap strategy** | not settled; an input to T-093 rather than a constant it designs around |
+
+The third exists because LVGL can render straight into a swapped destination:
+`lv_draw_sw_blend_to_rgb565_swapped.c` is a whole blend target at the pinned
+`lvgl@85aa60d1`, and
+`sim/lv_conf_simulator.h:216` "LV_DRAW_SW_SUPPORT_RGB565_SWAPPED       1"
+compiles it in.
+
+**With a precondition this row has to carry, because it is a device row resting
+on a host-build fact.** That file is the *simulator's* `lv_conf`, and
+`cmake/AttadipaLvgl.cmake:62` "LV_BUILD_CONF_PATH" points the only LVGL build
+this repository has at it — there is no device configuration, because there is
+no device build. The flag also sits under
+`sim/lv_conf_simulator.h:210` "Selectively disable color format support in order to reduce code size",
+which is precisely the switch a flash-constrained firmware turns off. So T-093 must
+decide whether the device `lv_conf` carries it at all before designing around
+the option; treating *"it compiles in"* as settled is how a later size pass
+removes an assumption three layers up. Named in the third review round of
+[#152](https://github.com/hleserg/Attadipa/pull/152). On that strategy the
+conversion folds into the blend that already runs and there is no second
+traversal at all — it is paid per blended pixel rather than per frame pixel,
+which for a watch face that redraws a small region is a different number
+entirely, and possibly a larger one for a full-screen redraw. Neither has been
+measured, which is the point: **T-093 should see the swap priced as an option,
+not inherit it as a cost.**
+
+Recorded because the source trace that established the swap filed it as a
+correctness question only, and the draw-buffer ADR would otherwise be written
+against a frame time with a full-buffer software pass either missing from it or
+nailed into it — the swap then resurfacing later as an unexplained regression on
+the one board that cannot afford it. Found in review of
+[#152](https://github.com/hleserg/Attadipa/pull/152), corrected in its second
+round.
+
 The T-Watch numbers are comfortable enough that the same strategy will fit
 whatever the Waveshare board forces. Design for the harder board.
 
@@ -184,6 +234,26 @@ high-water mark is never sampled is an unbudgeted task.
 | Per-task declared stack | the `xTaskCreate` call — one table, reviewed |
 | Per-task high-water mark | `uxTaskGetStackHighWaterMark()` after a soak run |
 | Headroom policy | to be decided — a stack sized to its exact high-water mark is a crash waiting for a deeper call path |
+
+**One figure is already known, before any task exists — and the first version of
+this paragraph priced the smaller half of it.** `Bridge::handle` into a message
+decode and out through a reply is about **1 KB of zero-initialised locals**. But
+that is not the deepest path: it is called from inside a **4 KB receive buffer**.
+`sim/debug_server.cpp:432` puts `chunk[4096]` on the stack and calls
+`dispatch_ready` from within its scope, which adds `payload[link::kMaxPayload]`
+and, under `emit`, `queue`'s `frame[link::kMaxFrame]`. The whole chain is about
+**5 KB**, `ESTIMATED` by reading the frames rather than measured, because there
+is no firmware to measure on.
+
+That changes what the row means rather than merely making it bigger. The task
+that services the interface is, on ESP-IDF, routinely created with 4 KB — so the
+chain as written on the desktop does not fit in the default at all, where a
+quarter of it looked like a sizing question. The 4 KB buffer is the part to
+revisit on a device: a smaller `recv` chunk, or one owned by the task rather
+than the frame, costs a few more `recv` calls and is not a protocol change.
+Whoever writes that `xTaskCreate` (**T-114**) owns the number; this line exists
+so they do not meet it for the first time in a stack overflow — which is why it
+is a defect for it to have been scoped to the inner call.
 
 ### Mesh state and message history
 

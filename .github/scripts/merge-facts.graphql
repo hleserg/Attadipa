@@ -1,0 +1,160 @@
+# Every fact the unattended merge sweep decides on, in one round trip.
+#
+# WHY THIS IS A FILE. The same reason merge-candidate.sh is one: a query
+# embedded in a workflow cannot be executed by a test, so nothing can assert
+# what it asks for -- and what this query asks for is a security property. On
+# 2026-08-24 it asked for `labels(first:50)`, `reviewThreads(first:100)` and
+# `contexts(first:100)` and for no `pageInfo` at all, so the sweep read a
+# bounded page and treated it as the whole set. A pull request with 101 review
+# threads whose 101st was unresolved reported zero unresolved threads. Issue
+# #170.
+#
+# EVERY CONNECTION HERE CARRIES `pageInfo { hasNextPage }`, and
+# .github/scripts/merge-facts.sh refuses to decide on a page that says there is
+# another one. `totalCount` is asked for as well, but only so the log line can
+# say "100 of 101" -- it is never the completeness test. `nodes | length == 100`
+# is not one either: it cannot tell an exactly-full page from a truncated one,
+# and the schema already answers the question exactly.
+#
+# AND `totalCount` COULD NOT BE THE TEST EVEN IF WE WANTED IT TO BE, because on
+# a FILTERED connection it does not count the filtered set. Run against this
+# repository's pull request #173 on 2026-08-24, `timelineItems(last:100,
+# itemTypes:[LABELED_EVENT])` answered `totalCount: 15` beside a single node --
+# fifteen timeline items, one of them a labelling. `pageInfo` on the same
+# response respected the filter and read `hasNextPage: false,
+# hasPreviousPage: false`. So a `nodes | length < totalCount` rule would hold
+# every pull request in the repository forever, and pageInfo is not merely the
+# tidier answer here, it is the only correct one. Observed, not assumed.
+#
+# THE PAGE SIZES ARE GITHUB'S MAXIMUM, 100. `labels(first:50)` was half of what
+# one round trip may ask for, which bought nothing and made a truncated label
+# list twice as likely.
+
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      isDraft
+      mergeStateStatus
+
+      # A blocking label off the end of the page is the worst of these: it is
+      # the one truncation that turns a refusal into a merge. `ai-review:pass`
+      # going missing only holds.
+      labels(first: 100) {
+        totalCount
+        pageInfo { hasNextPage }
+        nodes { name }
+      }
+
+      # The count of unresolved threads is computed over these nodes, so a
+      # truncated page reports fewer unresolved threads than exist -- and zero
+      # is the value that merges.
+      reviewThreads(first: 100) {
+        totalCount
+        pageInfo { hasNextPage }
+        nodes { isResolved }
+      }
+
+      # The path allowlist is applied to these nodes, so a truncated page can
+      # hide the one path that is not on it.
+      files(first: 100) {
+        totalCount
+        pageInfo { hasNextPage }
+        nodes { path }
+      }
+
+      # `last:` because the question is which `ai-review:pass` labelling is the
+      # MOST RECENT one, and the newest events are the ones that answer it.
+      #
+      # NEITHER FLAG PROVES ANYTHING HERE, AND THAT IS WORTH SAYING PLAINLY.
+      # Under the Relay contract `hasNextPage` is true only when paginating
+      # forward with `first:`, or when `before:` is set. A `last:`-only page is
+      # the "otherwise", so it answers false *by construction* -- asserting it
+      # is a tautology, and the completeness refusal on this one connection can
+      # never fire. It is kept because the shape must match every other
+      # connection here, not because it tests anything.
+      #
+      # What actually makes the window safe is downstream and does not depend on
+      # a flag: an event outside a `last:` window is older than everything in
+      # it and cannot raise the maximum, so a truncated window yields no
+      # `PASS_AT`, `PASS_AFTER_HEAD` comes back `unknown`, and the caller holds.
+      # `hasPreviousPage` is deliberately not a refusal for the same reason:
+      # refusing on it would hold every pull request with a hundred label events
+      # and prove nothing extra.
+      timelineItems(last: 100, itemTypes: [LABELED_EVENT]) {
+        totalCount
+        pageInfo { hasNextPage hasPreviousPage }
+        nodes {
+          ... on LabeledEvent {
+            createdAt
+            label { name }
+          }
+        }
+      }
+
+      commits(last: 1) {
+        totalCount
+        pageInfo { hasNextPage }
+        nodes {
+          commit {
+            # THE IDENTITY THE VERDICT IS BOUND TO. Without it the sweep has a
+            # label saying a review happened and no way to say what it happened
+            # to; `merge-candidate.sh` refuses a caller that cannot name it.
+            oid
+
+            # `committedDate` AND `pushedDate` ARE DELIBERATELY NOT ASKED FOR.
+            # The sweep used to read `(.pushedDate // .committedDate)` and use it
+            # both as the start of the six-hour settling window and as the date
+            # the reviewer's verdict had to post-date. `pushedDate` is deprecated
+            # and answered `null` beside a live `committedDate` for the head of
+            # this repository's #193 on 2026-08-24, so the fallback was the only
+            # branch ever taken -- and `committedDate` is the git committer
+            # clock, which `GIT_COMMITTER_DATE` sets. Both properties therefore
+            # rested on an input. Not asking is the point: re-deriving that
+            # fallback now takes an edit to this file as well as to the filter,
+            # and .github/tests/merge-candidate-test.sh refuses both. Issue #199.
+            #
+            # WHAT REPLACES IT. GitHub stamps the workflow runs it starts against
+            # this exact object id, and a commit becoming a pull request's head
+            # is what raises a `pull_request` run. `workflowRun.createdAt` is
+            # therefore GitHub observing the arrival rather than the author
+            # describing it -- 18:30:08Z against a `committedDate` of 18:29:57Z
+            # on #193. `.github/scripts/merge-head-trust.jq` takes the maximum
+            # over these and holds when there are none.
+            checkSuites(first: 100) {
+              totalCount
+              pageInfo { hasNextPage }
+              nodes {
+                app { slug }
+                workflowRun {
+                  createdAt
+                  event
+                }
+              }
+            }
+
+            # A `CheckRun` is a job; a `StatusContext` is a commit status posted
+            # by whatever app holds a token. They arrive in one connection and
+            # must stay distinguishable -- flattening them let one third-party
+            # green status stand in for CI having run at all. Kept from a192a89.
+            statusCheckRollup {
+              contexts(first: 100) {
+                totalCount
+                pageInfo { hasNextPage }
+                nodes {
+                  __typename
+                  ... on CheckRun {
+                    conclusion
+                    status
+                  }
+                  ... on StatusContext {
+                    state
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

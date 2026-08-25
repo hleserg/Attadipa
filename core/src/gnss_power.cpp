@@ -22,7 +22,11 @@ StartKind start_kind(const GnssContext& context)
     // been powered. Having the feature is not using it — a receiver switched
     // off at the rail came up knowing nothing, however capable it is and
     // however recently it was last on.
-    if (context.capabilities.backup_domain && context.backup_retained) {
+    //
+    // And a backup domain nobody has *established* is not one to promise a warm
+    // start on. `Unknown` lands here with `Unsupported`: a quoted thirty-second
+    // start that takes several minutes is a worse answer than quoting minutes.
+    if (is_supported(context.capabilities.backup_domain) && context.backup_retained) {
         return StartKind::Warm;
     }
     return StartKind::Cold;
@@ -34,13 +38,17 @@ bool transition_is_legal(GnssState from, GnssState to, const GnssCapabilities& c
         return true;
     }
 
-    // A state the hardware cannot hold is not a state. Refusing it here means
-    // the impossible case never reaches a driver that would have to invent
-    // behaviour for it.
-    if (to == GnssState::Backup && !capabilities.backup_domain) {
+    // A state the hardware cannot hold is not a state, and neither is one
+    // nobody has checked the hardware for. Refusing both here means the
+    // impossible case never reaches a driver that would have to invent
+    // behaviour for it, and the unverified case never becomes a promise the
+    // part may not keep. Only `Supported` opens the route; the two refusals
+    // stay distinguishable in the capability itself, which is where a
+    // diagnostics screen and T-051's audit both read them.
+    if (to == GnssState::Backup && !is_supported(capabilities.backup_domain)) {
         return false;
     }
-    if (to == GnssState::PowerSave && !capabilities.power_save_mode) {
+    if (to == GnssState::PowerSave && !is_supported(capabilities.power_save_mode)) {
         return false;
     }
 
@@ -94,7 +102,7 @@ GnssState next_state(GnssState current, const GnssContext& context)
         if (current == GnssState::Off) {
             return GnssState::Off;
         }
-        return can.backup_domain ? GnssState::Backup : GnssState::Off;
+        return is_supported(can.backup_domain) ? GnssState::Backup : GnssState::Off;
     }
 
     // An application waiting for a position outranks thrift, but not physics:
@@ -109,13 +117,13 @@ GnssState next_state(GnssState current, const GnssContext& context)
         return current;
     }
 
-    // Nobody is asking, and the wrist is not moving. This is the ordinary state
-    // of a watch on a bedside table, and it is where the charge is saved.
-    if (!context.device_moving && current == GnssState::Tracking) {
-        if (can.power_save_mode) {
+    // Only a known, same-body rest sample may save power. An absent sample is
+    // not evidence that a receiver is still.
+    if (context.own_body_at_rest() && current == GnssState::Tracking) {
+        if (is_supported(can.power_save_mode)) {
             return GnssState::PowerSave;
         }
-        if (can.backup_domain) {
+        if (is_supported(can.backup_domain)) {
             return GnssState::Backup;
         }
         return GnssState::Off;
@@ -123,7 +131,7 @@ GnssState next_state(GnssState current, const GnssContext& context)
 
     // Moving again after a rest. Retained ephemeris is what makes this cheap,
     // and start_kind() is where that shows up as a shorter expected wait.
-    if (context.device_moving &&
+    if (context.own_body_in_motion() &&
         (current == GnssState::PowerSave || current == GnssState::Backup)) {
         return GnssState::Acquiring;
     }
@@ -150,6 +158,16 @@ const char* to_string(StartKind kind)
         case StartKind::Cold: return "Cold";
         case StartKind::Warm: return "Warm";
         case StartKind::Hot:  return "Hot";
+    }
+    return "?";
+}
+
+const char* to_string(SupportState state)
+{
+    switch (state) {
+        case SupportState::Unknown:     return "Unknown";
+        case SupportState::Unsupported: return "Unsupported";
+        case SupportState::Supported:   return "Supported";
     }
     return "?";
 }

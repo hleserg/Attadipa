@@ -99,12 +99,35 @@ to either.
 
 ---
 
-## 2. Framing — one size, no checksum
+## 2. Framing — one buffer size, four different capacities, no checksum
 
 `#define MAX_FRAME_SIZE 176` in `src/helpers/BaseSerialInterface.h:5`, a bare
 `#define` with **no `#ifndef` guard**, so it is not overridable by a build flag.
-176 is the number for every transport at this revision, and the first payload
-byte is always the command or response code.
+The first payload byte is always the command or response code.
+
+> **Corrected 2026-08-23.** What stood here said *"176 is the number for every
+> transport"*. It is not. 176 is what the **protocol** agrees and what the
+> **buffer** holds; what a **link** delivers is a separate quantity, and on BLE it
+> is smaller. Upstream lost three bytes per full frame for months on exactly this
+> conflation, and the arithmetic is now derived and executed rather than assumed
+> — though **nothing here was measured**; the losses are upstream's, on their
+> boards and their BLE stack —
+> [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md), issue
+> [#143](https://github.com/hleserg/Attadipa/issues/143).
+
+Four numbers, and a client that treats any of them as the others will be wrong:
+
+| # | Name | On an ESP32 at MTU 176 | Set by |
+|---|---|---|---|
+| 1 | **Protocol / buffer maximum** | **176** | `MAX_FRAME_SIZE`. Both peers must agree; not negotiable |
+| 2 | **ATT notification payload** | **173** | the Bluetooth Core specification: negotiated ATT MTU − 3 |
+| 3 | **Effective frame ceiling** | **173** | `min(1, 2)`, and across a fan-out wrapper the minimum over the sinks the write reaches |
+| 4 | **Application chunk payload** | **173 at this revision**; 171 in the derivative that measured it | 3 minus the frame builder's own header — and **vanilla has no chunked builder at all**, so its header is 0 and rows 3 and 4 coincide. The 171 that appears throughout the upstream evidence is 173 minus a 2-byte chunk header belonging to `caplog` and the config stream, which are *not* commands of this protocol |
+
+Numbers 2 to 4 apply to **BLE only**. On the four byte-stream transports the
+frame carries its own 3-byte length prefix outside the payload (§2.1), so
+number 1 is number 3 and there is nothing to subtract. That is the whole of what
+*"176 is the number for every transport"* was ever true about.
 
 **No checksum anywhere.** A case-insensitive search for `crc|checksum` across
 every interface implementation and all of `examples/companion_radio/` returns
@@ -171,10 +194,43 @@ partial write is treated as a corrupted frame and **dropped rather than resumed*
 > callback equals one frame"* is what MeshCore assumes, not something these files
 > prove. Likewise, whether a 176-byte payload survives in a single notification
 > depends on the negotiated ATT MTU. `BLEDevice::setMTU(MAX_FRAME_SIZE)` **requests**
-> 176; `onMtuChanged()` only logs it. **The code never adapts to the negotiated
-> MTU and never splits a frame if the peer negotiates less.** A client that
-> negotiates a smaller MTU than 176 is in undefined territory, and an ESP32-S3
-> central negotiating conservatively is not a hypothetical.
+> 176 (`esp32/SerialBLEInterface.cpp:29`); `onMtuChanged()` only logs it (`:100`).
+> **The code never adapts to the negotiated MTU and never splits a frame if the
+> peer negotiates less.** A client that negotiates a smaller MTU than 176 is in
+> undefined territory, and an ESP32-S3 central negotiating conservatively is not a
+> hypothetical.
+>
+> **Partly answered 2026-08-23, and the answer is worse than "undefined".** The
+> request *succeeding* is the problem, not the request failing: MTU 176 delivers
+> 173, so a full frame is three bytes over the link that the buffer size itself
+> asked for. Nobody has to negotiate conservatively for this to bite. A MeshCore
+> derivative measured exactly that on ESP32 hardware — three field reports, each
+> short by a whole number of full frames times three — and four vanilla producers
+> at this revision size against the buffer rather than the link, one of them
+> filling it exactly (§2.3). Full chain, matrix and evidence in
+> [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md). Still
+> `NOT EXECUTED — HARDWARE REQUIRED` here: the measurement is upstream's, on
+> their boards and on a **different BLE stack** — they are on NimBLE, this
+> revision is on the Arduino core's Bluedroid.
+
+### 2.3 Which vanilla frames reach the ceiling
+
+Read from source at this revision. `sizeof(out_frame)` is `MAX_FRAME_SIZE + 1`,
+which is one byte more than any transport accepts, so the top of each range is
+not a large frame but a dropped one.
+
+| Producer | Bound in the code | Largest frame |
+|---|---|---|
+| `logRxRaw` → `PUSH_CODE_LOG_RX_DATA` (0x88) | `len + 3 <= MAX_FRAME_SIZE` (`MyMesh.cpp:287`) | **exactly 176** — over BLE at MTU 176, three bytes do not arrive |
+| `onRawDataRecv` → `PUSH_CODE_RAW_DATA` (0x84) | `payload_len + 4 > sizeof(out_frame)` (`:802`) | **177** — refused by every `writeFrame()`, silently |
+| `onControlDataRecv` → `PUSH_CODE_CONTROL_DATA` (0x8E) | same shape (`:782`) | **177**, same |
+| `onTraceRecv` → `PUSH_CODE_TRACE_DATA` (0x89) | `12 + path_len + (path_len >> path_sz) + 1 > sizeof(out_frame)` (`:824`) | **177** by the guard; whether the inputs reach it is [#142](https://github.com/hleserg/Attadipa/issues/142)'s question |
+
+Everything else fits: `RESP_CODE_CONTACT` is 148 bytes (`:166-186`),
+`RESP_CODE_SELF_INFO` is 58 plus the node name. Both drop paths are silent —
+`ArduinoSerialInterface::writeFrame()` returns 0 with no message at all
+(`ArduinoSerialInterface.cpp:25-28`), and `MESH_DEBUG_PRINTLN` expands to `{}`
+unless `MESH_DEBUG` is defined (`MeshCore.h:29-32`), which no stock build does.
 
 ---
 
@@ -185,7 +241,7 @@ order — neither gates the other.
 
 **`CMD_DEVICE_QUERY` (22) — the version exchange.** Request `[22, app_ver]`,
 `len >= 2`. Byte 1 is stored verbatim into `app_target_ver`. Reply is
-`RESP_CODE_DEVICE_INFO` (13), 81 bytes:
+`RESP_CODE_DEVICE_INFO` (13), **82** bytes:
 
 ```
 [13][FIRMWARE_VER_CODE][MAX_CONTACTS/2][MAX_GROUP_CHANNELS][ble_pin:4]
@@ -195,6 +251,12 @@ order — neither gates the other.
 `FIRMWARE_VER_CODE` is **13** at this commit. This is a mutual declaration, not a
 negotiation: each side states a number and adapts unilaterally. Note the device
 hands out its own `ble_pin` in this reply.
+
+> **Corrected 2026-08-23.** This said 81 bytes. The ten fields listed above sum
+> to **82** — `1+1+1+1+4+12+40+20+1+1`, and the builder at `MyMesh.cpp:1024-1044`
+> writes exactly those ten. The layout was right and the total was not. It
+> matters because §7 tells a client to key off the length rather than assume it,
+> and an off-by-one in the number it keys against defeats that.
 
 **`CMD_APP_START` (1) — the app start.** Request `[1][7 reserved][app_name…]`,
 `len >= 8`; the name is only logged. Reply is `RESP_CODE_SELF_INFO` (5),
@@ -483,18 +545,28 @@ Consequences only. Designs go in ADRs and tasks, not here.
    Home Assistant on `doctor` is reachable today. That makes a **host-side** test
    client the first honest step: the framing can be exercised from a laptop long
    before an ESP32 is involved.
-3. **176 bytes is the packet budget, and it is not ours to change.** Every queue,
-   buffer and chunking decision on our side is bounded by it. The research
-   prompt's §6 — *sizes come from the real transport* — has its number.
+3. **176 bytes is the packet budget, and it is not ours to change — but it is
+   not the transport's capacity either.** Every queue and buffer on our side is
+   bounded by 176; every *chunking* decision is bounded by what the link
+   delivers, which on BLE is **173** — less any header a chunking builder of our
+   own adds, and vanilla has no such builder, so 173 is the whole of it here. The
+   research prompt's §6 — *sizes come from the real transport* — asks for the
+   second number, and this document gave it the first until 2026-08-23. §2 and
+   [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md).
 4. **A companion position arrives with no provenance and no age.** §4.3. This is
    the single most consequential finding in the document and it lands on
    ADR-0011, OD-8 and OD-10 at once.
 5. **Re-send `CMD_DEVICE_QUERY` on every connection.** Not on pairing, not once.
    §3.1.
 6. **Never infer capability from an error.** §5's landmine.
-7. **The BLE MTU question is ours to answer, not theirs.** §2.2. It is the first
-   thing to test against real hardware, and it is a plausible cause of a class of
-   bug that would otherwise look like corruption.
+7. **The BLE MTU question is ours to answer, not theirs — and it is no longer
+   hypothetical.** §2.2. Still the first thing to test against real hardware, and
+   it is now a *confirmed* cause, upstream and on someone else's boards, of a
+   class of bug that looks like corruption. Specifically it looks like a **radio**
+   fault: the vanilla path that reaches the ceiling is `PUSH_CODE_LOG_RX_DATA`,
+   whose payload is the raw bytes of a received LoRa packet, so a truncated frame
+   presents as a malformed packet off the air. A client must rule out its own
+   link before it says anything about the radio.
 8. **A stock node exports its private key on request.** T-069's threat model
    gains a section: a vanilla companion on a shared LAN is not a trusted
    peripheral.
@@ -504,7 +576,8 @@ Consequences only. Designs go in ADRs and tasks, not here.
 | Question | Why it is not answered here |
 |---|---|
 | Does any of this behave as read on a real vanilla node? | source only. `NOT EXECUTED — HARDWARE REQUIRED` |
-| What ATT MTU does a real ESP32-S3 central negotiate with a MeshCore peripheral, and what happens to a 176-byte frame if it is smaller? | §2.2 — cannot be settled from either repository |
+| What ATT MTU does a real ESP32-S3 central negotiate with a MeshCore peripheral? | still open, and it needs a board. §2.2 |
+| ~~What happens to a 176-byte frame if the MTU is smaller?~~ | **narrowed 2026-08-23.** It is short by `176 − (MTU − 3)`, silently — measured upstream on ESP32/NimBLE, and at MTU 176 that is three bytes. **Not** measured on this revision's Bluedroid path, and not on any Attadipa hardware. [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md) |
 | The exact `addGPS` byte layout as CayenneLPP 1.6.1 writes it | §4.1 — external, not vendored |
 | Whether the first-party JS and Python clients agree with this reading | not cross-checked; they are the obvious second source and were not consulted |
 | How the numbering differs at other tags | 53's absence proves the numbering has already moved. Any statement about another revision is `UNKNOWN` |

@@ -1,4 +1,6 @@
 #include <cstdio>
+#include <cstring>
+#include <iterator>
 
 #include "attadipa/core/gnss_power.h"
 #include "attadipa/core/power_state.h"
@@ -187,13 +189,26 @@ void test_every_power_name_is_readable()
 // ---------------------------------------------------------------------------
 // The GNSS receiver's own states.
 
-// Two capability sets, because the interesting transitions are the ones that
-// exist on one receiver and not on the other. Backup and power-save are both
-// hardware features, and a state machine that assumed them would drive a
-// receiver into a state it does not have — which on a GNSS module means it
-// silently never starts, exactly the failure CLAUDE.md warns about.
-constexpr GnssCapabilities kPlain{false, false, false, false};
-constexpr GnssCapabilities kFull{true, true, true, true};
+// Three capability sets, not two, and the third is the one the project is
+// actually in. Backup and power-save are hardware features, and a state machine
+// that assumed them would drive a receiver into a state it does not have —
+// which on a GNSS module means it silently never starts, exactly the failure
+// CLAUDE.md warns about. But "this part does not have a backup domain" and
+// "nobody has read the datasheet" are different facts with the same fail-safe
+// consequence, and a suite that only tests the two extremes cannot tell whether
+// the middle one exists at all.
+//
+// `kUnknown` is a default-constructed value on purpose: what a caller gets by
+// writing `GnssCapabilities{}` is precisely what has to be safe.
+constexpr GnssCapabilities kUnknown{};
+constexpr GnssCapabilities kNone{SupportState::Unsupported, SupportState::Unsupported,
+                                 SupportState::Unsupported, SupportState::Unsupported};
+constexpr GnssCapabilities kFull{SupportState::Supported, SupportState::Supported,
+                                 SupportState::Supported, SupportState::Supported};
+
+// The two that must be refused, and the labels a failure will print.
+constexpr GnssCapabilities kRefusing[]   = {kUnknown, kNone};
+constexpr const char*      kRefusingName[] = {"unchecked", "plain"};
 
 void check_gnss(GnssState from, GnssState to, const GnssCapabilities& caps, bool want,
                 const char* which, int line)
@@ -210,18 +225,22 @@ void check_gnss(GnssState from, GnssState to, const GnssCapabilities& caps, bool
 #define CHECK_GNSS(from, to, caps, want, which) \
     check_gnss((from), (to), (caps), (want), (which), __LINE__)
 
-// Exhaustive again, and against the receiver that has nothing: every state a
-// capability gates must be unreachable, from everywhere, with no exceptions
-// hiding in a corner of the table.
+// Exhaustive again, and against both receivers that may not have it: every
+// state a capability gates must be unreachable, from everywhere, with no
+// exceptions hiding in a corner of the table. The unchecked receiver is in the
+// loop beside the one proven to lack the feature, because the whole point of
+// the third state is that it is not allowed to be optimistic.
 void test_a_state_the_receiver_does_not_have_is_unreachable()
 {
-    for (std::uint8_t f = 0; f < kGnssStateCount; ++f) {
-        const GnssState from = static_cast<GnssState>(f);
-        if (from != GnssState::Backup) {
-            CHECK_GNSS(from, GnssState::Backup, kPlain, false, "plain");
-        }
-        if (from != GnssState::PowerSave) {
-            CHECK_GNSS(from, GnssState::PowerSave, kPlain, false, "plain");
+    for (std::size_t c = 0; c < std::size(kRefusing); ++c) {
+        for (std::uint8_t f = 0; f < kGnssStateCount; ++f) {
+            const GnssState from = static_cast<GnssState>(f);
+            if (from != GnssState::Backup) {
+                CHECK_GNSS(from, GnssState::Backup, kRefusing[c], false, kRefusingName[c]);
+            }
+            if (from != GnssState::PowerSave) {
+                CHECK_GNSS(from, GnssState::PowerSave, kRefusing[c], false, kRefusingName[c]);
+            }
         }
     }
 
@@ -247,9 +266,82 @@ void test_a_state_the_receiver_does_not_have_is_unreachable()
 void test_a_receiver_can_always_be_switched_off()
 {
     for (std::uint8_t f = 0; f < kGnssStateCount; ++f) {
-        CHECK_GNSS(static_cast<GnssState>(f), GnssState::Off, kPlain, true, "plain");
+        CHECK_GNSS(static_cast<GnssState>(f), GnssState::Off, kUnknown, true, "unchecked");
+        CHECK_GNSS(static_cast<GnssState>(f), GnssState::Off, kNone, true, "plain");
         CHECK_GNSS(static_cast<GnssState>(f), GnssState::Off, kFull, true, "full");
     }
+}
+
+// The finding this file was extended for, and the shortest statement of it: a
+// capability nobody has established is a third value, not the absent one.
+//
+// A `GnssCapabilities` that is four `bool`s cannot compile groups 1 and 4 below
+// — a `bool` does not compare against a `SupportState`, and `fully_established()`
+// has nowhere to live — which is the mutation proof: the old model does not
+// merely fail this test, it fails to build it. tests/CMakeLists.txt registers the
+// other half of that claim: `GnssCapabilities{false, false, false, false}` must
+// not compile either, so a bool cannot creep back in through an aggregate
+// initializer. Group 2 is the exception and is meant to be: it is about the enum
+// alone, and would compile against any struct at all.
+void test_an_unchecked_capability_is_not_a_missing_one()
+{
+    // 1. The default is Unknown, in every field. This is what a caller who
+    //    filled nothing in gets, and it is the state both candidate receivers
+    //    are genuinely in until T-051 and T-052 land.
+    const GnssCapabilities fresh{};
+    CHECK(fresh.backup_domain == SupportState::Unknown);
+    CHECK(fresh.power_save_mode == SupportState::Unknown);
+    CHECK(fresh.assistance == SupportState::Unknown);
+    CHECK(fresh.orbit_prediction == SupportState::Unknown);
+
+    // 2. Three values, three meanings, none of them equal to another.
+    CHECK(SupportState::Unknown != SupportState::Unsupported);
+    CHECK(SupportState::Unsupported != SupportState::Supported);
+    CHECK(SupportState::Unknown != SupportState::Supported);
+
+    // Only Supported is spendable; only Unknown is unestablished. The two
+    // predicates answer different questions, which is the entire point — if
+    // they agreed, one `bool` would still do.
+    CHECK(!is_supported(SupportState::Unknown));
+    CHECK(!is_supported(SupportState::Unsupported));
+    CHECK(is_supported(SupportState::Supported));
+    CHECK(!is_established(SupportState::Unknown));
+    CHECK(is_established(SupportState::Unsupported));
+    CHECK(is_established(SupportState::Supported));
+
+    // 3. Each renders as itself. A diagnostics screen that printed Unknown as
+    //    "Unsupported" would put the collision back one layer up, where it is
+    //    harder to see and nothing is testing for it.
+    const char* unknown     = to_string(SupportState::Unknown);
+    const char* unsupported = to_string(SupportState::Unsupported);
+    const char* supported   = to_string(SupportState::Supported);
+    CHECK(unknown != nullptr && unknown[0] != '\0');
+    CHECK(unsupported != nullptr && unsupported[0] != '\0');
+    CHECK(supported != nullptr && supported[0] != '\0');
+    CHECK(std::strcmp(unknown, unsupported) != 0);
+    CHECK(std::strcmp(unsupported, supported) != 0);
+    CHECK(std::strcmp(unknown, supported) != 0);
+
+    // 4. A profile with a gap is not a finished profile. This is the check that
+    //    T-051 and T-052 are actually done, and it is mechanical rather than
+    //    somebody remembering which of four fields they filled in.
+    CHECK(!fresh.fully_established());
+    CHECK(!kUnknown.fully_established());
+    CHECK(kNone.fully_established());
+    CHECK(kFull.fully_established());
+
+    // One gap is enough, in any field, and a proven absence closes it just as
+    // well as a proven presence — "established" is about the research, not
+    // about the answer.
+    GnssCapabilities partial = kFull;
+    partial.orbit_prediction = SupportState::Unknown;
+    CHECK(!partial.fully_established());
+    partial.orbit_prediction = SupportState::Unsupported;
+    CHECK(partial.fully_established());
+
+    GnssCapabilities gap_in_assistance = kNone;
+    gap_in_assistance.assistance = SupportState::Unknown;
+    CHECK(!gap_in_assistance.fully_established());
 }
 
 // A cold start is minutes and a hot start is seconds, and the difference is
@@ -286,15 +378,40 @@ void test_the_start_kind_follows_what_was_retained()
     // arrives in several minutes.
     context.ephemeris_retained = false;
     context.backup_retained    = false;
-    CHECK(context.capabilities.backup_domain);
+    CHECK(is_supported(context.capabilities.backup_domain));
     CHECK(start_kind(context) == StartKind::Cold);
+
+    // Supported and actually retained is the one route to Warm. Stated
+    // positively so the three checks below are refusals of something that does
+    // otherwise happen, rather than of a path that never existed.
+    GnssContext warm;
+    warm.capabilities      = kFull;
+    warm.backup_retained   = true;
+    CHECK(start_kind(warm) == StartKind::Warm);
 
     // A receiver with no backup domain at all cannot be warm however the flags
     // are set, because there was nowhere for the almanac to survive.
     GnssContext plain;
-    plain.capabilities     = kPlain;
+    plain.capabilities     = kNone;
     plain.backup_retained  = true;
     CHECK(start_kind(plain) == StartKind::Cold);
+
+    // And neither can one nobody has checked. The MS412FE cell is on the
+    // T-Watch's GNSS daughterboard and whether it backs the receiver's RAM is
+    // UNKNOWN until T-051 — so a warm start here is a guess with a stopwatch
+    // attached, and the fail-safe answer is the cold one.
+    GnssContext unchecked;
+    unchecked.capabilities    = kUnknown;
+    unchecked.backup_retained = true;
+    CHECK(start_kind(unchecked) == StartKind::Cold);
+
+    // Hot is a different fact and does not go through the capability at all: it
+    // is about retained ephemeris and a recent fix. An unchecked receiver that
+    // demonstrably still holds ephemeris is still hot, because that is an
+    // observation rather than a promise.
+    unchecked.ephemeris_retained = true;
+    unchecked.since_last_fix     = Millis{60000};
+    CHECK(start_kind(unchecked) == StartKind::Hot);
 }
 
 // §8 of the brief, and it is a prohibition rather than a feature: assistance
@@ -302,23 +419,80 @@ void test_the_start_kind_follows_what_was_retained()
 // get a fix, slowly, on its own.
 void test_assistance_is_never_required()
 {
-    GnssContext context;
-    context.capabilities         = kFull;
-    context.assistance_available = false;
-    context.fresh_fix_requested  = true;
+    constexpr SupportState kEvery[] = {SupportState::Unknown, SupportState::Unsupported,
+                                       SupportState::Supported};
 
-    // With no assistance at all, the receiver still goes and looks.
-    const GnssState next = next_state(GnssState::Off, context);
-    CHECK(next != GnssState::Off);
-    CHECK(transition_is_legal(GnssState::Off, next, context.capabilities));
+    // Whatever the assistance capability says — including that nobody knows —
+    // a receiver asked for a fix goes and looks for one.
+    for (SupportState assistance : kEvery) {
+        for (SupportState orbit : kEvery) {
+            GnssContext context;
+            context.capabilities                  = kFull;
+            context.capabilities.assistance       = assistance;
+            context.capabilities.orbit_prediction = orbit;
+            context.assistance_available          = false;
+            context.fresh_fix_requested           = true;
 
-    // And a receiver with no assistance capability whatsoever behaves the same.
-    GnssContext plain;
-    plain.capabilities        = kPlain;
-    plain.fresh_fix_requested = true;
-    const GnssState plain_next = next_state(GnssState::Off, plain);
-    CHECK(plain_next != GnssState::Off);
-    CHECK(transition_is_legal(GnssState::Off, plain_next, plain.capabilities));
+            const GnssState next = next_state(GnssState::Off, context);
+            CHECK(next != GnssState::Off);
+            CHECK(transition_is_legal(GnssState::Off, next, context.capabilities));
+        }
+    }
+
+    // Stronger, and the version that survives a refactor: the two optional
+    // capabilities must not influence the plan *at all*. Not merely "a fix is
+    // still attempted" — the same decision, from every state, under every
+    // condition. A planner that started preferring one route when assistance
+    // was declared would have made it load-bearing without anybody writing
+    // "required" anywhere, which is exactly how §8's prohibition gets broken.
+    const PowerState powers[] = {PowerState::Active, PowerState::Idle, PowerState::LightSleep,
+                                 PowerState::MeshListenSleep, PowerState::DeepSleep,
+                                 PowerState::PowerOff};
+
+    for (const GnssCapabilities& base : {kUnknown, kNone, kFull}) {
+        for (PowerState power : powers) {
+            for (int moving = 0; moving < 2; ++moving) {
+                for (int wanted = 0; wanted < 2; ++wanted) {
+                    for (int available = 0; available < 2; ++available) {
+                        for (std::uint8_t f = 0; f < kGnssStateCount; ++f) {
+                            const GnssState from = static_cast<GnssState>(f);
+
+                            GnssState        reference{};
+                            bool             have_reference = false;
+                            for (SupportState assistance : kEvery) {
+                                for (SupportState orbit : kEvery) {
+                                    GnssContext context;
+                                    context.capabilities                  = base;
+                                    context.capabilities.assistance       = assistance;
+                                    context.capabilities.orbit_prediction = orbit;
+                                    context.device_power                  = power;
+                                    context.receiver_body                 = SensorBody::Watch;
+                                    context.motion = MotionEvidence{SensorBody::Watch, true, moving != 0};
+                                    context.fresh_fix_requested           = wanted != 0;
+                                    context.assistance_available          = available != 0;
+
+                                    const GnssState to = next_state(from, context);
+                                    if (!have_reference) {
+                                        reference      = to;
+                                        have_reference = true;
+                                    } else if (to != reference) {
+                                        std::fprintf(
+                                            stderr,
+                                            "FAIL line %d: from %s the plan changed to %s when "
+                                            "assistance became %s — assistance is not allowed to "
+                                            "be a dependency\n",
+                                            __LINE__, to_string(from), to_string(to),
+                                            to_string(assistance));
+                                        ++failures;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 // Whatever the receiver would like to do, the device's own state outranks it.
@@ -339,8 +513,38 @@ void test_the_device_state_outranks_the_receiver()
     // On a receiver with no backup domain there is only one answer, and it is
     // the expensive one — which is a fact about the part, not a bug.
     GnssContext plain = context;
-    plain.capabilities = kPlain;
+    plain.capabilities = kNone;
     CHECK(next_state(GnssState::Tracking, plain) == GnssState::Off);
+
+    // And on a receiver nobody has checked, the same answer for a different
+    // reason: the rail comes down. Holding a domain that may not exist would
+    // spend current on a promise nothing has verified, and the cost of being
+    // wrong is a flat battery rather than a slow fix.
+    GnssContext unchecked = context;
+    unchecked.capabilities = kUnknown;
+    CHECK(next_state(GnssState::Tracking, unchecked) == GnssState::Off);
+}
+
+void test_motion_evidence_is_scoped_to_the_receiver_body()
+{
+    GnssContext node;
+    node.capabilities = kFull;
+    node.receiver_body = SensorBody::Node;
+    node.motion = MotionEvidence{SensorBody::Watch, true, false};
+    CHECK(next_state(GnssState::Tracking, node) == GnssState::Tracking);
+
+    node.motion = MotionEvidence{SensorBody::Node, true, false};
+    CHECK(next_state(GnssState::Tracking, node) == GnssState::PowerSave);
+    node.motion = MotionEvidence{SensorBody::Watch, true, true};
+    CHECK(next_state(GnssState::PowerSave, node) == GnssState::PowerSave);
+    node.motion = MotionEvidence{SensorBody::Node, true, true};
+    CHECK(next_state(GnssState::PowerSave, node) == GnssState::Acquiring);
+
+    GnssContext unknown;
+    unknown.capabilities = kFull;
+    CHECK(next_state(GnssState::Tracking, unknown) == GnssState::Tracking);
+    const MotionEvidence incoherent{SensorBody::Unknown, true, false};
+    CHECK(!incoherent.is_coherent());
 }
 
 // A receiver that is already off has nothing for a backup domain to keep, so
@@ -366,7 +570,23 @@ void test_an_off_receiver_does_not_enter_backup()
 // only thing keeping them agreeing.
 void test_next_state_never_proposes_an_illegal_move()
 {
-    const GnssCapabilities sets[] = {kPlain, kFull};
+    // Every combination of the two *gating* capabilities, at every support
+    // state — nine sets rather than the two extremes. The two-set version could
+    // not see a mixed receiver at all, and could not see an unchecked one,
+    // which between them are most of the receivers this project will meet
+    // before T-051 and T-052 close.
+    constexpr SupportState kEvery[] = {SupportState::Unknown, SupportState::Unsupported,
+                                       SupportState::Supported};
+    GnssCapabilities sets[std::size(kEvery) * std::size(kEvery)];
+    std::size_t      set_count = 0;
+    for (SupportState backup : kEvery) {
+        for (SupportState save : kEvery) {
+            sets[set_count].backup_domain   = backup;
+            sets[set_count].power_save_mode = save;
+            ++set_count;
+        }
+    }
+
     const PowerState powers[]     = {PowerState::Active, PowerState::Idle, PowerState::LightSleep,
                                      PowerState::MeshListenSleep, PowerState::DeepSleep,
                                      PowerState::PowerOff};
@@ -380,7 +600,8 @@ void test_next_state_never_proposes_an_illegal_move()
                             GnssContext context;
                             context.capabilities        = caps;
                             context.device_power        = power;
-                            context.device_moving       = moving != 0;
+                            context.receiver_body        = SensorBody::Watch;
+                            context.motion = MotionEvidence{SensorBody::Watch, true, moving != 0};
                             context.fresh_fix_requested = wanted != 0;
                             context.ephemeris_retained  = retained != 0;
                             context.since_last_fix      = Millis{retained != 0 ? 1000u : 0u};
@@ -425,9 +646,11 @@ int main()
 
     test_a_state_the_receiver_does_not_have_is_unreachable();
     test_a_receiver_can_always_be_switched_off();
+    test_an_unchecked_capability_is_not_a_missing_one();
     test_the_start_kind_follows_what_was_retained();
     test_assistance_is_never_required();
     test_the_device_state_outranks_the_receiver();
+    test_motion_evidence_is_scoped_to_the_receiver_body();
     test_an_off_receiver_does_not_enter_backup();
     test_next_state_never_proposes_an_illegal_move();
     test_every_gnss_name_is_readable();

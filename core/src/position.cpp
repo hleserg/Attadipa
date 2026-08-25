@@ -86,6 +86,19 @@ const char* to_string(PositionSource source)
     return "?";
 }
 
+SensorBody body_of(PositionSource source)
+{
+    switch (source) {
+        case PositionSource::LocalGnss: return SensorBody::Watch;
+        case PositionSource::NodeGnss: return SensorBody::Node;
+        case PositionSource::Companion: return SensorBody::Companion;
+        case PositionSource::Unknown:
+        case PositionSource::Manual:
+        case PositionSource::Simulated: return SensorBody::Unknown;
+    }
+    return SensorBody::Unknown;
+}
+
 const char* to_string(ReceiverIndication indication)
 {
     switch (indication) {

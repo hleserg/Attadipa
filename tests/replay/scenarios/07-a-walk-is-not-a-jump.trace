@@ -14,7 +14,7 @@ at 0
   speed 1400
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect trust trusted
 
 at 60000
@@ -27,7 +27,7 @@ at 60000
   speed 1400
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect trust trusted
   expect no-reason position-jump
   expect no-reason motion-disagreement
@@ -42,7 +42,7 @@ at 120000
   speed 1400
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect trust trusted
   expect no-reason position-jump
 
@@ -56,7 +56,7 @@ at 300000
   speed 1400
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect trust trusted
   expect no-reason position-jump
   expect no-reason implausible-altitude-rate
@@ -72,6 +72,6 @@ at 600000
   speed 1400
   jam none
   spoof none
-  motion moving
+  motion moving watch
   expect trust trusted
   expect no-reason position-jump

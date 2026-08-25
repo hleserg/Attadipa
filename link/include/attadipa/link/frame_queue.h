@@ -29,6 +29,23 @@
 // Storage is a fixed array — no allocation, ever. On a long-uptime device the
 // number that fails is not free heap but largest free block, and a queue that
 // allocates per frame is how that number goes down and never comes back.
+//
+// **Which context may call this: one, and the caller owns that.** Nothing here
+// is synchronised and nothing here is atomic. `push()` reads `head_` to compute
+// its slot while `pop()` writes it, and both read-modify-write `count_`, so a
+// producer and a consumer on different FreeRTOS tasks race — and that is
+// exactly the arrangement the paragraphs above describe it for, where under
+// ESP-IDF the producer lands on the host or TinyUSB task and the consumer does
+// not. Either call it from one task, or put a mutex or a queue boundary around
+// it; do not deduce from "bounded and allocation-free" that it is also safe to
+// share, and never call it from an ISR.
+//
+// Said here rather than left to be discovered, on the review of PR #148. Making
+// it *actually* safe to share is a design decision with a cost — a critical
+// section, a lock-free ring with a single producer and a single consumer, or an
+// ESP-IDF queue underneath — and it belongs to whoever writes the first
+// transport, with a measurement rather than a preference. Until then the
+// requirement is on the caller and it is written down.
 
 namespace attadipa::link {
 
@@ -56,9 +73,15 @@ public:
 
     // Enqueue a whole frame. Returns false and counts a drop if it does not fit
     // or is too long — never a partial enqueue.
+    //
+    // A length of zero is accepted, and a null pointer is a caller error only
+    // when there is something to copy. That is `encode()`'s rule, byte for
+    // byte, and the two agreeing is the point: a zero-length frame means the
+    // same thing at the encoder, at the decoder and here, so a frame that
+    // survives one boundary cannot be refused by the next.
     bool push(const std::uint8_t* data, std::size_t length)
     {
-        if (length > kMaxPayload || data == nullptr) {
+        if (length > kMaxPayload || (data == nullptr && length != 0)) {
             ++malformed_;
             return false;
         }
@@ -67,30 +90,51 @@ public:
             return false;
         }
         const std::size_t slot = (head_ + count_) % Depth;
-        std::memcpy(payload_[slot], data, length);
+        if (length != 0) {
+            std::memcpy(payload_[slot], data, length);
+        }
         length_[slot] = length;
         ++count_;
         ++accepted_;
         return true;
     }
 
-    // Take the oldest frame. Returns its length, or 0 if the queue is empty or
-    // the caller's buffer is too small — in which case the frame stays put.
-    std::size_t pop(std::uint8_t* out, std::size_t out_capacity)
+    // Take the oldest frame, or say why there is none.
+    //
+    // The status is separate from the length for the reason `FrameStatus`
+    // gives, and this container is half of that reason: it accepts a
+    // zero-length frame, so returning a length alone would report a successful
+    // pop with the same value as an empty queue, and a consumer draining until
+    // zero would leave whatever was behind it stranded while `accepted()` went
+    // on counting it as taken. `Delivered` with a `length` of 0 is a successful
+    // pop of an empty frame.
+    //
+    // `Incomplete` never comes out of here: a queue holds whole frames or
+    // nothing, which is the rule at the top of this file. A frame the caller's
+    // buffer cannot hold stays put and is reported with its own size, and
+    // `OutputTooSmall` is not an end-of-drain condition — `FrameResult` has
+    // `exhausted()` for that, and the reason is written there.
+    //
+    // `out` may be null only for an entry with no payload, matching the
+    // decoder: there is nothing to copy, so any output satisfies it. Judging
+    // the pointer before the length would answer `OutputTooSmall` with a length
+    // of 0 — a demand for room nobody can supply, on an entry `push(nullptr, 0)`
+    // had just accepted through the boundary agreement two comments up.
+    FrameResult pop(std::uint8_t* out, std::size_t out_capacity)
     {
-        if (count_ == 0 || out == nullptr) {
-            return 0;
+        if (count_ == 0) {
+            return {FrameStatus::NoFrame, 0};
         }
         const std::size_t length = length_[head_];
-        if (out_capacity < length) {
-            return 0;
+        if (length != 0 && (out == nullptr || out_capacity < length)) {
+            return {FrameStatus::OutputTooSmall, length};
         }
         if (length != 0) {
             std::memcpy(out, payload_[head_], length);
         }
         head_ = (head_ + 1) % Depth;
         --count_;
-        return length;
+        return {FrameStatus::Delivered, length};
     }
 
     // How many frames were refused because the queue was full. A count that

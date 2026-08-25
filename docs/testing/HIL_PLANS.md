@@ -310,6 +310,19 @@ actually delivers those events in that order is not a host question.
 **Expected.** Every case ends in a phase the model has a name for, and
 `ignored_events` is zero or explained.
 
+**"Explained" has to name the route, and one of the routes may be ordinary.**
+Since issue #158 a refused `Attach` reaches that counter too. In `Faulted` it is
+exactly the anomaly the counter exists for — a controller retrying against a
+transport that needs a `SubsystemRestart`. In `Suspended` it may instead be the
+healthy wake path: a stack that re-initialises and fires its own attach callback
+before the power manager gets round to `Resume` produces one refusal per wake on
+a device that is working perfectly. `LinkState` keeps a single scalar with no
+per-event breakdown, so a non-zero count is read against the sequence that
+produced it rather than against zero. Which of the two fires here, and how
+often, is `UNKNOWN` — no adapter exists yet and nobody has measured a real
+stack. This plan is where it would first be seen, so record the sequence
+alongside the number rather than the number alone.
+
 **Pass/fail.** FAIL if any sequence leaves the link in `Ready` with no peer, or
 in a phase from which no event can escape.
 

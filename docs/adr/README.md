@@ -47,6 +47,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0010](0010-localization.md) | English and Russian from the first screen | **accepted** |
 | [0011](0011-gnss-integrity.md) | GNSS integrity: the receiver's own defences, and a trust state with reasons | **accepted** |
 | [0012](0012-project-name-attadipa.md) | Project name is Attadipa | **accepted** |
+| [0013](0013-node-motion.md) | Motion evidence belongs to a physical body | **accepted** |
 
 ### What the statuses mean here
 

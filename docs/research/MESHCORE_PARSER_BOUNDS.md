@@ -601,7 +601,7 @@ Needs `clang++` with AddressSanitizer. Measured on clang 18.1.3, Ubuntu 24.04,
 
 - Upstream: `meshcore-dev/MeshCore`, MIT, pinned `d92964352441e53b93e8667b802e04f6e072b39e`
 - [`REUSE_LEDGER.md`](REUSE_LEDGER.md) — the pin and the monitored deltas
-- [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — M10–M14 from the first reading; M15–M17 from this one
+- [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — M10–M14 from the first reading; **M20–M23** from this one, M23 being the one that scopes the follow-up. Filed as M15–M18 and renumbered on merge, because the frame-capacity research took those on `main` in the same week
 - [`VERIFIED_FACTS.md`](VERIFIED_FACTS.md) — what is now traced to executed evidence
 - [`../upstream/meshcore-1.17-review.md`](../upstream/meshcore-1.17-review.md) — T-041, the review this continues
 - [`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) — the wire format on the client side

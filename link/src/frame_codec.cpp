@@ -102,7 +102,7 @@ void Decoder::discard_front(std::size_t count)
     size_ -= count;
 }
 
-std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
+FrameResult Decoder::next(std::uint8_t* out, std::size_t out_capacity)
 {
     // The loop is the resynchronisation. Every failure discards exactly one
     // byte and tries again from the next, so a torn frame costs at most one
@@ -115,7 +115,13 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
     // emitted.
     for (;;) {
         if (size_ < kHeaderBytes) {
-            return 0;  // not enough to judge; wait for more
+            // Not enough to judge; wait for more. Holding nothing and holding
+            // less than a header are reported apart because they are different
+            // facts about this decoder — not, as an earlier draft of this
+            // comment claimed, about the link. Neither can see the transport's
+            // FIFO, and the residue case is not a promise that anything is
+            // coming: see `FrameStatus`.
+            return {size_ == 0 ? FrameStatus::NoFrame : FrameStatus::Incomplete, 0};
         }
 
         const bool header_ok =
@@ -145,7 +151,7 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
 
         const std::size_t needed = kHeaderBytes + declared + kTrailerBytes;
         if (size_ < needed) {
-            return 0;  // a real frame, still arriving
+            return {FrameStatus::Incomplete, 0};  // a real frame, still arriving
         }
 
         // `declared + 3`, matching encode(): two length bytes, the length check,
@@ -162,9 +168,22 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
         }
 
         // A caller whose buffer is too small gets nothing and the frame stays
-        // queued, rather than a partial copy it might mistake for the whole.
-        if (out == nullptr || out_capacity < declared) {
-            return 0;
+        // queued, rather than a partial copy it might mistake for the whole. It
+        // is told how big the frame is, which is the difference between an
+        // error it can act on and a stall it cannot explain.
+        //
+        // The capacity is judged before the pointer, and `declared != 0` guards
+        // both. A frame with no payload has nothing to copy, so *any* output
+        // satisfies it — including a null one. Testing the pointer first would
+        // answer `OutputTooSmall` with a length of 0, which is a request for
+        // room that no caller can grant and no retry can change: the frame is
+        // never consumed and everything behind it is stranded. That is #146's
+        // own defect wearing #146's own fix, and the reviewer of PR #148 caught
+        // it here. It also made the outcome for one frame turn on whether a
+        // pointer happened to be null while `out_capacity` said the same thing
+        // either way.
+        if (declared != 0 && (out == nullptr || out_capacity < declared)) {
+            return {FrameStatus::OutputTooSmall, declared};
         }
 
         if (declared != 0) {
@@ -172,7 +191,11 @@ std::size_t Decoder::next(std::uint8_t* out, std::size_t out_capacity)
         }
         discard_front(needed);
         ++stats_.frames;
-        return declared;
+        // `stats_.frames` says "delivered intact", and this is the line that
+        // has to make that true. It is only true because the caller can tell
+        // this apart from a non-delivery without looking at `declared`, which
+        // is 0 for an empty frame and was 0 for "nothing ready" as well.
+        return {FrameStatus::Delivered, declared};
     }
 }
 

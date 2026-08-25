@@ -28,6 +28,7 @@ using platform::HardwareFeature;
 using ui::ColorRole;
 using ui::Dp;
 using ui::Metrics;
+using ui::PixelCost;
 using ui::Space;
 using ui::Theme;
 using ui::TypeRole;
@@ -51,6 +52,23 @@ Metrics metrics()
                                   : Metrics::unscaled();
 }
 
+// The one place `platform::PanelTechnology` and `ui::PixelCost` meet — OD-16 /
+// issue #52's first constraint. Nothing past this function, including `paint()`
+// three lines below, ever learns which enumerator produced the answer: it asks
+// only "does a lit pixel cost power here".
+PixelCost pixel_cost()
+{
+    if (g_inventory == nullptr) {
+        return PixelCost::Fixed;
+    }
+    switch (g_inventory->display().technology) {
+        case platform::PanelTechnology::Amoled: return PixelCost::PerPixel;
+        case platform::PanelTechnology::Ips:
+        case platform::PanelTechnology::Unknown:
+        default: return PixelCost::Fixed;
+    }
+}
+
 std::int32_t px(Space s)
 {
     return metrics().px(ui::dp_of(s));
@@ -66,16 +84,17 @@ std::int32_t px(Space s)
 // colour is a diagnostic that lies about the palette it is diagnosing.
 lv_color_t paint(ColorRole role)
 {
-    if (const std::optional<ui::Rgb> value = ui::color(role, g_theme)) {
+    const PixelCost cost = pixel_cost();
+    if (const std::optional<ui::Rgb> value = ui::color(role, g_theme, cost)) {
         return lv_color_hex(value->packed());
     }
 
     const ColorRole substitute = ui::kind_of(role) == ui::ColorKind::Background
                                      ? ColorRole::BackgroundPrimary
                                      : ColorRole::TextPrimary;
-    std::fprintf(stderr, "palette: %s is UNKNOWN in the %s theme, drawing %s instead\n",
-                 ui::name_of(role), ui::name_of(g_theme), ui::name_of(substitute));
-    return lv_color_hex(ui::color(substitute, g_theme)->packed());
+    std::fprintf(stderr, "palette: %s is UNKNOWN in the %s theme (%s), drawing %s instead\n",
+                 ui::name_of(role), ui::name_of(g_theme), ui::name_of(cost), ui::name_of(substitute));
+    return lv_color_hex(ui::color(substitute, g_theme, cost)->packed());
 }
 
 // A UTF-8 reader, because the catalogue is UTF-8 and LVGL's own decoder lives
@@ -314,7 +333,14 @@ void set_theme(Theme theme)
 void toggle_theme()
 {
     g_theme = g_theme == Theme::Day ? Theme::Night : Theme::Day;
-    std::printf("theme: %s\n", ui::name_of(g_theme));
+    // Says whether anything followed it. Under `--diagnostic` the boot screen
+    // was never built, so `rebuild_boot_screen` is a no-op and the diagnostic
+    // pattern deliberately does not follow a palette -- its colours are test
+    // vectors. Printing `theme: night` there announced a change nothing on
+    // screen made, which is the sort of line an agent reads as confirmation.
+    const bool follows = g_inventory != nullptr && g_caps != nullptr;
+    std::printf("theme: %s%s\n", ui::name_of(g_theme),
+                follows ? "" : " (nothing on screen follows it in this mode)");
     rebuild_boot_screen();
 }
 
