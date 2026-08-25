@@ -6,11 +6,11 @@ product ordering: **which of two possible next tasks wins**.
 
 Written 2026-08-24, after an independent cold read of the repository.
 
-> **Update 2026-08-25:** T-165 added the ESP-IDF project; T-166 then drove the
-> physical Waveshare display, touch, required PMU rails and RTC. The diagnosis
-> below records the state when this ordering decision was made; its result is
-> unchanged. T-114 is now the next device slice because it supplies the real
-> screenshot/control endpoint and physical input producer.
+> **Update 2026-08-26:** T-165 and T-166 established the physical firmware;
+> T-114 connected the real screenshot/control endpoint; T-037 shipped the first
+> Clock; and T-068 resolved the RTC slow-clock prerequisite. T-167 sleep/wake is
+> now the current device slice. The diagnosis below records the earlier state;
+> GitHub Issues and pull requests hold live status.
 
 ## Where the project actually is
 
@@ -114,30 +114,14 @@ behind it has not been tested, only asserted.
 | 1 | **T-004** | the ESP-IDF pin as a decision, not an installation | none — it is one row in [DEPENDENCIES](research/DEPENDENCIES.md) away from done |
 | 2 | **T-165** ([#189](https://github.com/hleserg/Attadipa/issues/189)) | an ESP-IDF project that builds: `main/`, `sdkconfig.defaults`, a partition table, a boot path, serial diagnostics, a reproducible build, a documented flash procedure | T-004 |
 | 3 | **T-166** ([#190](https://github.com/hleserg/Attadipa/issues/190)) | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC, **up to the driver** | done; D21 resolved by the physical asymmetric RGB pattern |
-| 4 | **T-114** ([#117](https://github.com/hleserg/Attadipa/issues/117)) | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel — **and the `InputOrigin::Physical` producer for touch *and buttons*, which is T-114's alone** | T-165, T-166 |
-| 5 | **T-037** | the first Clock, running on the watch, on real input, with the real tokens and fonts | T-166 |
-| 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | T-166; T-068 ([#268](https://github.com/hleserg/Attadipa/issues/268)) |
+| 4 | **T-114** ([#117](https://github.com/hleserg/Attadipa/issues/117)) | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel — **and the `InputOrigin::Physical` producer for touch *and buttons*, which is T-114's alone** | done |
+| 5 | **T-037** | the first Clock, running on the watch, on real input, with the real tokens and fonts | done |
+| 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | current device slice; T-166 and T-068 are satisfied |
 
-None of the three new ones is `agent:ready` yet, and that is deliberate:
-eighteen open pull requests were conflicted against `main` when this was
-written, and adding a writer to that is how a course correction turns into
-chaos.
-
-**A fence needs a gate, so here is the gate.** `agent:ready` is the queue's only
-entry point — `claude-agent.yml` fires on it and the watchdog scans for it — so
-a P0 task without it is invisible to the automation, and nothing watches for
-that. The three labels are flipped by **the session that holds the queue**, and
-the condition is observable rather than remembered: **when the branch it is
-about to start is not itself conflicted against `main`.** That is per-issue, so
-#189 can start while #190 and #191 wait. Draining the queue is the step before
-the slice rather than a competitor to it, and it is
-[#172](https://github.com/hleserg/Attadipa/issues/172)'s own subject — the
-conflicts came from every pull request editing the old `TASKS.md` and
-`STATUS.md` ledgers. Issue #172 removed that shared-file gate.
-
-Steps 4 and 5 do not strictly order against each other. Step 4 first is the
-better bet, because it is the instrument that makes step 5 checkable — which is
-the whole argument for having built it.
+T-165, T-166, T-114 and T-037 are complete. T-167 is the current device slice;
+its issue and pull request own live status. The old cross-branch conflict gate
+is gone: [#172](https://github.com/hleserg/Attadipa/issues/172) removed the
+shared `TASKS.md` and `STATUS.md` ledgers that made unrelated work collide.
 
 **D21 was the one technical unknown on the path:** in what byte order does the
 CO5300 want a 16-bit pixel on the wire. T-166 resolved the operational board
@@ -200,10 +184,11 @@ worth anything are unchanged and not negotiable:
 
 ## What is not slowed down by this
 
-- **Correctness and security defects**, and any automation defect that actually
-  stalls the queue — a fail-open merge decision, a lost task, a stuck pull
-  request, a wrong blocker transition, a provenance hole. Those stay ahead of
-  everything, because a stalled queue delivers no slices either.
+- **Demonstrated P0/P1 security, corruption or data-loss defects**, a
+  demonstrated queue stall that blocks product work, or automation work the
+  owner explicitly requests. Agent automation is maintenance infrastructure,
+  not a permanent product workstream: every such change has one finite issue
+  and Definition of Done, then closes.
 - **Research tied to a decision in one of the next slices** — bring-up,
   display, touch, power, flash, input, sleep/wake, battery; MeshCore when its
   adapter is actually being written, GNSS when its provider is; Clock and UI
@@ -212,10 +197,6 @@ worth anything are unchanged and not negotiable:
   that new research should be able to name the decision it unblocks.
 - **Anything already nearly finished.** Finishing beats reprioritising; a branch
   abandoned at eighty percent is worth less than one landed.
-
-Automation improvements beyond the stalling class are now judged by return:
-*does this measurably reduce agent idle time, manual work, or the risk of a
-wrong merge?* If not, it is below hardware and product work.
 
 ## What does not change
 

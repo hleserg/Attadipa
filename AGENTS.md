@@ -46,6 +46,17 @@ agents. Before changing a scoped area, also read its nearest `AGENTS.md`.
 `STATUS.md` and `TASKS.md` are compatibility pointers, not ledgers. Do not edit
 them for individual tasks. Git and closed issues already preserve history.
 
+## Automation is maintenance
+
+Agent automation is maintenance infrastructure, not a permanent product
+workstream. There is no standing automation roadmap task. Automation may
+preempt device work only for a demonstrated P0/P1 security, corruption or
+data-loss defect, a demonstrated queue stall blocking product development, or
+an explicit owner request. New automation implementation needs one finite issue
+with explicit scope and Definition of Done; convenience, elegance, extra
+orchestration, recovery, retries, observability and hypothetical robustness do
+not enter the queue automatically.
+
 ## Delivery
 
 - Before creating a branch or editing, run
