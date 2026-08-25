@@ -1,8 +1,8 @@
 # Waveshare sleep/wake lifecycle — 2026-08-26
 
 Unit: Waveshare ESP32-S3-Touch-AMOLED-2.06, USB serial
-`28:84:85:B2:18:A4`. The tested implementation starts at source commit
-`de21f26` on T-167 / PR #270.
+`28:84:85:B2:18:A4`. The final five-cycle run used source commit `4b4e20f` on
+T-167 / PR #270.
 
 Primary sources used for the wake wiring and ESP-IDF behaviour:
 
@@ -45,8 +45,8 @@ ESP-IDF v5.5.5 built the flash image successfully from a clean, separate
 configuration using `sdkconfig.defaults`:
 
 ```text
-attadipa.bin binary size 0x10ae90 bytes.
-Smallest app partition is 0x400000 bytes. 0x2f5170 bytes (74%) free.
+attadipa.bin binary size 0x10aef0 bytes.
+Smallest app partition is 0x400000 bytes. 0x2f5110 bytes (74%) free.
 firmware ELF contains all required Attadipa libraries
 ```
 
@@ -67,11 +67,11 @@ frame and opened together at original aspect ratio.
 
 | Cycle | Device frame | Transfer | Visible Clock | PNG SHA-256 |
 |---:|---:|---:|---|---|
-| 1 | 2 | 9,537 ms | `02:30:24` | `7c2794a917d20de6731cd48ca51ca9b9f57fffe7975c16ff286109f69472f931` |
-| 2 | 3 | 9,578 ms | `02:31:28` | `6142d1b84e8b02b0d5db21b2b9002e5aca74173af9e70f95975d95e90e3fff04` |
-| 3 | 4 | 9,728 ms | `02:31:40` | `2c8507a7b400010d326730c5d11b49d53b1c5fb08f5851db0b637e6126ae1bc2` |
-| 4 | 5 | 9,875 ms | `02:31:52` | `41a732796a6967e3baf504b400d3f02c0065b89bc81bb98834165e11060c8b8f` |
-| 5 | 6 | 9,706 ms | `02:32:04` | `af459c2214070d1fbbac1aa792aec56634358ffb51dd93971cc4f001dedc0b0b` |
+| 1 | 1 | 9,702 ms | `02:50:30` | `5da0b6fd7c35ddc20162337179a0aa32b5c0abbdf9ada756e0a634c6d128e5dc` |
+| 2 | 2 | 9,584 ms | `02:50:41` | `051987a3a8d012a5acef0ff590637f3d69257af162ac1f83168523b287c2f549` |
+| 3 | 3 | 9,644 ms | `02:50:53` | `a90b7f63a63258b68d3c748ded9f294274c1139a3bc7f929d1444cfa4891f7d2` |
+| 4 | 4 | 9,669 ms | `02:51:05` | `c80579ca42473608f94613bf67352dbfe322720de53fae9c4ce22e0cbe174b91` |
+| 5 | 5 | 9,629 ms | `02:51:17` | `2c097eb94e8c7671e5ffde23cb4ac5682bb4e0830d5c68ed681f481c1a997e57` |
 
 All five frames retained the date, live time, seconds badge, year, progress
 card and animated background without a blank/stale frame. The changing seconds
