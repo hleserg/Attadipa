@@ -303,6 +303,7 @@ private:
         reset_remote(now_ms, "USB host disconnected");
       }
       usb_connected_ = false;
+      bridge_.tick(now_ms, emit, this);
       return;
     }
     usb_connected_ = true;
