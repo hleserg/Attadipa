@@ -798,7 +798,7 @@ twice. **Two are still live.**
    `HARDWARE_MATRIX.md:331` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
-   open-question row at `STATUS.md:868` is struck and split the same way.
+   open-question row at `STATUS.md:919` is struck and split the same way.
 
    The third took one more commit and is the one worth remembering.
    [VERIFIED_FACTS.md](VERIFIED_FACTS.md) still concluded, twenty-five lines
