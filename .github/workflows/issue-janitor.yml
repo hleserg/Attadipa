@@ -18,11 +18,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue create \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Maintenance: review and clean stale issues" \
-            --label "agent:ready" \
-            --body """attadipa-agent-task
+          cat > /tmp/janitor.md <<'EOF'
+attadipa-agent-task
 
 task_type: maintenance
 priority: P3
@@ -39,4 +36,11 @@ Do not create new issues.
 Do not suggest new work.
 Do not modify active tasks.
 
-Return only a short summary of actions taken."""
+Return only a short summary of actions taken.
+EOF
+
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Maintenance: review and clean stale issues" \
+            --label "agent:ready" \
+            --body-file /tmp/janitor.md
