@@ -937,7 +937,9 @@ externally) [shellcheck]
   provenance survives the decision rather than being flattened into it —
   `is_established()` and `fully_established()` are how "T-051 is finished"
   becomes a check a machine makes instead of a field somebody remembers, and
-  `to_string(SupportState)` keeps `Unknown` sayable on a diagnostics screen. A
+  `to_string(SupportState)` keeps `Unknown` sayable in a log — a screen reaches
+  it through a future `label_of(SupportState) -> StringId` instead, so ADR-0010
+  §3's coverage check can see it (#194). A
   scoped enum also means `GnssCapabilities{false, false, false, false}` no
   longer compiles, and `tests/CMakeLists.txt` pins that with a compile-fail test
   beside the two layer boundaries, so the collision cannot return quietly.
@@ -3909,6 +3911,14 @@ A1's schematic-revision
   with nothing in it; and `start_kind()` read *having* a backup domain as
   evidence the domain had been *powered*, reporting a warm start where the truth
   was cold. `GnssContext` gained `backup_retained`, the fact that was missing.
+  `ephemeris_retained` is separately direct evidence, never inferred from a
+  recent fix, and its owner clears it whenever neither retaining rail stayed up;
+  that is why `Hot` need not depend on the backup-domain capability `Warm`
+  requires. Both halves of that asymmetry are checks rather than prose (#194): a
+  recent fix with nothing retained is never `Hot`, across every capability and
+  both retention flags, and a receiver whose own rail never dropped is `Hot`
+  with no backup domain at all — so neither "infer retention from recency" nor
+  "make `Hot` require `backup_retained` too" can be reintroduced quietly.
 - **Also pinned:** no wake source that exists only while the radio is powered may
   be armed in `DeepSleep` — the rule the MeshCore review found broken upstream.
 - **Tests:** `tests/test_power.cpp`.

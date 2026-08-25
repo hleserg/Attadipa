@@ -108,12 +108,17 @@ struct GnssCapabilities {
 struct GnssContext {
     Millis           since_last_fix{0};
 
-    // Direct evidence that usable ephemeris survived continuously powered
-    // receiver or backup storage. "We had a fix recently" is not evidence:
-    // the owner must clear this when neither main nor backup storage remains
-    // powered. This is why Hot does not also require `backup_retained` below —
-    // main power may never have gone away, while Warm specifically means the
-    // backup domain survived.
+    // Direct evidence that usable ephemeris survived — in a receiver whose own
+    // rail never dropped, or in backup storage that stayed powered. "We had a
+    // fix recently" is not evidence: the owner must clear this when neither
+    // main nor backup storage remains powered, and nothing below does it for
+    // them — `next_state()` cuts the rail to `Off` on every `DeepSleep` and
+    // `PowerOff` where the backup domain is not established as supported.
+    //
+    // This is why Hot does not also require `backup_retained` below — main
+    // power may never have gone away, while Warm specifically means the
+    // backup domain survived. `tests/test_power.cpp` checks both halves, so
+    // neither the inference nor the plausible wrong fix is a silent change.
     bool             ephemeris_retained = false;
 
     // Whether the backup domain was actually kept powered — which is a
