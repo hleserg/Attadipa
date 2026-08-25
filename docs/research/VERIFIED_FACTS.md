@@ -156,9 +156,15 @@ to every unit of the same model.
   `c423dad3f0d33d56fa96f8590b3da583b05584e85bc2701a7c48c031ad747dbd`.
   `esptool verify-flash` checked all 33 554 432 bytes against the device. The
   binary is intentionally not committed.
+- **MEASURED later bench state:** after the acceptance run, the complete backup
+  was restored to the serial-identified unit. The write's integrated hash check
+  succeeded; a separate post-restore full `verify_flash` was interrupted and
+  produced no verdict. The owner observed the factory UI at high brightness,
+  confirmed touch worked, and set brightness to minimum. The unit currently
+  runs that factory image; this is not evidence for an Attadipa touch driver.
 - **Source:** physical transcript and probe record
   [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md), 2026-08-25.
-- **Not established:** display output, touch, PMU/rail ownership, RTC, audio,
+- **Not established by T-165:** display output, touch, PMU/rail ownership, RTC, audio,
   radio, current draw, sleep/wake behaviour or long-term stability. Those were
   not exercised by T-165.
 

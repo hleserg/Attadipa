@@ -10,8 +10,9 @@
 # rather than a preference: the second-stage bootloader addresses flash with 24
 # bits, so 0x1000000 aliases to 0x0. The vendor ships an `ota_1` at exactly that
 # address which has never booted and cannot — WAVESHARE_RUNNING_OUR_CODE.md §1.
-# `tools/flash/partition_check.py` refuses a table that crosses the line; no
-# ESP-IDF tool checks it.
+# `tools/flash/partition_check.py` checks every repository CSV independently.
+# ESP-IDF also validates this generated table against the declared 16 MB size,
+# and its bootloader rejects an over-limit flashed table before app_main.
 #
 # Offsets are written out rather than left blank on purpose: partition_check.py
 # refuses a blank offset rather than computing one, so that what is checked is

@@ -114,8 +114,8 @@ stale silently. The protocol is
 - **Documentation reconciliation:** the measured RAM/flash behaviour is carried
   into `docs/hardware/FIRMWARE_BRINGUP.md`; the host-dependent SLIP congruence
   replaces the stale `UNKNOWN` in `docs/research/WAVESHARE_FLASH_LAYOUT.md`;
-  `docs/research/BENCH_DEVICES.md` records that the unit now runs Attadipa and
-  points to the durable backup evidence; and
+  `docs/research/BENCH_DEVICES.md` records the measured Attadipa boot, the later
+  owner-requested factory restore and the durable backup evidence; and
   `docs/research/VERIFIED_FACTS.md` separates the unit's measurements from what
   T-165 did not exercise.
 
@@ -367,8 +367,9 @@ stale silently. The protocol is
   device**, because the device endpoint is not implemented. It is marked
   `NOT EXECUTED` in its own docstring and must stay so until it has run.
 - **Hardware required:** yes. OD-19 authorises reversible flashing, and the
-  received Waveshare now runs Attadipa T-165 with a verified host-local factory
-  backup. The T-114 device debug endpoint itself remains
+  received Waveshare has a measured Attadipa T-165 boot and a verified
+  host-local factory backup; after acceptance the factory image was restored
+  and the owner set its brightness to minimum. The T-114 device debug endpoint itself remains
   **NOT EXECUTED — HARDWARE REQUIRED** because it has not been implemented.
 
 ### T-110 · The mandated reading list is 500 KB before the agent opens a file

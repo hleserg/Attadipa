@@ -1016,8 +1016,12 @@ Waveshare `ESP32-S3-Touch-AMOLED-2.06`; nothing here is about the T-Watch.
 - **The flash route produced T-165's acceptance transcript:** JEDEC `c8 40 19`
   with 32 MB on the part against 16 MB declared, PSRAM `8 MB, octal SPI,
   initialised`, three partitions all below the ceiling, and the heartbeat.
-- **The board now runs our firmware rather than Waveshare's demo.** OD-19 permits
-  it; the restore command is in the evidence file.
+- **The board ran our firmware through T-165 acceptance, then returned to the
+  factory image at the owner's request.** The full restore write passed its
+  integrated hash check; the owner observed working factory touch and set
+  brightness to minimum. The interrupted post-restore full verify is not
+  claimed as completed. OD-19 permits reversible flashing; the exact sequence
+  is in the evidence file.
 
 ## Recently completed
 

@@ -22,7 +22,7 @@ number will eventually pick the wrong board.
 | PSRAM | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
 | Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | `0x68 0x4018` — 16 MB |
 | Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
-| Current firmware | **Attadipa T-165**, booting from flash | unchanged; do not write |
+| Current firmware | **Waveshare factory image restored after T-165**; owner-observed brightness at minimum | unchanged; do not write |
 
 The watch row matches [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1–1.3
 on all three of revision, PSRAM capacity and flash JEDEC id, which is what
@@ -37,6 +37,14 @@ on the development host and checked with `esptool verify-flash`. Its SHA-256 is
 The durable evidence and restore procedure are in
 [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §2; the binary's local
 path is intentionally not a repository artefact.
+
+Attadipa T-165 subsequently booted from flash and produced its measured
+acceptance transcript. Later the same day the complete backup was restored at
+the owner's request because T-165 deliberately has no display/touch driver.
+The write's integrated hash check succeeded; a separate full post-restore
+`verify_flash` was interrupted and has no verdict. After reset the owner
+observed the factory UI bright with working touch and set brightness to minimum.
+The exact sequence is [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §6.
 
 **The second board is not ours to write to.** It is nothing like the watch — a
 quarter of the PSRAM and half the flash — so a mis-addressed load fails rather

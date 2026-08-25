@@ -100,10 +100,12 @@ route established in [#110](https://github.com/hleserg/Attadipa/pull/110) writes
 no flash and need not light the panel at all. So "powered, screen off" **will
 be** the state to aim for: fully available, ageing nothing.
 
-Future tense on purpose. T-165 now boots, but contains no display driver — row 1
-is unavailable on the received unit, nothing of ours can address its display,
-and OD-18 fixes it at row 2. There is no route to that state today and this
-paragraph is not offering one.
+Future tense on purpose. T-165 boots, but contains no display driver — nothing
+of ours can address its display. On 2026-08-25 the owner therefore requested a
+factory-image restore when T-165 left the panel bright and non-interactive. The
+factory UI booted bright, touch worked, and the owner returned brightness to
+minimum. That makes row 2 the measured current state; "powered, screen off"
+still waits for the T-166 display path.
 
 **[OD-18 — *The received unit stays powered, with its brightness at
 minimum*](../research/OWNER_DECISIONS.md), 2026-08-23:** the received unit stays powered and attached so that hardware runs
@@ -216,15 +218,13 @@ records — a fresh session cannot know, so it is true every time and the clause
 was decoration on a threshold that the once-per-session bound is already
 carrying alone. Say that it is sitting lit, name the mitigation in force
 as the brightness the owner themself set, and stop there rather than inventing an
-action to accompany it. **Unless this session reset the board** — the RAM-load
-route enters the ROM downloader, and opening a port does it by accident. Whether
-minimum brightness survives a reset is `UNKNOWN` (OD-18 item 2) — and it is
-`UNKNOWN` on its own account, not because the vendor BSP brings the panel up at
-100 %, which is a fact about a program **this unit is not running** (§ above).
-After a reset the honest report is *"the unit was reset and the brightness is
-unconfirmed"*. Reporting the mitigation as
-standing there would be a `PASS` written for a state nobody observed, which is
-the one thing this repository does not do. Repeated in every report, an observation the owner acted
+action to accompany it. **After any reset, do not assume the setting survived.**
+On 2026-08-25 a full factory restore followed by a hard reset brought the panel
+up bright; whether the saved setting was absent or boot code overwrote it was
+not isolated. Touch worked and the owner manually returned brightness to
+minimum. The operational rule is therefore unchanged: after a reset report
+brightness as unconfirmed until somebody observes it. In this session that
+observation happened. Repeated in every report, an observation the owner acted
 on once becomes a line they learn to skip, which is the failure mode of a rule
 with no threshold.
 
