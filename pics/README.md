@@ -7,9 +7,9 @@ they are.
 
 | File | Format | SHA-256 | Intended use |
 |---|---|---|---|
-| `AttadipaBanner.png` | PNG, 1788 × 894, RGB (no alpha) | `ad7c60d4bb0f808265ecb8a6f17704af054fbd2098276774ab7cc7d2a9e473a3` | repository banner — in use at the top of [`../README.md`](../README.md) |
-| `Ikon.png` | PNG, 1254 × 1254, **RGBA** | `46f3b9cf4bfd931f37635f473dd064212ad46ff79179c958dced24ebe78a76cb` | application / launcher icon — **not yet used** |
-| `Favicon.png` | PNG, 1254 × 1254, **RGBA** | `f24025e4ae7c68533af964fc1dad9ac0bb2d29063653dcff3da811c552f22891` | site favicon — **not yet used** |
+| $11774 × 887, RGB (no alpha) | `e905896b19a15dd2b24774840767e912261c6fd1f91f330f4063c8016cf9d05d` | repository banner — in use at the top of [`../README.md`](../README.md) |
+| $11254 × 1254, **RGBA** | `bdb9cf99275711c24039e836737ec95243bfd91791e3058f8cc0f9d9efec966b` | application / launcher icon — **not yet used** |
+| $11254 × 1254, **RGBA** | `bdb9cf99275711c24039e836737ec95243bfd91791e3058f8cc0f9d9efec966b` | site favicon — **not yet used** |
 
 ## What the banner establishes
 
@@ -20,7 +20,7 @@ they are.
   two orange-red wings, and an amber abdomen with a real glow behind it. The
   glow is the only light source in the composition, which is worth knowing
   before anybody re-draws it smaller.
-- **The wordmark.** "Attadipa" in orange, in a rounded
+- **The wordmark.** "Atta-dipa" in orange, in a rounded
   geometric sans consistent with the Nunito Sans direction in
   [`../docs/ui/DESIGN_SYSTEM.md`](../docs/ui/DESIGN_SYSTEM.md). The typeface has
   **not** been identified from the file and no font here is pinned.

@@ -40,16 +40,16 @@
   // board; bench code has.
   const copy = {
     en: {
-      title: 'Attadipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS',
-      ogTitle: 'Attadipa — open-source ESP32-S3 smartwatch firmware',
+      title: 'Atta-dipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS',
+      ogTitle: 'Atta-dipa — open-source ESP32-S3 smartwatch firmware',
       locale: 'en_US',
       localeAlternate: 'ru_RU',
       description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — the firmware has not run on a board yet; only bench code has.',
       cardDescription: 'LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — the firmware has not run on a board yet; only bench code has.'
     },
     ru: {
-      title: 'Attadipa — открытая прошивка для умных часов на ESP32-S3, LoRa mesh, GNSS офлайн',
-      ogTitle: 'Attadipa — открытая прошивка для умных часов на ESP32-S3',
+      title: 'Atta-dipa — открытая прошивка для умных часов на ESP32-S3, LoRa mesh, GNSS офлайн',
+      ogTitle: 'Atta-dipa — открытая прошивка для умных часов на ESP32-S3',
       locale: 'ru_RU',
       localeAlternate: 'en_US',
       description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — прошивка ещё не запускалась на плате; запускался только стендовый код.',
