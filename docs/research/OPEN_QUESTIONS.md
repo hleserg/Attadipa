@@ -211,6 +211,38 @@ authentication rests on rate limiting is a protocol whose rate limiter is a
 security control rather than a convenience. That belongs in an ADR of its own,
 with someone competent reviewing it — not in a paragraph here.
 
+### What the parser-bounds review of 2026-08-23 could not close
+
+Five parser defects at the pin were verified and are in
+[VERIFIED_FACTS.md](VERIFIED_FACTS.md) and
+[MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md). What follows is what that
+work **failed** to establish, kept separate so that a verified over-read is never
+read as a verified consequence.
+
+**These four were filed as M15–M18 and are M20–M23.** The frame-capacity research
+took M15–M19 on `main` while this branch was open, and two research runs in the
+same week can pick the same next number without either being wrong. Renumbered
+here on merge, 2026-08-25, rather than left as two answers to one identifier —
+the same collision the independent review caught in the `T-` series, one section
+along. Anything citing the old numbers from before that date means these.
+
+| # | Question | Status | What would resolve it |
+|---|---|---|---|
+| M20 | **Do P3 and P4 actually run end to end through `Mesh::onRecvPacket`?** Both are proven at the function they live in — the `extra_len` underflow exhaustively, the `Utils::decrypt` over-write against the real translation unit. Neither has been driven through the packet path that reaches it | **UNKNOWN** | a host build of MeshCore with the genuine `rweather/Crypto` AES-128 and SHA-256 and the vendored ed25519, rather than this harness's stubs. That is a day of work and it would also give the project its first real MeshCore reference vectors, which M13 says do not exist |
+| M21 | **Can an attacker steer P3's `extra_type` and `tag`?** They are read from `data[k..]`, past the decrypted length, so they are stale stack bytes rather than anything in the triggering packet. Grooming them with an earlier packet is plausible and untested. This is the difference between a conditional finding and a controllable one | **UNKNOWN** | the same build as M20, plus a two-packet sequence that fills the stack region and then triggers the underflow |
+| M22 | **What do P4's eight bytes overwrite on an ESP32-S3?** The over-write leaves `uint8_t data[184]` in `Mesh::onRecvPacket`. What sits after it is a property of the stack frame the compiler chose for that target, and nobody here has compiled MeshCore for it | **UNKNOWN** | build MeshCore for an ESP32-S3 target and read the frame layout. Note that answering it does **not** need a board — this one is a compiler question, not a hardware one |
+| M23 | **Are there more of these?** The corpus is hand-built from reading three parsers. It demonstrates; it does not search. `Utils::decrypt` was found by following a caller, not by the corpus, which is evidence that reading finds what a ten-case corpus does not | **UNKNOWN** | a real fuzzing pass over the pinned tree with the genuine crypto libraries. Scope it as its own task; do not fold it into a pin decision |
+
+None of these blocks anything today, because Attadipa compiles no MeshCore code.
+All four become entry conditions the moment a local MeshCore provider is real —
+[MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §5.
+
+One more, and it is not a MeshCore question: the three pull request authors each
+state they verified on a Heltec V4, and none attaches a crash trace, a corpus or
+sanitizer output. That is **an unverified author claim** and it is recorded as
+one. This project has no Heltec V4 and independently confirming it is
+**NOT EXECUTED — HARDWARE REQUIRED**.
+
 ## Architecture
 
 | # | Question | Status | Resolved by |

@@ -22,7 +22,11 @@ int main(int argc, char** argv)
     const size_t page = (size_t)sysconf(_SC_PAGESIZE);
     uint8_t* m = (uint8_t*)mmap(nullptr, page * 2, PROT_READ | PROT_WRITE,
                                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    mprotect(m + page, page, PROT_NONE);
+    // Checked, because the failure mode is indistinguishable from the finding:
+    // an unchecked mmap leaves dest a wild pointer and the first block write
+    // faults, which looks exactly like the over-write under test and is not it.
+    if (m == MAP_FAILED) { std::perror("mmap"); return 70; }
+    if (mprotect(m + page, page, PROT_NONE) != 0) { std::perror("mprotect"); return 70; }
     uint8_t* dest = m + page - MAX_PACKET_PAYLOAD;   // 184 bytes, then the wall
 
     static uint8_t src[512];
