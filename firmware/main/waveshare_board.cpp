@@ -52,8 +52,8 @@ constexpr std::uint8_t kColumns[] = {0x00, 0x16, 0x01, 0xAF};
 constexpr std::uint8_t kRows[] = {0x00, 0x00, 0x01, 0xF5};
 
 // The exact panel sequence used by the known-working vendor implementation,
-// except display-on is intentionally delayed until LVGL has drawn a black
-// frame. Brightness starts at zero and is raised to 1% only after that.
+// except display-on is delayed until the black UI objects exist. Brightness
+// starts at zero and is raised to 1% only after that.
 constexpr co5300_lcd_init_cmd_t kPanelInit[] = {
     {0x11, nullptr, 0, 120},
     {0xC4, kC4, sizeof(kC4), 0},
@@ -163,9 +163,7 @@ esp_err_t read_rtc(char *text, std::size_t text_size) {
 
 void round_flush_area(lv_area_t *area) {
   area->x1 &= ~1;
-  area->y1 &= ~1;
   area->x2 |= 1;
-  area->y2 |= 1;
 }
 
 void refresh_rtc(lv_timer_t *) {
