@@ -7,9 +7,9 @@ they are.
 
 | File | Format | SHA-256 | Intended use |
 |---|---|---|---|
-| $11774 × 887, RGB (no alpha) | `e905896b19a15dd2b24774840767e912261c6fd1f91f330f4063c8016cf9d05d` | repository banner — in use at the top of [`../README.md`](../README.md) |
-| $11254 × 1254, **RGBA** | `bdb9cf99275711c24039e836737ec95243bfd91791e3058f8cc0f9d9efec966b` | application / launcher icon — **not yet used** |
-| $11254 × 1254, **RGBA** | `bdb9cf99275711c24039e836737ec95243bfd91791e3058f8cc0f9d9efec966b` | site favicon — **not yet used** |
+| `atta-dipa-banner.png` | PNG, 1774 × 887, RGB (no alpha) | `e905896b19a15dd2b24774840767e912261c6fd1f91f330f4063c8016cf9d05d` | repository banner — used by both [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
+| `Ikon.png` | PNG, 1254 × 1254, **RGBA** | `bdb9cf99275711c24039e836737ec95243bfd91791e3058f8cc0f9d9efec966b` | application / launcher icon — **not yet used** |
+| `Favicon.png` | PNG, 1254 × 1254, **RGBA** | `bdb9cf99275711c24039e836737ec95243bfd91791e3058f8cc0f9d9efec966b` | site favicon — **not yet used** |
 
 ## What the banner establishes
 

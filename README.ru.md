@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="pics/Banner.png"
+  <img src="pics/atta-dipa-banner.png"
        alt="Atta-dipa — светлячок со светящимся янтарным брюшком рядом с логотипом, над девизом Independent by design"
        width="820">
 </p>
