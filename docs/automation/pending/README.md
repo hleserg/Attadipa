@@ -105,7 +105,9 @@ parking rather than after.
 nothing collides with it. `75-approval-stall.patch` beside it edits
 `agent-queue-watchdog.yml`, `ci.yml`, `claude-agent.yml` and two documents, and
 never the sweep, so the two are independent and may land in either order or
-apart. The one that used to collide was `130-merge-sweep-caller.patch` on
+apart. `240-review-invalidation-order.patch` carries
+`claude-pr-review.yml` alone and is independent too. The one that used to
+collide was `130-merge-sweep-caller.patch` on
 [#154](https://github.com/hleserg/Attadipa/pull/154); that pull request was
 closed unmerged in the recovery, and #130's caller edits are inside this patch
 now rather than beside it — T-144. Every patch here `git rm`s only its own file;
