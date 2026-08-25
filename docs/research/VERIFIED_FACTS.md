@@ -828,18 +828,19 @@ BSP already demonstrated to be an incomplete description of its own board.
 
 - **MEASURED / VERIFIED:** the assembled case has two pressable keys. The
   current official schematic names them PWR and BOOT: PWR pulls the AXP2101
-  `PWRON` input and BOOT pulls GPIO0 low. The PWRON/key node also drives T1
-  through R16; T1 and the R11 pull-up invert it onto `SYS_OUT/GPIO10`, making
-  GPIO10 an active-high key mirror. This corrects the earlier "power-state
-  output" reading and closes D5; the vendor BSP's empty button list describes
-  only what that BSP drives.
+  `PWRON` input and BOOT pulls GPIO0 low. `SYS_OUT/GPIO10` reports PMU system
+  state; it is not a PWR-key mirror. The AXP2101 IRQ net terminates at `EXIO5`,
+  not at an ESP32-S3 GPIO, and no I/O expander is fitted on this board. The
+  vendor BSP's empty button list describes only what that BSP drives.
 - **Physical result:** two BOOT presses on 2026-08-25 produced two debounced
   `physical boot down/up` pairs after routing through `core::InputQueue` with
   `InputOrigin::Physical`. PWR negative/positive edges are enabled and polled
-  through AXP2101 interrupt status and were also physically observed. GPIO10
-  is used as the Light-sleep wake level, not as the awake event producer; its
-  physical wake observation is still pending and is not promoted to a
-  measurement here.
+  through AXP2101 interrupt status and were also physically observed. A
+  physical PWR wake attempt on `8f098ba` did not wake through GPIO10; a later
+  touch was reported as the wake cause. On the corrected path, two cycles woke
+  directly from GPIO38 touch and a third woke from a 100 ms timer after the
+  AXP2101 status reported the physical PWR edge; the transition was classified
+  as Button and the panel restored.
 - **Sources:** the current Waveshare schematic/product page and the raw bench
   transcript in [WATCH_CONTROL_2026-08-25](../hardware/WATCH_CONTROL_2026-08-25.md).
 
@@ -1585,10 +1586,14 @@ constants.
 ### The first product Clock runs on the physical Waveshare
 
 - **MEASURED:** the shared simulator/firmware Clock rendered on the physical
-  410 × 502 AMOLED with Nunito Sans time, live seconds, date, year, day progress
-  and moving firefly visuals. A debug-injected tap produced the intended ring
-  and animation response on-device. The first gradient render exposed RGB565
-  partial-buffer bands; the final solid-page render did not.
+  410 × 502 AMOLED with Nunito Sans time, live seconds and date over original
+  Attadipa night-meadow art. Four stationary points pulse on the foliage; a
+  debug-injected tap launched one glowing point that moved for 1.6 seconds and
+  faded on-device. The owner accepted the final physical presentation. The
+  earlier gradient render exposed RGB565 partial-buffer bands; the current
+  raster render does not.
+- **Steps boundary:** the paw and `7777` are a static layout placeholder, not a
+  pedometer measurement. No step source was exercised or claimed by this run.
 - **Brightness boundary:** the owner-requested demonstration ran briefly at
   70%; the final image was rebuilt and reflashed at the safe repository default
   of 5%.

@@ -1,8 +1,9 @@
 # Waveshare sleep/wake lifecycle — 2026-08-26
 
 Unit: Waveshare ESP32-S3-Touch-AMOLED-2.06, USB serial
-`28:84:85:B2:18:A4`. The final five-cycle run used source commit `4b4e20f` on
-T-167 / PR #270.
+`28:84:85:B2:18:A4`. The unattended five-cycle run used source commit `4b4e20f`;
+the failed GPIO10 hypothesis was tested at `8f098ba`; the corrected PMU-polling
+path is source commit `0475188` on T-167 / PR #270.
 
 Primary sources used for the wake wiring and ESP-IDF behaviour:
 
@@ -18,22 +19,22 @@ resume in place, which permits the existing input queue and UI to survive.
 Deep-sleep reboots the ESP32-S3 and therefore cannot satisfy the restoration
 criterion without a different persisted-state design.
 
-The current Waveshare schematic establishes both level wake signals:
+The current Waveshare schematic establishes one direct level wake signal:
 
 - FT3168 interrupt is GPIO38, active low;
-- the PWR key pulls the AXP2101 `PWRON` node low. That same node drives the gate
-  of T1 (`BSS138LT1G`) through R16. T1 and the R11 pull-up invert it onto
-  `SYS_OUT`, so GPIO10 is high while PWR is held.
+- the PWR key pulls the AXP2101 `PWRON` input low. Its press/release edge status
+  is latched inside the AXP2101 and read over I2C.
 
-The second point corrects the earlier repository reading that called
-`SYS_OUT/GPIO10` a PMU power-state output unrelated to key level. The discrete
-transistor is outside the AXP2101 and is visibly driven from the key node.
-Awake button events still come from the AXP2101 edge-status registers; GPIO10
-is used only where I2C polling cannot work, while the CPU is asleep.
+`SYS_OUT/GPIO10` is the PMU system-output state, not a PWR-key level. The
+AXP2101 IRQ net is routed to `EXIO5`, not to an ESP32-S3 GPIO, and this board has
+no fitted I/O expander that would bridge it. Therefore the firmware cannot arm
+a direct PMU interrupt wake. While the screen is off it uses a 100 ms timer
+wake to read the latched AXP2101 edge status; a miss immediately re-enters
+Light-sleep without enabling the panel. Touch remains direct GPIO38 wake.
 
 The transition is fail-closed: sleep is not entered until the shared
 `InputQueue` is empty, neither origin holds an input, LVGL has released its
-pointer, and both level wake inputs are inactive. The panel brightness is set
+pointer, and the touch wake input is inactive. The panel brightness is set
 to zero and the CO5300 is commanded off before `esp_light_sleep_start()`. On
 return the panel is enabled, safe brightness is restored, the PCF85063-backed
 Clock is refreshed and LVGL is forced to render a new frame. The log names the
@@ -45,8 +46,8 @@ ESP-IDF v5.5.5 built the flash image successfully from a clean, separate
 configuration using `sdkconfig.defaults`:
 
 ```text
-attadipa.bin binary size 0x10aef0 bytes.
-Smallest app partition is 0x400000 bytes. 0x2f5110 bytes (74%) free.
+attadipa.bin binary size 0x15d9a0 bytes.
+Smallest app partition is 0x400000 bytes. 0x2a2660 bytes (66%) free.
 firmware ELF contains all required Attadipa libraries
 ```
 
@@ -59,8 +60,8 @@ demonstration window was returned to 5% when no physical interaction occurred.
 ## Repeat loop through the debug channel
 
 Remote `power` click uses the same input queue and sleep lifecycle as the
-physical event. For this debug-origin path only, a 750 ms timer is added to the
-two product GPIO wake sources so an unattended host can recover the connection
+physical event. For this debug-origin path, a 750 ms timer lets an unattended
+host recover the connection
 and take the next screenshot. Five consecutive cycles completed on the
 physical board. Each screenshot was decoded as a complete 410 × 502 RGB565
 frame and opened together at original aspect ratio.
@@ -73,22 +74,39 @@ frame and opened together at original aspect ratio.
 | 4 | 4 | 9,669 ms | `02:51:05` | `c80579ca42473608f94613bf67352dbfe322720de53fae9c4ce22e0cbe174b91` |
 | 5 | 5 | 9,629 ms | `02:51:17` | `2c097eb94e8c7671e5ffde23cb4ac5682bb4e0830d5c68ed681f481c1a997e57` |
 
-All five frames retained the date, live time, seconds badge, year, progress
-card and animated background without a blank/stale frame. The changing seconds
-and animation positions make the five distinct hashes expected rather than a
-failure of comparison.
+All five frames retained the date, live time, seconds badge, year and progress
+card without a blank/stale frame. These frames predate the static raster
+background and remain lifecycle evidence, not evidence for the current art.
+
+## Physical product wake sources
+
+The corrected build was then exercised with the case PWR key and the physical
+touch panel. Two cycles woke directly from GPIO38 touch. On the third cycle the
+case PWR key was pressed while the panel was off; the 100 ms timer wake consumed
+the AXP2101 edge and classified the transition as Button:
+
+```text
+watch-control: display off; entering Light-sleep (touch + PMU polling)
+watch-control: wake cycle 3: LightSleep -> Idle -> Active by Button
+               (cause=4 gpio=0x0)
+```
+
+`cause=4` is the timer wake used to read the PMU; `by Button` is emitted only
+after register `0x49` reports a latched PWR edge. GPIO is zero for this route.
+The panel restored and the watch continued answering the debug channel.
 
 ## Evidence boundary
 
 - **MEASURED:** the flash build and verified write; five debug-origin
   Light-sleep/timer-wake cycles on the physical Waveshare; five complete,
-  visually inspected post-wake frames; continued watch-control response.
+  visually inspected post-wake frames; continued watch-control response; two
+  direct GPIO38 touch wakes; and a corrected PMU-poll PWR wake classified as
+  Button. On `8f098ba`, physical PWR correctly slept the watch but did not wake
+  it through GPIO10; the following touch wake was logged as GPIO38 and stale
+  PMU edges made the display sleep again. This invalidated the GPIO10 key-mirror
+  assumption.
 - **VERIFIED from the current schematic / ESP-IDF source:** GPIO38 active-low
-  touch wake, the PWRON-to-T1-to-GPIO10 active-high circuit, and digital GPIO
-  wake support in Light-sleep.
-- **NOT EXECUTED — HARDWARE REQUIRED:** a physical finger waking through
-  GPIO38 and a physical PWR press waking through GPIO10. Until that consolidated
-  bench interaction is captured, the two product wake sources are not promoted
-  from schematic-supported implementation to measured behaviour.
+  touch wake, PWRON as an AXP2101 input, `SYS_OUT/GPIO10` as a PMU state output,
+  and AXP IRQ terminating at `EXIO5` rather than an ESP32-S3 GPIO.
 - No current instrument was attached. Sleep current, wake latency and energy
-  savings remain `UNKNOWN`.
+  savings remain `UNKNOWN`; the polling interval's power cost is also unknown.
