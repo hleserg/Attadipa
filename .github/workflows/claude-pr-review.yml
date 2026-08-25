@@ -331,6 +331,22 @@ jobs:
             reproduces. Rank by severity. Say explicitly if you found nothing
             blocking — a review that always finds something is noise.
 
+            **READ THE LEDGER BEFORE YOU WRITE ANYTHING.** This may not be the
+            first round on this branch. Run `gh pr view
+            ${{ github.event.pull_request.number }} --comments` and look for the
+            comment beginning `<!-- attadipa-review-ledger -->`. Its
+            `<!-- attadipa-review-ledger-state` block lists every finding ever
+            raised here, with the round it was first seen, its kind and its
+            state.
+
+            **Re-use those ids exactly.** An id you invent for a problem the
+            ledger already names is a new finding dated this round, which is how
+            a real blocker quietly stops blocking — and, in the other direction,
+            how a defect you already reported comes back as if it were fresh.
+            Account for every finding the ledger still shows as `open`: one that
+            you do not mention stays open, because "it did not come up again" is
+            not evidence that a push fixed it.
+
             **Publish the review — it does not publish itself.** Post your
             findings as a comment with `gh pr comment`. Nothing you write
             reaches the pull request otherwise; the action leaves it in the run
@@ -342,9 +358,46 @@ jobs:
             than adding another — a fresh wall of text on every push is how a
             review becomes something people scroll past.
 
-            Finish by setting exactly one label on this pull request using the
-            gh CLI: `ai-review:blocking` if anything must be fixed before merge,
+            **End the comment with a findings block**, which is what actually
+            decides the verdict. One line per finding, four fields, pipes
+            between them:
+
+                <!-- attadipa-review-findings
+                gnss-trust-source | open  | floor  | The trust state is claimed with no source
+                adr-section-number | fixed | normal | ADR-0007 §4.1 should read §2.4
+                -->
+
+            - **id** — lower-case letters, digits and hyphens, and the SAME id
+              every round for the same problem.
+            - **state** — `open` or `fixed`. `fixed` means you looked at the
+              current head and the problem is gone, not that somebody said they
+              had fixed it.
+            - **kind** — `floor` or `normal`. **`floor` is a short list and it is
+              not a severity rating**: a hardware fact with no source, a `PASS`
+              for a test that did not run on a board, an application-layer
+              hardware access, or an architecture-boundary violation. Those four
+              hold the pull request at any round, however late they are found.
+              Everything else is `normal` — including things you consider
+              serious. Anything you type that is neither word is read as `floor`.
+            - **description** — one line, no pipes.
+
+            List every finding you are reporting AND every one the ledger still
+            shows as open, so that a `fixed` is said out loud rather than
+            inferred from silence.
+
+            Then set exactly one label on this pull request using the gh CLI:
+            `ai-review:blocking` if anything must be fixed before merge,
             otherwise `ai-review:pass`. Remove the other one if present.
+
+            **A later step may correct that label**, and this is deliberate
+            rather than a disagreement with you. From the convergence floor on,
+            a `normal` finding first raised at or after that round is published
+            and filed rather than held — because this workflow reviews the head
+            commit, so answering every finding produces a new head, a new diff
+            and new findings, and four branches reached rounds five, eight, ten
+            and two with the label never coming off (issue #169). The rule is
+            `.github/scripts/review-verdict.sh`. Your block is its input; nothing
+            you can write to it weakens the four `floor` kinds.
 
       # What actually went wrong, read from the action's own execution log
       # rather than guessed at.
@@ -443,6 +496,37 @@ jobs:
           fi
           gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
           gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:blocking || true
+
+      - name: Converge the published reviewer verdict
+        # This is deliberately after publication: no model output, missing bundle,
+        # or failed API read may manufacture a pass. In every such case the
+        # reviewer's own label remains the only verdict.
+        if: >-
+          !cancelled() && steps.auth.outputs.ok == 'true' &&
+          steps.happened.outputs.ran == 'yes' &&
+          steps.published.outputs.state == 'published' &&
+          vars.CLAUDE_PR_REVIEW_ENABLED != 'false'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TRUSTED: ${{ env.ATTADIPA_TRUSTED_SCRIPTS }}
+        run: |
+          set -euo pipefail
+          [ -n "${TRUSTED:-}" ] && [ -r "$TRUSTED/review-verdict.sh" ] || exit 0
+          : > /tmp/previous-ledger.md
+          : > /tmp/findings.md
+          ledger_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- attadipa-review-ledger -->")) | .id' | tail -1)
+          [ -z "$ledger_id" ] || gh api "repos/$REPO/issues/comments/$ledger_id" --jq '.body' > /tmp/previous-ledger.md
+          finding_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == "claude[bot]") | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not) | select(.body | startswith("<!-- attadipa-review-findings")) | .id' | tail -1)
+          [ -z "$finding_id" ] || gh api "repos/$REPO/issues/comments/$finding_id" --jq '.body' > /tmp/findings.md
+          bash "$TRUSTED/review-verdict.sh" /tmp/previous-ledger.md /tmp/findings.md 4 /tmp/new-ledger.md /tmp/deferred.md "$PR" > /tmp/verdict.txt
+          label=$(sed -n 's/^label=//p' /tmp/verdict.txt)
+          [ "$label" = "ai-review:pass" ] || [ "$label" = "ai-review:blocking" ] || exit 0
+          if [ -n "$ledger_id" ]; then gh api -X PATCH "repos/$REPO/issues/comments/$ledger_id" -F body=@/tmp/new-ledger.md > /dev/null; else gh pr comment "$PR" --repo "$REPO" --body-file /tmp/new-ledger.md; fi
+          case "$label" in ai-review:pass) other=ai-review:blocking;; *) other=ai-review:pass;; esac
+          gh pr edit "$PR" --repo "$REPO" --add-label "$label" --remove-label "$other"
 
       - name: Work out why the review did not happen
         id: why
