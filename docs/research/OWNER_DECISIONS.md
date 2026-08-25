@@ -1303,3 +1303,18 @@ answered from a datasheet: whether Meshtastic's protocol definitions are license
 separately from its firmware, which cellular module the node will carry, and
 which tower database may lawfully be shipped in a product. The first is research
 and is filed; the last two are the owner's.
+
+---
+
+## OD-19 — A bench-attached agent may flash and test Attadipa firmware
+
+**Decided:** 2026-08-24, by the owner.
+
+**What he decided:** a session with the physical board may flash and exercise
+Attadipa firmware, including display/control tooling, and report what it
+observed. A result from that board is `MEASURED`; a cloud-only session must still
+say `NOT EXECUTED — HARDWARE REQUIRED`.
+
+**Boundary:** reflashing is permitted because the factory image is backed up.
+Burning eFuses, enabling secure boot or flash encryption, writing production
+secrets, or destroying keys still each require an explicit owner request.
