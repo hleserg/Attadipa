@@ -11,9 +11,10 @@ Primary board sources:
 - [XPowersLib AXP2101 ESP-IDF example](https://github.com/lewisxhe/XPowersLib/blob/master/examples/ESP_IDF_Example/main/port_axp2101.cpp)
 
 The schematic establishes PWR → AXP2101 `PWRON`, BOOT → GPIO0/GND and
-`SYS_OUT` → GPIO10. `SYS_OUT` is the conditioned power-state output; it is not
-the PWR key level. XPowersLib establishes AXP2101 PWR positive/negative edge
-interrupts and the `0x41` enable / `0x49` status register pair used here.
+`SYS_OUT` → GPIO10. `SYS_OUT` is a PMU system-state output, not a PWR-key
+mirror. XPowersLib establishes AXP2101 PWR positive/negative edge interrupts
+and the `0x41` enable / `0x49` status register pair used here while awake. The
+later sleep/wake correction is recorded in `SLEEP_WAKE_2026-08-26.md`.
 
 ## Build and flash
 
@@ -100,8 +101,10 @@ I (...) watch-control: physical boot up
 ```
 
 This is MEASURED evidence for the GPIO0 producer, debounce, physical origin,
-shared `InputQueue` and its drain. GPIO10 polling produced no PWR events and was
-removed: the schematic does not support treating `SYS_OUT` as the key level.
+shared `InputQueue` and its drain. The first GPIO10 polling implementation
+produced no PWR events and was removed; the AXP2101 status path is the awake
+event producer. A later attempt to use GPIO10 as a Light-sleep key wake also
+failed on the physical board and confirmed that it is not the key level.
 After flashing source HEAD `0413fcc`, one press of each case key produced:
 
 ```text

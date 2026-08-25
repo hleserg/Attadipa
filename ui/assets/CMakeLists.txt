@@ -5,9 +5,9 @@
 # here is an `lv_image_dsc_t`, so this target knows about LVGL, and
 # `attadipa_ui` deliberately knows about nothing but its own headers.
 #
-# 14.1 kB of .rodata for all nine masks — A8 is one byte per pixel and the sizes
-# are 33, 39 and 47 px square. Reported by the generator rather than estimated;
-# every declaration in `generated/attadipa_images.h` carries its own byte count.
+# Nine A8 icon masks plus the Clock's 410x502 RGB565 background. Reported by
+# the generator rather than estimated; every declaration in
+# `generated/attadipa_images.h` carries its own byte count.
 set(ATTADIPA_IMAGE_SOURCES
     generated/attadipa_icon_mesh_33.c
     generated/attadipa_icon_mesh_39.c
@@ -18,12 +18,13 @@ set(ATTADIPA_IMAGE_SOURCES
     generated/attadipa_icon_warning_33.c
     generated/attadipa_icon_warning_39.c
     generated/attadipa_icon_warning_47.c
+    generated/attadipa_background_clock_meadow_night_410x502.c
 )
 
 add_library(attadipa_images STATIC attadipa_icons.cpp ${ATTADIPA_IMAGE_SOURCES})
 
 target_include_directories(attadipa_images PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(attadipa_images PUBLIC lvgl attadipa_ui)
+target_link_libraries(attadipa_images PUBLIC ${ATTADIPA_LVGL_TARGET} attadipa_ui)
 
 # LVGLImage.py emits an include block that falls through to `lvgl/lvgl.h` unless
 # told otherwise. Our LVGL is on the include path as `lvgl.h`, the same way the

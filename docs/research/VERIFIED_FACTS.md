@@ -828,14 +828,19 @@ BSP already demonstrated to be an incomplete description of its own board.
 
 - **MEASURED / VERIFIED:** the assembled case has two pressable keys. The
   current official schematic names them PWR and BOOT: PWR pulls the AXP2101
-  `PWRON` input and BOOT pulls GPIO0 low. `SYS_OUT/GPIO10` is the conditioned
-  power-state output, not a mirror of the key level. This closes D5; the vendor
-  BSP's empty button list describes only what that BSP drives.
+  `PWRON` input and BOOT pulls GPIO0 low. `SYS_OUT/GPIO10` reports PMU system
+  state; it is not a PWR-key mirror. The AXP2101 IRQ net terminates at `EXIO5`,
+  not at an ESP32-S3 GPIO, and no I/O expander is fitted on this board. The
+  vendor BSP's empty button list describes only what that BSP drives.
 - **Physical result:** two BOOT presses on 2026-08-25 produced two debounced
   `physical boot down/up` pairs after routing through `core::InputQueue` with
   `InputOrigin::Physical`. PWR negative/positive edges are enabled and polled
-  through AXP2101 interrupt status; its final physical event observation is
-  still pending and is not promoted to a measurement here.
+  through AXP2101 interrupt status and were also physically observed. A
+  physical PWR wake attempt on `8f098ba` did not wake through GPIO10; a later
+  touch was reported as the wake cause. On the corrected path, two cycles woke
+  directly from GPIO38 touch and a third woke from a 100 ms timer after the
+  AXP2101 status reported the physical PWR edge; the transition was classified
+  as Button and the panel restored.
 - **Sources:** the current Waveshare schematic/product page and the raw bench
   transcript in [WATCH_CONTROL_2026-08-25](../hardware/WATCH_CONTROL_2026-08-25.md).
 
@@ -1199,7 +1204,7 @@ same question, the datasheet wins and the entry says so.
   three wallpapers**. What that app's `swap_bytes` was is not readable, which is
   why D21 is `UNKNOWN` rather than resolved in either direction.
 - **Impact:** nothing in this repository is mis-encoded today — T-034 emits
-  `LV_COLOR_FORMAT_A8` masks (`tools/assets/generate_images.py:168` "--cf"), one byte
+  `LV_COLOR_FORMAT_A8` masks (`tools/assets/generate_images.py:175` "--cf"), one byte
   per pixel, which have no byte order to get wrong. The cost lands on **the
   first line of display bring-up**, which must take the swap setting from a
   measurement or from the datasheet and must not take it from this file's
@@ -1581,10 +1586,14 @@ constants.
 ### The first product Clock runs on the physical Waveshare
 
 - **MEASURED:** the shared simulator/firmware Clock rendered on the physical
-  410 × 502 AMOLED with Nunito Sans time, live seconds, date, year, day progress
-  and moving firefly visuals. A debug-injected tap produced the intended ring
-  and animation response on-device. The first gradient render exposed RGB565
-  partial-buffer bands; the final solid-page render did not.
+  410 × 502 AMOLED with Nunito Sans time, live seconds and date over original
+  Attadipa night-meadow art. Four stationary points pulse on the foliage; a
+  debug-injected tap launched one glowing point that moved for 1.6 seconds and
+  faded on-device. The owner accepted the final physical presentation. The
+  earlier gradient render exposed RGB565 partial-buffer bands; the current
+  raster render does not.
+- **Steps boundary:** the paw and `7777` are a static layout placeholder, not a
+  pedometer measurement. No step source was exercised or claimed by this run.
 - **Brightness boundary:** the owner-requested demonstration ran briefly at
   70%; the final image was rebuilt and reflashed at the safe repository default
   of 5%.

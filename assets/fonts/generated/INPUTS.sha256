@@ -11,10 +11,11 @@
 #
 # Written only by tools/font/generate_ui_fonts.py. Editing a line here to make a
 # check pass is the one repair that fixes nothing.
-inputs  0e5ad69c31456a9af0ac17724236686e65ef8e1e68cd148ae407b6f0197e5e2e
+inputs  d82b5c1d40c2cef93402a4f6cabeaf7b29656b1b67f2e6eb7ca8be86a4451f3d
 output  1ff289b242918fe191a4665dba2f66b938cea4deab1359e12a7cce7486d41be2  attadipa_nunito_sans_14.c
 output  6a7fe480a1ed0c1e7dee88692890b436d656758f923477761756835b711f7238  attadipa_nunito_sans_16.c
 output  1ee3ae53f08bf776f1e48a5cf793abdd80b764f23ea8bd4d7706ad07d2ff5e6b  attadipa_nunito_sans_20.c
 output  4266c3bfb635e7c204c81019a8c8fcc01167724c6820260f39cae8fcad6ffff3  attadipa_nunito_sans_28.c
 output  c7f6a2983b1e9dfe5da5148276e34766590ce1765d51f50fec7cfeb9fe1d2277  attadipa_nunito_sans_64.c
+output  30bcb604f6ed465bf871694467d9e4e94cdd625296cb20776f5e2699dbd5f6ec  attadipa_nunito_sans_84.c
 output  e934af99fcaac8a07e30e65b880a06cdf42058bf8cc1c841095fba671eda2e5e  attadipa_nunito_sans_96.c

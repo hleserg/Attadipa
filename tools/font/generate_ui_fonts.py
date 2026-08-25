@@ -44,10 +44,10 @@ sys.path.insert(0, str(ROOT / "tools" / "integrity"))
 import charset  # noqa: E402
 import stamp  # noqa: E402
 
-# The text sizes the screens actually ask for. 64 and 96 are the first true
-# `type.display` faces: the smaller four remain UI text, while a watch face at
-# 28 px is a status line pretending to be a clock.
-SIZES = (14, 16, 20, 28, 64, 96)
+# The text sizes the screens actually ask for. 64, 84 and 96 are display faces;
+# 84 keeps the tall Clock numerals while avoiding the distracting detached top
+# stroke that Nunito Sans's rasterised `5` shows at 96 px on this layout.
+SIZES = (14, 16, 20, 28, 64, 84, 96)
 
 # Canonical owner-reference face, pinned to the Google Fonts commit measured in
 # docs/research/FONT_MEASUREMENTS.md. The downloaded variable face defaults to

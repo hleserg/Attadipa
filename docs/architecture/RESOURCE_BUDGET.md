@@ -179,15 +179,15 @@ burden. Convenient, not planned; do the arithmetic once there is an image.
 
 #### The two asset pipelines, with numbers
 
-Both are `CALCULATED` from what the generators emit, not `MEASURED` on a device
-— nothing has been linked into a firmware image yet, and `idf.py size` is the
-only thing that will settle the difference between an array's size and its cost
-after alignment and section placement.
+The asset rows are calculated from what the generators emit. The current flash
+firmware links them and measures 0x15d9a0 bytes in the 0x400000-byte app
+partition; 0x2a2660 bytes (66%) remain.
 
 | Asset set | Bytes | How |
 |---|---|---|
 | Text fonts — Montserrat Medium, 181 codepoints, 4 bpp, at 14 / 16 / 20 / 28 px | **78 930** | `MEASURED` with xtensa `size -A` on the generated objects: 13 033 + 15 248 + 19 356 + 31 293 |
 | Icons — three masks at 33, 39 and 47 px | **14 457** | `CALCULATED`: `A8` is one byte per pixel with `stride == width`, so an icon costs exactly its pixel count. Reported per asset by `tools/assets/generate_images.py` and repeated in the generated header |
+| Clock night-meadow background — 410x502 RGB565 | **411 640** | `CALCULATED`: 410 x 502 x 2, uncompressed; exact target geometry, no runtime resampling on the Waveshare |
 
 The icon number is the one worth watching, because it is the one that scales
 with the product rather than with the alphabet. Nine masks are 14 kB; the whole
