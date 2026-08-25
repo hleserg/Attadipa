@@ -19,6 +19,13 @@
 # Loading it: tools/flash/ramhold.py, and read its header before reaching for
 # `esptool load-ram` instead. The CLI tool kills the image it just loaded, a few
 # milliseconds after reporting success, by closing the port.
+# Two symbols, and the second one is not optional: PURE_RAM_APP is a sub-option
+# of the RAM build type (`depends on APP_BUILD_TYPE_RAM` in ESP-IDF's own
+# Kconfig), so setting it alone is dropped in silence and the build comes out as
+# an ordinary flash app that reports success. That is what happened here the
+# first time: build-ram/sdkconfig came back with CONFIG_APP_BUILD_TYPE_APP_2NDBOOT=y
+# and the CI guard that greps for the symbol is what would have caught it.
+CONFIG_APP_BUILD_TYPE_RAM=y
 CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y
 
 # A RAM app has no partition table to read, and asking for one is a boot-time

@@ -139,6 +139,16 @@ void report_silicon()
     // and the difference from the 16 MB this image declares is the point:
     // only the low half is addressable, so the mismatch is expected and the
     // bootloader's warning about it is a reminder rather than a fault.
+    // A pure-RAM image has no flash driver at all — `APP_BUILD_TYPE_PURE_RAM_APP`
+    // leaves Cache, MMU, Flash and PSRAM uninitialised and drops the components
+    // that speak to them, so `CONFIG_ESPTOOLPY_FLASHSIZE` is not merely 0 here,
+    // it does not exist and the reference is a compile error. The route that
+    // writes nothing to the part is also the route that cannot ask the part
+    // anything, and this is where that shows.
+#if CONFIG_APP_BUILD_TYPE_PURE_RAM_APP
+    ESP_LOGW(kTag, "Flash      : not initialised — this is a pure-RAM image, "
+                   "and the JEDEC id needs the flash driver");
+#else
     std::uint32_t jedec = 0;
     esp_err_t     err   = esp_flash_read_id(nullptr, &jedec);
     if (err == ESP_OK) {
@@ -167,6 +177,7 @@ void report_silicon()
     } else {
         ESP_LOGE(kTag, "Flash      : JEDEC read failed (%s)", esp_err_to_name(err));
     }
+#endif
 
 #if CONFIG_SPIRAM
     if (esp_psram_is_initialized()) {
@@ -198,6 +209,19 @@ void report_silicon()
 // A PURE_RAM_APP image has no partition table to read, and that is not a fault.
 void report_partitions()
 {
+#if CONFIG_APP_BUILD_TYPE_PURE_RAM_APP
+    // Measured, and it cost a panic to learn: `esp_partition_find()` reaches
+    // `spi_flash_mmap`, which in a pure-RAM image asserts rather than returning
+    // nothing — `assert failed: spi_flash_mmap spi_flash_mmap.c:200`, because
+    // the mmap callbacks are only registered when the flash driver is built in.
+    // The first run of this firmware on the board printed every line above this
+    // one and then rebooted here. "No partition table to read" and "no flash
+    // driver to ask" are different states, and only one of them is survivable.
+    ESP_LOGW(kTag, "Partitions : not readable — a pure-RAM image has no flash "
+                   "driver, and asking anyway is a panic rather than an empty "
+                   "answer");
+    return;
+#else
     esp_partition_iterator_t it =
         esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, nullptr);
     if (it == nullptr) {
@@ -223,6 +247,7 @@ void report_partitions()
                        " and cannot be relied on — WAVESHARE_RUNNING_OUR_CODE.md §1",
                  above_ceiling, kAddressingCeiling);
     }
+#endif
 }
 
 // The proof that platform/ links and answers. It is a lookup rather than a

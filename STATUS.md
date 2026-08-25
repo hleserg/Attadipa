@@ -989,6 +989,34 @@ four more things at no cost:
   v0.2`; `efuse block revision v1.4`; `QMI8658 initialized successfully` — which
   names no address; the bus scan above settles `0x6B` by measurement instead.
 
+## The bench session of 2026-08-25 — Attadipa's firmware runs on the board
+
+**The unit boots our firmware, from flash, and prints what the silicon says it
+is.** Full evidence, both transcripts and the measurements behind them:
+[BRINGUP_2026-08-25](docs/hardware/BRINGUP_2026-08-25.md). `MEASURED` on the
+Waveshare `ESP32-S3-Touch-AMOLED-2.06`; nothing here is about the T-Watch.
+
+- **The factory backup exists on this host and is verified** — 33 554 432 bytes,
+  `verify-flash` clean, `c423dad3…747dbd`. It differs from the 2026-08-22 hash,
+  which is expected after weeks of the demo running and could not be localised
+  because that image is not on this machine; the per-partition digests of this
+  one are recorded so the next comparison can be. **The previous session's
+  "a backup cannot be taken on this host" is withdrawn.**
+- **Why it could not be taken, resolved:** a stub `read_flash` packet whose SLIP
+  encoding is 64 more than a multiple of 128 ends in a half-filled `cdc-acm`
+  buffer and deadlocks. Thirteen addresses tested, thirteen agreeing, including
+  two that the weaker `% 64` rule predicts and that read fine. That closes the
+  `UNKNOWN` in WAVESHARE_FLASH_LAYOUT §2.2. `tools/flash/backup_flash.py` now
+  changes method on failure rather than repeating one.
+- **The RAM route found three real faults** — an overlay that never produced a
+  RAM image, a compile error and a panic in `esp_partition_find()` — all fixed
+  in the same branch, and none of them findable without a board.
+- **The flash route produced T-165's acceptance transcript:** JEDEC `c8 40 19`
+  with 32 MB on the part against 16 MB declared, PSRAM `8 MB, octal SPI,
+  initialised`, three partitions all below the ceiling, and the heartbeat.
+- **The board now runs our firmware rather than Waveshare's demo.** OD-19 permits
+  it; the restore command is in the evidence file.
+
 ## Recently completed
 
 - **The eight agent-config files at the root were not copies of this

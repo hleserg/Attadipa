@@ -102,8 +102,20 @@ stale silently. The protocol is
   board.
 - **Non-goals, and they were kept:** the second board, any driver, LVGL, OTA,
   secure boot, flash encryption. This is the floor, not the building.
-- **Hardware required:** for the build, no. For the boot transcript, yes — and
-  see the hardware note recorded with this task's result.
+- **Hardware required:** yes, and it was run. **The firmware boots on the
+  physical Waveshare unit, from flash**, and prints chip revision, flash id,
+  PSRAM presence and mode, reset reason, the partition table and the heap —
+  [BRINGUP_2026-08-25](docs/hardware/BRINGUP_2026-08-25.md), 2026-08-25,
+  `MEASURED`. The RAM route runs too, and finding that out cost three fixes that
+  are in this branch: `sdkconfig.ramprobe` never produced a RAM image at all,
+  `CONFIG_ESPTOOLPY_FLASHSIZE` does not exist in a pure-RAM build, and
+  `esp_partition_find()` panics there rather than returning nothing.
+- **Still open on this branch, and it is documentation only:**
+  `docs/hardware/FIRMWARE_BRINGUP.md` §3 still shows an idealised transcript and
+  says a RAM image reports `Partitions : none readable` — measured, it panics
+  instead; `docs/research/WAVESHARE_FLASH_LAYOUT.md` §2.2 still says the stall
+  addresses are `UNKNOWN`, which BRINGUP_2026-08-25 §2.1 resolves; and
+  `BENCH_DEVICES.md` does not yet record that the unit runs our firmware.
 
 ### T-100 · The agent queue, verified by running it rather than by reading it
 - **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
