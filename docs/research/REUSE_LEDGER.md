@@ -2153,3 +2153,22 @@ self-test was mutation-checked four ways: `>=` loosened to `>` at the ceiling,
 the crossing check removed, the crossing check tightened so that ending exactly
 on the line fails, and unparseable rows silently skipped — each turned it red.
 No hardware; this reads CSV files and touches no board.
+
+---
+
+### Probing the Waveshare SD slot without writing to it
+
+**Problem:** D14 remains a hardware question: which host driver can enumerate a
+card on the Waveshare micro-SD connector. The earlier empty-slot log could not
+establish wiring, so this is bench evidence rather than shipped storage code.
+
+**Source and decision:** adapt ESP-IDF v5.4's public-domain/CC0 SDMMC and SDSPI
+examples only for host/slot configuration and `sdmmc_card_init()` plus
+`sdmmc_card_print_info()`. Do not mount, format, or write a filesystem. The
+vendor BSP is not evidence for its own wiring claim.
+
+**Attadipa integration:** none. The procedure in
+[`../hardware/SD_CARD_MODE_TEST.md`](../hardware/SD_CARD_MODE_TEST.md) is a
+`PURE_RAM_APP` probe loaded with `esptool load_ram`; it does not enter the
+firmware image or write board flash. Its result is `NOT EXECUTED — HARDWARE
+REQUIRED` until the owner runs it with a named expendable card.
