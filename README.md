@@ -13,19 +13,20 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
 > **Status: early implementation.** The host-testable layers exist and are
 > tested — the hardware inventory, the capability registry, the transport, the
-> GNSS trust evaluator, the design-token system, the desktop simulator, and 30
-> host tests. One target board is now on the owner's desk and has been read over
+> GNSS trust evaluator, the design-token system, and the desktop simulator.
+> One target board is now on the owner's desk and has been read over
 > its own USB port, which is the first evidence in this repository that came
 > from silicon rather than from a document. **The T-165 Attadipa firmware now
 > boots on it from flash** and has measured the flash, octal PSRAM and development
 > partition table. Display, touch, PMU, RTC, power, timing and GNSS remain
-> unexercised. See [STATUS.md](STATUS.md) for exactly where things stand.
+> unexercised. [Issues](https://github.com/hleserg/Attadipa/issues) and
+> [pull requests](https://github.com/hleserg/Attadipa/pulls) show live work.
 
 ### What exists today
 
 | | |
 |---|---|
-| **Builds and is tested on a host** | seven libraries and **34 tests** — **41** when the desktop simulator is built, which needs SDL2 and is off by default — under GCC and Clang, under `-Werror` and under ASan+UBSan. Three pairs of them compile one fixture twice and require the second to fail, each guarding a different boundary: an application still cannot include a hardware header (ADR-0007 §5), the core still cannot reach the translation table (ADR-0010 §4), and a receiver capability still cannot be written as a `bool` |
+| **Builds and is tested on a host** | the host suite runs under GCC and Clang, under `-Werror` and under ASan+UBSan; simulator tests are enabled when SDL2 is available. Compile-fail checks guard the hardware-header, translation-table and receiver-capability boundaries |
 | **Can be looked at while it runs** | the interface can be screenshotted and driven from another process — tap, swipe, press a button, take another picture. Against the simulator today; the device transport and framebuffer endpoint remain T-114 even though minimal firmware now exists |
 | **Runs two geometries from one binary** | 240 × 240 and 410 × 502, selected at run time, fitting any of the five candidate T-Watch radios and a present-or-absent node without a rebuild |
 | **Draws through design tokens** | twelve colour roles across day and night themes with WCAG contrast arithmetic, plus a CI check that refuses a raw hex value or a pixel count back into screen code |
@@ -190,8 +191,8 @@ docs/adr/                      architecture decision records
 docs/testing/                  host test plans, and the hardware-in-the-loop plans
 docs/ui/                       the design system, and the owner's design references
 pics/                          brand assets — banner, icon, favicon
-TASKS.md                       backlog: NOW / NEXT / READY / BLOCKED / WAITING / DONE
-STATUS.md                      where the project is right now
+AGENTS.md                      short repository-wide working agreement
+docs/ROADMAP.md                durable product direction
 ```
 
 `apps/` not being able to reach `platform/` is enforced by the link line rather

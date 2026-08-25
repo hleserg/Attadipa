@@ -105,9 +105,8 @@ ATTADIPA_TYPE_FIELD='\\?"type\\?" *: *\\?"('"$ATTADIPA_ERROR_TYPES"')\\?"'
 # available to the renderer and for no other reason.
 #
 # `Prompt is too long` / `input length` — the API refusing a request larger than
-#   the context window. The 2026-08-22 suspicion on #67, unconfirmed: the
-#   reading list CLAUDE.md and the agent prompt mandate is over 500 KB before
-#   the agent opens a file of its own.
+#   the context window. Repository onboarding is now scoped, but external input
+#   can still exceed the service limit.
 # `exceed... max_tokens` — the same refusal from the other side.
 # `Credit balance` / `Request timed out` — the account and the service rather
 #   than the task. These must be distinguishable from a task failure, because

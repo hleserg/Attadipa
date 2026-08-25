@@ -37,7 +37,7 @@ OID_OK=0123456789abcdef0123456789abcdef01234567
 # run_rule ARGS... -- calls the rule, filling in the arguments the older
 # assertions predate.
 #
-# CHANGED_PATHS defaults to STATUS.md, PASS_AFTER_HEAD and FACTS_COMPLETE to
+# CHANGED_PATHS defaults to docs/research/status-example.md, PASS_AFTER_HEAD and FACTS_COMPLETE to
 # `true` and HEAD_OID to a well-formed id, so every assertion written before
 # those conditions existed still tests exactly the condition it names rather
 # than being refused by a new one first. Each new condition has a section of its
@@ -45,7 +45,7 @@ OID_OK=0123456789abcdef0123456789abcdef01234567
 run_rule() {
   local checks="$1" labels="$2" unresolved="$3" codex="$4"
   local mergeable="$5" is_draft="$6" head_age="$7"
-  local paths="${8-STATUS.md}" pass_after="${9-true}" complete="${10-true}"
+  local paths="${8-docs/research/status-example.md}" pass_after="${9-true}" complete="${10-true}"
   local head_oid="${11-$OID_OK}"
   bash "$SCRIPT_UNDER_TEST" "$checks" "$labels" "$unresolved" "$codex" \
        "$mergeable" "$is_draft" "$head_age" "$paths" "$pass_after" "$complete" \
@@ -206,34 +206,32 @@ echo "Which commit the verdict was reached on"
 # nothing. The backstop routine calls this the likeliest of its guards to recur.
 ok "a pass older than the head commit refuses" \
                                 "HOLD ai-review:pass predates the head commit" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" false
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" false
 ok "and an unreadable answer refuses too, rather than being assumed covered" \
                                 "HOLD could not tell whether ai-review:pass covers the head commit" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" unknown
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" unknown
 ok "an empty answer is unknown, not true" \
                                 "HOLD could not tell whether ai-review:pass covers the head commit" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" ""
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" ""
 ok "and neither is a stray word" \
                                 "HOLD could not tell whether ai-review:pass covers the head commit" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" yes
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" yes
 ok "a draft whose pass predates its head is not undrafted either" \
                                 "HOLD ai-review:pass predates the head commit" \
-                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "STATUS.md" false
+                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "docs/research/status-example.md" false
 
 echo
 echo "What it touches — CLAUDE_AUTOMATION.md's table, row by row"
-# Row 1: the nine documentation directories, plus STATUS.md and TASKS.md,
-# which are on the list because CLAUDE.md requires them in the same commit.
+# Row 1: the nine documentation directories.
 for allowed in docs/architecture/a.md docs/community/a.md docs/hardware/a.md \
                docs/mobile/a.md docs/node/a.md docs/research/a.md \
-               docs/testing/a.md docs/ui/a.md docs/upstream/a.md \
-               STATUS.md TASKS.md; do
+               docs/testing/a.md docs/ui/a.md docs/upstream/a.md; do
   ok "$allowed may be merged unattended" MERGE \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" "$allowed"
 done
 ok "and a pull request touching several allowed paths still merges" MERGE \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" \
-                                 "$(printf 'docs/research/a.md\nSTATUS.md\nTASKS.md')"
+                                 "$(printf 'docs/research/a.md\ndocs/ui/a.md')"
 
 # Every "no" row. Each is a decision of the owner's, 2026-08-21.
 ok "docs/master-prompt-final.md may not — a process that can edit the requirements it is judged against is not a process" \
@@ -248,6 +246,12 @@ ok "docs/adr/ may not — ADR-0003 is what stands between this project and assum
 ok "docs/automation/ may not — a gate that can widen itself is not a gate" \
                                 "HOLD docs/automation/CLAUDE_AUTOMATION.md is not on the unattended-merge allowlist" \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/automation/CLAUDE_AUTOMATION.md"
+ok "STATUS.md is a compatibility pointer, not unattended work" \
+                                "HOLD STATUS.md is not on the unattended-merge allowlist" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md"
+ok "TASKS.md is a compatibility pointer, not unattended work" \
+                                "HOLD TASKS.md is not on the unattended-merge allowlist" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "TASKS.md"
 ok ".github/ may not, for the same reason — including this very rule" \
                                 "HOLD .github/scripts/merge-candidate.sh is not on the unattended-merge allowlist" \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" ".github/scripts/merge-candidate.sh"
@@ -290,7 +294,7 @@ ok "and a path merely containing an allowed directory name is not admitted" \
 ok "one refused path refuses the whole pull request, even last" \
                                 "HOLD core/x.c is not on the unattended-merge allowlist" \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" \
-                                 "$(printf 'docs/research/a.md\nSTATUS.md\ncore/x.c')"
+                                 "$(printf 'docs/research/a.md\ndocs/research/status-example.md\ncore/x.c')"
 ok "and even first" \
                                 "HOLD core/x.c is not on the unattended-merge allowlist" \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" \
@@ -315,28 +319,28 @@ echo "Whether the caller read all of it"
 # merges. No condition on the arguments above can see that, because every one of
 # them is a summary carrying no trace of how much was read. Issue #170.
 ok "a proven-complete snapshot merges"  MERGE \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true
 ok "a truncated one refuses"     "HOLD the facts read about this pull request were truncated" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true false
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true false
 ok "an unreadable answer refuses rather than being assumed complete" \
                                 "HOLD could not tell whether the facts read about this pull request are complete" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true unknown
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true unknown
 ok "an empty answer is unknown, not true" \
                                 "HOLD could not tell whether the facts read about this pull request are complete" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true ""
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true ""
 ok "and neither is a stray word" \
                                 "HOLD could not tell whether the facts read about this pull request are complete" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true yes
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true yes
 ok "a draft whose facts are truncated is not undrafted either" \
                                 "HOLD the facts read about this pull request were truncated" \
-                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "STATUS.md" true false
+                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "docs/research/status-example.md" true false
 
 # THE OLD CALLER IS THE DEFECT, so it is refused by arity rather than reinstated
 # by a default. Nine arguments is a caller that read bounded pages and never
 # asked whether there were more; there is no reading of those nine under which
 # this may merge. The message names the fix, because this line is what a reader
 # sees in the sweep log until somebody applies it.
-got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>/dev/null)"
+got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true 2>/dev/null)"
 case "$got" in
   "HOLD this caller cannot prove it read all of the pull request"*)
     printf '  ok    a nine-argument caller cannot merge, and is told what to apply\n'; pass=$((pass + 1)) ;;
@@ -373,7 +377,7 @@ esac
 #
 # One `workflow_dispatch` of the sweep after the patch lands settles it, and
 # whoever lands it should look: `merge-candidate.sh` has never run on `main`.
-warned="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>&1 >/dev/null)"
+warned="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true 2>&1 >/dev/null)"
 case "$warned" in
   *"::warning::"*"merge sweep is holding every pull request"*)
     printf '  ok    and it warns on stderr, which is where the sweep log shows it\n'; pass=$((pass + 1)) ;;
@@ -387,7 +391,7 @@ esac
 # happened to be evaluated first over facts nobody could trust.
 ok "completeness is answered before the verdict, because the verdict was read out of the same snapshot" \
                                 "HOLD the facts read about this pull request were truncated" \
-                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "STATUS.md" true false
+                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "docs/research/status-example.md" true false
 
 echo
 echo "What the sweep actually reads — the GraphQL contract, over response shapes"
@@ -412,7 +416,7 @@ facts() {
     mergeStateStatus: "CLEAN",
     labels: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{name:"ai-review:pass"}]},
     reviewThreads: {totalCount:0, pageInfo:{hasNextPage:false}, nodes:[]},
-    files: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{path:"STATUS.md"}]},
+    files: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{path:"docs/research/status-example.md"}]},
     timelineItems: {totalCount:15, pageInfo:{hasNextPage:false, hasPreviousPage:false},
                     nodes:[{createdAt:"2026-08-24T00:00:00Z", label:{name:"ai-review:pass"}}]},
     commits: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{commit:{
@@ -473,7 +477,7 @@ complete_says "and the same document is refused as truncated" \
   "HOLD the review-thread list is truncated at 100 of 101" "$TRUNCATED_THREADS"
 ok "so the verdict over it is a HOLD and not a MERGE" \
                                 "HOLD the facts read about this pull request were truncated" \
-                                 "success" "ai-review:pass" "$OLD_UNRESOLVED" 0 clean false "$OLD" "STATUS.md" true false
+                                 "success" "ai-review:pass" "$OLD_UNRESOLVED" 0 clean false "$OLD" "docs/research/status-example.md" true false
 
 # 101 GREEN check runs. Nothing is hiding on the second page and it still
 # refuses, because "nothing is hiding there" is precisely what a truncated page
@@ -567,7 +571,7 @@ complete_says "a head commit with no checks at all is complete, not unreadable" 
   "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup = null')"
 ok "and the rule still refuses it for the reason that is actually true" \
                                 "HOLD no check run on the head commit" \
-                                 "" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true
+                                 "" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true
 
 # The read that did not happen.
 complete_says "an empty document refuses" "HOLD the pull request's facts came back empty" ""
@@ -841,23 +845,23 @@ complete_says "and a check-suite connection with no pageInfo refuses" \
 # caller that reached the rule without one computed its verdict binding against
 # nothing.
 ok "a well-formed head id is accepted"  MERGE \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "$OID_OK"
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true "$OID_OK"
 ok "an empty head id is not a commit"   "HOLD the head commit could not be identified" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true ""
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true ""
 ok "and neither is a truncated one"     "HOLD the head commit could not be identified" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "0123abc"
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true "0123abc"
 ok "nor a branch name"                  "HOLD the head commit could not be identified" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "main"
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true "main"
 ok "a 64-hex object id is accepted too, because a repository may be SHA-256" MERGE \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true \
                                  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 ok "identity is answered before the verdict, because the verdict was bound to it" \
                                 "HOLD the head commit could not be identified" \
-                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "STATUS.md" true true ""
+                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "docs/research/status-example.md" true true ""
 
 # TEN ARGUMENTS IS NOW THE OLD CALLER TOO, and it is refused by arity for the
 # reason nine is: it never established which commit it was deciding about.
-got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true 2>/dev/null)"
+got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true 2>/dev/null)"
 case "$got" in
   "HOLD this caller cannot prove it read all of the pull request"*)
     printf '  ok    a ten-argument caller cannot merge either\n'; pass=$((pass + 1)) ;;

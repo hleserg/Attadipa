@@ -408,42 +408,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Eight failures. SIX shipped here; TWO were caught in flight and never
-      # reached main -- a duplicate OD number, four open pull requests deep, and a duplicate open-question ID inside this one.
-      # A relative link that 404s reads exactly like one that works until
-      # somebody clicks it, and these documents cite each other constantly. A
-      # stray backtick turns everything after it into code until the next one,
-      # so a heading inside the span stops being a heading. A duplicate task ID
-      # means two tasks answer to one name; four pairs had accumulated before
-      # this job existed. A live task with no body cannot be picked up, and a
-      # finished one in a live section reads as work waiting. A duplicate
-      # open-question ID splits one question in two. A stray file at the root is
-      # somebody's copyright. And a citation drifts onto a live line that says
-      # something else. This said FOUR, and described four, until T-157; the
-      # split of shipped against in-flight was wrong twice before it was derived.
-      # Headings inside a `<details>` block are excluded on purpose: TASKS.md
-      # keeps a rejected task's original scope in one, and that is a record
-      # rather than a second live task. A check that failed on it would be
-      # landing broken.
-      #
-      # Invoked through `python3` rather than as `./check_docs.py`. The working
-      # copies this repository is edited from report core.filemode=false, so an
-      # executable bit set locally never reaches a commit and the runner would
-      # get `Permission denied` instead of a result.
-
-      # The checker's own mutation tests, run before the checker. A checker that
-      # passes everything is worse than no checker, because it reads as
-      # evidence. tools/docs/test_check_docs.py holds 74 cases; several assert
-      # it does *not* fire where firing would be wrong (a `###` sub-heading is not a second decision, a range
-      # straddling a blank line is how a table is cited, a line number in
-      # somebody else's tree is not ours to verify), and two reproduce the
-      # splice defect this pull request's first revision shipped — one from each
-      # side, because a stray backtick both strips the task above of its fields
-      # and hands the task below a DONE mark in a live section.
-      #
-      # The suite prints its own count. Three documents quoted this number and
-      # all three were stale within a day of cases being added, which is the
-      # T-102 drift shape inside the tool built to catch it.
+      # Mutation-test the checker before trusting its result.
       - name: The checker actually checks
         run: python3 tools/docs/test_check_docs.py
 
@@ -461,30 +426,23 @@ jobs:
       # always captured and never looked at. A renamed heading leaves a link
       # that lands at the top of the right file, which reads as working, and it
       # is what makes an OD-number collision survive a merge.
-      - name: Links and anchors, spans, task IDs, OD numbers, task bodies, root files, citations, open-question IDs
+      - name: Links, spans, registers, root files and citations
         run: python3 tools/docs/check_docs.py .
 
-      # The public site has two render paths: static HTML for non-JavaScript
-      # crawlers and the runtime language switcher. Keep their metadata and
-      # reveal fallback as explicit invariants, and test the checkers with the
-      # historical mutations they are meant to reject. The head-sync suite
-      # holds 44 cases: 34 break the pair and 10 leave it valid.
+      # The public site has static and JavaScript render paths. Test each
+      # checker against mutations before trusting its result.
       - name: The site head-sync check actually checks
         run: python3 tools/site/test_check_head_sync.py
 
       - name: The rendered site head matches its static HTML
         run: python3 tools/site/check_head_sync.py .
 
-      # The site-facts suite holds 25 cases: 21 demand a report, 4 demand
-      # silence.
       - name: The site-facts check actually checks
         run: python3 tools/site/test_check_site_facts.py
 
       - name: SEO image facts match repository assets
         run: python3 tools/site/check_site_facts.py .
 
-      # The reveal-contract suite holds 13 cases: 9 demand a
-      # report, 4 demand silence.
       - name: The reveal-contract check actually checks
         run: python3 tools/site/test_check_reveal_contract.py
 
@@ -597,7 +555,7 @@ jobs:
     if: always()
     needs: [host-build, strict-warnings, clang, sanitizers, simulator, firmware-build]
     steps:
-      # CLAUDE.md's rule, made visible where people actually look. A green badge
+      # AGENTS.md's rule, made visible where people actually look. A green badge
       # reports each dependency's real result. A compile is still not evidence
       # about physical hardware, and the only reliable way to stop that being
       # forgotten is to write it down on every single run.
@@ -621,10 +579,10 @@ jobs:
 # Still not present, and still deliberately not faked:
 #
 #   * second board    — the firmware job builds for the Waveshare only. The
-#                       T-Watch is ORDERED and not in hand (TASKS.md T-010), and
+#                       T-Watch is not available to this runner, and
 #                       a matrix entry for a board nobody can boot would make
 #                       this run look like it proved more than it did.
-#   * formatting      — rules are not agreed yet (TASKS.md T-039)
+#   * formatting      — no repository-wide formatter contract exists yet
 #   * hardware tests  — NOT EXECUTED, HARDWARE REQUIRED. There is no HIL runner,
 #                       and a job that pretended otherwise would be worse than
 #                       no job at all.

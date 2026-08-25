@@ -23,7 +23,7 @@ write-capable agent do something?**
    GitHub API for the triggering actor's permission and requires `write`,
    `maintain` or `admin`. A drive-by issue saying `@claude delete everything`
    fails here. The `producer:` field in a task marker is *data* and proves
-   nothing — see [AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#the-marker-is-data-not-a-permission).
+   nothing — see [AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#task-marker).
 2. **The action's own check.** `anthropics/claude-code-action@v1` performs the
    same check independently, and `allowed_non_write_users` is left empty so
    there is no bypass list to get onto.
@@ -370,14 +370,10 @@ dead with nothing on the branch. Read from run `32587675386`'s execution log —
 after 8 min 49 s of real work. **An accurate report over an empty branch is the
 one outcome nobody can act on**, and every one of them was paid for in full.
 
-The agent is the job that does strictly more than the reviewer: it reads the
-same material and then implements, tests, pushes and reports. Its ceiling is now
-**200**, and that is not a round guess — the reading order the prompt mandates
-(CLAUDE.md, the specification, STATUS, TASKS, the ADRs, the reuse ledger, then
-the open issues and pull requests) spends twenty to thirty turns before a line
-is written, and the run above was still mid-implementation at sixty-one. Spend
-stays bounded by `timeout-minutes: 60`, which is denominated in the thing
-actually being billed.
+The agent does more than the reviewer: it reads, implements, tests, pushes and
+reports. Its ceiling remains **200** so useful work is not killed after the cost
+is incurred; spend is bounded by `timeout-minutes: 60`. The prompt now reads the
+short global agreement plus only task-relevant requirements and scoped rules.
 
 `claude-ci-repair.yml` is still at 40 and has **not** been examined against this;
 nothing has been observed hitting it, and raising a limit on a hunch is how the
@@ -456,11 +452,9 @@ log never reached the model. That covers the validation skip, a refused
 credential, and anything future that exits early, without the workflow having to
 recognise each by name.
 
-What #67 was doing when it died is still **UNKNOWN**, and this document will not
-guess at it: the next occurrence names itself. One measurement is worth
-recording as motive rather than conclusion, though — the reading order the prompt
-mandates is over 500 KB of Markdown before the agent opens a file of its own,
-with `TASKS.md` alone at 149 KB.
+What #67 was doing when it died is still **UNKNOWN**. Its oversized mandatory
+reading path has since been removed; future failures are classified from the
+execution log rather than inferred from repository size.
 
 To stop all spending immediately:
 
@@ -494,7 +488,7 @@ unattended write access to `main` takes the one that fails closed.
 
 | | May be merged unattended | By what |
 |---|---|---|
-| `docs/architecture/` `docs/community/` `docs/hardware/` `docs/mobile/` `docs/node/` `docs/research/` `docs/testing/` `docs/ui/` `docs/upstream/` `STATUS.md` `TASKS.md` | yes | the backstop routine, under the conditions in [its prompt](attadipa-backstop-routine.md). `STATUS.md` and `TASKS.md` are on the list because CLAUDE.md *requires* them in the same commit — excluding them would disqualify every compliant pull request |
+| `docs/architecture/` `docs/community/` `docs/hardware/` `docs/mobile/` `docs/node/` `docs/research/` `docs/testing/` `docs/ui/` `docs/upstream/` | yes | the backstop routine, under the conditions in [its prompt](attadipa-backstop-routine.md) |
 | `docs/master-prompt-final.md` and the two superseded prompts | **no** | the specification in force. A process that can edit the requirements it is judged against is not a process |
 | `docs/research/OWNER_DECISIONS.md` | **no** | *"not ours to overturn"*, in the file's own words. The one file in `docs/research/` that records authority rather than findings |
 | `docs/adr/` | **no** | decisions of record. ADR-0003 is what stands between this project and assuming a T-Watch has a LoRa transceiver |

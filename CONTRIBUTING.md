@@ -76,7 +76,7 @@ Attadipa открыт. Расскажите, что было бы по-наст�
 
 ## If you want to write code
 
-Read [CLAUDE.md](CLAUDE.md) first — it is the working agreement for this
+Read [AGENTS.md](AGENTS.md) first — it is the working agreement for this
 repository and it applies to people as well as to agents. The parts that matter
 most before a first pull request:
 
@@ -95,8 +95,8 @@ most before a first pull request:
 - **Applications ask what the device can do, never which device it is.**
   `#ifdef BOARD_X` must not appear in `core/` or `apps/`.
 
-[`STATUS.md`](STATUS.md) is where things actually are, and
-[`TASKS.md`](TASKS.md) is what to pick up.
+[GitHub Issues](https://github.com/hleserg/Attadipa/issues) are the task queue;
+linked pull requests and their checks show current implementation status.
 
 ## How the agent queue works
 

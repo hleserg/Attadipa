@@ -3,7 +3,7 @@
 #
 # WHY THIS EXISTS. The queue's last link had no automation in it. An agent
 # opened a pull request, CI went green, the independent reviewer set
-# `ai-review:pass` -- and then nothing happened, because CLAUDE.md makes the
+# `ai-review:pass` -- and then nothing happened, because AGENTS.md makes the
 # merge an *orchestrator* act, meaning a live session. On 2026-08-22 six
 # finished pull requests (#88, #92, #94, #95, #97, #103) sat green for hours,
 # each carrying `Fixes #N`, and the six issues behind them stayed open. The
@@ -43,7 +43,7 @@
 # reason. The allowlist is transcribed below and asserted in both directions.
 #
 # Widening it is the owner's to grant, not a reviewer's and not this file's.
-# CLAUDE.md keeps "over every path" for the ORCHESTRATOR, which is a live
+# AGENTS.md keeps "over every path" for the ORCHESTRATOR, which is a live
 # session; `schedule:` is not one.
 
 set -uo pipefail
@@ -211,10 +211,7 @@ MIN_HEAD_AGE_SECONDS=21600  # six hours; see the comment on the check below
 # closed. Keep the two in step; .github/tests/merge-candidate-test.sh asserts
 # every row of the table in both directions.
 ATTADIPA_MERGE_ALLOWED_PREFIXES="docs/architecture/ docs/community/ docs/hardware/ docs/mobile/ docs/node/ docs/research/ docs/testing/ docs/ui/ docs/upstream/"
-# STATUS.md and TASKS.md are on the list because CLAUDE.md *requires* them in
-# the same commit as the change they describe -- excluding them would disqualify
-# every compliant pull request.
-ATTADIPA_MERGE_ALLOWED_FILES="STATUS.md TASKS.md"
+ATTADIPA_MERGE_ALLOWED_FILES=""
 # Inside an allowed prefix and still refused: the one file in docs/research/
 # that records authority rather than findings. "Not ours to overturn", in its
 # own words.

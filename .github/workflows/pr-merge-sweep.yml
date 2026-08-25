@@ -3,7 +3,7 @@ name: Merge what is finished
 # THE LAST LINK IN THE QUEUE HAD NO AUTOMATION IN IT.
 #
 # An agent opens a pull request, CI goes green, the independent reviewer sets
-# `ai-review:pass` -- and then nothing happens, because CLAUDE.md makes the
+# `ai-review:pass` -- and then nothing happens, because AGENTS.md makes the
 # merge an *orchestrator* act and an orchestrator is a live session. On
 # 2026-08-22 six finished pull requests sat green for hours, each carrying
 # `Fixes #N`, and the six issues behind them stayed open. The complaint was
@@ -22,7 +22,7 @@ name: Merge what is finished
 # owner decision of 2026-08-21 and is not a reviewer's to grant, so this sweep
 # merges exactly what the backstop routine already may, on a schedule instead of
 # on somebody remembering. Everything outside that list still waits for an
-# orchestrator session, which is what CLAUDE.md says it waits for.
+# orchestrator session, which is what AGENTS.md says it waits for.
 #
 # WHAT THIS IS NOT. It is not GitHub's native auto-merge, which cannot read a
 # label -- and `ai-review:blocking` is a label rather than a required check,
