@@ -121,27 +121,27 @@ def main() -> int:
     )
     scenario(
         "a byte size in SEO.md that is not the file's",
-        lambda seo, html, root: edit(seo, "**43 KB**", "**52 KB**"),
+        lambda seo, html, root: edit(seo, "**49 KB**", "**52 KB**"),
         expect_fail=True,
         needle="states 52 KB for banner.webp",
     )
     scenario(
         "a saving column that is not the difference",
-        lambda seo, html, root: edit(seo, "| 1.28 MB |", "| 1.11 MB |"),
+        lambda seo, html, root: edit(seo, "| 947 KB |", "| 1.11 MB |"),
         expect_fail=True,
         needle="states a saving of 1.11 MB",
     )
     scenario(
         "the total, where it is stated in the prose",
         lambda seo, html, root: edit(
-            seo, "**2.8 MB off the first page view**", "**3.4 MB off the first page view**"
+            seo, "**2.25 MB off the first page view**", "**3.4 MB off the first page view**"
         ),
         expect_fail=True,
         needle="3.4 MB off the first page view",
     )
     scenario(
         "the total, where it is stated again in the checklist",
-        lambda seo, html, root: edit(seo, "the 2.8 MB image saving", "the 3.4 MB image saving"),
+        lambda seo, html, root: edit(seo, "the 2.25 MB image saving", "the 3.4 MB image saving"),
         expect_fail=True,
         needle="3.4 MB image saving",
     )
@@ -199,8 +199,8 @@ def main() -> int:
         "a number beside two filenames is reported, not silently skipped",
         lambda seo, html, root: edit(
             seo,
-            "| `banner.webp`, **43 KB**",
-            "| `banner.webp` from `attadipa-banner.png`, **43 KB**",
+            "| `banner.webp`, **49 KB**",
+            "| `banner.webp` from `attadipa-banner.png`, **49 KB**",
         ),
         expect_fail=True,
         needle="cannot be attributed",
@@ -216,11 +216,11 @@ def main() -> int:
         "og:image:width that is not the card's own width",
         lambda seo, html, root: edit(
             html,
-            '<meta property="og:image:width" content="1734">',
             '<meta property="og:image:width" content="1200">',
+            '<meta property="og:image:width" content="1000">',
         ),
         expect_fail=True,
-        needle="og:image:width/height 1200 x 907",
+        needle="og:image:width/height 1000 x 630",
     )
 
     # The two attribution rules the sixth review added. Both close a hole where
@@ -237,7 +237,7 @@ def main() -> int:
     )
     scenario(
         "a prose size attributed to the files named on the line above",
-        lambda seo, html, root: edit(seo, "weigh 3.0 MB", "weigh 4.4 MB"),
+        lambda seo, html, root: edit(seo, "weigh 2.44 MB", "weigh 4.4 MB"),
         expect_fail=True,
         needle="states 4.4 MB for attadipa-banner.png and attadipa-style-board.png",
     )
@@ -351,8 +351,8 @@ def main() -> int:
         expect_fail=False,
     )
     scenario(
-        "a rounder number is allowed — 1.3 MB for a file stated elsewhere as 1.32",
-        lambda seo, html, root: edit(seo, "**1.32 MB**", "**1.3 MB**"),
+        "a rounder number is allowed — 1.4 MB for a file stated elsewhere as 1.44",
+        lambda seo, html, root: edit(seo, "**1.44 MB**", "**1.4 MB**"),
         expect_fail=False,
     )
 
