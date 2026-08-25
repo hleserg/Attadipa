@@ -173,13 +173,13 @@ def main() -> int:
     # left site.js holding the previous one.
     scenario(
         "a <title> changed on one side only",
-        lambda html, js: edit(html, "<title>Attadipa", "<title>Firefly OS — Attadipa"),
+        lambda html, js: edit(html, "<title>Atta-dipa", "<title>Firefly OS — Atta-dipa"),
         expect_fail=True,
         needle="title differs",
     )
     scenario(
         "a title changed in site.js only",
-        lambda html, js: edit(js, "title: 'Attadipa", "title: 'Attadipa Firmware"),
+        lambda html, js: edit(js, "title: 'Atta-dipa", "title: 'Atta-dipa Firmware"),
         expect_fail=True,
         needle="title differs",
     )
@@ -291,7 +291,7 @@ def main() -> int:
     # shows up as a case that stopped firing rather than as silence.
     scenario(
         "og:title diverges",
-        lambda html, js: edit(js, "ogTitle: 'Attadipa", "ogTitle: 'Attadipa OS"),
+        lambda html, js: edit(js, "ogTitle: 'Atta-dipa", "ogTitle: 'Atta-dipa OS"),
         expect_fail=True,
         needle="ogTitle differs",
     )
@@ -321,8 +321,8 @@ def main() -> int:
         "twitter:title drifts from og:title",
         lambda html, js: edit(
             html,
-            '<meta name="twitter:title" content="Attadipa',
-            '<meta name="twitter:title" content="Attadipa OS',
+            '<meta name="twitter:title" content="Atta-dipa',
+            '<meta name="twitter:title" content="Atta-dipa OS',
         ),
         expect_fail=True,
         needle="twitter:title differs",
@@ -364,7 +364,7 @@ def main() -> int:
     )
     scenario(
         "copy.ru has an empty string",
-        lambda html, js: edit(js, "ogTitle: 'Attadipa — открытая", "ogTitle: '' , ogTitleOld: 'Attadipa — открытая"),
+        lambda html, js: edit(js, "ogTitle: 'Atta-dipa — открытая", "ogTitle: '' , ogTitleOld: 'Atta-dipa — открытая"),
         expect_fail=True,
         needle="copy.ru has no ogTitle",
     )
@@ -395,7 +395,7 @@ def main() -> int:
     # first commit. Likewise a comment mentioning a field is not a field.
     scenario(
         "Russian differing from English is not a divergence",
-        lambda html, js: edit(js, "title: 'Attadipa — открытая", "title: 'Attadipa — свободная"),
+        lambda html, js: edit(js, "title: 'Atta-dipa — открытая", "title: 'Atta-dipa — свободная"),
         expect_fail=False,
     )
     # THIS CASE USED TO BE DECORATIVE. It inserted the comment before
@@ -418,8 +418,8 @@ def main() -> int:
         "a comment below the real field is not the field either",
         lambda html, js: edit(
             js,
-            "      ogTitle: 'Attadipa",
-            "      // title: 'decoy'\n      ogTitle: 'Attadipa",
+            "      ogTitle: 'Atta-dipa",
+            "      // title: 'decoy'\n      ogTitle: 'Atta-dipa",
         ),
         expect_fail=False,
     )
@@ -472,8 +472,8 @@ def main() -> int:
         "an indented <title> body IS a divergence — the checker does not strip",
         lambda html, js: edit(
             html,
-            "<title>Attadipa —",
-            "<title>\n    Attadipa —",
+            "<title>Atta-dipa —",
+            "<title>\n    Atta-dipa —",
         ),
         expect_fail=True,
         needle="title differs",
@@ -495,7 +495,7 @@ def main() -> int:
         "og:image:alt and twitter:image:alt diverge inside index.html",
         lambda html, js: edit(
             html,
-            '<meta name="twitter:image:alt" content="The Attadipa firefly mark',
+            '<meta name="twitter:image:alt" content="The Atta-dipa firefly mark',
             '<meta name="twitter:image:alt" content="A firefly mark',
         ),
         expect_fail=True,
@@ -521,8 +521,8 @@ def main() -> int:
         lambda html, js: edit(
             html,
             '<link rel="icon" type="image/png" href="assets/favicon.png">',
-            '<meta name="apple-mobile-web-app-title" content="The Attadipa firefly mark to the '
-            'left of the wordmark Attadipa, with the line Independent by design beneath it.">\n  '
+            '<meta name="apple-mobile-web-app-title" content="The Atta-dipa firefly mark to the '
+            'left of the wordmark Atta-dipa, with the line Independent by design beneath it.">\n  '
             '<link rel="icon" type="image/png" href="assets/favicon.png">',
         ),
         expect_fail=True,
