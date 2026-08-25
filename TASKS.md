@@ -1938,21 +1938,6 @@ stale silently. The protocol is
 - **Tests:** this *is* test infrastructure
 - **Hardware required:** no
 
-### T-004 · ESP-IDF version decision
-- **Priority:** P1 — lowered from P0. It blocks embedded work; it does not block
-  M1, which is the simulator.
-- **Dependencies:** none
-- **Goal:** pin ESP-IDF with recorded reasoning.
-- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
-  source, version, licence, rationale and upgrade strategy.
-- **Research status:** narrowed — Waveshare supports v5.5.5 and v6.0.2, its BSP
-  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 probably does not bind
-  Attadipa (T7)
-- **Implementation status:** `v5.5.5-496-gc197d718bcc` installed and **verified**
-  by a real `idf.py set-target esp32s3 && idf.py build`. Verified is not decided.
-- **Tests:** a trivial esp32s3 build — **passed**
-- **Hardware required:** no
-
 ---
 
 ### T-101 · A formatting rule, and CI that enforces it
@@ -2931,6 +2916,33 @@ A1's schematic-revision
 ---
 
 ## DONE
+
+### T-004 · ESP-IDF version decision — **DONE** 2026-08-25
+- **Priority:** P1 — lowered from P0 when it was open. It blocked embedded work
+  and never blocked M1.
+- **Dependencies:** none
+- **Goal:** pin ESP-IDF with recorded reasoning.
+- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
+  source, version, licence, rationale and upgrade strategy.
+- **Research status:** done. Waveshare supports **v5.5.5 and v6.0.2** and its BSP
+  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 does not bind Attadipa,
+  which is ESP-IDF-native (T7, still flagged as an assumption).
+- **Implementation status:** **decided: `v5.5.5`**, commit
+  `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013`, 2026-07-16, Apache-2.0. The
+  deciding requirement was not recency: the `spi_flash_mmap` refusal above
+  `0x1000000` first appears in v5.5.5 and in no earlier release checked, and on
+  this board that is the difference between a loud error and silently reading
+  the wrong sixteen megabytes ([FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md)
+  §4.1). `v6.0.2` is the obvious next bump and is rejected only for now, because
+  nothing measured on this project was measured on it.
+- **What this closed that was quietly costing something:** the development host
+  had drifted onto `master` (`v6.1-dev-7351-ge37a7ae137c`) because nothing said
+  otherwise, and an unpinned dev branch cannot be reproduced by a CI image. The
+  toolchain was moved to the tag as part of the same change.
+- **Tests:** the CI job added by T-165 builds `firmware/` on
+  `espressif/idf:v5.5.5`, which is what makes the pin enforced rather than
+  written down.
+- **Hardware required:** no
 
 ### T-171 · A verdict decided by an unauthenticated comment, and a rule that never ran — **DONE** 2026-08-25
 - **Priority:** P1

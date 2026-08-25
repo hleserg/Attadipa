@@ -117,14 +117,17 @@ the AXP2101 or the PCF85063 that are on the board — which
 [CLAUDE.md:42-43](../../CLAUDE.md) has already promoted to a standing rule.
 Whatever is decided, wrapping the BSP does not cover the board.
 
-**The ESP-IDF mechanics were already constrained by an undecided version.** T1 is
-"narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
-([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
-`| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
-([`.github/workflows/ci.yml:567`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
-What exists
-is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
-installed is not decided.
+**The ESP-IDF mechanics were constrained by an undecided version, and are not
+any more.** When this was written T1 was "narrowed" (the T1 row of
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 was open, and what existed was an
+installed toolchain — `v5.5.5-496-gc197d718bcc` — which is not the same as a
+decision. **T-004 closed on 2026-08-25 at `v5.5.5`**
+([DEPENDENCIES](DEPENDENCIES.md), "ESP-IDF" in *Decided*), and CI now builds
+`firmware/` on that version and prints
+`| ESP32-S3 firmware build | COMPILED — ESP-IDF v5.5.5, flash and RAM variants |`
+([`.github/workflows/ci.yml:603`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
+The paragraph is kept rather than deleted because the constraint it describes is
+what the rest of this section reasons from.
 
 **One thing in the advice was genuinely new: nothing in this repository had ever
 considered that a static face ages an emissive panel.** That is now §1 and §3.5,
@@ -754,7 +757,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:567`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+    [`.github/workflows/ci.yml:603`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more

@@ -1,0 +1,71 @@
+# Waveshare ESP32-S3-Touch-AMOLED-2.06 — the board on the desk.
+#
+# Every value here traces to a fact in docs/research/, and the comment says
+# which. Nothing is copied from a vendor example without that trace, because a
+# vendor example is a claim about *their* build, not a measurement of this part.
+#
+# `idf.py set-target esp32s3` writes CONFIG_IDF_TARGET; it is here as well so a
+# clean checkout that skips that step still fails loudly rather than silently
+# building for something else.
+CONFIG_IDF_TARGET="esp32s3"
+
+# The die is ESP32-S3R8, revision v0.2, and no later revision exists. All eight
+# errata in sheet v1.3 apply — ESP32S3_ERRATA_V02.md. Minimum revision must stay
+# at 0 or the bootloader refuses this chip outright.
+# HARDWARE_MATRIX.md "Core", WAVESHARE_EFUSE_READ.md §1.1.
+CONFIG_ESP32S3_REV_MIN_0=y
+
+# Flash: GD25Q256EYIGR, JEDEC 0xC8 0x4019, physically 32 MB, quad, 3.3 V, and
+# the vendor's own bootloader brings it up QIO at 80 MHz.
+# WAVESHARE_EFUSE_READ.md §1.3.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# 16 MB, and the part is 32 MB. That is not a mistake: only the low half is
+# addressable by the ROM and the second-stage bootloader, and what a *running*
+# application may do above the line is UNKNOWN and unmeasured
+# (FLASH_ADDRESSING_LIMITS.md). Declaring the addressable size makes ESP-IDF's
+# own partition-table check enforce the ceiling as well, which is a free second
+# guard beside tools/flash/partition_check.py. It also means the bootloader
+# prints the mismatch on every boot — that log line is the reminder, and it
+# stops being one on the day somebody measures the upper half.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# PSRAM: 8 MB octal. The eFuses give capacity and rail — PSRAM_CAP = 8M,
+# PSRAM_VENDOR = AP_3v3, so R8 and not the 1.8 V R8V — and the datasheet's
+# Table 1-1 supplies the bus width, because no 8 MB quad in-package part exists.
+# GPIO33–37 (octal's DQ4–DQ7 and DQS) sit unrouted on the schematic, which is
+# where they belong on an octal part. D12a, HARDWARE_MATRIX.md "Core".
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# The only console this board exposes. There is no UART bridge: USB D-/D+ land
+# straight on GPIO 19/20, the SoC's native USB pins — HARDWARE_MATRIX.md "USB".
+#
+# The ROM's putc channel is left disabled, which is ESP-IDF's default and is
+# recorded here because it has already cost this project four debugging runs:
+# with it off, esp_rom_printf writes nowhere at all and an image that is running
+# perfectly looks dead. Use ESP_LOGx or printf.
+# WAVESHARE_RUNNING_OUR_CODE.md §2.4.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# A development table, and partitions.csv says so in its own header.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# The libraries under core/, platform/, link/ and l10n/ are C++17 and build
+# without exceptions or RTTI today. Keeping both off is ESP-IDF's default; it is
+# stated rather than inherited so that turning one on is a visible decision.
+CONFIG_COMPILER_CXX_EXCEPTIONS=n
+CONFIG_COMPILER_CXX_RTTI=n
+
+# Nothing here works around an erratum, and that is a checked statement rather
+# than an omission. All eight errata in sheet v1.3 apply to this die and none of
+# them wants a value in this file: six are handled automatically by ESP-IDF
+# behind hidden symbols that cannot be switched, USBOTG-4289 is an eFuse and not
+# a software matter, and TOUCH-100 is application code that belongs with the
+# touch driver (T-166). ADC-183's escape hatch,
+# CONFIG_ADC_CONTINUOUS_FORCE_USE_ADC2_ON_C3_S3, is deliberately left at its `n`
+# default — it re-enables a mode the erratum broke.
+# docs/research/ESP32S3_ERRATA_V02.md §1.

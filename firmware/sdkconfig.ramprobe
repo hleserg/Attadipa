@@ -1,0 +1,20 @@
+# Overlay: build an image that runs entirely from RAM and writes nothing to
+# flash. Use it with the flash profile, not instead of it:
+#
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+#
+# This is the route that is *proved* to work on this unit, and it is the one to
+# prefer for anything experimental, because there is nothing to undo afterwards.
+# The flash route to a second app partition is closed on this board — the free
+# `ota_1` slot sits at 0x1000000 and cannot be booted at all.
+# WAVESHARE_RUNNING_OUR_CODE.md §1 and §2.
+#
+# Loading it: tools/flash/ramhold.py, and read its header before reaching for
+# `esptool load-ram` instead. The CLI tool kills the image it just loaded, a few
+# milliseconds after reporting success, by closing the port.
+CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y
+
+# A RAM app has no partition table to read, and asking for one is a boot-time
+# failure rather than an empty answer.
+CONFIG_PARTITION_TABLE_CUSTOM=n
+CONFIG_PARTITION_TABLE_SINGLE_APP=y

@@ -178,9 +178,17 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME flash_spiffs_extract_refuses_mistakes
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/flash/spiffs_selftest.py)
+    # Two ESP32-S3 boards enumerate identically on this bench, so the loader
+    # resolves the watch by USB serial. The cases that matter are the refusals:
+    # picking the wrong board is a silent wrong answer, not an error.
+    # docs/research/BENCH_DEVICES.md.
+    add_test(NAME flash_ramhold_resolves_by_serial
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/ramhold_selftest.py)
     set_tests_properties(flash_partitions_below_ceiling
                          flash_partition_check_rejects_mistakes
                          flash_spiffs_extract_refuses_mistakes
+                         flash_ramhold_resolves_by_serial
                          PROPERTIES LABELS flash)
 
     # The other two asset checks have to *draw* something to know whether the
