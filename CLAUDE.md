@@ -272,8 +272,15 @@ A screen with the right elements on it is not done. Design is part of Done.
 
 ## Conventions
 
-- Code, comments, and documentation in English. The two specification documents
-  are the author's own and stay in Russian.
+- **Language follows the reader, not the surface.** Repository artefacts read
+  by CI or other agents — code, comments, documentation, commits, branch names,
+  pull-request titles and review findings — are English. The owner is addressed
+  in Russian in chat, status reports and questions. Owner-facing text on public
+  GitHub issues and pull requests is bilingual: English first, then Russian, so
+  both automation and the owner can read it. The two specification documents
+  and the owner's own files under `docs/ideas/` stay verbatim in Russian. This
+  convention does not govern product localisation; that remains `l10n/` and
+  ADR-0010. See [OD-24](docs/research/OWNER_DECISIONS.md#od-24--language-follows-the-reader).
 - **The README exists twice, and the two are one document.** `README.md` is the
   English original and [`README.ru.md`](README.ru.md) is its Russian version.
   Any change to one is made in the other **in the same commit** — not "later",

@@ -1318,3 +1318,21 @@ say `NOT EXECUTED — HARDWARE REQUIRED`.
 **Boundary:** reflashing is permitted because the factory image is backed up.
 Burning eFuses, enabling secure boot or flash encryption, writing production
 secrets, or destroying keys still each require an explicit owner request.
+
+---
+
+## OD-24 — Language follows the reader
+
+**Decided:** 2026-08-22, by the owner; recovered from closed-unmerged PR #126.
+
+Repository artefacts that CI or other agents consume are English: code,
+comments, documentation, commits, branch names, pull-request titles and review
+findings. The owner is addressed in Russian in a conversation, report or
+question. A public GitHub comment addressed to the owner serves both audiences,
+so its owner-facing prose is bilingual with English first; machine-readable
+markers and field names remain English.
+
+The exception is the owner's own text: the two specification documents and the
+owner-authored files under `docs/ideas/` remain verbatim in Russian. This is a
+reader convention, not a product-localisation decision; `l10n/` and ADR-0010
+continue to govern user-visible device strings.
