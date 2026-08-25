@@ -108,12 +108,25 @@ struct GnssCapabilities {
 struct GnssContext {
     Millis           since_last_fix{0};
 
-    // Direct evidence that usable ephemeris survived continuously powered
-    // receiver or backup storage. "We had a fix recently" is not evidence:
-    // the owner must clear this when neither main nor backup storage remains
-    // powered. This is why Hot does not also require `backup_retained` below —
-    // main power may never have gone away, while Warm specifically means the
-    // backup domain survived.
+    // Direct evidence that usable ephemeris survived — in a receiver whose own
+    // rail never dropped, or in a backup domain that stayed powered.
+    //
+    // "We had a fix a minute ago" is not that evidence, and deriving this flag
+    // from `since_last_fix` is the specific mistake this sentence exists to
+    // prevent: `next_state()` cuts the rail to `Off` on every `DeepSleep` and
+    // `PowerOff` where the backup domain is not *established as supported*, so
+    // a receiver can be minutes from a fix and holding nothing. **The owner
+    // clears this whenever neither the main rail nor the backup domain stayed
+    // up** — nothing below does it for them, which is why it is written here
+    // rather than left to be inferred.
+    //
+    // This is why `Hot` does not also require `backup_retained`, which `Warm`
+    // does, and the asymmetry is deliberate rather than an oversight. `Warm` is
+    // a claim about the backup domain specifically, so it needs that domain to
+    // have been powered. `Hot` is a claim about the data, and a receiver that
+    // has been tracking continuously still holds it with no backup domain at
+    // all — requiring one would refuse a hot start to the one receiver most
+    // certain to deserve it. `tests/test_power.cpp` pins both halves.
     bool             ephemeris_retained = false;
 
     // Whether the backup domain was actually kept powered — which is a
@@ -169,10 +182,18 @@ GnssState next_state(GnssState current, const GnssContext& context);
 const char* to_string(GnssState state);
 const char* to_string(StartKind kind);
 
-// For logs only. A future screen maps SupportState through
-// `label_of(SupportState) -> StringId`, as MeshCoreSupport already does, so
-// localization coverage can see every user-facing value. `Unknown` must remain
-// distinct from `Unsupported` on both routes.
+// For logs, and not for a screen.
+//
+// A screen reaches these through a future `label_of(SupportState) -> StringId`,
+// the route `MeshCoreSupport` already takes in `sim/labels.cpp`. English
+// returned from here and rendered directly would reach a Russian reader with
+// nothing able to notice: ADR-0010 §3's coverage check enumerates identifiers
+// that exist, so a string that never became one is invisible to it, and §3
+// names silence as the failure mode that survives to production.
+//
+// `Unknown` must stay distinct from `Unsupported` on both routes. Collapsing
+// them puts the fixed collision back one layer up, where it is harder to see
+// and nobody is testing for it.
 const char* to_string(SupportState state);
 
 }  // namespace attadipa::core
