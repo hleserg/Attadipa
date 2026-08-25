@@ -108,7 +108,7 @@ marked ANSWERED, and the revision half of it was carved out into D20.)
 | Charge indicator LED | driven by the AXP2101 `CHGLED` pin through R182 100 Ω | **no GPIO** — configured over I2C in the PMU | via 0x34 | — | VERIFIED |
 | USB device | D− and D+ land on GPIO 19 / GPIO 20 — the ESP32-S3 native USB pins | USB-Serial-JTAG and USB-OTG are both physically available | — | VBUS | VERIFIED |
 | RTC backup cell | MS412FE rechargeable coin cell, charged through D14 (1N4148) + 10 kΩ | holds `VCC_RTC` across a battery swap | — | VBACKUP | VERIFIED |
-| RTC square-wave out | PCF8563 `CLKOUT` → net `RTC_CLKOUT` | present as a net; **R126 not fitted** | via 0x51 | — | VERIFIED |
+| RTC square-wave out | PCF8563 `CLKOUT` → `RTC_CLKOUT` → test point `TP66`; R291 pulls the open-drain net to +3V3 through 10 kΩ | **no route to the ESP32-S3**. `R126` is unrelated: it is an unpopulated DRV2605L supply resistor | via 0x51 | — | VERIFIED — [RTC_SLOW_CLOCK](RTC_SLOW_CLOCK.md) |
 | Battery disconnect | MSK12C02-HB slide switch in series between the cell and `BAT` | mechanical only — firmware cannot sense or override it | — | — | VERIFIED |
 | Buttons | BOOT (GPIO 0) and RST both sit **on the GNSS daughterboard**, reaching the main board on FPC pins 2 and 6. PWR (SW7) wires to the AXP2101 `PWRON` pin — **it never reaches a GPIO**, so every press arrives as a PMU interrupt | — | — | — | VERIFIED |
 
@@ -344,7 +344,7 @@ the board with 3.57× the pixels. That is a convenient coincidence, not a plan.
 | Touch | FT3168 (driven by the FT5x06-family driver) | INT 38, RST 9, on main I2C | **`0x38`, CONFIRMED on the board** (S13) — it was previously driver source only. **It answers only after GPIO 9 is pulsed low→high**: absent from the scan with the pin untouched, still absent while the pin is held high, present after a 10 ms reset pulse. It then reads chip ID `0x64`, firmware `0x02`, vendor `0x11` — FocalTech's vendor byte and the ID the FT5x06/FT6x36 drivers expect; the mapping to a part number is UNKNOWN, no FT3168 datasheet obtained | D13 | **VERIFIED** — the reset *edge* is required, not the level, so this belongs in the BSP. [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.3 |
 | PMU | AXP2101 | main I2C | `0x34` — datasheet-fixed, no address-select pin. Table 6-1 gives write byte `0x68`, so `0x68` is **not** the 7-bit address | — | VERIFIED |
 | IMU | QMI8658, 6-axis. **The silicon reports `REVISION_ID = 0x7C`**, which is the value in `13-52-25 ∙ QMI8658A ∙ Rev A` — the document whose chapter 11 has a hardware pedometer. The QMI8658C Rev 0.6 document gives `0x79`, so **that document does not describe this part**, despite the schematic printing `QMI8658C` twice. **Board-frame axes are silkscreened beside it**: X toward the battery edge, Y toward the USB-C edge, Z as ⊙ out of the back face (H15, half answered) | main I2C; SDO/SA0 to GND, CS to VCC3V3 | **`0x6B`, MEASURED** — `0x6A` does not acknowledge. The schematic and revs 0.8/0.9/A are right; Rev 0.6's SA0-low → `0x6A` mapping is not this board | D13 | **VERIFIED** (was address CONFLICTING) — S13, bus scan and register read from a RAM app, [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.1–3.2 |
-| RTC | PCF85063ATL | main I2C | `0x51` — datasheet-fixed, NXP PCF85063A Rev. 7 §9.5.1 reserves `1010001` | D13 | VERIFIED |
+| RTC | PCF85063ATL | main I2C; `CLKOUT` has a no-connect marker and `CLKOE` has no destination | `0x51` — datasheet-fixed, NXP PCF85063A Rev. 7 §9.5.1 reserves `1010001` | D13 | VERIFIED — [RTC_SLOW_CLOCK](RTC_SLOW_CLOCK.md) |
 | Audio codec | ES8311 | I2S for data; **also an I2C control slave on the main bus** | `0x18` — R50 (10 kΩ) ties `Codec_CE` to AGND, and the vendor example states CE-low = `0x18` | D13 | VERIFIED |
 | Mic ADC | ES7210, **dual** digital microphones — **both fitted**, silkscreened `MIC1` and `MIC2` at opposite ends of the left edge | I2S for data; **also an I2C control slave on the main bus** | `0x40` — A1/A0 to AGND through R42/R43 (0 Ω), alternates R35/R36 marked NC, and the schematic prints `0x40` beside them | D13 | VERIFIED |
 | Amplifier enable | — | GPIO 46 | — | — | VERIFIED |
@@ -483,10 +483,10 @@ a typed descriptor rather than a flag.
 |---|---|
 | S1 | `Xinyuan-LilyGO/LilyGoLib`, `docs/hardware/lilygo-t-watch-s3-plus.md` — MIT |
 | S2 | `Xinyuan-LilyGO/LilyGoLib`, `src/LilyGoWatchS3.h` — radio build variants, charge defaults |
-| S3 | `Xinyuan-LilyGO/LilyGoLib`, `schematic/T_WATCH-S3 25-03-24.pdf` — **read**, 6 sheets; internal title block says `T_WATCH-2020&GPS_V08` Rev V1.4 |
+| S3 | `Xinyuan-LilyGO/LilyGoLib` @ `38e6f8dee3ba78b340512af9a013365ef248a7d0`, `schematic/T_WATCH-S3 25-03-24.pdf`, SHA-256 `3fc71eba5b30085b4fe20c6222df26230af0602ddff08e257b9cdf090c58d931` — **read visually**, 6 sheets; internal title block says `T_WATCH-2020&GPS_V08` Rev V1.4 |
 | S4 | `Xinyuan-LilyGO/LilyGoLib`, `schematic/T-Watch-S3-Plus-GPS V1.0 2025-04-29.pdf` — **read**, 1 sheet (GNSS daughterboard) |
 | S5 | `waveshareteam/ESP32-S3-Touch-AMOLED-2.06`, `README.md` — Apache-2.0 |
-| S6 | `waveshareteam/ESP32-S3-Touch-AMOLED-2.06`, `Schematic/…-V1.0.pdf` — **read**, 3 sheets, by text extraction; pin-to-net adjacency partially recoverable, see D3 and D13 |
+| S6 | `waveshareteam/ESP32-S3-Touch-AMOLED-2.06` @ `b099739ad0e33b34e5fbaae77f02bd84805d79a3`, `Schematic/…-V1.0.pdf`, SHA-256 `6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d` — **read visually and by text extraction**, 3 PDF pages; see D3 and D13 |
 | S7 | ESP Component Registry, `waveshare/esp32_s3_touch_amoled_2_06` v2.0.0 — Apache-2.0 |
 | S8 | arduino-esp32 variant `lilygo_twatch_s3/pins_arduino.h` (referenced by S1) |
 | S9 | **a physical `ESP32-S3-Touch-AMOLED-2.06`**, received and opened by the owner 2026-08-22 — four photographs of the assembled watch, the back cover, the cell and the mainboard, examined at full resolution. Silkscreen and populated-or-not only; see [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §0 for what a photograph is and is not evidence of |

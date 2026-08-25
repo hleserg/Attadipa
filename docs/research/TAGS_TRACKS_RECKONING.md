@@ -238,11 +238,12 @@ Apache-2.0 and actively maintained. **T-070**.
 Read the last two rows together. The instance count is not the problem; the
 `UNKNOWN` is. The ~0.87 mA figure excludes PLL settling, controller wake, host
 CPU time and the sleep floor — **which dominates**. The ~14× lever between
-3.3 mA and 230 µA is whether the SoC can sleep on a 32 kHz clock, and whether
-either board can is `UNKNOWN` on both: the T-Watch has a PCF8563 emitting
-32.768 kHz on `RTC_CLKOUT` by default with R126 unfitted, the net's destination
-is unrecorded, and `GPIO15` — the S3's `XTAL_32K_P` — is `VERIFIED` as the
-MAX98357A I²S word clock. **T-068**.
+3.3 mA and 230 µA is whether the SoC can sleep on a 32 kHz clock. T-068 / #268
+resolved the board route: **neither target board connects one as shipped**. On
+the T-Watch, PCF8563 `RTC_CLKOUT` terminates at test point `TP66`; on the
+Waveshare, PCF85063ATL `CLKOUT` is unconnected. The old `R126`
+statement was unrelated to the RTC. See
+[RTC_SLOW_CLOCK](RTC_SLOW_CLOCK.md). Actual board current remains `UNKNOWN`.
 
 Two further constraints that would bite a compliant implementation: Google's
 mandated *"at least once every 2 s"* cadence against ESP-IDF's own statement
