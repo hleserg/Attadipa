@@ -605,6 +605,39 @@ void test_motion_evidence_is_scoped_to_the_position_body()
     CHECK(body_of(PositionSource::Manual) == SensorBody::Unknown);
 }
 
+// And the half the test above cannot see, because it uses one source for every
+// observation: the body has to be checked on the BASELINE as well as on the
+// sample. `moved` is the distance from the previous fix, so a previous fix
+// measured on another body makes it a distance between two bodies — and the
+// detector then judged that with one body's stillness. A watch falling back to
+// its node's receiver is the ordinary case, not an exotic one.
+void test_a_change_of_body_is_not_a_movement()
+{
+    GnssObservation from_node = good_fix(0);
+    from_node.source = PositionSource::NodeGnss;
+    // Five hundred metres away: the node is in a bag on the other side of the
+    // building, and the watch has never left the desk.
+    GnssObservation from_watch = good_fix(600000, kLat + 45000);
+    from_watch.source = PositionSource::LocalGnss;
+
+    const MotionEvidence wrist_still{SensorBody::Watch, true, false};
+
+    TrustEvaluator evaluator;
+    evaluator.observe(from_node, PositionValidity::Valid, wrist_still, {}, at(0));
+    evaluator.observe(from_watch, PositionValidity::Valid, wrist_still, {}, at(600000));
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+    CHECK_NO_REASON(evaluator.engine(), TrustReason::PositionJump);
+    CHECK_STATE(evaluator.state(), TrustState::Trusted);
+
+    // The discontinuity costs one sample and no more: the watch's own next fix
+    // is compared against the watch's own previous one, and a teleport there is
+    // still a teleport.
+    GnssObservation watch_teleport = good_fix(1200000, kLat + 90000);
+    watch_teleport.source = PositionSource::LocalGnss;
+    evaluator.observe(watch_teleport, PositionValidity::Valid, wrist_still, {}, at(1200000));
+    CHECK_REASON(evaluator.engine(), TrustReason::MotionDisagreement);
+}
+
 // A receiver using more satellites than it can see has not made a marginal
 // reading; it has made an impossible one.
 void test_satellites_used_cannot_exceed_satellites_in_view()
@@ -1930,6 +1963,7 @@ int main()
     test_a_future_dated_altitude_is_checked_as_well_as_refused();
     test_a_still_wrist_is_evidence_and_an_unasked_one_is_not();
     test_motion_evidence_is_scoped_to_the_position_body();
+    test_a_change_of_body_is_not_a_movement();
     test_satellites_used_cannot_exceed_satellites_in_view();
     test_receiver_time_is_compared_against_device_time();
     test_a_hostile_receiver_time_is_still_a_disagreement();

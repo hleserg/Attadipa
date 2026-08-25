@@ -991,6 +991,59 @@ four more things at no cost:
 
 ## Recently completed
 
+- **The convergence guard restored by the recovery had never run once.**
+  `.github/workflows/claude-pr-review.yml` selects the reviewer's findings
+  comment, and it selected it with
+  `select(.body | startswith("<!-- attadipa-review-findings"))` — while the
+  prompt in the same file tells the reviewer to *begin* the comment with
+  `<!-- attadipa-ai-review -->` and to *end* it with the findings block. No
+  comment the prompt can produce starts with the findings marker, so
+  `finding_id` was always empty, `review-verdict.sh` always answered
+  `label=unknown`, no ledger was ever written and `round=` never left 0. #169's
+  rule — *an open finding holds the pull request iff it is FLOOR-category, or it
+  was first raised BEFORE the floor round* — was on `main` and inert, which is
+  the four-branches-stuck-at-`ai-review:blocking` state it was written to end.
+  Matched with `contains` now. It failed **closed**: nothing merged that should
+  not have.
+  **The test could not have caught it, and said the opposite.** The three
+  assertions covering that query read
+  `docs/automation/pending/169-review-convergence.patch`, and when the patch
+  landed the `else` branch awarded four passes saying *"the patch is applied;
+  these assertions moved with it"*. They had not moved. They assert the live
+  workflow now, plus the prompt line that makes `startswith` wrong, so changing
+  either half without the other goes red.
+- **Two places where an untrusted comment decided a verdict.** Both are in the
+  same file and both were unauthenticated writes into the rule that sets
+  `ai-review:pass`, on a public repository.
+  The ledger query filtered on the marker and on nothing else, so a comment
+  beginning `<!-- attadipa-review-ledger -->` from any account was picked by
+  `tail -1` over the real one — and `review-verdict.sh` reads `first_round` and
+  `status` out of the ledger for every finding, so a forged one could re-date a
+  pre-floor blocker into a deferred one or close a carried-over finding
+  outright. It filters on `github-actions[bot]`, the account that writes it.
+  And `review-published.sh` accepted `<!-- attadipa-ai-review -->` from **any**
+  author, so a drive-by comment during the run window turned a silent review
+  into a published one — which skips the step that strips the previous head's
+  `ai-review:pass`. The marker exists so an alternate publisher account can be
+  recognised, and it still does that and nothing more.
+- **Motion evidence was scoped to the sample and not to the baseline.**
+  ADR-0013 scopes a motion sample to a `SensorBody`, and
+  `TrustEvaluator::observe()` checked the sample. `moved` is the distance from
+  the *previous* fix, and the previous fix carried no body — so a stream that
+  mixes sources through one evaluator, which is what a watch falling back to its
+  node's receiver looks like, measured the gap between a bag and a wrist and
+  raised `MotionDisagreement` against a wrist the accelerometer said was still.
+  Reproduced against `main` before the fix and again after it. A change of body
+  is now a discontinuity: the position, altitude, satellites-in-view and
+  `local_comparable_` baselines are dropped and re-seeded from the new body,
+  which costs one sample. Every existing test used one source per evaluator, so
+  the whole suite stayed green over it; `test_a_change_of_body_is_not_a_movement`
+  is the one that does not. Replay traces 07, 08 and 15 carried
+  `motion moving watch` with no `source` line, which made
+  `body_of(PositionSource::Unknown)` `Unknown` and their
+  `expect no-reason motion-disagreement` assertions vacuous — they name their
+  source now.
+
 - **A node walking out of range was reported as the watch's own hardware.**
   [#174](https://github.com/hleserg/Attadipa/issues/174). Capability source
   selection existed twice in `core/src/capability_registry.cpp`:

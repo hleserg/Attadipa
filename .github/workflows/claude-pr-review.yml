@@ -512,14 +512,37 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           TRUSTED: ${{ env.ATTADIPA_TRUSTED_SCRIPTS }}
+          # WHOSE COMMENTS MAY DECIDE A VERDICT, named here rather than spelled
+          # inside the queries below, so that changing an account is an edit to
+          # a workflow rather than to a `jq` string nothing reads twice.
+          #
+          # The reviewer publishes as the account the action authenticates as.
+          # The ledger is written by this step, with `github.token`, so it
+          # arrives as `github-actions[bot]` — and the ledger query below had no
+          # author condition at all. This repository is public, so that was an
+          # unauthenticated write into the rule that sets `ai-review:pass`: a
+          # comment beginning with the ledger marker is picked by `tail -1` over
+          # the real one, and `review-verdict.sh` reads `first_round` and
+          # `status` out of it for every finding.
+          ATTADIPA_REVIEW_ACTOR: claude[bot]
+          ATTADIPA_LEDGER_ACTOR: github-actions[bot]
         run: |
           set -euo pipefail
           [ -n "${TRUSTED:-}" ] && [ -r "$TRUSTED/review-verdict.sh" ] || exit 0
           : > /tmp/previous-ledger.md
           : > /tmp/findings.md
-          ledger_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- attadipa-review-ledger -->")) | .id' | tail -1)
+          ledger_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_LEDGER_ACTOR) | select(.body | startswith("<!-- attadipa-review-ledger -->")) | .id' | tail -1)
           [ -z "$ledger_id" ] || gh api "repos/$REPO/issues/comments/$ledger_id" --jq '.body' > /tmp/previous-ledger.md
-          finding_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == "claude[bot]") | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not) | select(.body | startswith("<!-- attadipa-review-findings")) | .id' | tail -1)
+          # `contains`, NOT `startswith`, AND THE DIFFERENCE WAS THE WHOLE RULE.
+          # The prompt above tells the reviewer to BEGIN the comment with
+          # `<!-- attadipa-ai-review -->` and to END it with the findings block,
+          # so `startswith` on the findings marker matched nothing the reviewer
+          # can write: `finding_id` was always empty, `review-verdict.sh` always
+          # answered `label=unknown`, no ledger was ever written and the
+          # convergence rule of #169 never ran once. `_attadipa_block()` anchors
+          # on the first marker line itself, so matching the comment loosely
+          # here costs nothing.
+          finding_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_REVIEW_ACTOR) | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not) | select(.body | contains("<!-- attadipa-review-findings")) | .id' | tail -1)
           [ -z "$finding_id" ] || gh api "repos/$REPO/issues/comments/$finding_id" --jq '.body' > /tmp/findings.md
           bash "$TRUSTED/review-verdict.sh" /tmp/previous-ledger.md /tmp/findings.md 4 /tmp/new-ledger.md /tmp/deferred.md "$PR" > /tmp/verdict.txt
           label=$(sed -n 's/^label=//p' /tmp/verdict.txt)

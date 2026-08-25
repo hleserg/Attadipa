@@ -504,34 +504,42 @@ absent "a non-numeric issue number is refused rather than carried" "deferred_iss
 
 echo "Who wrote the findings block decides the label, so the query says whose"
 
-# This lives in the parked patch rather than in a workflow, so
-# `gh-api-usage-test.sh` cannot see it -- that one scans `.github/workflows`
-# only, and the blind spot is issue #179. The assertion belongs where it runs
-# today, which is here.
-patch_file="$here/../../docs/automation/pending/169-review-convergence.patch"
-if [ -f "$patch_file" ]; then
-  contains "the findings query filters on the author, not just on the marker"            'select(.user.login == env.ATTADIPA_REVIEW_ACTOR)' "$(cat "$patch_file")"
-  contains "the trusted account is named in the workflow, not inside the query"            'ATTADIPA_REVIEW_ACTOR: claude[bot]' "$(cat "$patch_file")"
-  contains "and the block is matched from its start, not anywhere in the body"            'startswith("<!-- attadipa-review-findings")' "$(cat "$patch_file")"
+# THESE ASSERT THE LIVE WORKFLOW, not a parked patch. They used to read
+# `docs/automation/pending/169-review-convergence.patch`, and when that patch
+# landed the `else` branch awarded four passes saying "the patch is applied;
+# these assertions moved with it". They had not moved: the workflow shipped an
+# inline `"claude[bot]"` in one query, no author condition at all in the other,
+# and a `startswith` that could never match. Four green ticks over three
+# defects. An assertion whose subject can disappear is not an assertion, so the
+# subject here is the file that actually runs.
+workflow="$here/../workflows/claude-pr-review.yml"
+if [ -f "$workflow" ]; then
+  wf="$(cat "$workflow")"
+  contains "the findings query filters on the author, not just on the marker"            'select(.user.login == env.ATTADIPA_REVIEW_ACTOR)' "$wf"
+  contains "the trusted reviewer account is named in the workflow, not in the query"      'ATTADIPA_REVIEW_ACTOR: claude[bot]' "$wf"
+  contains "the ledger query filters on its author too"                                   'select(.user.login == env.ATTADIPA_LEDGER_ACTOR)' "$wf"
+  contains "and the account that writes the ledger is named beside it"                    'ATTADIPA_LEDGER_ACTOR: github-actions[bot]' "$wf"
 
-  # The three above read the patch as text, which a patch keeps being long
-  # after it has stopped being appliable: edit a hunk body without correcting
-  # its `@@` counts and every `contains` still passes while `git apply`
-  # refuses. That is the rot #177 found in the other parked patch, so check
-  # the thing itself rather than its spelling.
-  if git -C "$here/../.." apply --check "$patch_file" 2>/dev/null; then
-    pass=$((pass + 1)); printf '  ok    the parked patch still applies to this tree
-'
-  else
-    fail=$((fail + 1))
-    printf '  FAIL  the parked patch no longer applies to this tree
-         run: git apply --check %s
-' "$patch_file"
-  fi
+  # THE ONE THAT COST #169 ITS WHOLE RULE. The prompt in this same file tells
+  # the reviewer to BEGIN the comment with `<!-- attadipa-ai-review -->` and to
+  # END it with the findings block, so a `startswith` on the findings marker
+  # matches nothing the reviewer can write -- `finding_id` empty, `label=unknown`,
+  # no ledger, no convergence, ever. Both halves are asserted: the match must be
+  # `contains`, and the prompt must still be the one that makes `startswith`
+  # wrong, so that changing either without the other goes red.
+  contains "the findings block is matched anywhere in the body, not from its start"       'contains("<!-- attadipa-review-findings")' "$wf"
+  contains "because the prompt puts another marker first"                                 'Begin the comment with the exact line' "$wf"
+  case "$wf" in
+    *'startswith("<!-- attadipa-review-findings")'*)
+      fail=$((fail + 1))
+      printf '  FAIL  the findings query is back to startswith, which the prompt makes unmatchable\n' ;;
+    *)
+      pass=$((pass + 1))
+      printf '  ok    the findings query is not back to startswith\n' ;;
+  esac
 else
-  pass=$((pass + 4))
-  printf '  ok    the patch is applied; these assertions moved with it
-'
+  fail=$((fail + 1))
+  printf '  FAIL  %s is missing, so nothing checked the queries that set the label\n' "$workflow"
 fi
 
 echo

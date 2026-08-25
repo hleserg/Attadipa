@@ -5,6 +5,18 @@ set -uo pipefail
 
 ATTADIPA_REVIEW_MARKER='<!-- attadipa-ai-review -->'
 ATTADIPA_REVIEW_AUTHOR='claude[bot]'
+# The marker admits a SECOND account, and only a second account.
+#
+# It exists so a repository that sets ATTADIPA_AGENT_TOKEN — publishing under
+# its own app rather than as `claude[bot]` — can still be recognised. It used to
+# admit ANY author: the clause was `login == $author OR body contains $marker`,
+# with nothing on the second half. This repository is public, so any account
+# could post a comment containing the marker and turn a silent review into a
+# published one — and `published` is what skips the step that strips the
+# previous head's `ai-review:pass`. A stale verdict then survived a head change
+# that nothing had reviewed. The marker still identifies the alternate
+# publisher; it no longer identifies everybody.
+ATTADIPA_REVIEW_MARKER_AUTHORS='["attadipa-agent[bot]"]'
 
 attadipa_review_published() {
   local ran="${1-}" outcome="${2-}" comments="${3-}" labels="${4-}" started="${5-}"
@@ -19,10 +31,14 @@ attadipa_review_published() {
 
   local fresh
   fresh="$(printf '%s' "$comments" | jq -r \
-    --arg since "$started" --arg author "$ATTADIPA_REVIEW_AUTHOR" --arg marker "$ATTADIPA_REVIEW_MARKER" '
+    --arg since "$started" --arg author "$ATTADIPA_REVIEW_AUTHOR" --arg marker "$ATTADIPA_REVIEW_MARKER" \
+    --argjson marker_authors "$ATTADIPA_REVIEW_MARKER_AUTHORS" '
       if type != "array" then error("comments are not an array") else . end
       | [ .[] | select(type == "object")
-          | select(((.user.login // "") == $author) or (((.body // "") | tostring | contains($marker))))
+          | select((.user.login // "") as $login
+                   | ($login == $author)
+                     or ((($marker_authors | index($login)) != null)
+                         and (((.body // "") | tostring | contains($marker)))))
           | select(((.created_at // "") >= $since) or ((.updated_at // "") >= $since)) ]
       | length' 2>/dev/null || true)"
   case "$fresh" in
