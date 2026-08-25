@@ -67,6 +67,9 @@ stale silently. The protocol is
   `main/` is also the one place allowed to link `attadipa_platform`: it is the
   composition root, which is where a board is chosen. ADR-0007 §5 binds
   *applications*, and `tests/boundary/` still enforces it where it applies.
+  CI now checks both final firmware ELFs for a real callable symbol from every
+  required library, and configuration fails if any direct dependency is removed;
+  compiling four unused archives is no longer accepted as linkage evidence.
 - **The partition table is a development table and says so in its own header.**
   It must not pre-empt **T-025**, the partitions/NVS/OTA ADR for two devices,
   which is what freezes it. There is no OTA slot, because a second app partition

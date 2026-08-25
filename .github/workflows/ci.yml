@@ -567,6 +567,7 @@ jobs:
           cd firmware
           idf.py set-target esp32s3
           idf.py build
+          python3 ../tools/flash/firmware_elf_check.py build/attadipa.elf
           # app_main owns the degraded-PSRAM diagnostic. Without this option,
           # ESP-IDF aborts before that diagnostic can run.
           grep -q "^CONFIG_SPIRAM_IGNORE_NOTFOUND=y$" sdkconfig
@@ -585,6 +586,7 @@ jobs:
           # calls it a RAM build. Prove the option actually took.
           grep -q "^CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y$" build-ram/sdkconfig
           python3 ../tools/flash/pure_ram_elf_check.py build-ram/attadipa.elf
+          python3 ../tools/flash/firmware_elf_check.py build-ram/attadipa.elf
 
   evidence:
     name: What this run did not prove

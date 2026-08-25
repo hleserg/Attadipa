@@ -33,12 +33,19 @@
 #endif
 
 #include "attadipa/core/diagnostics.h"
+#include "attadipa/link/link_state.h"
+#include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/platform/hardware_feature.h"
 
 namespace {
 
 constexpr char kTag[] = "attadipa";
+
+// The composition root owns link lifecycle state even before a concrete
+// transport adapter exists. Keeping the state here makes the diagnostic honest:
+// the model is alive, while the log below still says that no adapter is wired.
+attadipa::link::LinkState g_link_state;
 
 // Which board this build believes it is on. It is a build-time answer today
 // because there is exactly one board on the desk; when the T-Watch arrives this
@@ -70,22 +77,6 @@ attadipa::core::ResetReason translate_reset_reason(esp_reset_reason_t reason)
     case ESP_RST_EXT:      return ResetReason::ExternalPin;
     default:               return ResetReason::Unknown;
     }
-}
-
-const char* reset_reason_name(attadipa::core::ResetReason reason)
-{
-    using attadipa::core::ResetReason;
-    switch (reason) {
-    case ResetReason::PowerOn:       return "power-on";
-    case ResetReason::Software:      return "software";
-    case ResetReason::Panic:         return "panic";
-    case ResetReason::Watchdog:      return "watchdog";
-    case ResetReason::Brownout:      return "brownout";
-    case ResetReason::DeepSleepWake: return "deep-sleep wake";
-    case ResetReason::ExternalPin:   return "external pin";
-    case ResetReason::Unknown:       break;
-    }
-    return "unknown";
 }
 
 // Free heap in the two pools that fail independently. `largest free block` is
@@ -259,7 +250,8 @@ extern "C" void app_main(void)
 {
     const esp_app_desc_t* app = esp_app_get_description();
 
-    ESP_LOGI(kTag, "--- Attadipa boot -------------------------------------------");
+    ESP_LOGI(kTag, "--- %s boot -------------------------------------------",
+             attadipa::l10n::tr(attadipa::l10n::StringId::ProductName));
     ESP_LOGI(kTag, "Build      : %s %s, ESP-IDF %s", app->version, app->date,
              esp_get_idf_version());
 
@@ -280,9 +272,13 @@ extern "C" void app_main(void)
     snapshot.reset_reason   = translate_reset_reason(esp_reset_reason());
     fill_memory(snapshot.memory);
 
+    g_link_state.reset();
+
     ESP_LOGI(kTag, "Reset      : %s (ESP-IDF code %d)",
-             reset_reason_name(snapshot.reset_reason),
+             attadipa::core::to_string(snapshot.reset_reason),
              static_cast<int>(esp_reset_reason()));
+    ESP_LOGI(kTag, "Link model : %s (no transport adapter)",
+             attadipa::core::to_string(g_link_state.phase()));
 
     report_silicon();
     report_board_profile();

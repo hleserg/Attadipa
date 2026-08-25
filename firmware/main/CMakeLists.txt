@@ -31,3 +31,13 @@ target_link_libraries(${COMPONENT_LIB} PRIVATE
     attadipa_link
     attadipa_l10n
 )
+
+# Transitive dependencies can make a removed direct link look healthy (link,
+# for example, also brings core). Keep the composition-root contract explicit;
+# the ELF check in CI separately proves that each library contributed code.
+get_target_property(_attadipa_firmware_links ${COMPONENT_LIB} LINK_LIBRARIES)
+foreach(_required_library attadipa_core attadipa_platform attadipa_link attadipa_l10n)
+    if(NOT _required_library IN_LIST _attadipa_firmware_links)
+        message(FATAL_ERROR "Firmware must directly link ${_required_library}")
+    endif()
+endforeach()
