@@ -552,6 +552,46 @@ jobs:
           python3 ../tools/flash/pure_ram_elf_check.py build-ram/attadipa.elf
           python3 ../tools/flash/firmware_elf_check.py build-ram/attadipa.elf
 
+  required-ci:
+    name: Required CI
+    if: always()
+    needs:
+      - host-build
+      - strict-warnings
+      - clang
+      - sanitizers
+      - workflows
+      - docs
+      - simulator
+      - firmware-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs
+        env:
+          HOST_BUILD_RESULT: ${{ needs.host-build.result }}
+          STRICT_WARNINGS_RESULT: ${{ needs.strict-warnings.result }}
+          CLANG_RESULT: ${{ needs.clang.result }}
+          SANITIZERS_RESULT: ${{ needs.sanitizers.result }}
+          WORKFLOWS_RESULT: ${{ needs.workflows.result }}
+          DOCS_RESULT: ${{ needs.docs.result }}
+          SIMULATOR_RESULT: ${{ needs.simulator.result }}
+          FIRMWARE_BUILD_RESULT: ${{ needs.firmware-build.result }}
+        run: |
+          set -uo pipefail
+          failed=0
+          for name in \
+            HOST_BUILD_RESULT STRICT_WARNINGS_RESULT CLANG_RESULT \
+            SANITIZERS_RESULT WORKFLOWS_RESULT DOCS_RESULT \
+            SIMULATOR_RESULT FIRMWARE_BUILD_RESULT
+          do
+            result=${!name}
+            if [ "$result" != success ]; then
+              printf '%s=%s\n' "$name" "$result" >&2
+              failed=1
+            fi
+          done
+          exit "$failed"
+
   evidence:
     name: What this run did not prove
     runs-on: ubuntu-latest

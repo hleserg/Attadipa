@@ -14,8 +14,12 @@ push / pull request
         │     sanitizers                    ASan + UBSan        │
         │     host coverage                 artifact, not gate  │
         │     workflow lint                 actionlint          │
+        │     documentation consistency    repository contract │
         │     simulator                     both geometries     │
+        │     firmware build               flash + PURE_RAM    │
         │     evidence summary              what was NOT proved │
+        │              │                                         │
+        │              └── Required CI      stable merge gate   │
         │                                                        │
         ├── CodeQL             security-and-quality, host build │
         │                                                        │
@@ -35,8 +39,21 @@ push / pull request
 | **sanitizers** | out-of-bounds, use-after-free, leaks, undefined behaviour | one runner |
 | **coverage** | which of the logic has never been executed by a test | one runner |
 | **workflow lint** | a typo in the automation that decides who may drive an agent | seconds |
+| **documentation consistency** | broken links, citations and generated-site contracts | seconds |
 | **simulator** | that LVGL still renders at 240×240 and 410×502 | one runner + SDL2 |
+| **firmware build** | ESP32-S3 flash and PURE_RAM builds, ELF linkage and partition safety | one pinned ESP-IDF runner |
 | **CodeQL** | patterns a compiler does not look for | weekly plus per push |
+
+`Required CI` is the single ordinary status check required by the `main`
+ruleset. It runs after the eight mandatory CI jobs above (coverage and the
+evidence summary are deliberately optional) and fails unless every dependency
+finished with `success`; failure, cancellation and an unexpected skip all fail
+closed. CodeQL remains a separate native code-scanning requirement in the
+ruleset.
+
+The same active ruleset requires a pull request, blocks deletion and force
+pushes, requires no human approval, grants no standing bypass, and does not
+require a branch to be updated after an unrelated change lands on `main`.
 
 CodeQL is the one of these whose output needs a person. Every alert it
 raises is either fixed or written down in
