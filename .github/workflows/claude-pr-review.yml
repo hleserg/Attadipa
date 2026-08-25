@@ -374,90 +374,16 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TRUSTED: ${{ env.ATTADIPA_TRUSTED_SCRIPTS }}
           # Through the environment, never through `${{ }}` inside the script:
           # the value is assembled from a file the model's session wrote.
           DETAIL: ${{ steps.why.outputs.detail }}
         run: |
-          set -euo pipefail
-          # THE INVALIDATION COMES FIRST, and for the same reason as the silent
-          # step above (#240): everything below this line talks to the API, and
-          # under `set -e` any of it failing used to end the step before the
-          # previous head's `ai-review:pass` came off. The `|| true` this line
-          # used to carry is gone with it — a removal that failed reported
-          # success, which is the one thing this must not do.
-          #
-          # `ai-review:blocking` is deliberately NOT removed here. A blocking
-          # verdict from an older head is stale too, but stripping it releases a
-          # hold, and a review that did not run has said nothing that justifies
-          # releasing one.
-          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass
-          # Neither label is set. `ai-review:pass` would be a lie and
-          # `ai-review:blocking` would be a finding nobody made.
-          {
-            echo "<!-- attadipa-review-did-not-run:${SHA} -->"
-            echo "**The independent review did not run on \`${SHA:0:8}\`, so there is no verdict.**"
-            echo
-            echo "This says nothing about the diff."
-            echo
-            echo "${DETAIL}"
-            echo
-            echo "The usual causes, in the order they are worth checking:"
-            echo
-            echo "1. **A bot opened this pull request and \`allowed_bots\` does not name it.**"
-            echo "   The action refuses a non-User actor absent from that list, in about"
-            echo "   five seconds, before the model is reached and with no execution log —"
-            echo "   the same shape as causes 3 to 5, and for months it was not on this"
-            echo "   list, so every reader of it was steered somewhere else. The run log"
-            echo "   says \`Workflow initiated by non-human actor: NAME (type: Bot)\`. The"
-            echo "   fix is to name that actor in \`allowed_bots\`, never to widen it to"
-            echo "   \`'*'\`, which would let any installed GitHub App drive this."
-            echo "   Add a case to \`.github/tests/bot-actor-test.sh\` in the same commit."
-            echo "2. **A turn or time ceiling.** \`is_error: false\` with a turn count at or"
-            echo "   near \`--max-turns\` means the review worked and was cut off — the whole"
-            echo "   bill, none of the verdict. Raise the ceiling; do not re-run into it."
-            echo "3. **This pull request is BEHIND a \`main\` that changed"
-            echo "   \`.github/workflows/claude-*.yml\`** — the commonest cause by far, and"
-            echo "   the one that looks like all the others. The action requires the"
-            echo "   workflow file it runs to be byte-identical to the copy on the default"
-            echo "   branch, and a pull request runs from its own merge ref. So change that"
-            echo "   file on \`main\` and every open pull request whose merge ref predates"
-            echo "   the change is silently skipped, whatever it touches. The run log says"
-            echo "   \"Workflow validation failed\". **The fix is to update the branch from"
-            echo "   \`main\`, not to re-run.** Observed on #50 at 08:26 on 2026-08-22 — a"
-            echo "   documentation-only pull request that touches no workflow at all."
-            echo "4. **This pull request edits \`.github/workflows/claude-*.yml\` itself.** The"
-            echo "   action refuses to run a version of itself that a pull request has"
-            echo "   modified — otherwise a pull request could supply the prompt that"
-            echo "   reviews it. That refusal is correct, and it means changes to those"
-            echo "   files are merged on ordinary CI and a human reading them, never on an"
-            echo "   AI review. Same log line as cause 3, and no execution log either way."
-            echo "5. **The Anthropic credential.** A spent quota fails before the model is"
-            echo "   reached, in a second or so, and also writes no execution log."
-            echo "6. **A tool the session needed was not in \`--allowedTools\`.** This shows"
-            echo "   as \`is_error: true\` after real work — a non-trivial turn count and a"
-            echo "   non-zero cost, which is what tells it apart from causes 1 to 5."
-            echo "   **The log does not name the tool**, because \`show_full_output\` is off"
-            echo "   and tool results are where that name would appear. Turning it on is"
-            echo "   not the answer: tool results can carry tokens into a world-readable"
-            echo "   log. The \`Reason:\` line above, when there is one, is the most that"
-            echo "   can be said safely — \`.github/scripts/failure-reason.sh\` matches the"
-            echo "   log against a whitelist of error grammars and prints nothing else."
-            echo "   Where it says nothing, reason from what the review was trying to do."
-            echo
-            echo "Run: $RUN_URL"
-            echo
-            echo "Neither \`ai-review:pass\` nor \`ai-review:blocking\` has been set."
-          } > /tmp/no-review.md
-
-          # One note per head commit. The marker carries the SHA, because the
-          # previous version matched on the marker alone and therefore posted
-          # once per pull request *ever* — leaving a stale note pointing at a
-          # months-old run while every push after it failed silently. That is
-          # how the 2026-08-22 turn-limit failure was misread as a spent quota.
-          if gh api "repos/$REPO/issues/$PR/comments" --paginate \
-               --jq '.[].body' | grep -q "attadipa-review-did-not-run:${SHA}"; then
-            echo "::notice::already said so for ${SHA:0:8} on #$PR"
-          else
-            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/no-review.md
+          set -uo pipefail
+          if [ -n "${TRUSTED:-}" ] && [ -r "$TRUSTED/review-not-run.sh" ]; then
+            bash "$TRUSTED/review-not-run.sh"
+            exit $?
           fi
-          echo "::warning::The independent review could not run on ${SHA:0:8}; no verdict was recorded."
+          echo "::error::the trusted no-review helper was not staged"
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass
+          exit 1
