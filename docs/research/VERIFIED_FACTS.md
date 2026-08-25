@@ -1536,9 +1536,10 @@ constants.
   command was below this unit's useful visible floor.
 - **Touch measurement:** six earlier presses on the visible LVGL target
   produced `physical touch 1` through `6`. T-114 then replaced direct LVGL
-  registration with the shared `core::InputQueue` producer; that new physical
-  route still requires its final owner tap observation and is not silently
-  covered by the earlier six.
+  registration with the shared `core::InputQueue` producer. A later physical
+  tap through that producer changed the live screen to `TOUCH OK 1`; BOOT and
+  AXP2101 PWR presses also produced measured `down/up` pairs through the shared
+  queue.
 - **PMU/RTC measurement:** the candidate preserves unrelated AXP2101 enable
   bits while owning the three rails required by this slice. After a bench-only
   diagnostic set the previously invalid PCF85063 once, the production read path

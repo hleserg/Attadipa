@@ -102,18 +102,28 @@ I (...) watch-control: physical boot up
 This is MEASURED evidence for the GPIO0 producer, debounce, physical origin,
 shared `InputQueue` and its drain. GPIO10 polling produced no PWR events and was
 removed: the schematic does not support treating `SYS_OUT` as the key level.
-The replacement AXP2101 PWR negative/positive edge path is implemented from the
-primary register source; a physical PWR `down/up` observation remains
-**NOT EXECUTED — HARDWARE REQUIRED** until captured below.
+After flashing source HEAD `0413fcc`, one press of each case key produced:
+
+```text
+I (199964) watch-control: physical boot down
+I (200164) watch-control: physical boot up
+I (200364) watch-control: physical power down
+I (200564) watch-control: physical power up
+```
+
+This confirms the replacement AXP2101 PWR negative/positive edge path on the
+physical unit as well as the GPIO0 path.
 
 The earlier six FT3168 presses in `BRINGUP_2026-08-25.md` predate the shared
-queue producer. A physical touch through the new producer remains **NOT
-EXECUTED — HARDWARE REQUIRED** until the owner confirms it below.
+queue producer. On the same `0413fcc` run the owner tapped the visible target;
+the next physical screenshot was opened at original resolution and showed
+`TOUCH OK 1`. This is MEASURED evidence that the FT3168 producer routed the
+physical pointer transition through the shared `InputQueue` into LVGL.
 
 ## Evidence boundary
 
 This run proves the physical USB endpoint, automatic serial selection, complete
-RGB565 capture, orientation/colour order, bounded transfer, remote tap and
-physical BOOT path. It does not prove sunlight readability, panel gamma, touch
-sensitivity, PWR wake from an SoC-off state, sleep/wake lifecycle, or the two
-pending physical observations stated above.
+RGB565 capture, orientation/colour order, bounded transfer, remote tap and the
+physical touch, BOOT and PWR input paths. It does not prove sunlight
+readability, panel gamma, touch sensitivity across the panel, PWR wake from an
+SoC-off state or the sleep/wake lifecycle.

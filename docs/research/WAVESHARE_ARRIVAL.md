@@ -664,7 +664,7 @@ currently being asked of the owner on an ESTIMATE rather than a measurement.
 product page identify the case keys as PWR and BOOT. BOOT pulls GPIO0 low and
 produced two measured `down/up` pairs through the shared input queue. PWR reaches
 AXP2101 `PWRON`, not GPIO10 (`SYS_OUT`); firmware therefore consumes the PMU's
-positive/negative edge status. The final physical PWR event is tracked in
+positive/negative edge status. A measured physical PWR `down/up` pair is tracked in
 [`WATCH_CONTROL_2026-08-25`](../hardware/WATCH_CONTROL_2026-08-25.md), not
 guessed from a GPIO dump. *Closed:* D5.
 
