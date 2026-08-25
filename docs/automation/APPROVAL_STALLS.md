@@ -381,7 +381,7 @@ The intake gate is untouched and the actor check is the security boundary —
 nothing here reads it. **But Option A does change who may drive a write-capable
 agent, and an earlier version of this section said the opposite.** The
 anti-recursion boundary is a *login-name* test —
-`.github/scripts/intake-decision.sh:142` "|claude|github-actions)" rejects
+`.github/scripts/intake-decision.sh:148` "|claude|github-actions)" rejects
 `*"[bot]"`, `claude` and `github-actions`, and `queue-scan.jq` refuses the last
 two as producers because *"our own output would start a billable writer: exactly
 the loop the allowlist was built to avoid."* A fine-grained PAT belongs to a

@@ -121,6 +121,11 @@ jobs:
           # the cure is up-to-date-branch protection, which is the owner's to
           # turn on.
           MAX_PER_RUN=3
+          # One permission lookup per distinct non-bot commenter, and a bound on
+          # them: a pull request with a hundred participants must not spend a
+          # sweep on API calls. Past the bound the remaining logins stay
+          # `unknown`, which holds rather than merges, and the run says so.
+          MAX_PERMISSION_LOOKUPS=25
           MERGED=0
           REFUSED=0
           for PR in $PRS; do
@@ -247,49 +252,127 @@ jobs:
             # The other reviewer. Codex is configured on ChatGPT's side and does
             # not set `ai-review:pass`, so a finding of its reaches us only as a
             # comment -- and that it always arrives as a review thread was
-            # observed once, on #19, not promised anywhere. BOTH SHAPES COUNT,
-            # and the first version of this only read `issues/{n}/comments`,
-            # which is issue comments -- a Codex REVIEW BODY was invisible to it
-            # while the comment beside it said both shapes were counted.
+            # observed once, on #19, not promised anywhere. ALL THREE SHAPES
+            # COUNT, and the first version of this only read
+            # `issues/{n}/comments`, which is issue comments -- a Codex REVIEW
+            # BODY was invisible to it while the comment beside it said both
+            # shapes were counted.
             #
-            # AND "ANSWERED" MEANT ANY COMMENT BY ANYBODY AFTER IT, which fails
-            # open: the hand-over's own outcome comment, the reviewer's sticky
-            # comment, or a note from this very sweep all counted as an answer.
-            # A reply from a BOT is not somebody having read the finding. Only a
-            # non-bot comment after the last Codex comment counts, which is the
-            # reading "when in doubt do not merge" asks for.
+            # AND "ANSWERED" MEANT ANY COMMENT BY ANYBODY AFTER IT. Two rounds
+            # of narrowing did not reach the bottom of that. The first excluded
+            # bots, because the hand-over's outcome comment and the reviewer's
+            # sticky comment were closing findings by themselves. What was left
+            # -- `select(.bot | not)` -- was still a CLASSIFICATION standing in
+            # for an AUTHORISATION, on a public repository where anybody with an
+            # account can leave a comment, and the "answer" needed no relation
+            # to the finding beyond a later timestamp. Issue #130.
+            #
+            # So the facts are gathered here and the rule lives in a file that a
+            # test can execute: .github/scripts/codex-answered.sh. Three sources,
+            # because a reply relationship only exists in one of them --
+            # `pulls/{n}/comments` carries `in_reply_to_id`, and issue comments
+            # and review bodies carry nothing of the kind.
             #
             # Piped rather than `--jq`, for the reason given at the head of this
             # step: `gh` rejects `--slurp` together with `--jq`. Here it failed
-            # QUIETLY -- both reads are `|| CODEX_*=""`, so the rejection landed
-            # as "could not read its comments, leaving it alone" on every pull
+            # QUIETLY -- every read is `|| ..._=""`, so the rejection landed as
+            # "could not read its comments, leaving it alone" on every pull
             # request, which is the safe direction and therefore the one nobody
             # would have chased.
             CODEX_ISSUE="$(gh api --paginate --slurp \
               "repos/$REPO/issues/$PR/comments?per_page=100" 2>/dev/null \
               | jq 'if type=="array" and (.[0]|type)=="array" then add else . end
-                    | map({login: .user.login, at: .created_at, bot: (.user.type == "Bot")})' \
+                    | map({kind: "issue", login: .user.login, at: .created_at,
+                           bot: (.user.type == "Bot"), thread: null,
+                           body: (.body // "")})' \
               2>/dev/null)" || CODEX_ISSUE=""
             CODEX_REVIEW="$(gh api --paginate --slurp \
               "repos/$REPO/pulls/$PR/reviews?per_page=100" 2>/dev/null \
               | jq 'if type=="array" and (.[0]|type)=="array" then add else . end
                     | map(select(.body != "" and .body != null)
-                          | {login: .user.login, at: .submitted_at, bot: (.user.type == "Bot")})' \
+                          | {kind: "review", login: .user.login, at: .submitted_at,
+                             bot: (.user.type == "Bot"), thread: null,
+                             body: (.body // "")})' \
               2>/dev/null)" || CODEX_REVIEW=""
+            # `in_reply_to_id // id` is GitHub's own thread root: every comment
+            # in a thread but the first carries the first one's id, and the
+            # first carries none. That is the only structural link between a
+            # finding and a reply that this API offers, and it is why inline
+            # comments do not need the written acknowledgement that issue
+            # comments and review bodies do.
+            CODEX_INLINE="$(gh api --paginate --slurp \
+              "repos/$REPO/pulls/$PR/comments?per_page=100" 2>/dev/null \
+              | jq 'if type=="array" and (.[0]|type)=="array" then add else . end
+                    | map({kind: "review-comment", login: .user.login, at: .created_at,
+                           bot: (.user.type == "Bot"), thread: (.in_reply_to_id // .id),
+                           body: (.body // "")})' \
+              2>/dev/null)" || CODEX_INLINE=""
 
-            if [ -z "$CODEX_ISSUE" ] || [ -z "$CODEX_REVIEW" ]; then
+            if [ -z "$CODEX_ISSUE" ] || [ -z "$CODEX_REVIEW" ] || [ -z "$CODEX_INLINE" ]; then
               # A read that failed is not a repository with nothing outstanding.
               echo "::notice::#$PR: could not read its comments, leaving it alone"
               continue
             fi
-            CODEX="$(jq -n --argjson a "$CODEX_ISSUE" --argjson b "$CODEX_REVIEW" '
-              ($a + $b) as $all
-              | ([$all[] | select(.login == "chatgpt-codex-connector[bot]") | .at] | max) as $last
-              | if $last == null then 0
-                else ([$all[] | select(.bot | not) | select(.at > $last)] | length
-                      | if . > 0 then 0 else 1 end)
-                end' 2>/dev/null)" || CODEX=1
-            case "$CODEX" in ''|*[!0-9]*) CODEX=1 ;; esac
+            RECORDS="$(jq -n --argjson a "$CODEX_ISSUE" --argjson b "$CODEX_REVIEW" \
+                             --argjson c "$CODEX_INLINE" '$a + $b + $c' 2>/dev/null)" || RECORDS=""
+
+            # ASK ONCE BEFORE PAYING FOR THE ANSWER. With no `permission` field
+            # on any record the rule reads them all as unverified, so it can
+            # still answer `0` -- and it answers `0` for exactly one reason:
+            # the other reviewer never commented on this pull request. Most
+            # never carry a finding, and this is 48 runs a day, so the
+            # permission lookups below happen only where a finding exists.
+            #
+            # This also keeps the Codex logins in ONE place, inside the rule.
+            # Testing for them here as well would be a second list, and a
+            # second list is a list that will disagree.
+            CODEX=unknown
+            if [ -n "$RECORDS" ]; then
+              CODEX="$(printf '%s' "$RECORDS" \
+                       | bash .github/scripts/codex-answered.sh "$COMMITTED" 2>/dev/null)" || CODEX=unknown
+            fi
+
+            if [ "$CODEX" != "0" ] && [ -n "$RECORDS" ]; then
+              # WHO IS ENTITLED TO ANSWER, established rather than assumed. This
+              # is the same call the intake gate makes before starting a
+              # billable writer -- `repos/{repo}/collaborators/{login}/permission`
+              # -- and it needs no permission this job does not already hold. A
+              # lookup that fails is `unknown`, not `none`: both hold the merge,
+              # but only one of them is true, and a log that says the wrong one
+              # sends somebody chasing a stranger who does not exist.
+              PERMS='{}'
+              LOOKED=0
+              for LOGIN in $(printf '%s' "$RECORDS" \
+                             | jq -r '[.[] | select(.bot == false) | .login] | unique | .[]' 2>/dev/null); do
+                if [ "$LOOKED" -ge "$MAX_PERMISSION_LOOKUPS" ]; then
+                  # No silent cap. The logins past it stay `unknown`, which
+                  # holds if one of them was the answer, and says so here.
+                  echo "::notice::#$PR: more than $MAX_PERMISSION_LOOKUPS distinct commenters; the rest count as unverified"
+                  break
+                fi
+                LOOKED=$((LOOKED + 1))
+                PERM="$(gh api "repos/$REPO/collaborators/$LOGIN/permission" \
+                        --jq .permission 2>/dev/null)" || PERM=""
+                case "$PERM" in
+                  admin|maintain|write|triage|read|none) : ;;
+                  *) PERM=unknown ;;
+                esac
+                PERMS="$(jq -n --argjson m "$PERMS" --arg l "$LOGIN" --arg p "$PERM" \
+                         '$m + {($l): $p}' 2>/dev/null)" || PERMS='{}'
+              done
+
+              CODEX=unknown
+              RECORDS="$(jq -n --argjson r "$RECORDS" --argjson p "$PERMS" \
+                '[ $r[] | . + {permission: ($p[.login] // "unknown")} ]' 2>/dev/null)" || RECORDS=""
+              if [ -n "$RECORDS" ]; then
+                CODEX="$(printf '%s' "$RECORDS" \
+                         | bash .github/scripts/codex-answered.sh "$COMMITTED" 2>/dev/null)" || CODEX=unknown
+              fi
+            fi
+            case "$CODEX" in
+              unknown) : ;;
+              ''|*[!0-9]*) CODEX=unknown ;;
+            esac
 
             VERDICT="$(bash .github/scripts/merge-candidate.sh \
               "$CHECKS" "$LABELS" "$UNRESOLVED" "$CODEX" \

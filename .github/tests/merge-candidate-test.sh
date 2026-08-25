@@ -146,6 +146,12 @@ starts "an unresolved review thread refuses" "HOLD 1 unresolved review thread" \
 starts "an unanswered Codex comment refuses, review thread or not" \
                                 "HOLD 2 unanswered comment" \
                                  "success" "ai-review:pass" 0 2 clean false "$OLD"
+ok "an unknown Codex-answer state holds rather than becoming a zero" \
+                                "HOLD could not establish whether the other reviewer's findings were answered" \
+                                 "success" "ai-review:pass" 0 unknown clean false "$OLD"
+ok "an empty Codex-answer state holds rather than becoming a zero" \
+                                "HOLD could not establish whether the other reviewer's findings were answered" \
+                                 "success" "ai-review:pass" 0 "" clean false "$OLD"
 
 echo
 echo "How old the code is"
