@@ -340,6 +340,9 @@ jobs:
       - name: A completed review reaches the pull request
         run: bash .github/tests/review-published-test.sh
 
+      - name: A re-review eventually converges without weakening floor findings
+        run: bash .github/tests/review-verdict-test.sh
+
       - name: The pull-request queue has a bounded width
         run: bash .github/tests/wip-limit-test.sh
 

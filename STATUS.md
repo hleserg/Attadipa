@@ -1789,7 +1789,7 @@ four more things at no cost:
 
   **This branch then broke the parked #75 patch and nothing noticed, which is
   the strongest evidence the parked-patch guard has.** Round five moved the
-  `ci.yml:499` citation to `:500` — correctly, because a comment above it grew
+  CI line 499 citation to line 500 — correctly, because a comment above it grew
   by a line — and `docs/automation/pending/75-approval-stall.patch` *removes*
   that exact line at two sites. `git apply` matches removed lines byte-exactly,
   with no fuzz, and is all-or-nothing, so the whole 34 KB patch stopped
