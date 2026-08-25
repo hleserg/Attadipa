@@ -20,7 +20,7 @@ Required for every entry:
 
 | Dependency | Pinned at | Licence | Upgrade strategy |
 |---|---|---|---|
-| **ESP-IDF** | **v5.5.5** — `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013`, 2026-07-16 | Apache-2.0 | tagged releases only, and **never below v5.5.5**: the `spi_flash_mmap` refusal above `0x1000000` was added in that release and is a safety property on the Waveshare's 32 MB part, not a convenience — [FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) §4.1. A bump retests `firmware/` for both boards, re-reads the `sdkconfig.defaults` symbols (Kconfig names move between minor releases) and re-runs the RAM-load route, because that path is the one with no fallback |
+| **ESP-IDF** | **v5.5.5** — `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013`, 2026-07-16 | Apache-2.0 | tagged releases only, and **never below v5.5.5** while this pin is in force: that release adds a useful refusal for `spi_flash_mmap` above `0x1000000`, but it is defence-in-depth for one path, not the safety boundary — read, write and erase remain unguarded, so the binding rule is still that Attadipa places and accesses nothing above the ceiling ([FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) §§4–5). A bump retests `firmware/` for both boards, re-reads the `sdkconfig.defaults` symbols (Kconfig names move between minor releases) and re-runs the RAM-load route, because that path is the one with no fallback |
 | **LVGL** | **v9.5.0** — `85aa60d18b3d5e5588d7b247abf90198f07c8a63`, 2026-02-18 | MIT | tagged releases only. Retest both geometries, the font-subset size and asset regeneration on every bump |
 | **MeshCore** | `d92964352441e53b93e8667b802e04f6e072b39e`, 2026-08-14, tag `companion-v1.17.1` | MIT | upstream is active. Re-run the radio census (`grep RADIO_CLASS variants/`) on every bump — [ADR-0003](../adr/0003-radio-not-lora.md) is *about* this revision |
 | **RadioLib** | `510e00cfb05bbc3c2b7b524262785454944adb6e`, tag **7.7.1**, 2026-08-13 | MIT | follows MeshCore's pin |
@@ -113,9 +113,9 @@ was not abstract — the development host had drifted onto `master`
 | Requirement | v5.5.5 |
 |---|---|
 | A tagged release, not a branch | yes. `master` cannot be reproduced by a CI image or by the next person to install a toolchain, and final §76 forbids floating versions for the same reason it forbids them for LVGL |
-| Refuses a flash mapping above `0x1000000` | **yes, and this is the deciding one.** The constant appears in v5.5.5 and in no earlier release checked — `v5.5.4`, `v5.5.3`, `v5.5.2`, `v5.5.1`, `v5.4.2`, `v5.3.3`. Below this line `spi_flash_mmap` maps an address that aliases into the low half of a 32 MB part and reports success |
-| Vendor-supported for the board on the desk | yes. Waveshare states support for **v5.5.5 and v6.0.2**, and its BSP v2.0.0 requires `idf >= 5.3` |
-| LVGL 9.5.0 | yes — the `idf_component.yml` path, which is how LVGL is consumed on device |
+| Refuses a flash mapping above `0x1000000` | **yes, for `mmap` only.** The constant appears in v5.5.5 and in no earlier release checked — `v5.5.4`, `v5.5.3`, `v5.5.2`, `v5.5.1`, `v5.4.2`, `v5.3.3`. This is defence-in-depth; it does not guard the destructive read/write/erase paths and does not replace the repository ceiling rule |
+| Vendor-supported for the board on the desk | Waveshare states support for **v5.5.5 and v6.0.2**, and its BSP v2.0.0 requires `idf >= 5.3`; the vendor image actually read from this unit reports **v5.5.1-dirty**, so the statement is vendor documentation rather than a measurement of its v5.5.5 BSP path |
+| LVGL 9.5.0 | **NOT EXECUTED on the physical board.** The host simulator uses the pin, but device compatibility with the BSP/display path remains hardware work |
 | Continuity with what this repository has already measured | yes. Every hardware result on file — the RAM-load route, the I2C scan, the `ota_1` finding — was produced by a v5.5.x toolchain, and `FLASH_ADDRESSING_LIMITS` traces v5.5.5's sources specifically |
 
 **Rejected — `v6.0.2`.** Waveshare supports it and it is newer. Rejected for

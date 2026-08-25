@@ -173,6 +173,15 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME flash_partition_check_rejects_mistakes
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/flash/selftest.py)
+    add_test(NAME flash_backup_is_published_only_after_verification
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/backup_flash_selftest.py)
+    add_test(NAME flash_pure_ram_elf_checker_rejects_flash_symbols
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/pure_ram_elf_check.py --self-test)
+    add_test(NAME firmware_elf_checker_requires_all_libraries
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/firmware_elf_check.py --self-test)
     add_test(NAME flash_spiffs_extract_refuses_mistakes
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/flash/spiffs_selftest.py)
@@ -185,6 +194,9 @@ if(Python3_Interpreter_FOUND)
                      ${CMAKE_SOURCE_DIR}/tools/flash/ramhold_selftest.py)
     set_tests_properties(flash_partitions_below_ceiling
                          flash_partition_check_rejects_mistakes
+                         flash_backup_is_published_only_after_verification
+                         flash_pure_ram_elf_checker_rejects_flash_symbols
+                         firmware_elf_checker_requires_all_libraries
                          flash_spiffs_extract_refuses_mistakes
                          flash_ramhold_resolves_by_serial
                          PROPERTIES LABELS flash)

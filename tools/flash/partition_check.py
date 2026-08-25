@@ -30,9 +30,9 @@ would be used once in a hurry and then forever.
 
     python3 tools/flash/partition_check.py [FILE ...]
 
-With no arguments it checks every `*partition*.csv` in the repository. It is
-also the reason blank offsets are refused rather than computed — see
-`parse_table` below.
+With no arguments it checks the repository's required firmware table and any
+additional `*partition*.csv` files. It is also the reason blank offsets are
+refused rather than computed — see `parse_table` below.
 
 This is **not** a replacement for ESP-IDF's `gen_esp32part.py`, which validates
 far more and knows nothing about this ceiling. When there is a firmware project
@@ -69,7 +69,7 @@ DEFAULT_TABLE_OFFSET = 0x8000
 DEFAULT_TABLE_SIZE = 0x1000
 DEFAULT_FLASH_SIZE = 32 * 1024 * 1024
 
-APP_TYPES = {"app", "0"}
+EXPECTED_TABLES = (Path("firmware/partitions.csv"),)
 
 SIZE = re.compile(r"^(0x[0-9a-fA-F]+|\d+)([KMkm]?)$")
 
@@ -110,6 +110,15 @@ def parse_number(text: str) -> int:
     return value
 
 
+def is_app_type(text: str) -> bool:
+    if text == "app":
+        return True
+    try:
+        return int(text, 0) == 0
+    except ValueError:
+        return False
+
+
 def parse_table(path: Path) -> tuple[list[Row], list[str]]:
     """Read one partition CSV. Returns the rows and any parse problems.
 
@@ -128,7 +137,16 @@ def parse_table(path: Path) -> tuple[list[Row], list[str]]:
     rows: list[Row] = []
     problems: list[str] = []
 
-    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    if not path.is_file():
+        return rows, [f"{path}: not a regular file"]
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        return rows, [f"{path}: not valid UTF-8: {exc}"]
+    except OSError as exc:
+        return rows, [f"{path}: cannot read table: {exc}"]
+
+    for lineno, raw in enumerate(lines, 1):
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
@@ -164,14 +182,39 @@ def parse_table(path: Path) -> tuple[list[Row], list[str]]:
         rows.append(Row(path, lineno, name, ptype.lower(), subtype.lower(),
                         offset, size))
 
+    if not rows and not problems:
+        problems.append(f"{path}: contains no partitions")
     return rows, problems
 
 
 def check_table(rows: list[Row], flash_size: int, first_legal: int) -> list[str]:
     """Every rule, applied to every row. Reports all findings, not the first."""
     problems: list[str] = []
+    names: dict[bytes, Row] = {}
 
     for row in rows:
+        encoded_name = row.name.encode("utf-8")
+        if len(encoded_name) > 16:
+            problems.append(
+                f"{row.where()}: partition name is {len(encoded_name)} UTF-8 "
+                f"bytes; maximum is 16"
+            )
+        stored_name = encoded_name[:16]
+        if stored_name in names:
+            previous = names[stored_name]
+            if row.name == previous.name:
+                problems.append(
+                    f"{row.where()}: duplicate partition name; first used at "
+                    f"{previous.where()}"
+                )
+            else:
+                problems.append(
+                    f"{row.where()}: partition name has the same first 16 "
+                    f"UTF-8 bytes as {previous.where()}"
+                )
+        else:
+            names[stored_name] = row
+
         if row.size == 0:
             problems.append(f"{row.where()}: size is zero")
             continue
@@ -186,7 +229,7 @@ def check_table(rows: list[Row], flash_size: int, first_legal: int) -> list[str]
                 f"{row.where()}: size {row.size:#x} is not a multiple of the "
                 f"{SECTOR_SIZE:#x}-byte erase sector"
             )
-        if row.type in APP_TYPES and row.offset % APP_ALIGNMENT:
+        if is_app_type(row.type) and row.offset % APP_ALIGNMENT:
             problems.append(
                 f"{row.where()}: an app partition must start on a "
                 f"{APP_ALIGNMENT:#x} boundary, not {row.offset:#x}"
@@ -233,7 +276,10 @@ def check_table(rows: list[Row], flash_size: int, first_legal: int) -> list[str]
                 f"docs/research/FLASH_ADDRESSING_LIMITS.md"
             )
 
-    ordered = sorted((row for row in rows if row.size), key=lambda r: r.offset)
+    ordered = sorted(
+        (row for row in rows if row.size and row.end <= 2 ** 32),
+        key=lambda r: r.offset,
+    )
     for earlier, later in zip(ordered, ordered[1:]):
         if later.offset < earlier.end:
             problems.append(
@@ -253,14 +299,14 @@ def discover(root: Path) -> list[Path]:
     tools/flash/selftest.py runs them, and asserts the refusal.
     """
     skip = {".git", "docs", "build"}
-    found = []
+    found = [root / path for path in EXPECTED_TABLES]
     for path in sorted(root.rglob("*.csv")):
         parts = set(path.relative_to(root).parts)
         if parts & skip or "fixtures" in parts:
             continue
-        if "partition" in path.name.lower():
+        if "partition" in path.name.lower() and path not in found:
             found.append(path)
-    return found
+    return sorted(found)
 
 
 def main() -> int:
@@ -281,16 +327,6 @@ def main() -> int:
 
     root = Path(__file__).resolve().parents[2]
     files = args.files or discover(root)
-
-    if not files:
-        # Not a pass dressed up as one. There is genuinely no firmware project
-        # in this repository yet (issue #127 says so in its first paragraph),
-        # so there is no table to check — and this check starts biting the
-        # moment the first one lands, which is the point of registering it now
-        # rather than then.
-        print(f"partition_check: no partition tables under {root} "
-              f"(looked for **/*partition*.csv). Nothing was checked.")
-        return 0
 
     problems: list[str] = []
     total = 0

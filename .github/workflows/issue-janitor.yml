@@ -19,11 +19,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          gh issue list --repo "$REPO" --state open --limit 100 --json number,title,body | jq -c '.[]' > /tmp/issues.jsonl
+          gh issue list --repo "$REPO" --state open --limit 100 --json number,body | jq -c '.[]' > /tmp/issues.jsonl
 
           while read -r issue; do
             NUMBER=$(echo "$issue" | jq -r '.number')
-            TITLE=$(echo "$issue" | jq -r '.title')
             BODY=$(echo "$issue" | jq -r '.body // ""')
 
             # Conservative automatic cleanup only.
