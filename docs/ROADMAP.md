@@ -6,6 +6,11 @@ because that question stopped answering itself.
 
 Written 2026-08-24, after an independent cold read of the repository.
 
+> **Update 2026-08-25:** T-165 added the ESP-IDF project and Attadipa now boots
+> from flash on the Waveshare unit. The diagnosis below records the state when
+> this ordering decision was made; its result is unchanged. T-166 is now the
+> next device slice: display, touch, PMU rails and RTC.
+
 ## Where the project actually is
 
 The engineering base is genuinely strong: a capability model with two layers and
@@ -15,7 +20,7 @@ channel that screenshots the interface and injects input, and a queue that turns
 findings into issues into branches into reviewed pull requests without a person
 carrying prompts between agents.
 
-And **none of it has ever run on a watch.**
+At the time of this decision, **none of it had ever run on a watch.**
 
 That is not an impression. It is what the tree says:
 

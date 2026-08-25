@@ -1,0 +1,24 @@
+# Attadipa development partition table — Waveshare ESP32-S3-Touch-AMOLED-2.06.
+#
+# DEVELOPMENT TABLE, and labelled one deliberately. T-025 is the ADR that
+# freezes partitions, NVS and OTA across both boards; this table is allowed to
+# change until it lands and must not be read as pre-empting it. There is no OTA
+# slot here because a second app partition is a decision that ADR owns, not a
+# default worth inheriting.
+#
+# Every offset below is under 0x1000000, and that ceiling is a measurement
+# rather than a preference: the second-stage bootloader addresses flash with 24
+# bits, so 0x1000000 aliases to 0x0. The vendor ships an `ota_1` at exactly that
+# address which has never booted and cannot — WAVESHARE_RUNNING_OUR_CODE.md §1.
+# `tools/flash/partition_check.py` checks every repository CSV independently.
+# ESP-IDF also validates this generated table against the declared 16 MB size,
+# and its bootloader rejects an over-limit flashed table before app_main.
+#
+# Offsets are written out rather than left blank on purpose: partition_check.py
+# refuses a blank offset rather than computing one, so that what is checked is
+# what the flash will hold.
+#
+# Name,      Type, SubType,  Offset,    Size,     Flags
+nvs,         data, nvs,      0x9000,    0x6000,
+phy_init,    data, phy,      0xf000,    0x1000,
+factory,     app,  factory,  0x10000,   0x400000,
