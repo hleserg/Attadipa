@@ -155,7 +155,20 @@ constexpr std::uint8_t from_bcd(std::uint8_t value) {
   return static_cast<std::uint8_t>((value >> 4) * 10 + (value & 0x0F));
 }
 
-static_assert(valid_bcd(0x59) && !valid_bcd(0x5A) && from_bcd(0x59) == 59);
+constexpr unsigned days_in_month(unsigned year, unsigned month) {
+  constexpr std::uint8_t kDays[] = {31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  if (month == 0 || month > 12) {
+    return 0;
+  }
+  const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+  return month == 2 && leap ? 29 : kDays[month - 1];
+}
+
+static_assert(valid_bcd(0x59) && !valid_bcd(0x5A) && from_bcd(0x59) == 59 &&
+              days_in_month(2024, 2) == 29 &&
+              days_in_month(2023, 2) == 28 &&
+              days_in_month(2024, 4) == 30 && days_in_month(2024, 0) == 0);
 
 esp_err_t read_rtc(RtcDateTime *time) {
   constexpr std::uint8_t kSecondsRegister = 0x04;
@@ -182,8 +195,9 @@ esp_err_t read_rtc(RtcDateTime *time) {
            from_bcd(values[3]),         from_bcd(values[2]),
            from_bcd(values[1]),         from_bcd(values[0])};
   if ((raw[0] & 0x80) != 0 || time->second > 59 || time->minute > 59 ||
-      time->hour > 23 || time->day == 0 || time->day > 31 || time->month == 0 ||
-      time->month > 12 || (raw[4] & 0x07) > 6) {
+      time->hour > 23 || time->day == 0 ||
+      time->day > days_in_month(time->year, time->month) ||
+      (raw[4] & 0x07) > 6) {
     return ESP_ERR_INVALID_RESPONSE;
   }
   return ESP_OK;

@@ -1,5 +1,5 @@
 dependencies:
-  espressif/esp_lcd_co5300: "^2.0.3"
-  espressif/esp_lcd_touch_ft5x06: "~1.1.1"
-  esp_lvgl_port: "~2.8.0"
-  lvgl/lvgl: "~9.5.0"
+  espressif/esp_lcd_co5300: "2.1.0"
+  espressif/esp_lcd_touch_ft5x06: "1.1.1"
+  esp_lvgl_port: "2.8.0~1"
+  lvgl/lvgl: "9.5.0"
