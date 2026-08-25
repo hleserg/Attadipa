@@ -2932,6 +2932,68 @@ A1's schematic-revision
 
 ## DONE
 
+### T-174 · The queue's width limit asked `gh` for a field it does not have — **DONE** 2026-08-25
+- **Priority:** P1
+- **Dependencies:** none. Issue
+  [#239](https://github.com/hleserg/Attadipa/issues/239), reviewing
+  `945c16a..36e1ba9`.
+- **Goal:** `.github/scripts/wip-limit.sh` asked `gh pr list --json` for
+  `baseRepository`, a name that belongs to the REST API and that the CLI does
+  not have. `gh` answers `Unknown JSON field: "baseRepository"` and exits 1
+  before making a request; `2>/dev/null || true` discarded that, the empty
+  payload normalised to nothing, and the decision fell through to `unknown`.
+  So `full` and `incident` were unreachable states and the WIP policy
+  *2 normal / 3 hard* was enforced on nothing from #216 onwards — observed on
+  #219, #236 and #237, each of which got
+  `Could not determine the active pull-request count`. Codex named the exact
+  field reviewing #216 and the merged implementation did not carry the
+  correction.
+- **Why nothing caught it:** the suite called the pure decision function with
+  hand-built JSON, six cases, 6/6 green on every run. The transport was never
+  executed. `shellcheck` saw a well-formed command, `actionlint` saw valid YAML,
+  and the `--slurp`/`--jq` scan looks at a different pair of flags.
+- **Acceptance:** the transport asks for `number,isCrossRepository,labels`; the
+  base repository comes from the trusted `GITHUB_REPOSITORY` rather than from
+  the payload; a fork is decided by `isCrossRepository`; the `queue:parked` and
+  `queue:emergency` exemptions and the 2/3 limits are unchanged; a transient API
+  failure still fails closed to `unknown` while a CLI schema error raises a
+  distinct `::error::` diagnostic naming the field, since one is worth retrying
+  and the other will refuse every run until somebody edits the file.
+- **Research status:** n/a. The field lists were read off `gh` 2.97.0 itself
+  (`gh <command> --json` with no value is a flag-parse error `gh` answers with
+  the list, before any network call).
+- **Implementation status:** done. `.github/scripts/wip-limit.sh`. **No workflow
+  change was needed**, which is deliberate: `pr-wip-limit.yml` reads `state` and
+  `count` and nothing else, so the fix lands entirely in a file an agent token
+  can write.
+- **Tests:** `.github/tests/wip-limit-test.sh` — **26 pass, up from 6**. Seven
+  are pure-rule cases, one of them new (`queue:emergency` was exempt in the code
+  and asserted nowhere). The other nineteen run the shipping script end to end
+  against a stub `gh` on `PATH` which refuses an unknown `--json` field exactly
+  as `gh` does, with `gh`'s real fifty-line refusal rather than a tidy one-liner.
+  Five of those put the pre-#239 field list back into a copy of the script and
+  require `unknown` **with** the hard diagnostic, on one line, and `gh`'s full
+  stderr in the log; regressing the shipping file turns 9 of the 26 red, which
+  was checked by doing it rather than reasoned about.
+  `.github/tests/gh-api-usage-test.sh` — **82 pass, up from 68**: the same rule
+  as a static scan over workflows, scripts and parked-patch post-images. It
+  resolves a one-line shell assignment, so it reads
+  `--json "$ATTADIPA_WIP_JSON_FIELDS"` rather than skipping it, and it names what
+  it cannot resolve instead of reporting it clean. Run against the pre-fix file
+  it reports `wip-limit.sh:33 unknown-field baseRepository`. Every
+  `.github/tests/*.sh` suite green, `shellcheck -x` clean, `actionlint` clean,
+  `check_docs.py` clean, `ctest` 33/33 once Pillow is installed — without it
+  `ui_image_checks_unavailable` is the deliberate placeholder failure, on `main`
+  as much as here.
+- **Not verified here, and it cannot be:** `pr-wip-limit.yml` checks out
+  `ref: default_branch`, so a live run always executes **main's** copy of the
+  script. The first live numeric count therefore lands on the first pull request
+  opened after this merges, not on the pull request that fixes it. The fixed
+  script *was* run against the live repository from this session and returned
+  `full 3` for #238, #218 and #217 — a real `gh` call, not a stub, but from a
+  shell rather than from the workflow.
+- **Hardware required:** none. GitHub and host only.
+
 ### T-171 · A verdict decided by an unauthenticated comment, and a rule that never ran — **DONE** 2026-08-25
 - **Priority:** P1
 - **Dependencies:** none. Found by the post-recovery review of
