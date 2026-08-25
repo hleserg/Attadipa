@@ -18,6 +18,8 @@
   which are not ours to overturn.
 - [`STATUS.md`](STATUS.md) — where things actually are.
 - [`TASKS.md`](TASKS.md) — what to pick up.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — **which of two tasks to pick up
+  first.** Owner course correction, 2026-08-24. Short section below.
 
 There is a matching `esp-idf-firmware` skill covering ESP-IDF mechanics,
 bring-up order and the hardware-verification discipline. Use it rather than
@@ -64,10 +66,17 @@ Never write `PASS` for a test that did not run on a physical board. Write
 
 ## Never irreversible without being asked
 
-No eFuse burning, no irreversible secure boot or flash encryption, no flashing
-a physical device, no production secrets, no destroying keys. Preparing the
-config, writing the instructions and generating dev keys are all fine. Never
-commit private keys.
+No eFuse burning, no irreversible secure boot or flash encryption, no production
+secrets, no destroying keys. Preparing the config, writing the instructions and
+generating dev keys are all fine. Never commit private keys.
+
+**Flashing was on that list and is not any more** — owner decision **OD-19**,
+2026-08-24. A session with the board physically on its desk flashes it, runs the
+firmware and tests on it; that is what the watch-control tooling was built for.
+The reason it can move is that it is *reversible* here: the factory image is
+backed up and byte-verified (T-099), and `PURE_RAM_APP` writes nothing at all.
+The items still on the list cannot be undone by re-flashing, which is exactly
+what puts them there.
 
 ## Architecture in one paragraph
 
@@ -95,6 +104,39 @@ implementing anything non-trivial. Several open-source firmwares already target
 these exact boards. Record the decision either way — "we wrote our own" is
 allowed, undocumented is not. Check the license before depending on anything.
 
+## Which of two tasks wins
+
+The engineering base got far ahead of the device. There is no ESP-IDF project in
+this repository at all — no `main/` component, no partition table, no
+`sdkconfig.defaults` — while the architecture, the simulator, the research and
+the automation are all well past that point. The owner's correction of
+2026-08-24 is an **ordering** change, not a reset:
+[`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole of it, and the next milestone
+is one board brought up vertically until a watch boots, shows a Clock, takes
+touch, sleeps and wakes.
+
+Before starting a task, ask:
+
+> When this is finished, what can a real user — or a real physical Attadipa unit
+> — do that it could not do before?
+
+If the answer is *"nothing, but the architecture is more correct"*, the task can
+still be a good one, and it now **loses** to a task that closes part of a device
+vertical slice unless it blocks one. A new meta-framework, a new orchestration
+layer, automation for automation's sake, a large future subsystem, an ML runtime
+before there is firmware to run it in, or a generic abstraction with fewer than
+two real consumers each need an argument about **now** rather than about merit.
+
+Three things keep their place ahead of that: a correctness or security defect,
+an automation defect that actually stalls the queue, and work that is nearly
+finished. Finishing beats reprioritising.
+
+Nothing here lowers the bar — the Definition of Done gains a line rather than
+losing one. And use the hardware *early*: if a change rests on an assumption
+about display, touch, GPIO, flash, power, timing, PSRAM, I²C, GNSS, radio,
+sleep/wake, memory or performance, a ten-minute probe first is cheaper than days
+of architecture built around a wrong number.
+
 ## The agent queue
 
 Work arrives as a **GitHub issue**, and that issue is the canonical task —
@@ -114,6 +156,25 @@ If you are working from an issue:
   subsystems has been guessed at, not done.
 - **One writer.** Reading, reviewing and analysing in parallel is free; two
   agents editing one branch is a merge conflict with a robot on both ends.
+- **More than one agent works here, and the boards are how the work divides.**
+  A session with a board physically on its desk owns everything that touches it:
+  probes, part markings, bus scans, **flashing it and running our firmware on
+  it**, and every number that is allowed to be `MEASURED`. Flashing is on that
+  list since **OD-19** (2026-08-24) and the list above was edited in the same
+  commit, so the two agree; what stays off it is the genuinely irreversible set —
+  eFuses, secure boot, flash encryption, secrets, keys. A session without a board
+  owns the queue: issues, branches,
+  reviews, merges, documents, host tests and the simulator. Neither waits on the
+  other for permission, and **neither re-does the other's half** — a cloud
+  session that writes a bring-up procedure hands it over rather than
+  approximating the result, and a bench session that measures something files the
+  number rather than rewriting the surrounding subsystem.
+  **Claim work where the other can see it**: assign yourself the issue, or open
+  the draft pull request early. Before starting anything, read the open issues
+  and pull requests — if one is already assigned or already has a branch, that is
+  taken, and picking a different task is faster for everybody than discovering
+  the collision at merge time. The hand-off runs through the issue, never through
+  the owner.
 - **A branch and a pull request**, never a push to `main`. Open it as a draft
   while it is still moving; mark it ready when it is not. **The orchestrator
   merges it once CI is green** — owner decision 2026-08-21, replacing the
@@ -203,7 +264,9 @@ marked · no application-layer hardware access · simulator tested · **a real
 screenshot taken and looked at, if the interface changed** · reviewed at both
 geometries · day and night themes checked · Child Mode considered · power
 and coexistence implications considered · errors handled in human language ·
-loading, empty, offline and error states exist · docs and `STATUS.md` updated.
+loading, empty, offline and error states exist · docs and `STATUS.md` updated ·
+**for anything about physical behaviour, real hardware evidence — or an explicit
+and accurate statement that there is none yet.**
 
 A screen with the right elements on it is not done. Design is part of Done.
 
