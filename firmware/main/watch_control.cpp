@@ -285,9 +285,27 @@ private:
     }
   }
 
+  void reset_remote(std::uint32_t now_ms, const char *reason) {
+    decoder_.reset();
+    output_head_ = 0;
+    output_count_ = 0;
+    overflowed_ = false;
+    bridge_.on_disconnect(now_ms);
+    ESP_LOGW(kTag, "%s; reset remote state", reason);
+  }
+
   void poll() {
     const std::uint32_t now_ms =
         static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
+    const bool usb_connected = usb_serial_jtag_is_connected();
+    if (!usb_connected) {
+      if (usb_connected_) {
+        reset_remote(now_ms, "USB host disconnected");
+      }
+      usb_connected_ = false;
+      return;
+    }
+    usb_connected_ = true;
     flush();
 
     std::uint8_t bytes[1024]{};
@@ -317,12 +335,7 @@ private:
     flush();
 
     if (overflowed_) {
-      decoder_.reset();
-      output_head_ = 0;
-      output_count_ = 0;
-      overflowed_ = false;
-      bridge_.on_disconnect(now_ms);
-      ESP_LOGW(kTag, "USB client overran the bounded output queue; reset");
+      reset_remote(now_ms, "USB client overran the bounded output queue");
     }
   }
 
@@ -520,6 +533,7 @@ private:
   std::size_t output_head_ = 0;
   std::size_t output_count_ = 0;
   bool overflowed_ = false;
+  bool usb_connected_ = false;
   bool physical_pressed_ = false;
   std::int16_t physical_x_ = 0;
   std::int16_t physical_y_ = 0;

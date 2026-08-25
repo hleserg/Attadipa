@@ -113,19 +113,32 @@ class SerialTransport(Transport):
         self._port = port
 
     def send(self, data: bytes) -> None:
-        self._serial.write(data)
+        try:
+            self._serial.write(data)
+        except Exception as exc:  # pragma: no cover - needs a device
+            raise WatchError(
+                f"the serial connection dropped while sending to {self._port}: {exc}"
+            ) from exc
 
     def recv(self, timeout: float) -> bytes:
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            waiting = self._serial.in_waiting
-            if waiting:
-                return self._serial.read(waiting)
-            time.sleep(0.002)
+        try:
+            while time.monotonic() < deadline:
+                waiting = self._serial.in_waiting
+                if waiting:
+                    return self._serial.read(waiting)
+                time.sleep(0.002)
+        except Exception as exc:  # pragma: no cover - needs a device
+            raise WatchError(
+                f"the serial connection dropped while reading from {self._port}: {exc}"
+            ) from exc
         return b""
 
     def close(self) -> None:
-        self._serial.close()
+        try:
+            self._serial.close()
+        except Exception as exc:  # pragma: no cover - needs a device
+            raise WatchError(f"could not close {self._port}: {exc}") from exc
 
     def describe(self) -> str:
         return f"serial:{self._port}"

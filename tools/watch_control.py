@@ -569,7 +569,10 @@ def main(argv: list[str] | None = None) -> int:
                       f"expiry; a reconnect will also clear them", file=sys.stderr)
         except Exception:
             pass
-        watch.close()
+        try:
+            watch.close()
+        except WatchError as exc:
+            print(f"warning: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
