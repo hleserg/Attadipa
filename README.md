@@ -16,10 +16,11 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 > GNSS trust evaluator, the design-token system, and the desktop simulator.
 > One target board is now on the owner's desk and has been read over
 > its own USB port, which is the first evidence in this repository that came
-> from silicon rather than from a document. **The T-165 Attadipa firmware now
-> boots on it from flash** and has measured the flash, octal PSRAM and development
-> partition table. Display, touch, PMU, RTC, power, timing and GNSS remain
-> unexercised. [Issues](https://github.com/hleserg/Attadipa/issues) and
+> from silicon rather than from a document. **Attadipa now boots on it from
+> flash, drives its AMOLED and touch controller, owns the required PMU rails,
+> reads the RTC, and exposes the live UI over USB for screenshots and input.**
+> Power lifecycle, timing and GNSS remain unexercised.
+> [Issues](https://github.com/hleserg/Attadipa/issues) and
 > [pull requests](https://github.com/hleserg/Attadipa/pulls) show live work.
 
 ### What exists today
@@ -27,19 +28,18 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 | | |
 |---|---|
 | **Builds and is tested on a host** | the host suite runs under GCC and Clang, under `-Werror` and under ASan+UBSan; simulator tests are enabled when SDL2 is available. Compile-fail checks guard the hardware-header, translation-table and receiver-capability boundaries |
-| **Can be looked at while it runs** | the interface can be screenshotted and driven from another process — tap, swipe, press a button, take another picture. Against the simulator today; the device transport and framebuffer endpoint remain T-114 even though minimal firmware now exists |
+| **Can be looked at while it runs** | the interface can be screenshotted and driven from another process — tap, swipe, press a supported button, take another picture — against both the simulator and the physical Waveshare over USB |
 | **Runs two geometries from one binary** | 240 × 240 and 410 × 502, selected at run time, fitting any of the five candidate T-Watch radios and a present-or-absent node without a rebuild |
 | **Draws through design tokens** | twelve colour roles across day and night themes with WCAG contrast arithmetic, plus a CI check that refuses a raw hex value or a pixel count back into screen code |
 | **Renders every character it claims to** | four generated Montserrat subsets covering all 181 codepoints of the charset; an undrawable codepoint **fails the run** rather than printing a warning |
-| **Has one board on the desk** | a Waveshare ESP32-S3 Touch AMOLED 2.06 running Attadipa T-165 from flash: chip revision v0.2, physical flash `0xC8 0x4019` (32 MB) behind a deliberate 16 MB build ceiling, and 8 MB octal PSRAM initialised and tested |
-| **Hardware evidence has a narrow boundary** | boot, flash/PSRAM diagnostics, the development partition table and a 30-second PURE_RAM run are measured. Display, touch, PMU rails, RTC, power, timing, GNSS and interference are not; the hardware plans keep those claims visibly unproven |
+| **Has one board on the desk** | a Waveshare ESP32-S3 Touch AMOLED 2.06 running Attadipa from flash: chip revision v0.2, physical flash `0xC8 0x4019` (32 MB) behind a deliberate 16 MB build ceiling, 8 MB octal PSRAM, CO5300 AMOLED, FT3168 touch, AXP2101 rails and PCF85063 RTC |
+| **Hardware evidence has a narrow boundary** | boot, flash/PSRAM, both firmware variants, display colour/orientation, physical touch, PMU rail ownership, RTC retention and the USB screenshot/input endpoint are measured. Power lifecycle, GNSS and interference are not |
 | **Runs its own engineering queue** | work arrives as a GitHub issue, an agent opens a branch and a draft pull request, and a second agent reviews it independently. The workflows, their security model and their cost controls are in [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md) |
 
 **What is next, and it is deliberately narrow.** That last row is the one that
-sets the direction: the architecture, the tests, the simulator and the research
-are still ahead of the device, but the ESP-IDF floor now boots. The next step is
-T-166: the Waveshare display, touch controller, PMU rails and RTC, followed by a
-real Clock and then sleep/wake. [`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole
+sets the direction: the architecture, the tests and the simulator now reach the
+physical device. The next product step is a real Clock, followed by sleep/wake.
+[`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole
 plan and the reasoning behind it.
 
 Attadipa is not a Linux-like OS. It is a single embedded
@@ -253,10 +253,10 @@ idf.py set-target esp32s3
 idf.py build
 ```
 
-It targets one board, the Waveshare ESP32-S3-Touch-AMOLED-2.06, and it is a
-skeleton: it boots, prints what the silicon says it is, and links the same
-`core/`, `platform/`, `link/` and `l10n/` libraries the host build uses. No
-display, no touch, no LVGL yet.
+It targets one board, the Waveshare ESP32-S3-Touch-AMOLED-2.06. It boots, prints
+what the silicon says it is, links the same host libraries, drives the CO5300
+AMOLED and FT3168 touch controller through LVGL, owns the required AXP2101 rails,
+reads the PCF85063 RTC, and exposes its live UI through the debug protocol.
 
 There is a second variant that runs entirely from RAM and writes nothing to the
 flash at all, which is the route to prefer for anything experimental —
