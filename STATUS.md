@@ -1533,10 +1533,9 @@ Waveshare `ESP32-S3-Touch-AMOLED-2.06`; nothing here is about the T-Watch.
   and `is_established()` / `fully_established()` keep the provenance readable
   after the decision is made — a profile with a gap fails
   `fully_established()`, which is how T-051 and T-052 become checkable instead
-  of remembered. `to_string(SupportState)` keeps `Unknown` sayable in logs;
-  a future screen must use `label_of(SupportState) -> StringId`, so localization
-  coverage can see it rather than letting the fixed collision reappear. Two
-  proofs rather than an assertion: the
+  of remembered. `to_string(SupportState)` keeps `Unknown` sayable on a
+  diagnostics screen rather than rendering as `Unsupported`, which is where a
+  fixed collision usually reappears. Two proofs rather than an assertion: the
   behavioural one — making `is_supported()` treat `Unknown` as supported turns
   eight checks red across all three call sites — and the structural one, that
   the old `bool` model does not merely fail the new tests but **fails to
