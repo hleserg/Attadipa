@@ -1787,6 +1787,23 @@ externally) [shellcheck]
 - **Tests:** host — the third boundary test, alongside
   `capability_boundary_negative` and `l10n_boundary_negative`.
 - **Hardware required:** no.
+- **Note added 2026-08-23 (T-178):** "bumping the pin cannot require an edit
+  above the adapter" is a compile-time property, and it is not the whole of what
+  a bump costs. The pinned revision has five verified parser defects, two of
+  which leave a buffer
+  ([MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md)), so the
+  adapter is also where a malformed-frame consequence stops being MeshCore's and
+  starts being ours. That does not change this task's acceptance; it says which
+  boundary the corpus in T-013's entry condition is protecting.
+- **Entry condition added 2026-08-24 (T-178):** the boundary test must include the
+  case where the far side's declared length exceeds what the receiving buffer
+  holds, and must assert the **rejection** — that the frame is refused, that no
+  partially-consumed state is left behind, and that whatever buffer the attempt
+  borrowed is returned — rather than only that nothing crashed. Two unrelated mesh
+  firmwares shipped that defect and one of them, Meshtastic, shipped the test
+  first ([MESHCORE_PARSER_BOUNDS §8](docs/research/MESHCORE_PARSER_BOUNDS.md));
+  its code is GPL-3.0 and may not be copied, its *shape* is not copyrightable and
+  is what is being adopted.
 
 ### T-013 · The local mesh integration spike
 - **Priority:** P0
@@ -1812,6 +1829,32 @@ externally) [shellcheck]
 - **Hardware required:** for a working link, yes — and **two** radio devices
   (A3). For the cost numbers, no.
 - **Constraint that is already fixed:** `Arduino.h` does not enter `core/`.
+- **Entry condition added 2026-08-23 (T-178):** whichever revision this spike
+  proposes to pin, run the corpus in
+  [`docs/research/meshcore-parser-bounds/`](docs/research/meshcore-parser-bounds/)
+  against it first, and run `path_arith` and `decrypt_bounds` too — they are not
+  in the matrix, so a green `run.sh` is not a clean revision. At `d929643` the
+  answer is five known defects, two of which leave a buffer
+  ([MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md)). That is
+  not a reason to avoid MeshCore; it is the thing a pin has to be chosen with
+  knowledge of, and a version number does not carry it.
+  **Sharpened 2026-08-24:** those two are reached by `./build-extras.sh <tag>`,
+  and the tag is the point — it used to be hardcoded to the pin's tree, so the
+  candidate was never what got measured. It also refuses outright, exit 65, when
+  the `PAYLOAD_TYPE_PATH` lines `path_arith` hand-copies have moved at the
+  candidate; that refusal means "re-read P3 by hand here", not "the tool is
+  broken".
+- **Entry condition added 2026-08-24 (T-178), and it is not about MeshCore:** the
+  radio path this spike produces must check a wire-supplied length **at the point
+  of use, in the shipping build, in code that rejects** — not in an `assert`, and
+  not only in the parser upstream of it — and the rejection must leave the caller
+  able to continue, with every borrowed buffer returned. Two unrelated mesh
+  firmwares shipped the same defect class
+  ([MESHCORE_PARSER_BOUNDS §8](docs/research/MESHCORE_PARSER_BOUNDS.md)), which
+  is why it is written as an invariant here rather than as a note about somebody
+  else's bug. The test that proves it should assert the *rejection* — return
+  value, no half-started transmit, and the buffer back in the pool — not merely
+  that nothing crashed.
 
 ### T-016 · Benchmark the node protocol encoding, then accept or replace it
 - **Priority:** P1
@@ -3063,6 +3106,95 @@ A1's schematic-revision
   8 MB octal PSRAM, the development partition table and stable heartbeat were
   measured. Full transcript:
   [BRINGUP_2026-08-25](docs/hardware/BRINGUP_2026-08-25.md).
+### T-178 · MeshCore parser bounds at the pinned revision — **DONE** 2026-08-25
+Research only, from [#142](https://github.com/hleserg/Attadipa/issues/142). Full
+record: [MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md);
+harness and corpus:
+[`docs/research/meshcore-parser-bounds/`](docs/research/meshcore-parser-bounds/).
+**No Attadipa code changed, and none should have** — we compile no MeshCore.
+
+**Filed as T-127 and renumbered on merge**, for the second time in this file and
+for a reason worth reading rather than skipping: by the time this branch merged,
+`main` held **two** T-127 entries already — the anchor check and the companion
+frame capacity — and this branch's `STATUS.md` had additionally called the same
+work **T-051**, which is the not-started P1 MIA-M10Q GNSS research. An agent
+reading `STATUS.md` for *"where things actually are"* would have seen a live P1
+closed. Caught by the independent review of
+[#160](https://github.com/hleserg/Attadipa/pull/160), not by CI:
+`tools/docs/check_docs.py` checks duplicate IDs *within* `TASKS.md` and cannot
+see an ID that is consistent here and wrong there. Its four open questions were
+renumbered with it, M15–M18 → **M20–M23**, same collision one file along.
+
+**It also landed in two pieces, and the second piece is this entry.** `a7624b0`
+merged #160 as **14 of its 19 files** — the report and the harness, everything
+under `docs/research/meshcore-parser-bounds/` — and left `STATUS.md`, `TASKS.md`,
+`VERIFIED_FACTS.md`, `OPEN_QUESTIONS.md` and `REUSE_LEDGER.md` behind. For a few
+hours `main` therefore held a research document that no status file mentioned and
+whose References line sent a reader to `OPEN_QUESTIONS` M15–M17, which on `main`
+are the frame-capacity questions and not these. Nothing was wrong with the
+evidence; the index around it was missing. That is what the second pull request
+restores, and it is worth knowing that a green partial merge looks exactly like a
+whole one from the commit list.
+
+- **The pin is not lagging.** `d929643` is simultaneously our pin, upstream's
+  `main` tip and the newest release. Every file the three pull requests touch is
+  byte-identical between the pin and both of their `dev` bases, so their diffs
+  apply to us unchanged and a measurement on a pull request head is a measurement
+  of our pin plus that pull request's guards. That was the caveat the issue
+  raised, and it dissolves rather than being worked around.
+- **Nine of ten corpus cases over-read at the pin**, reproduced against upstream's
+  own translation units under ASan with each input flush against a guard page.
+  **But at every reachable call site the read stays inside its allocation** —
+  256 B in `Dispatcher::checkRecv`, 262 B and 250 B in the two bridges, the
+  `Packet` object for adverts — and every one of the nine ends in a rejected
+  packet. The parsers do read past their length; nothing escapes a buffer through
+  them. Keeping those two sentences apart is most of the value here.
+- **The companion path reaches one of the three and not the other.**
+  `CMD_IMPORT_CONTACT` gates on `len > 98` while `Packet::readFrom` reaches at
+  most byte 70, so a malformed contact blob from a client — which is what
+  Attadipa is — cannot trigger it; luck rather than design, but it holds here.
+  `CMD_SEND_RAW_PACKET` **does** reach `tryParsePacket`, gated only by `len >= 4`,
+  which makes it the single place where our side hands bytes to a MeshCore
+  parser. It stays inside `cmd_frame` and returns `ERR_CODE_ILLEGAL_ARG`, so it
+  costs nothing today — but it is the fact to have before writing a client that
+  emits raw packets.
+- **Two of the three pull requests do not close their own findings.** #3269 logs
+  the condition and then performs the read; #3270 leaves `app_data[0]` unguarded
+  at `AdvertDataHelpers.cpp:34` for `app_data_len == 0`, measured on its own head.
+  Only #3267 is complete, and it covers none of what #3270 covers.
+- **Two arithmetic defects do leave the buffer, and neither is in any pull
+  request.** `Mesh.cpp:172` underflows `extra_len` — 187 of 1309 reachable
+  `(len, path_len)` pairs, all of them producing a window past `data[184]` — and
+  `Utils::decrypt` writes 192 bytes into that same 184-byte buffer for
+  `payload_len` 181…184, reproduced against the real translation unit. Both sit
+  behind a **2-byte** MAC ([M11](docs/research/OPEN_QUESTIONS.md)), which is not
+  the authentication gate it looks like.
+- **No separate upstream notification is sent.** Filing on a third-party
+  repository is outward-facing; the owner chose on 2026-08-25 to merge this
+  already-public research without another outbound action. The evidence remains
+  reproducible in one command.
+- **A second ecosystem reached the same invariant, added 2026-08-24.** The owner
+  brought Meshtastic
+  [firmware#11573](https://github.com/meshtastic/firmware/pull/11573) — merged
+  `ac330e6a`, base `develop`, **not in any release** — which replaces an
+  `assert()` on a wire-supplied payload length with an executable rejection that
+  releases the packet and unwinds the transmit state, plus a test asserting the
+  rejection rather than the absence of a crash. Every claim re-read from the
+  merged diff and confirmed. **GPL-3.0: read-only evidence, no code**, the same
+  bar as [OD-12](docs/research/OWNER_DECISIONS.md). The invariant and the test
+  shape are adopted as entry conditions on T-013 and T-050;
+  [MESHCORE_PARSER_BOUNDS §8](docs/research/MESHCORE_PARSER_BOUNDS.md) is the
+  record. It also upgrades P4 from one project's defect to a two-instance
+  pattern, which is why it is written as an invariant and not as a note.
+- **`attadipa_link`'s decoder was checked, not assumed.** It validates the
+  declared length before reading (`frame_codec.cpp:139`, `:147`) behind a length
+  check and a CRC. The finding does not transplant, and nothing in `link/`
+  changed.
+- **Left open as M20–M23** in [OPEN_QUESTIONS](docs/research/OPEN_QUESTIONS.md):
+  end-to-end reachability of the two arithmetic defects, whether the stale bytes
+  they read can be groomed, what the eight over-written bytes hit on an
+  ESP32-S3, and whether a real fuzzing pass finds more. None blocks anything
+  while we link no MeshCore.
 ### T-174 · The queue's width limit asked `gh` for a field it does not have — **DONE** 2026-08-25
 - **Priority:** P1
 - **Dependencies:** none. Issue
@@ -3203,7 +3335,6 @@ A1's schematic-revision
   gone after it with a standalone probe against the built library.
 - **Hardware required:** none. No production caller constructs a
   `TrustEvaluator` yet, so this was latent rather than live.
-
 ### T-127 · A link's `#anchor` is captured and then never checked — **DONE** 2026-08-23
 - **Priority:** P3
 - **Dependencies:** none.

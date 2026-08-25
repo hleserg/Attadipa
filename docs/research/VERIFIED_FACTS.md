@@ -31,6 +31,146 @@ An entry that cannot name its source does not belong here. It belongs in
   memory requirements, LoRa abstraction, or the companion protocol. None of
   these have been read from source yet.
 
+### The pinned MeshCore revision is upstream's current release, not a lagging one
+
+- **Claim:** `d92964352441e53b93e8667b802e04f6e072b39e` is simultaneously
+  Attadipa's pin, the tip of `meshcore-dev/MeshCore`'s `main` **as of 2026-08-23**,
+  and the newest release (`companion-v1.17.1`, `repeater-v1.17.1`,
+  `room-server-v1.17.1`, published 2026-08-14). `dev` was at
+  `9d7cee66394fffd6e8c6e9f39fe03660cb314f64`, 2026-08-22.
+- **Source:** GitHub API `repos/meshcore-dev/MeshCore/branches/{main,dev}`,
+  `/releases` and `/commits?per_page=1`.
+- **Checked:** 2026-08-23, independently the same day by two pieces of research
+  that needed it for different reasons — the parser-bounds work
+  ([#142](https://github.com/hleserg/Attadipa/issues/142)) and the BLE
+  frame-capacity work ([#143](https://github.com/hleserg/Attadipa/issues/143)) —
+  which agreed.
+- **Amended 2026-08-24:** `main` has moved to
+  `0679dbeffc504d562d2f09eb072fdc223f8ffc2a`, two commits ahead, and
+  `compare/<pin>...main` lists exactly one file: `docs/faq.md`. So the pin is **no
+  longer the tip** and is still upstream's newest **code** and newest release.
+  `dev` is `12998cba8969e4004d94ed94b5e8e5bbdfa05571`. The two halves are recorded
+  separately because only one of them ages.
+- **Note:** `pushed_at` is more recent than either, because it counts pushes to
+  any branch. It is not a claim about `main`.
+- **Consequence for the BLE frame-sizing finding:** there is no superseding
+  upstream fix, because vanilla has no such concept to fix.
+- **Why it is here:** three open pull requests are based on `dev`, which normally
+  makes "does this apply to our pin" an open question. It is not one here — see
+  the next entry.
+
+### The three MeshCore parser pull requests all apply to our pin unchanged
+
+- **Claim:** `src/Packet.cpp`, `src/Dispatcher.cpp`, `src/Mesh.cpp`,
+  `src/helpers/AdvertDataHelpers.cpp` and `src/Utils.cpp` are **byte-identical**
+  between `d929643` and both pull request bases (`dev@e0031870` for #3267,
+  `dev@9d7cee66` for #3269/#3270). The 29 commits `dev` leads by touch none of
+  them.
+- **Source:** `git diff --quiet <pin> <base> -- <file>` against a full clone.
+- **Checked:** 2026-08-23.
+- **Consequence:** a measurement on a pull request's head tree is a measurement
+  of our pin plus that pull request's guards, and no rebasing is needed to reason
+  about either.
+
+### Nine of ten malformed-frame cases over-read on the pinned MeshCore revision
+
+- **Claim:** at `d929643`, `Dispatcher::tryParsePacket`, `Packet::readFrom` and
+  `AdvertDataParser` all read past the length they are given, on inputs of 0, 1
+  and 2 bytes. Reproduced, not read: upstream's own translation units compiled
+  unmodified and fed buffers of exactly their declared length behind a
+  `PROT_NONE` guard page, under AddressSanitizer.
+- **Source:** [MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §4, harness
+  and corpus in [`meshcore-parser-bounds/`](meshcore-parser-bounds/).
+- **Checked:** 2026-08-23, clang 18.1.3, Ubuntu 24.04.
+- **What it is not:** at every reachable call site in the pinned tree the buffer
+  behind these three parsers is a fixed array large enough that the read stays
+  *inside the allocation* — 256 B in `Dispatcher::checkRecv`, 177 B in
+  `MyMesh::handleCmdFrame`, 262 B and 250 B in the two bridges, the `Packet`
+  object itself for adverts. The outcome in all nine is a rejected packet.
+  "Reads past its length" is verified; "leaves the buffer" is verified **false**
+  for these three, and the distinction is the whole blast radius.
+- **Reachable from the companion link, once.** `CMD_SEND_RAW_PACKET` calls
+  `tryParsePacket` on a client-supplied buffer with only a `len >= 4` guard
+  (`examples/companion_radio/MyMesh.cpp:2000`), which is the one place a
+  *client* — Attadipa's role on the node path — hands bytes to a MeshCore
+  parser. `CMD_IMPORT_CONTACT` was checked and **cannot** reach
+  `Packet::readFrom`'s over-read: it gates on `len > 98` and the parser reaches
+  at most byte 70.
+- **Hardware:** **NOT EXECUTED — HARDWARE REQUIRED.** Nothing here ran on a
+  radio, a node or a board, and no host sanitizer result may be presented as
+  radio or HIL validation.
+
+### `Utils::decrypt` writes 192 bytes into MeshCore's 184-byte packet buffer
+
+- **Claim:** `src/Utils.cpp:70-83` rounds its output up to whole 16-byte blocks
+  and documents the precondition in `Utils.h`; `Mesh::onRecvPacket` passes it a
+  wire-supplied length that does not honour it, into
+  `uint8_t data[MAX_PACKET_PAYLOAD]` (184 B). For `payload_len` 181…184 it writes
+  192 bytes. Reproduced against the real `src/Utils.cpp` with a stub block cipher
+  — the bound belongs to the loop, not the cipher — faulting at `Utils.cpp:77`
+  for `src_len` 177, 180 and 182 and clean at 176.
+- **Source:** [MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §3 P4.
+- **Checked:** 2026-08-23.
+- **Not from upstream:** none of the three pull requests mentions it, and it is
+  not filed upstream. Reporting it is the owner's call, not an agent's.
+- **Not established:** what those eight bytes overwrite on an ESP32-S3, and
+  whether the end-to-end path through `Mesh::onRecvPacket` runs — both need
+  builds this project has not made. See
+  [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) M22.
+
+### Meshtastic shipped the same defect class and fixed it on 2026-08-23
+
+- **Claim:** `meshtastic/firmware` PR **#11573** is **merged** — merge commit
+  `ac330e6a6b9fca267fe3faab27ee50c4e91bee28`, head `6094d148`, base `develop`
+  (`05f64741`), 4 files, +58 −5. It replaces
+  `assert(p->encrypted.size <= sizeof(radioBuffer.payload))` in
+  `src/mesh/RadioInterface.cpp::beginSending()` with a runtime check that logs,
+  calls `packetPool.release(p)` and returns 0 *before* the `memcpy`; makes
+  `RadioLibInterface::startSend` unwind on that zero (`completeSending()`,
+  `powerMon->clearState(…Lora_TXOn)`, `startReceive()`); moves
+  `reconfigureForBeaconTX(this, nullptr)` out of `completeSending()`'s `if (p)`
+  arm so the radio is restored even with no packet; and releases the beacon
+  packet on `ERRNO_SHOULD_RELEASE` at both `router->send(p)` sites in
+  `src/modules/MeshBeaconModule.cpp`. `test/test_radio/test_main.cpp` gains
+  `test_beginSending_oversizedPayloadAbortsSafely()`, which asserts the return is
+  0, `sendingPacket` is null, **and the pool slot is reusable**.
+- **Source:** the merged diff, `GET /repos/meshtastic/firmware/pulls/11573` with
+  `Accept: application/vnd.github.v3.diff`, plus `/pulls/11573` and
+  `/pulls/11573/files` for the metadata.
+- **Checked:** 2026-08-24, independently of the owner's summary of the same
+  change; every claim in that summary held.
+- **Not in a release.** `compare/master...ac330e6a` answers `diverged`, ahead 828
+  / behind 103, so `master` does not contain it, and the newest release
+  `v2.7.26.54e0d8d` was published 2026-06-24. The shipping firmware still has the
+  assertion.
+- **Licence: GPL-3.0** (`repos/meshtastic/firmware` → `license.spdx_id`).
+  **Read-only evidence. No code from it may enter this repository**, which is the
+  same bar as [OD-12](OWNER_DECISIONS.md).
+- **Not established, and deliberately not claimed:** whether that `assert()` was
+  compiled out in shipping builds. `NDEBUG` appears in three files of that
+  repository and in none of its build flags; whether the Arduino/ESP-IDF
+  toolchain defines it for those environments was not traced.
+- **Hardware:** **NOT EXECUTED — HARDWARE REQUIRED.** The pull request's author
+  lists Heltec LoRa32 V3, LilyGo T-Deck, Seeed T-1000E and Wio-E5. None was
+  checked here and this project has none of them.
+- **Why it is here:** it makes the `Utils::decrypt` finding above a
+  **two-instance pattern** rather than one project's defect — two unrelated mesh
+  firmwares, different radios, different code, both with a wire-supplied length
+  reaching a fixed destination with nothing executable in between. See
+  [MESHCORE_PARSER_BOUNDS §8](MESHCORE_PARSER_BOUNDS.md).
+
+### Attadipa's own frame decoder validates length before reading
+
+- **Claim:** `link/src/frame_codec.cpp` rejects a declared length greater than
+  `kMaxPayload` at `:139` before touching a payload byte, waits rather than reads
+  when fewer bytes have arrived than the header declares (`:147`), and gates both
+  behind a length-check byte (`:123`) and a CRC. The MeshCore findings do not
+  transplant onto it.
+- **Source:** the file, read on 2026-08-23 while answering issue #142.
+- **Why it is here:** the finding that prompted the check was about a different
+  protocol boundary with different invariants, and "our decoder is probably fine"
+  is not a fact. This one was looked at.
+
 ### A MeshCore companion frame does not fit one BLE notification at MTU 176
 
 - **Claim, arithmetic:** on a link whose negotiated ATT MTU is 176, one Handle
@@ -87,17 +227,13 @@ An entry that cannot name its source does not belong here. It belongs in
 
 ### Our MeshCore pin is upstream's `main` tip, not a lagging one
 
-- **Claim:** `d92964352441e53b93e8667b802e04f6e072b39e` is simultaneously the
-  revision this project pinned and the newest commit on `meshcore-dev/MeshCore`
-  `main`, dated 2026-08-14. There is no superseding upstream fix for the frame
-  sizing above, because vanilla has no such concept to fix.
-- **Source:** GitHub API, `repos/meshcore-dev/MeshCore/commits?per_page=1`
-  against the default branch `main`.
-- **Checked:** 2026-08-23. Independently observed the same day by the
-  [#142](https://github.com/hleserg/Attadipa/issues/142) parser-bounds research,
-  which needed the same fact for a different reason.
-- **Note:** `pushed_at` is more recent because it counts pushes to any branch.
-  It is not a claim about `main`.
+**Merged upward, 2026-08-25.** This entry and *"The pinned MeshCore revision is
+upstream's current release, not a lagging one"* were the same claim, reached by
+two research runs a few hours apart with different API calls. They are now one
+entry near the top of this section, carrying both sources and the 2026-08-24
+amendment that `main` has since moved by two documentation commits. Kept as a
+signpost rather than deleted, because two entries saying the same thing is how a
+reader ends up citing the one that was not updated.
 
 ---
 

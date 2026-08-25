@@ -59,8 +59,8 @@ want to inherit the experience, not only the code.
 
 | Project | Repository | Commit at examination | Last commit | Why it is here |
 |---|---|---|---|---|
-| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006 |
-| `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API |
+| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006. **Re-checked 2026-08-23**: still `main`'s tip and still the newest release (`companion-v1.17.1`), so the pin is current rather than lagging. `dev` is at `9d7cee66` (2026-08-22) and contains none of the parser guards below — [MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md). **Re-checked again 2026-08-24**: `main` is now `0679dbe`, two commits ahead, **both `docs/faq.md`** — so the pin is no longer the literal tip and is still upstream's newest *code* and newest release. Stated that way on purpose: "our pin is `main`" ages badly, "no code has moved" does not |
+| `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API. **GPL-3.0 — read only, always.** This is the local clone's revision and it *predates* `ac330e6a` (2026-08-23), so the bounds fix in the monitored-deltas table below is not in it; that one was read from the merged diff over the API |
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
 | `lvgl` | github.com/lvgl/lvgl | `85aa60d1` (**v9.5.0**) | 2026-08-23 | the UI toolkit. **T2 is settled**: [`DEPENDENCIES.md`](DEPENDENCIES.md) pins v9.5.0 = `85aa60d1…`, verified by `git ls-remote` and observed in CI, and source **S14** in [`VERIFIED_FACTS`](VERIFIED_FACTS.md) reads that revision. This row carried `7cc13aaf…` with *"version choice is open question T2"* until 2026-08-24, so the ledger and the dependency record named two different revisions of the same dependency — the ledger being the file `CLAUDE.md` sends an agent to before implementing anything. Found in review |
@@ -74,6 +74,57 @@ want to inherit the experience, not only the code.
 | `esp-iot-solution` | github.com/espressif/esp-iot-solution | `5d75f3f0dc499d9ed4b69284a3741187c2b75a70` | 2026-08-23 | **where `esp_lcd_sh8601` and `esp_lcd_co5300` upstream actually live** — not `esp-bsp`, whose `components/lcd` holds neither. Read 2026-08-23 for the byte-order trace (D21): both drivers pass the framebuffer to `esp_lcd_panel_io_tx_color()` **verbatim**, so any swap is above them. Apache-2.0. **Read, not depended on** |
 | `xiaozhi-esp32` | github.com/78/xiaozhi-esp32 | `bb9122ab08c3083eeb4f67b3974b7afe771723b8` | 2026-08-22 | MIT; carries `main/boards/waveshare/esp32-s3-touch-amoled-2.06/` — this exact board. Evaluated for the audio path below; **re-read 2026-08-23 for the display path**, where `SpiLcdDisplay` sets `.swap_bytes = 1`. The commit is the one the licence check was run against. Note the version on the unit is **1.8.5**, in `ota_0`, never selected |
 | `meshcore-firmware` (Offband) | github.com/OffbandMesh/meshcore-firmware | `4f5e8b7aa63408370d95d44cdf60ba4125f07ea0` (branch `firmware-base`) | 2026-08-23 | a MeshCore derivative that measured the BLE frame-capacity defect on hardware; T-127. Examined at three revisions — `fda4cdd8`, `4f5e8b7a`, `7549cf30`. **Not** a GitHub fork of `meshcore-dev/MeshCore`: the API reports `fork: false` and no parent, so it is an independent tree, and its divergence has to be read rather than diffed |
+
+### Upstream deltas being monitored, and not taken
+
+A pinned revision is a decision to stop moving, not a decision to stop looking.
+What sits here is upstream work that would change a pin if it landed — open, so
+not takeable, and named so that the next pin decision starts from a list rather
+than a search.
+
+**Nothing in this table has been vendored, and nothing in it may be** while it is
+open: an unmerged pull request has no release behind it, and two of these three
+do not close the finding they were written for.
+
+| Upstream | Head | State 2026-08-24 | What it would change | Our decision |
+|---|---|---|---|---|
+| [MeshCore #3267](https://github.com/meshcore-dev/MeshCore/pull/3267) | `05da523e` | open, unmerged, base `dev` | length checks in `src/Dispatcher.cpp::tryParsePacket` and `src/Packet.cpp::readFrom` | **MONITOR.** Verified to close all six of our A/B corpus cases on the pin. Still not taken — unreleased, and we compile neither file |
+| [MeshCore #3269](https://github.com/meshcore-dev/MeshCore/pull/3269) | `5ebf8ef9` | open, unmerged, base `dev` | a `MESH_DEBUG_PRINTLN` on the `PAYLOAD_TYPE_PATH` length mismatch | **MONITOR as evidence, not as a fix.** The diff logs the condition and then executes the read anyway — no `break`, no `return`. Verified, not inferred |
+| [MeshCore #3270](https://github.com/meshcore-dev/MeshCore/pull/3270) | `f80d805e` | open, unmerged, base `dev` | three guards in `AdvertDataParser` | **MONITOR.** Closes three of our four C cases and **leaves `app_data[0]` unguarded** at `AdvertDataHelpers.cpp:34` when `app_data_len == 0` — measured on its own head |
+| [MeshCore #3266](https://github.com/meshcore-dev/MeshCore/pull/3266) | `d87dd32f` | **closed, unmerged** | the #3267 hunks plus 28 unrelated files | superseded by #3267, whose parser hunks are byte-identical |
+| [MeshCore #3271](https://github.com/meshcore-dev/MeshCore/pull/3271) | `f80d805e` | **closed, unmerged** | — | the *same commit* as #3270, not merely equivalent |
+| `meshcore-dev/MeshCore` `dev` | `9d7cee66` | 2026-08-22; `12998cba` on 2026-08-24 | — | checked for equivalent guards arriving by another route: **none.** `readFrom` on `dev` is byte-identical to the pin |
+| [Meshtastic firmware#11573](https://github.com/meshtastic/firmware/pull/11573) | `6094d148`, merged as `ac330e6a` | **MERGED 2026-08-23** into `develop`; **not in any release** — `master` does not contain it, and `v2.7.26.54e0d8d` predates it | an `assert()` on a wire-supplied payload length becomes an executable rejection that releases the packet and unwinds the TX state, plus a unit test asserting the rejection | **ADAPT the invariant, IGNORE the code.** GPL-3.0, and a radio stack we do not have. Read-only evidence. What is taken is a sentence and a test *shape*, both restated in our own words on T-013 and T-050 — [MESHCORE_PARSER_BOUNDS §8](MESHCORE_PARSER_BOUNDS.md) |
+
+**Reusable as test material, not as code.** The guards in `05da523e`
+(`src/Dispatcher.cpp`, `src/Packet.cpp`) and `f80d805e`
+(`src/helpers/AdvertDataHelpers.cpp`) are MIT and may be read, adapted and used
+to derive rejection cases. What Attadipa actually took from them is **nothing but
+the shape of the inputs**: the ten-case corpus in
+[`meshcore-parser-bounds/`](meshcore-parser-bounds/) is our own, written from
+reading the parsers, and it is the artifact to keep. There is no upstream test or
+corpus to port — MeshCore's `test/` covers none of these paths, and its `AES` and
+`SHA256` test mocks are no-ops (recorded as M13 in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)).
+
+A fifth finding, in `Utils::decrypt`, is **not** in any of these pull requests and
+so is not in this table. It is P4 in
+[MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md), it is a write rather than a
+read, and reporting it upstream is the owner's decision.
+
+**The Meshtastic row is a different kind of row and the difference matters.**
+Every MeshCore row above is a candidate: MIT, so if one of them merged and
+released, taking it would be a real option. The Meshtastic row can never become
+one — GPL-3.0 with no linking exception is the same bar that closed the
+Meshtastic protocol path in
+[OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
+and a merge upstream does not move it. It is in this table because a monitored
+delta is not only "code we might take": it is also **evidence that changes a
+decision**, and this one turned a single-project observation into a two-instance
+pattern. `MONITOR` here means watching whether it reaches a release, so that the
+claim "the shipping firmware still has the assertion" does not quietly go stale;
+it does not mean waiting for a chance to copy it. No hunk from it is quoted
+anywhere in this repository, and none may be.
 
 ### Licences, checked before anything was depended on
 
