@@ -206,6 +206,75 @@ ru = "выключено"
 en = "ready"
 ru = "готово"
 
+# --- Clock -----------------------------------------------------------------
+
+[clock_time_invalid]
+en = "time unavailable"
+ru = "время недоступно"
+
+[clock_time_stale]
+en = "time may be outdated"
+ru = "время могло устареть"
+
+[clock_month_jan]
+en = "JAN"
+ru = "ЯНВ"
+[clock_month_feb]
+en = "FEB"
+ru = "ФЕВ"
+[clock_month_mar]
+en = "MAR"
+ru = "МАР"
+[clock_month_apr]
+en = "APR"
+ru = "АПР"
+[clock_month_may]
+en = "MAY"
+ru = "МАЯ"
+[clock_month_jun]
+en = "JUN"
+ru = "ИЮН"
+[clock_month_jul]
+en = "JUL"
+ru = "ИЮЛ"
+[clock_month_aug]
+en = "AUG"
+ru = "АВГ"
+[clock_month_sep]
+en = "SEP"
+ru = "СЕН"
+[clock_month_oct]
+en = "OCT"
+ru = "ОКТ"
+[clock_month_nov]
+en = "NOV"
+ru = "НОЯ"
+[clock_month_dec]
+en = "DEC"
+ru = "ДЕК"
+
+[clock_weekday_sun]
+en = "SUN"
+ru = "ВС"
+[clock_weekday_mon]
+en = "MON"
+ru = "ПН"
+[clock_weekday_tue]
+en = "TUE"
+ru = "ВТ"
+[clock_weekday_wed]
+en = "WED"
+ru = "СР"
+[clock_weekday_thu]
+en = "THU"
+ru = "ЧТ"
+[clock_weekday_fri]
+en = "FRI"
+ru = "ПТ"
+[clock_weekday_sat]
+en = "SAT"
+ru = "СБ"
+
 [hardware_display]
 en = "Display"
 ru = "Экран"
