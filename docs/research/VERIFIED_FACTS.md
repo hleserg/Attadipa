@@ -1204,7 +1204,7 @@ same question, the datasheet wins and the entry says so.
   three wallpapers**. What that app's `swap_bytes` was is not readable, which is
   why D21 is `UNKNOWN` rather than resolved in either direction.
 - **Impact:** nothing in this repository is mis-encoded today — T-034 emits
-  `LV_COLOR_FORMAT_A8` masks (`tools/assets/generate_images.py:168` "--cf"), one byte
+  `LV_COLOR_FORMAT_A8` masks (`tools/assets/generate_images.py:175` "--cf"), one byte
   per pixel, which have no byte order to get wrong. The cost lands on **the
   first line of display bring-up**, which must take the swap setting from a
   measurement or from the datasheet and must not take it from this file's
