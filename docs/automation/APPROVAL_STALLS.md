@@ -166,6 +166,33 @@ happened rather than what was expected. If it works it is a workaround for one
 push, not a fix: it does nothing for `claude-agent.yml`'s writer, which is what
 the parked patch is for, and nothing for a run already created.
 
+**It worked, and the two runs sit side by side in the same list.** Head
+`ec8ee11`, pushed the ordinary way, created three runs at 12:04:47Z:
+`action_required`, `actor: github-actions[bot]`, zero jobs. Head `61a817b`, the
+commit above, pushed as
+
+```
+git -c http.https://github.com/.extraheader= \
+    push "https://x-access-token:${GH_TOKEN}@github.com/OWNER/REPO.git" HEAD:BRANCH
+```
+
+created three at 12:07:40Z with `actor: claude[bot]` that **started** — CodeQL
+green, CI running, the review workflow skipping itself on a draft as it should.
+Same branch, same pull request, same minute, one variable.
+
+Two things this does **not** mean. It is not a reason to leave the writer's
+checkout as it is: `claude-agent.yml` pushes from a step this cannot reach, and
+[option A](#the-options-and-what-each-costs) is still the fix. And the three
+stalled runs on the earlier head stay stalled — nothing here approves a run that
+already exists, and the installation token is refused when it tries
+(`POST /actions/runs/{id}/approve` → 403 *"Resource not accessible by
+integration"*, read the same day). The cure is a later head, not a retry.
+
+Emptying `extraheader` for the one command matters as much as naming the token:
+the persisted header is applied to every `https://github.com/` URL, so a
+credential in the URL alone is ignored and the push goes out as
+`github-actions[bot]` again.
+
 ## The options, and what each costs
 
 **A — a fine-grained PAT in `ATTADIPA_AGENT_TOKEN`, plus one line in the
