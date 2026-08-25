@@ -116,7 +116,7 @@ behind it has not been tested, only asserted.
 | 3 | **T-166** ([#190](https://github.com/hleserg/Attadipa/issues/190)) | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC, **up to the driver** | done; D21 resolved by the physical asymmetric RGB pattern |
 | 4 | **T-114** ([#117](https://github.com/hleserg/Attadipa/issues/117)) | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel — **and the `InputOrigin::Physical` producer for touch *and buttons*, which is T-114's alone** | T-165, T-166 |
 | 5 | **T-037** | the first Clock, running on the watch, on real input, with the real tokens and fonts | T-166 |
-| 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | T-166; T-068 |
+| 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | T-166; T-068 ([#268](https://github.com/hleserg/Attadipa/issues/268)) |
 
 None of the three new ones is `agent:ready` yet, and that is deliberate:
 eighteen open pull requests were conflicted against `main` when this was

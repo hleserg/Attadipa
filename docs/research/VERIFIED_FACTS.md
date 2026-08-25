@@ -313,6 +313,31 @@ to every unit of the same model.
 - **Impact:** a capability layer is not a nicety here, it is the only way one
   binary-compatible codebase can address both.
 
+### Neither cited target-board schematic routes 32.768 kHz to the ESP32-S3
+
+| Board design | VERIFIED vendor-schematic fact | Consequence |
+|---|---|---|
+| LilyGO T-Watch S3 Plus | PCF8563 `CLKOUT` reaches pulled-up net `RTC_CLKOUT` and test point `TP66`, and no ESP32 pin. ESP32-S3 `XTAL_32K_P` / GPIO15 is MAX98357A `LRCLK`; `XTAL_32K_N` / GPIO16 is touch `INT`. | External modes are unauthorized in this board profile; physical routing remains `UNKNOWN`. |
+| Waveshare ESP32-S3-Touch-AMOLED-2.06 | PCF85063ATL `CLKOUT` has a no-connect marker and `CLKOE` has no destination. GPIO15 is shared I2C SDA; GPIO16 is `I2S_MCLK`. | External modes are unauthorized in this board profile; physical routing remains `UNKNOWN`. |
+
+- **ESP-IDF fact:** v5.5.5 maps the driven external-oscillator option to
+  `32K_XP` / GPIO15 and defaults to the internal RC source. The repository does
+  not override that default. T-167 may keep `RTC_CLK_SRC_INT_RC`; the internal
+  fast-clock/divider option remains unmeasured, not a 32.768 kHz board source.
+- **Correction:** the earlier `R126 not fitted` statement was false. T-Watch
+  schematic sheet 3 places R126 on the DRV2605L supply pin, unrelated to
+  `RTC_CLKOUT`.
+- **Evidence boundary:** neither physical board's revision and continuity were
+  established. The T-Watch is not in hand; the received Waveshare revision is
+  D20. These are schematic-design facts, not physical-board measurements.
+- **Sources and exact revisions:** [RTC_SLOW_CLOCK](RTC_SLOW_CLOCK.md), with
+  pinned vendor commits, schematic sheets, PDF hashes, ESP-IDF v5.5.5 source
+  and the ESP32-S3 datasheet. Checked 2026-08-26.
+- **Physical route and current consumption:** **NOT EXECUTED — HARDWARE
+  REQUIRED.** Espressif's 3.3 mA / 230 µA values are from its NimBLE example
+  using an external crystal, not measurements of either Attadipa board and not
+  evidence for `EXT_OSC`.
+
 ### The Waveshare board has no LoRa and no GNSS
 
 - **Claim:** the Waveshare ESP32-S3-Touch-AMOLED-2.06 carries neither a LoRa
