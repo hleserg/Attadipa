@@ -11,6 +11,14 @@
 A wearable firmware platform for ESP32-S3 smartwatches — mesh messaging,
 offline navigation, and a UI that is meant to be genuinely pleasant to use.
 
+<p align="center">
+  <img src="pics/first-boot-waveshare.gif"
+       alt="Atta-dipa completing its first physical boot on the Waveshare ESP32-S3 smartwatch"
+       width="400">
+  <br>
+  <sub>First physical boot on the Waveshare ESP32-S3 Touch AMOLED 2.06.</sub>
+</p>
+
 > **Status: early implementation.** The host-testable layers exist and are
 > tested — the hardware inventory, the capability registry, the transport, the
 > GNSS trust evaluator, the design-token system, and the desktop simulator.
