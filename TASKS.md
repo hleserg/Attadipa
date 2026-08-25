@@ -689,6 +689,47 @@ stale silently. The protocol is
 - **Hardware required:** no.
 
 
+### T-175 · `main` is red, every pull request inherits it, and the fix is one line
+- **Priority:** P1 — this is the "automation defect that actually stalls the
+  queue" CLAUDE.md ranks ahead of other work. Nothing merges while it holds:
+  the sweep refuses a red head and so does an orchestrator.
+- **Dependencies:** T-144. It is a `.github/workflows/` file, so no agent here
+  can push it.
+- **Goal:** CI's `Workflow lint` job fails on `main` at `d150f34`, and therefore
+  on every open pull request that has merged `main`:
+
+```
+.github/workflows/issue-janitor.yml:21:9: shellcheck reported issue in this
+script: SC2034:warning:5:3: TITLE appears unused. Verify use (or export if used
+externally) [shellcheck]
+```
+
+  `issue-janitor.yml` was pushed straight to `main` on 2026-08-25, so no pull
+  request ran `actionlint` over it first. Every other CI job on that head is
+  green, including the new firmware build; this one line is the whole failure.
+- **Acceptance:** `actionlint -color` clean on `main`. The smallest change that
+  keeps the author's intent is to use the variable that was clearly meant to be
+  used, inside the branch that closes an issue:
+
+```
+              echo "::notice::#$NUMBER ($TITLE): closing, marked completed or obsolete"
+```
+
+  one line above the `gh issue comment`. Verified locally with `actionlint`
+  1.7.7, the version CI pins: clean. Deleting the `TITLE=` assignment instead is
+  equally green and loses the log line, which for an unattended issue closer is
+  the only record of what it touched.
+- **Not parked as a patch**, deliberately: a one-line change needs the owner
+  either way, and `pending/` asks a patch to carry every edit its own landing
+  forces — more machinery than the fix. T-144 is the standing blocker; this is
+  an instance of it, urgent enough to name separately.
+- **What must not be assumed:** that the janitor's *behaviour* is in scope here.
+  It closes any open issue whose body matches `status: done|completed|obsolete`,
+  and this repository writes structured markers into issue bodies. Whether that
+  is what the owner wants is the owner's question, not this task's.
+- **Hardware required:** no.
+
+
 ### T-174 · The intake gate recognises `@claude` with the stripper #130 had to replace
 - **Priority:** P2 — same class of defect as [#130](https://github.com/hleserg/Attadipa/issues/130)'s
   second path, on a boundary that costs a run rather than a merge.
