@@ -1,14 +1,24 @@
-Issues #170 and #199 — the caller half: make the merge sweep prove it read all
-of the pull request, and make it stop taking the head commit's word for when
-that commit arrived.
+Issues #170, #199 and #130 — the caller half: make the merge sweep prove it read
+all of the pull request, make it stop taking the head commit's word for when
+that commit arrived, and make it tell the Codex rule WHICH TREE it is deciding
+about rather than merely when.
 
 ONE PATCH FOR ONE WORKFLOW, AND THAT IS A DECISION RATHER THAN A CONVENIENCE.
 #199 needed four more edits to `pr-merge-sweep.yml` while #170's four were still
-parked. Parking them separately would have produced two patches against one
-file, an apply order to get right by hand, and a `merge-candidate.sh` arity that
-moves twice — which is the state T-144 exists to stop growing, not to feed. So
-they travel together: the live sweep passes nine arguments today and eleven the
-moment this lands, with nothing in between for anybody to land halfway.
+parked, and #130 needed three more while both were. Parking them separately
+would have produced three patches against one file, an apply order to get right
+by hand, and a `merge-candidate.sh` arity that moves twice — which is the state
+T-144 exists to stop growing, not to feed. So they travel together: the live
+sweep passes nine arguments today and eleven the moment this lands, with nothing
+in between for anybody to land halfway.
+
+AND #130'S EDITS ARE NOT OPTIONAL TO THIS PATCH, THEY ARE LOAD-BEARING FOR IT.
+The eight edits as they stood deleted `COMMITTED` in edit 5 while two calls two
+hunks below still read `"$COMMITTED"` — and this step runs under `set -u`, so
+applying them alone aborted the whole sweep on the first pull request it read
+comments for, not merely the Codex condition. Found by applying the patch and
+reading the result rather than by reading the patch. Whoever applies this now
+gets a tree where nothing refers to `COMMITTED` at all.
 
 WHY THIS IS A FILE AND NOT A COMMIT. Agents here run as `claude[bot]` through
 the Claude GitHub App, `ATTADIPA_AGENT_TOKEN` is unset by design, and that
@@ -20,12 +30,18 @@ pushing a one-character change to a scratch branch:
        `.github/workflows/pr-merge-sweep.yml` without `workflows` permission)
 
 So the rules, their filters, their query and their tests are on `main`, and the
-eight edits that make the sweep USE them are here. Until this lands the sweep
+eleven edits that make the sweep USE them are here. Until this lands the sweep
 merges nothing: `merge-candidate.sh` refuses a nine-argument caller by arity and
 says so in the log, once per open pull request per sweep, naming this file. That
 is the intended state -- a gate that cannot prove it read the whole pull request,
-and cannot say when its head arrived, must not merge one -- but it is not the
-finished one.
+cannot say when its head arrived, and cannot say which tree an answer to the
+other reviewer was about, must not merge one -- but it is not the finished one.
+
+A SECOND THING HOLDS UNTIL THIS LANDS, and it holds on a different line. The
+live caller passes `"$COMMITTED"` to `codex-answered.sh`, which since #130 was
+reopened expects an object id and refuses a timestamp as one. So a pull request
+carrying a Codex finding answers `unknown` and holds on that as well. Same
+direction, different sentence in the log; both end when this is applied.
 
 TO APPLY, from a session whose token may write workflows:
 
@@ -36,7 +52,7 @@ TO APPLY, from a session whose token may write workflows:
     #  `75-approval-stall.patch` -- 34 kB parked by #128, on `main` today and
     #  not yet applied -- the directory's README, and #154's patch when it
     #  lands. See T-144.
-    bash .github/tests/merge-candidate-test.sh   # 182 assertions, and the last
+    bash .github/tests/merge-candidate-test.sh   # 184 assertions, and the last
                                                  # four flip to the applied state
 
 THEN THE FIVE DOCUMENTS THAT DESCRIBE THE PARKED STATE, in the same commit.
@@ -121,7 +137,7 @@ human and matched a different one.
     git commit -am "The merge sweep asks whether it read all of the pull request"
 
 WHAT IT CHANGES, all in .github/workflows/pr-merge-sweep.yml. The first four are
-#170's and the last four are #199's:
+#170's, the next four are #199's and the last three are #130's:
 
   1. the inline GraphQL query becomes `-F query=@.github/scripts/merge-facts.graphql`,
      which is the same query plus `pageInfo` on all six decision-critical
@@ -141,14 +157,24 @@ WHAT IT CHANGES, all in .github/workflows/pr-merge-sweep.yml. The first four are
      that arrival is -- and holds outright where GitHub has stamped nothing;
   7. the separate `HEAD_AGE` computation goes, because it is one of those three;
   8. the verdict call passes the head's object id as its eleventh argument, and
-     the merge notice names the commit it merged.
+     the merge notice names the commit it merged;
+  9. both calls to `codex-answered.sh` pass `"$HEAD_OID"` in place of
+     `"$COMMITTED"` -- which is what makes an acknowledgement have to name the
+     tree it is about, and which is also what stops edit 5's deletion from
+     leaving two references to a variable `set -u` would abort on;
+ 10. the inline-comment records carry `commit_oid: (.original_commit_id // null)`,
+     the commit a review comment was written against, so a reply in a thread is
+     bound to a tree without anybody having to type an object id;
+ 11. the issue-comment and review-body records carry `commit_oid: null`
+     explicitly, because those two shapes have no such field and a record whose
+     schema is half-present is one the rule cannot reason about.
 
 Nothing else moves. The path allowlist, the six-hour settling window, the
 three-per-run cap, the reviewer's verdict conditions and the CheckRun /
 StatusContext separation from a192a89 are untouched.
 
 diff --git a/.github/workflows/pr-merge-sweep.yml b/.github/workflows/pr-merge-sweep.yml
-index 598fbaa..da9cad3 100644
+index 7a85cf7..c754218 100644
 --- a/.github/workflows/pr-merge-sweep.yml
 +++ b/.github/workflows/pr-merge-sweep.yml
 @@ -35,6 +35,24 @@ name: Merge what is finished
@@ -176,7 +202,7 @@ index 598fbaa..da9cad3 100644
  
  on:
    schedule:
-@@ -132,31 +150,14 @@ jobs:
+@@ -137,31 +155,14 @@ jobs:
              # GraphQL in one round trip for the facts REST splits across four
              # endpoints, including the two REST cannot answer at all:
              # mergeStateStatus and whether a review thread is resolved.
@@ -216,7 +242,7 @@ index 598fbaa..da9cad3 100644
                2>/dev/null)" || FACTS=""
  
              # An empty or error document means the facts were not established.
-@@ -167,6 +168,29 @@ jobs:
+@@ -172,6 +173,29 @@ jobs:
                continue
              fi
  
@@ -246,7 +272,7 @@ index 598fbaa..da9cad3 100644
              IS_DRAFT="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.isDraft')"
              MERGEABLE="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.mergeStateStatus // "" | ascii_downcase')"
              # One label per line, not space joined: GitHub permits a space
-@@ -174,50 +198,52 @@ jobs:
+@@ -179,50 +203,52 @@ jobs:
              # satisfied a space-separated substring test. Found in review.
              LABELS="$(printf '%s' "$FACTS" | jq -r '.data.repository.pullRequest.labels.nodes[].name')"
              UNRESOLVED="$(printf '%s' "$FACTS" | jq -r '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length')"
@@ -341,7 +367,7 @@ index 598fbaa..da9cad3 100644
  
              # A run still in flight has a null conclusion. It must reach the
              # decision as something, and `pending` is what the rule refuses on
-@@ -239,10 +265,12 @@ jobs:
+@@ -244,10 +270,12 @@ jobs:
                    else "status:" + (.state // "pending") end
                  | ascii_downcase ] | join(" ")')"
  
@@ -358,7 +384,82 @@ index 598fbaa..da9cad3 100644
  
              # The other reviewer. Codex is configured on ChatGPT's side and does
              # not set `ai-review:pass`, so a finding of its reaches us only as a
-@@ -293,7 +321,8 @@ jobs:
+@@ -267,6 +295,16 @@ jobs:
+             # account can leave a comment, and the "answer" needed no relation
+             # to the finding beyond a later timestamp. Issue #130.
+             #
++            # AND THE THIRD ROUND WAS ABOUT WHICH TREE THE ANSWER WAS ABOUT. The
++            # rule was handed `$COMMITTED` and asked for an answer later than
++            # it, which is the same author-written clock #199 removed from the
++            # settling window two steps above -- and, clock aside, a later
++            # timestamp is not the same tree. Move a pull request onto a commit
++            # that already existed and the head's stamp goes BACKWARDS, so an
++            # acknowledgement written about the previous head clears a finding
++            # on this one. The rule now takes `$HEAD_OID`, an object id nothing
++            # but the tree produces, and an acknowledgement has to name it.
++            #
+             # So the facts are gathered here and the rule lives in a file that a
+             # test can execute: .github/scripts/codex-answered.sh. Three sources,
+             # because a reply relationship only exists in one of them --
+@@ -284,6 +322,7 @@ jobs:
+               | jq 'if type=="array" and (.[0]|type)=="array" then add else . end
+                     | map({kind: "issue", login: .user.login, at: .created_at,
+                            bot: (.user.type == "Bot"), thread: null,
++                           commit_oid: null,
+                            body: (.body // "")})' \
+               2>/dev/null)" || CODEX_ISSUE=""
+             CODEX_REVIEW="$(gh api --paginate --slurp \
+@@ -292,6 +331,7 @@ jobs:
+                     | map(select(.body != "" and .body != null)
+                           | {kind: "review", login: .user.login, at: .submitted_at,
+                              bot: (.user.type == "Bot"), thread: null,
++                             commit_oid: null,
+                              body: (.body // "")})' \
+               2>/dev/null)" || CODEX_REVIEW=""
+             # `in_reply_to_id // id` is GitHub's own thread root: every comment
+@@ -300,11 +340,23 @@ jobs:
+             # finding and a reply that this API offers, and it is why inline
+             # comments do not need the written acknowledgement that issue
+             # comments and review bodies do.
++            #
++            # `original_commit_id` IS WHICH TREE THE THREAD IS ABOUT, and it is
++            # the one field here that answers that question without anybody
++            # typing anything: the commit a review comment was written against,
++            # recorded when it was written. `commit_id` is deliberately not
++            # taken as a fallback -- whether GitHub revises it as a pull request
++            # moves is not something this repository has established, and a
++            # field whose meaning is a guess must not be what binds a verdict to
++            # a tree. Where it is absent the record carries null, no reply can
++            # answer through it, and the written acknowledgement is the way
++            # through. Issue #130.
+             CODEX_INLINE="$(gh api --paginate --slurp \
+               "repos/$REPO/pulls/$PR/comments?per_page=100" 2>/dev/null \
+               | jq 'if type=="array" and (.[0]|type)=="array" then add else . end
+                     | map({kind: "review-comment", login: .user.login, at: .created_at,
+                            bot: (.user.type == "Bot"), thread: (.in_reply_to_id // .id),
++                           commit_oid: (.original_commit_id // null),
+                            body: (.body // "")})' \
+               2>/dev/null)" || CODEX_INLINE=""
+ 
+@@ -329,7 +381,7 @@ jobs:
+             CODEX=unknown
+             if [ -n "$RECORDS" ]; then
+               CODEX="$(printf '%s' "$RECORDS" \
+-                       | bash .github/scripts/codex-answered.sh "$COMMITTED" 2>/dev/null)" || CODEX=unknown
++                       | bash .github/scripts/codex-answered.sh "$HEAD_OID" 2>/dev/null)" || CODEX=unknown
+             fi
+ 
+             if [ "$CODEX" != "0" ] && [ -n "$RECORDS" ]; then
+@@ -366,7 +418,7 @@ jobs:
+                 '[ $r[] | . + {permission: ($p[.login] // "unknown")} ]' 2>/dev/null)" || RECORDS=""
+               if [ -n "$RECORDS" ]; then
+                 CODEX="$(printf '%s' "$RECORDS" \
+-                         | bash .github/scripts/codex-answered.sh "$COMMITTED" 2>/dev/null)" || CODEX=unknown
++                         | bash .github/scripts/codex-answered.sh "$HEAD_OID" 2>/dev/null)" || CODEX=unknown
+               fi
+             fi
+             case "$CODEX" in
+@@ -376,7 +428,8 @@ jobs:
  
              VERDICT="$(bash .github/scripts/merge-candidate.sh \
                "$CHECKS" "$LABELS" "$UNRESOLVED" "$CODEX" \
@@ -368,7 +469,7 @@ index 598fbaa..da9cad3 100644
  
              case "$VERDICT" in
                HOLD*)
-@@ -335,7 +364,10 @@ jobs:
+@@ -418,7 +471,10 @@ jobs:
  
              if gh pr merge "$PR" --repo "$REPO" --squash --delete-branch; then
                MERGED=$((MERGED + 1))

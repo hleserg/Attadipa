@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # How many of the other reviewer's findings on this pull request are still
 # unanswered -- where "answered" means somebody ENTITLED to answer them did,
-# about THIS finding, on THIS head commit.
+# about THIS finding, about THIS object id.
 #
 # WHY THIS FILE EXISTS. The rule it replaces was four lines of `jq` inside
 # pr-merge-sweep.yml, and it read, in full:
@@ -34,17 +34,41 @@
 #      `in_reply_to_id`, so a thread is a fact rather than a guess -- and gives
 #      NOTHING for issue comments and review bodies, which is exactly the shape
 #      #130 is about. For those, the binding has to be written down: the
-#      acknowledgement token below, in the body, outside code.
-#   3. WHEN. At or after both the finding and the head commit. A verdict
+#      acknowledgement below, in the body, in visible prose.
+#   3. WHICH TREE. The answer names THE HEAD COMMIT'S OBJECT ID. A verdict
 #      reached on commit A says nothing about commit B, which is the same
-#      argument `ai-review:pass` already carries in merge-candidate.sh, applied
-#      to the same kind of stale evidence.
+#      argument `ai-review:pass` already carries in merge-candidate.sh.
+#
+# CONDITION 3 USED TO BE A DATE, AND A DATE COULD NOT CARRY IT. Until issue
+# #130 was reopened this file took the head's timestamp and asked for an answer
+# `.at >= $head`. Two things were wrong with that and they compound:
+#
+#   * the value the sweep passed was `(.pushedDate // .committedDate)`, and #199
+#     established that `pushedDate` is deprecated and answers `null` for every
+#     commit this repository has -- so it was always `committedDate`, which is
+#     the git committer clock and which `GIT_COMMITTER_DATE` sets. The condition
+#     meant to bind a verdict to a tree rested on a field the author of that
+#     tree writes;
+#   * even with an honest clock, ORDER IS NOT IDENTITY. Move a pull request onto
+#     a commit that already existed -- a revert, a rebase onto an older base, a
+#     force-push back to a commit somebody pushed this morning -- and the head's
+#     timestamp goes BACKWARDS. An acknowledgement written at 10:00 about the
+#     tree that was head then still post-dates a head whose stamp reads 08:00,
+#     so it answers a different tree without anybody typing anything. Filed on
+#     #130 with the reproduction; it printed `0` before and after the move.
+#
+# So the head arrives here as its OBJECT ID, which is immutable, which nothing
+# but the tree itself can produce, and which an acknowledgement has to name.
+# There is no timestamp condition against the head any more and reintroducing
+# one is the defect, not the belt to the braces: the ordering that remains --
+# an answer is later than the finding it answers -- is GitHub's `created_at` on
+# two comments, a clock no contributor writes.
 #
 # It fails closed. Anything it could not establish -- a permission it could not
-# read, a timestamp it could not parse, a head it was not given -- prints
-# `unknown`, and merge-candidate.sh holds on `unknown` with a line of its own.
-# "Could not tell" and "nothing outstanding" are different answers and must not
-# print the same word.
+# read, a timestamp it could not parse, a head object id it was not given --
+# prints `unknown`, and merge-candidate.sh holds on `unknown` with a line of its
+# own. "Could not tell" and "nothing outstanding" are different answers and must
+# not print the same word.
 #
 # No network and no environment, for the reason merge-candidate.sh and
 # intake-decision.sh give: a rule embedded in a workflow cannot be executed, so
@@ -67,15 +91,25 @@ ATTADIPA_CODEX_LOGINS='["chatgpt-codex-connector[bot]"]'
 # an answer under the old rule.
 ATTADIPA_CODEX_NEVER_ANSWERS='["github-actions[bot]","claude[bot]","github-actions","claude"]'
 
-# The acknowledgement token. Visible in the rendered thread on purpose -- an
-# HTML comment would be invisible to the person the acknowledgement is for --
-# and long enough that nobody types it by accident.
+# The acknowledgement. Visible in the rendered thread on purpose -- an HTML
+# comment would be invisible to the person the acknowledgement is for -- and it
+# carries the head commit's object id, so that the sentence it makes is "I have
+# read the other reviewer's findings against THIS tree" and not "I have read
+# something at some point".
+#
+#     attadipa: codex-reviewed 4038850c2a4b1f0e9d7c6b5a49382716f0e5d4c3
+#
+# THE WHOLE LINE, AND NOTHING ELSE ON IT. `gh pr view N --json headRefOid -q
+# .headRefOid` prints the argument; forty hex characters, not the abbreviation
+# GitHub shows in a page, because a prefix is a question about how many
+# characters are enough and a full object id is not a question at all.
 #
 # A LABEL WAS THE OTHER CANDIDATE and was rejected: adding a label that is
 # already present raises no event at all, so re-acknowledging a second finding
 # would need a remove-then-add nobody would guess at. AI_TASK_PROTOCOL.md
 # documents that exact trap for `agent:ready`; one is enough. A comment always
-# carries a fresh timestamp, and it can carry the reasoning as well.
+# carries a fresh timestamp, it can carry the object id, and it can carry the
+# reasoning as well.
 ATTADIPA_CODEX_ACK="attadipa: codex-reviewed"
 
 # The permissions that may answer. The same three intake-decision.sh accepts.
@@ -83,30 +117,175 @@ ATTADIPA_CODEX_ACK="attadipa: codex-reviewed"
 # close, which is why the label route was not taken either.
 ATTADIPA_CODEX_ANSWER_PERMISSIONS='["admin","maintain","write"]'
 
-# attadipa_strip_code, reused rather than copied. See the note on it in
-# intake-decision.sh: a token inside a code span is somebody writing about the
-# token, and this repository has been bitten by that twice in one day.
-# shellcheck source=.github/scripts/intake-decision.sh
-. "$(dirname "${BASH_SOURCE[0]}")/intake-decision.sh"
-
-# attadipa_codex_acknowledges BODY -- 0 when BODY is an acknowledgement.
-attadipa_codex_acknowledges() {
-  local stripped
-  stripped="$(attadipa_strip_code "${1-}")"
-  case "${stripped,,}" in
-    *"$ATTADIPA_CODEX_ACK"*) return 0 ;;
+# attadipa_codex_oid TEXT -- prints TEXT lowercased when it is a git object id,
+# prints nothing and returns 1 otherwise. Forty hexadecimal characters: GitHub's
+# `oid`, `commit_id` and `original_commit_id` are all this shape.
+attadipa_codex_oid() {
+  local oid="${1-}"
+  oid="${oid,,}"
+  [ "${#oid}" -eq 40 ] || return 1
+  case "$oid" in
+    *[!0-9a-f]*) return 1 ;;
   esac
+  printf '%s' "$oid"
+}
+
+# attadipa_codex_uncomment TEXT -- TEXT with every HTML comment removed.
+#
+# `<!-- attadipa: codex-reviewed <oid> -->` renders as nothing at all, and it
+# cleared a finding: the stripper this file used to borrow from the intake gate
+# removed fenced blocks and single-backtick spans, and an HTML comment is
+# neither. So the acknowledgement could be given by a comment whose author
+# could not see they had given it, and taken back by nobody. Reported by Codex
+# on #219 and merged past.
+#
+# An UNTERMINATED `<!--` drops everything after it. That is what a browser does
+# with the rest of the document, and it is the fail-closed direction here: the
+# text nobody can read cannot acknowledge anything.
+attadipa_codex_uncomment() {
+  local rest="${1-}" out="" after
+  while : ; do
+    case "$rest" in
+      *'<!--'*) : ;;
+      *) out="$out$rest"; break ;;
+    esac
+    out="$out${rest%%<!--*}"
+    after="${rest#*<!--}"
+    case "$after" in
+      *'-->'*) rest="${after#*-->}" ;;
+      *) break ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+# attadipa_codex_acknowledges BODY HEAD_OID -- 0 when BODY carries a visible,
+# standalone acknowledgement naming HEAD_OID.
+#
+# WHY THIS IS A RECOGNISER AND NOT A STRIPPER. The old test was "does the token
+# appear anywhere in the body once code has been removed", over
+# `attadipa_strip_code` from intake-decision.sh -- and that function removes
+# exactly two things, fences that begin in column one and single-backtick pairs.
+# Every other way markdown has of showing a reader a string without saying it
+# went through: a ``double-backtick`` span, four spaces of indent, an HTML
+# comment, a `> ` quotation, and the token in the middle of an ordinary
+# sentence. All five cleared a finding on `main@36e1ba9`, run rather than read.
+#
+# Removing more forms one at a time is a losing game against a markdown parser,
+# so the question is inverted. Nothing is stripped and then searched. A line
+# must SURVIVE to be considered -- outside every fence, indented at most three
+# spaces, not a quotation, containing no backtick anywhere at all -- and then it
+# must be, once trimmed, EXACTLY the acknowledgement and its object id. A form
+# this recogniser does not understand is a form that does not acknowledge
+# anything.
+#
+# `attadipa_strip_code` is deliberately left alone rather than fixed here. It
+# guards a different boundary -- whether a comment asks for an agent -- where
+# the string is a mention inside a sentence and an exact-line rule would refuse
+# every real `@claude`. Two boundaries, two recognisers -- and that gate has the
+# same five blind spots this one had, which is TASKS.md T-174 rather than a line
+# of this file, because the answer there cannot be an exact-line rule.
+attadipa_codex_acknowledges() {
+  local head line stripped indent want
+  head="$(attadipa_codex_oid "${2-}")" || return 1
+  want="$ATTADIPA_CODEX_ACK $head"
+
+  local fence_char="" fence_len=0 run=0 rest c tail
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+
+    # A tab is code wherever CommonMark's tab stops land it, and it is never
+    # part of an acknowledgement. Out before anything else looks at the line,
+    # and without touching the fence state: a tab-indented line can neither
+    # open a fence nor close one.
+    case "$line" in
+      $'\t'*) continue ;;
+    esac
+
+    stripped="$line"
+    indent=0
+    while [ "${stripped# }" != "$stripped" ]; do
+      stripped="${stripped# }"
+      indent=$((indent + 1))
+    done
+
+    # A FENCE, tracked by its character and its run length rather than by "the
+    # line starts with three of something". Inside a ``` block a `~~~` line is
+    # content, and a toggle that does not know which character opened the block
+    # closes it early -- which puts the next line, the one carrying the token,
+    # back in visible prose.
+    if [ "$indent" -le 3 ]; then
+      case "$stripped" in
+        '```'*|'~~~'*)
+          c="${stripped:0:1}"
+          run=0
+          rest="$stripped"
+          while [ "${rest#"$c"}" != "$rest" ]; do
+            rest="${rest#"$c"}"
+            run=$((run + 1))
+          done
+          if [ -z "$fence_char" ]; then
+            # An opening backtick fence may not carry a backtick in its info
+            # string; if it does it is not a fence, and the line falls through
+            # to the backtick refusal below, which discards it anyway.
+            if [ "$c" = '`' ] && [ "${rest//[^\`]/}" != "" ]; then
+              :
+            else
+              fence_char="$c"
+              fence_len="$run"
+              continue
+            fi
+          else
+            # A closing fence: the same character, at least as long as the one
+            # that opened the block, and nothing but whitespace after it.
+            tail="${rest//[[:space:]]/}"
+            if [ "$c" = "$fence_char" ] && [ "$run" -ge "$fence_len" ] && [ -z "$tail" ]; then
+              fence_char=""
+              fence_len=0
+            fi
+            continue
+          fi
+          ;;
+      esac
+    fi
+
+    # Inside a fenced block, or indented far enough to be a code block.
+    [ -z "$fence_char" ] || continue
+    [ "$indent" -le 3 ] || continue
+
+    case "$stripped" in
+      '>'*) continue ;;   # a quotation is somebody else's words
+      # ANY BACKTICK AT ALL, so no code span of any width survives -- and this
+      # is deliberately redundant. The exact comparison below already refuses a
+      # line carrying one, because the acknowledgement has no backtick in it, so
+      # no fixture can distinguish this rule from that one and no mutant can
+      # kill it. It is a second lock on the same door, there for the day the
+      # comparison is loosened, and it is written down as redundant so that
+      # nobody deletes it believing they have found dead code -- or keeps it
+      # believing it is tested.
+      *'`'*) continue ;;
+    esac
+
+    # Trailing whitespace only; a line with anything else on it is prose about
+    # the acknowledgement rather than the acknowledgement.
+    while [ "${stripped% }" != "$stripped" ]; do stripped="${stripped% }"; done
+    if [ "${stripped,,}" = "$want" ]; then
+      return 0
+    fi
+  done <<EOF
+$(attadipa_codex_uncomment "${1-}")
+EOF
   return 1
 }
 
-# attadipa_codex_answered HEAD_TIMESTAMP RECORDS_JSON
+# attadipa_codex_answered HEAD_OID RECORDS_JSON
 #
-# HEAD_TIMESTAMP  the head commit's `pushedDate`, falling back to
-#                 `committedDate` -- the same value merge-candidate.sh's
-#                 settling window is measured from. `null`, empty or any shape
-#                 that is not an ISO-8601 UTC instant means the head could not
-#                 be established, which is `unknown` whenever there is a
-#                 finding to date against it.
+# HEAD_OID        the head commit's object id, `oid` in the GraphQL the sweep
+#                 already asks for and the same value merge-candidate.sh binds
+#                 the reviewer's verdict to. Anything that is not forty
+#                 hexadecimal characters means the head could not be
+#                 established, which is `unknown` whenever there is a finding to
+#                 bind to it.
 #
 # RECORDS_JSON    every comment, review body and inline review comment on the
 #                 pull request, as one JSON array. Each record:
@@ -120,6 +299,10 @@ attadipa_codex_acknowledges() {
 #                   thread      for "review-comment", `in_reply_to_id // id`,
 #                               which is GitHub's own thread root; null
 #                               otherwise
+#                   commit_oid  for "review-comment", `original_commit_id` --
+#                               the commit the comment was WRITTEN against,
+#                               which GitHub records once and does not revise;
+#                               null otherwise
 #                   body        the comment text, verbatim
 #
 # Prints exactly one line:
@@ -130,14 +313,11 @@ attadipa_codex_answered() {
 
   [ -n "$records" ] || { echo "unknown"; return 0; }
 
-  # A head that is not an instant is not a head. Left as the empty string, and
-  # the rule below reports `unknown` for it -- but only when there is actually
-  # a finding to date, so a pull request the other reviewer never touched is
-  # not held hostage to a null `pushedDate`.
-  case "$head" in
-    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) : ;;
-    *) head="" ;;
-  esac
+  # A head that is not an object id is not a head. Left as the empty string,
+  # and the rule below reports `unknown` for it -- but only when there is
+  # actually a finding to bind, so a pull request the other reviewer never
+  # touched is not held hostage to a head the caller could not read.
+  head="$(attadipa_codex_oid "$head")" || head=""
 
   # The acknowledgement test is markdown-aware, so it is bash rather than jq.
   # The flags are computed here, one per record, and handed to the rule below
@@ -152,7 +332,11 @@ attadipa_codex_answered() {
   i=0
   while [ "$i" -lt "$count" ]; do
     body="$(printf '%s' "$records" | jq -r --argjson i "$i" '.[$i].body // ""' 2>/dev/null)"
-    if attadipa_codex_acknowledges "$body"; then flag=true; else flag=false; fi
+    if [ -n "$head" ] && attadipa_codex_acknowledges "$body" "$head"; then
+      flag=true
+    else
+      flag=false
+    fi
     acks="$acks$flag"$'\n'
     i=$((i + 1))
   done
@@ -172,6 +356,10 @@ attadipa_codex_answered() {
       # and makes a finding undecidable.
       def instant: ((.at // "") | type == "string")
         and ((.at // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"));
+      # An object id, or null. Anything that is not one can never equal $head,
+      # which is validated before it gets here.
+      def oid: (.commit_oid // "")
+        | if (type == "string") and test("^[0-9a-fA-F]{40}$") then ascii_downcase else null end;
       # The login is captured before `index` runs, because inside `index(f)`
       # jq evaluates f against the ARRAY rather than against the record --
       # `$codex | index(.login)` reads `.login` of the list and errors out.
@@ -199,21 +387,31 @@ attadipa_codex_answered() {
               | . as $f
               | [ $answers[]
                   | select(.at > $f.at)
-                  # The head, as well as the finding. An acknowledgement
-                  # written before the current head commit answered a different
-                  # tree.
-                  | select(.at >= $head)
-                  # BOUND TO THIS FINDING. A reply in the same review thread,
-                  # by way of the in_reply_to_id GitHub itself records rather
-                  # than a guess from timing -- or an explicit acknowledgement.
-                  # Nothing else, which is the whole of the change: a later
-                  # comment is not an answer.
+                  # BOUND TO THIS FINDING, AND TO THIS TREE.
+                  #
+                  # An acknowledgement names the head object id in its own
+                  # text, which is what `.ack` already means -- the recogniser
+                  # was given $head and matched it.
+                  #
+                  # A REPLY carries no text anybody has to write, so the tree
+                  # it is about comes from GitHub: both the finding and the
+                  # reply must have been written against the commit that is
+                  # head now. `original_commit_id` is the commit a review
+                  # comment was made on, recorded once. So a thread that
+                  # discussed commit A stops answering the moment the pull
+                  # request moves to B -- the finding is still outstanding, it
+                  # is simply outstanding about a tree nobody has replied to
+                  # yet, and an acknowledgement naming B is the way to say
+                  # otherwise. Held, never dropped: a finding must not become
+                  # answerable by pushing past it.
                   | select(
                       .ack
                       or ( $f.kind == "review-comment"
                            and .kind == "review-comment"
                            and ($f.thread != null)
-                           and (.thread == $f.thread) ) )
+                           and (.thread == $f.thread)
+                           and (($f | oid) == $head)
+                           and ((. | oid) == $head) ) )
                 ] as $bound
               | if ([ $bound[] | select(may_answer) ] | length) > 0 then "answered"
                 elif ([ $bound[] | select((.permission // "unknown") == "unknown") ] | length) > 0
@@ -224,8 +422,15 @@ attadipa_codex_answered() {
         end' 2>/dev/null || echo "unknown"
 }
 
-# Callable as a command -- the head as the one argument, the records on stdin,
-# which is how pr-merge-sweep.yml calls it and therefore what the test calls.
+# Callable as a command -- the head's object id as the one argument, the records
+# on stdin, which is how pr-merge-sweep.yml calls it and therefore what the test
+# calls. A caller that passes anything other than one argument is not a caller
+# this rule understands, and a rule that guesses at its own inputs is the shape
+# merge-candidate.sh refuses by arity for the same reason.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  attadipa_codex_answered "${1-}" "$(cat)"
+  if [ "$#" -ne 1 ]; then
+    echo "unknown"
+    exit 0
+  fi
+  attadipa_codex_answered "$1" "$(cat)"
 fi
