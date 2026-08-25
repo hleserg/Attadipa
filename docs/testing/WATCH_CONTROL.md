@@ -141,9 +141,9 @@ rather than assumed here.
 **`0` is a host convention and not a device declaration, and the two do not
 agree.** A device that advertises `0` has given the tool no bound to enforce,
 so the tool does not invent one and lets the gesture through. The bridge reads
-the same `0` as *expire immediately*: `debug/src/bridge.cpp:597` releases when
+the same `0` as *expire immediately*: `debug/src/bridge.cpp:614` releases when
 `now_ms - pointer_down_at_ > limits_.max_hold_ms`, which is already true one
-millisecond after the `PointerDown`, and `:583` does the same for buttons.
+millisecond after the `PointerDown`, and `:600` does the same for buttons.
 `info` says so out loud — it prints `hold released after 0 ms`. So `0` is not a
 way to ask for an unbounded hold; a firmware that wants one has to raise the
 limit, not zero it. The default is `30000`
