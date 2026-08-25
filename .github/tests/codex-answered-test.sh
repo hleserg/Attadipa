@@ -447,7 +447,7 @@ echo "The caller gathers what the rule reads"
 # A gathering step that stops collecting `in_reply_to_id`, stops looking a
 # permission up, or stops passing the head's object id turns every answer into
 # `unknown` -- which holds, so nothing would go wrong loudly.
-SWEEP=.github/workflows/pr-merge-sweep.yml
+SWEEP=.github/scripts/pr-merge-sweep.sh
 # shellcheck disable=SC2016  # $LOGIN and $PR are the workflow's own shell
 # variables and are being searched for literally, not expanded here.
 for gathered in 'in_reply_to_id' 'collaborators/\$LOGIN/permission' \
@@ -462,7 +462,7 @@ done
 # Test the shipping caller, not a parked patch or generated post-image.
 SWEEP_BODY="$(grep -vE '^[[:space:]]*#' "$SWEEP" 2>/dev/null)"
 # shellcheck disable=SC2016  # a literal $ in a pattern, not an expansion
-CODEX_CALL="$(printf '%s\n' "$SWEEP_BODY" | grep -c 'codex-answered.sh "\$HEAD_OID"' || true)"
+CODEX_CALL="$(printf '%s\n' "$SWEEP_BODY" | grep -Ec 'codex-answered[.]sh"? "\$HEAD_OID"' || true)"
 if [ "$CODEX_CALL" -ge 2 ]; then
   printf '  ok    the sweep passes the head object id to the rule\n'; pass=$((pass + 1))
 else

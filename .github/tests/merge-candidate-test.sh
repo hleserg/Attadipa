@@ -945,13 +945,13 @@ fi
 
 echo
 echo "The shipping sweep calls the tested rules"
-SWEEP=.github/workflows/pr-merge-sweep.yml
+SWEEP=.github/scripts/pr-merge-sweep.sh
 SWEEP_BODY="$(grep -vE '^[[:space:]]*#' "$SWEEP" 2>/dev/null)"
 VERDICT_CALL="$(printf '%s\n' "$SWEEP_BODY" | awk '
   /merge-candidate[.]sh/ { inside = 1 }
   inside { print; if ($0 ~ /[)]"[[:space:]]*$/) exit }')"
 VERDICT_ARGC="$(printf '%s\n' "$VERDICT_CALL" | grep -oE '"\$[A-Za-z_][A-Za-z0-9_]*"' | wc -l | tr -d ' ')"
-if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-facts.sh'; then
+if printf '%s\n' "$SWEEP_BODY" | grep -qE 'bash .*merge-facts[.]sh'; then
   printf '  ok    the sweep calls the rule that has a test\n'; pass=$((pass + 1))
   if [ "$VERDICT_ARGC" = "11" ]; then
     printf '  ok    and the verdict call passes the completeness and head arguments\n'; pass=$((pass + 1))
@@ -959,7 +959,7 @@ if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-facts.sh'; 
     printf '  FAIL  the sweep calls merge-facts.sh but hands merge-candidate.sh %s arguments, not 11\n' "$VERDICT_ARGC"
     fail=$((fail + 1))
   fi
-  if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-head-trust.sh'; then
+  if printf '%s\n' "$SWEEP_BODY" | grep -qE 'bash .*merge-head-trust[.]sh'; then
     printf '  ok    and it asks GitHub when the head arrived rather than the commit\n'; pass=$((pass + 1))
   else
     printf '  FAIL  the sweep calls merge-facts.sh but not merge-head-trust.sh, so the head is timed by nothing\n'
@@ -969,6 +969,36 @@ else
   printf '  FAIL  the shipping sweep does not call merge-facts.sh\n'
   fail=$((fail + 1))
 fi
+
+echo
+echo "The shipping transport distinguishes an empty queue from an unreadable one"
+sweep_probe=$(mktemp -d) || exit 1
+# shellcheck disable=SC2016  # GH_FAIL belongs to the generated stub.
+printf '%s\n' '#!/usr/bin/env bash' \
+  'if [ "${GH_FAIL:-}" = 1 ]; then echo "API unavailable" >&2; exit 1; fi' \
+  "printf '[]\\n'" > "$sweep_probe/gh"
+chmod +x "$sweep_probe/gh"
+real_path=$PATH
+if output=$(PATH="$sweep_probe:$real_path" REPO=owner/repo RUNNER_TEMP="$sweep_probe" \
+     bash "$SWEEP" 2>&1); then
+  case "$output" in
+    *"no open pull requests"*)
+      printf '  ok    an empty queue exits cleanly and says so\n'; pass=$((pass + 1)) ;;
+    *)
+      printf '  FAIL  an empty queue produced no explicit notice\n'; fail=$((fail + 1)) ;;
+  esac
+else
+  printf '  FAIL  an empty queue failed the shipping transport\n'; fail=$((fail + 1))
+fi
+if output=$(PATH="$sweep_probe:$real_path" GH_FAIL=1 REPO=owner/repo RUNNER_TEMP="$sweep_probe" \
+     bash "$SWEEP" 2>&1); then
+  printf '  FAIL  an unreadable queue was reported as a successful empty one\n'; fail=$((fail + 1))
+elif printf '%s\n' "$output" | grep -q 'could not list open pull requests'; then
+  printf '  ok    an API failure is loud and fails closed\n'; pass=$((pass + 1))
+else
+  printf '  FAIL  an API failure did not identify the unreadable queue\n'; fail=$((fail + 1))
+fi
+rm -rf "$sweep_probe"
 
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"

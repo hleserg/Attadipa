@@ -48,8 +48,11 @@ them for individual tasks. Git and closed issues already preserve history.
 
 ## Delivery
 
-- Work on a branch and claim work with an assignee or early draft PR. Keep
-  commits logical. Never push directly to `main`.
+- Before creating a branch or editing, run
+  `.github/scripts/writer-start.sh start REPO ISSUE TOKEN` from current `main`;
+  its repository lease and atomic claim are the machine-enforced writer gate.
+  Run `writer-start.sh finish ...` on hand-off. Keep commits logical and never
+  push directly to `main`.
 - A PR links its issue with `Fixes #<issue>` and states what was tested and what
   was not. Update durable documentation only when the durable fact changed.
 - A blocker comment states reason, evidence, impact and one recommended next
