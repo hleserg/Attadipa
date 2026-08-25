@@ -583,9 +583,9 @@ Recorded because the owner asked for it, and because it is short:
 
 ## 11. What Attadipa must change
 
-Each of these is filed as its own small task in [TASKS.md](../../TASKS.md); none
-of them is code today, because none of the affected subsystems exists yet, and
-that is the cheapest moment to get them right.
+Each item below is discrete future work. None is code today, because none of
+the affected subsystems exists yet; execution starts from a GitHub issue, and
+this report remains evidence rather than a second queue.
 
 | # | Change | Why now |
 |---|---|---|

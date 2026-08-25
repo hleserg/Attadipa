@@ -447,7 +447,7 @@ echo "The caller gathers what the rule reads"
 # A gathering step that stops collecting `in_reply_to_id`, stops looking a
 # permission up, or stops passing the head's object id turns every answer into
 # `unknown` -- which holds, so nothing would go wrong loudly.
-SWEEP=.github/workflows/pr-merge-sweep.yml
+SWEEP=.github/scripts/pr-merge-sweep.sh
 # shellcheck disable=SC2016  # $LOGIN and $PR are the workflow's own shell
 # variables and are being searched for literally, not expanded here.
 for gathered in 'in_reply_to_id' 'collaborators/\$LOGIN/permission' \
@@ -459,57 +459,21 @@ for gathered in 'in_reply_to_id' 'collaborators/\$LOGIN/permission' \
   fi
 done
 
-# THE TWO FIELDS THIS ROUND ADDED ARE IN THE HALF AN AGENT CANNOT PUSH.
-# `claude[bot]` holds no `workflows` permission -- verified on 2026-08-24, and
-# the refusal is quoted at the head of the parked patch -- so the sweep's edits
-# travel in docs/automation/pending/170-merge-sweep-completeness.patch, folded
-# into the one patch that already edits this workflow rather than beside it.
-# There are exactly two states this repository may be in and this asserts it is
-# in one of them: the sweep already passes the object id and gathers
-# `original_commit_id`, or the patch that makes it do so is here and applies.
-# The third state -- a rule that reads fields nothing supplies, and nothing on
-# disk that remembers they are meant to meet -- is what this refuses.
-PENDING=docs/automation/pending/170-merge-sweep-completeness.patch
-# Comment lines dropped first: the patch's own prose quotes the call it adds,
-# and a scan of the whole file would be satisfied by an explanation.
+# Test the shipping caller, not a parked patch or generated post-image.
 SWEEP_BODY="$(grep -vE '^[[:space:]]*#' "$SWEEP" 2>/dev/null)"
 # shellcheck disable=SC2016  # a literal $ in a pattern, not an expansion
-CODEX_CALL="$(printf '%s\n' "$SWEEP_BODY" | grep -c 'codex-answered.sh "\$HEAD_OID"' || true)"
-# shellcheck disable=SC2016  # a literal $ in a pattern, not an expansion
-if [ "$CODEX_CALL" -gt 0 ]; then
+CODEX_CALL="$(printf '%s\n' "$SWEEP_BODY" | grep -Ec 'codex-answered[.]sh"? "\$HEAD_OID"' || true)"
+if [ "$CODEX_CALL" -ge 2 ]; then
   printf '  ok    the sweep passes the head object id to the rule\n'; pass=$((pass + 1))
-  if printf '%s\n' "$SWEEP_BODY" | grep -q 'original_commit_id'; then
-    printf '  ok    and gathers the commit each review comment was written against\n'
-    pass=$((pass + 1))
-  else
-    printf '  FAIL  the sweep passes the head but gathers no original_commit_id, so no reply can ever answer\n'
-    fail=$((fail + 1))
-  fi
-elif [ -f "$PENDING" ]; then
-  if grep -q 'codex-answered.sh "\$HEAD_OID"' "$PENDING" \
-     && grep -q 'original_commit_id' "$PENDING"; then
-    printf '  ok    the sweep does not pass it yet, and %s carries both edits\n' "$PENDING"
-    pass=$((pass + 1))
-  else
-    printf '  FAIL  %s does not carry the codex caller edits, so they are parked nowhere\n' "$PENDING"
-    fail=$((fail + 1))
-  fi
-  if git --no-pager apply --check "$PENDING" >/dev/null 2>&1; then
-    printf '  ok    and that patch still applies cleanly to this tree\n'; pass=$((pass + 1))
-  else
-    printf '  FAIL  %s no longer applies; the parked half has rotted\n' "$PENDING"
-    fail=$((fail + 1))
-  fi
-  # The live caller still passes a timestamp, which this rule refuses as a head
-  # -- so the sweep holds every pull request carrying a finding until the patch
-  # lands. That is the intended state and it must be a stated one.
-  if printf '%s\n' "$SWEEP_BODY" | grep -q 'codex-answered.sh "\$COMMITTED"'; then
-    printf '  ok    and the live caller is still the one the patch replaces\n'; pass=$((pass + 1))
-  else
-    printf '  FAIL  the patch is parked but the live caller is neither shape\n'; fail=$((fail + 1))
-  fi
 else
-  printf '  FAIL  the rule reads a head object id that nothing passes and no patch is pending\n'
+  printf '  FAIL  the shipping sweep does not pass HEAD_OID to both Codex checks\n'
+  fail=$((fail + 1))
+fi
+if printf '%s\n' "$SWEEP_BODY" | grep -q 'original_commit_id'; then
+  printf '  ok    the sweep gathers the commit each inline review comment covers\n'
+  pass=$((pass + 1))
+else
+  printf '  FAIL  the sweep gathers no original_commit_id, so no reply can answer an inline finding\n'
   fail=$((fail + 1))
 fi
 

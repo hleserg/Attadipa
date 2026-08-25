@@ -688,8 +688,8 @@ produces by default unless it is designed not to, and the box in that screenshot
 is the *stock* font failing on `×` — with one font, chosen by us, in a build we
 control. A user-supplied font is that failure mode with the safeties off.
 
-**What already exists.** [T-009](../../TASKS.md) shipped the substrate on
-2026-08-22 and it was built the right way round by accident of following final
+**What already exists.** The design-token substrate shipped on 2026-08-22 and
+was built the right way round by following final
 §54: a screen names `color.accent.primary` and `space.md`, and the value behind
 the name is resolved in exactly one place. Swapping the table under those names
 *is* a theme. What does not exist is any of: a theme that is data rather than
@@ -850,7 +850,7 @@ bootstrapped on Apple hardware, a self-hosted endpoint, and MFi for anything a
 person would recognise as Find My. Those made the feature expensive. The owner
 decided it is not wanted, which is a different sentence and outranks the first.
 
-**[T-063](../../TASKS.md) survives, and it is the reason this costs nothing.**
+**The lowest-cost lost-watch route survives, and it is why this costs nothing.**
 The companion phone remembering where it last saw the watch over BLE answers
 *"I have lost my watch"* with no account, no other company's identifier and no
 network at all — and it is the only variant that works with the companion this
@@ -989,7 +989,7 @@ the owner named no country.
    that forward; T-025 (partitions/settings persistence) is still not started.
 
 **What it invalidates.** The framing in
-[OPEN_QUESTIONS](OPEN_QUESTIONS.md) and [TASKS](../../TASKS.md) T-012 that A4
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md) that A4
 is one of a batch of questions still awaiting an owner reply. It is answered —
 just not with a country.
 
@@ -1208,9 +1208,9 @@ cause.
   waiting for is the evidence it treats as decisive, a marking read off the
   part, and this decision supplies a seller's listing instead. No ADR edit is
   asked for here: the two documents disagree because they are answering to
-  different standards of proof, and **T-010** carries the marking read that
-  discharges it (`TASKS.md`, the T-010 BLOCKED block). Not T-013 — that is the
-  mesh cost spike, and it never mentions A2.
+  different standards of proof. The board-bring-up issue must carry the marking
+  read that discharges it; the mesh cost spike is unrelated and never mentions
+  A2.
 - Three follow-up issues, filed separately rather than folded into this
   record: the T114 band check
   ([#89](https://github.com/hleserg/Attadipa/issues/89)), the

@@ -167,13 +167,8 @@ say '...which is what makes case 2 an assertion rather than a description' \
 # ...and the steps that call it, which run from here rather than from a line of
 # their own in `ci.yml`.
 #
-# `review-invalidate-workflow-test.sh` extracts the two `claude-pr-review.yml`
-# steps that reach the helper and executes them. It wanted its own step in
-# `ci.yml`, and could not have one: that edit is a workflow edit, a workflow
-# edit from a GitHub App has to be parked, and `gh-api-usage-test.sh` refuses
-# two parked patches carrying one workflow file -- `75-approval-stall.patch`
-# carries `ci.yml` already. Running it from here costs nothing and keeps it on a
-# `ci.yml` line that exists.
+# `review-invalidate-workflow-test.sh` executes the two shipping workflow steps
+# that call the helper. Fold its tally into this suite so CI needs one entry.
 echo
 echo "...and the workflow steps that call it"
 sub=$(bash .github/tests/review-invalidate-workflow-test.sh 2>&1); subrc=$?

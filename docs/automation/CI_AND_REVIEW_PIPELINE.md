@@ -127,6 +127,22 @@ caller patch was applied during the queue recovery and removed. The executable
 workflow test still extracts both shipping steps and proves that notification
 failure cannot preserve the previous head's verdict.
 
+### When the review publishes no verdict
+
+The pull-request note links here instead of embedding a troubleshooting manual
+in workflow YAML. Check, in order:
+
+1. the actor is named explicitly in `allowed_bots` when it is a bot;
+2. the action did not reach its turn or job timeout;
+3. the branch contains the current default-branch `claude-*.yml` bytes;
+4. the pull request is not itself changing a protected Claude workflow;
+5. the Anthropic credential and quota are available;
+6. the required read-only tool is present in `--allowedTools`.
+
+The run log distinguishes the first five before model work from a missing tool
+after real turns. `.github/scripts/failure-reason.sh` publishes only a
+whitelisted error summary; do not expose full tool output to diagnose it.
+
 A pull request that reaches `main` carrying `<!-- attadipa-review-did-not-run -->`
 and no `ai-review:*` label has been merged on ordinary CI and a person's reading.
 That is a legitimate route — it is the only route for a change to

@@ -42,8 +42,8 @@ constexpr std::size_t kOutputMax = 4 * 1024 * 1024;
 // transfer being slowed to declare it. `docs/testing/WATCH_CONTROL.md` carries
 // the figures and says to re-measure them when this constant moves.
 //
-// This file is named as the model for the firmware transport (`TASKS.md`
-// T-114). What carries over is which bound matters: if 16 KiB of bitwise CRC in
+// This file is the model for the firmware transport tracked by issue #117.
+// What carries over is which bound matters: if 16 KiB of bitwise CRC in
 // one pass is too much for the task servicing a device's interface, the numbers
 // to change are the watermark and the CRC implementation, not this one.
 constexpr int kMaxChunksPerPoll = 64;

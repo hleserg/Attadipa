@@ -432,8 +432,8 @@ The independent detectors, fused with it:
 - **physical plausibility** — implied speed, acceleration and altitude rate
   against what a human body does;
 - **clock disagreement** — GNSS time against the RTC's monotonic progression.
-  A receiver that suddenly reports a different epoch is evidence, and this is
-  where [T-047](../../TASKS.md)'s rule pays: the timeout that notices must be
+  A receiver that suddenly reports a different epoch is evidence, and the
+  timeout that notices must be
   measured on the monotonic clock, or a spoofed time step breaks the detector
   that was supposed to catch it;
 - **provider disagreement** — the on-board receiver against a node's position;

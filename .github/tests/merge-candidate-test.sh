@@ -37,7 +37,7 @@ OID_OK=0123456789abcdef0123456789abcdef01234567
 # run_rule ARGS... -- calls the rule, filling in the arguments the older
 # assertions predate.
 #
-# CHANGED_PATHS defaults to STATUS.md, PASS_AFTER_HEAD and FACTS_COMPLETE to
+# CHANGED_PATHS defaults to docs/research/status-example.md, PASS_AFTER_HEAD and FACTS_COMPLETE to
 # `true` and HEAD_OID to a well-formed id, so every assertion written before
 # those conditions existed still tests exactly the condition it names rather
 # than being refused by a new one first. Each new condition has a section of its
@@ -45,7 +45,7 @@ OID_OK=0123456789abcdef0123456789abcdef01234567
 run_rule() {
   local checks="$1" labels="$2" unresolved="$3" codex="$4"
   local mergeable="$5" is_draft="$6" head_age="$7"
-  local paths="${8-STATUS.md}" pass_after="${9-true}" complete="${10-true}"
+  local paths="${8-docs/research/status-example.md}" pass_after="${9-true}" complete="${10-true}"
   local head_oid="${11-$OID_OK}"
   bash "$SCRIPT_UNDER_TEST" "$checks" "$labels" "$unresolved" "$codex" \
        "$mergeable" "$is_draft" "$head_age" "$paths" "$pass_after" "$complete" \
@@ -206,34 +206,32 @@ echo "Which commit the verdict was reached on"
 # nothing. The backstop routine calls this the likeliest of its guards to recur.
 ok "a pass older than the head commit refuses" \
                                 "HOLD ai-review:pass predates the head commit" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" false
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" false
 ok "and an unreadable answer refuses too, rather than being assumed covered" \
                                 "HOLD could not tell whether ai-review:pass covers the head commit" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" unknown
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" unknown
 ok "an empty answer is unknown, not true" \
                                 "HOLD could not tell whether ai-review:pass covers the head commit" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" ""
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" ""
 ok "and neither is a stray word" \
                                 "HOLD could not tell whether ai-review:pass covers the head commit" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" yes
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" yes
 ok "a draft whose pass predates its head is not undrafted either" \
                                 "HOLD ai-review:pass predates the head commit" \
-                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "STATUS.md" false
+                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "docs/research/status-example.md" false
 
 echo
 echo "What it touches — CLAUDE_AUTOMATION.md's table, row by row"
-# Row 1: the nine documentation directories, plus STATUS.md and TASKS.md,
-# which are on the list because CLAUDE.md requires them in the same commit.
+# Row 1: the nine documentation directories.
 for allowed in docs/architecture/a.md docs/community/a.md docs/hardware/a.md \
                docs/mobile/a.md docs/node/a.md docs/research/a.md \
-               docs/testing/a.md docs/ui/a.md docs/upstream/a.md \
-               STATUS.md TASKS.md; do
+               docs/testing/a.md docs/ui/a.md docs/upstream/a.md; do
   ok "$allowed may be merged unattended" MERGE \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" "$allowed"
 done
 ok "and a pull request touching several allowed paths still merges" MERGE \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" \
-                                 "$(printf 'docs/research/a.md\nSTATUS.md\nTASKS.md')"
+                                 "$(printf 'docs/research/a.md\ndocs/ui/a.md')"
 
 # Every "no" row. Each is a decision of the owner's, 2026-08-21.
 ok "docs/master-prompt-final.md may not — a process that can edit the requirements it is judged against is not a process" \
@@ -248,6 +246,12 @@ ok "docs/adr/ may not — ADR-0003 is what stands between this project and assum
 ok "docs/automation/ may not — a gate that can widen itself is not a gate" \
                                 "HOLD docs/automation/CLAUDE_AUTOMATION.md is not on the unattended-merge allowlist" \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/automation/CLAUDE_AUTOMATION.md"
+ok "STATUS.md is a compatibility pointer, not unattended work" \
+                                "HOLD STATUS.md is not on the unattended-merge allowlist" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md"
+ok "TASKS.md is a compatibility pointer, not unattended work" \
+                                "HOLD TASKS.md is not on the unattended-merge allowlist" \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "TASKS.md"
 ok ".github/ may not, for the same reason — including this very rule" \
                                 "HOLD .github/scripts/merge-candidate.sh is not on the unattended-merge allowlist" \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" ".github/scripts/merge-candidate.sh"
@@ -290,7 +294,7 @@ ok "and a path merely containing an allowed directory name is not admitted" \
 ok "one refused path refuses the whole pull request, even last" \
                                 "HOLD core/x.c is not on the unattended-merge allowlist" \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" \
-                                 "$(printf 'docs/research/a.md\nSTATUS.md\ncore/x.c')"
+                                 "$(printf 'docs/research/a.md\ndocs/research/status-example.md\ncore/x.c')"
 ok "and even first" \
                                 "HOLD core/x.c is not on the unattended-merge allowlist" \
                                  "success" "ai-review:pass" 0 0 clean false "$OLD" \
@@ -315,67 +319,37 @@ echo "Whether the caller read all of it"
 # merges. No condition on the arguments above can see that, because every one of
 # them is a summary carrying no trace of how much was read. Issue #170.
 ok "a proven-complete snapshot merges"  MERGE \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true
 ok "a truncated one refuses"     "HOLD the facts read about this pull request were truncated" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true false
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true false
 ok "an unreadable answer refuses rather than being assumed complete" \
                                 "HOLD could not tell whether the facts read about this pull request are complete" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true unknown
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true unknown
 ok "an empty answer is unknown, not true" \
                                 "HOLD could not tell whether the facts read about this pull request are complete" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true ""
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true ""
 ok "and neither is a stray word" \
                                 "HOLD could not tell whether the facts read about this pull request are complete" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true yes
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true yes
 ok "a draft whose facts are truncated is not undrafted either" \
                                 "HOLD the facts read about this pull request were truncated" \
-                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "STATUS.md" true false
+                                 "success" "ai-review:pass" 0 0 draft true "$OLD" "docs/research/status-example.md" true false
 
-# THE OLD CALLER IS THE DEFECT, so it is refused by arity rather than reinstated
-# by a default. Nine arguments is a caller that read bounded pages and never
-# asked whether there were more; there is no reading of those nine under which
-# this may merge. The message names the fix, because this line is what a reader
-# sees in the sweep log until somebody applies it.
-got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>/dev/null)"
+# Old callers cannot prove completeness or bind a verdict to a head object.
+got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true 2>/dev/null)"
 case "$got" in
-  "HOLD this caller cannot prove it read all of the pull request"*)
-    printf '  ok    a nine-argument caller cannot merge, and is told what to apply\n'; pass=$((pass + 1)) ;;
+  "HOLD this caller cannot prove completeness or head identity")
+    printf '  ok    a nine-argument caller cannot merge\n'; pass=$((pass + 1)) ;;
   *)
-    printf '  FAIL  a nine-argument caller is the pre-#170 sweep and must not merge\n        got: %s\n' "$got"
+    printf '  FAIL  an obsolete nine-argument caller must not merge\n        got: %s\n' "$got"
     fail=$((fail + 1)) ;;
 esac
 
-# The redirect above is deliberate, and so is this. `ci.yml` runs this suite as
-# a plain `run:` step, so an unredirected fixture prints `::warning::the merge
-# sweep is holding every pull request` into the log of every CI run of every
-# pull request, and keeps printing it after the patch lands and the state is no
-# longer true. The one signal that separates a disabled sweep from an idle one
-# would be buried in its own noise long before the day it matters. Discarding it
-# there means asserting it here, or the remedy is inert and nothing would say so.
-#
-# WHETHER THE RUNNER PARSES A WORKFLOW COMMAND OFF STDERR IS **NOT ESTABLISHED**
-# in this repository, and an earlier version of this comment stated that it does
-# as though it were a fact. `75-approval-stall.patch`, parked in the same
-# directory, says the opposite in as many words -- "whether the runner parses
-# workflow commands off stderr at all is not established anywhere in this
-# repository" -- and moved a warning to stdout rather than rest a diagnostic on
-# it, in the fifth review round of #128.
-#
-# Nothing here needs it decided, and the two files are not actually in conflict
-# about what to DO. #128 had somewhere else to put its warning: its block's
-# stdout is a comment body, so it emitted the line earlier, outside the block.
-# `merge-candidate.sh` has no such place -- its stdout IS the verdict the caller
-# captures, so a workflow command written there corrupts the value the gate is
-# computed from. stderr is the only stream left, and the assertion below holds
-# either way: if the runner does parse it, the line is an annotation; if it does
-# not, the line still reaches the log as text and the caller re-emits it as a
-# `::notice::`. What is at stake is the SEVERITY, not the information.
-#
-# One `workflow_dispatch` of the sweep after the patch lands settles it, and
-# whoever lands it should look: `merge-candidate.sh` has never run on `main`.
-warned="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true 2>&1 >/dev/null)"
+# stdout is the verdict the workflow captures, so the diagnostic belongs on
+# stderr. Assert it separately from the verdict fixture above.
+warned="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true 2>&1 >/dev/null)"
 case "$warned" in
-  *"::warning::"*"merge sweep is holding every pull request"*)
+  *"::warning::"*"merge sweep caller is obsolete"*)
     printf '  ok    and it warns on stderr, which is where the sweep log shows it\n'; pass=$((pass + 1)) ;;
   *)
     printf '  FAIL  the nine-argument refusal is silent on stderr, so a disabled sweep reads as an idle one\n        got: %s\n' "$warned"
@@ -387,7 +361,7 @@ esac
 # happened to be evaluated first over facts nobody could trust.
 ok "completeness is answered before the verdict, because the verdict was read out of the same snapshot" \
                                 "HOLD the facts read about this pull request were truncated" \
-                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "STATUS.md" true false
+                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "docs/research/status-example.md" true false
 
 echo
 echo "What the sweep actually reads — the GraphQL contract, over response shapes"
@@ -412,7 +386,7 @@ facts() {
     mergeStateStatus: "CLEAN",
     labels: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{name:"ai-review:pass"}]},
     reviewThreads: {totalCount:0, pageInfo:{hasNextPage:false}, nodes:[]},
-    files: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{path:"STATUS.md"}]},
+    files: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{path:"docs/research/status-example.md"}]},
     timelineItems: {totalCount:15, pageInfo:{hasNextPage:false, hasPreviousPage:false},
                     nodes:[{createdAt:"2026-08-24T00:00:00Z", label:{name:"ai-review:pass"}}]},
     commits: {totalCount:1, pageInfo:{hasNextPage:false}, nodes:[{commit:{
@@ -473,7 +447,7 @@ complete_says "and the same document is refused as truncated" \
   "HOLD the review-thread list is truncated at 100 of 101" "$TRUNCATED_THREADS"
 ok "so the verdict over it is a HOLD and not a MERGE" \
                                 "HOLD the facts read about this pull request were truncated" \
-                                 "success" "ai-review:pass" "$OLD_UNRESOLVED" 0 clean false "$OLD" "STATUS.md" true false
+                                 "success" "ai-review:pass" "$OLD_UNRESOLVED" 0 clean false "$OLD" "docs/research/status-example.md" true false
 
 # 101 GREEN check runs. Nothing is hiding on the second page and it still
 # refuses, because "nothing is hiding there" is precisely what a truncated page
@@ -567,7 +541,7 @@ complete_says "a head commit with no checks at all is complete, not unreadable" 
   "$(facts '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup = null')"
 ok "and the rule still refuses it for the reason that is actually true" \
                                 "HOLD no check run on the head commit" \
-                                 "" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true
+                                 "" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true
 
 # The read that did not happen.
 complete_says "an empty document refuses" "HOLD the pull request's facts came back empty" ""
@@ -841,25 +815,25 @@ complete_says "and a check-suite connection with no pageInfo refuses" \
 # caller that reached the rule without one computed its verdict binding against
 # nothing.
 ok "a well-formed head id is accepted"  MERGE \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "$OID_OK"
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true "$OID_OK"
 ok "an empty head id is not a commit"   "HOLD the head commit could not be identified" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true ""
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true ""
 ok "and neither is a truncated one"     "HOLD the head commit could not be identified" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "0123abc"
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true "0123abc"
 ok "nor a branch name"                  "HOLD the head commit could not be identified" \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true "main"
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true "main"
 ok "a 64-hex object id is accepted too, because a repository may be SHA-256" MERGE \
-                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true \
+                                 "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true \
                                  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 ok "identity is answered before the verdict, because the verdict was bound to it" \
                                 "HOLD the head commit could not be identified" \
-                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "STATUS.md" true true ""
+                                 "success" "$(printf 'ai-review:pass\nai-review:blocking')" 0 0 clean false "$OLD" "docs/research/status-example.md" true true ""
 
 # TEN ARGUMENTS IS NOW THE OLD CALLER TOO, and it is refused by arity for the
 # reason nine is: it never established which commit it was deciding about.
-got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "STATUS.md" true true 2>/dev/null)"
+got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true 2>/dev/null)"
 case "$got" in
-  "HOLD this caller cannot prove it read all of the pull request"*)
+  "HOLD this caller cannot prove completeness or head identity")
     printf '  ok    a ten-argument caller cannot merge either\n'; pass=$((pass + 1)) ;;
   *)
     printf '  FAIL  a ten-argument caller predates the head-identity condition and must not merge\n        got: %s\n' "$got"
@@ -970,132 +944,61 @@ else
 fi
 
 echo
-echo "A rule nothing calls, and nothing tracks, is the state this must never be in"
-# THIS IS THE ASSERTION THAT KEEPS THE FIX HONEST WHILE HALF OF IT IS PARKED.
-#
-# Agents here run as `claude[bot]`, and that installation token holds no
-# `workflows` permission -- a push touching `.github/workflows/` is refused by
-# the remote, verified on 2026-08-24:
-#
-#   ! [remote rejected] (refusing to allow a GitHub App to create or update
-#     workflow `.github/workflows/pr-merge-sweep.yml` without `workflows`
-#     permission)
-#
-# So the caller half of #170 travels as a patch. There are exactly two states
-# this repository may be in, and this asserts it is in one of them: either the
-# sweep already calls the rule, or the patch that makes it do so is still here
-# waiting. What it refuses is the third state -- a tested rule, an unchanged
-# caller, and nothing on disk that remembers the two are meant to meet.
-SWEEP=.github/workflows/pr-merge-sweep.yml
-PENDING=docs/automation/pending/170-merge-sweep-completeness.patch
-# COMMENT LINES ARE DROPPED FIRST, for the reason the query scan above gives and
-# for one more concrete than a principle: hunk 1 of the parked patch inserts
-# `# is .github/scripts/merge-facts.jq, driven by .github/scripts/merge-facts.sh,`
-# into the workflow's own header comment. A scan that reads the whole file is
-# therefore satisfied by the patch's own prose, so the third state this block
-# exists to refuse -- rule tested, caller unchanged, patch gone -- passed both
-# assertions. Match a CALL, not a mention.
+echo "The shipping sweep calls the tested rules"
+SWEEP=.github/scripts/pr-merge-sweep.sh
 SWEEP_BODY="$(grep -vE '^[[:space:]]*#' "$SWEEP" 2>/dev/null)"
-# The verdict call itself, from the line naming the script to the first line that
-# does not continue. Its ARITY is the one line everything here depends on and
-# nothing read: nine arguments is the pre-#170 caller, which merge-candidate.sh
-# now refuses outright, and eleven is the caller that passes "$COMPLETE" and
-# "$HEAD_OID". A hand resolution that drops either hunk while keeping the header
-# comment is how the two permitted states quietly become the forbidden one.
-#
-# ELEVEN AND NOT TEN, AND THE NUMBER MOVES ONCE. #199 folded its caller edits
-# into the same parked patch rather than beside it, so there is no intermediate
-# ten-argument state for anybody to land, and no second "apply this one first"
-# to reconcile against T-144.
 VERDICT_CALL="$(printf '%s\n' "$SWEEP_BODY" | awk '
   /merge-candidate[.]sh/ { inside = 1 }
   inside { print; if ($0 ~ /[)]"[[:space:]]*$/) exit }')"
 VERDICT_ARGC="$(printf '%s\n' "$VERDICT_CALL" | grep -oE '"\$[A-Za-z_][A-Za-z0-9_]*"' | wc -l | tr -d ' ')"
-if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-facts.sh'; then
+if printf '%s\n' "$SWEEP_BODY" | grep -qE 'bash .*merge-facts[.]sh'; then
   printf '  ok    the sweep calls the rule that has a test\n'; pass=$((pass + 1))
-  if [ -e "$PENDING" ]; then
-    printf '  FAIL  the sweep calls the rule, so %s has landed and should be deleted\n' "$PENDING"
-    fail=$((fail + 1))
-  else
-    printf '  ok    and the pending patch has been cleared away\n'; pass=$((pass + 1))
-  fi
   if [ "$VERDICT_ARGC" = "11" ]; then
     printf '  ok    and the verdict call passes the completeness and head arguments\n'; pass=$((pass + 1))
   else
     printf '  FAIL  the sweep calls merge-facts.sh but hands merge-candidate.sh %s arguments, not 11\n' "$VERDICT_ARGC"
     fail=$((fail + 1))
   fi
-  if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-head-trust.sh'; then
+  if printf '%s\n' "$SWEEP_BODY" | grep -qE 'bash .*merge-head-trust[.]sh'; then
     printf '  ok    and it asks GitHub when the head arrived rather than the commit\n'; pass=$((pass + 1))
   else
     printf '  FAIL  the sweep calls merge-facts.sh but not merge-head-trust.sh, so the head is timed by nothing\n'
     fail=$((fail + 1))
   fi
-elif [ -f "$PENDING" ]; then
-  printf '  ok    the sweep does not call the rule yet, and %s says so\n' "$PENDING"
-  pass=$((pass + 1))
-  if git --no-pager apply --check "$PENDING" >/dev/null 2>&1; then
-    printf '  ok    and that patch still applies cleanly to this tree\n'; pass=$((pass + 1))
-  else
-    printf '  FAIL  %s no longer applies; the parked half has rotted\n' "$PENDING"
-    fail=$((fail + 1))
-  fi
-  if [ "$VERDICT_ARGC" = "9" ]; then
-    printf '  ok    and the caller is still the nine-argument one the patch replaces\n'; pass=$((pass + 1))
-  else
-    printf '  FAIL  the patch is still parked but the caller passes %s arguments, not 9\n' "$VERDICT_ARGC"
-    fail=$((fail + 1))
-  fi
-  # ONE PATCH FOR THIS WORKFLOW, STILL. #199 needed four more edits to the same
-  # file and put them in the same patch, because a second parked patch against
-  # one workflow is two apply orders and a hand merge -- which is the state
-  # T-144 exists to stop growing. If the head-trust half is not in there, it is
-  # somewhere else, and nothing knows where.
-  if grep -q 'merge-head-trust.sh' "$PENDING"; then
-    printf '  ok    and that one patch also carries the head-trust half\n'; pass=$((pass + 1))
-  else
-    printf '  FAIL  %s does not point the sweep at merge-head-trust.sh, so #199 is parked somewhere nothing tracks\n' "$PENDING"
-    fail=$((fail + 1))
-  fi
 else
-  printf '  FAIL  merge-facts.sh is tested but nothing calls it and no patch is pending\n'
+  printf '  FAIL  the shipping sweep does not call merge-facts.sh\n'
   fail=$((fail + 1))
 fi
 
 echo
-echo "Every patch parked in pending/ still applies"
-# THE ASSERTION ABOVE PROTECTED ONLY THE PATCH THAT WROTE IT. 75-approval-stall.patch
-# had been parked since #128 and nothing checked it, so an edit to a table one of
-# its hunks deleted as a contiguous block broke it silently -- and it carries
-# three workflow edits that would have gone down with the README hunk, because
-# `git apply` is all-or-nothing. A directory whose whole purpose is holding work
-# a person has to finish later is exactly where rot is invisible.
-# ONE ASSERTION, NOT ONE PER PATCH, on purpose: parking a patch must not change
-# how many assertions this suite reports. Six documents quote that number, and a
-# count that moves when somebody adds a file to a directory is a count nobody
-# can keep true. The names go in the failure message instead, which is where
-# they are actually needed.
-rotted=""
-found_patch=0
-for patch in docs/automation/pending/*.patch; do
-  [ -f "$patch" ] || continue
-  found_patch=$((found_patch + 1))
-  git --no-pager apply --check "$patch" >/dev/null 2>&1 || rotted="$rotted $patch"
-done
-if [ ! -d docs/automation/pending ]; then
-  printf '  FAIL  docs/automation/pending/ is not here, so nothing was checked\n'
-  printf '        (a sparse checkout without docs/ is indistinguishable from an empty\n'
-  printf '        directory, and a vacuous pass is what this suite refuses elsewhere)\n'
-  fail=$((fail + 1))
-elif [ -z "$rotted" ]; then
-  printf '  ok    all %d of them apply to this tree\n' "$found_patch"; pass=$((pass + 1))
+echo "The shipping transport distinguishes an empty queue from an unreadable one"
+sweep_probe=$(mktemp -d) || exit 1
+# shellcheck disable=SC2016  # GH_FAIL belongs to the generated stub.
+printf '%s\n' '#!/usr/bin/env bash' \
+  'if [ "${GH_FAIL:-}" = 1 ]; then echo "API unavailable" >&2; exit 1; fi' \
+  "printf '[]\\n'" > "$sweep_probe/gh"
+chmod +x "$sweep_probe/gh"
+real_path=$PATH
+if output=$(PATH="$sweep_probe:$real_path" REPO=owner/repo RUNNER_TEMP="$sweep_probe" \
+     bash "$SWEEP" 2>&1); then
+  case "$output" in
+    *"no open pull requests"*)
+      printf '  ok    an empty queue exits cleanly and says so\n'; pass=$((pass + 1)) ;;
+    *)
+      printf '  FAIL  an empty queue produced no explicit notice\n'; fail=$((fail + 1)) ;;
+  esac
 else
-  printf '  FAIL  these parked patches no longer apply:%s\n' "$rotted"
-  printf '        a rotted patch is work nobody can finish, and git apply is all-or-nothing,\n'
-  printf '        so one stale hunk takes its workflow edits down with it. Refresh it, or\n'
-  printf '        turn the hunk that broke into an instruction in its header.\n'
-  fail=$((fail + 1))
+  printf '  FAIL  an empty queue failed the shipping transport\n'; fail=$((fail + 1))
 fi
+if output=$(PATH="$sweep_probe:$real_path" GH_FAIL=1 REPO=owner/repo RUNNER_TEMP="$sweep_probe" \
+     bash "$SWEEP" 2>&1); then
+  printf '  FAIL  an unreadable queue was reported as a successful empty one\n'; fail=$((fail + 1))
+elif printf '%s\n' "$output" | grep -q 'could not list open pull requests'; then
+  printf '  ok    an API failure is loud and fails closed\n'; pass=$((pass + 1))
+else
+  printf '  FAIL  an API failure did not identify the unreadable queue\n'; fail=$((fail + 1))
+fi
+rm -rf "$sweep_probe"
 
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"

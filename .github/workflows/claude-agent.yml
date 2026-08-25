@@ -1065,12 +1065,8 @@ jobs:
           # material the reviewer does, and then implements, tests, pushes and
           # reports.
           #
-          # 200, and the reason it is not a round guess: the mandated reading
-          # order below -- CLAUDE.md, the specification, STATUS, TASKS, the
-          # ADRs, the reuse ledger, then open issues and pull requests -- spends
-          # 20 to 30 turns before a line is written, and run 32587675386 was
-          # still mid-implementation at 61. Spend stays bounded by
-          # timeout-minutes: 60 above, which is the thing actually being billed.
+          # 200 keeps a productive implementation from being killed after its
+          # cost is already incurred. Spend is bounded by timeout-minutes.
           # WHICH MODEL, AND HOW HARD IT THINKS. Neither was pinned until
           # 2026-08-22, and the action has no `model:` input -- so every run
           # this loop has ever made used whatever the CLI defaulted to, and
@@ -1093,15 +1089,12 @@ jobs:
             You are the implementation agent for Attadipa, working from GitHub
             issue #${{ needs.gate.outputs.issue }} in ${{ github.repository }}.
 
-            Read these before doing anything, in this order:
-              1. the issue itself, including every comment
-              2. CLAUDE.md — its rules outrank this prompt
-              3. docs/automation/AI_TASK_PROTOCOL.md — the task contract
-              4. docs/master-prompt-final.md — the specification in force
-              5. STATUS.md and TASKS.md
-              6. the ADRs under docs/adr/ that the issue touches
-              7. docs/research/REUSE_LEDGER.md — reuse before writing
-              8. open issues and pull requests, to avoid duplicating work
+            Before editing, read the issue and every comment, `AGENTS.md`, the
+            nearest scoped `AGENTS.md` for changed files, and open issues and
+            pull requests so you do not duplicate claimed work. Read only the
+            relevant product requirements, ADRs and evidence. Check the reuse
+            ledger when a non-trivial dependency or upstream implementation is
+            involved.
 
             task_type is `${{ needs.gate.outputs.task_type }}` and
             research_only is `${{ needs.gate.outputs.research_only }}`.
@@ -1137,17 +1130,18 @@ jobs:
             Never claim a hardware result. Anything that needs a physical board,
             an instrument or a measurement is written as
             `NOT EXECUTED — HARDWARE REQUIRED` and, if it blocks the task, as a
-            BLOCKED comment in the format CLAUDE.md gives, with the issue
+            BLOCKED comment in the format `AGENTS.md` gives, with the issue
             labelled agent:blocked plus needs-hardware or needs-owner.
 
-            Do not ask the owner a question that STATUS.md, TASKS.md, an ADR,
-            the specification or the issue already answers. When you genuinely
+            Do not ask the owner a question that the issue, an ADR, relevant
+            requirements or existing evidence already answers. When you genuinely
             need a human decision, say so once, with two to four concrete
             options and a recommendation, and apply the needs-owner label.
 
-            Update STATUS.md and TASKS.md in the same commit as the change they
-            describe. Leave the repository so the next agent can continue
-            without this conversation.
+            Put task status and test evidence in the issue and pull request.
+            Do not edit the `STATUS.md` or `TASKS.md` compatibility pointers.
+            Leave the repository so the next agent can continue without this
+            conversation.
 
             ## SAY WHAT YOU ARE DOING, ON THE ISSUE, WHILE YOU DO IT
 

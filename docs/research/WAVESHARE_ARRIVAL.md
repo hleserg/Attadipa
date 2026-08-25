@@ -114,8 +114,8 @@ Waveshare BSP as a dependency, or take only its pin facts?", UNKNOWN
 ([DEPENDENCIES.md:171-174](DEPENDENCIES.md)). The surrounding facts were already
 established too: BSP v2.0.0 declares `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`
 and drives display, touch, audio and SD only, so it does not touch the QMI8658,
-the AXP2101 or the PCF85063 that are on the board — which
-[CLAUDE.md:42-43](../../CLAUDE.md) has already promoted to a standing rule.
+the AXP2101 or the PCF85063 that are on the board — the distinction now recorded
+in the scoped [firmware rules](../../firmware/AGENTS.md).
 Whatever is decided, wrapping the BSP does not cover the board.
 
 **The ESP-IDF mechanics were constrained by an undecided version, and are not
@@ -126,7 +126,7 @@ decision. **T-004 closed on 2026-08-25 at `v5.5.5`**
 ([DEPENDENCIES](DEPENDENCIES.md), "ESP-IDF" in *Decided*), and CI now builds
 `firmware/` on that version and prints the actual `firmware-build` dependency
 result rather than an unconditional success
-([`.github/workflows/ci.yml:614`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
+([`.github/workflows/ci.yml:572`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
 The paragraph is kept rather than deleted because the constraint it describes is
 what the rest of this section reasons from.
 
@@ -758,7 +758,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:614`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
+    [`.github/workflows/ci.yml:572`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more
@@ -798,7 +798,8 @@ twice. **Two are still live.**
    `HARDWARE_MATRIX.md:331` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
-   open-question row at `STATUS.md:925` is struck and split the same way.
+   open-question row in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) is struck and
+   split the same way.
 
    The third took one more commit and is the one worth remembering.
    [VERIFIED_FACTS.md](VERIFIED_FACTS.md) still concluded, twenty-five lines
@@ -825,8 +826,8 @@ twice. **Two are still live.**
    [ARCHITECTURE.md:396-414](../architecture/ARCHITECTURE.md) has two problems in
    one table. It has no flash or PSRAM row for this board, where the T-Watch
    table has both — an omission rather than a claim of absence, but a defect
-   against [CLAUDE.md:85](../../CLAUDE.md), since every part on the board gets a
-   seat. And it still carries `| Expansion header J3 | BoardService | ≥ 29 pins;
+   against the scoped [firmware rules](../../firmware/AGENTS.md), since every
+   part on the board gets a seat. And it still carries `| Expansion header J3 | BoardService | ≥ 29 pins;
    pinout unresolved (D3). |`, which is now contradicted by
    [HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md) and by the struck D3 above. The
    row should become the display FPC, owned by `DisplayService`.

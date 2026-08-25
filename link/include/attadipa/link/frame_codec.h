@@ -62,8 +62,8 @@ inline constexpr std::size_t kOverheadBytes = kHeaderBytes + kTrailerBytes;
 // it is one constant rather than a number repeated in six files.
 //
 // The 10 is the field list, not the diagram: ADR-0005 lists ten bytes' worth of
-// fields and draws twelve column positions above them. `STATUS.md` records the
-// discrepancy as the owner's to settle -- the diagram needs one edit or the
+// fields and draws twelve column positions above them. The discrepancy remains
+// an owner decision -- the diagram needs one edit or the
 // field list needs two more fields -- so this comment states a reading rather
 // than a fact. `kMaxPayload` survives either answer, which is why the constant
 // did not wait for it; the missing hedge did.
@@ -100,8 +100,7 @@ std::size_t encode(const std::uint8_t* payload, std::size_t length, std::uint8_t
 //
 // That was the same defect in two independently written containers — the
 // decoder and the queue — which is why the answer is one shared type rather
-// than a check at each call site. Reported as issue #146, listed under
-// `TASKS.md` T-062 before that, and the general rule is in
+// than a check at each call site. Reported as issue #146; the general rule is in
 // `docs/architecture/ARCHITECTURE.md` §5: a value inside a type's valid domain
 // may never also mean "there is no value". Either the status travels separately
 // from the payload, or the sentinel is refused at the door.

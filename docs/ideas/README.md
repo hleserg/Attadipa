@@ -33,10 +33,9 @@ Three rules apply to anything taken from these files:
    [OWNER_DECISIONS](../research/OWNER_DECISIONS.md)** until the owner says so.
    Where they disagree, the specification and the recorded decisions win, and
    the disagreement is worth raising rather than silently resolving.
-3. **Working an item through means a task, not a commit.** Items become entries
-   in [`../../TASKS.md`](../../TASKS.md) and then GitHub issues, with the
-   research done first. The catalogue is the input to that, not a substitute
-   for it.
+3. **Working an item through means an issue, not a speculative commit.** The
+   issue carries acceptance and blockers, with research done first. The
+   catalogue is input to that, not a substitute for it.
 
 Several sections overlap work already in flight — the split architecture in M is
 the node/watch division the capability model was built around

@@ -279,8 +279,7 @@ and `agent:ready` where one is genuinely needed.
 
         `docs/architecture/` · `docs/community/` · `docs/hardware/` ·
         `docs/mobile/` · `docs/node/` · `docs/research/` ·
-        `docs/testing/` · `docs/ui/` · `docs/upstream/` ·
-        `STATUS.md` · `TASKS.md`
+        `docs/testing/` · `docs/ui/` · `docs/upstream/`
 
       Anything else, including any path added to this repository after this was
       written, is not yours.
@@ -291,18 +290,17 @@ and `agent:ready` where one is genuinely needed.
       already been burned by getting wrong — five candidate radio variants, two
       GNSS modules, a rail that differs between board revisions. The trade is
       accepted deliberately and it is the first entry to reconsider if this list
-      is ever revisited per directory. `STATUS.md` and `TASKS.md` are on the list because
-      CLAUDE.md REQUIRES them to be updated in the same commit as the change
-      they describe — a rule that excluded them would have disqualified every
-      compliant pull request, which is a rule that never fires.
+      is ever revisited per directory. The compatibility pointers
+      `STATUS.md` and `TASKS.md` are deliberately absent: feature work no longer
+      edits them.
 
       NEVER, and each of these has a reason worth reading before anybody
       "simplifies" the list back to `docs/`:
 
         * `docs/master-prompt-final.md`, `docs/master-prompt.md`,
           `docs/development-addendum.md` — the specification in force and its
-          superseded history. CLAUDE.md calls the first *"the specification in
-          force… Product requirements there are binding"*. A process that can
+          superseded history. `AGENTS.md` identifies the first as the product
+          requirements. A process that can
           edit the requirements it is judged against is not a process;
         * `docs/research/OWNER_DECISIONS.md` — the file's own header says these
           are *"not ours to overturn"*. It is the one file in `docs/research/`

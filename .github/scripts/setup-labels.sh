@@ -56,7 +56,6 @@ agent:ready|1d76db|Queued for an agent. The watchdog may hand this to the writer
 agent:working|0e8a16|An agent holds this. One writer at a time, repository-wide.
 agent:review|5319e7|Work is done and waiting on review or a merge decision.
 agent:blocked|b60205|Cannot proceed. Pair with needs-owner or needs-hardware.
-agent:done|0e8a16|Lifecycle finished.
 agent:failed|b60205|The agent run ended without a conclusion. Comment @claude to retry.
 agent:claude|8a2be2|Claude is the writer on this task.
 source:chatgpt|c5def5|Filed by ChatGPT, per the task marker.

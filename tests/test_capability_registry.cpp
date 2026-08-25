@@ -625,8 +625,8 @@ void test_a_degraded_local_source_stays_local()
 // "nobody". What keeps it from being a silent lie is the discriminator that
 // travels with it — `CapabilitySource` carries the availability that says the
 // field is not an answer, and `availability.h` says so on the struct. Whether
-// the axis gains a third value is TASKS.md T-111's question, which is an ADR
-// decision with an owner-facing acceptance and is not settled here.
+// the axis gains a third value is the ADR question in issues #83 and #174 and
+// is not settled here.
 void test_terminal_unsupported_has_no_provider()
 {
     const platform::BoardProfile waveshare_profile = waveshare();

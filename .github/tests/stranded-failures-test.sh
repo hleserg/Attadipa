@@ -69,8 +69,6 @@ check "" "agent:failed with agent:working is a live run, not stranded" -- \
       "$(issue 27 "agent:failed,agent:working")"
 check "" "agent:failed already relabelled agent:blocked is not stranded again" -- \
       "$(issue 27 "agent:failed,agent:blocked")"
-check "" "agent:failed on an issue also marked agent:done is not stranded" -- \
-      "$(issue 27 "agent:failed,agent:done")"
 check "" "no agent:failed at all is never stranded" -- \
       "$(issue 27 agent:ready)"
 check "" "agent:failed with agent:review has real work awaiting review, not nothing queuing it" -- \

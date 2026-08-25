@@ -10,8 +10,8 @@ GraphQL disabled. Each file is the complete body of one Discussion, ready to be
 posted into the **Ideas** category with the title given at the top.
 
 They are ideas, not commitments. Nothing here describes a capability Attadipa
-already has — see [STATUS.md](../../../STATUS.md) for what actually exists,
-which today is a simulator plus a minimal booting firmware, not these apps.
+already has — see the [project README](../../../README.md) for what ships and
+[open issues](https://github.com/hleserg/Attadipa/issues) for claimed work.
 
 Once posted, these files can be deleted or left as a style reference. They are
 not a second copy of the Discussions; they are the seed.

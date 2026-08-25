@@ -237,8 +237,7 @@ renamed: it reads as *battery* power and will be misused for *RF* power inside a
 week.
 
 **Settings must survive a firmware update, and that dependency is currently
-undeclared** — it belongs in the partition and OTA decision
-([TASKS](../../TASKS.md) T-025). Settings that vanish on the first update is a
+undeclared** — it belongs in the partition and OTA ADR. Settings that vanish on the first update is a
 class of bug discovered only after shipping.
 
 **The store must be settable in the simulator.** A settings screen that only

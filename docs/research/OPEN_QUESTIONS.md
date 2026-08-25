@@ -11,8 +11,8 @@ not a fact about the world and would read as one there. It stays struck through
 in place, pointing at its record in
 [OWNER_DECISIONS.md](OWNER_DECISIONS.md). A7 and A8 are the first of these.
 
-An UNKNOWN that blocks work is a blocker — record it in
-[../../TASKS.md](../../TASKS.md) in the blocker format rather than coding past it.
+An `UNKNOWN` that blocks work is a blocker — record it in the GitHub issue with
+the evidence and smallest next action rather than coding past it.
 
 The board survey of 2026-08-21 resolved most of the *documentary* questions.
 What remains is dominated by one thing: **no physical board has been touched.**
