@@ -36,11 +36,11 @@ for it.
 
 **Where the ESP-IDF claims come from.** Every statement below about what ESP-IDF
 does was read in the vendor checkout at `/root/esp/esp-idf`, `git describe` =
-**`v5.5.5-496-gc197d718bcc`**. That is what is on the development host; it is
-**not** a version this project has chosen — see `STATUS.md` §"Build and test
-state" and **T-004**. Line references to ESP-IDF are against that pin. Line
+**`v5.5.5-496-gc197d718bcc`**. That is what is on the development host; the
+project pin is recorded in [`DEPENDENCIES.md`](DEPENDENCIES.md). Line
+references to ESP-IDF are against the host checkout above. Line
 references to files in *this* repository are deliberately absent: they drift
-between sessions, so sections and task identifiers are cited instead.
+between sessions, so sections, issues and commits are cited instead.
 
 ## 1. The eight errata, at a glance
 
@@ -532,8 +532,7 @@ History (Table 4.1) is where it would show.
 minimum revision exceeds the chip's. Since this chip is v0.2 and v0.2 is the
 maximum, `REV_MIN_2` would also boot here — but it buys nothing, because no
 erratum is fixed in v0.2 except a batch-level eFuse default, and it would make
-the image refuse any v0.0 or v0.1 board. Already recorded in `STATUS.md`
-§"The Waveshare board arrived — 2026-08-22" and
+the image refuse any v0.0 or v0.1 board. The evidence is recorded in
 [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §3.1.
 
 ## 4. Adjacent, and **not** an erratum

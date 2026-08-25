@@ -366,8 +366,7 @@ The framework owns a degraded screen it did not previously need.
 **Committed to.** Every service handles all seven states without crashing or
 lying. Every application declares a manifest. Every state is reachable in the
 simulator without a rebuild — including the ones a real node makes hard to
-produce on demand, which is most of them
-([TASKS](../../TASKS.md) T-022). Application code that references node state is a
+produce on demand, which is most of them. Application code that references node state is a
 review failure, mechanically checkable.
 
 **Open.** The transport is undecided ([NODE_PROFILE](../node/NODE_PROFILE.md) N2)

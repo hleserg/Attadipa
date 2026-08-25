@@ -309,34 +309,12 @@ the unit. **The owner was asked whether he wanted them read and said yes**
 (2026-08-24, under OD-18 in
 [`../research/OWNER_DECISIONS.md`](../research/OWNER_DECISIONS.md)), so the read
 is owed on the next bench trip rather than merely available — which changes when
-these `UNKNOWN`s get an answer and changes none of them today. The task is
-**T-106**, whose register list now carries `0x63`, `0x64` and `0x61`
-for exactly this reason: three cell-safety registers, not one question and not a
-pair, and one burst reads all three. An earlier version of this sentence handed it to `T-114`,
-which has no heading in `TASKS.md` on `main` or on this branch — so at the time
-of writing the citation pointed at nothing. **It will not stay that way:**
-[#121](https://github.com/hleserg/Attadipa/pull/121) adds
-`### T-114 · The debug channel needs a firmware end` (issue
-[#117](https://github.com/hleserg/Attadipa/issues/117)), about the debug
-channel and not about a charger register. Once that merges the citation
-resolves — to the wrong task — and a reader following the retraction to check it
-cannot tell whether the registers moved there or this sentence went stale.
-Which is why the claim is scoped to the two branches it was checked against
-rather than to *the repository*: absent-everywhere is a claim about branches,
-and the sweep that found five `OD-16`s is the method that answers it. It found five branches and there were six occurrences: the sixth was this file's own row 1 above, renumbered in `STATUS.md` and not here — one sentence, two files — and found only in the thirteenth review round of [#134](https://github.com/hleserg/Attadipa/pull/134). Nothing catches a bare `OD-NN` in prose: `check_decision_ids` reads headings, `check_links` needs a link, `check_citation_lines` needs a `path:line`. The renumber's own recorded price is what makes such a miss invisible — the count matches what changed, so nothing is left over to notice. (This sentence used to price it at *"15 occurrences across six files"*, which was true of `0e9f86f` and is not true of the tree: `STATUS.md` now records **21** across six, because the OD-17 → OD-18 renumber came after. Quoting a number from a commit that has moved is the same defect one level down, found in round 15.)
-
-So the file's cell-safety questions read as *assigned* while having no owner
-anywhere, which is worse than reading as absent, because a reader who checks
-stops at the citation. That is T-117 item 2's surviving blind spot —
-`check_docs.py` never finds a **dangling** task ID, so a green run says nothing
-about it; its anchor half is built on
-[#92](https://github.com/hleserg/Attadipa/pull/92). Nor does it say which
-state is kinder — neither is established, which is precisely why this file must
-not recommend one on the cell's account. What it does say is that *"powered
-indefinitely"* has a **second consumable** in it, that the panel's risk was
-weighed across three sources while this one was not weighed at all, and that a
-reader had no way to tell the difference. **Absent is not `UNKNOWN`; absent
-reads as weighed.**
+these `UNKNOWN`s get an answer and changes none of them today. The measurement
+plan in [`BATTERY_UPGRADE.md`](../research/BATTERY_UPGRADE.md) carries `0x63`,
+`0x64` and `0x61`: three cell-safety registers, and one burst reads all three.
+The bench session must have a GitHub issue before it starts; a bare task number
+in prose is not ownership. Until then, the work is unclaimed and every value
+remains `UNKNOWN`.
 
 ## Identify a board by its USB serial, never by its port
 
@@ -345,20 +323,16 @@ identically as `303a:1001` — the watch and a MeshCore node. `/dev/ttyACM0` is
 not a stable name for either.
 
 **Every tool that opens a port on a device must resolve it from the unit's USB
-serial and exit non-zero rather than guess — and none does yet.** *Opens*, not
+serial and exit non-zero rather than guess.** *Opens*, not
 *writes*: the casualty forty lines above wrote nothing. pyserial asserts DTR and
 RTS inside `Serial(...)`, and this board's USB-Serial/JTAG peripheral resets the
 digital core when it sees that — no pin is involved, see the correction above —
 so the reset is done by the time a tool has decided whether it has anything to
-say. What exists is
-the ad-hoc guard every write in the [#110](https://github.com/hleserg/Attadipa/pull/110)
-session went through, which was that session's own script and did not survive it.
-The shared one is **T-116** in [`TASKS.md`](../../TASKS.md), together with the
-lint that stops a fourth ad-hoc guard from being written in the meantime; it is
-named here because this is the newer and more discoverable of the two files that
-state this rule, and it was the one without the pointer. Until it lands, **any
-task that opens a port** brings its own resolver or does not open one — which
-covers a screenshot, a log tail and `idf.py monitor` as squarely as a flash.
+say. `tools/flash/ramhold.py` is the shipping reference: it resolves by USB
+serial and refuses ambiguity. Any tool that opens a port must reuse that
+resolver or extract the shared seam in the same change; it must not grow another
+ad-hoc guard. This covers a screenshot, a log tail and `idf.py monitor` as
+squarely as a flash.
 
 `--port /dev/ttyACM0` is the failure this rule exists to prevent: both devices
 answer to that name and the **open** lands on whichever enumerated first, which

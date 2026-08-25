@@ -80,8 +80,7 @@ fourteen parameters of its own, two of them legally bounded (frequency, TX
 power). Three ownership models are possible — the node owns them, the watch owns
 them and pushes, or the watch proposes and the node ratifies — and they differ in
 what happens when a change breaks the very link used to make it. Changing the
-frequency will disconnect you. That belongs in ADR-0005
-([TASKS](../../TASKS.md) T-016, T-020), not here.
+frequency will disconnect you. That belongs in ADR-0005, not here.
 
 ## 5. Trust
 
