@@ -542,10 +542,10 @@ on the 240 px face is a *short* form, and the two panels do not simply scale the
 same layout. That is final §54's *"the two displays are not pixel-identical
 products"* landing on a specific screen with numbers attached.
 
-### 7.4 The font ladder has no display size
+### 7.4 The pre-T-037 font ladder had no display size
 
-`tools/font/generate_ui_fonts.py:38` generates **14, 16, 20 and 28 px**, and
-`sim/boot_screen.cpp:212-222` maps roles onto them:
+The baseline measured here generated **14, 16, 20 and 28 px**, and the boot
+screen mapped roles onto them:
 
 ```cpp
 const bool large = width_px >= 400;
@@ -569,6 +569,10 @@ checked-in artefacts and `INPUTS.sha256`. `FONT_MEASUREMENTS` has the size
 table: Inter at 48 px bpp 4 compressed is 34 997 B, which is affordable and not
 free.
 
+T-037 resolved this gap: `tools/font/generate_ui_fonts.py:50` now generates
+64 and 96 px display sizes as well, and the Clock pins each numeral into a
+fixed-width cell rather than allowing proportional figures to move the face.
+
 ---
 
 ## 8. The reference matrix
@@ -588,7 +592,7 @@ that the Clock is one of the six minimum screens.
 | **Adult/Child** | **no flag exists** | `sim/options.h` — and final §57 lists *"Adult/Child switching"* as a simulator requirement |
 | **a specific time** | **no injection of any kind** | so 00:00, 09:05, 12:00, 23:59 and a rollover cannot be photographed |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
-| node attached / detached | **yes** — `--node` | `sim/options.cpp:104` |
+| node attached / detached | **yes** — `--node` | `sim/options.cpp:128` |
 | screenshot | **yes**, but the **first frame only** | `sim/main.cpp:215-223` takes the snapshot, then the frame loop runs |
 
 And the tests that exist are two:
