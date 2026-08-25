@@ -569,7 +569,7 @@ jobs:
           idf.py build
           # app_main owns the degraded-PSRAM diagnostic. Without this option,
           # ESP-IDF aborts before that diagnostic can run.
-          grep -q "^CONFIG_SPIRAM_IGNORE_NOTFOUND=y$" build/sdkconfig
+          grep -q "^CONFIG_SPIRAM_IGNORE_NOTFOUND=y$" sdkconfig
 
       # The RAM route is the one proved to work on the received unit and the one
       # with nothing to undo, so it is the one a bench session reaches for first.
