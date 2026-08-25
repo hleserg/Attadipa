@@ -143,6 +143,29 @@ The workflow already knows the rule — `claude-agent.yml:894-903` "Deliberately
 `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
 action's push path was fixed. The agent's own push path was never covered by it.
 
+### And the agent's own push path may not have to wait for the patch
+
+Observed 2026-08-25, in the runner for issue #130, before changing anything: the
+writer's environment holds **two different credentials**, and only one of them
+stalls.
+
+* `http.https://github.com/.extraheader` in the checkout's own config file — the
+  persisted one, `x-access-token` over the built-in `GITHUB_TOKEN`. Every plain
+  `git push` uses it, and the three runs it created for
+  `claude/codex-ack-head-oid-130` came back `action_required` with
+  `actor: github-actions[bot]`, 0 jobs, exactly the fingerprint above;
+* `$GH_TOKEN` in the environment. **Not the same token** — compared by SHA-256
+  of each, never printed — and the runs on the sibling pull request #241, whose
+  heads went out as `claude[bot]`, all started normally.
+
+So a `git push` that names `$GH_TOKEN` explicitly, rather than falling through to
+the persisted header, may avoid the stall on the branch it is pushing without
+`ATTADIPA_AGENT_TOKEN` and without option A, B or C below. **The push of this
+very commit is the test**, and the paragraph that follows it records what
+happened rather than what was expected. If it works it is a workaround for one
+push, not a fix: it does nothing for `claude-agent.yml`'s writer, which is what
+the parked patch is for, and nothing for a run already created.
+
 ## The options, and what each costs
 
 **A — a fine-grained PAT in `ATTADIPA_AGENT_TOKEN`, plus one line in the
