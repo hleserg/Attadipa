@@ -1,6 +1,6 @@
 # Claude in CI: what runs, what it may touch, and how to stop it
 
-Four workflows, one shared kill switch, and a security model that assumes the
+Six workflows, one shared kill switch, and a security model that assumes the
 repository is public — because it is, and anybody can open an issue on it.
 
 | Workflow | Trigger | Can it write code? |
@@ -10,6 +10,7 @@ repository is public — because it is, and anybody can open an issue on it.
 | [`claude-ci-repair.yml`](../../.github/workflows/claude-ci-repair.yml) | CI failing on a `claude/*` branch of this repository | **yes**, to that branch only |
 | [`agent-queue-watchdog.yml`](../../.github/workflows/agent-queue-watchdog.yml) | hourly | no — it dispatches the first one |
 | [`pr-merge-sweep.yml`](../../.github/workflows/pr-merge-sweep.yml) | every half hour | no — and it invokes no model at all. It merges pull requests other people's decisions have already finished, within the same path allowlist as the backstop routine |
+| [`pr-wip-limit.yml`](../../.github/workflows/pr-wip-limit.yml) | a same-repository pull request opened, reopened or marked ready | no — and it invokes no model either. It counts the open queue and says so on the pull request. See the WIP rows in **Cost control** |
 
 ## The security model
 
@@ -280,7 +281,9 @@ as much as the first.
 
 | Control | Where |
 |---|---|
-| **Kill switch** — repository variable `CLAUDE_AUTOMATION_ENABLED=false` stops every Anthropic-billed step everywhere, leaving ordinary CI running | checked in all four workflows |
+| **Kill switch** — repository variable `CLAUDE_AUTOMATION_ENABLED=false` stops every Anthropic-billed step everywhere, leaving ordinary CI running | checked in all six workflows |
+| **The queue has a bounded width** — two open agent pull requests is normal, three is the hard temporary maximum, four is an incident. Counted on every same-repository pull request opened, reopened or undrafted; `queue:parked` and `queue:emergency` are exempt and a fork never spends repository capacity. `full` and `incident` get a one-time comment and the `queue:over-limit` label; `unknown` gets the comment and deliberately no label, because an unreadable queue is not an over-limit one | `pr-wip-limit.yml`, `.github/scripts/wip-limit.sh` |
+| **A field `gh` does not have is not an empty column** — the count above asked `gh pr list --json` for `baseRepository`, which belongs to the REST API and not to the CLI. `gh` answers `Unknown JSON field` and exits 1 *before making a request*, `2>/dev/null \|\| true` discarded it, and the state fell to `unknown`: `full` and `incident` were unreachable and the limit was enforced on nothing from #216 until #239, on #219, #236 and #237 in public. The suite was 6/6 green the whole time because it called the decision rule with hand-built JSON and never ran the transport. Now: the fields come from `GITHUB_REPOSITORY` and `isCrossRepository`, `gh`'s stderr reaches the log, a CLI schema error raises its own `::error::` while a transient failure stays a fail-closed `unknown` — and both a caller test with a stub `gh` and a static field scan have to pass first | `.github/scripts/wip-limit.sh`, `.github/tests/wip-limit-test.sh`, `.github/tests/gh-api-usage-test.sh`, issue [#239](https://github.com/hleserg/Attadipa/issues/239) |
 | **Empty queue costs nothing** — the watchdog's scan is shell and one API call; Claude is invoked only when there is a task | `agent-queue-watchdog.yml` |
 | **One writer** — a concurrency group on the agent job, so writers queue instead of colliding. On the job and not on the workflow: a workflow-level group also holds the intake gate, and GitHub cancels a *pending* run when a newer one joins the group, so a burst of events loses everything but the last before anything reads it. Three tasks were queued and none started this way on 2026-08-22 | `claude-agent.yml` |
 | **Deduplication** — an issue already claimed is not picked up again | intake gate |

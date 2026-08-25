@@ -131,11 +131,14 @@ This is the good news and it is narrower than it sounds. Three things follow:
   v5.5.1-dirty` out of both app slots), so the vendor's build is one of the ones
   with no guard. And its own table puts `storage` at `0x1600000`.
 
-  This makes **the IDF version a load-bearing safety property rather than a
-  preference.** Anything below v5.5.5 removes the only fail-closed path there is,
-  and nothing in the ecosystem stops you landing there: the Waveshare BSP v2.0.0
-  declares `idf >= 5.3`, which permits every unguarded release, and the build
-  their own firmware was made with is one of them.
+  This makes the IDF floor **load-bearing for the `mmap` defence-in-depth, not
+  the system's safety property.** Anything below v5.5.5 removes the only
+  fail-closed path there is, while read, write and erase remain unguarded even
+  at v5.5.5. The safety boundary is therefore still §5's prohibition on every
+  Attadipa partition and flash operation above the line. Nothing in the
+  ecosystem enforces even the narrower floor: the Waveshare BSP v2.0.0 declares
+  `idf >= 5.3`, which permits every unguarded release, and the build their own
+  firmware was made with is one of them.
   [DEPENDENCIES](DEPENDENCIES.md) records the version question; this is a reason
   for a floor that was not there before.
 
@@ -341,15 +344,14 @@ more than the one before it. Nothing below has been executed.
 The JEDEC ID is **not** on this list: it was read on 2026-08-22 and §4.3 is
 already settled by it. What is left is cheap and worth doing on the way past.
 
-1. **Grep the captured boot log for the warning.** The bench session captured
-   the vendor firmware's log from 62 ms. `Detected flash size > 16 MB, but
-   access beyond 16 MB is not supported` in it would mean the running ESP-IDF
-   refused the capability on this exact part, contradicting §4.3's arithmetic —
-   which would be worth knowing, because it would mean something in the chain is
-   not what the source says. The string exists in v5.5.1 at `esp_flash_api.c:304`
-   and `:384`, so the vendor's build can print it. **Expected absent**, and this
-   is a check of the reasoning rather than a source of it. Costs nothing if the
-   capture was kept.
+1. **Do not infer absence from the existing boot log.** The capture starts at
+   62 ms, while `ESP_EARLY_LOGW` runs during flash initialisation and may have
+   printed before the capture began. Finding `Detected flash size > 16 MB, but
+   access beyond 16 MB is not supported` would contradict §4.3's arithmetic and
+   be useful evidence; not finding it in that capture is **UNKNOWN**, not an
+   expected or verified absence. A future capture can settle the negative only
+   if it demonstrably begins before flash initialisation. The string exists in
+   v5.5.1 at `esp_flash_api.c:304` and `:384`, so the vendor build can print it.
 2. **Read the sectors the later stages will use, and hash them.** `0x0FFF000`
    and `0x1FFF000`, 4 KiB each. Needed as the before-picture for §6.3 and free
    to take.

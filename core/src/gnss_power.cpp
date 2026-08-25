@@ -14,6 +14,10 @@ constexpr Millis kHotStartWindow{2 * 60 * 60 * 1000};
 
 StartKind start_kind(const GnssContext& context)
 {
+    // `ephemeris_retained` is already the owner's direct observation that the
+    // data survived; it is not inferred here from the age of the last fix. The
+    // header makes clearing it when no retaining power remains part of the
+    // field's contract.
     if (context.ephemeris_retained && context.since_last_fix < kHotStartWindow) {
         return StartKind::Hot;
     }

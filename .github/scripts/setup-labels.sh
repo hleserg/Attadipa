@@ -34,6 +34,23 @@ fi
 #
 # Grouped exactly as AI_TASK_PROTOCOL.md groups them. Colour carries meaning at a
 # glance in the issue list: state is blue, refusals are red, humans are amber.
+#
+# The three `queue:` labels were live on the repository and absent from this file
+# until #239 -- created by hand, so a fresh setup would not have had them, and
+# the header above says exactly what that costs: `pr-wip-limit.yml` adds
+# `queue:over-limit` under `|| true`, so on a repository set up from this script
+# the label would silently never appear. Their colours and descriptions here are
+# transcribed from the deployed ones rather than invented, so re-running this
+# with `--force` over the live repository changes nothing.
+#
+# `queue:over-limit`'s deployed description ends *"See CLAUDE.md, OD-23"* and
+# BOTH HALVES OF THAT POINTER ARE DANGLING: OWNER_DECISIONS.md runs OD-1..OD-20
+# and then OD-24, and CLAUDE.md does not discuss the queue's width at all. It is
+# transcribed unchanged rather than corrected here, because rewriting it would
+# edit the live label the next time anybody runs this, and an owner decision is
+# not an agent's to invent or to renumber. The policy itself is written down in
+# CLAUDE_AUTOMATION.md's cost-control table as of #239. Naming a decision record
+# that does not exist is the owner's to resolve.
 LABELS=$(cat <<'EOF'
 agent:ready|1d76db|Queued for an agent. The watchdog may hand this to the writer.
 agent:working|0e8a16|An agent holds this. One writer at a time, repository-wide.
@@ -60,6 +77,9 @@ ci:repairing|fef2c0|Automatic CI repair is in flight.
 ci:failed|b60205|CI is red and automatic repair has stopped.
 ai-review:pass|0e8a16|The independent reviewer found nothing blocking.
 ai-review:blocking|b60205|The independent reviewer found something that must be fixed before merge.
+queue:parked|d4c5f9|Held open deliberately, with the owner's agreement. Not counted against the WIP limit.
+queue:emergency|b60205|Security, data loss, broken CI or a regression in main. May be opened over the WIP limit.
+queue:over-limit|fbca04|Opened while the queue was at or over its width. See CLAUDE.md, OD-23.
 EOF
 )
 

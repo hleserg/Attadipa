@@ -173,6 +173,114 @@ patch_offenders() {
   '
 }
 
+# ---------------------------------------------------------------------------
+# THE SECOND WAY A `gh` CALL IS REFUSED BEFORE IT IS MADE: an unsupported
+# `--json` field. Added for #239, where `.github/scripts/wip-limit.sh` asked
+# `gh pr list` for `baseRepository` -- a name from the REST API, which the CLI
+# does not have. `gh` answers `Unknown JSON field: "baseRepository"` and exits 1
+# without a request, exactly like the `--slurp`/`--jq` pair above. It shipped in
+# #216, ran on #219, #236 and #237, and the WIP backstop reported "could not
+# determine the count" on every one of them while its own suite was 6/6 green.
+# Nothing here saw it: to shellcheck, to actionlint and to the `--slurp` scan
+# above it is a well-formed command.
+#
+# The field names, recorded from `gh <command> --json` WITH NO VALUE -- a
+# flag-parse error `gh` answers with the list, before any network call, so this
+# is reproducible offline. Captured from gh 2.97.0 on 2026-08-25.
+# `gh pr list` and `gh pr view` share one set and `gh issue list` and `gh issue
+# view` share another; that was checked against `gh` rather than assumed.
+kPrJsonFields='additions,assignees,author,autoMergeRequest,baseRefName,baseRefOid,body,changedFiles,closed,closedAt,closingIssuesReferences,comments,commits,createdAt,deletions,files,fullDatabaseId,headRefName,headRefOid,headRepository,headRepositoryOwner,id,isCrossRepository,isDraft,labels,latestReviews,maintainerCanModify,mergeCommit,mergeStateStatus,mergeable,mergedAt,mergedBy,milestone,number,potentialMergeCommit,projectCards,projectItems,reactionGroups,reviewDecision,reviewRequests,reviews,state,statusCheckRollup,title,updatedAt,url'
+kIssueJsonFields='assignees,author,blockedBy,blocking,body,closed,closedAt,closedByPullRequestsReferences,comments,createdAt,id,isPinned,issueType,labels,milestone,number,parent,projectCards,projectItems,reactionGroups,state,stateReason,subIssues,subIssuesSummary,title,updatedAt,url'
+#
+# `gh repo view` IS DELIBERATELY NOT COVERED, and saying so is cheaper than a
+# reader assuming it is. It has one call site here (`setup-labels.sh`, asking for
+# `nameWithOwner`), a field set an order of magnitude larger than these two, and
+# none of the REST-name confusion that produced #239 -- repository JSON in the
+# CLI and in REST agree on almost every name. Filed rather than half-done.
+#
+# ONE PROGRAM, two input shapes, for the reason the header gives about
+# `offenders` and `patch_offenders`: two copies of a rule are two rules, and a
+# divergence between them is worse than a limit they share. `mode=patch` reads
+# `patch_postimage`'s `<line>\t<text>` records; anything else reads files.
+#
+# IT RESOLVES A ONE-LINE SHELL ASSIGNMENT and reports anything else it cannot
+# read as `not-literal` rather than as clean. `wip-limit.sh` declares its field
+# list in a variable so its caller test can assert on the list itself, and a scan
+# that silently skipped `--json "$VAR"` would be blind to the very call it was
+# written for. What it still cannot resolve -- a value built at run time, a
+# variable assigned in another file -- is NAMED, because an unreadable call
+# reported as a clean one is the swallow this whole file exists to refuse. Such a
+# call needs an executable caller test; `wip-limit-test.sh` is the worked example.
+#
+# It inherits `offenders`' known limit on `#` inside a quoted argument (T-164),
+# deliberately and for the same reason: the rules must agree.
+kJsonFieldAwk=$(cat <<'AWK'
+function json_check(rec, where,   val, allowed, n, i, parts, name) {
+  if (rec ~ /gh[[:space:]]+pr[[:space:]]+(list|view)/)         allowed = PR
+  else if (rec ~ /gh[[:space:]]+issue[[:space:]]+(list|view)/) allowed = ISSUE
+  else return
+  if (!match(rec, /--json[ =]+[^[:space:]]+/)) return
+  val = substr(rec, RSTART, RLENGTH)
+  sub(/^--json[ =]+/, "", val)
+  gsub(/^["']|["']$/, "", val)
+  if (val ~ /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$/) {
+    name = val
+    gsub(/[${}]/, "", name)
+    if (name in vars) val = vars[name]
+    else { printf "%s\tnot-literal\t%s\n", where, val; return }
+  } else if (val ~ /[$`]/) {
+    printf "%s\tnot-literal\t%s\n", where, val
+    return
+  }
+  n = split(val, parts, ",")
+  for (i = 1; i <= n; i++)
+    if (parts[i] != "" && index("," allowed ",", "," parts[i] ",") == 0)
+      printf "%s\tunknown-field\t%s\n", where, parts[i]
+}
+FNR == 1 { line = ""; split("", vars) }
+{
+  if (mode == "patch") {
+    n = $0; sub(/\t.*$/, "", n)
+    t = $0; sub(/^[0-9]+\t/, "", t)
+    if (t == boundary) { line = ""; next }
+    here = patch ":" n
+  } else {
+    t = $0
+    here = FILENAME ":" FNR
+  }
+  sub(/[[:space:]]*#.*$/, "", t)
+  if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=('[^']*'|"[^"]*")[[:space:]]*$/) {
+    nm = t; sub(/=.*$/, "", nm)
+    vv = t; sub(/^[^=]*=/, "", vv); gsub(/^["']|["'][[:space:]]*$/, "", vv)
+    vars[nm] = vv
+  }
+  if (line == "") first = here
+  line = line t
+  if (t ~ /\\[[:space:]]*$/) { sub(/\\[[:space:]]*$/, " ", line); next }
+  json_check(line, first)
+  line = ""
+}
+AWK
+)
+
+# `<file>:<line>\t<kind>\t<detail>` for every `gh pr|issue list|view --json` in
+# the named files whose fields this cannot vouch for. Silent when they are all
+# fields `gh` has.
+json_offenders() {
+  awk -v PR="$kPrJsonFields" -v ISSUE="$kIssueJsonFields" "$kJsonFieldAwk" "$@"
+}
+
+# The same rule over a parked patch's post-image, reporting the line in the
+# PATCH -- the number an operator can open, as at 3b.
+patch_json_offenders() {
+  local patch=$1 image
+  image=$(patch_postimage "$patch") || return 3
+  printf '%s\n' "$image" \
+    | awk -v PR="$kPrJsonFields" -v ISSUE="$kIssueJsonFields" \
+          -v mode=patch -v patch="$patch" -v boundary="$kPatchBoundary" "$kJsonFieldAwk"
+}
+# ---------------------------------------------------------------------------
+
 # Did `git` refuse because the PATCH ITSELF is malformed, rather than because
 # the tree moved under it? The two are different problems with opposite
 # remedies -- a moved context line is answered with `git rm` or a rebuild, a
@@ -587,6 +695,54 @@ check_parked_shell "$PENDING_DIR"
 check_parked_applies "$PENDING_DIR" "$root"
 check_one_patch_per_workflow "$PENDING_DIR"
 
+# 1e. And no `gh pr|issue list|view --json` may ask for a field `gh` does not
+#     have. Same shape as 1 and 1b -- the shipping files, then the parked ones --
+#     for the same reason: a patch nobody has applied yet is workflow shell that
+#     will run, and #128 parked 516 lines of it.
+check_json_fields() {
+  local dir=$1 shipping found notes patch entries all=""
+  shift
+  shipping=$(json_offenders "$@")
+  found=$(printf '%s\n' "$shipping" | grep -e 'unknown-field' || true)
+  notes=$(printf '%s\n' "$shipping" | grep -e 'not-literal' || true)
+  entries=$(parked_patches "$dir")
+  case "$entries" in
+    MISSING*|UNREADABLE*) entries="" ;;   # 1b has already failed the suite for these
+  esac
+  while IFS= read -r patch; do
+    [ -n "$patch" ] || continue
+    [ -e "$patch" ] || continue           # 1b and 1c both report this; do not triple it
+    if ! all=$(patch_json_offenders "$patch"); then
+      bad "could not scan $patch for --json fields -- treating an unreadable patch as \
+clean is the || VAR=\"\" shape this file exists to refuse"
+      return
+    fi
+    [ -z "$all" ] || {
+      found="$found"$'\n'"$(printf '%s\n' "$all" | grep -e 'unknown-field' || true)"
+      notes="$notes"$'\n'"$(printf '%s\n' "$all" | grep -e 'not-literal' || true)"
+    }
+  done <<EOF
+$entries
+EOF
+  found=$(printf '%s\n' "$found" | grep -e . || true)
+  notes=$(printf '%s\n' "$notes" | grep -e . || true)
+  if [ -z "$found" ]; then
+    ok "every gh pr|issue --json field asked for is one gh has"
+  else
+    bad "gh has no such --json field; these calls exit 1 before making a request:"
+    printf '%s\n' "$found" \
+      | awk -F'\t' -v root="$root/" '{ p = $1; sub(root, "", p); printf "       %s  %s\n", p, $3 }'
+  fi
+  # A NOTE AND NOT A PASS. This scan cannot resolve a value built at run time,
+  # so naming it is the only honest thing to do -- the alternative is a green
+  # line about a call nothing read. Each of these needs an executable caller
+  # test; `.github/tests/wip-limit-test.sh` is the worked example.
+  [ -z "$notes" ] || printf '%s\n' "$notes" \
+    | awk -F'\t' -v root="$root/" '{ p = $1; sub(root, "", p); printf "note   %s asks for %s, which this cannot resolve -- it needs a caller test\n", p, $3 }'
+}
+# shellcheck disable=SC2086  # the paths are ours and contain no spaces
+check_json_fields "$PENDING_DIR" $files "$root"/.github/scripts/*.sh
+
 # 2. The detector itself detects. A guard that cannot fail guards nothing, and
 #    this one is a text scan over files it does not control, so it is worth
 #    proving on a fixture rather than trusting.
@@ -763,6 +919,128 @@ if [ "$got" = "$want" ]; then
   ok "the report names the single-line patch's own line ($got)"
 else
   bad "the report says line $got; the offending line is $want -- an operator opening it finds unrelated text"
+fi
+
+# 3c. The `--json` field scan, in both directions and over both input shapes.
+#     A guard that cannot fail guards nothing, and this one decides on a text
+#     scan over files it does not control.
+cat > "$probe/json-bad.yml" <<'FIXTURE'
+run: gh pr list --repo o/r --state open --json number,baseRepository,labels
+FIXTURE
+cat > "$probe/json-bad-continued.yml" <<'FIXTURE'
+run: |
+  gh pr list --repo o/r --state open --limit 100 \
+    --json number,headRepository,baseRepository,labels \
+    | jq '.'
+FIXTURE
+# `isCrossRepository` is a PULL REQUEST field and an issue has no such thing, so
+# this fixture fails only if the two field sets are actually told apart. With one
+# merged list it reads as clean, which is the mutation worth binding.
+cat > "$probe/json-wrong-noun.yml" <<'FIXTURE'
+run: gh issue list --repo o/r --json number,labels,isCrossRepository
+FIXTURE
+cat > "$probe/json-good.yml" <<'FIXTURE'
+run: |
+  gh pr list --repo o/r --state open --json number,isCrossRepository,labels | jq '.'
+  gh issue list --repo o/r --json number,labels,stateReason | jq '.'
+  gh pr view 1 --repo o/r --json comments --jq '.comments[].body'
+FIXTURE
+# Out of scope on purpose, and the reason is at the field lists above.
+cat > "$probe/json-repo-view.yml" <<'FIXTURE'
+run: gh repo view --json nameWithOwner --jq .nameWithOwner
+FIXTURE
+# A `gh api` call carries REST names legitimately -- that IS the vocabulary
+# there. Flagging one would tell people the wrong rule.
+cat > "$probe/json-rest-api.yml" <<'FIXTURE'
+run: gh api "repos/o/r/pulls" --jq '.[] | select(.base.repo.full_name == "o/r")'
+FIXTURE
+cat > "$probe/json-var-good.sh" <<'FIXTURE'
+FIELDS='number,isCrossRepository,labels'
+gh pr list --repo o/r --state open --json "$FIELDS"
+FIXTURE
+cat > "$probe/json-var-bad.sh" <<'FIXTURE'
+FIELDS='number,baseRepository,labels'
+gh pr list --repo o/r --state open --json "$FIELDS"
+FIXTURE
+cat > "$probe/json-var-unresolvable.sh" <<'FIXTURE'
+gh pr list --repo o/r --state open --json "$(build_the_fields)"
+FIXTURE
+
+for f in json-bad json-bad-continued json-wrong-noun; do
+  if json_offenders "$probe/$f.yml" | grep -q 'unknown-field'; then
+    ok "the field scan catches $f"
+  else
+    bad "the field scan misses $f -- gh exits 1 on it before making a request"
+  fi
+done
+for f in json-good json-repo-view json-rest-api; do
+  if [ -z "$(json_offenders "$probe/$f.yml")" ]; then
+    ok "the field scan leaves $f alone"
+  else
+    bad "the field scan flags $f: $(json_offenders "$probe/$f.yml" | tr '\n' ' ')"
+  fi
+done
+# The line reported is the line the invocation STARTS on, as at 3b: an operator
+# opening a bare `--json ...` continuation has been sent to the wrong place.
+want=$(grep -n -- 'gh pr list' "$probe/json-bad-continued.yml" | cut -d: -f1)
+got=$(json_offenders "$probe/json-bad-continued.yml" | head -1 | cut -d: -f2 | cut -f1)
+if [ "$got" = "$want" ]; then
+  ok "the field scan opens a continued call at the call ($got)"
+else
+  bad "the field scan says line $got; the call starts at $want"
+fi
+# The declared-in-a-variable shape, which is what `wip-limit.sh` uses and what a
+# scan that skipped `--json "$VAR"` would be blind to.
+if json_offenders "$probe/json-var-bad.sh" | grep -q 'unknown-field'; then
+  ok "a field list declared in a variable is resolved and checked"
+else
+  bad "a variable-valued --json is skipped, so the one call this was written for is invisible to it"
+fi
+if [ -z "$(json_offenders "$probe/json-var-good.sh")" ]; then
+  ok "and a good one declared the same way is left alone"
+else
+  bad "the resolver flags a valid field list: $(json_offenders "$probe/json-var-good.sh" | tr '\n' ' ')"
+fi
+# And what it genuinely cannot read is NAMED rather than passed. `not-literal`
+# is not `unknown-field`: it must not fail the suite, and it must not be silent.
+out=$(json_offenders "$probe/json-var-unresolvable.sh")
+case "$out" in
+  *not-literal*) ok "a field list built at run time is reported as unreadable, not as clean" ;;
+  *) bad "a run-time field list scans as clean -- an unread call reported as a good one" ;;
+esac
+case "$out" in
+  *unknown-field*) bad "an unresolvable field list is reported as a defect, which would red correct work" ;;
+  *) ok "and being unreadable is not by itself an offence" ;;
+esac
+
+# The patch half, over the post-image, with the removal case for the reason
+# given at 3: a scan that flagged the fix would teach people to route around it.
+cat > "$probe/json-adds-bad.patch" <<'FIXTURE'
+--- a/.github/scripts/wip-limit.sh
++++ b/.github/scripts/wip-limit.sh
+@@ -1,2 +1,3 @@
+ set -uo pipefail
++gh pr list --repo o/r --state open --json number,baseRepository,labels
+ echo done
+FIXTURE
+cat > "$probe/json-removes-bad.patch" <<'FIXTURE'
+--- a/.github/scripts/wip-limit.sh
++++ b/.github/scripts/wip-limit.sh
+@@ -1,3 +1,3 @@
+ set -uo pipefail
+-gh pr list --repo o/r --state open --json number,baseRepository,labels
++gh pr list --repo o/r --state open --json number,isCrossRepository,labels
+ echo done
+FIXTURE
+if patch_json_offenders "$probe/json-adds-bad.patch" | grep -q 'unknown-field'; then
+  ok "the patch field scan catches a parked patch that would deploy a bad field"
+else
+  bad "a parked patch deploying an unsupported --json field scans as clean"
+fi
+if [ -z "$(patch_json_offenders "$probe/json-removes-bad.patch")" ]; then
+  ok "the patch field scan leaves a patch that removes one alone"
+else
+  bad "the patch field scan flags the fix, which teaches people to route around it"
 fi
 
 # 4. And the SHIPPING code, over four fixture trees. Calling `git apply --check`
