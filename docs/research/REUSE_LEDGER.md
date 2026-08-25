@@ -1976,9 +1976,9 @@ exist), `debug/` (protocol and bridge), `sim/remote_input.cpp`,
 - The whole loop against the simulator — `tools/watch/e2e_test.py`,
   **PASSING**.
 - **On a physical watch: `NOT EXECUTED — HARDWARE REQUIRED`, and it cannot be
-  executed.** There is no Attadipa firmware, so nothing on the far end of a USB
-  cable speaks this protocol. `SerialTransport` is written and has never spoken
-  to a device.
+  executed yet.** T-165 boots, but nothing on the far end of a USB cable speaks
+  this protocol because the T-114 endpoint is not implemented.
+  `SerialTransport` is written and has never spoken to a device.
 
 ---
 
@@ -2114,11 +2114,10 @@ app partitions). Read from the upstream source, not guessed.
 **Strengths (of the rejected option):** `gen_esp32part.py` is correct, exercised
 by every ESP-IDF project in existence, and does far more than we do.
 
-**Weaknesses:** it does not do the one thing this repository needs, and it
-cannot be run here at all — there is no ESP-IDF project in this tree yet
-([#127](https://github.com/hleserg/Attadipa/issues/127) opens by saying so), so
-there is no build step for it to be part of. A check that only exists inside a
-build we have not started is not a check.
+**Weaknesses at the time of this decision:** it did not do the one thing this
+repository needed, and there was no ESP-IDF build step for it to join
+([#127](https://github.com/hleserg/Attadipa/issues/127)). T-165 has since added
+that build; ESP-IDF's generator and the repository ceiling check now both run.
 
 **Decision:** `WRITE OUR OWN`, deliberately small —
 `tools/flash/partition_check.py`, and it says in its own docstring that it is
@@ -2128,12 +2127,12 @@ both run: ours first, because it is the one that knows about this board.
 **Reason:** the check we need is absent from the only upstream candidate, and
 the ceiling is a property of *this board* that no general tool will ever grow.
 The overlap with `gen_esp32part.py` is kept as narrow as the job allows — sector
-alignment, overlap and flash-size overflow are duplicated only because nothing
-else will run until there is a firmware build, and the docstring says so rather
-than letting a future reader discover two sources of truth. One deliberate
-divergence: **blank offsets are refused rather than computed**, because an
-implicit offset is exactly how a table drifts across the line with nothing in
-the diff to show for it.
+alignment, overlap and flash-size overflow are duplicated so the host check can
+run independently of ESP-IDF, and the docstring says so rather than letting a
+future reader discover two sources of truth. One deliberate divergence:
+**blank offsets are refused rather than computed**, because an implicit offset
+is exactly how a table drifts across the line with nothing in the diff to show
+for it.
 
 **Source revision:** ESP-IDF `v5.5.5`, read at that tag for the CSV dialect, the
 alignment rules and the whole of

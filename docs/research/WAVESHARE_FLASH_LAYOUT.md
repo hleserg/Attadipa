@@ -55,13 +55,11 @@ and invisible. In the other direction it is not invisible at all:
 a build made on that assumption fails loudly rather than quietly — which is the
 only comfortable thing about this.
 
-**The decisive empirical check, which nobody has run yet.** Attach a serial
-monitor at 115 200 and reboot the stock firmware. ESP-IDF logs the octal path
-under its own `octal_psram` tag (`octal_psram: vendor id : 0x0d (AP)`, followed
-by `esp_psram: Found 8MB PSRAM device`). A quad part logs no such line. That is
-one reboot and it settles it against the silicon rather than against a table.
-Until somebody runs it, D12a stands as **VERIFIED by datasheet and corroborated
-by eFuse** — see [VERIFIED_FACTS](VERIFIED_FACTS.md) — and the quad reading is
+**The decisive empirical check has now run.** Both the vendor boot and
+Attadipa's own flash boot logged the `octal_psram` path, AP vendor `0x0d`, an
+8 MB device at 80 MHz and a successful SRAM test. D12a is therefore
+**VERIFIED by datasheet/eFuse and MEASURED on silicon** — see
+[BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §4. The quad reading is
 recorded here as **refuted, with its reasoning named**, so it is not re-derived.
 
 ## 2. The factory partition table
@@ -101,9 +99,11 @@ Two things in that table are worth noticing rather than copying:
   document caught and corrected it in itself, and it is recorded here so the next
   reader does not make it a third time.
 
-Our own layout is not decided and this table does not decide it — 32 MB is
-roomy enough that dual 6 MB slots plus assets is comfortable, which is a *useful*
-fact for whoever writes ours, not a template to copy.
+T-165 now supplies a deliberately small development table (`nvs`, `phy_init`
+and a 4 MB `factory`, all below `0x1000000`). The permanent product layout is
+still not decided, and this vendor table does not decide it — 32 MB is roomy
+enough that dual 6 MB slots plus assets is comfortable, which is a *useful* fact
+for whoever writes ours, not a template to copy.
 
 ## 2.1 What is actually in the app slots
 
@@ -168,30 +168,41 @@ Reading in 2 MB chunks, the chunks that failed the stub were **exactly** the fiv
 containing those addresses, and no others — across **two** complete passes, so
 ten failures out of ten predicted. The other eleven chunks read first time.
 
-**This eliminates the host.** Not the Windows driver, not selective suspend, not
-the cable, not the host controller — none of them are present here and the
-behaviour is unchanged. Two different error strings for one event, which is why
+**This eliminated several host-specific explanations, not the host itself.**
+The Windows driver, selective suspend and native host controller were absent in
+the second run, but host read granularity remained capable of changing which
+blocks fail. Two different error strings described the same stalled transfer;
 the message text was never the signal.
 
 Two hypotheses were then tested and **rejected**, recorded so nobody spends the
 afternoon again:
 
-- **SLIP byte density.** The stub streams flash data SLIP-framed, so `0xC0` and
-  `0xDB` must be escaped and a page dense in them inflates on the wire. Counting
-  per 4096-byte page: the abort page in chunk `0x0200000` ranks **9th of 512**,
-  and in chunk `0x0400000` **23rd of 512**. The worst pages in those same chunks
-  were read without complaint. Not the mechanism.
+- **A monotonic SLIP-density threshold.** The stub streams flash data
+  SLIP-framed, so `0xC0` and `0xDB` must be escaped and a page dense in them
+  inflates on the wire. Counting per 4096-byte page: the abort page in chunk
+  `0x0200000` ranks **9th of 512**, and in chunk `0x0400000` **23rd of 512**.
+  The worst pages in those same chunks were read without complaint. That rejects
+  density *rank* as the condition; it does not reject a condition on the encoded
+  packet length.
 - **A silicon erratum.** The ESP32-S3 errata sheet v1.3 has nothing on the
   USB-Serial/JTAG read path; its only USB entry, USBOTG-4289, concerns USB-OTG
   download mode and names USB-Serial/JTAG as the *remedy*.
   [ESP32S3_ERRATA_V02](ESP32S3_ERRATA_V02.md) carries the full reading — all
   eight errata apply to this chip and none of them is this one.
 
-**Still `UNKNOWN`:** what those five addresses have in common. It is not the byte
-histogram, not the host, and not a documented defect. The content at two of them
-is not even the same *kind* of data — `0x023d000` is four-byte groups with the
-fourth pinned near `0xff`, the signature of RGBA pixels, while `0x0476000` is
-dense and unstructured like compiled code.
+The 2026-08-25 experiment resolved the tested predicate. On the Linux host,
+`cdc-acm` reads in 128-byte buffers; for a 4096-byte block the eleven cases with
+`(count(0xC0) + count(0xDB)) % 128 == 62` all stalled. Two `% 64`-only controls,
+`0x476000` and `0x5df000`, both read. That is **13/13 measured outcomes** for
+this image and host. With a 64-byte host read, the predicate names the broader
+failure set seen earlier, including `0x476000`.
+
+The experiment proves a host-granularity-dependent congruence for the tested
+image, not a universal list of addresses. The explanation — a full 64-byte USB
+packet left in a half-filled host buffer while the stub waits for its ACK — fits
+the result and the protocol, but remains an explanation rather than a direct
+measurement. Full arithmetic and the measured table are in
+[BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §2.1.
 
 **And `--no-stub` is not slow.** It recovered a 2 MB chunk in about 30 seconds
 here — roughly 65 KB/s, over a *network* USB transport — against the ~15 KB/s
@@ -203,9 +214,10 @@ verification below and is easy to miss: `esptool verify-flash 0x0` succeeded ove
 all 33 554 432 bytes, and `verify-flash` works by asking the **stub** to compute
 an MD5 on the device and comparing one 16-byte digest. The stub therefore walked
 every byte of all five problem regions without complaint — it just cannot
-*stream* them back. That narrows the unknown considerably: whatever those five
-addresses have in common, it acts on the **device-to-host transfer path**, not on
-flash access. `UNKNOWN` still, but a smaller one.
+*stream* them back. That proved the failure acts on the **device-to-host transfer
+path**, not on flash access. The later congruence experiment characterises the
+tested transfer failure as described above; it does not turn it into defective
+flash.
 
 ### Verification: three independent reads agree, and the scare was mine
 
@@ -224,6 +236,14 @@ So **three complete reads of this flash — one on Windows over native USB, two 
 Linux over USB/IP — agree byte for byte, and the device's own MD5 agrees with all
 three.** The backup is verified. The `storage` partition did not change; nothing
 changed.
+
+Before T-165 flashed Attadipa on 2026-08-25, a later complete factory backup was
+captured and checked over all 33 554 432 bytes with `verify-flash`. Its SHA-256
+is `c423dad3f0d33d56fa96f8590b3da583b05584e85bc2701a7c48c031ad747dbd`.
+It differs from the older image above, but the difference was not localised
+because the older binary was not present on that host. The current backup is a
+host-local recovery asset, not a repository artefact; its durable record is
+[BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §2.
 
 > **This section previously said the hashes did not match and left it
 > "unresolved", with a paragraph inviting the reader to suspect the owner's dump.
@@ -489,7 +509,7 @@ committed is the extractor and the measurements.
 |---|---|
 | PSRAM is quad | **Refuted** — §1. The reading was right, the inference was not |
 | Partition table as parsed | **VERIFIED** — §2, parsed from the raw entries |
-| `factory` cannot be restored by OTA | **VERIFIED** — 9 MB image, 6 MB slots |
+| `factory` cannot be restored by OTA | **Withdrawn** — the partition is 9 MB, but the measured image is 4.94 MB and fits a 6 MB OTA slot |
 | `model` is ESP-SR / xiaozhi | **VERIFIED** — the two model names are in the container |
 | `storage` is SPIFFS holding three raw images | **Superseded.** It holds **six** files — three images and three MP3s. The **stored** format is **VERIFIED**: a 12-byte header, then 410 × 502 RGB565 **little-endian on disk**, confirmed by rendering the file. §4.1 |
 | Those files prove the panel's native byte order | **Withdrawn 2026-08-23** — §4.1a. A host render never crosses the display driver, and the one path readable in pinned source **swaps every pixel** before transfer. The transfer order is `UNKNOWN`, registered as D21 |
@@ -574,8 +594,9 @@ on the list in [#64](https://github.com/hleserg/Attadipa/issues/64).
   first colour asset's question at all: see §4.2. Found in review.
 - **Check `xiaozhi-esp32`'s licence** before reading it for the audio path, and
   record the decision in the ledger either way.
-- **Run the `octal_psram` boot-log check** in §1 and close D12a against silicon
-  rather than against a table.
+- ~~**Run the `octal_psram` boot-log check.**~~ **Done** — §1 and
+  [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §4. Attadipa's flash
+  boot measured the octal 8 MB path and SRAM test on the unit.
 - ~~**Verify the dump.**~~ **Done** — §2.2. Two further complete passes, compared
   per chunk against the owner's, all three identical, and the device's own MD5
   agrees. The five stub-failure addresses are **not** marginal sectors: the same

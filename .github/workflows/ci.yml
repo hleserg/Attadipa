@@ -543,17 +543,61 @@ jobs:
           # bury the real message under an artifact-step error.
           if-no-files-found: warn
 
+  firmware-build:
+    name: Firmware build (ESP32-S3, ESP-IDF v5.5.5)
+    runs-on: ubuntu-latest
+    # The pinned toolchain, as a container rather than as an install script, so
+    # that "reproducible from a clean checkout" is something this job proves
+    # rather than something a pull-request body asserts. The tag is the version
+    # pinned in docs/research/DEPENDENCIES.md and the two move together.
+    container: espressif/idf:v5.5.5
+    steps:
+      - uses: actions/checkout@v7
+
+      # Host-side and independent of ESP-IDF. The firmware build also validates
+      # its generated table against the declared 16 MB size; this check covers
+      # every repository CSV before a toolchain starts.
+      - name: Partition table stays below the 16 MB addressing ceiling
+        run: python3 tools/flash/partition_check.py
+
+      - name: Build
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          idf.py set-target esp32s3
+          idf.py build
+          python3 ../tools/flash/firmware_elf_check.py build/attadipa.elf
+          # app_main owns the degraded-PSRAM diagnostic. Without this option,
+          # ESP-IDF aborts before that diagnostic can run.
+          grep -q "^CONFIG_SPIRAM_IGNORE_NOTFOUND=y$" sdkconfig
+
+      # The RAM route is the one proved to work on the received unit and the one
+      # with nothing to undo, so it is the one a bench session reaches for first.
+      # If it stops building, that is found here rather than at the bench.
+      - name: Build the RAM-load variant
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+          # idf.py keeps sdkconfig in the project directory, so without
+          # the line above this silently rebuilds the flash image and
+          # calls it a RAM build. Prove the option actually took.
+          grep -q "^CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y$" build-ram/sdkconfig
+          python3 ../tools/flash/pure_ram_elf_check.py build-ram/attadipa.elf
+          python3 ../tools/flash/firmware_elf_check.py build-ram/attadipa.elf
+
   evidence:
     name: What this run did not prove
     runs-on: ubuntu-latest
     if: always()
-    needs: [host-build, strict-warnings, clang, sanitizers, simulator]
+    needs: [host-build, strict-warnings, clang, sanitizers, simulator, firmware-build]
     steps:
       # CLAUDE.md's rule, made visible where people actually look. A green badge
-      # on this repository means host builds and a simulator render. It is not
-      # evidence about firmware and it is not evidence about hardware, and the
-      # only reliable way to stop that being forgotten is to write it down on
-      # every single run.
+      # reports each dependency's real result. A compile is still not evidence
+      # about physical hardware, and the only reliable way to stop that being
+      # forgotten is to write it down on every single run.
       - name: Say so
         run: |
           {
@@ -564,7 +608,7 @@ jobs:
             echo "| Host build, GCC and Clang | UNIT-TESTED |"
             echo "| Strict warnings, sanitizers | UNIT-TESTED |"
             echo "| Simulator, both geometries | SIMULATED |"
-            echo "| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |"
+            echo "| ESP32-S3 firmware build (flash and RAM variants) | CI job: \`${{ needs.firmware-build.result }}\` |"
             echo "| Anything on a physical board | **NOT EXECUTED — HARDWARE REQUIRED** |"
             echo
             echo "Power, timing and RF numbers are \`ESTIMATED\` or \`UNKNOWN\` until"
@@ -573,8 +617,10 @@ jobs:
 
 # Still not present, and still deliberately not faked:
 #
-#   * embedded build  — ESP-IDF version is not chosen (TASKS.md T-004). When it
-#                       is, this becomes a matrix job beside the host builds.
+#   * second board    — the firmware job builds for the Waveshare only. The
+#                       T-Watch is ORDERED and not in hand (TASKS.md T-010), and
+#                       a matrix entry for a board nobody can boot would make
+#                       this run look like it proved more than it did.
 #   * formatting      — rules are not agreed yet (TASKS.md T-039)
 #   * hardware tests  — NOT EXECUTED, HARDWARE REQUIRED. There is no HIL runner,
 #                       and a job that pretended otherwise would be worse than

@@ -70,7 +70,7 @@ stop being said:
 | host build, GCC and Clang | `UNIT-TESTED` |
 | strict warnings, sanitizers | `UNIT-TESTED` |
 | simulator, both geometries | `SIMULATED` |
-| ESP32-S3 firmware build | `NOT EXECUTED` — the ESP-IDF version is undecided (`TASKS.md` T-004) |
+| ESP32-S3 firmware build | `COMPILED` when `firmware-build` succeeds — pinned ESP-IDF v5.5.5, flash and PURE_RAM variants |
 | anything on a physical board | **`NOT EXECUTED — HARDWARE REQUIRED`** |
 
 There is no hardware-in-the-loop runner and no fake one. When a physical check

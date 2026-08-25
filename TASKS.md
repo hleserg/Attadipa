@@ -39,6 +39,89 @@ stale silently. The protocol is
 
 ## NOW
 
+### T-165 · ESP-IDF project and first physical boot
+- **Priority:** P0 — item 2 on the M2 critical path ([ROADMAP](docs/ROADMAP.md)),
+  and the one that unblocks the rest of it.
+  [#189](https://github.com/hleserg/Attadipa/issues/189).
+- **Dependencies:** T-004 — **closed**, `v5.5.5`, in the same change.
+- **Goal:** an ESP-IDF project that builds for `esp32s3` from a clean checkout,
+  for **one** board: a `main/` component, `sdkconfig.defaults`, a partition
+  table, a boot path, serial diagnostics, a reproducible build proved by CI, and
+  a flash procedure somebody else can follow.
+- **Where it lives:** `firmware/`, not the repository root. The root
+  `CMakeLists.txt` is host-native deliberately — the simulator and the host tests
+  must keep working on a machine with no toolchain — so the two builds are
+  separate CMake projects that never share a cache. The issue does not name a
+  path; this is the reason for the one chosen.
+- **Acceptance:** `idf.py build` from a clean checkout on the pinned IDF;
+  `attadipa_core`, `attadipa_platform`, `attadipa_link` and `attadipa_l10n`
+  **link into it rather than being copied**; boot diagnostics print chip
+  revision, flash id, PSRAM presence and mode, reset reason and free heap; the
+  partition table stays below the 16 MB addressing ceiling; a documented flash
+  procedure.
+- **How the libraries are linked, since that was the acceptance item most likely
+  to be faked:** `firmware/main/CMakeLists.txt` calls `add_subdirectory()` on the
+  *same* `core/`, `platform/`, `link/` and `l10n/` CMakeLists the desktop build
+  uses. There is no second source list to keep in step, and a library that stops
+  compiling for xtensa breaks this build rather than being discovered later.
+  `main/` is also the one place allowed to link `attadipa_platform`: it is the
+  composition root, which is where a board is chosen. ADR-0007 §5 binds
+  *applications*, and `tests/boundary/` still enforces it where it applies.
+  CI now checks both final firmware ELFs for a real callable symbol from every
+  required library, and configuration fails if any direct dependency is removed;
+  compiling four unused archives is no longer accepted as linkage evidence.
+- **The partition table is a development table and says so in its own header.**
+  It must not pre-empt **T-025**, the partitions/NVS/OTA ADR for two devices,
+  which is what freezes it. There is no OTA slot, because a second app partition
+  is that ADR's decision and not a default worth inheriting.
+- **Two values that look like mistakes and are not.** The flash is declared
+  **16 MB on a 32 MB part**, because only the low half is addressable by the ROM
+  and the second-stage bootloader — that makes ESP-IDF's own partition check
+  enforce the ceiling as a second guard beside
+  `tools/flash/partition_check.py`, and the bootloader's mismatch warning on
+  every boot is the reminder. And **nothing in `sdkconfig.defaults` works around
+  an erratum**, which is a checked statement: all eight in sheet v1.3 apply to
+  this die and none of them wants a value there
+  ([ESP32S3_ERRATA_V02](docs/research/ESP32S3_ERRATA_V02.md) §1).
+- **Research status:** done. Every board value cites the note it came from; none
+  is copied from a vendor example, because a vendor example is a claim about
+  their build rather than a measurement of this part.
+- **Implementation status:** `firmware/CMakeLists.txt`, `firmware/main/`,
+  `firmware/sdkconfig.defaults`, `firmware/sdkconfig.ramprobe`,
+  `firmware/partitions.csv`. Beside it:
+  `tools/flash/ramhold.py` — the RAM loader recovered from
+  [#116](https://github.com/hleserg/Attadipa/issues/116) into a durable home,
+  with a port resolver keyed to USB serial, because two ESP32-S3 boards
+  enumerate identically on this bench and picking the wrong one is a *silent*
+  wrong answer ([BENCH_DEVICES](docs/research/BENCH_DEVICES.md)) —
+  `tools/flash/backup_flash.py`, and
+  [FIRMWARE_BRINGUP](docs/hardware/FIRMWARE_BRINGUP.md).
+- **Tests:** the CI job `firmware-build` builds both variants on
+  `espressif/idf:v5.5.5`, which is what makes "reproducible from a clean
+  checkout" a proof rather than a sentence in a pull request. It runs
+  `partition_check.py` before the toolchain as an independent repository check;
+  ESP-IDF separately validates the generated table against the declared 16 MB
+  size. `tools/flash/ramhold_selftest.py` covers the port resolver's
+  refusals — the cases where guessing would load a watch image into the other
+  board.
+- **Non-goals, and they were kept:** the second board, any driver, LVGL, OTA,
+  secure boot, flash encryption. This is the floor, not the building.
+- **Hardware required:** yes, and it was run. **The firmware boots on the
+  physical Waveshare unit, from flash**, and prints chip revision, flash id,
+  PSRAM presence and mode, reset reason, the partition table and the heap —
+  [BRINGUP_2026-08-25](docs/hardware/BRINGUP_2026-08-25.md), 2026-08-25,
+  `MEASURED`. The RAM route runs too, and finding that out cost three fixes that
+  are in this branch: `sdkconfig.ramprobe` never produced a RAM image at all,
+  `CONFIG_ESPTOOLPY_FLASHSIZE` does not exist in a pure-RAM build, and
+  `esp_partition_find()` panics there rather than returning nothing.
+- **Documentation reconciliation:** the measured RAM/flash behaviour is carried
+  into `docs/hardware/FIRMWARE_BRINGUP.md`; the host-dependent SLIP congruence
+  replaces the stale `UNKNOWN` in `docs/research/WAVESHARE_FLASH_LAYOUT.md`;
+  `docs/research/BENCH_DEVICES.md` records the measured Attadipa boot, the later
+  owner-requested factory restore and the durable backup evidence; and
+  `docs/research/VERIFIED_FACTS.md` separates the unit's measurements from what
+  T-165 did not exercise.
+
 ### T-100 · The agent queue, verified by running it rather than by reading it
 - **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
   different pieces of work carried that ID: this one, and the transport tests
@@ -183,11 +266,11 @@ stale silently. The protocol is
     than adding them`) but not *reported* to the operator — decide with the
     transport, where the achieved duration is worth printing beside the
     requested one.
-- **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
-  task after that point is supposed to end with a real screenshot, and this is
-  what makes one possible.
-- **Dependencies:** an ESP-IDF firmware project. There is none — `README.md`
-  says so — which is why this is a task rather than an omission.
+- **Priority:** P1. T-165 supplied the ESP-IDF project; every UI task after that
+  point is supposed to end with a real screenshot, and this is what makes one
+  possible.
+- **Dependencies:** the ESP-IDF dependency is satisfied by T-165. T-166 still
+  owns the physical display and touch drivers this endpoint must sit on.
 - **Why it is separate:** the vertical
   `agent → host tool → protocol → input layer → UI → framebuffer → PNG` is
   complete except for the transport at the device end. `attadipa_debug` is a
@@ -284,11 +367,13 @@ stale silently. The protocol is
   simulator.
 - **What must not be assumed:** that `SerialTransport` in
   `tools/watch/client.py` works. It is written and **has never spoken to a
-  device**, because there has been no device to speak to. It is marked
+  device**, because the device endpoint is not implemented. It is marked
   `NOT EXECUTED` in its own docstring and must stay so until it has run.
-- **Hardware required:** yes, and **flashing needs the owner's authorisation**
-  ([CLAUDE.md](CLAUDE.md)). The received Waveshare currently runs the vendor's
-  own firmware and is byte-identical to the T-099 backup.
+- **Hardware required:** yes. OD-19 authorises reversible flashing, and the
+  received Waveshare has a measured Attadipa T-165 boot and a verified
+  host-local factory backup; after acceptance the factory image was restored
+  and the owner set its brightness to minimum. The T-114 device debug endpoint itself remains
+  **NOT EXECUTED — HARDWARE REQUIRED** because it has not been implemented.
 
 ### T-110 · The mandated reading list is 500 KB before the agent opens a file
 - **Priority:** P2
@@ -1938,21 +2023,6 @@ stale silently. The protocol is
 - **Tests:** this *is* test infrastructure
 - **Hardware required:** no
 
-### T-004 · ESP-IDF version decision
-- **Priority:** P1 — lowered from P0. It blocks embedded work; it does not block
-  M1, which is the simulator.
-- **Dependencies:** none
-- **Goal:** pin ESP-IDF with recorded reasoning.
-- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
-  source, version, licence, rationale and upgrade strategy.
-- **Research status:** narrowed — Waveshare supports v5.5.5 and v6.0.2, its BSP
-  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 probably does not bind
-  Attadipa (T7)
-- **Implementation status:** `v5.5.5-496-gc197d718bcc` installed and **verified**
-  by a real `idf.py set-target esp32s3 && idf.py build`. Verified is not decided.
-- **Tests:** a trivial esp32s3 build — **passed**
-- **Hardware required:** no
-
 ---
 
 ### T-101 · A formatting rule, and CI that enforces it
@@ -2993,6 +3063,33 @@ A1's schematic-revision
   `full 3` for #238, #218 and #217 — a real `gh` call, not a stub, but from a
   shell rather than from the workflow.
 - **Hardware required:** none. GitHub and host only.
+
+### T-004 · ESP-IDF version decision — **DONE** 2026-08-25
+- **Priority:** P1 — lowered from P0 when it was open. It blocked embedded work
+  and never blocked M1.
+- **Dependencies:** none
+- **Goal:** pin ESP-IDF with recorded reasoning.
+- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
+  source, version, licence, rationale and upgrade strategy.
+- **Research status:** done. Waveshare supports **v5.5.5 and v6.0.2** and its BSP
+  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 does not bind Attadipa,
+  which is ESP-IDF-native (T7, still flagged as an assumption).
+- **Implementation status:** **decided: `v5.5.5`**, commit
+  `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013`, 2026-07-16, Apache-2.0. The
+  deciding requirement was not recency: the `spi_flash_mmap` refusal above
+  `0x1000000` first appears in v5.5.5 and in no earlier release checked, and on
+  this board that is the difference between a loud error and silently reading
+  the wrong sixteen megabytes ([FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md)
+  §4.1). `v6.0.2` is the obvious next bump and is rejected only for now, because
+  nothing measured on this project was measured on it.
+- **What this closed that was quietly costing something:** the development host
+  had drifted onto `master` (`v6.1-dev-7351-ge37a7ae137c`) because nothing said
+  otherwise, and an unpinned dev branch cannot be reproduced by a CI image. The
+  toolchain was moved to the tag as part of the same change.
+- **Tests:** the CI job added by T-165 builds `firmware/` on
+  `espressif/idf:v5.5.5`, which is what makes the pin enforced rather than
+  written down.
+- **Hardware required:** no
 
 ### T-171 · A verdict decided by an unauthenticated comment, and a rule that never ran — **DONE** 2026-08-25
 - **Priority:** P1

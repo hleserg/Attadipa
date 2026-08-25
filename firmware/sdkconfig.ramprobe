@@ -1,0 +1,34 @@
+# Overlay: build an image that runs entirely from RAM and writes nothing to
+# flash. Use it with the flash profile, not instead of it:
+#
+#   idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+#
+# `-DSDKCONFIG=` is not optional and the reason is a trap worth naming: idf.py
+# writes `sdkconfig` in the *project* directory, not the build directory, so a
+# second build directory silently reuses the first one's configuration and
+# ignores SDKCONFIG_DEFAULTS entirely. The symptom is a `build-ram/attadipa.bin`
+# that is byte-identical to the flash image and boots from flash — a RAM build
+# that is not one, reported as success. Give each variant its own sdkconfig.
+#
+# This is the route that is *proved* to work on this unit, and it is the one to
+# prefer for anything experimental, because there is nothing to undo afterwards.
+# The flash route to a second app partition is closed on this board — the free
+# `ota_1` slot sits at 0x1000000 and cannot be booted at all.
+# WAVESHARE_RUNNING_OUR_CODE.md §1 and §2.
+#
+# Loading it: tools/flash/ramhold.py, and read its header before reaching for
+# `esptool load-ram` instead. The CLI tool kills the image it just loaded, a few
+# milliseconds after reporting success, by closing the port.
+# Two symbols, and the second one is not optional: PURE_RAM_APP is a sub-option
+# of the RAM build type (`depends on APP_BUILD_TYPE_RAM` in ESP-IDF's own
+# Kconfig), so setting it alone is dropped in silence and the build comes out as
+# an ordinary flash app that reports success. That is what happened here the
+# first time: build-ram/sdkconfig came back with CONFIG_APP_BUILD_TYPE_APP_2NDBOOT=y
+# and the CI guard that greps for the symbol is what would have caught it.
+CONFIG_APP_BUILD_TYPE_RAM=y
+CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y
+
+# A RAM app has no partition table to read, and asking for one is a boot-time
+# failure rather than an empty answer.
+CONFIG_PARTITION_TABLE_CUSTOM=n
+CONFIG_PARTITION_TABLE_SINGLE_APP=y

@@ -106,14 +106,12 @@ allowed, undocumented is not. Check the license before depending on anything.
 
 ## Which of two tasks wins
 
-The engineering base got far ahead of the device. There is no ESP-IDF project in
-this repository at all — no `main/` component, no partition table, no
-`sdkconfig.defaults` — while the architecture, the simulator, the research and
-the automation are all well past that point. The owner's correction of
-2026-08-24 is an **ordering** change, not a reset:
-[`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole of it, and the next milestone
-is one board brought up vertically until a watch boots, shows a Clock, takes
-touch, sleeps and wakes.
+The engineering base got far ahead of the device. T-165 has now established the
+ESP-IDF project and measured a physical flash boot, but it is only the floor: no
+display, touch, PMU or RTC driver is live yet. The owner's correction of
+2026-08-24 remains an **ordering** change, not a reset:
+[`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole of it, and T-166 is next on the
+path to a watch that shows a Clock, takes touch, sleeps and wakes.
 
 Before starting a task, ask:
 
