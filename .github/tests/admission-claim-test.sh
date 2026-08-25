@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # The production writer gate and the repository-backed exclusive claim.
+# shellcheck disable=SC2015,SC2016  # Deliberate table assertions and literal sed mutants.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 

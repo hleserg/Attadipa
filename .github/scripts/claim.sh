@@ -99,7 +99,7 @@ break_claim() {
 }
 
 reap() {
-  local repo="$1" number="$2" max_age="$3" tag_sha date then now
+  local repo="$1" number="$2" max_age="$3" tag_sha date claimed_epoch now
   if tag_sha="$(attadipa_claim_tag_sha "$repo" "$number")"; then
     date="$(gh api "repos/$repo/git/tags/$tag_sha" | jq -er '.tagger.date')" || return 2
   else
@@ -109,9 +109,9 @@ reap() {
                   | [.[] | select(.event == "labeled" and .label.name == "agent:working")]
                   | last.created_at')" || return 3
   fi
-  then="$(date -u -d "$date" +%s 2>/dev/null)" || return 2
+  claimed_epoch="$(date -u -d "$date" +%s 2>/dev/null)" || return 2
   now="$(date -u +%s)"
-  [ $((now - then)) -ge "$max_age" ] || return 3
+  [ $((now - claimed_epoch)) -ge "$max_age" ] || return 3
   break_claim "$repo" "$number"
   if [ "$number" != writer ] && [ "$(target_kind "$repo" "$number")" = issue ]; then
     edit_label "$repo" "$number" --add-label agent:ready
