@@ -1,21 +1,25 @@
-# RTC slow-clock routing on the target boards
+# RTC slow-clock routing in the target-board schematics
 
 Checked 2026-08-26 for [#268](https://github.com/hleserg/Attadipa/issues/268).
 This report answers a wiring question. It does not measure sleep current.
 
 ## Result
 
-Neither target board routes a 32.768 kHz source to the ESP32-S3 slow-clock
-input as shipped.
+Neither cited vendor schematic routes a 32.768 kHz source to the ESP32-S3
+slow-clock input. That is enough to prohibit the external modes in both board
+profiles; it is not a continuity measurement on an unidentified physical board
+revision.
 
-| Board | Vendor-schematic result | Safe choice for T-167 |
+| Board design | VERIFIED vendor-schematic result | Safe choice and physical boundary for T-167 |
 |---|---|---|
-| LilyGO T-Watch S3 Plus | PCF8563 `CLKOUT` reaches the pulled-up `RTC_CLKOUT` net and test point `TP66`, but no ESP32 pin. `XTAL_32K_P` / GPIO15 is the MAX98357A `LRCLK`; `XTAL_32K_N` / GPIO16 is touch `INT`. | Keep `CONFIG_RTC_CLK_SRC_INT_RC`. Do not select `EXT_CRYS` or `EXT_OSC` for the stock board. |
-| Waveshare ESP32-S3-Touch-AMOLED-2.06 | PCF85063ATL `CLKOUT` has a no-connect marker and `CLKOE` has no destination. GPIO15 is the shared I2C SDA and GPIO16 is audio `I2S_MCLK`. | Keep `CONFIG_RTC_CLK_SRC_INT_RC`. Do not select `EXT_CRYS` or `EXT_OSC` for the stock board. |
+| LilyGO T-Watch S3 Plus | PCF8563 `CLKOUT` reaches the pulled-up `RTC_CLKOUT` net and test point `TP66`, but no ESP32 pin. `XTAL_32K_P` / GPIO15 is the MAX98357A `LRCLK`; `XTAL_32K_N` / GPIO16 is touch `INT`. | Keep `CONFIG_RTC_CLK_SRC_INT_RC`. `EXT_CRYS` and `EXT_OSC` remain unauthorized; the physical route is `UNKNOWN` until a unit's revision and continuity are checked. |
+| Waveshare ESP32-S3-Touch-AMOLED-2.06 | PCF85063ATL `CLKOUT` has a no-connect marker and `CLKOE` has no destination. GPIO15 is the shared I2C SDA and GPIO16 is audio `I2S_MCLK`. | Keep `CONFIG_RTC_CLK_SRC_INT_RC`. `EXT_CRYS` and `EXT_OSC` remain unauthorized; the physical route is `UNKNOWN` until the unit's revision and continuity are checked. |
 
-This closes the routing prerequisite for T-167. It does **not** establish the
-lowest-current configuration: the internal fast-clock/divider option remains a
-documented ESP-IDF capability, not a board current measurement.
+This closes T-167's configuration prerequisite fail-closed: it may proceed on
+`INT_RC` without assuming absent wiring exists. It does **not** establish either
+physical unit's route or lowest-current configuration. The internal
+fast-clock/divider option remains a documented ESP-IDF capability, not a board
+current measurement.
 
 ## ESP32-S3 and ESP-IDF boundary
 
@@ -73,8 +77,10 @@ crystal. Its ESP32-S3 defaults explicitly select `RTC_CLK_SRC_EXT_CRYS`.
 Those are vendor example figures, not measurements of either Attadipa board and
 not evidence for an RTC-driven `EXT_OSC` path.
 
-**Current consumption on both target boards: NOT EXECUTED — HARDWARE REQUIRED.**
-No suitable current instrument was used in this task.
+**Physical route/continuity and current consumption on both target boards:
+NOT EXECUTED — HARDWARE REQUIRED.** The T-Watch is not in hand; the Waveshare
+unit's board revision is unidentified, and no continuity or current instrument
+was used in this task.
 
 ## Primary sources
 
@@ -82,4 +88,5 @@ No suitable current instrument was used in this task.
 - ESP-IDF v5.5.5, commit `b774170ff46c393eeb5e495ea37936038d3f4f4f`: [RTC Kconfig](https://github.com/espressif/esp-idf/blob/b774170ff46c393eeb5e495ea37936038d3f4f4f/components/esp_hw_support/port/esp32s3/Kconfig.rtc), [pin definitions](https://github.com/espressif/esp-idf/blob/b774170ff46c393eeb5e495ea37936038d3f4f4f/components/soc/esp32s3/register/soc/io_mux_reg.h), and [NimBLE power-save example](https://github.com/espressif/esp-idf/tree/b774170ff46c393eeb5e495ea37936038d3f4f4f/examples/bluetooth/nimble/power_save).
 - LilyGO `LilyGoLib` commit `38e6f8dee3ba78b340512af9a013365ef248a7d0`, [`schematic/T_WATCH-S3 25-03-24.pdf`](https://github.com/Xinyuan-LilyGO/LilyGoLib/blob/38e6f8dee3ba78b340512af9a013365ef248a7d0/schematic/T_WATCH-S3%2025-03-24.pdf), SHA-256 `3fc71eba5b30085b4fe20c6222df26230af0602ddff08e257b9cdf090c58d931`.
 - Waveshare commit `b099739ad0e33b34e5fbaae77f02bd84805d79a3`, [`Schematic/ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/blob/b099739ad0e33b34e5fbaae77f02bd84805d79a3/Schematic/ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf), SHA-256 `6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d`.
-- NXP [PCF8563 datasheet](https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf) and [PCF85063A/ATL datasheet](https://www.nxp.com/docs/en/data-sheet/PCF85063A.pdf), programmable `CLKOUT` descriptions and pinouts.
+- NXP [PCF8563 datasheet Rev. 11.1, 19 January 2026](https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf), SHA-256 `2ed5d1b0a1051d0e81399417c4ff0ced0658fa36e13c0487670f9cb6dfb4f1d4`, §8.1 `CLKOUT output`.
+- NXP [PCF85063A/ATL datasheet Rev. 7.3, 14 July 2026](https://www.nxp.com/docs/en/data-sheet/PCF85063A.pdf), SHA-256 `c1caa777a329021d764cb3d5db73434544267434ca6d05209f00c02d8f16e0ae`, §7.2.2.4 and the PCF85063ATL pin description.
