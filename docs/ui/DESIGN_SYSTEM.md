@@ -195,12 +195,15 @@ before either is adopted:
 
 | Check | State |
 |---|---|
-| Licence | **not verified** — both are widely distributed under the SIL Open Font License, which has not been confirmed from the font files this project would actually embed |
-| Cyrillic coverage | **not verified** — and this is the one that can eliminate a font outright |
-| Legibility at real pixel size | **not tested** — 240 × 240 is unforgiving |
-| Generated LVGL font size in flash | **not measured** |
+| Licence | **verified** — the selected Nunito Sans source carries SIL Open Font License 1.1; the repository ships that licence beside the generated files |
+| Cyrillic coverage | **verified** — all 177 text codepoints; U+2190–U+2193 are image-pipeline icons because Nunito Sans does not contain them |
+| Legibility at real pixel size | **partly measured** — 96/28/16 px rendered legibly on the physical 410 × 502 Waveshare; 240 × 240 remains simulator-inspected |
+| Generated LVGL font size in flash | **measured** — six host `.rodata` figures and target image size are recorded in `assets/fonts/README.md` and `docs/hardware/CLOCK_2026-08-26.md` |
 
-No font is pinned. Tokens are named for role so that the pin can change:
+Nunito Sans Regular 400 is pinned from `google/fonts` commit
+`a0e524c05906bece66cd5bcdc9216ff1d044fcbf`. The owner selected the rounded
+reference direction for T-037 on 2026-08-26 after seeing the Montserrat
+prototype. Tokens remain named by role so a future deliberate change is local:
 
 | Token | Role |
 |---|---|
@@ -426,6 +429,6 @@ See [ADR-0010](../adr/0010-localization.md) for the mechanism.
 | Which LVGL version the tokens compile against | T-032; it decides the font and image tooling |
 | Final contrast-tested colour values | needs a powered panel — final §55 |
 | `color.danger` | no red exists in the owner palette; an identity decision |
-| Font pin | licence and Cyrillic coverage unverified |
+| ~~Font pin~~ | **Resolved 2026-08-26:** Nunito Sans Regular 400; arrows are icons |
 | True black versus dark olive on AMOLED | a power measurement, not a preference |
 | Watchface catalogue | M1 delivers one; the rest is M7 |

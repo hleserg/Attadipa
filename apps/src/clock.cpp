@@ -139,6 +139,11 @@ ClockText format_clock(const ClockState &state, bool compact_date) {
   }
   std::snprintf(text.time, sizeof(text.time), "%02u:%02u", civil.hour,
                 civil.minute);
+  std::snprintf(text.seconds, sizeof(text.seconds), "%02u", civil.second);
+  std::snprintf(text.year, sizeof(text.year), "%04lld",
+                static_cast<long long>(civil.year));
+  text.day_progress_minutes = civil.hour * 60 + civil.minute;
+  text.weekday = civil.weekday;
   const char *month = l10n::tr(kMonths[civil.month - 1], state.locale);
   if (compact_date) {
     if (state.locale == l10n::Locale::Ru) {
@@ -175,7 +180,7 @@ std::uint32_t milliseconds_to_next_minute(core::WallTime time) {
 const AppManifest &clock_manifest() {
   static constexpr core::Capability required[] = {core::Capability::Time};
   static const AppManifest manifest{"clock", required, 1,
-                                    nullptr, 0,        core::Millis{60000}};
+                                    nullptr, 0,        core::Millis{1000}};
   return manifest;
 }
 

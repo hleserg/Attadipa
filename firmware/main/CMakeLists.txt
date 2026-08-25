@@ -18,8 +18,9 @@ add_library(attadipa_headers INTERFACE)
 target_include_directories(attadipa_headers INTERFACE ${ATTADIPA_ROOT}/include)
 
 # Order follows the architecture: platform, then core, then what sits beside it.
-# ui/ and apps/ are absent on purpose — they need LVGL, which is T-166.
-set(ATTADIPA_LAYERS platform core link l10n)
+# The product Clock now links the same apps/, ui/ and generated fonts as the
+# simulator; the board-specific RTC remains here in the composition root.
+set(ATTADIPA_LAYERS platform core link l10n ui apps)
 if(CONFIG_ATTADIPA_WATCH_CONTROL)
     list(APPEND ATTADIPA_LAYERS debug)
 endif()
@@ -27,13 +28,20 @@ foreach(layer ${ATTADIPA_LAYERS})
     add_subdirectory(${ATTADIPA_ROOT}/${layer} ${CMAKE_CURRENT_BINARY_DIR}/attadipa_${layer})
 endforeach()
 
+set(ATTADIPA_LVGL_TARGET __idf_lvgl__lvgl)
+add_subdirectory(${ATTADIPA_ROOT}/assets/fonts
+                 ${CMAKE_CURRENT_BINARY_DIR}/attadipa_fonts)
+add_subdirectory(${ATTADIPA_ROOT}/ui/lvgl
+                 ${CMAKE_CURRENT_BINARY_DIR}/attadipa_clock_ui)
+
 # main/ links attadipa_platform, and this is the one place in the tree allowed
 # to. The rule in ADR-0007 §5 is that an *application* must not learn which chip
 # answered; main/ is the composition root, which is precisely where the board is
 # chosen and handed to everything above it. tests/boundary/ enforces the rule
 # where it applies, which is apps/.
 set(ATTADIPA_DIRECT_LIBRARIES attadipa_core attadipa_platform attadipa_link
-                              attadipa_l10n)
+                              attadipa_l10n attadipa_ui attadipa_apps
+                              attadipa_fonts attadipa_clock_ui)
 if(CONFIG_ATTADIPA_WATCH_CONTROL)
     list(APPEND ATTADIPA_DIRECT_LIBRARIES attadipa_debug)
 endif()

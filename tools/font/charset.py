@@ -37,7 +37,9 @@ RANGES = [
 
     # --- Symbols and units ------------------------------------------------
     (0x2116, 0x2116, "numero: the Russian number sign, and there is no ASCII substitute"),
-    (0x2190, 0x2193, "four arrows: navigation and heading"),
+    # Direction arrows are image-pipeline icons. Nunito Sans intentionally has
+    # no U+2190-U+2193; keeping them here would let catalogue prose depend on
+    # glyphs the selected product face cannot draw.
 ]
 
 

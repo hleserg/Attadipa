@@ -55,8 +55,8 @@ SANDBOX_TREE = (
 FONT_CHECK = ("tools/font/generate_ui_fonts.py", "--check")
 IMAGE_CHECK = ("tools/assets/generate_images.py", "--check")
 
-FONT_SIZES = (14, 16, 20, 28)
-FONT_OUTPUTS = [f"assets/fonts/generated/attadipa_montserrat_{size}.c" for size in FONT_SIZES]
+FONT_SIZES = (14, 16, 20, 28, 64, 96)
+FONT_OUTPUTS = [f"assets/fonts/generated/attadipa_nunito_sans_{size}.c" for size in FONT_SIZES]
 FONT_STAMP = "assets/fonts/generated/INPUTS.sha256"
 
 ICONS = ("mesh", "position", "warning")
@@ -201,14 +201,15 @@ def font_cases(sandbox: Path) -> None:
          ["the inputs changed"])
     case(sandbox, "an added size", FONT_CHECK, [FONT_CHECK[0]],
          lambda: substitute(sandbox / FONT_CHECK[0],
-                            "SIZES = (14, 16, 20, 28)", "SIZES = (14, 16, 20, 28, 32)"),
+                            "SIZES = (14, 16, 20, 28, 64, 96)",
+                            "SIZES = (14, 16, 20, 28, 32, 64, 96)"),
          ["the inputs changed"])
     case(sandbox, "a changed bit depth", FONT_CHECK, [FONT_CHECK[0]],
          lambda: substitute(sandbox / FONT_CHECK[0], "BPP = 4", "BPP = 2"),
          ["the inputs changed"])
     case(sandbox, "a different source TTF", FONT_CHECK, [FONT_CHECK[0]],
-         lambda: substitute(sandbox / FONT_CHECK[0], "TTF_SHA256 = \"421f26b2",
-                            "TTF_SHA256 = \"421f26b3"),
+         lambda: substitute(sandbox / FONT_CHECK[0], "TTF_SHA256 = \"f934d714",
+                            "TTF_SHA256 = \"f934d715"),
          ["the inputs changed"])
     case(sandbox, "a different converter version", FONT_CHECK, [FONT_CHECK[0]],
          lambda: substitute(sandbox / FONT_CHECK[0],
@@ -216,8 +217,8 @@ def font_cases(sandbox: Path) -> None:
          ["the inputs changed"])
     case(sandbox, "an edited banner, with the fonts left alone", FONT_CHECK, [FONT_CHECK[0]],
          lambda: substitute(sandbox / FONT_CHECK[0],
-                            "Scaffolding, not a typeface decision",
-                            "Scaffolding, not a typeface choice"),
+                            "Variable source pinned to",
+                            "Variable source fixed to"),
          ["the inputs changed"])
 
 

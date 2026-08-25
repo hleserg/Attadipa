@@ -25,9 +25,9 @@ does not, and the next section is why.
 python3 tools/integrity/selftest.py
 
 npm install --no-save lv_font_conv@1.5.3
-python3 tools/font/fetch_ttf.py --out /tmp/Montserrat-Medium.ttf
+python3 tools/font/fetch_ttf.py --out /tmp/NunitoSans.ttf
 python3 tools/integrity/reproducibility.py \
-        --ttf /tmp/Montserrat-Medium.ttf --converter ./node_modules/.bin/lv_font_conv
+        --ttf /tmp/NunitoSans.ttf --converter ./node_modules/.bin/lv_font_conv
 ```
 
 ## The CI job this is missing, ready to paste — T-128
@@ -101,14 +101,14 @@ It was written against `actionlint 1.7.7` and passes it.
       # caches, at the commit cmake/AttadipaLvgl.cmake pins — read from that
       # file, not copied here, and refused unless it hashes to the constant the
       # generator itself will not run without.
-      - name: Fetch Montserrat from the pinned LVGL commit
-        run: python3 tools/font/fetch_ttf.py --out "${RUNNER_TEMP}/Montserrat-Medium.ttf"
+      - name: Fetch Nunito Sans from the pinned Google Fonts commit
+        run: python3 tools/font/fetch_ttf.py --out "${RUNNER_TEMP}/NunitoSans.ttf"
 
       - name: Regenerate twice and compare against what is committed
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/assets-venv/bin/python" tools/integrity/reproducibility.py \
-            --ttf "${RUNNER_TEMP}/Montserrat-Medium.ttf" \
+            --ttf "${RUNNER_TEMP}/NunitoSans.ttf" \
             --converter "${RUNNER_TEMP}/node_modules/.bin/lv_font_conv"
 
       # The checkout must be exactly as it was checked out. Nothing above writes

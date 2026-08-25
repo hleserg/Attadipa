@@ -225,3 +225,9 @@ size* half of the font decision and not the whole of it.
 **Neither font is chosen.** These are the numbers a choice needs, and the choice
 is a design decision — the arrows gap and the ExtraLight default both change
 what "use Nunito Sans" means. See OPEN_QUESTIONS.
+
+**Decision after this measurement:** on 2026-08-26 the owner selected Nunito
+Sans Regular 400 for the first product Clock after rejecting the Montserrat
+prototype as inconsistent with the canonical visual references. The generator
+pins `wght=400`; arrows remain A8 image-pipeline icons. The paragraph above is
+retained as the conclusion of the measurement at the time it was made.

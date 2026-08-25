@@ -30,8 +30,12 @@ struct ClockState {
 
 struct ClockText {
   char time[6] = "--:--";
+  char seconds[3] = "--";
+  char year[5] = {};
   char date[40] = {};
   char status[32] = {};
+  unsigned day_progress_minutes = 0;
+  unsigned weekday = 0;
   ClockMode mode = ClockMode::Adult;
   bool ready = false;
 };

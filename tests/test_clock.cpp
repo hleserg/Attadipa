@@ -51,6 +51,11 @@ int main() {
   CHECK(std::strcmp(
             render(wall(2026, 8, 25, 12, 34), l10n::Locale::Ru, true).date,
             "25 АВГ") == 0);
+  const apps::ClockText detail =
+      render(wall(2026, 8, 25, 12, 34, 56), l10n::Locale::En);
+  CHECK(std::strcmp(detail.seconds, "56") == 0);
+  CHECK(std::strcmp(detail.year, "2026") == 0);
+  CHECK(detail.day_progress_minutes == 754 && detail.weekday == 2);
 
   apps::CivilTime civil;
   CHECK(apps::civil_from_wall_time(wall(2024, 2, 29, 23, 59, 59), civil));
@@ -66,7 +71,7 @@ int main() {
         60000);
   CHECK(apps::milliseconds_to_next_minute(wall(2026, 8, 25, 12, 34, 59)) ==
         1000);
-  CHECK(apps::clock_manifest().tick_period == core::Millis{60000});
+  CHECK(apps::clock_manifest().tick_period == core::Millis{1000});
 
   apps::ClockState unavailable;
   unavailable.locale = l10n::Locale::Ru;
