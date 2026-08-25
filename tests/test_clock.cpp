@@ -73,6 +73,13 @@ int main() {
         1000);
   CHECK(apps::clock_manifest().tick_period == core::Millis{1000});
 
+  apps::ClockState stale;
+  stale.time = {wall(2026, 8, 25, 12, 34), 0, 0, core::Validity::Stale};
+  stale.availability = core::Availability::Ready;
+  stale.locale = l10n::Locale::Ru;
+  CHECK(std::strcmp(apps::format_clock(stale, true).status,
+                    "время могло устареть") == 0);
+
   apps::ClockState unavailable;
   unavailable.locale = l10n::Locale::Ru;
   unavailable.availability = core::Availability::Unprovisioned;

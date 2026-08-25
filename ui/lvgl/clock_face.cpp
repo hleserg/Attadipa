@@ -15,6 +15,7 @@ lv_color_t resolved(ColorRole role, Theme theme, PixelCost pixel_cost) {
 void bare(lv_obj_t *object) {
   lv_obj_remove_style_all(object);
   lv_obj_remove_flag(object, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(object, LV_OBJ_FLAG_CLICKABLE);
 }
 
 void circle(lv_obj_t *object, int size, lv_color_t colour, lv_opa_t opacity) {
@@ -331,8 +332,9 @@ void ClockFace::update(const apps::ClockText &text) {
                        : lv_obj_remove_flag(date_, LV_OBJ_FLAG_HIDDEN);
   text.status[0] == '\0' ? lv_obj_add_flag(status_, LV_OBJ_FLAG_HIDDEN)
                          : lv_obj_remove_flag(status_, LV_OBJ_FLAG_HIDDEN);
-  text.ready ? lv_obj_remove_flag(timeline_, LV_OBJ_FLAG_HIDDEN)
-             : lv_obj_add_flag(timeline_, LV_OBJ_FLAG_HIDDEN);
+  text.ready && text.status[0] == '\0'
+      ? lv_obj_remove_flag(timeline_, LV_OBJ_FLAG_HIDDEN)
+      : lv_obj_add_flag(timeline_, LV_OBJ_FLAG_HIDDEN);
   text.ready ? lv_obj_remove_flag(seconds_, LV_OBJ_FLAG_HIDDEN)
              : lv_obj_add_flag(seconds_, LV_OBJ_FLAG_HIDDEN);
 }
@@ -356,6 +358,7 @@ void ClockFace::touch(lv_event_t *event) {
   touch_y_ = point.y;
   touch_ticks_ = 32;
   ripple_step_ = 1;
+  lv_obj_move_foreground(ripple_);
   lv_obj_remove_flag(ripple_, LV_OBJ_FLAG_HIDDEN);
 }
 

@@ -33,7 +33,7 @@ struct ClockText {
   char seconds[3] = "--";
   char year[5] = {};
   char date[40] = {};
-  char status[32] = {};
+  char status[48] = {};
   unsigned day_progress_minutes = 0;
   unsigned weekday = 0;
   ClockMode mode = ClockMode::Adult;
