@@ -1,11 +1,8 @@
 // The device entry point, and for now the whole of the firmware.
 //
-// Its job is deliberately small and is the floor the rest of M2 stands on:
-// boot, say precisely what this board is, and prove that the libraries under
-// core/, platform/, link/ and l10n/ compile and link for xtensa rather than
-// only for the host. There is no display here, no touch, no LVGL and no PMU —
-// those are T-166, and a skeleton that quietly grew a driver would be the wrong
-// thing to hand over.
+// Its job is the device composition root: report the board, then start the
+// Waveshare hardware slice. Board-specific drivers stay beside this file and
+// never leak into core/ or apps/.
 //
 // Every number printed below is read from the silicon at run time. None of it is
 // a constant copied out of the research notes, because the point of the first
@@ -37,6 +34,8 @@
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/platform/hardware_feature.h"
+
+#include "waveshare_board.h"
 
 namespace {
 
@@ -295,6 +294,15 @@ extern "C" void app_main(void)
                  *snapshot.memory.psram_largest_block_bytes);
     }
     ESP_LOGI(kTag, "-------------------------------------------------------------");
+
+#if !CONFIG_APP_BUILD_TYPE_PURE_RAM_APP
+    const esp_err_t ui_err = start_waveshare_ui();
+    if (ui_err != ESP_OK) {
+        ESP_LOGE(kTag, "Waveshare UI failed safely: %s", esp_err_to_name(ui_err));
+    }
+#else
+    ESP_LOGI(kTag, "Waveshare UI skipped in PURE_RAM mode");
+#endif
 
     // A heartbeat rather than a return. app_main returning is legal and deletes
     // its task, which leaves a board that has booted looking exactly like a

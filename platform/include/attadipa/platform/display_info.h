@@ -17,6 +17,8 @@ struct DisplayInfo {
     // header that embedded code includes. Diagonal, as panels are specified.
     std::uint16_t   diagonal_milli_inch = 0;
     PanelTechnology technology          = PanelTechnology::Unknown;
+    // Board-level transfer fact, consumed once by the LVGL flush port.
+    bool            rgb565_swap_bytes    = false;
 
     // Pixels per inch, rounded to the nearest integer.
     //

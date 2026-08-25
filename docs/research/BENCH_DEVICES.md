@@ -22,7 +22,7 @@ number will eventually pick the wrong board.
 | PSRAM | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
 | Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | `0x68 0x4018` — 16 MB |
 | Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
-| Current firmware | **Waveshare factory image restored after T-165**; owner-observed brightness at minimum | unchanged; do not write |
+| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | unchanged; do not write |
 
 The watch row matches [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1–1.3
 on all three of revision, PSRAM capacity and flash JEDEC id, which is what
@@ -45,6 +45,12 @@ The write's integrated hash check succeeded; a separate full post-restore
 `verify_flash` was interrupted and has no verdict. After reset the owner
 observed the factory UI bright with working touch and set brightness to minimum.
 The exact sequence is [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §6.
+
+Later on 2026-08-25, T-166 replaced the factory image with the current Attadipa
+bench candidate and exercised its display, touch, PMU and RTC paths. After a
+subsequent replug, the owner installed a FAT32-formatted microSD/TF card. The
+card's physical presence and format are owner-reported bench state; mounting,
+reading and writing it from Attadipa are `NOT EXECUTED — HARDWARE REQUIRED`.
 
 **The second board is not ours to write to.** It is nothing like the watch — a
 quarter of the PSRAM and half the flash — so a mis-addressed load fails rather

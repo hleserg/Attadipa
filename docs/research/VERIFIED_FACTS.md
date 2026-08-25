@@ -1557,3 +1557,27 @@ constants.
   [#131](https://github.com/hleserg/Attadipa/issues/131), and
   the full correction is in
   [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §4.3.
+
+### Attadipa drives the Waveshare display and touch on the physical unit
+
+- **Claim:** on the Waveshare ESP32-S3-Touch-AMOLED-2.06 unit identified by USB
+  serial `28:84:85:B2:18:A4`, Attadipa drives the CO5300 at QSPI 40 MHz through
+  the upstream Espressif component. At the commanded `5%` (`12/255`) brightness
+  the owner directly observed red, green and blue swatches in the intended
+  order and reported the final 28 px primary text readable. The `1%` (`2/255`)
+  command was below this unit's useful visible floor.
+- **Touch measurement:** six presses on the visible LVGL target produced
+  `physical touch 1` through `6` over the physical FT3168 path. This proves the
+  controller, its reset path, LVGL input registration and hit-testing together;
+  it does not claim routing into `core::InputQueue`, which belongs to T-114.
+- **PMU/RTC measurement:** the candidate preserves unrelated AXP2101 enable
+  bits while owning the three rails required by this slice. After a bench-only
+  diagnostic set the previously invalid PCF85063 once, the production read path
+  observed later times across multiple resets. That proves retain, advance and
+  read; absolute accuracy and drift remain unmeasured. An ESP-IDF master-bus
+  reset also recovered a restart where a peripheral held I2C busy, while the
+  preceding image failed safely with the AMOLED off.
+- **Source:** the raw flash/boot/touch transcripts and owner observations in
+  [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §7, measured
+  2026-08-25 on that unit. USB watch-control screenshot capture is
+  **NOT EXECUTED — HARDWARE ENDPOINT REQUIRED**; T-114 owns that endpoint.

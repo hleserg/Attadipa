@@ -6,10 +6,11 @@ because that question stopped answering itself.
 
 Written 2026-08-24, after an independent cold read of the repository.
 
-> **Update 2026-08-25:** T-165 added the ESP-IDF project and Attadipa now boots
-> from flash on the Waveshare unit. The diagnosis below records the state when
-> this ordering decision was made; its result is unchanged. T-166 is now the
-> next device slice: display, touch, PMU rails and RTC.
+> **Update 2026-08-25:** T-165 added the ESP-IDF project; T-166 then drove the
+> physical Waveshare display, touch, required PMU rails and RTC. The diagnosis
+> below records the state when this ordering decision was made; its result is
+> unchanged. T-114 is now the next device slice because it supplies the real
+> screenshot/control endpoint and physical input producer.
 
 ## Where the project actually is
 
@@ -112,7 +113,7 @@ behind it has not been tested, only asserted.
 |---|---|---|---|
 | 1 | **T-004** | the ESP-IDF pin as a decision, not an installation | none — it is one row in [DEPENDENCIES](research/DEPENDENCIES.md) away from done |
 | 2 | **T-165** ([#189](https://github.com/hleserg/Attadipa/issues/189)) | an ESP-IDF project that builds: `main/`, `sdkconfig.defaults`, a partition table, a boot path, serial diagnostics, a reproducible build, a documented flash procedure | T-004 |
-| 3 | **T-166** ([#190](https://github.com/hleserg/Attadipa/issues/190)) | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC, **up to the driver** | T-165; **D21** on the first line of display bring-up |
+| 3 | **T-166** ([#190](https://github.com/hleserg/Attadipa/issues/190)) | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC, **up to the driver** | done; D21 resolved by the physical asymmetric RGB pattern |
 | 4 | **T-114** ([#117](https://github.com/hleserg/Attadipa/issues/117)) | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel — **and the `InputOrigin::Physical` producer for touch *and buttons*, which is T-114's alone** | T-165, T-166 |
 | 5 | **T-037** | the first Clock, running on the watch, on real input, with the real tokens and fonts | T-166 |
 | 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | T-166; T-068 |
@@ -137,12 +138,12 @@ Steps 4 and 5 do not strictly order against each other. Step 4 first is the
 better bet, because it is the instrument that makes step 5 checkable — which is
 the whole argument for having built it.
 
-**D21 is the one technical unknown on the path**, and it is small and named:
-in what byte order does the CO5300 want a 16-bit pixel on the wire. It is
-answerable either from the datasheet's `3Ah`/`2Ch` packing, or by a
-measurement — a known asymmetric pattern written with the swap off, and a
-photograph. It blocks the first line of display bring-up and nothing before it,
-so it is a probe to run *early* rather than a reason to delay the skeleton.
+**D21 was the one technical unknown on the path:** in what byte order does the
+CO5300 want a 16-bit pixel on the wire. T-166 resolved the operational board
+setting on 2026-08-25: the physical panel showed the intended asymmetric red,
+green and blue swatches with the board profile's RGB565 byte swap enabled. The
+measurement belongs to the board flush path; it says nothing about asset-file
+byte order.
 
 ## What a session with the board may do, and what stays the owner's
 
