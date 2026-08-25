@@ -14,11 +14,14 @@
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
+#include "esp_lcd_co5300.h"
 #include "esp_log.h"
+#include "esp_sleep.h"
 #include "esp_timer.h"
 #include "lvgl.h"
 
 #include "attadipa/core/input.h"
+#include "attadipa/core/power_state.h"
 #include "attadipa/debug/bridge.h"
 #include "attadipa/link/frame_codec.h"
 #include "attadipa/platform/board_profile.h"
@@ -35,6 +38,8 @@ constexpr std::uint32_t kPollMs = 5;
 constexpr std::uint8_t kButtonDebounceSamples = 2;
 constexpr std::uint32_t kPmuPollMs = 20;
 constexpr gpio_num_t kTouchInterrupt = GPIO_NUM_38;
+constexpr gpio_num_t kPowerWake = GPIO_NUM_10;
+constexpr std::uint64_t kDebugWakeDelayUs = 750'000;
 constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;
 constexpr std::uint8_t kAxpInterruptStatus2 = 0x49;
 constexpr std::uint8_t kAxpPowerPositiveEdge = 1U << 0;
@@ -145,13 +150,17 @@ class WatchControl {
 public:
   WatchControl(const attadipa::platform::BoardProfile &board,
                esp_lcd_touch_handle_t touch, i2c_master_dev_handle_t pmu,
-               std::uint8_t *frame, std::size_t frame_capacity)
-      : board_(board), touch_(touch), pmu_(pmu), source_(board_, input_queue_),
+               esp_lcd_panel_handle_t panel, std::uint8_t awake_brightness,
+               void (*refresh_ui)(), std::uint8_t *frame,
+               std::size_t frame_capacity)
+      : board_(board), touch_(touch), pmu_(pmu), panel_(panel),
+        awake_brightness_(awake_brightness), refresh_ui_(refresh_ui),
+        source_(board_, input_queue_),
         bridge_(input_queue_, input_state_, source_, frame, frame_capacity) {}
 
   esp_err_t attach() {
     gpio_config_t buttons{};
-    buttons.pin_bit_mask = 1ULL << GPIO_NUM_0;
+    buttons.pin_bit_mask = (1ULL << GPIO_NUM_0) | (1ULL << kPowerWake);
     buttons.mode = GPIO_MODE_INPUT;
     buttons.pull_up_en = GPIO_PULLUP_DISABLE;
     buttons.pull_down_en = GPIO_PULLDOWN_DISABLE;
@@ -304,6 +313,7 @@ private:
       }
       usb_connected_ = false;
       bridge_.tick(now_ms, emit, this);
+      maybe_sleep();
       return;
     }
     usb_connected_ = true;
@@ -337,6 +347,117 @@ private:
 
     if (overflowed_) {
       reset_remote(now_ms, "USB client overran the bounded output queue");
+    }
+    maybe_sleep();
+  }
+
+  void maybe_sleep() {
+    if (!sleep_requested_ || !input_queue_.empty() ||
+        input_state_.held_count(attadipa::core::InputOrigin::Physical) != 0 ||
+        input_state_.held_count(attadipa::core::InputOrigin::Remote) != 0 ||
+        pointer_pressed_ || gpio_get_level(kTouchInterrupt) == 0 ||
+        gpio_get_level(kPowerWake) != 0) {
+      return;
+    }
+
+    sleep_requested_ = false;
+    const std::uint16_t wake_plan =
+        attadipa::core::wake_bit(attadipa::core::WakeSource::Button) |
+        attadipa::core::wake_bit(attadipa::core::WakeSource::Touch) |
+        (debug_timer_wake_
+             ? attadipa::core::wake_bit(attadipa::core::WakeSource::Timer)
+             : 0);
+    if (!attadipa::core::wake_plan_is_legal(
+            attadipa::core::PowerState::LightSleep, wake_plan)) {
+      ESP_LOGE(kTag, "refused illegal LightSleep wake plan 0x%04x", wake_plan);
+      return;
+    }
+
+    esp_err_t result = gpio_wakeup_enable(kTouchInterrupt, GPIO_INTR_LOW_LEVEL);
+    if (result == ESP_OK) {
+      result = gpio_wakeup_enable(kPowerWake, GPIO_INTR_HIGH_LEVEL);
+    }
+    if (result == ESP_OK) {
+      result = esp_sleep_enable_gpio_wakeup();
+    }
+    if (result == ESP_OK && debug_timer_wake_) {
+      result = esp_sleep_enable_timer_wakeup(kDebugWakeDelayUs);
+    }
+    if (result != ESP_OK) {
+      ESP_LOGE(kTag, "arm LightSleep wake sources: %s",
+               esp_err_to_name(result));
+      return;
+    }
+
+    result = esp_lcd_panel_co5300_set_brightness(panel_, 0);
+    if (result == ESP_OK) {
+      result = esp_lcd_panel_disp_on_off(panel_, false);
+    }
+    if (result != ESP_OK) {
+      (void)esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
+      ESP_LOGE(kTag, "turn AMOLED off before LightSleep: %s",
+               esp_err_to_name(result));
+      return;
+    }
+
+    ESP_LOGI(kTag,
+             "display off; Active -> Idle -> LightSleep "
+             "(touch + PMU PWR%s)",
+             debug_timer_wake_ ? " + debug timer" : "");
+    const esp_err_t sleep_result = esp_light_sleep_start();
+    if (debug_timer_wake_) {
+      (void)esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+    }
+    debug_timer_wake_ = false;
+
+    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    const bool by_button =
+        cause == ESP_SLEEP_WAKEUP_GPIO && gpio_get_level(kPowerWake) != 0;
+    const bool by_touch =
+        cause == ESP_SLEEP_WAKEUP_GPIO && gpio_get_level(kTouchInterrupt) == 0;
+    const bool by_timer = cause == ESP_SLEEP_WAKEUP_TIMER;
+    const std::uint64_t pins = (by_button ? 1ULL << kPowerWake : 0) |
+                               (by_touch ? 1ULL << kTouchInterrupt : 0);
+    if (by_button) {
+      suppress_next_power_sleep_ = true;
+    }
+
+    esp_err_t restore_result = esp_lcd_panel_disp_on_off(panel_, true);
+    if (restore_result == ESP_OK) {
+      restore_result =
+          esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
+    }
+    if (refresh_ui_ != nullptr) {
+      refresh_ui_();
+    }
+    lv_obj_invalidate(lv_screen_active());
+    lv_refr_now(nullptr);
+
+    const std::uint32_t now_ms =
+        static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
+    reset_remote(now_ms, "light-sleep cycle completed");
+    usb_connected_ = false;
+    ++sleep_cycles_;
+    const attadipa::core::WakeSource wake_source =
+        by_button  ? attadipa::core::WakeSource::Button
+        : by_touch ? attadipa::core::WakeSource::Touch
+                   : attadipa::core::WakeSource::Timer;
+    const bool wake_known = by_button || by_touch || by_timer;
+    const attadipa::core::WakeRecord wake{
+        attadipa::core::PowerState::LightSleep, wake_source,
+        attadipa::core::MonotonicTime{now_ms}};
+    ESP_LOGI(kTag,
+             "wake cycle %u: LightSleep -> Idle -> Active by %s "
+             "(cause=%d gpio=0x%llx)",
+             static_cast<unsigned>(sleep_cycles_),
+             wake_known ? attadipa::core::to_string(wake.by) : "UNKNOWN",
+             static_cast<int>(cause), static_cast<unsigned long long>(pins));
+    if (sleep_result != ESP_OK) {
+      ESP_LOGE(kTag, "LightSleep failed: %s", esp_err_to_name(sleep_result));
+    }
+    if (restore_result != ESP_OK) {
+      ESP_LOGE(kTag, "restore AMOLED after LightSleep: %s",
+               esp_err_to_name(restore_result));
     }
   }
 
@@ -505,6 +626,16 @@ private:
                        ? "down"
                        : "up");
         }
+        if (event.button == 0 &&
+            event.type == attadipa::core::InputEventType::ButtonUp) {
+          if (suppress_next_power_sleep_) {
+            suppress_next_power_sleep_ = false;
+          } else {
+            sleep_requested_ = true;
+            debug_timer_wake_ =
+                event.origin == attadipa::core::InputOrigin::Remote;
+          }
+        }
         break;
       }
     }
@@ -525,6 +656,9 @@ private:
   const attadipa::platform::BoardProfile board_;
   esp_lcd_touch_handle_t touch_ = nullptr;
   i2c_master_dev_handle_t pmu_ = nullptr;
+  esp_lcd_panel_handle_t panel_ = nullptr;
+  std::uint8_t awake_brightness_ = 0;
+  void (*refresh_ui_)() = nullptr;
   attadipa::core::InputQueue input_queue_{};
   attadipa::core::InputState input_state_{};
   FirmwareScreenSource source_;
@@ -543,6 +677,10 @@ private:
   std::int16_t pointer_y_ = 0;
   std::size_t input_read_burst_ = 0;
   std::uint32_t last_pmu_poll_ms_ = 0;
+  std::uint32_t sleep_cycles_ = 0;
+  bool sleep_requested_ = false;
+  bool debug_timer_wake_ = false;
+  bool suppress_next_power_sleep_ = false;
   PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};
 };
 
@@ -551,13 +689,17 @@ WatchControl *service = nullptr;
 } // namespace
 
 esp_err_t start_watch_control(esp_lcd_touch_handle_t touch,
-                              i2c_master_dev_handle_t pmu) {
+                              i2c_master_dev_handle_t pmu,
+                              esp_lcd_panel_handle_t panel,
+                              std::uint8_t awake_brightness,
+                              void (*refresh_ui)()) {
   if (service != nullptr) {
     return ESP_ERR_INVALID_STATE;
   }
   const attadipa::platform::BoardProfile *board =
       attadipa::platform::find_board_profile(kBoardProfileId);
-  if (board == nullptr || touch == nullptr || pmu == nullptr) {
+  if (board == nullptr || touch == nullptr || pmu == nullptr ||
+      panel == nullptr || awake_brightness > 100 || refresh_ui == nullptr) {
     return ESP_ERR_INVALID_ARG;
   }
 
@@ -578,8 +720,9 @@ esp_err_t start_watch_control(esp_lcd_touch_handle_t touch,
     heap_caps_free(frame);
     return result;
   }
-  WatchControl *candidate =
-      new (std::nothrow) WatchControl(*board, touch, pmu, frame, frame_bytes);
+  WatchControl *candidate = new (std::nothrow)
+      WatchControl(*board, touch, pmu, panel, awake_brightness, refresh_ui,
+                   frame, frame_bytes);
   if (candidate == nullptr) {
     usb_serial_jtag_driver_uninstall();
     heap_caps_free(frame);

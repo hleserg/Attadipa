@@ -248,8 +248,10 @@ void round_flush_area(lv_area_t *area) {
 void refresh_clock(lv_timer_t *timer) {
   const attadipa::apps::ClockState clock = read_clock_state();
   state.clock_face.update(attadipa::apps::format_clock(clock, false));
-  lv_timer_set_period(timer,
-                      attadipa::apps::clock_manifest().tick_period.value);
+  if (timer != nullptr) {
+    lv_timer_set_period(timer,
+                        attadipa::apps::clock_manifest().tick_period.value);
+  }
 }
 
 esp_err_t initialize_display() {
@@ -396,7 +398,8 @@ esp_err_t start_waveshare_ui() {
   create_ui();
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   const esp_err_t watch_control_result =
-      start_watch_control(state.touch, state.pmu);
+      start_watch_control(state.touch, state.pmu, state.panel,
+                          kBrightnessPercent, [] { refresh_clock(nullptr); });
 #endif
   lvgl_port_unlock();
 #if CONFIG_ATTADIPA_WATCH_CONTROL
