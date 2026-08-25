@@ -5,18 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#FFF6E8">
   <meta name="color-scheme" content="light dark">
-  <title>Attadipa — Independent by design</title>
-  <meta name="description" content="Attadipa is an open-source wearable firmware/application platform for ESP32-S3: mesh messaging, offline navigation, clean app APIs and a product-grade UI.">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="Attadipa — Independent by design">
-  <meta property="og:description" content="An open, hardware-aware wearable platform for mesh messaging, offline navigation and useful apps without depending on a phone.">
-  <meta property="og:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
-  <meta property="og:url" content="https://hleserg.github.io/Attadipa/">
-  <meta name="twitter:card" content="summary_large_image">
+  <title>Attadipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS</title>
+  <meta name="description" content="Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — the firmware has not run on a board yet; only bench code has.">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <link rel="canonical" href="https://hleserg.github.io/Attadipa/">
+  <link rel="alternate" type="text/html" hreflang="x-default" href="https://hleserg.github.io/Attadipa/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Attadipa">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="ru_RU">
+  <meta property="og:title" content="Attadipa — open-source ESP32-S3 smartwatch firmware">
+  <meta property="og:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — the firmware has not run on a board yet; only bench code has.">
+  <meta property="og:url" content="https://hleserg.github.io/Attadipa/">
+  <meta property="og:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1734">
+  <meta property="og:image:height" content="907">
+  <meta property="og:image:alt" content="The Attadipa firefly mark to the left of the wordmark Attadipa, with the line Independent by design beneath it.">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Attadipa — open-source ESP32-S3 smartwatch firmware">
+  <meta name="twitter:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — the firmware has not run on a board yet; only bench code has.">
+  <meta name="twitter:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
+  <meta name="twitter:image:alt" content="The Attadipa firefly mark to the left of the wordmark Attadipa, with the line Independent by design beneath it.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
+  <!-- A hint, NOT a discovery path. robots.txt is host-rooted and this is a
+       project site, so the Sitemap: line in docs/robots.txt is never fetched
+       -- see that file. No crawler is documented as reading this link either:
+       we could not source a single one, so the sitemap has no automated
+       discovery path at all until the Search Console / Bing submission
+       recorded as S2 in docs/site/SEO.md is done. Kept because it is correct
+       markup and costs nothing; do not read it as coverage. -->
+  <link rel="sitemap" type="application/xml" href="sitemap.xml">
   <script>
     (() => {
       try {
@@ -33,8 +56,75 @@
       } catch (_) {}
     })();
   </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://hleserg.github.io/Attadipa/#website",
+        "url": "https://hleserg.github.io/Attadipa/",
+        "name": "Attadipa",
+        "description": "Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — the firmware has not run on a board yet; only bench code has.",
+        "inLanguage": ["en", "ru"],
+        "publisher": { "@id": "https://github.com/hleserg#person" }
+      },
+      {
+        "@type": "Person",
+        "@id": "https://github.com/hleserg#person",
+        "name": "hleserg",
+        "url": "https://github.com/hleserg"
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "@id": "https://hleserg.github.io/Attadipa/#source",
+        "name": "Attadipa",
+        "alternateName": "Attadipa smartwatch firmware platform",
+        "description": "Firmware and application platform for ESP32-S3 smartwatches. Board differences live behind a capability registry, so an application asks what the device can do rather than which device it is. Targets the LilyGO T-Watch S3 Plus and the Waveshare ESP32-S3-Touch-AMOLED-2.06. Early implementation: the host libraries and a two-geometry simulator build and pass their tests, the firmware has not run on a board yet; only bench code has.",
+        "codeRepository": "https://github.com/hleserg/Attadipa",
+        "url": "https://hleserg.github.io/Attadipa/",
+        "programmingLanguage": [
+          { "@type": "ComputerLanguage", "name": "C++" },
+          { "@type": "ComputerLanguage", "name": "C" }
+        ],
+        "runtimePlatform": ["ESP-IDF", "FreeRTOS"],
+        "targetProduct": {
+          "@type": "SoftwareApplication",
+          "name": "Attadipa",
+          "applicationCategory": "Smartwatch firmware",
+          "operatingSystem": "FreeRTOS (ESP-IDF) on ESP32-S3",
+          "featureList": [
+            "LVGL user interface at two screen geometries",
+            "Hardware capability registry shared across boards",
+            "Day and night themes"
+          ]
+        },
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "author": { "@id": "https://github.com/hleserg#person" },
+        "maintainer": { "@id": "https://github.com/hleserg#person" },
+        "keywords": "ESP32-S3, smartwatch firmware, smartwatch OS, LoRa, MeshCore, mesh networking, GNSS, offline navigation, LVGL, FreeRTOS, ESP-IDF, wearable, open source",
+        "inLanguage": "en"
+      }
+    ]
+  }
+  </script>
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/site.js" defer></script>
+
+  <!-- The scroll animation is opt-in, and site.js is what opts in: `.reveal`
+       ships VISIBLE, and `.js-reveal` on <html> -- added one statement before
+       the IntersectionObserver that undoes it -- is what hides it. So every way
+       the script fails to run lands on the readable page.
+
+       This <noscript> is now a belt-and-braces override for the scripting-off
+       case alone. It used to be the ONLY protection, described as covering "a
+       reader whose script request simply failed" -- which it cannot: <noscript>
+       does not render when scripting is enabled, so a 404 on site.js, cached
+       HTML opened offline, a blocking extension or a throw inside the file all
+       left a hero and empty space. That was the case being claimed as fixed.
+       Found in review; the class inversion is the actual fix. -->
+  <noscript><style>.reveal,.js-reveal .reveal{opacity:1;transform:none}</style></noscript>
 </head>
 <body>
   <a class="skip-link" href="#main">
@@ -45,7 +135,7 @@
   <header class="topbar" id="top">
     <div class="shell nav-shell">
       <a class="brand" href="#top" aria-label="Attadipa home">
-        <img src="assets/favicon.png" alt="" width="34" height="34">
+        <img src="assets/favicon.png" alt="" width="34" height="34" decoding="async">
         <span>Attadipa</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
@@ -78,8 +168,8 @@
           <span class="lang-en" lang="en">Useful when your phone isn't.</span>
           <span class="lang-ru" lang="ru">Часы, которые полезны без телефона.</span>
         </h1>
-        <p class="hero-lead lang-en" lang="en">Attadipa is an open firmware/application platform being built for ESP32-S3 wearables: mesh messaging, offline navigation, clean app APIs, and a UI meant to feel like a real product.</p>
-        <p class="hero-lead lang-ru" lang="ru">Attadipa — открытая прошивка и платформа приложений для носимых устройств на ESP32-S3: mesh-связь, офлайн-навигация, чистые API для приложений и интерфейс, который должен ощущаться как настоящий продукт.</p>
+        <p class="hero-lead lang-en" lang="en">Attadipa is an open-source firmware and application platform being built for ESP32-S3 smartwatches: LoRa mesh messaging over MeshCore, offline GNSS navigation, clean app APIs over LVGL and FreeRTOS, and a UI meant to feel like a real product.</p>
+        <p class="hero-lead lang-ru" lang="ru">Attadipa — открытая прошивка и платформа приложений для умных часов на ESP32-S3: LoRa mesh-связь через MeshCore, офлайн-навигация по GNSS, чистые API для приложений поверх LVGL и FreeRTOS и интерфейс, который должен ощущаться как настоящий продукт.</p>
         <p class="project-name-note lang-en" lang="en"><em>Attadipa</em> comes from Pāli <em>attadīpa</em>: “self-reliant; one’s own island or refuge.” It is a quiet reminder that the essentials should work without a phone or cloud.</p>
         <p class="project-name-note lang-ru" lang="ru"><em>Attadipa</em> — от палийского <em>attadīpa</em>: «опирающийся на себя; собственный остров или прибежище». Это ненавязчивое напоминание: главное должно работать без телефона и облака.</p>
         <div class="hero-actions">
@@ -96,7 +186,8 @@
         </div>
       </div>
       <div class="hero-art reveal reveal-delay" aria-label="Attadipa brand banner">
-        <img src="assets/attadipa-banner.png" width="1788" height="894" alt="Attadipa — Independent by design">
+        <img src="assets/banner.webp" width="1774" height="887" fetchpriority="high" decoding="async"
+             alt="The Attadipa wordmark beside a firefly, over the line Independent by design.">
         <span class="glow g1"></span><span class="glow g2"></span><span class="glow g3"></span>
       </div>
     </section>
@@ -187,7 +278,7 @@
     <section class="section shell" id="hardware">
       <div class="section-heading reveal">
         <span class="kicker lang-en">Targets</span><span class="kicker lang-ru">Целевые устройства</span>
-        <h2><span class="lang-en">Built to survive hardware differences.</span><span class="lang-ru">Архитектура, которая переживает различия плат.</span></h2>
+        <h2><span class="lang-en">ESP32-S3 boards that share almost nothing: built to survive the differences.</span><span class="lang-ru">Платы на ESP32-S3, у которых почти нет ничего общего: архитектура переживает различия.</span></h2>
         <p class="lang-en">The same product model is intended to span watches with very different displays, radios, GNSS and haptics — without pretending every board has everything.</p>
         <p class="lang-ru">Одна модель продукта должна работать на часах с очень разными дисплеями, радио, GNSS и вибрацией — без притворства, будто на каждой плате есть всё.</p>
       </div>
@@ -224,7 +315,8 @@
     <section class="section design-band">
       <div class="shell design-grid">
         <div class="design-board reveal">
-          <img src="assets/attadipa-style-board.png" width="1440" height="1086" alt="Attadipa visual design board">
+          <img src="assets/style-board.webp" width="1448" height="1086" loading="lazy" decoding="async"
+               alt="Attadipa design board: the Warm Ivory and Ink Olive palette, the Nunito Sans and Inter type specimens, rounded card shapes and the firefly mark.">
         </div>
         <div class="design-copy reveal reveal-delay">
           <span class="kicker lang-en">Design is architecture too</span><span class="kicker lang-ru">Дизайн — тоже часть архитектуры</span>
@@ -247,9 +339,9 @@
       <div class="status-card reveal">
         <div class="status-copy">
           <div class="status-label"><span class="pulse-dot"></span><span class="lang-en">Current milestone: M1</span><span class="lang-ru">Текущий этап: M1</span></div>
-          <h2><span class="lang-en">The foundation is real. The watch firmware is still early.</span><span class="lang-ru">Фундамент уже работает. Сама прошивка часов пока на раннем этапе.</span></h2>
-          <p class="lang-en">The repository builds six libraries, the two-geometry desktop simulator and 24 host tests; screens draw through the design tokens in day and night themes, and CI raises the simulator from a clean machine. The first target board is now on the desk and has been read over its own USB port — the first evidence here that came from silicon rather than a document. Device firmware and every hardware measurement are still ahead.</p>
-          <p class="lang-ru">В репозитории собираются шесть библиотек, desktop-симулятор двух геометрий и 24 хостовых теста; экраны рисуются через дизайн-токены в дневной и ночной темах, а CI поднимает симулятор с чистой машины. Первая целевая плата уже на столе и прочитана через собственный USB-порт — это первое свидетельство здесь, пришедшее с кремния, а не из документа. Прошивка для устройства и все аппаратные измерения ещё впереди.</p>
+          <h2><span class="lang-en">The foundation is real. The LoRa, GNSS and LVGL firmware on the watch is still early.</span><span class="lang-ru">Фундамент уже работает. Прошивка часов — LoRa, GNSS, LVGL — пока на раннем этапе.</span></h2>
+          <p class="lang-en">The repository builds six libraries, the two-geometry desktop simulator and 24 host tests; screens draw through the design tokens in day and night themes, and CI raises the simulator from a clean machine. The first target board is now on the desk, has been read over its own USB port, and on 2026-08-23 ran bench probes written for this project — ESP-IDF images loaded out of RAM, writing nothing to flash; their source is not in the tree yet (issue #116). So the first hardware measurements exist: the IMU answers at 0x6B and not 0x6A, the touch controller identifies itself after a reset pulse, and the power rails have been read raw. The device firmware itself is still ahead.</p>
+          <p class="lang-ru">В репозитории собираются шесть библиотек, desktop-симулятор двух геометрий и 24 хостовых теста; экраны рисуются через дизайн-токены в дневной и ночной темах, а CI поднимает симулятор с чистой машины. Первая целевая плата уже на столе, прочитана через собственный USB-порт, а 23.08.2026 на ней запускались стендовые пробы, написанные для этого проекта, — образы ESP-IDF, загруженные в RAM, без единой записи во flash; их исходников в дереве пока нет (issue #116). Так что первые аппаратные измерения уже есть: IMU отвечает по адресу 0x6B, а не 0x6A, контроллер тача представляется после импульса сброса, а линии питания прочитаны напрямую. Сама прошивка устройства ещё впереди.</p>
           <div class="status-actions">
             <a class="btn primary" href="https://github.com/hleserg/Attadipa/blob/main/STATUS.md" target="_blank" rel="noreferrer"><span class="lang-en">Live project status</span><span class="lang-ru">Живой статус проекта</span> ↗</a>
             <a class="btn secondary" href="https://github.com/hleserg/Attadipa/blob/main/TASKS.md" target="_blank" rel="noreferrer"><span class="lang-en">Roadmap</span><span class="lang-ru">План работ</span></a>
@@ -262,7 +354,7 @@
           <div><span class="ok">✓</span><span class="lang-en">Design tokens, day &amp; night themes</span><span class="lang-ru">Дизайн-токены, дневная и ночная темы</span></div>
           <div><span class="ok">✓</span><span class="lang-en">First board on the desk, read on silicon</span><span class="lang-ru">Первая плата на столе, прочитана с кремния</span></div>
           <div><span class="wait">○</span><span class="lang-en">ESP32-S3 device firmware</span><span class="lang-ru">Прошивка для ESP32-S3</span></div>
-          <div><span class="wait">○</span><span class="lang-en">Hardware measurements &amp; bring-up</span><span class="lang-ru">Аппаратные измерения и bring-up</span></div>
+          <div><span class="wait">○</span><span class="lang-en">Bring-up: our own firmware driving the board</span><span class="lang-ru">Bring-up: собственная прошивка управляет платой</span></div>
           <div class="honesty"><strong>NOT EXECUTED — HARDWARE REQUIRED</strong><span class="lang-en"> means exactly that.</span><span class="lang-ru"> здесь означает именно это.</span></div>
         </div>
       </div>
@@ -271,7 +363,7 @@
     <section class="section ideas-band" id="ideas">
       <div class="shell ideas-grid">
         <div class="ideas-art reveal" aria-hidden="true">
-          <img src="assets/mascot.webp" width="720" height="708" alt="">
+          <img src="assets/mascot.webp" width="1270" height="1239" loading="lazy" decoding="async" alt="">
           <div class="idea-orbit o1"></div><div class="idea-orbit o2"></div><div class="idea-orbit o3"></div>
         </div>
         <div class="ideas-copy reveal reveal-delay">
@@ -315,7 +407,7 @@
 
   <footer class="footer">
     <div class="shell footer-inner">
-      <div class="footer-brand"><img src="assets/favicon.png" width="28" height="28" alt=""><span>Attadipa</span><small>Independent by design</small></div>
+      <div class="footer-brand"><img src="assets/favicon.png" width="28" height="28" alt="" loading="lazy" decoding="async"><span>Attadipa</span><small>Independent by design</small></div>
       <p><span class="lang-en">Open source under the MIT License. Early development — claims on this page describe both current state and explicit product goals as labelled.</span><span class="lang-ru">Открытый проект под лицензией MIT. Разработка на раннем этапе: на странице отдельно описаны текущее состояние и заявленные цели продукта.</span></p>
       <a href="#top"><span class="lang-en">Back to top</span><span class="lang-ru">Наверх</span> ↑</a>
     </div>
