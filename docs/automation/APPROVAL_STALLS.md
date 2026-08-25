@@ -139,7 +139,7 @@ That closes the issue's evidence table exactly:
 | `c9e00d0` | the owner | ran |
 | `488be1e` | **the agent's own `git push`, over the checkout's persisted `GITHUB_TOKEN`** | `action_required`, 0 jobs |
 
-The workflow already knows the rule — `claude-agent.yml:894-903` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
+The workflow already knows the rule — `claude-agent.yml:950-959` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
 `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
 action's push path was fixed. The agent's own push path was never covered by it.
 
@@ -211,7 +211,7 @@ that lets an agent rewrite the gate that governs it.
 credential that expires in an hour, and commits stay attributed to an app. Cost:
 two more secrets (App ID and private key) and one more action in the supply
 chain. Whether the *Claude* App's installation token can be obtained outside
-`claude-code-action` — which mints one over OIDC, see `claude-agent.yml:508-517` "id-token: write is not optional"
+`claude-code-action` — which mints one over OIDC, see `claude-agent.yml:519-528` "id-token: write is not optional"
 — is **UNKNOWN**; a separate App would have to be created if not.
 
 **C — `persist-credentials: false` on the writer's checkout.** Free, no
@@ -288,13 +288,13 @@ left unchecked** — *Contents: Read and write*, *Pull requests: Read and write*
 omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
 `github_token:` for `claude-code-action` — one citation per line, because the
 checker reads a fingerprint only from the citation's own physical line:
-`claude-agent.yml:903` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+`claude-agent.yml:959` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
 `claude-pr-review.yml:162` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
-`claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
+`claude-ci-repair.yml:347` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
 `display_report: "true"` posts the agent's summary **on the triggering issue**
 over it, and the
 agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
-`claude-agent.yml:983` "depends entirely on `gh` being allowed" says the
+`claude-agent.yml:1039` "depends entirely on `gh` being allowed" says the
 action has no label feature of its own. That citation read `:846` until
 2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
 asserts this stays in`, an unrelated comment — so a reader checking the evidence

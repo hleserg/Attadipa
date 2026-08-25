@@ -588,36 +588,6 @@ available on this board.
 
 ## Blocked
 
-- **T-168 — a notification failure could keep a stale verdict, and the fix is
-  parked.** A review that reached the model and published nothing has to strip
-  the previous head's `ai-review:pass`, because nothing has reviewed the current
-  one. `claude-pr-review.yml` did that **last**, after a dedupe `gh api` and a
-  `gh pr comment`, under `set -euo pipefail` — so a 502 on the post ended the
-  step before the labels came off, in exactly the case the guard exists for
-  ([#240](https://github.com/hleserg/Attadipa/issues/240)). The two `|| true`s on
-  the removals were the other half: a removal that genuinely failed reported
-  success. Verified live rather than assumed — the workflow was byte-identical
-  between the reviewed `36e1ba9` and `main` when the task was picked up. One
-  precision the finding did not have: of its two named failure paths only
-  `gh pr comment` actually aborts, because the dedupe read sits in an `if`
-  condition and `set -e` exempts those; that path posted a **duplicate** note
-  instead. The rule now lives in `.github/scripts/review-invalidate.sh` —
-  invalidate both labels first and fail loudly if either will not come off,
-  notify second and demote its failures to warnings — with 29 assertions in
-  `.github/tests/review-published-test.sh`, including the pre-fix order run
-  through the same cases and required to fail them. **The two steps that call it
-  are parked**: `docs/automation/pending/240-review-invalidation-order.patch`,
-  because the `claude[bot]` installation token may not write
-  `.github/workflows/` — GitHub rejected the push by name on 2026-08-25. Until a
-  person applies it, the live workflow keeps the old order and the helper is
-  unreached. What is **not** unexecuted meanwhile is the patch itself:
-  `.github/tests/review-invalidate-workflow-test.sh` applies it to a scratch copy
-  of the workflow, extracts both steps' shell out of the YAML and runs them
-  against a stub `gh` — 25 more assertions, green on every push, and reading the
-  real workflow instead the moment it lands. It has no `ci.yml` line of its own
-  because no two parked patches may carry one workflow file and
-  `75-approval-stall.patch` holds `ci.yml`; `review-published-test.sh` runs it,
-  54 assertions between them.
 - **T-061 the pedometer** — down to one question, and it is not a reading
   question. T-060a settled the BMA423 side: **13–14 µA at 50 Hz in low-power
   mode**, the counter runs while the host sleeps, and the wrist preset is already
@@ -1090,6 +1060,21 @@ Waveshare `ESP32-S3-Touch-AMOLED-2.06`; nothing here is about the T-Watch.
   is in the evidence file.
 
 ## Recently completed
+
+- **The seven-PR queue incident is drained and its admission/claim root causes
+  are closed.** #241 and #245 merged, #251 was independently current and merged,
+  #217/#218 were classified parked while only #246 remains ordinary active;
+  #248 is the explicit recovery PR. Normal WIP is 2, `full` starts at 2 and
+  `incident` at 3. The shipping writer checks admission twice: before dispatch
+  and again after acquiring the repository-wide writer lease. Unknown API/CLI
+  or JSON state refuses. `agent:working` is now a visible mirror of an atomic
+  GitHub ref carrying the run token, not an advisory claim; CI repair, retries,
+  watchdog dispatch and local agents use the same primitive. The 27-case
+  production-path suite runs stub `gh`, the workflow step, parallel claims,
+  stale recovery and three mutations. No hardware was used or claimed.
+- **T-168 is deployed.** The two review-failure steps now invalidate the old
+  verdict before fallible notification, the parked caller patch is removed,
+  and the same executable test reads the shipping workflow.
 
 - **The queue's width limit had never counted a single pull request.**
   `.github/scripts/wip-limit.sh` asked `gh pr list --json` for

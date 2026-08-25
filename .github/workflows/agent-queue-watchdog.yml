@@ -63,6 +63,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Admission happens before queue selection or dispatch. Unknown is
+          # closed: a broken API cannot become permission to start a writer.
+          : > /tmp/wip-output
+          bash .github/scripts/wip-limit.sh --admit > /tmp/wip-log
+          read -r WIP_STATE WIP_COUNT < <(tail -1 /tmp/wip-log)
+          if [ "$WIP_STATE" != ok ]; then
+            echo "::notice::Queue is $WIP_STATE ($WIP_COUNT active PRs); drain/recovery only, no ordinary dispatch."
+            exit 0
+          fi
+
           # Everything open, with its labels and its author's association.
           #
           # --paginate ALONE writes one JSON array per page, back to back, and
@@ -294,27 +304,50 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      pull-requests: write
+      contents: read
     steps:
+      - name: Fetch the claim recovery from the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts/claim.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Unstick tasks whose agent never came back
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          set +e
+          bash .github/scripts/claim.sh reap "$REPO" writer 7200
+          writer_rc=$?
+          set -e
+          case "$writer_rc" in 0|3) ;; *) echo "::error::Could not inspect the repository writer lease."; exit "$writer_rc" ;; esac
           # agent:working is a claim, and a claim with nobody behind it is worse
           # than no claim: the watchdog skips it forever and the task is lost in
           # plain sight. Two hours is comfortably longer than the 60-minute
           # timeout on the agent job, so anything older is genuinely orphaned.
-          CUTOFF=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)
           gh api "repos/$REPO/issues?state=open&labels=agent:working&per_page=100" --paginate \
-            --jq ".[] | select(.updated_at < \"$CUTOFF\") | .number" > /tmp/stuck || true
+            --jq '.[].number' > /tmp/stuck
 
           while read -r n; do
             [ -n "$n" ] || continue
-            echo "::warning::Issue #$n has been agent:working since before $CUTOFF; returning it to the queue."
-            gh issue comment "$n" --repo "$REPO" --body \
-              "The agent that claimed this did not come back within two hours, so the task has been returned to the queue. If it was mid-flight, its branch is still there."
-            gh issue edit "$n" --repo "$REPO" --remove-label agent:working --add-label agent:ready || true
+            set +e
+            bash .github/scripts/claim.sh reap "$REPO" "$n" 7200
+            rc=$?
+            set -e
+            case "$rc" in
+              0)
+                echo "::warning::#$n held an expired writer claim; released it after two hours."
+                gh issue comment "$n" --repo "$REPO" --body \
+                  "The writer claim expired after two hours and was released. Issues return to the queue; pull requests retain their branch for recovery." || true
+                ;;
+              3) ;; # live claim, or no sufficiently old claim evidence
+              *) echo "::error::Could not establish whether #$n's writer claim is stale; leaving it held."; exit "$rc" ;;
+            esac
           done < /tmp/stuck
 
   # A pull request with a merge conflict gets no CI at all, and until this job

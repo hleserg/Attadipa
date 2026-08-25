@@ -167,12 +167,22 @@ If you are working from an issue:
   session that writes a bring-up procedure hands it over rather than
   approximating the result, and a bench session that measures something files the
   number rather than rewriting the surrounding subsystem.
-  **Claim work where the other can see it**: assign yourself the issue, or open
-  the draft pull request early. Before starting anything, read the open issues
-  and pull requests — if one is already assigned or already has a branch, that is
-  taken, and picking a different task is faster for everybody than discovering
-  the collision at merge time. The hand-off runs through the issue, never through
-  the owner.
+  **Claim work before creating a branch or editing a file.** Assignment and
+  `agent:working` are visible state, not the lock. Every local Claude/Codex
+  writer must run `.github/scripts/writer-start.sh start REPO ISSUE TOKEN` from
+  current `main`; on hand-off it runs the same command with `finish`. The start
+  command takes the repository-wide writer lease, checks WIP admission, then
+  atomically claims the issue. `held`, `full`, `incident` or `unknown` means
+  stop without a branch, commit or pull request. Actions use the same GitHub-ref
+  claim inside their writer jobs. A fresh `@claude`, retry, CI repair or recovery
+  does not override a live claim. Before starting, also read the open issues and
+  pull requests; the hand-off runs through the issue, never through the owner.
+- **The pull-request limit is admission, not a warning.** Zero or one active
+  ordinary same-repository PR admits a writer; two is `full`; three or more is
+  `incident`. Forks, `queue:parked`, and `queue:emergency` do not spend ordinary
+  slots. `queue:emergency` is only for work that drains the queue or repairs the
+  gate; it does not reopen admission for unrelated work. Any API, CLI, JSON or
+  schema uncertainty is `unknown`, and `unknown` refuses the writer.
 - **A branch and a pull request**, never a push to `main`. Open it as a draft
   while it is still moving; mark it ready when it is not. **The orchestrator
   merges it once CI is green** — owner decision 2026-08-21, replacing the

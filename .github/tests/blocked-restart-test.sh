@@ -519,6 +519,10 @@ run_claim() {
   : > "$state/env"
   local l
   for l in "$@"; do printf '%s\n' "$l" >> "$state/labels"; done
+  # The atomic Acquire exclusive claim step now runs before Normalise labels
+  # and mirrors its winning ref as agent:working. This harness exercises the
+  # normalisation/blocked transition, so begin at that real step boundary.
+  printf 'agent:working\n' >> "$state/labels"
   # Each scenario runs in a subshell so the stub PATH and the fake environment
   # cannot leak into the next one. That is the point, not an accident.
   # shellcheck disable=SC2030,SC2031

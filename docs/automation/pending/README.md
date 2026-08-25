@@ -63,7 +63,6 @@ waiting on a person.
 |---|---|---|
 | `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
 | `170-merge-sweep-completeness.patch` | [#170](https://github.com/hleserg/Attadipa/issues/170), [#199](https://github.com/hleserg/Attadipa/issues/199) **and** [#130](https://github.com/hleserg/Attadipa/issues/130) — the caller half of the completeness rule, of the head-trust rule and of the Codex answer rule, all in `pr-merge-sweep.yml`. **While this waits, the half-hourly merge sweep merges nothing at all**: the rule refuses the nine-argument caller by arity and holds every pull request, once per sweep, naming this file. See [CLAUDE_AUTOMATION.md](../CLAUDE_AUTOMATION.md) and T-144 | 2026-08-24, extended 2026-08-25 |
-| `240-review-invalidation-order.patch` | [#240](https://github.com/hleserg/Attadipa/issues/240) — the caller half, and `claude-pr-review.yml` alone: the two steps that invalidate a stale verdict do it **before** the fallible notification. **While this waits, a silent review whose `gh pr comment` fails still leaves the previous head's `ai-review:pass` on the pull request** — the rule is on `main` and nothing calls it. Unusually, the fix here is not unexecuted while it waits: `review-invalidate-workflow-test.sh` applies this patch to a scratch copy and runs the two steps against a stub `gh` on every push. See [CI_AND_REVIEW_PIPELINE.md](../CI_AND_REVIEW_PIPELINE.md) and T-168 | 2026-08-25 |
 
 Verified before it was parked: `actionlint` clean over all seven workflows with
 the patch applied, `shellcheck -x` clean, and the `approvals` job's body
@@ -125,11 +124,7 @@ patches may edit one `.md`, because a stale prose hunk fails loudly under `git
 apply` instead of quietly at runtime.
 
 The rule bites hardest on `ci.yml`, because a new test wants a line in it and
-`75-approval-stall.patch` holds it. `240-review-invalidation-order.patch` is
-what that looks like solved without folding two issues together: rather than
-take a `ci.yml` hunk, its test runs from inside an existing test file, and
-rather than sit dormant, it applies **this directory's own patch** to a scratch
-copy of the workflow and asserts against the result. So the fix is executed
-against a stub `gh` on every push while it waits, and the day it lands the same
-assertions read the real file with no edit. That is worth copying: a parked
-patch nothing runs is a fix whose first real execution is in production.
+`75-approval-stall.patch` holds it. T-168 avoided that collision by running its
+workflow test from an existing suite while parked; it now reads the deployed
+workflow. That is worth copying: a parked patch nothing runs is a fix whose
+first real execution is in production.
