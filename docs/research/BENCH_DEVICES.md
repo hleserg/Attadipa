@@ -22,6 +22,7 @@ number will eventually pick the wrong board.
 | PSRAM | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
 | Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | `0x68 0x4018` — 16 MB |
 | Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
+| Current firmware | **Attadipa T-165**, booting from flash | unchanged; do not write |
 
 The watch row matches [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1–1.3
 on all three of revision, PSRAM capacity and flash JEDEC id, which is what
@@ -29,6 +30,13 @@ identifies it — not the port it happened to appear on. `PSRAM_CAP = 8M` and
 `PSRAM_VENDOR = AP_3v3` were read from the die's own fuses on 2026-08-23 by a
 different session on a different host, and the same unit answers the same way
 here.
+
+Before Attadipa was flashed, a complete 33 554 432-byte factory image was saved
+on the development host and checked with `esptool verify-flash`. Its SHA-256 is
+`c423dad3f0d33d56fa96f8590b3da583b05584e85bc2701a7c48c031ad747dbd`.
+The durable evidence and restore procedure are in
+[BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md) §2; the binary's local
+path is intentionally not a repository artefact.
 
 **The second board is not ours to write to.** It is nothing like the watch — a
 quarter of the PSRAM and half the flash — so a mis-addressed load fails rather
@@ -39,8 +47,8 @@ handling is to leave it alone.
 
 `tools/flash/ramhold.py` looks up `/dev/serial/by-id` by USB serial and exits
 non-zero when the unit is absent, rather than falling back to a port number.
-`ATTADIPA_WATCH_SERIAL` and `--serial` override it for a different unit; there
-is deliberately no "just use the first ESP32 you find" path.
+`--serial` overrides it for a different unit; there is deliberately no "just
+use the first ESP32 you find" path.
 
 ```
 $ ls /dev/serial/by-id/

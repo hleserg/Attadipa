@@ -76,14 +76,15 @@ flatly contradicts.
 **The claim that the board's PSRAM is absent or undeclared is false, and was
 false before the advice arrived.** [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md)
 "8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
-[VERIFIED_FACTS.md:609](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
+[VERIFIED_FACTS.md:641](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
 ([HARDWARE_MATRIX.md:330](HARDWARE_MATRIX.md)). The only true reading of "not
-declared" is that this repository contains no ESP-IDF build configuration for any
-target: there is no `sdkconfig`, no partition CSV and no `boards/` directory at
-all, which makes the statement vacuous rather than informative. What *was* open
+declared" was that this repository then contained no ESP-IDF build configuration
+for any target, which made the statement vacuous rather than informative. T-165
+has since added and exercised `sdkconfig.defaults` and a partition CSV. What
+*was* open
 is narrower and was already filed: whether that PSRAM is quad or octal, open
 question D12, named there as a blocker on the LVGL draw-buffer decision. That
 question has since been split on the strength of §3.1 — D12a resolved octal for
@@ -716,9 +717,9 @@ does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
    [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md) "8 MB **octal**" and
-   [VERIFIED_FACTS.md:609](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
-   Only the build-configuration
-   reading is true, and it is vacuous — no target has a build configuration here.
+   [VERIFIED_FACTS.md:641](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
+   Only the build-configuration reading was true at the time; T-165 has since
+   added and exercised that configuration.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
    asked of it. `CONFIG_SPIRAM_MODE` defaults to QUAD, and a quad image on this
    octal board aborts in `cpu_start` before `app_main` is ever reached. The boot

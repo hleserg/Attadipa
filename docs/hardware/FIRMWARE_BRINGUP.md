@@ -31,24 +31,28 @@ committed.
 
 | | RAM route (§2) | Flash route (§4) |
 |---|---|---|
-| Writes to the part | **nothing at all** | overwrites an app partition |
+| Writes to the part | **nothing at all** | bootloader, partition table and `factory` app |
 | Undo | power-cycle | re-flash from the factory backup |
 | Survives a reboot | no — that is the point | yes |
-| Proved on this unit | **yes**, 2026-08-23 | the vendor's own path only |
-| Needs the T-099 backup on the machine you are sitting at | no | **yes** |
+| Proved on this unit | **yes**, 2026-08-25 | **yes**, 2026-08-25 |
+| Needs a verified factory backup on the machine you are sitting at | no | **yes** |
 
-**Prefer the RAM route.** It costs nothing to undo, which is exactly why
-`docs/ROADMAP.md` names it for anything experimental. The flash route is for the
-day the firmware has to survive a power cycle, and it is not that day yet.
+**Prefer the RAM route for experiments.** It costs nothing to undo, which is
+exactly why `docs/ROADMAP.md` names it for anything experimental. T-165 also
+exercised the flash route because its acceptance criterion required a boot from
+flash; the measured transcript is in
+[BRINGUP_2026-08-25](BRINGUP_2026-08-25.md) §4.
 
 **The flash route has one precondition that is not a formality.** OD-19 permits
 a session with the board on its desk to flash it, and the reason that permission
-is safe is the byte-verified factory backup from T-099 — 33 554 432 bytes,
-SHA-256 `2ab0fadc…33dfd5`, agreed by three independent reads. **That backup is
-an asset on a specific machine, not a property of the project.** If it is not on
+is safe is a byte-verified factory backup. The operative backup for the
+2026-08-25 run is 33 554 432 bytes, SHA-256
+`c423dad3f0d33d56fa96f8590b3da583b05584e85bc2701a7c48c031ad747dbd`;
+`verify-flash` checked all of it. **That backup is a host-local asset, not a
+repository artefact.** Its durable record is
+[BRINGUP_2026-08-25](BRINGUP_2026-08-25.md) §2. If the file itself is not on
 the machine you are working from, the reasoning that made flashing reversible
-does not apply to you, and the correct action is to stay on the RAM route and
-say so, rather than to flash and hope.
+does not apply to you: stay on the RAM route and say so.
 
 ## 2. The RAM route
 
@@ -57,8 +61,10 @@ idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkcon
 python3 ../tools/flash/ramhold.py build-ram/attadipa.bin 20
 ```
 
-`sdkconfig.ramprobe` sets `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP`; the image runs
-from IRAM and DRAM and the flash is never opened for writing.
+`sdkconfig.ramprobe` sets both `CONFIG_APP_BUILD_TYPE_RAM` and its dependent
+sub-option `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP`; setting only the latter is
+silently discarded and produces an ordinary flash image. The real pure-RAM
+image runs from IRAM and DRAM and does not initialise the flash driver.
 
 **`-DSDKCONFIG=` is load-bearing.** `idf.py` keeps `sdkconfig` in the *project*
 directory rather than the build directory, so a second build directory reuses
@@ -85,23 +91,33 @@ Two consequences worth carrying:
 - **Opening the port to watch is itself a reset**, because pyserial asserts DTR
   and RTS on `open()`. Anything that observes this board must clear both first.
 
-A RAM image has no partition table, so `Partitions : none readable` in the
-transcript below is expected there and only there.
+A pure-RAM image must not call the flash partition APIs. The first hardware run
+did, and `esp_partition_find()` reached `spi_flash_mmap` without a flash driver
+and panicked. The firmware now avoids that path and reports
+`Partitions : not readable — a pure-RAM image has no flash driver` instead.
 
 ## 3. What a good boot looks like
 
+The measured flash boot included:
+
 ```
-I (…) attadipa: --- Attadipa boot ---------------------------------------------
-I (…) attadipa: Build      : <version> <date>, ESP-IDF v5.5.5
-I (…) attadipa: Reset      : power-on (ESP-IDF code 1)
-I (…) attadipa: SoC        : esp32s3 rev v0.2, 2 core(s), WiFi BLE
-I (…) attadipa: Flash      : JEDEC c8 40 19, 32 MB detected, 16 MB declared
-I (…) attadipa: PSRAM      : 8 MB, octal SPI, initialised
-I (…) attadipa: Board      : … (waveshare-amoled-206), 410x502 AMOLED, … dpi
-I (…) attadipa: Partition  : nvs      type 1/2   0x009000 + 0x006000
-…
-I (…) attadipa: alive 1s, heap …
+I (27) boot.esp32s3: Boot SPI Speed : 80MHz
+I (27) boot.esp32s3: SPI Mode       : QIO
+I (28) boot.esp32s3: SPI Flash Size : 16MB
+I (81) octal_psram: vendor id    : 0x0d (AP)
+I (88) esp_psram: Found 8MB PSRAM device
+I (521) esp_psram: SPI SRAM memory test OK
+I (543) attadipa: Flash      : JEDEC c8 40 19, 32 MB on the part, 16MB declared by this build
+I (543) attadipa: PSRAM      : 8 MB, octal SPI, initialised
+I (553) attadipa: Partition  : factory  type 0/0   0x010000 + 0x400000
+I (1553) attadipa: alive 1s, heap 382299
 ```
+
+The measured pure-RAM boot instead reported flash and partitions as not
+initialised/readable and then emitted 30 one-second heartbeats. Full, unedited
+context for both routes is in
+[BRINGUP_2026-08-25](BRINGUP_2026-08-25.md) §§3–4. The reset reason in that
+session was ESP-IDF code 11, driven by the USB host; it was not a power-on reset.
 
 Read four lines before anything else:
 
@@ -125,12 +141,12 @@ Read four lines before anything else:
 
 ## 4. The flash route
 
-**Not used by this task, and not yet exercised by this project.** Written down
-because a procedure nobody can find gets improvised.
+**Exercised by T-165 on 2026-08-25.** Use it only when a persistent image is
+required and every precondition below holds.
 
 Preconditions, all of them:
 
-1. the T-099 factory backup is **on this machine** and its SHA-256 checked;
+1. the factory backup is **on this machine** and its SHA-256 checked;
 2. `python3 tools/flash/partition_check.py` is green;
 3. the target partition is below `0x1000000` — `factory` at `0x10000` is.
 
@@ -138,8 +154,9 @@ Preconditions, all of them:
 idf.py -p /dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_28:84:85:B2:18:A4-if00 flash monitor
 ```
 
-This **overwrites the vendor's `factory` partition** and the shipped demo stops
-being what boots. That is recoverable from the backup and from nowhere else.
+This writes the bootloader, partition table and Attadipa `factory` app, so the
+shipped demo stops being what boots. That is recoverable from the backup and
+from nowhere else.
 
 Restoring:
 

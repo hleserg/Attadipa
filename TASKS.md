@@ -39,7 +39,7 @@ stale silently. The protocol is
 
 ## NOW
 
-### T-165 · There is no ESP-IDF project, and every device task waits behind that
+### T-165 · ESP-IDF project and first physical boot
 - **Priority:** P0 — item 2 on the M2 critical path ([ROADMAP](docs/ROADMAP.md)),
   and the one that unblocks the rest of it.
   [#189](https://github.com/hleserg/Attadipa/issues/189).
@@ -110,12 +110,13 @@ stale silently. The protocol is
   are in this branch: `sdkconfig.ramprobe` never produced a RAM image at all,
   `CONFIG_ESPTOOLPY_FLASHSIZE` does not exist in a pure-RAM build, and
   `esp_partition_find()` panics there rather than returning nothing.
-- **Still open on this branch, and it is documentation only:**
-  `docs/hardware/FIRMWARE_BRINGUP.md` §3 still shows an idealised transcript and
-  says a RAM image reports `Partitions : none readable` — measured, it panics
-  instead; `docs/research/WAVESHARE_FLASH_LAYOUT.md` §2.2 still says the stall
-  addresses are `UNKNOWN`, which BRINGUP_2026-08-25 §2.1 resolves; and
-  `BENCH_DEVICES.md` does not yet record that the unit runs our firmware.
+- **Documentation reconciliation:** the measured RAM/flash behaviour is carried
+  into `docs/hardware/FIRMWARE_BRINGUP.md`; the host-dependent SLIP congruence
+  replaces the stale `UNKNOWN` in `docs/research/WAVESHARE_FLASH_LAYOUT.md`;
+  `docs/research/BENCH_DEVICES.md` records that the unit now runs Attadipa and
+  points to the durable backup evidence; and
+  `docs/research/VERIFIED_FACTS.md` separates the unit's measurements from what
+  T-165 did not exercise.
 
 ### T-100 · The agent queue, verified by running it rather than by reading it
 - **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
@@ -261,11 +262,11 @@ stale silently. The protocol is
     than adding them`) but not *reported* to the operator — decide with the
     transport, where the achieved duration is worth printing beside the
     requested one.
-- **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
-  task after that point is supposed to end with a real screenshot, and this is
-  what makes one possible.
-- **Dependencies:** an ESP-IDF firmware project. There is none — `README.md`
-  says so — which is why this is a task rather than an omission.
+- **Priority:** P1. T-165 supplied the ESP-IDF project; every UI task after that
+  point is supposed to end with a real screenshot, and this is what makes one
+  possible.
+- **Dependencies:** the ESP-IDF dependency is satisfied by T-165. T-166 still
+  owns the physical display and touch drivers this endpoint must sit on.
 - **Why it is separate:** the vertical
   `agent → host tool → protocol → input layer → UI → framebuffer → PNG` is
   complete except for the transport at the device end. `attadipa_debug` is a
@@ -362,11 +363,12 @@ stale silently. The protocol is
   simulator.
 - **What must not be assumed:** that `SerialTransport` in
   `tools/watch/client.py` works. It is written and **has never spoken to a
-  device**, because there has been no device to speak to. It is marked
+  device**, because the device endpoint is not implemented. It is marked
   `NOT EXECUTED` in its own docstring and must stay so until it has run.
-- **Hardware required:** yes, and **flashing needs the owner's authorisation**
-  ([CLAUDE.md](CLAUDE.md)). The received Waveshare currently runs the vendor's
-  own firmware and is byte-identical to the T-099 backup.
+- **Hardware required:** yes. OD-19 authorises reversible flashing, and the
+  received Waveshare now runs Attadipa T-165 with a verified host-local factory
+  backup. The T-114 device debug endpoint itself remains
+  **NOT EXECUTED — HARDWARE REQUIRED** because it has not been implemented.
 
 ### T-110 · The mandated reading list is 500 KB before the agent opens a file
 - **Priority:** P2

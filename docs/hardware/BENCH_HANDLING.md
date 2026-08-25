@@ -100,10 +100,10 @@ route established in [#110](https://github.com/hleserg/Attadipa/pull/110) writes
 no flash and need not light the panel at all. So "powered, screen off" **will
 be** the state to aim for: fully available, ageing nothing.
 
-Future tense on purpose. It is a statement about a firmware Attadipa has not
-written — row 1 is unavailable on the received unit, nothing of ours can address
-its display, and OD-18 fixes it at row 2. There is no route to that state today
-and this paragraph is not offering one.
+Future tense on purpose. T-165 now boots, but contains no display driver — row 1
+is unavailable on the received unit, nothing of ours can address its display,
+and OD-18 fixes it at row 2. There is no route to that state today and this
+paragraph is not offering one.
 
 **[OD-18 — *The received unit stays powered, with its brightness at
 minimum*](../research/OWNER_DECISIONS.md), 2026-08-23:** the received unit stays powered and attached so that hardware runs
@@ -113,7 +113,8 @@ decision and its wording live there; this file only acts on it.
 ### What an agent must not do about it
 
 **An agent cannot blank the panel and must not act as though it can.** There is
-no Attadipa firmware on the unit, so nothing of ours can address the display.
+no Attadipa display driver on the unit, so nothing of ours can address the
+panel.
 
 And the obvious workaround — drive the port and hope something blanks it — has
 **two** ways to reboot the board, both recorded in
