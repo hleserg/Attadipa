@@ -6,10 +6,9 @@ review issue below is still present"* rather than blindly applying a stale
 patch. This file is that re-check, and then the record of what closing each one
 actually changed.
 
-It is not a to-do list — [TASKS.md](../../TASKS.md) is. It is the evidence that
+It is not a to-do list — GitHub Issues are the queue. It is the evidence that
 each item was found, was real, and was closed, kept together in one place so
-that the next reader does not have to reconstruct it from eight commit
-messages.
+that the next reader does not have to reconstruct it from eight commit messages.
 
 ## Verdict on arrival
 

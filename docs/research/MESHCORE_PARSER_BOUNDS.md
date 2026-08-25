@@ -9,10 +9,9 @@ alone.**
 
 *This document reached `main` in two pieces. `a7624b0` took it and the harness —
 14 of the 19 files of [#160](https://github.com/hleserg/Attadipa/pull/160) — and
-left the five index files behind, so for a few hours the References below pointed
-at open questions that belong to a different piece of research. The second pull
-request carries `STATUS.md`, `TASKS.md`, `VERIFIED_FACTS.md`, `OPEN_QUESTIONS.md`
-and `REUSE_LEDGER.md`, along with the review fixes and §8.*
+left the evidence indexes behind, so for a few hours the References below
+pointed at open questions from a different piece of research. The follow-up
+carried those indexes, the review fixes and §8.*
 
 Three upstream pull requests filed on 2026-08-21 and 2026-08-22 claim missing
 length checks in MeshCore's frame and advertisement parsers, found by fuzzing.
@@ -789,11 +788,11 @@ state in our own words:
 > in the shipping build, by code that rejects — and the rejection leaves the
 > caller in a state it can continue from, with every buffer it borrowed returned.
 
-That belongs to whichever task first gives Attadipa a radio or a local provider,
-as an entry condition rather than as new work now — recorded on **T-013** and
-**T-050** in [`TASKS.md`](../../TASKS.md) alongside the corpus condition. No
-Attadipa code changed, and none should on the strength of this section: there is
-nothing yet for it to change.
+That belongs to whichever future issue first gives Attadipa a radio or a local
+provider, as an entry condition rather than as new work now. Closed
+[issue #142](https://github.com/hleserg/Attadipa/issues/142) and this section
+preserve the evidence and corpus condition. No Attadipa code changed, and none
+should on the strength of this section: there is nothing yet for it to change.
 
 ---
 
