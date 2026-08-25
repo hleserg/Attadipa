@@ -127,6 +127,7 @@ def main() -> int:
 
     port = args.port or resolve_port(args.serial)
     scratch = args.output.parent / f".{args.output.name}.chunks"
+    candidate = args.output.parent / f".{args.output.name}.unverified"
     scratch.mkdir(parents=True, exist_ok=True)
     print(f"# port {port}\n# reading 0x{args.size:x} bytes in "
           f"0x{args.chunk:x} chunks", flush=True)
@@ -140,7 +141,7 @@ def main() -> int:
               f"({(offset + args.chunk) * 100 // args.size}%)", flush=True)
 
     digest = hashlib.sha256()
-    with args.output.open("wb") as out:
+    with candidate.open("wb") as out:
         for part in parts:
             data = part.read_bytes()
             # Belt and braces: the length was checked when the chunk was read,
@@ -151,12 +152,9 @@ def main() -> int:
             out.write(data)
             digest.update(data)
 
-    written = args.output.stat().st_size
+    written = candidate.stat().st_size
     if written != args.size:
         raise SystemExit(f"assembled {written} bytes, expected {args.size}")
-    for part in parts:
-        part.unlink()
-    scratch.rmdir()
 
     sha = digest.hexdigest()
     print(f"\n{written} bytes  sha256 {sha}")
@@ -168,17 +166,22 @@ def main() -> int:
               "# Expected if anything has been written since; investigate if not.")
 
     if args.no_verify:
-        print("# NOT VERIFIED against the device — this image is not yet a backup")
+        print(f"# NOT VERIFIED against the device — candidate kept at {candidate}; "
+              f"trusted output {args.output} was not replaced")
         return 0
 
     print("# verify-flash against the device (on-chip MD5, seconds not minutes)",
           flush=True)
-    result = esptool(args.python, port, "verify-flash", "0x0", str(args.output))
-    ok = "successful" in (result.stdout + result.stderr).lower()
+    result = esptool(args.python, port, "verify-flash", "0x0", str(candidate))
     print(result.stdout.strip()[-2000:] or result.stderr.strip()[-2000:])
-    if not ok:
-        raise SystemExit("verify-flash did not report success. The file on disk "
-                         "is not a backup until it does.")
+    if result.returncode != 0:
+        raise SystemExit(f"verify-flash failed with exit {result.returncode}. "
+                         f"Candidate kept at {candidate}; trusted output was "
+                         "not replaced.")
+    for part in parts:
+        part.unlink()
+    scratch.rmdir()
+    candidate.replace(args.output)
     print("# VERIFIED — this image restores the board")
     return 0
 
