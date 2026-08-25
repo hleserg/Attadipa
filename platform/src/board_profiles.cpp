@@ -122,6 +122,9 @@ BoardProfile make_waveshare()
     p.display.height_px           = 502;
     p.display.diagonal_milli_inch = 2060;
     p.display.technology          = PanelTechnology::Amoled;
+    // The known-working board path swaps RGB565 before the upstream driver,
+    // which transmits the framebuffer verbatim. T-166 verifies this on-panel.
+    p.display.rgb565_swap_bytes    = true;
     p.present_mask                = kWaveshareFeatures;
     p.radio                       = {};  // no radio is fitted; the struct is meaningless
 

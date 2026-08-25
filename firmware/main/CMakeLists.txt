@@ -1,4 +1,4 @@
-idf_component_register(SRCS "attadipa_main.cpp"
+idf_component_register(SRCS "attadipa_main.cpp" "waveshare_board.cpp"
                        INCLUDE_DIRS ".")
 
 # The host libraries are *linked*, not copied. These are the same CMakeLists the
