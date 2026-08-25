@@ -532,6 +532,24 @@ private:
     // reordered one, and is rejected the same way: evaluated for its own
     // trust reasons, never adopted as the baseline. See the comment in
     // trust.cpp above the rate blocks.
+    // WHICH PHYSICAL BODY EVERY BASELINE BELOW WAS MEASURED ON.
+    //
+    // ADR-0013 scopes motion evidence to a body, and `observe()` checks the
+    // *sample* against it. That is half the question: `moved` is a distance
+    // between this observation and the stored one, and until this field existed
+    // the stored one carried no body at all. A stream that mixes sources
+    // through one evaluator — a watch that falls back to its node's receiver,
+    // which is the arrangement CLAUDE.md describes — then measured the gap
+    // between a node in a bag and a watch on a wrist and judged it with the
+    // wrist's own stillness. Five hundred metres, a still wrist, and a
+    // `MotionDisagreement` about a watch that never moved.
+    //
+    // So a change of body is a discontinuity, not a comparison: nothing
+    // measured on the previous body may be compared against this one, and
+    // `local_comparable_` goes with it because "this device's own answer" is a
+    // claim about a body too.
+    SensorBody    previous_body_    = SensorBody::Unknown;
+
     bool          have_previous_    = false;
     Position      previous_position_{};
     MonotonicTime previous_position_at_{};

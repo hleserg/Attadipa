@@ -2932,6 +2932,58 @@ A1's schematic-revision
 
 ## DONE
 
+### T-171 · A verdict decided by an unauthenticated comment, and a rule that never ran — **DONE** 2026-08-25
+- **Priority:** P1
+- **Dependencies:** none. Found by the post-recovery review of
+  `a866d10..07d92df`, not by an issue.
+- **Goal:** three defects the recovery restored into `main`, all in the path
+  that sets `ai-review:pass`. (1) The findings query used `startswith` on a
+  marker the prompt puts at the END of the comment, so #169's convergence rule
+  never selected anything and never ran. (2) The ledger query had no author
+  condition, so any account could post `<!-- attadipa-review-ledger -->` and
+  supply the `first_round` and `status` the rule reads. (3)
+  `review-published.sh` accepted the review marker from any author, so a
+  drive-by comment kept a stale `ai-review:pass` alive across a head change.
+- **Acceptance:** the findings block is matched with `contains`; both queries
+  name their author in the workflow env; the marker admits only the configured
+  publisher accounts. Assertions moved off the parked patch and onto the live
+  workflow, so a subject that disappears fails rather than passing four times.
+- **Research status:** n/a.
+- **Implementation status:** done. `.github/workflows/claude-pr-review.yml`,
+  `.github/scripts/review-published.sh`.
+- **Tests:** `.github/tests/review-verdict-test.sh` (100 pass, seven of them
+  new and about the live queries), `.github/tests/review-published-test.sh` (10
+  pass, two new: the marker from an untrusted login, and a bot name that only
+  looks official). Every `.github/tests/*.sh` suite run locally, all green.
+  `shellcheck` and `actionlint` are **not installed on this machine** and were
+  not run here; CI runs both.
+- **Hardware required:** none.
+
+### T-173 · A wrist's stillness judged a distance it had not measured — **DONE** 2026-08-25
+- **Priority:** P2
+- **Dependencies:** [ADR-0013](docs/adr/0013-node-motion.md).
+- **Goal:** ADR-0013 scopes motion evidence to a `SensorBody` and
+  `TrustEvaluator::observe()` applied that to the sample only. `moved` is the
+  distance from the previous fix, which carried no body, so a mixed-source
+  stream compared a node's position against a watch's and judged the result
+  with the wrist's stillness — a `MotionDisagreement` about a watch that never
+  moved, and the mirror image, a real node teleport unseen.
+- **Acceptance:** a change of `body_of(observation.source)` drops the position,
+  altitude, satellites-in-view and `local_comparable_` baselines rather than
+  comparing across it. One sample is spent; the next same-body pair detects
+  normally.
+- **Research status:** ADR-0013 already states the invariant; this is the half
+  it did not reach.
+- **Implementation status:** done. `core/src/trust.cpp`,
+  `core/include/attadipa/core/trust.h`.
+- **Tests:** `test_a_change_of_body_is_not_a_movement` in
+  `tests/test_trust.cpp`; replay traces 07, 08 and 15 now name their source, so
+  their `expect no-reason motion-disagreement` lines stop being vacuous. 33/33
+  host tests pass. Reproduced against `main` before the change and confirmed
+  gone after it with a standalone probe against the built library.
+- **Hardware required:** none. No production caller constructs a
+  `TrustEvaluator` yet, so this was latent rather than live.
+
 ### T-127 · A link's `#anchor` is captured and then never checked — **DONE** 2026-08-23
 - **Priority:** P3
 - **Dependencies:** none.

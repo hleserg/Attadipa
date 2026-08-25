@@ -14,6 +14,7 @@ at 0
   speed 1400
   jam none
   spoof none
+  source local
   motion moving watch
   expect trust trusted
 
@@ -27,6 +28,7 @@ at 60000
   speed 1400
   jam none
   spoof none
+  source local
   motion moving watch
   expect trust trusted
   expect no-reason position-jump
@@ -42,6 +44,7 @@ at 120000
   speed 1400
   jam none
   spoof none
+  source local
   motion moving watch
   expect trust trusted
   expect no-reason position-jump
@@ -56,6 +59,7 @@ at 300000
   speed 1400
   jam none
   spoof none
+  source local
   motion moving watch
   expect trust trusted
   expect no-reason position-jump
@@ -72,6 +76,7 @@ at 600000
   speed 1400
   jam none
   spoof none
+  source local
   motion moving watch
   expect trust trusted
   expect no-reason position-jump
