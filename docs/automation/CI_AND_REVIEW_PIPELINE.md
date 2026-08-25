@@ -122,10 +122,10 @@ a warning. A pull request that lost a stale verdict and did not get a note is on
 nothing can wrongly merge; the reverse is not true, and for a while it was what
 happened — the removals used to come last, after two network calls, under
 `set -euo pipefail`, so a 502 on either left the stale `ai-review:pass` in place
-(#240). The caller half of that is parked as
-`docs/automation/pending/240-review-invalidation-order.patch`, because a GitHub
-App may not push a workflow file; until it lands the live workflow keeps the old
-order and the helper is unreached.
+(#240). The workflow now calls the helper in that order; the previously parked
+caller patch was applied during the queue recovery and removed. The executable
+workflow test still extracts both shipping steps and proves that notification
+failure cannot preserve the previous head's verdict.
 
 A pull request that reaches `main` carrying `<!-- attadipa-review-did-not-run -->`
 and no `ai-review:*` label has been merged on ordinary CI and a person's reading.

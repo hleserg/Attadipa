@@ -39,10 +39,10 @@ THEN, IN THE SAME COMMIT:
 WHAT IT CHANGES, below.
 
 diff --git a/.github/workflows/agent-queue-watchdog.yml b/.github/workflows/agent-queue-watchdog.yml
-index 69dea3d..b92271f 100644
+index b5cbdb3..92df5a5 100644
 --- a/.github/workflows/agent-queue-watchdog.yml
 +++ b/.github/workflows/agent-queue-watchdog.yml
-@@ -289,6 +289,350 @@ jobs:
+@@ -299,6 +299,350 @@ jobs:
              fi
            done < /tmp/stranded
  
@@ -394,7 +394,7 @@ index 69dea3d..b92271f 100644
      name: Anything stuck
      runs-on: ubuntu-latest
 diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
-index 1414c2b..e2227ce 100644
+index a6bc8a4..42ce9be 100644
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -282,6 +282,17 @@ jobs:
@@ -416,92 +416,63 @@ index 1414c2b..e2227ce 100644
        # repository that can put a commit in `main` unattended, so it gets the
        # heaviest test: every one of the six conditions asserted in both
 diff --git a/.github/workflows/claude-agent.yml b/.github/workflows/claude-agent.yml
-index 9a25754..ec72201 100644
+index cb216bc..94f8f00 100644
 --- a/.github/workflows/claude-agent.yml
 +++ b/.github/workflows/claude-agent.yml
-@@ -732,13 +732,56 @@ jobs:
-               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true ;;
-           esac
- 
+@@ -806,10 +806,14 @@ jobs:
        # THE BRANCH, FOR THE CODING WORK. Deliberately whatever the event points
        # at, because that is the code the task is about. What it is NOT any more
        # is where the hand-over reads its own logic from -- see the next step.
-+      # THE ONE CHECKOUT IN THIS FILE THAT PUSHES, AND THE `token:` IS WHY #75
-+      # HAPPENED.
-+      #
-+      # `actions/checkout` defaults `token` to `${{ github.token }}` and
-+      # `persist-credentials` to `true`, so leaving both alone leaves the remote
-+      # authenticated as the built-in GITHUB_TOKEN -- and every `git push` the
-+      # agent runs in a shell of its own then goes out as `github-actions[bot]`,
-+      # whatever the commit's author says. GitHub's documented consequence:
-+      # "When a pull request is created or updated by a workflow using
-+      # GITHUB_TOKEN, pull_request events with the opened, synchronize, or
-+      # reopened activity types create workflow runs that require approval."
-+      #
-+      # That is not a run that fails. It is a run record with zero jobs, no
-+      # check on the pull request, and nothing red anywhere -- #71's head
-+      # `488be1e` sat in exactly that state while the agent reported it was
-+      # waiting on CI, which was true and would have stayed true forever.
-+      # docs/automation/APPROVAL_STALLS.md has the sources and the evidence.
-+      #
-+      # The two other checkouts here (:114, :336) set persist-credentials:false
-+      # because they read and never write. This one writes, so it needs a
-+      # credential rather than the absence of one.
-+      #
-+      # `|| github.token` is not belt-and-braces, it is the whole point of
-+      # writing it this way: ATTADIPA_AGENT_TOKEN is DELIBERATELY allowed to be
-+      # empty (docs/automation/CLAUDE_AUTOMATION.md), an unset secret is a falsy
-+      # empty string, and so this line changes nothing at all until the owner
-+      # sets it. Setting the secret was already necessary and was never
-+      # sufficient -- claude-code-action reads it (:804) and this checkout did
-+      # not, so the action's push path was fixed years before the agent's own
-+      # was even looked at.
++      # This checkout pushes. ATTADIPA_AGENT_TOKEN is preferred so an agent push
++      # does not create approval-stalled zero-job runs under GITHUB_TOKEN (#75).
++      # The fallback preserves today's behaviour until the owner sets it.
        - uses: actions/checkout@v7
-         if: steps.auth.outputs.ok == 'true'
+         if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
          with:
            fetch-depth: 0
-+          # `persist-credentials` stays at its default `true`, and that is a
-+          # PRICE, not an oversight. The agent pushes with `git push` from the
-+          # model's own `Bash`, so the credential has to be in `.git/config`
-+          # for the push path to work at all -- turning it off here would break
-+          # the thing this patch exists to fix. The consequence, stated rather
-+          # than discovered: with `ATTADIPA_AGENT_TOKEN` set, a LONG-LIVED PAT
-+          # sits in `.git/config` as an `http.extraheader` for the life of the
-+          # workspace, in the one job where the model holds `Bash`. The
-+          # built-in `GITHUB_TOKEN` this replaces expires with the job; a PAT
-+          # does not. It is bounded by the job, not by the token. Removing the
-+          # exposure means a push path that does not persist a credential, and
-+          # that is **T-146**, not this patch. Found in review.
 +          token: ${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}
  
        # THE ORCHESTRATION BUNDLE: THE HAND-OVER'S OWN CODE, FROM main, KEPT OUT
        # OF THE SESSION'S REACH.
 diff --git a/docs/automation/APPROVAL_STALLS.md b/docs/automation/APPROVAL_STALLS.md
-index 4e21eda..eaf6fc3 100644
+index a46cd87..ddb3f36 100644
 --- a/docs/automation/APPROVAL_STALLS.md
 +++ b/docs/automation/APPROVAL_STALLS.md
-@@ -139,7 +139,7 @@ That closes the issue's evidence table exactly:
- | `c9e00d0` | the owner | ran |
- | `488be1e` | **the agent's own `git push`, over the checkout's persisted `GITHUB_TOKEN`** | `action_required`, 0 jobs |
- 
--The workflow already knows the rule — `claude-agent.yml:894-903` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
-+The workflow already knows the rule — `claude-agent.yml:922-931` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
- `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
- action's push path was fixed. The agent's own push path was never covered by it.
- 
-@@ -238,13 +238,13 @@ left unchecked** — *Contents: Read and write*, *Pull requests: Read and write*
+@@ -288,13 +288,13 @@ left unchecked** — *Contents: Read and write*, *Pull requests: Read and write*
  omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
  `github_token:` for `claude-code-action` — one citation per line, because the
  checker reads a fingerprint only from the citation's own physical line:
--`claude-agent.yml:903` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
-+`claude-agent.yml:931` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+-`claude-agent.yml:959` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
++`claude-agent.yml:963` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
  `claude-pr-review.yml:162` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
- `claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
+ `claude-ci-repair.yml:347` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
  `display_report: "true"` posts the agent's summary **on the triggering issue**
  over it, and the
  agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
--`claude-agent.yml:983` "depends entirely on `gh` being allowed" says the
-+`claude-agent.yml:1011` "depends entirely on `gh` being allowed" says the
+-`claude-agent.yml:1039` "depends entirely on `gh` being allowed" says the
++`claude-agent.yml:1043` "depends entirely on `gh` being allowed" says the
  action has no label feature of its own. That citation read `:846` until
  2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
  asserts this stays in`, an unrelated comment — so a reader checking the evidence
+diff --git a/docs/research/WAVESHARE_ARRIVAL.md b/docs/research/WAVESHARE_ARRIVAL.md
+index 94fddfe..43a8ea3 100644
+--- a/docs/research/WAVESHARE_ARRIVAL.md
++++ b/docs/research/WAVESHARE_ARRIVAL.md
+@@ -126,7 +126,7 @@ decision. **T-004 closed on 2026-08-25 at `v5.5.5`**
+ ([DEPENDENCIES](DEPENDENCIES.md), "ESP-IDF" in *Decided*), and CI now builds
+ `firmware/` on that version and prints the actual `firmware-build` dependency
+ result rather than an unconditional success
+-([`.github/workflows/ci.yml:614`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
++([`.github/workflows/ci.yml:625`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
+ The paragraph is kept rather than deleted because the constraint it describes is
+ what the rest of this section reasons from.
+ 
+@@ -758,7 +758,7 @@ does not, kept because an uncorrected claim propagates.
+     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
+     Both live citations are written above with fingerprints —
+     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
+-    [`.github/workflows/ci.yml:614`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
++    [`.github/workflows/ci.yml:625`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
+     — and the numbers in this paragraph are
+     deliberately **not** citations: it is a record of where two claims used to
+     point, and writing that record in the live syntax would make it four more

@@ -45,8 +45,8 @@ attadipa_wip_decide() {
     | length' 2>/dev/null || true)"
   case "$count" in
     ''|*[!0-9]*) printf 'unknown unknown\n' ;;
-    0|1|2) printf 'ok %s\n' "$count" ;;
-    3) printf 'full %s\n' "$count" ;;
+    0|1) printf 'ok %s\n' "$count" ;;
+    2) printf 'full %s\n' "$count" ;;
     *) printf 'incident %s\n' "$count" ;;
   esac
 }
@@ -74,7 +74,7 @@ attadipa_wip_is_schema_error() {
 if [ "${1-}" = --say ]; then
   case "${2-}" in
     full) echo "WIP limit reached: ${3-unknown} active pull requests (normal limit: 2). Finish or explicitly park work before opening another." ;;
-    incident) echo "QUEUE INCIDENT: ${3-unknown} active pull requests exceed the hard maximum of 3. Drain the queue; do not open more work." ;;
+    incident) echo "QUEUE INCIDENT: ${3-unknown} active pull requests reached the hard threshold of 3. Drain the queue; do not open more work." ;;
     *) echo 'Could not determine the active pull-request count; do not assume capacity.' ;;
   esac
   exit 0
@@ -85,6 +85,8 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
 fi
 
 : "${GITHUB_REPOSITORY:?}"
+mode="${1-}"
+GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 
 stderr_file="$(mktemp)" || exit 1
 trap 'rm -f "$stderr_file"' EXIT
@@ -147,3 +149,4 @@ if [ -n "$counted" ]; then
 else
   echo "Active pull requests: $count ($state)"
 fi
+[ "$mode" = --admit ] && printf '%s %s\n' "$state" "$count"

@@ -31,13 +31,17 @@ echo "The rule"
 check() { local got; got="$(attadipa_wip_decide "$2")"; if [ "$got" = "$3" ]; then ok "$1"; else bad "$1: $got"; fi; }
 pr() { printf '{"head":{"repo":{"full_name":"hleserg/Attadipa"}},"base":{"repo":{"full_name":"hleserg/Attadipa"}},"labels":%s}' "$1"; }
 foreign() { printf '{"head":{"repo":{"full_name":"fork/x"}},"base":{"repo":{"full_name":"hleserg/Attadipa"}},"labels":[]}' ; }
-check 'two active PRs are normal' "[$(pr '[]'),$(pr '[]')]" 'ok 2'
-check 'three is the hard temporary maximum' "[$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'full 3'
-check 'four is an incident' "[$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'incident 4'
-check 'parked work does not consume a slot' "[$(pr '[{"name":"queue:parked"}]'),$(pr '[]'),$(pr '[]')]" 'ok 2'
-check 'emergency work does not consume a slot either' "[$(pr '[{"name":"queue:emergency"}]'),$(pr '[]'),$(pr '[]')]" 'ok 2'
+check 'zero active PRs leaves capacity' '[]' 'ok 0'
+check 'one active PR leaves one slot' "[$(pr '[]')]" 'ok 1'
+check 'two active PRs fill the normal queue' "[$(pr '[]'),$(pr '[]')]" 'full 2'
+check 'three active PRs are an incident' "[$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'incident 3'
+check 'four active PRs remain an incident' "[$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'incident 4'
+check 'seven active PRs remain an incident' "[$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'incident 7'
+check 'parked work does not consume a slot' "[$(pr '[{"name":"queue:parked"}]'),$(pr '[]')]" 'ok 1'
+check 'emergency recovery does not consume a normal slot' "[$(pr '[{"name":"queue:emergency"}]'),$(pr '[]')]" 'ok 1'
 check 'fork PRs do not consume repository capacity' "[$(foreign),$(pr '[]')]" 'ok 1'
 check 'an unreadable response is not a healthy queue' '{"message":"no"}' 'unknown unknown'
+check 'malformed JSON is not a healthy queue' '[' 'unknown unknown'
 
 echo
 echo "The transport, executed"
@@ -164,19 +168,23 @@ else
 fi
 
 # 2-6. The states, reached through the transport rather than around it.
-caller 'two same-repository PRs come back as ok 2' \
-  "[$(ghpr 1),$(ghpr 2)]" 'ok 2'
-caller 'three reach full -- a state the live script could never reach' \
-  "[$(ghpr 1),$(ghpr 2),$(ghpr 3)]" 'full 3'
-caller 'four reach incident' \
+caller 'one same-repository PR leaves one slot' "[$(ghpr 1)]" 'ok 1'
+caller 'two same-repository PRs close admission' \
+  "[$(ghpr 1),$(ghpr 2)]" 'full 2'
+caller 'three reach incident' \
+  "[$(ghpr 1),$(ghpr 2),$(ghpr 3)]" 'incident 3'
+caller 'four remain incident' \
   "[$(ghpr 1),$(ghpr 2),$(ghpr 3),$(ghpr 4)]" 'incident 4'
+caller 'seven remain incident' \
+  "[$(ghpr 1),$(ghpr 2),$(ghpr 3),$(ghpr 4),$(ghpr 5),$(ghpr 6),$(ghpr 7)]" 'incident 7'
 caller 'a fork PR does not consume repository capacity' \
   "[$(ghfork 9),$(ghpr 1)]" 'ok 1'
 caller 'parked work does not consume a slot' \
-  "[$(ghpr 1 '[{"name":"queue:parked"}]'),$(ghpr 2),$(ghpr 3)]" 'ok 2'
+  "[$(ghpr 1 '[{"name":"queue:parked"}]'),$(ghpr 2)]" 'ok 1'
 caller 'emergency work does not consume a slot' \
-  "[$(ghpr 1 '[{"name":"queue:emergency"}]'),$(ghpr 2),$(ghpr 3)]" 'ok 2'
+  "[$(ghpr 1 '[{"name":"queue:emergency"}]'),$(ghpr 2)]" 'ok 1'
 caller 'an empty queue is ok 0, not unknown' '[]' 'ok 0'
+caller 'malformed JSON is unknown, not capacity' '[' 'unknown unknown'
 
 # The operator-facing line is the only way a live run can be confirmed to have
 # counted anything real, so it is asserted rather than assumed.

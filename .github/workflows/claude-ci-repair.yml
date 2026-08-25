@@ -67,7 +67,8 @@ jobs:
             exit 0
           fi
 
-          for label in ci:failed agent:blocked; do
+          bash .github/scripts/claim.sh break "$REPO" "$PR"
+          for label in ci:failed agent:blocked agent:working; do
             gh pr edit "$PR" --repo "$REPO" --remove-label "$label" || true
           done
           {
@@ -202,6 +203,9 @@ jobs:
     if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: attadipa-agent-writer
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
@@ -218,8 +222,62 @@ jobs:
       # problem with the Anthropic credential and is not one.
       id-token: write
     steps:
+      - name: Check writer admission
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.pr }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          for script in writer-admission.sh wip-limit.sh claim.sh; do
+            gh api "repos/$REPO/contents/.github/scripts/$script?ref=$DEFAULT_BRANCH" --jq .content \
+              | base64 --decode > "/tmp/$script"
+          done
+          bash "/tmp/writer-admission.sh" "$REPO" "$ISSUE"
+
+      - name: Acquire exclusive claim
+        id: claim
+        if: steps.admission.outputs.allow == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.pr }}
+          CLAIM_TOKEN: ci-repair-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          set +e
+          bash /tmp/claim.sh acquire "$REPO" writer "$CLAIM_TOKEN"
+          rc=$?
+          set -e
+          case "$rc" in
+            0) ;;
+            3) echo "acquired=false" >> "$GITHUB_OUTPUT"; echo "::notice::Another writer holds the repository; repair held"; exit 0 ;;
+            *) exit "$rc" ;;
+          esac
+
+          : > /tmp/admission-output
+          GITHUB_OUTPUT=/tmp/admission-output bash /tmp/writer-admission.sh "$REPO" "$ISSUE"
+          if [ "$(sed -n 's/^allow=//p' /tmp/admission-output)" != true ]; then
+            bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true
+            echo "acquired=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          bash /tmp/claim.sh acquire "$REPO" "$ISSUE" "$CLAIM_TOKEN"
+          rc=$?
+          set -e
+          case "$rc" in
+            0) echo "acquired=true" >> "$GITHUB_OUTPUT" ;;
+            3) bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true; echo "acquired=false" >> "$GITHUB_OUTPUT"; echo "::notice::#$ISSUE already claimed; repair held" ;;
+            *) bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true; exit "$rc" ;;
+          esac
+
       - name: Check that an Anthropic credential exists
         id: auth
+        if: steps.claim.outputs.acquired == 'true'
         env:
           HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
           HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
@@ -232,7 +290,7 @@ jobs:
           fi
 
       - name: Mark the attempt
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -253,7 +311,7 @@ jobs:
           gh pr edit "$PR" --repo "$REPO" --add-label ci:repairing || true
 
       - uses: actions/checkout@v7
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         with:
           # The agent's branch, not the default branch this workflow_run event
           # is nominally attached to.
@@ -261,7 +319,7 @@ jobs:
           fetch-depth: 0
 
       - name: Collect the failing log
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -280,7 +338,7 @@ jobs:
           wc -l .ci-repair/failed.log
 
       - name: Fix it
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         id: fix
         uses: anthropics/claude-code-action@v1
         with:
@@ -373,9 +431,22 @@ jobs:
             the commit message.
 
       - name: Clear the flag
-        if: always() && steps.auth.outputs.ok == 'true'
+        if: always() && steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ needs.gate.outputs.pr }}
         run: gh pr edit "$PR" --repo "$REPO" --remove-label ci:repairing || true
+
+      - name: Release exclusive claim
+        if: always() && steps.claim.outputs.acquired == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.pr }}
+          CLAIM_TOKEN: ci-repair-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          rc=0
+          bash /tmp/claim.sh release "$REPO" "$ISSUE" "$CLAIM_TOKEN" || rc=$?
+          bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || rc=$?
+          exit "$rc"

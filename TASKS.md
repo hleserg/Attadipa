@@ -440,36 +440,6 @@ stale silently. The protocol is
   than 48 quiet warnings a day.
 - **Hardware required:** no.
 
-### T-168 · A stale verdict survives a review that published nothing
-- **Priority:** P2. It is not a standalone merge bypass — the unattended sweep
-  binds `ai-review:pass` to the exact head as well — but a live orchestrator, a
-  person, and any consumer that reads the label alone are all told the current
-  head passed a review nobody gave it.
-- **Dependencies:** none. The helper and its assertions are on `main`.
-- **Goal:** `claude-pr-review.yml`'s two invalidation steps strip the previous
-  head's verdict labels **before** anything fallible, so a rate-limited `gh api`
-  or a 502 on `gh pr comment` cannot leave an `ai-review:pass` behind. The rule
-  lives in `.github/scripts/review-invalidate.sh` and is asserted by
-  `.github/tests/review-published-test.sh` on every push, including against the
-  pre-fix order, which must fail those assertions.
-- **Blocked on:** a person applying
-  `docs/automation/pending/240-review-invalidation-order.patch`. The two steps
-  are inside `.github/workflows/`, which the `claude[bot]` installation token may
-  not write — verified on 2026-08-25 by a push GitHub rejected by name. Until it
-  lands, the live workflow keeps the old order and the helper is unreached.
-- **Acceptance:** the patch applied and `actionlint` clean. The behaviour is
-  already asserted in both states —
-  `.github/tests/review-invalidate-workflow-test.sh` reads the patch while it is
-  parked and the workflow once it is not, so landing it changes which file the
-  same 25 assertions run against and nothing else. What is left is the half no
-  local run can prove: one real pull request whose review reaches the model,
-  publishes nothing, and loses its labels. `NOT EXECUTED` until then.
-- **Watch for:** `gh pr edit --remove-label` on a label the repository has never
-  created, which is the one way the new hard failure could be a false one. Every
-  environment `setup-labels.sh` has run in has both, and the convergence step
-  below has depended on the same behaviour since it was written.
-- **Hardware required:** no.
-
 ### T-145 · The recursion bound must stop depending on who wrote the issue
 - **Priority:** P1 — it becomes live the moment the owner sets
   `ATTADIPA_AGENT_TOKEN` to a fine-grained PAT, which T-108 asks them to do.
@@ -3106,6 +3076,32 @@ A1's schematic-revision
   8 MB octal PSRAM, the development partition table and stable heartbeat were
   measured. Full transcript:
   [BRINGUP_2026-08-25](docs/hardware/BRINGUP_2026-08-25.md).
+### T-177 · Emergency WIP admission and exclusive writer recovery — **DONE** 2026-08-25
+- **Priority:** P1.
+- **Dependencies:** #241 supplied the original transport finding; recovery was
+  completed in the existing emergency PR #248 rather than creating another PR.
+- **Goal:** no ordinary writer starts at `full`, `incident`, or `unknown`; the
+  real writer recounts while holding a global repository lease; one issue has
+  one atomic run-token claim across Actions, retries, CI repair and local agents.
+- **Tests:** `.github/tests/wip-limit-test.sh` (33) and
+  `.github/tests/admission-claim-test.sh` (27) execute the shipping shell with a
+  stub `gh`, including 0/1/2/3/4/7 PRs, parked/emergency/fork exclusions,
+  malformed/API/schema failure, parallel claims, stale tag and legacy-label
+  recovery, finish/release, and mutations for `baseRepository`, removed
+  admission and check-then-set claiming.
+- **Hardware required:** no.
+
+### T-168 · A stale verdict survives a review that published nothing — **DONE** 2026-08-25
+- **Priority:** P2.
+- **Dependencies:** #240.
+- **Goal:** both failure-notification steps strip the previous head's verdict
+  before any fallible API/comment operation.
+- **Implementation status:** deployed in `claude-pr-review.yml`; the parked
+  caller patch was removed.
+- **Tests:** `review-invalidate-workflow-test.sh` executes both shipping steps
+  and its old-order mutation through the same stub `gh` cases.
+- **Hardware required:** no.
+
 ### T-178 · MeshCore parser bounds at the pinned revision — **DONE** 2026-08-25
 Research only, from [#142](https://github.com/hleserg/Attadipa/issues/142). Full
 record: [MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md);

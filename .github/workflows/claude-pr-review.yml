@@ -481,21 +481,31 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TRUSTED: ${{ env.ATTADIPA_TRUSTED_SCRIPTS }}
         run: |
-          set -euo pipefail
-          marker="attadipa-review-not-published:${SHA}"
-          if ! gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body' | grep -Fq "$marker"; then
-            {
-              echo "<!-- $marker -->"
-              echo "**The independent review ran on \`${SHA:0:8}\` but published no verdict.**"
-              echo
-              echo "No \`ai-review:pass\` from an older head is valid for this commit."
-              echo "Run: $RUN_URL"
-            } > /tmp/review-not-published.md
-            gh pr comment "$PR" --repo "$REPO" --body-file /tmp/review-not-published.md
+          # No `set -e`, and that is the fix rather than a relaxation (#240).
+          # This step used to read the comments, post a note and only then strip
+          # the previous head's verdict labels, all under `set -euo pipefail`.
+          # A rate-limited or 502-ing API on either of the first two ended the
+          # step before the third, and a new head that nothing had reviewed kept
+          # its `ai-review:pass`. The helper inverts the order and this step's
+          # exit status is the helper's: notification failure is a warning,
+          # invalidation failure is a failure.
+          set -uo pipefail
+          if [ -n "${TRUSTED:-}" ] && [ -r "$TRUSTED/review-invalidate.sh" ]; then
+            bash "$TRUSTED/review-invalidate.sh"
+            exit $?
           fi
-          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
-          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:blocking || true
+          # Reaching here means the default-branch bundle could not be staged,
+          # which also means `steps.published` could not run its own helper and
+          # this step's `if:` should not have matched. Belt and braces: drop the
+          # note rather than the invalidation, because the note is a courtesy
+          # and the invalidation is what stops a merge.
+          echo "::warning::the review invalidation helper was not staged from the default branch; removing the stale verdict labels without posting the note"
+          rc=0
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || rc=1
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:blocking || rc=1
+          exit $rc
 
       - name: Converge the published reviewer verdict
         # This is deliberately after publication: no model output, missing bundle,
@@ -614,6 +624,18 @@ jobs:
           DETAIL: ${{ steps.why.outputs.detail }}
         run: |
           set -euo pipefail
+          # THE INVALIDATION COMES FIRST, and for the same reason as the silent
+          # step above (#240): everything below this line talks to the API, and
+          # under `set -e` any of it failing used to end the step before the
+          # previous head's `ai-review:pass` came off. The `|| true` this line
+          # used to carry is gone with it — a removal that failed reported
+          # success, which is the one thing this must not do.
+          #
+          # `ai-review:blocking` is deliberately NOT removed here. A blocking
+          # verdict from an older head is stale too, but stripping it releases a
+          # hold, and a review that did not run has said nothing that justifies
+          # releasing one.
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass
           # Neither label is set. `ai-review:pass` would be a lie and
           # `ai-review:blocking` would be a finding nobody made.
           {
@@ -683,5 +705,4 @@ jobs:
           else
             gh pr comment "$PR" --repo "$REPO" --body-file /tmp/no-review.md
           fi
-          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
           echo "::warning::The independent review could not run on ${SHA:0:8}; no verdict was recorded."

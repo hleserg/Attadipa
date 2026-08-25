@@ -118,9 +118,20 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
+      - name: Check writer admission
+        id: admission
+        if: steps.switch.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || github.event.pull_request.number || inputs.issue_number }}
+        run: |
+          set -euo pipefail
+          bash ".github/scripts/writer-admission.sh" "$REPO" "$ISSUE"
+
       - name: Decide
         id: decide
-        if: steps.switch.outputs.enabled == 'true'
+        if: steps.switch.outputs.enabled == 'true' && steps.admission.outputs.allow == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -522,7 +533,51 @@ jobs:
       # `agent:working` and then have its agent cancelled while queued, leaving
       # a claim with nobody behind it — which the watchdog only notices two
       # hours later.
+      - name: Acquire exclusive claim
+        id: claim
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          CLAIM_TOKEN: agent-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          for script in claim.sh writer-admission.sh wip-limit.sh; do
+            gh api "repos/$REPO/contents/.github/scripts/$script?ref=$DEFAULT_BRANCH" --jq .content \
+              | base64 --decode > "/tmp/$script"
+          done
+          set +e
+          bash /tmp/claim.sh acquire "$REPO" writer "$CLAIM_TOKEN"
+          rc=$?
+          set -e
+          case "$rc" in
+            0) ;;
+            3) echo "acquired=false" >> "$GITHUB_OUTPUT"; echo "::notice::Another writer holds the repository; this run is held"; exit 0 ;;
+            *) echo "::error::Could not establish repository writer lease"; exit "$rc" ;;
+          esac
+
+          : > /tmp/admission-output
+          GITHUB_OUTPUT=/tmp/admission-output bash /tmp/writer-admission.sh "$REPO" "$ISSUE"
+          if [ "$(sed -n 's/^allow=//p' /tmp/admission-output)" != true ]; then
+            bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true
+            echo "acquired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Writer held by $(sed -n 's/^state=//p' /tmp/admission-output) admission"
+            exit 0
+          fi
+
+          set +e
+          bash /tmp/claim.sh acquire "$REPO" "$ISSUE" "$CLAIM_TOKEN"
+          rc=$?
+          set -e
+          case "$rc" in
+            0) echo "acquired=true" >> "$GITHUB_OUTPUT" ;;
+            3) bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true; echo "acquired=false" >> "$GITHUB_OUTPUT"; echo "::notice::#$ISSUE already claimed; writer held" ;;
+            *) bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true; echo "::error::Could not establish exclusive claim for #$ISSUE"; exit "$rc" ;;
+          esac
+
       - name: Normalise labels
+        if: steps.claim.outputs.acquired == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -601,7 +656,7 @@ jobs:
             esac
           }
 
-          add=(agent:working agent:claude)
+          add=(agent:claude)
 
           case "$TASK_TYPE" in
             continuous-review)    add+=(type:review) ;;
@@ -696,6 +751,7 @@ jobs:
 
       - name: Check that an Anthropic credential exists
         id: auth
+        if: steps.claim.outputs.acquired == 'true'
         env:
           HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
           HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
@@ -711,7 +767,7 @@ jobs:
           fi
 
       - name: Say what is missing
-        if: steps.auth.outputs.ok == 'false'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -751,7 +807,7 @@ jobs:
       # at, because that is the code the task is about. What it is NOT any more
       # is where the hand-over reads its own logic from -- see the next step.
       - uses: actions/checkout@v7
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         with:
           fetch-depth: 0
 
@@ -799,7 +855,7 @@ jobs:
       # reason to write a shorter outcome inline -- never as a reason to fall
       # back to the workspace, and never as a reason to say nothing.
       - name: Fetch the hand-over's own code from the default branch
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         continue-on-error: true
         uses: actions/checkout@v7
         with:
@@ -810,7 +866,7 @@ jobs:
           path: .attadipa-bundle
 
       - name: Move it out of the agent's reach
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         run: |
           # No `set -e` here on purpose. A bundle that cannot be staged is a
           # degraded hand-over, which the hand-over handles by itself; it is not
@@ -861,7 +917,7 @@ jobs:
       # point can never be read as proof that anything happened.
       - name: Where the pull request head was
         id: prhead
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -885,7 +941,7 @@ jobs:
           echo "::notice::pull request head before this run: ${SHA:-not a pull request}"
 
       - name: Run Claude
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
@@ -1162,7 +1218,7 @@ jobs:
         # failure-reason-test.sh puts a private key and an API key in the log
         # next to a real error to prove only the error comes out.
         id: why
-        if: always() && steps.auth.outputs.ok == 'true' && steps.claude.outcome == 'failure'
+        if: always() && steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true' && steps.claude.outcome == 'failure'
         env:
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
         run: |
@@ -1195,7 +1251,7 @@ jobs:
         # were indistinguishable without opening Actions, which is the failure
         # this whole reporting protocol exists to remove — see the header of
         # .github/scripts/agent-say.sh.
-        if: always() && steps.auth.outputs.ok == 'true'
+        if: always() && steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -1549,3 +1605,16 @@ jobs:
               # re-queues is a task nobody ever looks at again.
               attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --add-label agent:failed --add-label agent:ready --remove-label agent:working || true ;;
           esac
+
+      - name: Release exclusive claim
+        if: always() && steps.claim.outputs.acquired == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          CLAIM_TOKEN: agent-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          rc=0
+          bash /tmp/claim.sh release "$REPO" "$ISSUE" "$CLAIM_TOKEN" || rc=$?
+          bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || rc=$?
+          exit "$rc"

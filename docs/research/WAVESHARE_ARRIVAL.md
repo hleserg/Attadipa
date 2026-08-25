@@ -126,7 +126,7 @@ decision. **T-004 closed on 2026-08-25 at `v5.5.5`**
 ([DEPENDENCIES](DEPENDENCIES.md), "ESP-IDF" in *Decided*), and CI now builds
 `firmware/` on that version and prints the actual `firmware-build` dependency
 result rather than an unconditional success
-([`.github/workflows/ci.yml:611`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
+([`.github/workflows/ci.yml:614`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
 The paragraph is kept rather than deleted because the constraint it describes is
 what the rest of this section reasons from.
 
@@ -758,7 +758,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:611`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
+    [`.github/workflows/ci.yml:614`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more
@@ -798,7 +798,7 @@ twice. **Two are still live.**
    `HARDWARE_MATRIX.md:331` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
-   open-question row at `STATUS.md:955` is struck and split the same way.
+   open-question row at `STATUS.md:925` is struck and split the same way.
 
    The third took one more commit and is the one worth remembering.
    [VERIFIED_FACTS.md](VERIFIED_FACTS.md) still concluded, twenty-five lines
