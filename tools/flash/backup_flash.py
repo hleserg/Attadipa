@@ -16,12 +16,14 @@ failure shifted. Concatenating those does not announce itself.
 docs/research/WAVESHARE_EFUSE_READ.md §2.4 is the account of that trap; this
 refuses to append a chunk that is not exactly its nominal size.
 
-**A read can be interrupted by things that have nothing to do with the board.**
-The first attempt at this backup died at 7% with `Packet content transfer
-stopped` while a large `git clone` was running — and on this host the root
-filesystem is a USB-SATA disk sharing a controller with the board. So a failed
-chunk is retried rather than fatal, and the reason to look at first is host load
-rather than the flash.
+**A stub read that fails does not fail again differently.** `Packet content
+transfer stopped` part-way through a chunk is a *content*-determined failure of
+the device-to-host transfer path, reproducible to the same absolute flash
+address from any starting offset — WAVESHARE_EFUSE_READ §2.2, and confirmed here
+by three reads that all died at `0x023d000`. Repeating the same method is a
+random walk with a budget attached, so the retry here **changes method**: the
+stub first, the ROM loader (`--no-stub`) after, which reads what the stub
+refuses. §2.3 is that recipe and this is it in code.
 
 Verification is not optional and is not this script's opinion: `esptool
 verify-flash` compares by on-chip MD5 over the range, so it costs seconds and it
@@ -32,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -49,32 +52,57 @@ CHUNK = 0x200000          # 2 MB, the size the 2026-08-23 session used
 KNOWN_FACTORY_SHA256 = "2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5"
 
 
-def esptool(python: str, port: str, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([python, "-m", "esptool", "--port", port, *args],
-                          capture_output=True, text=True)
+def esptool(python: str, port: str, *args: str,
+            rom: bool = False) -> subprocess.CompletedProcess:
+    """`--no-stub` is a global option and has to precede the subcommand."""
+    command = [python, "-m", "esptool", "--port", port]
+    if rom:
+        command.append("--no-stub")
+    return subprocess.run([*command, *args], capture_output=True, text=True)
+
+
+def stopped_at(output: str) -> str | None:
+    """The block the stub died on, from its own progress line.
+
+    esptool prints `Reading from 0x…` for the block it is about to fetch, so the
+    last one printed names the block that killed the transfer. Recorded rather
+    than acted on: which addresses do this is the open question of
+    WAVESHARE_FLASH_LAYOUT §2.2, and a run that names them is worth more than one
+    that only says a chunk failed.
+    """
+    seen = re.findall(r"Reading from (0x[0-9a-f]+)", output)
+    return seen[-1] if seen else None
 
 
 def read_chunk(python: str, port: str, offset: int, size: int, path: Path,
                attempts: int) -> None:
-    """One chunk, retried, and never accepted at the wrong length."""
+    """One chunk: the stub first, then the ROM loader. Never a wrong length."""
     for attempt in range(1, attempts + 1):
+        rom = attempt > 1          # a deterministic failure needs a different method
         path.unlink(missing_ok=True)
         result = esptool(python, port, "read-flash",
-                         str(offset), str(size), str(path))
+                         str(offset), str(size), str(path), rom=rom)
         actual = path.stat().st_size if path.exists() else 0
         if result.returncode == 0 and actual == size:
+            if rom:
+                print(f"  chunk at 0x{offset:07x}: read by the ROM loader",
+                      file=sys.stderr)
             return
-        print(f"  chunk at 0x{offset:07x}: attempt {attempt} of {attempts} gave "
-              f"{actual} of {size} bytes"
-              f"{'' if result.returncode == 0 else ' (esptool failed)'}",
+        where = stopped_at(result.stdout + result.stderr)
+        print(f"  chunk at 0x{offset:07x}: attempt {attempt} of {attempts} "
+              f"({'ROM loader' if rom else 'stub'}) gave {actual} of {size} bytes"
+              f"{'' if result.returncode == 0 else ' (esptool failed)'}"
+              f"{f', stopped at {where}' if where else ''}",
               file=sys.stderr)
         tail = result.stderr.strip().splitlines()
         if tail:
             print(f"    {tail[-1]}", file=sys.stderr)
     raise SystemExit(
-        f"chunk at 0x{offset:07x} never read cleanly in {attempts} attempts.\n"
+        f"chunk at 0x{offset:07x} never read cleanly in {attempts} attempts, "
+        f"by either loader.\n"
         f"Nothing was assembled — a short chunk is a failed read, not a small one.\n"
-        f"Check host load first: a busy USB bus stops these transfers."
+        f"Above 0x1000000 the ROM loader is not a fallback: it warns that large "
+        f"flash is unsupported, and those ranges are the stub's to read."
     )
 
 
@@ -85,7 +113,8 @@ def main() -> int:
     parser.add_argument("--port", default=None)
     parser.add_argument("--size", type=lambda v: int(v, 0), default=FLASH_SIZE)
     parser.add_argument("--chunk", type=lambda v: int(v, 0), default=CHUNK)
-    parser.add_argument("--attempts", type=int, default=4)
+    parser.add_argument("--attempts", type=int, default=3,
+                    help="1 = stub only; later attempts use the ROM loader")
     parser.add_argument("--python", default=sys.executable,
                         help="the interpreter that has esptool installed")
     parser.add_argument("--no-verify", action="store_true",
