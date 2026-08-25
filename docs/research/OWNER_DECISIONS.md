@@ -13,21 +13,32 @@ specification was written.
 
 Format: what was decided · when · what it obliges · what it invalidates.
 
+**The owner's words are paraphrased here, not quoted, and that is his
+decision** — taken 2026-08-24 and recorded under
+[OD-18](#od-18--the-received-unit-stays-powered-with-its-brightness-at-minimum).
+`docs/` is this repository's GitHub Pages root, so every decision in this file
+is served from the project's public website; until that date each one opened
+with the chat message it came from, verbatim and in Russian. Three options were
+put to him — leave it, take the register out of publication, or carry his words
+as paraphrase — and he chose the third. So an entry now records **what he
+decided, in this repository's own words. It does not reproduce how he said it.**
+
+Two things did not change with the convention, and a reader should not mistake
+one for the other. The paraphrase is still a record of a decision that is **not
+ours to overturn**: rewording it does not turn it into our opinion, and an entry
+that softens or widens what he actually settled is the same failure it always
+was. And his **own authored documents** in this tree — `docs/master-prompt-final.md`,
+`docs/master-prompt.md`, `docs/development-addendum.md`, `docs/ideas/` — are his
+text rather than our record of it, are outside this convention, and stay in the
+Russian he wrote them in.
+
 ---
 
 ## OD-1 — There is a separate Attadipa node, and the watch uses it
 
 **Decided:** 2026-08-21.
 
-**As stated:**
-
-> «там будет отдельная нода с lora, GPS и esp32, часы будут подключаться к ней и
-> использовать те же приложения, типа карты, компас, и проч, что и в lora часах.
-> когда нода не подключена — будут часами, аудиоустройством и прочим зависит от
-> установленных приложений которые мы ещё не написали. все возможности должны
-> быть учтены на уровне ядра, а реализовывать будем уже позже.»
-
-**In English:** a separate node carrying LoRa, GNSS and an ESP32 exists. The
+**What he decided:** a separate node carrying LoRa, GNSS and an ESP32 exists. The
 watch connects to it and runs *the same applications* — maps, compass and the
 rest — that it would run on a watch with its own LoRa. With no node connected
 the device is a watch, an audio device, and whatever else the installed
@@ -69,9 +80,8 @@ for a separate node, and lists "additional GNSS" among what it provides.
 
 **Decided:** 2026-08-21.
 
-**As stated:** «Вот настройки для MashCore, но они не должны зашиваться в ядро,
-это настройки» — *these are the MeshCore settings, but they must not be baked
-into the core; they are settings.*
+**What he decided:** these are the MeshCore settings, but they must not be baked
+into the core. They are settings.
 
 **Evidence supplied:** two screenshots of a live MeshCore node's exposed
 parameters — the second one complete. Recorded here in full because it is the
@@ -170,10 +180,10 @@ default that assumes it.
 
 **Decided:** 2026-08-21.
 
-**As stated:** the owner supplied `Attadipa_Master_Prompt_Final_Bundle.zip`
-containing a 3 125-line specification and three PNGs, with the instruction
-«так, в архиве ревью, сделай все по промту от туда» — *the archive contains a
-review; do everything according to the prompt in it.*
+**What he decided:** the owner supplied `Attadipa_Master_Prompt_Final_Bundle.zip`
+containing a 3 125-line specification and three PNGs, with the instruction that
+the archive contains a review and that everything is to be done according to the
+prompt inside it.
 
 **What arrived:**
 
@@ -223,8 +233,8 @@ is untouched: final §3 and §9 restate it almost word for word.
 
 **Decided:** 2026-08-21.
 
-**As stated:** «ПЕРВАЯ ЗАДАЧА — выполнить до дальнейшей разработки OS» — the
-first task, to be done before further OS development. Stop the roadmap and
+**What he decided:** this is the *first* task, to be done before any further OS
+development. Stop the roadmap and
 review upstream MeshCore between v1.16.0 and v1.17.1+, including `dev`, across
 ESP32-S3, the Heltec V4 family, SX1262, the companion firmware, BLE, USB, the
 multi-interface work, LoRa RX/TX, preamble detection, LBT, CAD, FEM/LNA, power
@@ -237,9 +247,8 @@ contacts and storage, GPS and time, and hardware RNG and crypto acceleration.
    technically valuable unmerged ones, open issues and `dev`; for each change,
    find the *root cause*, not the changelog line.
 2. **Distinguish confirmed fix / merged fix / released fix / open PR /
-   experimental.** «Не считай, что последний релиз — лучший» — do not assume the
-   latest release is the best. Check for open regressions, the FEM RX gain path
-   in particular.
+   experimental.** Do not assume the latest release is the best one. Check for
+   open regressions, the FEM RX gain path in particular.
 3. **Do not pull unmerged code into production Attadipa without analysis.**
 4. **Build a compatibility layer** so MeshCore can be updated without rewriting
    the OS: `UI/Apps → Services → Mesh Service API → MeshCore Adapter →
@@ -252,22 +261,20 @@ contacts and storage, GPS and time, and hardware RNG and crypto acceleration.
    principle: **Research → reuse proven implementations → adapt → test → only
    then invent.**
 
-Four specific instructions inside it are narrower than the rest and are recorded
-verbatim in effect, because each forbids something that would otherwise look
-reasonable:
+Four instructions inside it are narrower than the rest and are recorded
+separately, because each forbids something that would otherwise look reasonable:
 
 - **Transport is not BLE.** Attadipa's must admit BLE, USB, UART, Wi-Fi/TCP and
-  possibly ESP-NOW, several at once — «не копируй слепо», do not copy #3049
-  blindly.
-- **No own LBT yet.** «Не реализовывай собственный LBT, пока не станет понятно,
-  что можно безопасно взять из MeshCore.» Hardware CAD stays experimental while
-  upstream ships it off.
-- **Do not port the old FEM implementation.** «Не переносить старую
-  реализацию.» FEM/LNA is a **board capability**, never an SX1262 assumption.
-- **Hibernate is not a sleep with the radio armed.** «Не смешивай "сон с
-  пробуждением по LoRa" и настоящий hibernate.» And, separately: **«wall clock
-  нельзя использовать для измерения elapsed time»** — the monotonic clock owns
-  timers, timeouts, retries, connection expiry and the scheduler.
+  possibly ESP-NOW, several at once. Do not copy #3049 blindly.
+- **No own LBT yet.** Do not implement our own listen-before-talk until it is
+  clear what can safely be taken from MeshCore. Hardware CAD stays experimental
+  while upstream ships it off.
+- **Do not port the old FEM implementation.** FEM/LNA is a **board capability**,
+  never an SX1262 assumption.
+- **Hibernate is not a sleep with the radio armed** — do not conflate "sleep with
+  a LoRa wake-up" with a true hibernate. And, separately: **the wall clock must
+  never be used to measure elapsed time** — the monotonic clock owns timers,
+  timeouts, retries, connection expiry and the scheduler.
 
 **What it invalidates:** nothing already written, because none of these
 subsystems exists yet. That is the point of its timing — the review landed
@@ -331,8 +338,8 @@ a combined trust state.**
 **What is explicitly *not* to be built now** (owner §15, and it is emphatic):
 no Kalman filter, no RTS smoother, no pedestrian dead reckoning, no second GNSS,
 no RTK, no DGNSS, no RTCM over LoRa, no map matching, no HMM, no routing, no
-universal spoofing detector. «Текущий milestone не ломать» — do not break the
-current milestone. What is to be done now is the architecture and the tasks:
+universal spoofing detector — and do not break the current milestone. What is to
+be done now is the architecture and the tasks:
 record the decision, check the existing `GnssDriver` / `LocationService` shape,
 stop the interfaces losing integrity information, file the receiver research,
 add the descriptor, add the trust state, add the simulator's fault scenarios,
@@ -354,9 +361,8 @@ a correction.
 
 **Decided:** 2026-08-21.
 
-**As stated:** *"учти кстати что шагомер должен быть в часах обязательно"* — a
-pedometer is a mandatory feature of the watch, not a nice-to-have and not a
-later milestone.
+**What he decided:** a pedometer is a mandatory feature of the watch — not a
+nice-to-have and not a later milestone.
 
 **What already exists, and what does not.** `Capability::MotionSensing` is
 already in the enum and its comment already says *"steps, wrist gestures,
@@ -416,19 +422,18 @@ persistence). Neither is started.
 
 **Decided:** 2026-08-22.
 
-**As stated**, across three messages:
+**What he decided**, across three messages:
 
-> *"а почему бы нам не добавить в часы возможность цепляться к нодам meshcore на
-> ванильной прошиве по ble или lan? Не каждый захочет заморачиваться со сбором
-> нашего варианта ноды сразу. Да и нам может пригодиться. В план!"*
-
-> *"Нужно чтобы часы при этом получали сразу возможность общаться по мешкору,
-> возможность запрашивать и получать телеметрию, возможность снимать координаты
-> из телеметрии, входящих сообщений и с самой ноды если в ней есть gps."*
-
-> *"При наличии lora и меш в самих часах я бы хотел чтобы была возможность
-> пользоваться обеими нодами, на часах пусть так же будет доступен meshtastiс
-> как вариант компаньона вместо (или вместе, как получится) meshcore."*
+- **Attach to a stock MeshCore node over BLE or LAN.** Not everyone will want to
+  build our variant of the node first, and it is useful to us as well. Put it in
+  the plan.
+- **Attaching is not enough on its own.** The watch must immediately be able to
+  talk over the mesh, to request and receive telemetry, and to take coordinates
+  out of telemetry, out of incoming messages, and off the node itself where the
+  node has GNSS.
+- **A watch with its own LoRa should still be able to use both nodes**, and
+  Meshtastic should be available on the watch as a companion option — instead of
+  MeshCore, or alongside it, whichever turns out to be workable.
 
 **What it changes.** [ADR-0008](../adr/0008-mesh-service-providers.md) already
 has the right shape — one `MeshService`, providers behind it, applications that
@@ -488,18 +493,16 @@ written until T-072 has answers from source.
 
 **Decided:** 2026-08-22.
 
-**As stated**, across two messages:
+**What he decided**, across two messages:
 
-> *"При наличии gps в часах - так же хорошо бы иметь возможность выбрать какой
-> gps использовать и еще как вариант - использовать оба источника данных
-> комбинируя и обрабатывая их для улучшения точности. Если возможно - та же
-> история с телефоном - нужно иметь возможность снять gps координаты (и прочие
-> полезные и доступные данные) и обработать на уровне часов. Они превращаются в
-> основной навигационный инструмент."*
-
-> *"По поводу agps - надо заложить возможность их получения не только по
-> интернету но и по другим каналам связи, ble, lora и проч. На всякий. Буду
-> стараться как-то их получить и пропихнуть в любом случае."*
+- **With GNSS in the watch, the wearer picks which receiver is used** — and, as
+  a further option, both sources are combined and processed together to improve
+  accuracy. The same applies to a phone where possible: the watch should be able
+  to take coordinates (and whatever else is useful and available) from it and
+  process them itself. The watch becomes **the primary navigation instrument**.
+- **Assistance data must not assume the internet.** Provide for obtaining AGPS
+  over other channels too — BLE, LoRa and the rest — because he intends to get
+  it to the device one way or another regardless.
 
 **The list of sources this creates**, which is longer than the one the GNSS work
 was written against:
@@ -550,13 +553,10 @@ fusion is deliberately not decided here.
 
 **Decided:** 2026-08-22.
 
-**As stated:**
-
-> *"я вероятно пихну в ноду gsm/4g/lte короче мобильную связь. Это будет
-> во-первых - один из вариантов уточнения позиции (опрашиваем вышки, по
-> идентификатору смотрим ее координаты в базе которая заранее качается из
-> интернета) а во-вторых, один из вариантов выйти на связь, получить agps, и тому
-> подобное."*
+**What he decided:** he will probably put cellular — GSM/4G/LTE — into the
+node. It serves two purposes: refining position (interrogate the towers, look
+their identifiers up in a database downloaded from the internet ahead of time),
+and having a way to get online at all — for assistance data and the like.
 
 **Two features, and they are independent.** A modem in the node would give:
 
@@ -602,13 +602,12 @@ a part exists.
 
 **Decided:** 2026-08-22.
 
-**As stated:**
-
-> *"надо чтобы у стоящего на месте человека (определять по акселерометру можно)
-> gps координаты брались реже, если есть точные и доверенные координаты - то
-> вообще можно не переспрашивать пока он не двинется с места. При этом конечно
-> не допускать холодного пуска желательно очень, т.е. не выключать модуль совсем
-> или держать agps на готове как-то. В общем на подумать это"*
+**What he decided:** for a wearer who is standing still — detectable from the
+accelerometer — take GNSS fixes less often, and where the existing coordinates
+are accurate and trusted, do not ask again at all until they move. At the same
+time, a cold start must be avoided if at all possible: do not switch the module
+off entirely, or keep assistance data ready somehow. Filed as something to think
+about rather than as a finished design.
 
 **The idea is right and the second half is the hard half.** GNSS is the largest
 continuous draw on a watch that has it, and a position that has not changed does
@@ -674,19 +673,15 @@ is a claim about a specific module's low-power behaviour.
 
 **Decided:** 2026-08-22.
 
-**As stated:**
+**What he decided:** we will make it look good, but no single look will please
+everybody. Theme switching goes into the core, and themes are downloadable,
+installable and switchable **like applications** — a user's own colours, own
+fonts, own icons for the stock applications, and so on — **without the layout
+falling apart on screen**. In the plan, and not optionally.
 
-> *"мы сделаем красиво, но всем понравиться с одним единственным вариантом не
-> получится. нужно заложить в ядро возможность смены темы. и сделать эти темы
-> скачиваемыми, устанавливаемыми и переключаемыми, как приложения. чтобы можно
-> было поставить свои цвета, свои шрифты, свои иконки ванильных приложений и
-> прочее. и при этом чтобы все не поехало к чертям на экране. в план,
-> обязательно!"*
-
-And, in the same message, about a `□` visible in a simulator screenshot:
-
-> *"а что там за прямоугольник на экране? проебанный в шрифте символ? в проде
-> конечно же такого быть не должно, ты же понимаешь?"*
+And, in the same message, about a `□` visible in a simulator screenshot: he
+asked what that rectangle was, whether it was a glyph missing from the font, and
+said that of course nothing like it may reach production.
 
 The second half is not a separate topic. A missing glyph is what a theme system
 produces by default unless it is designed not to, and the box in that screenshot
@@ -705,7 +700,7 @@ code, a way to install one, a validity check, or a way to survive a bad one.
 1. **A theme is data, not code.** It carries colour values for the twelve roles
    in both themes, a font, an icon set, and nothing else. It never carries
    layout, and it never carries a pixel count — a theme that could set a padding
-   could break every screen, and "чтобы всё не поехало" is precisely a
+   could break every screen, and *the layout does not fall apart* is precisely a
    requirement that it cannot.
 2. **Installing a theme is installing untrusted content**, and it arrives over
    the same links a message does. It is parsed defensively, it is bounded in
@@ -749,17 +744,14 @@ than a feature). T-034's asset pipeline is amended before it starts.
 
 **Decided:** 2026-08-22, on [#41](https://github.com/hleserg/Attadipa/issues/41).
 
-**As stated:**
-
-> *"Согласен - принимаю."*
-
-— to the recommendation in that issue: option 4, do not support Meshtastic,
-MeshCore alone answers what [OD-7](#od-7--the-companion-is-any-node-not-only-ours)
-actually asked for.
+**What he decided:** he agreed and accepted the recommendation in that issue —
+option 4, do not support Meshtastic, because MeshCore alone answers what
+[OD-7](#od-7--the-companion-is-any-node-not-only-ours) actually asked for.
 
 **What was asked, and what happened to it.** OD-7 said Meshtastic should be a
-companion option *"вместо (или вместе, как получится)"* MeshCore. T-073 checked
-the licence first, as that task required, and found the blocker:
+companion option *instead of MeshCore, or alongside it, whichever turned out to
+be workable*. T-073 checked the licence first, as that task required, and found
+the blocker:
 `meshtastic/protobufs` is a separate repository with its own `LICENSE`, and that
 file is **GPL-3.0** with no linking exception. Generating code from those
 `.proto` files and linking it into the firmware would make Attadipa's firmware a
@@ -845,9 +837,8 @@ better question than the one asked.
 
 ### 1. The watch does not pretend to be a smart tag
 
-**As stated:**
-
-> *"Не делаем. Ни Apple, ни какую-либо ещё."*
+**What he decided:** we are not doing it — not Apple's ecosystem and not any
+other.
 
 Not deferred, not blocked on the ecosystems. **Decided.**
 
@@ -867,10 +858,9 @@ project already specifies.
 
 ### 2. A track is not a length of time. It is distance from familiar ground, on foot
 
-The question asked was *how many hours*. The owner replaced it:
-
-> *"трек пишется на случай, когда по нему, вероятно, придётся возвращаться
-> пешком"* — вышел из метро, топаешь, заблудился, посмотрел трек, вернулся.
+The question asked was *how many hours*. The owner replaced it: **a track is
+recorded for the case where somebody will probably have to walk back along it**
+— out of the metro, walking, lost, looked at the track, found the way back.
 
 So the recording rule is about **purpose**, not duration:
 
@@ -912,10 +902,10 @@ of writing the decision down:
 
 ### 3. Saving a whole track is a second, independent feature
 
-> *"хочу уметь сохранить трек целиком по запросу и посмотреть его потом на
-> карте"* — on request, so no restriction on how the wearer is travelling; a car
-> is fine here. Shaped as an application, allowed to run in the background so
-> other applications keep working while it records.
+**What he decided:** he wants to be able to save a whole track on request and
+look at it afterwards on a map. On request, so there is no restriction on how
+the wearer is travelling — a car is fine here. Shaped as an application, allowed
+to run in the background so other applications keep working while it records.
 
 It is **not a mode of the first one**. Different consumer, different volume,
 different behaviour when storage fills. Filed separately for that reason.
@@ -946,8 +936,7 @@ numbers in it, not a quiet simplification.
 
 **Decided:** 2026-08-22, on [#55](https://github.com/hleserg/Attadipa/issues/55).
 
-**As stated:** *«Законность моя проблема а не прошивки»* — *legality is my
-problem, not the firmware's.*
+**What he decided:** legality is his problem, not the firmware's.
 
 **What was asked.** [OPEN_QUESTIONS](OPEN_QUESTIONS.md) A4: which country or
 regulatory region does the device operate in. The question was concrete rather
@@ -1015,15 +1004,9 @@ writes `SettingsService` next.
 
 **Decided:** 2026-08-22, on [issue #57](https://github.com/hleserg/Attadipa/issues/57).
 
-**As stated:**
-
-> *"@claude A7 побеждает то что ты сделал уже последним. Не надо переделывать и
-> перепроверять. A8 буду очень благодарен если ты сам уберешь фон с картинок
-> где надо. Уверен ты справишься"*
-
-**In English:** for A7, what wins is whatever was already done last — no need
-to redo it or re-verify it. For A8: yes, please remove the background from the
-images where it needs it.
+**What he decided:** for A7, what wins is whatever was already done last — no
+need to redo it or re-verify it. For A8: yes, please remove the background from
+the images where it needs it.
 
 **A7 — which orange, which olive.** "What was already done last" is the
 canonical palette: every colour in the design system and the firmware already
@@ -1066,13 +1049,8 @@ the two that actually conflicted.
 
 **Decided:** 2026-08-22, on [issue #54](https://github.com/hleserg/Attadipa/issues/54).
 
-**As stated:**
-
-> *"@claude A1 пока нет ни тех ни других часов. A2 sx1262 mia-m10q A3 есть
-> компаньон ноды meshcore heltec t114 и heltec v4"*
-
-**In English:** A1 — no watch of either kind yet. A2 — SX1262, MIA-M10Q. A3 —
-there is a companion node, MeshCore Heltec T114 and Heltec V4.
+**What he decided:** A1 — no watch of either kind yet. A2 — SX1262, MIA-M10Q.
+A3 — there is a companion node, MeshCore Heltec T114 and Heltec V4.
 
 The owner then posted a longer analysis of their own answer on the same issue;
 this record follows that analysis rather than the three words alone, because
@@ -1248,55 +1226,261 @@ answer.
 
 ---
 
-## OD-17 — A5 and A6: a watch retrofit may have a magnetometer; the node will not
+## OD-18 — The received unit stays powered, with its brightness at minimum
 
-**Decided:** 2026-08-22, on [#56](https://github.com/hleserg/Attadipa/issues/56),
-with the ordered watch modules recorded on [#83](https://github.com/hleserg/Attadipa/issues/83).
+**Decided:** 2026-08-23, in session. Raised by the owner, unprompted, while the
+unit sat on the desk showing the vendor firmware's desktop.
 
-The owner decided that a magnetometer is an external module fitted to the
-Waveshare watch, not a capability of any stock board. Two candidates were
-ordered: CJMCU-9911 (AK09911C) and GY-271 (QMC5883L). Choosing the part and its
-placement remains open; [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) is the
-technical record. This decision does not promote an unmodified board from
-"absent" to "present".
+**The concern first.** While the coding goes on, the watch lies powered showing
+one and the same desktop picture, and this project had itself said an AMOLED can
+be burned that way. Could it be switched off between runs, or the screen blanked?
+It would be good to make that a rule.
 
-The Attadipa node will not carry a magnetometer. A third-party companion can
-still report its own heading, but it cannot become `WatchBody` heading without
-a known, calibrated, valid body transform; [ADR-0009](../adr/0009-heading.md)
-continues to enforce that boundary. A future node accelerometer or gyroscope is
-a separate capability decision, not an implicit compass project.
+**And then the decision, after the options were laid out:** he found the screen
+brightness **in the settings**, turned it to minimum, and asked whether at low
+brightness the panel is safe. He does not want it switched off — he wants the
+hardware available for a code run whenever one is needed.
 
-**Status:** decision only; it does not authorise soldering, a driver, or a
-hardware claim without the required measurement.
+**"In the settings" is the load-bearing half of that sentence, and it is not a
+figure of speech.** It is the only thing anywhere in this repository saying the
+factory launcher has a settings menu, that it contains at least a brightness
+control, and that a human being has been inside it. Nothing else has ever
+enumerated it — which is why the paragraph below can say a display timeout in
+that menu is `UNKNOWN` and unobserved rather than absent.
 
----
+**What it obliges:**
 
-## OD-20 — A10: wake the display on raise, button, or touch
+1. **The unit stays powered and attached.** Availability for a hardware run was
+   chosen over the safer state, knowingly. An agent does not power it down, does
+   not ask for it to be unplugged, and does not treat "unplug it" as the
+   recommendation when reporting on this.
+2. **Minimum brightness is the mitigation in force**, set by the owner in the
+   vendor firmware. Nothing of ours can *deliberately* change it, because
+   nothing of ours runs on the unit — but **whether it survives a reset is
+   `UNKNOWN`**, and write-inability is not persistence. It is a runtime setting
+   in a launcher's `Settings` app; nothing establishes that `phone_s3_box_3`
+   commits it. **The vendor BSP's init table brings the panel up at
+   `0x51 = 0xFF`, 100 % — and that is corroboration this item may not use**, for
+   the reason this same branch spent a round on: the unit does not run the BSP,
+   it runs `phone_s3_box_3`, and evidence about a program that is not on the
+   device is not evidence about the device. It is left in only as the reason a
+   reset is *worth looking at*, not as a prediction of what it will show.
+   `UNKNOWN` is right either way, and only for the first half of this sentence.
+   A bench session is *allowed* to reset the unit — the RAM-load route
+   enters the ROM downloader, and opening a port does it by accident — so this
+   is reachable rather than theoretical. Until somebody looks at the panel after
+   a reset, **a session that reset the unit must not report the mitigation as
+   still in force**; it must say it reset the board and that the brightness is
+   unconfirmed. **There is a cheaper route than eyes on a panel, and its baseline is already
+   taken.** [VERIFIED_FACTS](VERIFIED_FACTS.md), *"The stock firmware does not
+   rewrite its own configuration partitions on boot"*, hashes `nvs`, `otadata`
+   and `phy_init` (`0x9000`–`0x12000`) to
+   `803798ee52013c09e9dd55a72226d0195ec6a3582f85af3b43315f9247b3e26e` across
+   three reads on **2026-08-22** — the day *before* the brightness was set to
+   minimum.
 
-**Decided:** 2026-08-22, on [#53](https://github.com/hleserg/Attadipa/issues/53).
+   **That range is three of the five data partitions, and the negative needs
+   all five.** `0x9000`–`0x12000` stops at the byte where `model` begins;
+   [WAVESHARE_FLASH_LAYOUT](WAVESHARE_FLASH_LAYOUT.md) §2, the factory partition
+   table, lists two more data partitions outside it — `model` (952 KB spiffs) and **`storage`** (6 MB
+   spiffs, UI assets) — and nothing establishes where `phone_s3_box_3` commits a
+   runtime setting. On the branch whose thesis is that this image is opaque, an
+   unchanged 36 KB says the setting is not in *those* 36 KB, not that it was
+   never written. **So the baseline to re-read is the whole flash**, which is
+   already taken and is stronger: `WAVESHARE_FLASH_LAYOUT` §2.2 hashes all
+   33 554 432 bytes to
+   `2ab0fadcf8c71834fc5ac0e9197c1fcec6c71d7a25f1af382d0537f19c33dfd5`, agreed by
+   three independent complete reads and by the device's own MD5, on the same
+   2026-08-22 and likewise before the brightness was set.
 
-The display is off by default and wakes for a wrist raise, a button press, or a
-touch. This addresses AMOLED static-content exposure through duty cycle; it
-does not decide an always-on face, Auto Current Limit, brightness values, or
-their hardware measurements.
+   **Its decisive branch is also its least likely one, and the source it comes
+   from says so.** Re-read it on the next trip: an unchanged whole-flash hash
+   means the setting was never committed to flash at all, so it cannot survive a
+   reset, and no reboot has to be watched to learn it — a negative a pair of eyes
+   cannot give. But that branch is reachable only if **nothing else in 32 MB
+   moved**, and nothing establishes that. `WAVESHARE_FLASH_LAYOUT` §2.2 makes the
+   point against itself: *"on a live device it also mixes in partitions the
+   firmware is entitled to rewrite."* The across-reboot evidence this repository
+   actually holds belongs to the **36 KB** range and not to the image — `nvs`,
+   `otadata` and `phy_init` identical across three reads separated by hard resets
+   and ~90 s of running ([VERIFIED_FACTS](VERIFIED_FACTS.md), S12) — whereas the
+   whole-image reads §2.2 describes were taken back to back, plus the owner's
+   Windows pass. `storage` alone is 6 MB of UI assets and nothing says ordinary
+   use leaves it untouched.
 
-Raise-to-wake must use the accelerometer signal only. The T-Watch has no
-gyroscope, so a gyro-dependent wake path would not be one behaviour that both
-supported boards can provide. This is a constraint on this common wake feature,
-not a denial that a board-specific gyroscope exists or may be used by a future,
-explicitly designed capability.
+   So the trip is worth taking and the shortcut is **not** cheap and decisive:
+   read the whole image *and* the 36 KB range. A changed whole-flash hash — the
+   likely outcome — proves only that something was written, so the panel has to
+   be looked at anyway, and the 36 KB range is then what says *where*. The
+   fallback is safe either way, which is why this is a wording correction and not
+   a `MEASURED` that would have been wrong. Round fourteen of
+   [#134](https://github.com/hleserg/Attadipa/pull/134); an earlier version of
+   this paragraph closed *"for a negative, a whole-image hash is the strongest
+   form there is"*, which argued against the section it cites.
 
-**Status:** the decision does not implement the wake sources. Their electrical
-configuration, latency, current cost, and the Waveshare IMU interrupt path
-remain subject to the corresponding measured hardware evidence.
+   **And the trip is not free in the other direction either**: running our code
+   to take the read resets the unit, which is exactly what reopens the brightness
+   `UNKNOWN` item 2 records. The read that goes to close it costs the state it
+   was closing.
+
+   The cost is the honest part: a full 32 MB read, not one 36 KB dump. It is the
+   same read the backup already needed and takes minutes over USB/IP, but it is
+   not free, and the twelfth review round proposed the cheap version while the
+   thirteenth found the shortcut scoped to three of five partitions and worded as
+   though it covered flash. Taking the cheap dump and writing *"the brightness
+   setting is not persisted — `MEASURED`"* would be a `PASS` for a state nobody
+   observed, in the register `CLAUDE.md` says is not ours to overturn.
+
+   `WAVESHARE_FLASH_LAYOUT` §2.2, under
+   *"`nvs`, `otadata` and `phy_init` did not move either"*, is the precedent for
+   the **method** and not a missed chance: the owner watched the unit through
+   six download-mode cycles on 2026-08-22, and that is how the `nvs` result
+   stopped being a guess. It could not have settled the brightness — the
+   brightness was set to minimum on **2026-08-23**, this decision's own date, so
+   what those cycles would have recorded is 100 %. What the precedent says is
+   that one pair of eyes on the panel through one reset turns this `UNKNOWN`
+   into a `MEASURED`, and that the next reset is the cheap opportunity.
+3. **The question in it was answered honestly and stays answered that way.**
+   "They will not be ruined, right?" is `UNKNOWN`, not "safe" — no lifetime
+   figure exists for this panel, D7 has not settled even its initialisation
+   sequence, and class figures for "AMOLED" are not this part's. Minimum
+   brightness slows ageing at least in proportion to luminance; it does not stop
+   it. An agent must not upgrade that to a reassurance.
+4. **The rule the owner asked for exists**, narrowed to what an agent can
+   actually do:
+   [`../hardware/BENCH_HANDLING.md`](../hardware/BENCH_HANDLING.md). An agent
+   cannot blank the panel — there is no Attadipa firmware on the unit — so the
+   obligation is to *say* at the end of a bench session, or before a long stretch
+   that does not need the unit, that it is sitting lit. The action is the
+   owner's.
+
+**What it invalidates:** the preference table in `BENCH_HANDLING.md` ranks a
+screen timeout first and unplugging last. That ranking stands as the general
+case; for **this** unit the owner has chosen the second row, and this decision
+outranks the table. It does **not** settle row 1: whether the factory launcher
+offers a display timeout is `UNKNOWN` and unobserved — the menu the owner opened
+to find the brightness has never been enumerated, and nothing here should be
+read as saying there is nothing in it.
+
+**What it does not decide:** nothing about the product. Whether the firmware
+ships an idle dim, a screen timeout, pixel shift or an always-on face is
+[WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §3.5, and is **A10** in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) — *"what does Attadipa do about static
+content on the AMOLED?"*, asked as
+[#53](https://github.com/hleserg/Attadipa/issues/53). **Whether A10 is still
+open is not this decision's to say, and the register is about to disagree with
+itself if it tries:** [#97](https://github.com/hleserg/Attadipa/pull/97) carries
+an `OD-16` that *answers* A10 — the display wakes on raise, button and touch —
+so landing both leaves one file calling A10 open beside one closing it. Whoever
+merges second renumbers and reconciles; this paragraph records what the owner
+decided **here**, which is about the unit on the desk and not about the
+product. Its neighbour **A9** (§1,
+[#52](https://github.com/hleserg/Attadipa/issues/52)) is the different question
+of whether the day theme keeps its near-white page. All four items above are
+A10's; none is A9's. This is about a board on a desk, and decides neither.
+
+**What was not weighed when it was decided.** Every option put to the owner was
+about the panel, and so is every obligation above. The unit also has a **cell**
+fitted, on a rail with no disconnect switch and a charger this repository calls
+opaque — so *"stays powered and attached", indefinitely* has a second consumable
+in it that nobody costed, and the option that was ranked last, unplugging, does
+not even stop the first one. The facts are in
+[`../hardware/BENCH_HANDLING.md`](../hardware/BENCH_HANDLING.md) under *"What is
+not established"*, and they stay `UNKNOWN` there: no register on that charger has
+been read, and neither state is established as the kinder one. This is **not** a
+reason to reopen the decision — the owner chose availability knowingly and that
+choice stands. It is here so that the decision is not read as having weighed a
+question it was never asked.
+
+**Answered by the owner: the second consumable.** Recording it in
+`docs/` and closing the paragraph is what round 15 of #134 called wrong, and it
+is right: a fact nobody was asked about does not become weighed by being written
+down. No recommendation is offered and none is possible — neither state is
+established as kinder — so this is one question and not a proposal.
+
+> **English.** The unit has a cell fitted on `VBAT1`, which has no disconnect
+> switch, no protection FET and no fuel gauge, and `TS` is tied to `GND` so the
+> charger never sees cell temperature. `0x63[4]` has not been read, so indefinite
+> CV float is not excluded. Nobody has read a register on that charger, and
+> nothing here says which of "left plugged in" and "unplugged" is kinder to the
+> cell — the first is `UNKNOWN`, and the second does not stop the panel ageing
+> either, so it is not an escape. **The question is only this: do you want the
+> charger's registers read on the next bench trip, so that the cell half of
+> "stays powered and attached" stops being `UNKNOWN`?** It is a read, nothing is
+> driven, and it costs one session. A "no" is a complete answer and closes this.
+>
+> **По-русски.** В плате стоит аккумулятор на `VBAT1`: нет разъединителя, нет
+> защитного FET, нет топливомера, а `TS` посажен на `GND` — зарядник вообще не
+> видит температуру ячейки. Регистр `0x63[4]` не читали, поэтому бесконечный
+> CV-float не исключён. Никто не читал ни одного регистра этого зарядника, и
+> здесь нигде не сказано, что для ячейки лучше — «оставить в USB» или
+> «отключить»: первое `UNKNOWN`, а второе всё равно не останавливает старение
+> панели, то есть это не выход. **Вопрос ровно один: прочитать регистры
+> зарядника в следующий заход на стол, чтобы «стоит подключённым» перестало быть
+> `UNKNOWN` со стороны ячейки?** Это чтение, ничего не подаётся, стоит одну
+> сессию. «Нет» — полный ответ и закрывает вопрос.
+
+Raised 2026-08-24. **Answered the same day: read them.** The owner chose the
+read, so the cell-safety registers stop being something a bench session might
+have room for and become something the next trip to the bench owes. No new task
+was filed, because the read already had an owner: `T-106`'s eight-register leg
+carries `0x61`, `0x62`, `0x63` and `0x64` at I²C `0x34`, and that bullet is
+where the answer is recorded as a promise rather than a convenience. **Nothing
+about OD-18 changes** — the unit stays powered and attached, by the owner's
+decision, and the read does not reopen it. What the read closes is narrower than
+the question that prompted it: it establishes what the running image left in
+those registers, which is the cell half of *"stays powered and attached"*; it
+does not establish that either state is kinder, and no reading of it should be
+written as if it had. Until the burst is actually taken every figure stays
+`UNKNOWN`: an answered question is not a measurement. Like the item below it,
+this is written into the register rather than into a pull request comment because
+a squash merge keeps the file and discards the comment.
+
+**Answered by the owner: this register is published, and its convention has
+changed.** `docs/` is the GitHub Pages root for this repository —
+`docs/.nojekyll`, `docs/robots.txt` with `Allow: /` — so every file here,
+including this one, is served from `https://hleserg.github.io/Attadipa/`. That
+means the owner's own words, quoted verbatim as this register's convention used
+to require and as OD-1 still does, were on the project's public website. Raised
+2026-08-23; **answered 2026-08-24**, and the answer was the third of the three
+options put to him: keep the register published, keep the decisions in it, and
+carry his words as **paraphrase** rather than quotation.
+
+So the convention has changed, and the change is his rather than an editorial
+preference of ours: **a decision records what the owner decided, in this
+repository's own words. It does not reproduce how he said it.** Retrofitting the
+register to that convention is a **separate pull request, opened on top of this
+branch** — it touches every quoted decision from OD-1 down, and this branch is
+fifteen review rounds deep on an unrelated subject. Two categories are outside
+it, because neither is quotation of chat: the owner's own authored documents
+checked into the tree (`docs/master-prompt-final.md`, `docs/master-prompt.md`,
+`docs/development-addendum.md`, `docs/ideas/`), which are his text and not our
+record of it, and Russian prose that merely uses guillemets rhetorically. It is
+recorded here rather than left in a pull request comment because a squash merge
+keeps the file and discards the comment, and because this is the register the
+unattended sweep is denied — which is the point of putting an owner-facing
+question in it.
+
+**A known asymmetry, recorded rather than worked around.** This decision lives in
+this register, which
+[`merge-candidate.sh`](../../.github/scripts/merge-candidate.sh) denies to the
+unattended sweep — so changing it takes an orchestrator. The rules that *act* on
+it are in `docs/hardware/`, which the same script allows, so a later edit
+softening the `UNKNOWN` to "safe", or relaxing the must-not-reboot-the-owner's-
+device rule, needs only an `ai-review:pass`. Widening or narrowing that allowlist
+is the owner's decision, not an agent's and not a reviewer's, so this is written
+down as a thing to watch rather than quietly routed around.
 
 ---
 
 ## Still with the owner
 
-The product question of whether a stock board remains GNSS-heading-only is still
-open in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) Q2. OD-17 answers A5 and A6; it
-does not silently answer that separate product question.
+Nothing here answers the compass question (A6), which remains in
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). **A5 is answered** — separately, on the
+same day, on [#83](https://github.com/hleserg/Attadipa/issues/83): an external
+magnetometer is intended and two candidate parts are ordered. Not by *this*
+decision, which is why an earlier version of this paragraph still listed it as
+open.
 
 OD-7 to OD-10 add three of their own, and they are the kind that cannot be
 answered from a datasheet: whether Meshtastic's protocol definitions are licensed
@@ -1306,14 +1490,43 @@ and is filed; the last two are the owner's.
 
 ---
 
+## OD-17 — A5 and A6: a watch retrofit may have a magnetometer; the node will not
+
+**Decided:** 2026-08-22, on [#56](https://github.com/hleserg/Attadipa/issues/56),
+with the ordered watch modules recorded on [#83](https://github.com/hleserg/Attadipa/issues/83).
+
+**What he decided:** a magnetometer is an external module fitted to the
+Waveshare watch, not a capability of either stock board. The two candidate
+modules are CJMCU-9911 (AK09911C) and GY-271 (QMC5883L); choosing a part and its
+placement remains open. This does not promote an unmodified board from absent to
+present.
+
+The Attadipa node will not carry a magnetometer. A third-party companion can
+report its own heading, but cannot become `WatchBody` heading without a known,
+calibrated, valid body transform; [ADR-0009](../adr/0009-heading.md) continues
+to enforce that boundary. This is decision-only: no soldering, driver or
+hardware claim follows without measurement.
+
+---
+
+## OD-20 — A10: wake the display on raise, button, or touch
+
+**Decided:** 2026-08-22, on [#53](https://github.com/hleserg/Attadipa/issues/53).
+
+**What he decided:** the display is off by default and wakes for a wrist raise,
+button press or touch. Raise-to-wake uses the accelerometer signal only; it does
+not decide an always-on face, brightness values or their hardware measurements.
+
+---
+
 ## OD-19 — A bench-attached agent may flash and test Attadipa firmware
 
 **Decided:** 2026-08-24, by the owner.
 
 **What he decided:** a session with the physical board may flash and exercise
 Attadipa firmware, including display/control tooling, and report what it
-observed. A result from that board is `MEASURED`; a cloud-only session must still
-say `NOT EXECUTED — HARDWARE REQUIRED`.
+observed. A board result is `MEASURED`; a cloud-only session remains `NOT
+EXECUTED — HARDWARE REQUIRED`.
 
 **Boundary:** reflashing is permitted because the factory image is backed up.
 Burning eFuses, enabling secure boot or flash encryption, writing production
@@ -1325,14 +1538,10 @@ secrets, or destroying keys still each require an explicit owner request.
 
 **Decided:** 2026-08-22, by the owner; recovered from closed-unmerged PR #126.
 
-Repository artefacts that CI or other agents consume are English: code,
-comments, documentation, commits, branch names, pull-request titles and review
-findings. The owner is addressed in Russian in a conversation, report or
-question. A public GitHub comment addressed to the owner serves both audiences,
-so its owner-facing prose is bilingual with English first; machine-readable
-markers and field names remain English.
-
-The exception is the owner's own text: the two specification documents and the
-owner-authored files under `docs/ideas/` remain verbatim in Russian. This is a
-reader convention, not a product-localisation decision; `l10n/` and ADR-0010
-continue to govern user-visible device strings.
+**What he decided:** repository artefacts read by CI or other agents are English;
+the owner is addressed in Russian in conversation, reports and questions. A
+public GitHub comment addressed to the owner is bilingual, English first, with
+machine-readable markers and field names kept in English. The owner's own
+specification documents and files under `docs/ideas/` remain verbatim in
+Russian. This is not a product-localisation decision; `l10n/` and ADR-0010
+govern device strings.
