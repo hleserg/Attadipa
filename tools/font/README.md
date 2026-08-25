@@ -9,8 +9,8 @@ The scripts, in the order they run.
 | [`instantiate.py`](instantiate.py) | pin a variable font to one weight — and refuse to rewrite it when it is already at that weight |
 | [`measure.py`](measure.py) | generate, compile for ESP32-S3, and report `.rodata`. The flash cost, measured |
 | [`contact_sheet.py`](contact_sheet.py) | render the glyphs LVGL will actually draw, at the size it will draw them, with the advance, side bearings and kerning it will use, in both themes |
-| [`fetch_ttf.py`](fetch_ttf.py) | one 243 kB file out of the pinned LVGL commit, hash-checked, instead of the 350 MiB clone |
-| [`generate_ui_fonts.py`](generate_ui_fonts.py) | the four committed subsets the simulator links, and the `--check` every host CI job runs |
+| [`fetch_ttf.py`](fetch_ttf.py) | the 571 kB variable Nunito Sans file from the pinned Google Fonts commit, hash-checked |
+| [`generate_ui_fonts.py`](generate_ui_fonts.py) | the six committed subsets the simulator and firmware link, and the `--check` every host CI job runs |
 
 Results: [FONT_MEASUREMENTS](../../docs/research/FONT_MEASUREMENTS.md).
 
@@ -60,9 +60,9 @@ To rebuild them, which is the only way to update the stamp:
 
 ```bash
 npm install --no-save lv_font_conv@1.5.3
-python3 tools/font/fetch_ttf.py --out /tmp/Montserrat-Medium.ttf
+python3 tools/font/fetch_ttf.py --out /tmp/NunitoSans.ttf
 python3 tools/font/generate_ui_fonts.py \
-        --ttf /tmp/Montserrat-Medium.ttf --converter ./node_modules/.bin/lv_font_conv
+        --ttf /tmp/NunitoSans.ttf --converter ./node_modules/.bin/lv_font_conv
 ```
 
 Passing both arguments to `--check` instead runs the expensive comparison: a

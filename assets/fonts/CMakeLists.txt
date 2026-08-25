@@ -5,18 +5,21 @@
 # its own headers. The design system names a `TypeRole`; this is one of the
 # places a role can be resolved into something that draws.
 #
-# ~79 kB of .rodata for all four sizes, measured with xtensa `size -A` on the
-# generated objects: 13.0 / 15.2 / 19.4 / 31.3 kB at 14, 16, 20 and 28 px.
+# The two display sizes are intentionally full Cyrillic subsets too. The Clock
+# only draws digits with them today, but the role is a product font contract,
+# not a private numeric asset.
 
 add_library(attadipa_fonts STATIC
-    generated/attadipa_montserrat_14.c
-    generated/attadipa_montserrat_16.c
-    generated/attadipa_montserrat_20.c
-    generated/attadipa_montserrat_28.c
+  generated/attadipa_nunito_sans_14.c
+  generated/attadipa_nunito_sans_16.c
+  generated/attadipa_nunito_sans_20.c
+  generated/attadipa_nunito_sans_28.c
+  generated/attadipa_nunito_sans_64.c
+  generated/attadipa_nunito_sans_96.c
 )
 
 target_include_directories(attadipa_fonts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(attadipa_fonts PUBLIC lvgl)
+target_link_libraries(attadipa_fonts PUBLIC ${ATTADIPA_LVGL_TARGET})
 
 # Generated third-party output. Warnings in it are lv_font_conv's to fix, and
 # turning them into errors in a strict build would make the font a reason a

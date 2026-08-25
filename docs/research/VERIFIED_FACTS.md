@@ -1552,3 +1552,19 @@ constants.
   [WATCH_CONTROL_2026-08-25](../hardware/WATCH_CONTROL_2026-08-25.md), measured
   2026-08-25 on that unit. USB watch-control `info`, screenshots and a remote
   tap were executed on the physical endpoint.
+
+### The first product Clock runs on the physical Waveshare
+
+- **MEASURED:** the shared simulator/firmware Clock rendered on the physical
+  410 × 502 AMOLED with Nunito Sans time, live seconds, date, year, day progress
+  and moving firefly visuals. A debug-injected tap produced the intended ring
+  and animation response on-device. The first gradient render exposed RGB565
+  partial-buffer bands; the final solid-page render did not.
+- **Brightness boundary:** the owner-requested demonstration ran briefly at
+  70%; the final image was rebuilt and reflashed at the safe repository default
+  of 5%.
+- **Time boundary:** the PCF85063 returned an advancing calendar, but this does
+  not establish accuracy, timezone or synchronization.
+- **Source:** [CLOCK_2026-08-26](../hardware/CLOCK_2026-08-26.md), including the
+  final device framebuffer capture. Measured 2026-08-26 on USB serial
+  `28:84:85:B2:18:A4`.

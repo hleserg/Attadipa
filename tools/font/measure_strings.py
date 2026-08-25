@@ -6,7 +6,7 @@ question a layout needs: **will this string fit**. It is the difference between
 a design review that says "the Russian date looks long" and one that says it is
 N pixels wide in a box of M.
 
-It reads the generated `assets/fonts/generated/attadipa_montserrat_*.c` — the
+It reads the generated `assets/fonts/generated/attadipa_nunito_sans_*.c` — the
 exact bytes the firmware and the simulator link — and reimplements LVGL v9.5.0's
 own advance-width arithmetic against them. Nothing here is an estimate of a
 renderer's behaviour; it is that renderer's integer arithmetic, transcribed with
@@ -206,7 +206,7 @@ class Font:
 
 
 def load(size: int) -> Font:
-    path = FONT_DIR / f"attadipa_montserrat_{size}.c"
+    path = FONT_DIR / f"attadipa_nunito_sans_{size}.c"
     if not path.exists():
         raise SystemExit(f"{path} does not exist. Generated sizes: {SIZES}")
     return Font(path)
@@ -271,7 +271,7 @@ def report_clock(letter_space: int) -> int:
     print(f"letter_space = {letter_space} px\n")
     for size in SIZES:
         font = load(size)
-        print(f"== attadipa_montserrat_{size} ({font.size_px} px, {font.bpp} bpp) ==")
+        print(f"== attadipa_nunito_sans_{size} ({font.size_px} px, {font.bpp} bpp) ==")
         print(f"{'string':<26} {'px':>5}  " + "  ".join(f"{n} {w}px" for n, w, _ in PANELS))
         for label, text in CLOCK_STRINGS:
             missing = font.undrawable(text)
@@ -298,7 +298,7 @@ def report_time_span(letter_space: int) -> int:
     """
     for size in SIZES:
         font = load(size)
-        print(f"== attadipa_montserrat_{size} ==")
+        print(f"== attadipa_nunito_sans_{size} ==")
         for label, render in (
             ("24 h  HH:MM", lambda h, m: f"{h:02d}:{m:02d}"),
             ("12 h  H:MM AM", lambda h, m: f"{(h % 12) or 12}:{m:02d} {'AM' if h < 12 else 'PM'}"),
@@ -329,7 +329,7 @@ def report_dates(letter_space: int) -> int:
     }
     for size in SIZES:
         font = load(size)
-        print(f"== attadipa_montserrat_{size} ==")
+        print(f"== attadipa_nunito_sans_{size} ==")
         for form_label, template in forms.items():
             row = []
             for language in ("EN", "RU"):
@@ -361,7 +361,7 @@ def report_digits() -> int:
         widths = {d: font.advance(ord(d)) for d in "0123456789"}
         raw = {d: font.advances[font.glyph_id(ord(d))] for d in "0123456789"}
         distinct = sorted(set(widths.values()))
-        print(f"== attadipa_montserrat_{size} ==")
+        print(f"== attadipa_nunito_sans_{size} ==")
         print("  px  : " + "  ".join(f"{d}={widths[d]}" for d in "0123456789"))
         print("  1/16: " + "  ".join(f"{d}={raw[d]}" for d in "0123456789"))
         verdict = "TABULAR" if len(distinct) == 1 else f"PROPORTIONAL, {distinct} px"
@@ -473,4 +473,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

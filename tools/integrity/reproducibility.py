@@ -34,7 +34,7 @@ cannot see. That job is written and not yet applied — see `README.md` beside
 this file, and T-128.
 
   python3 tools/integrity/reproducibility.py \\
-      --ttf /tmp/Montserrat-Medium.ttf --converter ./node_modules/.bin/lv_font_conv
+      --ttf /tmp/NunitoSans.ttf --converter ./node_modules/.bin/lv_font_conv
 """
 
 from __future__ import annotations
@@ -53,13 +53,9 @@ sys.path.insert(0, str(HERE))
 
 import stamp  # noqa: E402
 
-# Everything a generation reads or writes. `cmake/` is in the list because
-# nothing here needs it — it is what `tools/font/fetch_ttf.py` reads the LVGL pin
-# out of, and a copy that could not run that script would be a copy of something
-# other than a checkout.
+# Everything a generation reads or writes.
 TREE = (
     "tools",
-    "cmake",
     "assets/fonts/generated",
     "ui/assets/generated",
     "ui/assets/source",
@@ -70,8 +66,8 @@ TREE = (
 # a column-aligned table — would survive two same-length directories.
 COPIES = ("a", "a-second-checkout-with-a-deliberately-longer-absolute-path")
 
-FONT_OUTPUTS = [f"assets/fonts/generated/attadipa_montserrat_{size}.c"
-                for size in (14, 16, 20, 28)]
+FONT_OUTPUTS = [f"assets/fonts/generated/attadipa_nunito_sans_{size}.c"
+                for size in (14, 16, 20, 28, 64, 96)]
 FONT_OUTPUTS.append("assets/fonts/generated/INPUTS.sha256")
 
 IMAGE_OUTPUTS = [f"ui/assets/generated/attadipa_icon_{name}_{size}.c"
@@ -105,7 +101,7 @@ def generate(checkout: Path, ttf: Path, converter: Path, skip_images: bool) -> N
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ttf", required=True, help="path to Montserrat-Medium.ttf")
+    parser.add_argument("--ttf", required=True, help="path to the pinned Nunito Sans variable TTF")
     parser.add_argument("--converter", required=True, help="path to lv_font_conv")
     parser.add_argument("--skip-images", action="store_true",
                         help="fonts only, for a machine without Pillow, pypng and lz4")

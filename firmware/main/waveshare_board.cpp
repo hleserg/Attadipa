@@ -16,7 +16,9 @@
 #include "lvgl.h"
 #include "sdkconfig.h"
 
+#include "attadipa/apps/clock.h"
 #include "attadipa/platform/board_profile.h"
+#include "attadipa/ui/clock_face.h"
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
 #include "watch_control.h"
@@ -79,9 +81,7 @@ struct BoardState {
   esp_lcd_panel_handle_t panel = nullptr;
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
-  lv_obj_t *rtc_label = nullptr;
-  lv_obj_t *touch_label = nullptr;
-  std::uint32_t touches = 0;
+  attadipa::ui::ClockFace clock_face;
 };
 
 BoardState state;
@@ -208,18 +208,36 @@ esp_err_t read_rtc(RtcDateTime *time) {
   return ESP_OK;
 }
 
-esp_err_t format_rtc(char *text, std::size_t text_size) {
-  RtcDateTime time{};
-  const esp_err_t err = read_rtc(&time);
+attadipa::apps::ClockState read_clock_state() {
+  attadipa::apps::ClockState clock;
+  clock.locale = attadipa::l10n::Locale::En;
+  RtcDateTime rtc{};
+  const esp_err_t err = read_rtc(&rtc);
   if (err != ESP_OK) {
-    std::snprintf(text, text_size,
-                  err == ESP_ERR_INVALID_RESPONSE ? "RTC NOT SET"
-                                                  : "RTC I2C ERROR");
-    return err;
+    clock.availability = err == ESP_ERR_INVALID_RESPONSE
+                             ? attadipa::core::Availability::Unprovisioned
+                             : attadipa::core::Availability::Failed;
+    clock.time.validity = err == ESP_ERR_INVALID_RESPONSE
+                              ? attadipa::core::Validity::Unknown
+                              : attadipa::core::Validity::Invalid;
+    return clock;
   }
-  std::snprintf(text, text_size, "RTC %02u:%02u:%02u", time.hour, time.minute,
-                time.second);
-  return ESP_OK;
+
+  attadipa::apps::CivilTime civil{static_cast<std::int64_t>(rtc.year),
+                                  rtc.month,
+                                  rtc.day,
+                                  0,
+                                  rtc.hour,
+                                  rtc.minute,
+                                  rtc.second};
+  if (!attadipa::apps::wall_time_from_civil(civil, clock.time.value)) {
+    clock.availability = attadipa::core::Availability::Failed;
+    clock.time.validity = attadipa::core::Validity::Invalid;
+    return clock;
+  }
+  clock.availability = attadipa::core::Availability::Ready;
+  clock.time.validity = attadipa::core::Validity::Valid;
+  return clock;
 }
 
 void round_flush_area(lv_area_t *area) {
@@ -227,16 +245,11 @@ void round_flush_area(lv_area_t *area) {
   area->x2 |= 1;
 }
 
-void refresh_rtc(lv_timer_t *) {
-  char text[24]{};
-  format_rtc(text, sizeof(text));
-  lv_label_set_text(state.rtc_label, text);
-}
-
-void touch_clicked(lv_event_t *) {
-  ++state.touches;
-  lv_label_set_text_fmt(state.touch_label, "TOUCH OK  %" PRIu32, state.touches);
-  ESP_LOGI(kTag, "physical touch %" PRIu32, state.touches);
+void refresh_clock(lv_timer_t *timer) {
+  const attadipa::apps::ClockState clock = read_clock_state();
+  state.clock_face.update(attadipa::apps::format_clock(clock, false));
+  lv_timer_set_period(timer,
+                      attadipa::apps::clock_manifest().tick_period.value);
 }
 
 esp_err_t initialize_display() {
@@ -351,50 +364,17 @@ esp_err_t initialize_touch() {
 }
 
 void create_ui() {
-  lv_obj_t *screen = lv_screen_active();
-  lv_obj_set_style_bg_color(screen, lv_color_black(), LV_PART_MAIN);
-  lv_obj_set_style_text_color(screen, lv_color_white(), LV_PART_MAIN);
-
-  lv_obj_t *title = lv_label_create(screen);
-  lv_label_set_text(title, "ATTADIPA / T-166");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, LV_PART_MAIN);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 42);
-
-  state.rtc_label = lv_label_create(screen);
-  lv_obj_set_style_text_font(state.rtc_label, &lv_font_montserrat_28,
-                             LV_PART_MAIN);
-  refresh_rtc(nullptr);
-  lv_obj_align(state.rtc_label, LV_ALIGN_TOP_MID, 0, 82);
-
-  constexpr std::uint32_t colors[] = {0xF02020, 0x20D060, 0x2070F0};
-  constexpr int offsets[] = {-80, 0, 80};
-  for (unsigned i = 0; i < 3; ++i) {
-    lv_obj_t *swatch = lv_obj_create(screen);
-    lv_obj_set_size(swatch, 60, 18);
-    lv_obj_set_style_bg_color(swatch, lv_color_hex(colors[i]), LV_PART_MAIN);
-    lv_obj_set_style_border_width(swatch, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(swatch, 3, LV_PART_MAIN);
-    lv_obj_align(swatch, LV_ALIGN_TOP_MID, offsets[i], 125);
-  }
-
-  lv_obj_t *button = lv_button_create(screen);
-  lv_obj_set_size(button, 300, 96);
-  lv_obj_align(button, LV_ALIGN_CENTER, 0, 35);
-  lv_obj_set_style_bg_color(button, lv_color_hex(0x20242A), LV_PART_MAIN);
-  lv_obj_add_event_cb(button, touch_clicked, LV_EVENT_CLICKED, nullptr);
-
-  state.touch_label = lv_label_create(button);
-  lv_label_set_text(state.touch_label, "TOUCH ME");
-  lv_obj_set_style_text_font(state.touch_label, &lv_font_montserrat_28,
-                             LV_PART_MAIN);
-  lv_obj_center(state.touch_label);
-
-  lv_obj_t *safety = lv_label_create(screen);
-  lv_label_set_text(safety, "AMOLED 5% / RGB TEST");
-  lv_obj_set_style_text_color(safety, lv_color_hex(0x808080), LV_PART_MAIN);
-  lv_obj_align(safety, LV_ALIGN_BOTTOM_MID, 0, -38);
-
-  lv_timer_create(refresh_rtc, 1000, nullptr);
+  const attadipa::apps::ClockState clock = read_clock_state();
+  const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  state.clock_face.build(lv_screen_active(),
+                         {kWidth, kHeight, attadipa::ui::Theme::Night,
+                          attadipa::ui::PixelCost::PerPixel,
+                          attadipa::ui::Metrics::for_dpi(
+                              profile != nullptr ? profile->display.dpi() : 0)},
+                         attadipa::apps::format_clock(clock, false));
+  lv_timer_create(refresh_clock,
+                  attadipa::apps::clock_manifest().tick_period.value, nullptr);
 }
 
 } // namespace
@@ -404,13 +384,11 @@ esp_err_t start_waveshare_ui() {
   ESP_RETURN_ON_ERROR(initialize_pmu(), kTag, "initialize AXP2101");
   ESP_RETURN_ON_ERROR(add_i2c_device(kPcf85063Address, &state.rtc), kTag,
                       "add PCF85063");
-  char rtc_text[24]{};
-  const esp_err_t rtc_result = format_rtc(rtc_text, sizeof(rtc_text));
-  if (rtc_result == ESP_OK) {
-    ESP_LOGI(kTag, "PCF85063: %s", rtc_text);
-  } else {
-    ESP_LOGW(kTag, "PCF85063: %s (%s)", rtc_text, esp_err_to_name(rtc_result));
-  }
+  const attadipa::apps::ClockState clock = read_clock_state();
+  ESP_LOGI(kTag, "PCF85063: %s",
+           clock.availability == attadipa::core::Availability::Ready
+               ? "ready"
+               : "unavailable");
   ESP_RETURN_ON_ERROR(initialize_display(), kTag, "initialize display");
   ESP_RETURN_ON_ERROR(initialize_touch(), kTag, "initialize touch");
 

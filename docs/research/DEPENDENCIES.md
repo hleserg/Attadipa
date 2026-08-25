@@ -151,9 +151,9 @@ T-Watch bring-up; it does not bind this decision.
 
 ### Fonts — Nunito Sans and Inter
 
-Pinned above; measured in [FONT_MEASUREMENTS](FONT_MEASUREMENTS.md). **Neither
-is chosen** — the numbers a choice needs now exist, and the choice itself is a
-design decision (OPEN_QUESTIONS D16).
+Pinned above and measured in [FONT_MEASUREMENTS](FONT_MEASUREMENTS.md). The
+owner selected **Nunito Sans Regular 400** for T-037 on 2026-08-26 after seeing
+the Montserrat prototype. D16 is resolved; arrows are image-pipeline icons.
 
 The three facts that change what "pick a font" means:
 
