@@ -209,7 +209,7 @@ attadipa_intake_decision() {
   #    a decision.
   if [ "$event" = "issues" ] || [ "$event" = "workflow_dispatch" ]; then
     case ",$labels," in
-      *,agent:working,*|*,agent:review,*|*,agent:blocked,*|*,agent:done,*)
+      *,agent:working,*|*,agent:review,*|*,agent:blocked,*)
         echo "reject: already claimed ($labels)"; return 0 ;;
     esac
   fi
