@@ -77,8 +77,8 @@ the eleven edits that make the sweep *call* them are in the patch. `git apply
 --check` is asserted by `merge-candidate-test.sh` itself, so a patch that stops
 applying turns CI red rather than rotting quietly, and the suite reports the same
 184 either way, in the parked state and in the applied one.
-`codex-answered-test.sh` keys on the same two states and reports 101 parked
-against 100 applied, because the parked state has one more thing to assert —
+`codex-answered-test.sh` keys on the same two states and reports 104 parked
+against 103 applied, because the parked state has one more thing to assert —
 that the live caller is still the shape the patch replaces. The GraphQL document
 it points the sweep at was run read-only against this repository's #173, #176,
 #180, #188 and #193 on 2026-08-24, and both rules answered over the real

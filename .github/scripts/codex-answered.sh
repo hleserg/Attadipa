@@ -190,7 +190,7 @@ attadipa_codex_acknowledges() {
   head="$(attadipa_codex_oid "${2-}")" || return 1
   want="$ATTADIPA_CODEX_ACK $head"
 
-  local fence_char="" fence_len=0 run=0 rest c tail
+  local fence_char="" fence_len=0 run=0 rest c tail quoted=no
   while IFS= read -r line; do
     line="${line%$'\r'}"
 
@@ -208,6 +208,21 @@ attadipa_codex_acknowledges() {
       stripped="${stripped# }"
       indent=$((indent + 1))
     done
+
+    # A BLANK LINE ENDS A QUOTATION, and nothing else does. Markdown's LAZY
+    # CONTINUATION means the second line of
+    #
+    #     > Somebody wrote:
+    #     attadipa: codex-reviewed <oid>
+    #
+    # renders INSIDE the quote even though it carries no `>` of its own -- so
+    # refusing only the lines that begin with one refuses the marker and not the
+    # quotation. The flag below survives until a blank line, which is where
+    # CommonMark ends the paragraph and therefore the block.
+    if [ -z "$stripped" ]; then
+      quoted=no
+      continue
+    fi
 
     # A FENCE, tracked by its character and its run length rather than by "the
     # line starts with three of something". Inside a ``` block a `~~~` line is
@@ -254,7 +269,7 @@ attadipa_codex_acknowledges() {
     [ "$indent" -le 3 ] || continue
 
     case "$stripped" in
-      '>'*) continue ;;   # a quotation is somebody else's words
+      '>'*) quoted=yes; continue ;;  # a quotation is somebody else's words
       # ANY BACKTICK AT ALL, so no code span of any width survives -- and this
       # is deliberately redundant. The exact comparison below already refuses a
       # line carrying one, because the acknowledgement has no backtick in it, so
@@ -265,6 +280,9 @@ attadipa_codex_acknowledges() {
       # believing it is tested.
       *'`'*) continue ;;
     esac
+
+    # Still inside a quotation this line does not have to carry a marker for.
+    [ "$quoted" = no ] || continue
 
     # Trailing whitespace only; a line with anything else on it is prose about
     # the acknowledgement rather than the acknowledgement.

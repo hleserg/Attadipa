@@ -26,7 +26,7 @@
 #
 # AND THE LAST SECTION RUNS THE RULE WITH ITS PROPERTIES BROKEN ONE AT A TIME.
 # A suite of fixtures proves the rule answers correctly today; it does not prove
-# any single line of the rule is load-bearing. Seven mutants, each reverting one
+# any single line of the rule is load-bearing. Eight mutants, each reverting one
 # property to the shape that shipped the defect, and each must make an assertion
 # above go red.
 
@@ -315,6 +315,18 @@ ok "an unterminated HTML comment takes the rest of the body with it" 1 "$HEAD_A"
 ok "nor a quotation of somebody else saying it" 1 "$HEAD_A" \
    "$(arr "$(finding issue "$FOUND_AT")" \
           "$(says issue hleserg "$AFTER" admin false "> $(ack)")")"
+# LAZY CONTINUATION. The second line here carries no `>` and still renders
+# inside the quotation, which is CommonMark's rule for a paragraph continuing a
+# block. Refusing only the lines that begin with a marker refuses the marker and
+# not the quotation.
+ok "nor the line after a quotation, which markdown renders inside it" 1 "$HEAD_A" \
+   "$(arr "$(finding issue "$FOUND_AT")" \
+          "$(says issue hleserg "$AFTER" admin false \
+             "$(printf '> Somebody wrote:\n%s\n' "$(ack)")")")"
+ok "but a blank line ends the quotation, and what follows is the writer's own" 0 "$HEAD_A" \
+   "$(arr "$(finding issue "$FOUND_AT")" \
+          "$(says issue hleserg "$AFTER" admin false \
+             "$(printf '> Somebody wrote:\n> the finding\n\n%s\n' "$(ack)")")")"
 ok "nor the same in the middle of a sentence" 1 "$HEAD_A" \
    "$(arr "$(finding issue "$FOUND_AT")" \
           "$(says issue hleserg "$AFTER" admin false "they keep typing $(ack) at me")")"
@@ -595,6 +607,14 @@ mutant "a fence closes on any run of three, whatever opened it" \
   "$(arr "$(finding issue "$FOUND_AT")" \
          "$(says issue hleserg "$AFTER" admin false \
             "$(printf '%s\n~~~\n%s\n~~~\n%s\n' "$FENCE" "$(ack)" "$FENCE")")")"
+
+# shellcheck disable=SC2016  # a literal $ in a pattern, not an expansion
+mutant "a quotation ends at the marker rather than at a blank line" \
+  's@quoted=yes; continue ;;@continue ;;@' \
+  1 "$HEAD_A" \
+  "$(arr "$(finding issue "$FOUND_AT")" \
+         "$(says issue hleserg "$AFTER" admin false \
+            "$(printf '> Somebody wrote:\n%s\n' "$(ack)")")")"
 
 # The finding was raised against a tree that is no longer head and the reply was
 # written against the head, so only the FINDING's binding refuses this one --
