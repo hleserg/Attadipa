@@ -111,6 +111,22 @@ note also carries the head SHA in its HTML marker, because matching on the marke
 alone posted it once per pull request *ever* — so a stale note from an old commit
 sat there while every push after it failed in silence.
 
+**A silent review invalidates the previous head's verdict**, and the order in
+which it does the two halves of that is the whole of the guard. A review that
+reached the model and published nothing leaves the pull request carrying whatever
+`ai-review:pass` the *previous* head earned, which nothing has said anything
+about this one. So the labels come off first and the note goes out second:
+`.github/scripts/review-invalidate.sh` strips both, treats a failed removal as an
+explicit failure, and demotes a failed `gh pr comment` or a failed dedupe read to
+a warning. A pull request that lost a stale verdict and did not get a note is one
+nothing can wrongly merge; the reverse is not true, and for a while it was what
+happened — the removals used to come last, after two network calls, under
+`set -euo pipefail`, so a 502 on either left the stale `ai-review:pass` in place
+(#240). The caller half of that is parked as
+`docs/automation/pending/240-review-invalidation-order.patch`, because a GitHub
+App may not push a workflow file; until it lands the live workflow keeps the old
+order and the helper is unreached.
+
 A pull request that reaches `main` carrying `<!-- attadipa-review-did-not-run -->`
 and no `ai-review:*` label has been merged on ordinary CI and a person's reading.
 That is a legitimate route — it is the only route for a change to

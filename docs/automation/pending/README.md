@@ -63,6 +63,7 @@ waiting on a person.
 |---|---|---|
 | `75-approval-stall.patch` | [#75](https://github.com/hleserg/Attadipa/issues/75) — the writer checkout's `token:`, the watchdog's `approvals` job, and the test's line in `ci.yml`. See [APPROVAL_STALLS.md](../APPROVAL_STALLS.md) | 2026-08-23 |
 | `170-merge-sweep-completeness.patch` | [#170](https://github.com/hleserg/Attadipa/issues/170) **and** [#199](https://github.com/hleserg/Attadipa/issues/199) — the caller half of the completeness rule and of the head-trust rule, all in `pr-merge-sweep.yml`. **While this waits, the half-hourly merge sweep merges nothing at all**: the rule refuses the nine-argument caller by arity and holds every pull request, once per sweep, naming this file. See [CLAUDE_AUTOMATION.md](../CLAUDE_AUTOMATION.md) and T-144 | 2026-08-24 |
+| `240-review-invalidation-order.patch` | [#240](https://github.com/hleserg/Attadipa/issues/240) — the caller half, and `claude-pr-review.yml` alone: the two steps that invalidate a stale verdict do it **before** the fallible notification. **While this waits, a silent review whose `gh pr comment` fails still leaves the previous head's `ai-review:pass` on the pull request** — the rule is on `main` and nothing calls it. Unusually, the fix here is not unexecuted while it waits: `review-invalidate-workflow-test.sh` applies this patch to a scratch copy and runs the two steps against a stub `gh` on every push. See [CI_AND_REVIEW_PIPELINE.md](../CI_AND_REVIEW_PIPELINE.md) and T-168 | 2026-08-25 |
 
 Verified before it was parked: `actionlint` clean over all seven workflows with
 the patch applied, `shellcheck -x` clean, and the `approvals` job's body
@@ -93,9 +94,31 @@ moment this lands.
 **One patch in this directory edits `pr-merge-sweep.yml`** — this one.
 `75-approval-stall.patch` beside it edits `agent-queue-watchdog.yml`, `ci.yml`,
 `claude-agent.yml` and two documents, and never the sweep, so the two are
-independent and may land in either order or apart. The patch this **does**
+independent and may land in either order or apart. So does
+`240-review-invalidation-order.patch`, which carries `claude-pr-review.yml` and
+nothing else. The patch this **does**
 collide with is `130-merge-sweep-caller.patch` on
 [#154](https://github.com/hleserg/Attadipa/pull/154), which is not here yet:
 if it lands while this is still parked, apply both in one commit and resolve the
 one overlap by hand — T-144. Every patch here `git rm`s only its own file;
 none removes this directory, which three links in `APPROVAL_STALLS.md` point at.
+
+**No two patches here may carry the same `.github/workflows/` file, and
+`gh-api-usage-test.sh` fails the suite when they do.** Landing one leaves the
+other's copy of that workflow stale, and a stale `claude-*.yml` is not a merge
+conflict somebody notices — it is a review that silently does not run, on `main`
+and on every open pull request, for the reason `CI_AND_REVIEW_PIPELINE.md` gives
+about byte-identical workflow files. Two patches needing one file means folding
+them, as #170 and #199 did above. **A document is not covered by this** — two
+patches may edit one `.md`, because a stale prose hunk fails loudly under `git
+apply` instead of quietly at runtime.
+
+The rule bites hardest on `ci.yml`, because a new test wants a line in it and
+`75-approval-stall.patch` holds it. `240-review-invalidation-order.patch` is
+what that looks like solved without folding two issues together: rather than
+take a `ci.yml` hunk, its test runs from inside an existing test file, and
+rather than sit dormant, it applies **this directory's own patch** to a scratch
+copy of the workflow and asserts against the result. So the fix is executed
+against a stub `gh` on every push while it waits, and the day it lands the same
+assertions read the real file with no edit. That is worth copying: a parked
+patch nothing runs is a fix whose first real execution is in production.
