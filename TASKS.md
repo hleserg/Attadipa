@@ -733,7 +733,7 @@ externally) [shellcheck]
 - **Hardware required:** no.
 
 
-### T-174 · The intake gate recognises `@claude` with the stripper #130 had to replace
+### T-176 · The intake gate recognises `@claude` with the stripper #130 had to replace
 - **Priority:** P2 — same class of defect as [#130](https://github.com/hleserg/Attadipa/issues/130)'s
   second path, on a boundary that costs a run rather than a merge.
 - **Dependencies:** none. `.github/scripts/intake-decision.sh` and its test.
