@@ -325,6 +325,12 @@ How to resume:
 
 and the issue gets `agent:blocked` plus `needs-hardware` or `needs-owner`.
 
+Owner-facing blocks on an issue or pull request are bilingual: English first,
+then Russian. Keep the `BLOCKED:` marker and field names in English so the
+queue tooling remains machine-readable; translate the explanatory prose for
+the owner. This is the public-surface application of
+[OD-24](../research/OWNER_DECISIONS.md#od-24--language-follows-the-reader).
+
 **When to stop and ask**, and only these:
 
 1. an unknown product requirement;
