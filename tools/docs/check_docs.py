@@ -751,7 +751,17 @@ def check_task_bodies(root: str) -> list[str]:
 # Kept as a literal list rather than a pattern because the point is that adding
 # a root-level file should be a deliberate act that edits this line.
 ROOT_ALLOWED = {
+    # Agent-tool entry points. Each is a pointer to CLAUDE.md or a tool's own
+    # registration, never a second copy of the rules — CLAUDE.md, "The tooling
+    # around the work", says which is which and why none of them is a symlink.
+    ".clinerules",
     ".gitignore",
+    ".ignore",
+    ".mcp.json",
+    ".windsurfrules",
+    "AGENTS.md",
+    "GEMINI.md",
+    "opencode.json",
     "ATTADIPA_RENAME_PLAN.md",
     "CLAUDE.md",
     "CMakeLists.txt",
