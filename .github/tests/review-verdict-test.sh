@@ -513,14 +513,16 @@ echo "Who wrote the findings block decides the label, so the query says whose"
 # defects. An assertion whose subject can disappear is not an assertion, so the
 # subject here is the file that actually runs.
 workflow="$here/../workflows/claude-pr-review.yml"
-if [ -f "$workflow" ]; then
+prompt="$here/../prompts/pr-review.md"
+if [ -f "$workflow" ] && [ -f "$prompt" ]; then
   wf="$(cat "$workflow")"
+  review_prompt="$(cat "$prompt")"
   contains "the findings query filters on the author, not just on the marker"            'select(.user.login == env.ATTADIPA_REVIEW_ACTOR)' "$wf"
   contains "the trusted reviewer account is named in the workflow, not in the query"      'ATTADIPA_REVIEW_ACTOR: claude[bot]' "$wf"
   contains "the ledger query filters on its author too"                                   'select(.user.login == env.ATTADIPA_LEDGER_ACTOR)' "$wf"
   contains "and the account that writes the ledger is named beside it"                    'ATTADIPA_LEDGER_ACTOR: github-actions[bot]' "$wf"
 
-  # THE ONE THAT COST #169 ITS WHOLE RULE. The prompt in this same file tells
+  # THE ONE THAT COST #169 ITS WHOLE RULE. The shipping prompt tells
   # the reviewer to BEGIN the comment with `<!-- attadipa-ai-review -->` and to
   # END it with the findings block, so a `startswith` on the findings marker
   # matches nothing the reviewer can write -- `finding_id` empty, `label=unknown`,
@@ -528,7 +530,8 @@ if [ -f "$workflow" ]; then
   # `contains`, and the prompt must still be the one that makes `startswith`
   # wrong, so that changing either without the other goes red.
   contains "the findings block is matched anywhere in the body, not from its start"       'contains("<!-- attadipa-review-findings")' "$wf"
-  contains "because the prompt puts another marker first"                                 'Begin the comment with the exact line' "$wf"
+  contains "the workflow loads the shipping prompt"                                       '.github/prompts' "$wf"
+  contains "because the prompt puts another marker first"                                 'Post or edit one pull-request comment beginning exactly' "$review_prompt"
   case "$wf" in
     *'startswith("<!-- attadipa-review-findings")'*)
       fail=$((fail + 1))
@@ -539,7 +542,7 @@ if [ -f "$workflow" ]; then
   esac
 else
   fail=$((fail + 1))
-  printf '  FAIL  %s is missing, so nothing checked the queries that set the label\n' "$workflow"
+  printf '  FAIL  the live workflow or its shipping prompt is missing\n'
 fi
 
 echo

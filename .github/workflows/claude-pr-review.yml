@@ -90,67 +90,51 @@ jobs:
         with:
           fetch-depth: 0
 
-      # THE SAME BUNDLE AS claude-agent.yml, AND THE SAME REASON -- #133.
-      #
-      # This workflow's only trigger is `pull_request`, so GITHUB_REF is always
-      # `refs/pull/N/merge` and the checkout above is always the reviewed branch
-      # merged into the base. `Work out why the review did not happen` below
-      # runs `failure-reason.sh`, whose entire job is to decide what is safe to
-      # quote out of an execution log into a comment this workflow authors. A
-      # pull request that edits that file would have had its own version make
-      # that decision -- and `failure-reason.sh` is a file agents are actually
-      # sent to edit (#106).
-      #
-      # `contents: read` bounds what that could do; it does not make it right,
-      # and the redaction whitelist is the wrong place to find out. Same sparse
-      # default-branch checkout, staged out of the workspace before the model
-      # runs, for the cost of two steps.
-      - name: Fetch the failure classifier from the default branch
+      # Stage decision scripts and the prompt from the trusted default branch,
+      # never from the pull request being reviewed.
+      - name: Fetch trusted review inputs
         if: steps.auth.outputs.ok == 'true'
-        continue-on-error: true
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/prompts
           sparse-checkout-cone-mode: false
           persist-credentials: false
           path: .attadipa-bundle
 
-      - name: Move it out of the reviewer's reach
+      - name: Stage trusted review inputs
         if: steps.auth.outputs.ok == 'true'
         run: |
-          # No `set -e`: an unstaged bundle degrades one sentence of one
-          # comment, and must not cost the review itself.
-          set -uo pipefail
-          DEST="$RUNNER_TEMP/attadipa-orchestration"
-          rm -rf "$DEST"
-          if [ -d .attadipa-bundle/.github/scripts ]; then
-            mkdir -p "$DEST" && cp -R .attadipa-bundle/.github/scripts "$DEST/scripts"
-          fi
+          set -euo pipefail
+          dest="$RUNNER_TEMP/attadipa-orchestration"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp -R .attadipa-bundle/.github/scripts "$dest/scripts"
+          cp -R .attadipa-bundle/.github/prompts "$dest/prompts"
           rm -rf .attadipa-bundle
-          if [ -r "$DEST/scripts/failure-reason.sh" ]; then
-            echo "ATTADIPA_TRUSTED_SCRIPTS=$DEST/scripts" >> "$GITHUB_ENV"
-            echo "::notice::failure classifier staged from the default branch at $DEST/scripts"
-          else
-            echo "ATTADIPA_TRUSTED_SCRIPTS=" >> "$GITHUB_ENV"
-            echo "::warning::the failure classifier could not be staged from the default branch; a failed review will report its structural fields only"
-          fi
+          test -r "$dest/scripts/failure-reason.sh"
+          test -r "$dest/prompts/pr-review.md"
+          echo "ATTADIPA_TRUSTED_SCRIPTS=$dest/scripts" >> "$GITHUB_ENV"
+          echo "ATTADIPA_TRUSTED_PROMPTS=$dest/prompts" >> "$GITHUB_ENV"
 
-      # continue-on-error, and the reason is evidence rather than taste.
-      #
-      # On 2026-08-21 this job went red on pull request #9 after 373 ms, one
-      # turn and $0.00, with `is_error: true` and no output. That is not a
-      # review verdict — it is the Anthropic credential refusing before the
-      # model was ever reached, which on the subscription path means the quota
-      # is spent. The diff was irrelevant to it.
-      #
-      # A red check that means "we ran out of quota" is indistinguishable, in
-      # the checks list, from "the reviewer found something", and this file
-      # already states the principle for the other half of the same problem: a
-      # workflow that is red for a reason outside the code is a workflow people
-      # learn to ignore. So a reviewer that cannot run says so in a comment and
-      # leaves the check green, while a reviewer that CAN run still blocks
-      # through `ai-review:blocking` — which is the label, not the exit code.
+      - name: Load trusted review prompt
+        id: review_prompt
+        if: steps.auth.outputs.ok == 'true'
+        env:
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo 'body<<ATTADIPA_REVIEW_PROMPT'
+            printf 'Review pull request #%s in %s.\n\n' "$PR" "$REPO"
+            cat "$ATTADIPA_TRUSTED_PROMPTS/pr-review.md"
+            echo ATTADIPA_REVIEW_PROMPT
+          } >> "$GITHUB_OUTPUT"
+
+      # The model may fail for quota or authentication reasons. A later step
+      # distinguishes that from a published review and clears stale verdicts.
       - name: Review
         if: steps.auth.outputs.ok == 'true'
         id: review
@@ -160,244 +144,15 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
-          # One comment, edited in place. A new wall of text on every push is how
-          # a review becomes something people scroll past.
           use_sticky_comment: "true"
-          # claude, and the reason is a measured failure rather than a
-          # preference. This job's `if:` above deliberately admits
-          # claude[bot] -- its own comment says a blanket bot guard "skipped
-          # the review on exactly the pull requests this workflow exists to
-          # review: the agent's own" -- and then this line handed the action
-          # the one list that does not contain claude. So the guard let the
-          # job start and the action refused it, in about five seconds,
-          # before the model was reached:
-          #
-          #   Checking permissions for actor: claude[bot]
-          #   Actor is a GitHub App: claude[bot]
-          #   Actor type: Bot
-          #   ##[error]Action failed with error: Workflow initiated by
-          #   non-human actor: claude (type: Bot). Add bot to allowed_bots
-          #   list or use '*' to allow all bots.
-          #
-          # Byte-identical on runs 32597016812 (#95), 32596445164 (#94),
-          # 32595947792 (#92) and 32595273274 (#88) -- four seconds, five
-          # seconds, five seconds, five seconds. **No agent-authored pull
-          # request has ever been reviewed**, and the job reported success
-          # every time, because the Review step below carries
-          # continue-on-error. The three alternatives were ruled out rather
-          # than argued away: the claude-*.yml files on those branches are
-          # byte-identical to main, so the action's workflow-validation
-          # refusal cannot apply; a human-authored review ran normally for
-          # six minutes at 20:39, so the credential was not spent; and no
-          # execution log exists at all, which excludes the tool-list cause
-          # that needs real work to show up.
-          #
-          # Not '*': that would let any installed GitHub App drive this, and
-          # .github/tests/bot-actor-test.sh refuses it. Not a producer grant
-          # either -- .github/scripts/queue-scan.jq still refuses claude in
-          # ATTADIPA_TRUSTED_PRODUCERS, so our own output cannot enqueue a
-          # billable writer. And not a loop: this job's output is a comment
-          # and a label, a comment cannot raise a pull_request event, and the
-          # job holds contents: read, so the widest thing it can do is have
-          # an opinion twice.
           allowed_bots: "claude"
           allowed_non_write_users: ""
           show_full_output: "false"
-          # display_report posts Claude's own summary to the run's Step Summary
-          # (src/entrypoints/run.ts writes to GITHUB_STEP_SUMMARY). It is on
-          # because a run whose conclusions nobody can read is a bill — but note
-          # what it is NOT: it has never posted a pull request comment, in any
-          # version. The reason findings did not reach the pull request is the
-          # tool list below, not this flag.
           display_report: "true"
-          # --allowedTools is not optional, and its absence is silent.
-          #
-          # Agent mode — which is what `prompt:` selects — sets no default
-          # --allowedTools and no --permission-mode. Tag mode sets both
-          # (src/modes/tag/index.ts); agent mode passes through only what is
-          # written here. The headless SDK has no prompt handler, so every tool
-          # that would fall through to "ask" is DENIED, without an error and
-          # without a line in the log.
-          #
-          # Observed on 2026-08-21, before this line existed: the reviewer ran
-          # for 41 s, exited 0, and posted no comment and set no label; the
-          # implementation agent on issue #5 finished green and produced no
-          # branch and no pull request. Both had read the diff perfectly well
-          # and had no way to say so.
-          #
-          # Verified against anthropics/claude-code-action at the v1 tag
-          # (v1.0.198, 3f854a8): src/mcp/install-mcp-server.ts gates the comment
-          # MCP servers on these names too, and `grep -rn "addLabels" src/`
-          # returns nothing — the action has no label feature at all, so the
-          # label in the prompt below depends entirely on `gh` being allowed.
-          #
-          # WIDENED 2026-08-22, and the reason is a run that cost $1.48 and
-          # published nothing. The review of #44 at eb4d063 ran 49 turns and
-          # ended `is_error: true` — real work, then a tool it needed and did
-          # not have. Under this list a reviewer can Read a file but cannot
-          # `wc -l` it, cannot `git rev-parse` a SHA it was asked to compare,
-          # and cannot `gh pr checks` the checks it is reasoning about. Every
-          # verb added here reads and none of them writes; the job still holds
-          # `contents: read`, which is the guarantee that matters, and the only
-          # `gh` verbs that change anything are still the two that publish the
-          # review itself.
-          #
-          # Read-only over the repository, deliberately: no Write, no Edit, and
-          # the only `gh` verbs that mutate are the ones that publish a review. `contents:
-          # read` on the job is still the outer guarantee. This has an opinion
-          # and exactly enough hands to say it out loud.
-          # 100 turns, raised from 40 on 2026-08-22.
-          #
-          # 40 was chosen as a cost control and it was the wrong control. On
-          # pull request #39 the reviewer read the diff, worked for six and a
-          # half minutes, reported `is_error: false` — and was killed at turn 50
-          # for exceeding 40, having posted nothing and set no label. That is the
-          # worst of both: the full bill and no review. A ceiling that stops work
-          # after it has been paid for does not save money.
-          #
-          # The real backstop is `timeout-minutes` on the job, which bounds the
-          # spend in the only unit that maps to it. This number now bounds
-          # something else — a reviewer stuck in a loop — and 100 is above what a
-          # thirty-file diff was observed to need, not a blank cheque.
-          # WHICH MODEL, AND HOW HARD IT THINKS. Neither was pinned until
-          # 2026-08-22, and the action has no `model:` input -- so every run
-          # this loop has ever made used whatever the CLI defaulted to, and
-          # nothing in the repository recorded which model that was. A result
-          # you cannot attribute to a model is a result you cannot compare
-          # against the next one.
-          #
-          # Verified against `claude --help` rather than assumed: `--model`
-          # takes an alias ('opus', 'sonnet', 'fable') or a full name, and
-          # `--effort` takes one of low, medium, high, xhigh, max. The full
-          # name is pinned rather than the alias so that a new Opus does not
-          # silently change what this loop is: the cost of that choice is that
-          # somebody must come here to move it, which is the intended cost.
-          #
-          # Automated semantic reviews use xhigh by default. Max is reserved
-          # for an explicit owner-requested exceptional review.
           claude_args: |
-            --model claude-opus-5 --effort xhigh --max-turns 100 --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git blame:*),Bash(git ls-files:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(wc:*),Bash(sort:*),Bash(uniq:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
-          prompt: |
-            You are reviewing pull request #${{ github.event.pull_request.number }}
-            in ${{ github.repository }}. You did not write this code. Read the
-            diff, and read CLAUDE.md, docs/master-prompt-final.md and the ADRs
-            under docs/adr/ that it touches.
-
-            You may not change any file. Review only.
-
-            The question to answer is not "does this compile" — assume it does,
-            and assume every existing test is green. The question is:
-
-              **How can this still break Attadipa?**
-
-            Work through the ones that apply, and say plainly when one does not:
-
-            architecture — layer boundaries, the board abstraction, the
-            capability registry, `#ifdef BOARD_*` anywhere in core/ or apps/,
-            an application learning which chip answered, core learning which
-            language will be read.
-
-            lifetime and memory — ownership, dangling references, leaks, stack
-            depth, heap growth, fragmentation, largest-free-block over a soak.
-
-            concurrency — races, FreeRTOS task and ISR context, blocking calls
-            on the wrong thread, deadlocks, watchdog starvation, LVGL being
-            touched from anywhere but its own task.
-
-            power — sleep and wake correctness, a wake source armed in a state
-            that must not have it, a rail powered down under another user of it,
-            regressions in current draw.
-
-            persistence — crash safety, a structure overwritten in place,
-            migrations, backward compatibility of stored data, recovery from a
-            corrupted file.
-
-            protocol — radio and node-link compatibility, framing, BLE and USB
-            backpressure, bounded queues, resynchronisation, hostile input.
-
-            GNSS and navigation — fix age and quality, stale peer positions,
-            trust state, heading and calibration, a confident arrow drawn from
-            an unobservable quantity.
-
-            product — offline and degraded modes, Child Mode, localisation,
-            loading, empty, offline and error states, errors written in human
-            language.
-
-            evidence — a hardware claim with no measurement behind it, a `PASS`
-            for a test that did not run on a board, an estimate that reads as a
-            measurement, a missing regression test for the bug being fixed.
-
-            For each finding give the file and line, why it breaks, and how it
-            reproduces. Rank by severity. Say explicitly if you found nothing
-            blocking — a review that always finds something is noise.
-
-            **READ THE LEDGER BEFORE YOU WRITE ANYTHING.** This may not be the
-            first round on this branch. Run `gh pr view
-            ${{ github.event.pull_request.number }} --comments` and look for the
-            comment beginning `<!-- attadipa-review-ledger -->`. Its
-            `<!-- attadipa-review-ledger-state` block lists every finding ever
-            raised here, with the round it was first seen, its kind and its
-            state.
-
-            **Re-use those ids exactly.** An id you invent for a problem the
-            ledger already names is a new finding dated this round, which is how
-            a real blocker quietly stops blocking — and, in the other direction,
-            how a defect you already reported comes back as if it were fresh.
-            Account for every finding the ledger still shows as `open`: one that
-            you do not mention stays open, because "it did not come up again" is
-            not evidence that a push fixed it.
-
-            **Publish the review — it does not publish itself.** Post your
-            findings as a comment with `gh pr comment`. Nothing you write
-            reaches the pull request otherwise; the action leaves it in the run
-            log, where nobody reads it.
-
-            Begin the comment with the exact line `<!-- attadipa-ai-review -->`,
-            and before posting, check with `gh pr view` whether a comment
-            carrying that marker already exists. If one does, edit it rather
-            than adding another — a fresh wall of text on every push is how a
-            review becomes something people scroll past.
-
-            **End the comment with a findings block**, which is what actually
-            decides the verdict. One line per finding, four fields, pipes
-            between them:
-
-                <!-- attadipa-review-findings
-                gnss-trust-source | open  | floor  | The trust state is claimed with no source
-                adr-section-number | fixed | normal | ADR-0007 §4.1 should read §2.4
-                -->
-
-            - **id** — lower-case letters, digits and hyphens, and the SAME id
-              every round for the same problem.
-            - **state** — `open` or `fixed`. `fixed` means you looked at the
-              current head and the problem is gone, not that somebody said they
-              had fixed it.
-            - **kind** — `floor` or `normal`. **`floor` is a short list and it is
-              not a severity rating**: a hardware fact with no source, a `PASS`
-              for a test that did not run on a board, an application-layer
-              hardware access, or an architecture-boundary violation. Those four
-              hold the pull request at any round, however late they are found.
-              Everything else is `normal` — including things you consider
-              serious. Anything you type that is neither word is read as `floor`.
-            - **description** — one line, no pipes.
-
-            List every finding you are reporting AND every one the ledger still
-            shows as open, so that a `fixed` is said out loud rather than
-            inferred from silence.
-
-            Then set exactly one label on this pull request using the gh CLI:
-            `ai-review:blocking` if anything must be fixed before merge,
-            otherwise `ai-review:pass`. Remove the other one if present.
-
-            **A later step may correct that label**, and this is deliberate
-            rather than a disagreement with you. From the convergence floor on,
-            a `normal` finding first raised at or after that round is published
-            and filed rather than held — because this workflow reviews the head
-            commit, so answering every finding produces a new head, a new diff
-            and new findings, and four branches reached rounds five, eight, ten
-            and two with the label never coming off (issue #169). The rule is
-            `.github/scripts/review-verdict.sh`. Your block is its input; nothing
-            you can write to it weakens the four `floor` kinds.
+            --model claude-opus-5 --effort xhigh --max-turns 100
+            --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git blame:*),Bash(git ls-files:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(wc:*),Bash(sort:*),Bash(uniq:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh pr comment:*),Bash(gh pr edit:*)"
+          prompt: ${{ steps.review_prompt.outputs.body }}
 
       # What actually went wrong, read from the action's own execution log
       # rather than guessed at.
