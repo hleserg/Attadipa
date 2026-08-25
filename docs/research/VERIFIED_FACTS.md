@@ -828,14 +828,18 @@ BSP already demonstrated to be an incomplete description of its own board.
 
 - **MEASURED / VERIFIED:** the assembled case has two pressable keys. The
   current official schematic names them PWR and BOOT: PWR pulls the AXP2101
-  `PWRON` input and BOOT pulls GPIO0 low. `SYS_OUT/GPIO10` is the conditioned
-  power-state output, not a mirror of the key level. This closes D5; the vendor
-  BSP's empty button list describes only what that BSP drives.
+  `PWRON` input and BOOT pulls GPIO0 low. The PWRON/key node also drives T1
+  through R16; T1 and the R11 pull-up invert it onto `SYS_OUT/GPIO10`, making
+  GPIO10 an active-high key mirror. This corrects the earlier "power-state
+  output" reading and closes D5; the vendor BSP's empty button list describes
+  only what that BSP drives.
 - **Physical result:** two BOOT presses on 2026-08-25 produced two debounced
   `physical boot down/up` pairs after routing through `core::InputQueue` with
   `InputOrigin::Physical`. PWR negative/positive edges are enabled and polled
-  through AXP2101 interrupt status; its final physical event observation is
-  still pending and is not promoted to a measurement here.
+  through AXP2101 interrupt status and were also physically observed. GPIO10
+  is used as the Light-sleep wake level, not as the awake event producer; its
+  physical wake observation is still pending and is not promoted to a
+  measurement here.
 - **Sources:** the current Waveshare schematic/product page and the raw bench
   transcript in [WATCH_CONTROL_2026-08-25](../hardware/WATCH_CONTROL_2026-08-25.md).
 
