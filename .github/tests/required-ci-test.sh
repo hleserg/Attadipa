@@ -119,6 +119,7 @@ else
   no 'success passes; failure, cancellation and skip fail closed'
 fi
 
+# shellcheck disable=SC2016  # literal production text is the mutation target
 mutated_run=$(printf '%s\n' "$run_block" | sed 's/exit "$failed"/exit 0/')
 if [ "$mutated_run" = "$run_block" ]; then
   no 'the unconditional-success mutation changed the production seam'
