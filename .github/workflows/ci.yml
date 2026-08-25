@@ -584,6 +584,7 @@ jobs:
           # the line above this silently rebuilds the flash image and
           # calls it a RAM build. Prove the option actually took.
           grep -q "^CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y$" build-ram/sdkconfig
+          python3 ../tools/flash/pure_ram_elf_check.py build-ram/attadipa.elf
 
   evidence:
     name: What this run did not prove
