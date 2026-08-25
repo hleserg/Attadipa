@@ -185,8 +185,8 @@ struct GnssStatus {
     // snapshot holding exactly the pairing the paragraph above says cannot
     // exist. Nothing single-threaded can reach that and no store order avoids
     // both interleavings — making the pair indivisible means packing the
-    // verdict into the mask, which is a change to the wire shape of this field
-    // and is filed as such in TASKS.md rather than assumed here.
+    // verdict into the mask, which changes the wire shape and therefore needs
+    // an ADR rather than an assumption here.
     void record_trust(TrustState verdict, std::uint32_t reasons)
     {
         trust         = verdict;

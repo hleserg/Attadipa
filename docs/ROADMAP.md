@@ -1,8 +1,8 @@
 # Roadmap — and the one correction that reorders it
 
-`TASKS.md` is the task list and `STATUS.md` is where things are. This file is
-neither. It says **which of two possible next tasks wins**, and it exists
-because that question stopped answering itself.
+[GitHub Issues](https://github.com/hleserg/Attadipa/issues) are the task list;
+linked pull requests and checks show live status. This file only records durable
+product ordering: **which of two possible next tasks wins**.
 
 Written 2026-08-24, after an independent cold read of the repository.
 
@@ -132,7 +132,8 @@ about to start is not itself conflicted against `main`.** That is per-issue, so
 #189 can start while #190 and #191 wait. Draining the queue is the step before
 the slice rather than a competitor to it, and it is
 [#172](https://github.com/hleserg/Attadipa/issues/172)'s own subject — the
-conflicts come from every pull request editing `TASKS.md` and `STATUS.md`.
+conflicts came from every pull request editing the old `TASKS.md` and
+`STATUS.md` ledgers. Issue #172 removed that shared-file gate.
 
 Steps 4 and 5 do not strictly order against each other. Step 4 first is the
 better bet, because it is the instrument that makes step 5 checkable — which is

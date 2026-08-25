@@ -1,28 +1,10 @@
 #!/usr/bin/env python3
-"""Mutation tests for check_site_facts.py.
-
-This checker earned its tests before it was ever committed. Its first draft
-attributed a number to a file by requiring exactly one filename on the line --
-and every row of the table it was written for names two, the original and the
-converted. So it skipped every claim in the document and printed "9 images
-measured", which reads exactly like agreement. A checker that passes everything
-is worse than none, and this one managed it while its own docstring said so.
-
-Hence the case below that asserts the *zero-facts* state is a failure, and the
-case that asserts an ambiguous attribution is reported rather than skipped. The
-rest break one real number at a time, in a copy of the live tree, and assert the
-check notices; the four that assert it does *not* fire are the half that would
-otherwise land a job failing on `main` -- the brand mark is a 64 x 64 PNG drawn
-at 34, and a check that called that a layout shift would be trained away.
-
-Run: python3 tools/site/test_check_site_facts.py
-"""
+"""Mutation tests for shipping site facts, including fail-closed behaviour."""
 
 from __future__ import annotations
 
 import io
 import os
-import pathlib
 import shutil
 import sys
 import tempfile
@@ -36,8 +18,6 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 FAILURES: list[str] = []
 RAN: list[str] = []
-# Split by polarity: the CI comment quotes both halves, and a case that changes
-# polarity moves them while leaving the total alone.
 MUST_REPORT: list[str] = []
 MUST_STAY_QUIET: list[str] = []
 
@@ -52,26 +32,8 @@ def case(name: str, condition: bool) -> None:
 
 
 def fixture(root: str) -> tuple[str, str]:
-    """A copy of the live tree, which the caller then breaks.
-
-    `tools/site` comes along because the case-count check runs the head-sync
-    suite to ask how many cases it has; without it every fixture would report a
-    missing suite instead of the defect under test.
-    """
+    """Copy the shipping site files that the checker reads."""
     shutil.copytree(os.path.join(REPO, "docs"), os.path.join(root, "docs"))
-    shutil.copytree(
-        os.path.join(REPO, "tools", "site"), os.path.join(root, "tools", "site")
-    )
-    # STATUS.md and the workflow come along because the check now holds their
-    # copies of the head-sync case count too, and reports a claim file that is
-    # missing rather than passing over it. A fixture without them would be
-    # testing a tree the check refuses to run against.
-    shutil.copy(os.path.join(REPO, "STATUS.md"), os.path.join(root, "STATUS.md"))
-    os.makedirs(os.path.join(root, ".github", "workflows"))
-    shutil.copy(
-        os.path.join(REPO, ".github", "workflows", "ci.yml"),
-        os.path.join(root, ".github", "workflows", "ci.yml"),
-    )
     return (
         os.path.join(root, "docs", "site", "SEO.md"),
         os.path.join(root, "docs", "index.html"),
@@ -174,12 +136,6 @@ def main() -> int:
         needle="states 3 KB for site.css",
     )
     scenario(
-        "the head-sync case count — the other number that was actually stale",
-        lambda seo, html, root: edit(seo, "**44 cases**", "**29 cases**"),
-        expect_fail=True,
-        needle="states 29 where",
-    )
-    scenario(
         "a declared box of the wrong shape in index.html",
         lambda seo, html, root: edit(
             html, 'width="1774" height="887"', 'width="1774" height="600"'
@@ -242,109 +198,6 @@ def main() -> int:
         needle="states 4.4 MB for attadipa-banner.png and attadipa-style-board.png",
     )
 
-    # The three that cover the claim machinery: a suite size is quoted in three
-    # files, and until this round only the copy in SEO.md was read back. The
-    # workflow comment was found stale by review -- four lines under the
-    # paragraph warning that it had already been wrong twice.
-    scenario(
-        "a stale head-sync count in the CI comment, not just in SEO.md",
-        lambda seo, html, root: edit(
-            os.path.join(root, ".github", "workflows", "ci.yml"),
-            "holds 44 cases: 34 break the",
-            "holds 37 cases: 34 break the",
-        ),
-        expect_fail=True,
-        needle="ci.yml:",
-    )
-    scenario(
-        "a stale head-sync SPLIT, where the total is still right",
-        lambda seo, html, root: edit(
-            os.path.join(root, ".github", "workflows", "ci.yml"),
-            "44 cases: 34 break the",
-            "44 cases: 33 break the",
-        ),
-        expect_fail=True,
-        needle="(report)",
-    )
-    # A suite whose size is stated nowhere is a suite whose printed number is
-    # compared with nothing, which is the state this whole mechanism exists to
-    # refuse. It takes six edits to reach because three files quote it -- and
-    # that redundancy is the point: losing one copy is not the failure.
-    scenario(
-        "every copy of one suite's count disappears at once",
-        lambda seo, html, root: all(
-            [
-                edit(seo, "holds 13 cases: 9 demand", "holds many cases: some demand"),
-                edit(seo, "a report, 4 demand silence", "a report, some demand silence"),
-                edit(os.path.join(root, "STATUS.md"), "holds 13", "holds many"),
-                edit(
-                    os.path.join(root, "STATUS.md"),
-                    "cases: 9 demand a report, 4 demand silence",
-                    "cases: some demand a report, some demand silence",
-                ),
-                edit(
-                    os.path.join(root, ".github", "workflows", "ci.yml"),
-                    "holds 13 cases: 9 demand a",
-                    "holds many cases: some demand a",
-                ),
-                edit(
-                    os.path.join(root, ".github", "workflows", "ci.yml"),
-                    "# report, 4 demand silence",
-                    "# report, some demand silence",
-                ),
-            ]
-        ),
-        expect_fail=True,
-        needle="quotes the size of",
-    )
-
-    # REVIEW'S TWO, both about the cue rather than the number. Narrowing the
-    # total cue to kill a false positive silently stopped it matching a copy it
-    # had been checking, and the completeness rule counted any cue at all --
-    # so a document quoting only "9 demand a report" satisfied a rule whose
-    # message says "nothing quotes the size".
-    scenario(
-        "the size written as `Of the N cases` is read, not walked past",
-        lambda seo, html, root: edit(
-            os.path.join(root, "STATUS.md"),
-            "`tools/site/test_check_head_sync.py` holds 44 cases:",
-            "`tools/site/test_check_head_sync.py`. Of the 40 cases:",
-        ),
-        expect_fail=True,
-        needle="(total)",
-    )
-    scenario(
-        "a split half does not stand in for the size",
-        lambda seo, html, root: all(
-            [
-                edit(seo, "holds 13 cases", "holds 13 scenarios"),
-                edit(
-                    os.path.join(root, "STATUS.md"),
-                    "cases: 9 demand a report",
-                    "scenarios: 9 demand a report",
-                ),
-                edit(
-                    os.path.join(root, ".github", "workflows", "ci.yml"),
-                    "holds 13 cases: 9 demand a",
-                    "holds 13 scenarios: 9 demand a",
-                ),
-            ]
-        ),
-        expect_fail=True,
-        needle="is not the size",
-    )
-
-    # The four that must stay quiet. Each is the live tree's real behaviour, and
-    # a check that fired on any of them would be switched off within a week.
-    scenario(
-        "one file drops a count that the other two still state",
-        lambda seo, html, root: edit(
-            os.path.join(root, "STATUS.md"),
-            "with 44 mutation tests",
-            "with mutation tests",
-        ),
-        expect_fail=False,
-    )
     scenario(
         "a uniformly scaled box is NOT a layout shift — 64 x 64 drawn at 32",
         lambda seo, html, root: edit(html, 'width="34" height="34"', 'width="32" height="32"'),
@@ -368,20 +221,6 @@ def main() -> int:
         % (SELF, len(RAN), len(MUST_REPORT), len(MUST_STAY_QUIET))
     )
 
-    # And the places that quote those three numbers are held to them here,
-    # because nothing else can ask: check_site_facts.py runs the head-sync
-    # suite to learn its size, and running THIS suite from inside the checker
-    # it tests would recurse. The suite knows its own count; it does the
-    # holding. Not a case -- a case would change the number it is checking.
-    stale, _ = check_site_facts.verify_case_claims(
-        pathlib.Path(REPO), SELF, len(RAN), len(MUST_REPORT), len(MUST_STAY_QUIET)
-    )
-    if stale:
-        print()
-        print("but %d place(s) quote a size this suite does not have:" % len(stale))
-        for problem in stale:
-            print("  " + problem)
-        return 1
     return 0
 
 

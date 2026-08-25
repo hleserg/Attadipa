@@ -966,7 +966,7 @@ void test_input_beyond_the_buffer_is_refused_and_counted()
 // ---------------------------------------------------------------------------
 // A zero-length frame, and the sentinel it used to be indistinguishable from.
 //
-// Issue #146, and `TASKS.md` T-062 before it: a valid payload length of zero
+// Issue #146: a valid payload length of zero
 // was returned by `Decoder::next()` and `FrameQueue::pop()` as the same value
 // they used for "nothing here", *after* consuming the frame. The documented
 // drain loop stopped on it, so the next frame in the buffer was stranded with

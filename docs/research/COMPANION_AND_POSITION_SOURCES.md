@@ -20,7 +20,7 @@ next agent starts from the ADRs rather than from a blank file.
 | The request | The shape it already has |
 |---|---|
 | any node, any stack, any transport | [ADR-0008](../adr/0008-mesh-service-providers.md) — one service, providers behind it, applications that never learn which answered. Widen the second provider; do not add a second code path |
-| telemetry from a companion | [T-029](../../TASKS.md) — feeds are not capabilities. A telemetry value is a datum with two ages ([ADR-0004](../adr/0004-capability-sources.md)) |
+| telemetry from a companion | feeds are not capabilities. A telemetry value is a datum with two ages ([ADR-0004](../adr/0004-capability-sources.md)) |
 | positions from several places at once | [ADR-0011](../adr/0011-gnss-integrity.md) — `PositionValidity` and `TrustState` are already independent axes. A coordinate out of somebody else's message is what that independence is for |
 | choose a source, or fuse several | ADR-0008 §3's selection policy, extended. **Fusion is a different feature** and is not that policy applied twice |
 | GNSS asked less often when still | `start_kind()`, the backup domain, and T-045's power states — all present, none of them yet with a customer |

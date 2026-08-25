@@ -95,7 +95,7 @@ check reject "a task somebody has already claimed" -- \
 check accept "an owner asking again in a comment" -- \
       hleserg issue_comment created "" "" "agent:working" open admin "" "@claude have another go"
 check reject "a dispatch for an already-claimed task" -- \
-      github-actions workflow_dispatch "" "" "" "agent:done" open ""
+      github-actions workflow_dispatch "" "" "" "agent:review" open ""
 
 check accept "the agent:ready label on its own" -- \
       hleserg issues labeled "agent:ready" "" "" open write

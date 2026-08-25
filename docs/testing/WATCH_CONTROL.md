@@ -175,8 +175,8 @@ and a `gesture --file`, because both go through the one client method.
 `swipe` and `drag` are a hair short of this today — they take `steps` intervals
 between their points and sleep for `steps - 1` of them, so a swipe runs `1/steps`
 under its duration and starts with a zero-length segment. Bounded, unlike the
-gesture defect above, and recorded under **T-114** in
-[TASKS.md](../../TASKS.md) rather than left to be rediscovered.
+gesture defect above, and remains explicit in issue #117 rather than left to be
+rediscovered.
 
 ### `info` is not decoration
 

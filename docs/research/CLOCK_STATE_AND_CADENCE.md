@@ -4,8 +4,8 @@ Research for **T-037**, done before it starts, at `f2b6853`. Issue
 [#144](https://github.com/hleserg/Attadipa/issues/144). Research only — no Clock
 was implemented and no production file was touched.
 
-`TASKS.md` records T-037's research status as *not started* and final §85 asks
-for mature wearable UX to be reviewed before major UI pattern work. This is that
+Final §85 asks for mature wearable UX to be reviewed before major UI pattern
+work. This is that
 review, plus the four project-specific things a review of other people's watches
 cannot supply: what the *existing* Attadipa types already say, what the *pinned*
 LVGL actually does, what the *shipped* font actually measures, and what the
@@ -187,7 +187,7 @@ spelling.
 | theme | `ui::Theme` | presentation | already runtime-switchable |
 | geometry / density | `BoardProfile` | presentation | fixed for the life of the process; a change is a different device |
 | Adult/Child | **does not exist yet** | domain (a setting) | final §49; T-038 owns the setting, T-037 must render both |
-| battery percent | `Timed<uint8_t>` or an explicit optional | domain | "unknown" must be representable — the project has already been bitten by a `bool`-shaped state that could not say *nobody has checked* (`TASKS.md` T-062, `GnssCapabilities`) |
+| battery percent | `Timed<uint8_t>` or an explicit optional | domain | "unknown" must be representable — `GnssCapabilities` already demonstrated the failure of a `bool` that cannot say *nobody has checked* (issue #166) |
 | charging | domain | domain | a PMU fact, event-driven |
 | power state | `core::PowerState` | domain | decides whether the Clock should be ticking at all (§4) |
 | which mascot pose, if any | presentation | presentation | DESIGN_SYSTEM §7 already maps poses to states, so this is a lookup and not a choice at the call site |
@@ -296,14 +296,12 @@ do not freely create FreeRTOS tasks and LVGL timers."*
 [`apps/app_manifest.h:22`](../../apps/include/attadipa/apps/app_manifest.h)
 declares `id`, `required`/`required_count` and `enhanced_by`/`enhanced_by_count`
 — that is all. So the contract exists as a recorded decision and a specification
-line, and **not as anything a compiler enforces**. T-037 is the first
-application that will need it, which makes it the moment the gap stops being
-theoretical.
+line, and **not as anything a compiler enforces**. The first Clock application
+will make the gap concrete.
 
-This document does **not** decide it, and that is deliberate:
-[`TASKS.md`](../../TASKS.md) **T-018** (application framework) and **T-024**
-(the event bus and concurrency ADR, which explicitly covers *"who owns which
-task … how events are delivered … UI-thread rules"*) already own that decision.
+This document does **not** decide it, and that is deliberate: the application
+framework and the event-bus/concurrency ADR must explicitly cover *"who owns
+which task … how events are delivered … UI-thread rules"*.
 Minting an ADR here would create the second truth store that research question 8
 warns against. What this research contributes to them is the requirement
 statement: *an application declares the cadence of each datum it displays and
@@ -311,10 +309,9 @@ receives a callback; it never holds a timer handle, and the framework releases
 every wake on close and on suspend* — with ZSWatch `:280-283` and `:582-584`
 showing that close and suspend are two different lists.
 
-**T-037's dependency list does not include T-018.** It reads *T-008, T-009,
-T-033, T-034*. Either T-037 takes the dependency, or it defines a Clock-local
-tick that T-018 must later absorb. That is a scheduling decision for the
-roadmap, and it is recorded in `TASKS.md` rather than resolved here.
+The Clock issue must either depend on that framework or name a provisional
+Clock-local tick that the framework will absorb. That scheduling decision
+belongs in the issue, not this research report.
 
 ---
 
@@ -771,4 +768,3 @@ is in the plan rather than discovered:
 
 None of the five is large. All five are in front of T-037 rather than inside it,
 and finding that out was the point of doing this first.
-

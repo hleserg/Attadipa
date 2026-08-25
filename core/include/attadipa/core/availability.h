@@ -50,8 +50,8 @@ struct ProviderRef {
 // `Unsupported` means no configuration of this device can provide the
 // capability, from either side, so there is nothing serving it and nothing to
 // dispatch to, power, configure or diagnose. `Origin` has no value that says
-// "nobody" — it has two, and whether it should have a third is TASKS.md T-111,
-// which is an ADR decision and not a detail to settle in a struct. Until that
+// "nobody" — it has two, and whether it should have a third is the ADR question
+// recorded by issues #83 and #174, not a detail to settle in a struct. Until that
 // lands, this field is what keeps `Local` from being read as a claim: the
 // discriminator travels with the origin rather than having to be remembered,
 // which is the same contract style as `ProviderRef::id` above.

@@ -1,199 +1,77 @@
-# Attadipa — instructions for every agent that reads this file
+# Attadipa — working agreement
 
-**The project's rules are in [`CLAUDE.md`](CLAUDE.md), and they are not optional
-reading.** Codex, Cline, Windsurf, Kilo Code, Antigravity and opencode all land
-on `AGENTS.md` first, and everything that matters here is in that other file:
-the specification in force, the rule that no hardware fact is used before it is
-traced to a datasheet or vendor source, the rule that a test which did not run
-on a physical board is written `NOT EXECUTED — HARDWARE REQUIRED` and never
-`PASS`, which of two tasks wins, and how work arrives as a GitHub issue and is
-handed over. Nothing below replaces any of it.
+Keep this file short: it is the repository-wide entry point for people and
+agents. Before changing a scoped area, also read its nearest `AGENTS.md`.
 
-**Everything below this line is generated, and it is about two tools rather than
-about this project.** `rtk` compacts command output; `graft` is the code graph
-in `graft/`. Each rewrites its own block in place between its markers, which is
-why this file is a pointer with the blocks left alone rather than a symlink to
-`CLAUDE.md` — a symlink would send the next `rtk init` straight into the
-project's rules.
+## Start with the work, not the repository memory
 
-<!-- rtk-instructions v2 -->
-# RTK (Rust Token Killer) - Token-Optimized Commands
+1. Read the GitHub issue and its comments. The issue is the task.
+2. Check open issues and pull requests before editing. An assignee or draft PR
+   means the work is claimed; avoid a competing implementation.
+3. Use `graft` before source-code discovery and prefix shell commands with
+   `rtk`. The tools' own help is the source for their detailed usage.
+4. Read only the product requirements, ADRs and scoped rules relevant to the
+   files being changed.
 
-## Golden Rule
+## Non-negotiable invariants
 
-**Always prefix commands with `rtk`**. If RTK has a dedicated filter, it uses it. If not, it passes through unchanged. This means RTK is always safe to use.
+- Do not use a hardware fact until it is traced to a datasheet, the schematic
+  for the relevant board revision, vendor source, or a reproducible bench
+  result. If it cannot be established, write `UNKNOWN` and record the evidence
+  or blocker under `docs/research/`.
+- A test that did not run on physical hardware is never a hardware `PASS`.
+  Write `NOT EXECUTED — HARDWARE REQUIRED`. Label physical numbers `MEASURED`,
+  `ESTIMATED`, or `UNKNOWN`.
+- Do not burn eFuses, enable irreversible security settings, destroy keys, or
+  commit secrets. Reversible flashing is allowed when the factory image is
+  backed up and verified.
+- Applications ask what a device can do, not which board it is. Board-specific
+  code belongs in `boards/` or `platform/`; no `#ifdef BOARD_X` in `core/` or
+  `apps/`.
+- Research verifies claims; it does not quietly grow a production subsystem.
 
-**Important**: Even in command chains with `&&`, use `rtk`:
-```bash
-# ❌ Wrong
-git add . && git commit -m "msg" && git push
+## One fact, one home
 
-# ✅ Correct
-rtk git add . && rtk git commit -m "msg" && rtk git push
-```
+| Information | Canonical source |
+| --- | --- |
+| Work to do, acceptance criteria, blockers | GitHub Issue |
+| Work in progress and result | assignee, linked PR, checks and PR review |
+| Durable product direction | `docs/ROADMAP.md` |
+| Product requirements | relevant section of `docs/master-prompt-final.md` |
+| Architecture decision | `docs/adr/` |
+| Owner-only decision | `docs/research/OWNER_DECISIONS.md` |
+| Verified hardware fact and provenance | `docs/research/VERIFIED_FACTS.md` or a linked evidence report |
+| What changed and how it was tested | Pull request |
 
-## RTK Commands by Workflow
+`STATUS.md` and `TASKS.md` are compatibility pointers, not ledgers. Do not edit
+them for individual tasks. Git and closed issues already preserve history.
 
-### Build & Compile (80-90% savings)
-```bash
-rtk cargo build         # Cargo build output
-rtk cargo check         # Cargo check output
-rtk cargo clippy        # Clippy warnings grouped by file (80%)
-rtk tsc                 # TypeScript errors grouped by file/code (83%)
-rtk lint                # ESLint/Biome violations grouped (84%)
-rtk prettier --check    # Files needing format only (70%)
-rtk next build          # Next.js build with route metrics (87%)
-```
+## Delivery
 
-### Test (60-99% savings)
-```bash
-rtk cargo test          # Cargo test failures only (90%)
-rtk go test             # Go test failures only (90%)
-rtk jest                # Jest failures only (99.5%)
-rtk vitest              # Vitest failures only (99.5%)
-rtk playwright test     # Playwright failures only (94%)
-rtk pytest              # Python test failures only (90%)
-rtk rake test           # Ruby test failures only (90%)
-rtk rspec               # RSpec test failures only (60%)
-rtk test <cmd>          # Generic test wrapper - failures only
-```
+- Before creating a branch or editing, run
+  `.github/scripts/writer-start.sh start REPO ISSUE TOKEN` from current `main`;
+  its repository lease and atomic claim are the machine-enforced writer gate.
+  Run `writer-start.sh finish ...` on hand-off. Keep commits logical and never
+  push directly to `main`.
+- A PR links its issue with `Fixes #<issue>` and states what was tested and what
+  was not. Update durable documentation only when the durable fact changed.
+- A blocker comment states reason, evidence, impact and one recommended next
+  action; add `needs-owner` or `needs-hardware` only when that dependency is real.
+- Run the smallest meaningful checks that exercise the shipping seam. A test
+  of a fixture, copied implementation, generated patch, or isolated decision
+  helper does not prove the production caller works.
+- If UI, navigation, themes, widgets, touch, buttons or screen geometry changed,
+  use the `watch-ui-testing` skill and inspect the rendered image.
+- Do not create a follow-up issue for debt that reasonably fits the current
+  change. Do not add a mechanism unless it lets the repository remove an old
+  one.
 
-### Git (59-80% savings)
-```bash
-rtk git status          # Compact status
-rtk git log             # Compact log (works with all git flags)
-rtk git diff            # Compact diff (80%)
-rtk git show            # Compact show (80%)
-rtk git add             # Ultra-compact confirmations (59%)
-rtk git commit          # Ultra-compact confirmations (59%)
-rtk git push            # Ultra-compact confirmations
-rtk git pull            # Ultra-compact confirmations
-rtk git branch          # Compact branch list
-rtk git fetch           # Compact fetch
-rtk git stash           # Compact stash
-rtk git worktree        # Compact worktree
-```
+## Scoped instructions
 
-Note: Git passthrough works for ALL subcommands, even those not explicitly listed.
+- Firmware and board work: `firmware/AGENTS.md`
+- GitHub automation: `.github/AGENTS.md`
+- Hardware and upstream research: `docs/research/AGENTS.md`
 
-### GitHub (26-87% savings)
-```bash
-rtk gh pr view <num>    # Compact PR view (87%)
-rtk gh pr checks        # Compact PR checks (79%)
-rtk gh run list         # Compact workflow runs (82%)
-rtk gh issue list       # Compact issue list (80%)
-rtk gh api              # Compact API responses (26%)
-```
-
-### JavaScript/TypeScript Tooling (70-90% savings)
-```bash
-rtk pnpm list           # Compact dependency tree (70%)
-rtk pnpm outdated       # Compact outdated packages (80%)
-rtk pnpm install        # Compact install output (90%)
-rtk npm run <script>    # Compact npm script output
-rtk npx <cmd>           # Compact npx command output
-rtk prisma              # Prisma without ASCII art (88%)
-rtk uv run <cmd>        # Compact uv project command output
-```
-
-### Files & Search (60-75% savings)
-```bash
-rtk ls <path>           # Tree format, compact (65%)
-rtk read <file>         # Code reading with filtering (60%)
-rtk grep <pattern>      # Search grouped by file (75%). Format flags (-c, -l, -L, -o, -Z) run raw.
-rtk find <pattern>      # Find grouped by directory (70%)
-```
-
-### Analysis & Debug (70-90% savings)
-```bash
-rtk err <cmd>           # Filter errors only from any command
-rtk log <file>          # Deduplicated logs with counts
-rtk json <file>         # JSON structure without values
-rtk deps                # Dependency overview
-rtk env                 # Environment variables compact
-rtk summary <cmd>       # Smart summary of command output
-rtk diff                # Ultra-compact diffs
-```
-
-### Infrastructure (85% savings)
-```bash
-rtk docker ps           # Compact container list
-rtk docker images       # Compact image list
-rtk docker logs <c>     # Deduplicated logs
-rtk kubectl get         # Compact resource list
-rtk kubectl logs        # Deduplicated pod logs
-```
-
-### Network (65-70% savings)
-```bash
-rtk curl <url>          # Compact HTTP responses (70%)
-rtk wget <url>          # Compact download output (65%)
-```
-
-### Meta Commands
-```bash
-rtk gain                # View token savings statistics
-rtk gain --history      # View command history with savings
-rtk discover            # Analyze Claude Code sessions for missed RTK usage
-rtk proxy <cmd>         # Run command without filtering (for debugging)
-rtk init                # Add RTK instructions to CLAUDE.md
-rtk init --global       # Add RTK to ~/.claude/CLAUDE.md
-```
-
-## Token Savings Overview
-
-| Category | Commands | Typical Savings |
-|----------|----------|-----------------|
-| Tests | vitest, playwright, cargo test | 90-99% |
-| Build | next, tsc, lint, prettier | 70-87% |
-| Git | status, log, diff, add, commit | 59-80% |
-| GitHub | gh pr, gh run, gh issue | 26-87% |
-| Package Managers | pnpm, npm, npx | 70-90% |
-| Files | ls, read, grep, find | 60-75% |
-| Infrastructure | docker, kubectl | 85% |
-| Network | curl, wget | 65-70% |
-
-Overall average: **60-90% token reduction** on common development operations.
-<!-- /rtk-instructions -->
-
-<!-- graft:start -->
-## Graft — repo context graph
-
-This repo is indexed in `graft/`: small linked markdown nodes that explain each
-system and carry exact file:line spans, kept in sync with the code through git.
-
-For ANY task here — understanding how something works, finding where code lives,
-or scoping a change — get context from the graph before grepping or opening
-source files. Re-ask freely (it's cheap) and reuse literal identifiers you
-already have (symbol, error string, file name) as the query. New to this repo?
-Run `graft map` first — a token-budgeted orientation (dir clusters, hubs,
-hotspots), no LLM, no key.
-
-- Run `graft ask "<your question>" --source` → ranked nodes with the relevant
-  code spans inlined (each hit's ≤8-line crux by default; `--full` for whole
-  definitions when the crux isn't enough). Match the tool to the task shape:
-  for understanding or editing, the top node IS the answer — cite its
-  `covers:` file:line spans and edit straight from `--source`. For
-  exhaustive tasks ("every occurrence / every caller of this pattern"), ranked
-  results are top-N, not complete — run `graft grep "<literal>"` instead
-  (exhaustive over indexed files, grouped by enclosing symbol), falling back
-  to raw `grep -rn` only for unindexed files.
-- `graft skeleton <file>` → every definition's signature + span, ~10× cheaper
-  than reading the file; use it to skim an API surface.
-- `graft callers <symbol>` gives precomputed, exact edges — who calls this.
-  Add `--direction out` for what it calls, or `--depth N` to walk
-  transitively for the full blast radius. For structural questions, skip
-  ranking and use this directly.
-- Or browse: `graft/INDEX.md` lists every node; follow the links.
-- Monorepos and folders of multiple repos rank fairly across sub-projects —
-  hits carry `[scope/]` labels naming which one they're from. Narrow with
-  `graft ask "<task>" --in <scope>/` once you know where you're working.
-
-If a returned span is truncated ("+N more lines"), open the file at that exact
-range before finalizing. Only open source files when a node genuinely lacks a
-needed detail, and then at the exact file:line the node points to — never
-re-read whole files.
-
-After big code changes, refresh the graph with `graft build` (deterministic,
-no API key, $0).
-<!-- graft:end -->
+Repository artefacts are English. Owner-facing chat is Russian; public issue
+and PR text is English first and Russian second. `README.md` and `README.ru.md`
+are one document and change together.

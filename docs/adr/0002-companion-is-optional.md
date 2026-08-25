@@ -167,5 +167,5 @@ This does not extend to the node, and applying it there would forbid the
 product: a node-fed capability has no node-absent counterpart by design. The
 node's equivalent obligation is different and stricter in its own way — every
 node-fed capability must be testable **through** attach, detach and reattach
-while an application is open, and all of it in the simulator, because the node
-does not exist yet ([TASKS](../../TASKS.md) T-022, T-030).
+while an application is open, and all of it in the simulator before relying on
+the physical node.

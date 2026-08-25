@@ -3,11 +3,9 @@
 Everything here is meant to be done by one person, quickly, without reading the
 rest of this directory first.
 
-> **Blocked on a credential?** Everything that needs the owner's own `gh`
-> login — the issue-creation policy, the repository variable, the seed
-> discussions — is written up as an executable checklist in
-> [HANDOFF_LOCAL_CODER](HANDOFF_LOCAL_CODER.md). A cloud session cannot do those;
-> a local one can do all of them.
+> **Blocked on a credential?** Use the owner's `gh` login for repository
+> settings and secrets. The recovery commands below name the required state;
+> historical first-install handoff instructions live in Git history.
 
 ## Stop all Anthropic spending, now
 
@@ -92,8 +90,8 @@ In order of likelihood:
 2. **The kill switch is off.** `gh variable get CLAUDE_AUTOMATION_ENABLED`.
 3. **The actor is not trusted.** The gate requires `write` or better. Look at
    the run's log — it says `actor X has permission 'read'`.
-4. **The issue already has a state label.** `agent:working`, `agent:review`,
-   `agent:blocked` and `agent:done` all suppress a second pickup. Comment
+4. **The issue already has a state label.** `agent:working`, `agent:review`
+   and `agent:blocked` all suppress a second pickup. Comment
    `@claude` to override deliberately.
 5. **The marker is missing.** An issue needs `attadipa-agent-task` *and*
    `@claude` in the body, or the `agent:ready` label.
@@ -141,7 +139,7 @@ the repository knows or cares which of those happened.
 Idempotent — it creates what is missing and corrects the colour and description
 of what is not. Losing a label loses no work: the issues keep their history, and
 re-applying a label is enough to put a task back in the queue. The set itself is
-described in [AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#labels).
+described in [AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#lifecycle).
 
 A label that does not exist is a state a task cannot reach — `gh issue edit
 --add-label` fails and the workflows swallow it with `|| true` — so this is worth

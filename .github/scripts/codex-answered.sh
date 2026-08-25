@@ -182,9 +182,9 @@ attadipa_codex_uncomment() {
 # `attadipa_strip_code` is deliberately left alone rather than fixed here. It
 # guards a different boundary -- whether a comment asks for an agent -- where
 # the string is a mention inside a sentence and an exact-line rule would refuse
-# every real `@claude`. Two boundaries, two recognisers -- and that gate has the
-# same five blind spots this one had, which is TASKS.md T-174 rather than a line
-# of this file, because the answer there cannot be an exact-line rule.
+# every real `@claude`. Two boundaries, two recognisers -- issue #174 tracks
+# that gate's remaining blind spots, because its answer cannot be an exact-line
+# rule.
 attadipa_codex_acknowledges() {
   local head line stripped indent want
   head="$(attadipa_codex_oid "${2-}")" || return 1

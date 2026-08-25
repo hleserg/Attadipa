@@ -216,8 +216,8 @@ CapabilitySource CapabilityRegistry::source(Capability capability) const
     // not "the local device has it and it is broken". Named here rather than
     // left to fall out of the tie-break below, because `Origin` has two values
     // and neither of them means "nobody": `CapabilitySource` documents
-    // `Unsupported` as the discriminator that says so, and TASKS.md T-111 owns
-    // the question of whether the axis should grow a value instead.
+    // `Unsupported` as the discriminator that says so. Issues #83 and #174
+    // preserve the ADR question of whether the axis should grow a value instead.
     //
     // The tie-break *is* this case, as it happens — every other pair of states
     // the two sources can hold at once has distinct remedy ranks — so writing

@@ -1,62 +1,10 @@
 #!/usr/bin/env python3
-"""Are the numbers in docs/site/SEO.md and docs/index.html the repository's own?
+"""Verify the measurable claims in the shipping project page.
 
-Three of the dimension pairs in that section were wrong on the first pass, and
-they were wrong for one reason: they were typed. The head two files away is
-guarded by a check; the numbers beside it were guarded by a sentence. Reading
-them out of the file headers costs one step and closes the substitution.
-
-What is checked:
-
-1. Every size and every `N x M` pair stated in SEO.md, against the file named in
-   the same segment of the same line -- a table cell, or a semicolon-separated
-   clause in prose.
-2. Every `width=`/`height=` in docs/index.html against the *shape* of the image
-   it points at -- the layout-shift source the section is about. What reflows is
-   a declared box of the wrong proportion: the browser reserves that box, the
-   image arrives with a different aspect ratio and the row changes height. A box
-   that is a uniform scale of the file is not that defect and is not reported --
-   the brand mark is a 64 x 64 PNG deliberately drawn at 34 and at 28, and a
-   check that called those wrong would be training the reader to ignore it.
-3. The saving column of a conversion row, against the two files it compares, and
-   every statement of the total against the sum of those savings -- the total is
-   quoted twice in the document and both copies are held to the same files.
-4. The stylesheet and script sizes claimed in the performance section, which are
-   not images but are the same typed-number defect in the same document. This
-   found the script stated at 6 KB when it had grown past 7.8; the numbers most
-   likely to go stale are the ones an unrelated commit changes. Where the prose
-   states a BOUND -- "a stylesheet under 20 KB" -- the bound is what is checked,
-   one-sidedly. An exact figure there was held to within half a kilobyte over a
-   file with 87 bytes of headroom, so any CSS rule would have failed a
-   documentation job on a pull request that never opened the document, and a
-   check that goes red for a true statement gets edited until it stops.
-5. The size of BOTH mutation suites, wherever it is quoted: SEO.md, STATUS.md
-   and the CI comment. Those numbers have now been wrong three times -- the
-   third found by review four lines below the paragraph explaining the hazard,
-   under an instruction to fix the remaining copies by hand. So each suite
-   prints its size and its split, and every copy is read back. The split is
-   held too: a case that changes polarity moves it while leaving the total
-   alone. This file does the reading for the head-sync suite, which it already
-   runs; the site-facts suite does its own on the way out, because running it
-   from inside the checker it tests would recurse.
-
-Attribution is by segment, and it is the part that had to be fixed before this
-was worth running. The first draft attributed by line and required exactly one
-filename on it. Every row in the table names two -- the original and the
-converted -- so every row was skipped, and the check reported "9 images
-measured" while verifying nothing the document said. A number that cannot be
-attributed is therefore reported, never skipped, and the summary line states how
-many facts were actually compared: a check that silently finds nothing to do
-must not print the same line as one that agrees.
-
-Precision follows the document. `1.32 MB` claims two decimals and is held to
-within half of the last one; `43 KB` claims none and is held to within half a
-kilobyte. Stating a rounder number is allowed, and is not silently promoted to
-a more precise one.
-
-Header parsing rather than Pillow: this runs in the `docs` job, which installs
-nothing, and the three formats here are three well-documented headers. An
-unreadable file is reported, never skipped.
+The checker compares image dimensions, declared aspect ratios, file sizes and
+conversion savings in docs/site/SEO.md and docs/index.html with the files on
+disk. Unattributed numbers and a zero-facts run fail closed. Test-suite counts
+are deliberately not documentation facts: each suite reports its own result.
 
 Run: python3 tools/site/check_site_facts.py [root]
 """
@@ -65,7 +13,6 @@ from __future__ import annotations
 
 import re
 import struct
-import subprocess
 import sys
 from pathlib import Path
 
@@ -100,213 +47,6 @@ BOUNDS = (
 )
 UNIT = {"KB": 1000, "MB": 1000 * 1000}
 
-
-# Note what is NOT here any more: a bare `**N cases**` pattern compared to the
-# head-sync suite whatever suite the sentence was about, so writing the second
-# suite's size into SEO.md the obvious way failed. Claims are anchored to a
-# suite by name below. Found in review.
-CASES_SPLIT = re.compile(
-    r"^(\S+): (\d+) cases, (\d+) demand a report, (\d+) demand silence$", re.M
-)
-SUITE = "tools/site/test_check_head_sync.py"
-# Run for its count as well, for the same reason and by the same route. It does
-# not test this file, so there is no recursion to guard against.
-REVEAL_SUITE = "tools/site/test_check_reveal_contract.py"
-
-# Where a suite size is quoted, and by what wording. SEO.md's copy was already
-# enforced; STATUS.md's and the CI comment's were not, and the CI one was found
-# stale by review four lines below the paragraph warning that this exact number
-# had already been wrong twice. A count nobody reads back is a count that rots,
-# and "fix it here by hand if it moves" is the instruction that had just failed.
-# A block is attributed to a suite by naming the suite OR the checker it guards;
-# prose reasonably says "check_head_sync.py, with 40 mutation tests" without
-# spelling out the second path. `files` is where that suite's size is quoted --
-# per suite, because SEO.md names check_site_facts.py twice without ever
-# quoting its size, and demanding a count there would be inventing a claim.
-SUITES = {
-    "tools/site/test_check_head_sync.py": {
-        "aliases": ("check_head_sync.py",),
-        "files": ("docs/site/SEO.md", "STATUS.md", ".github/workflows/ci.yml"),
-    },
-    "tools/site/test_check_site_facts.py": {
-        "aliases": ("check_site_facts.py",),
-        "files": ("STATUS.md", ".github/workflows/ci.yml"),
-    },
-    "tools/site/test_check_reveal_contract.py": {
-        "aliases": ("check_reveal_contract.py",),
-        "files": ("docs/site/SEO.md", "STATUS.md", ".github/workflows/ci.yml"),
-    },
-}
-# The three numbers, by the CUE PHRASE that introduces each -- not by any digit
-# standing near the word "cases". The first version matched the latter, and
-# review showed what that costs: the true sentence "it has caught 2 cases of
-# drift since", added to a STATUS.md paragraph that happens to name a checker,
-# turns the documentation job red on a pull request that changed nothing about
-# the suite. A check that reddens for a true statement gets edited until it
-# stops, which is the argument this very file makes twice about something else.
-# So a claim is a claim when it is phrased as one.
-CUES = (
-    (
-        "total",
-        re.compile(
-            # `of the` is here because narrowing this cue to fix a false
-            # positive silently stopped checking a copy it had been checking:
-            # STATUS.md writes "**Of the 44 cases**, 34 break the pair", and the
-            # sentence went unread for a round while the two numbers beside it
-            # kept passing. A cue that gets narrower has to be re-checked
-            # against what it used to match. Found in review.
-            # `[Oo]f` because the sentence that went unchecked opens one:
-            # "**Of the 44 cases**, 34 break the pair". A cue that is
-            # case-sensitive where prose capitalises is a cue with a hole in it.
-            r"(?:holds|with|[Oo]f the)\s+\**\s*(\d+)\s*\**\s+(?:cases|mutation tests)\b"
-            r"|\*\*(\d+)\s+cases\*\*"
-        ),
-    ),
-    ("report", re.compile(r"(\d+) (?:break the pair|demand a report)")),
-    ("quiet", re.compile(r"(\d+) (?:leave it valid|demand silence)")),
-)
-
-
-def numbers(cue, block):
-    """Every number a cue finds, whichever of its alternatives matched.
-
-    The total cue has two spellings -- "holds 40 cases" and "**40 cases**" --
-    so `findall` hands back a tuple per match with one half empty.
-    """
-    out = []
-    for found in cue.findall(block):
-        parts = found if isinstance(found, tuple) else (found,)
-        out.extend(int(part) for part in parts if part)
-    return out
-
-
-def blocks(text):
-    """Paragraphs, with YAML comment markers stripped and whitespace collapsed.
-
-    One implementation for Markdown and for a workflow file: a CI comment block
-    is a paragraph that happens to start every line with `#`, and the numbers
-    inside it rot exactly like prose. Blank lines and bare `#` lines separate.
-    """
-    out, current, start = [], [], 1
-    for lineno, line in enumerate(text.split("\n") + [""], 1):
-        stripped = line.strip()
-        bare = re.sub(r"^#\s?", "", stripped)
-        if not bare:
-            if current:
-                out.append((start, " ".join(current)))
-                current = []
-            continue
-        if not current:
-            start = lineno
-        current.append(bare)
-    return out
-
-
-def verify_case_claims(root, suite, total, must_report, must_stay_quiet):
-    """Hold every quoted copy of a suite's size to what the suite actually ran.
-
-    Shared by check_site_facts.py (for the head-sync suite, which it already
-    runs) and by test_check_site_facts.py (for its own count, which it knows
-    and which nothing else can ask for without recursion).
-    """
-    problems, compared = [], 0
-    totals_quoted = 0
-    names = (suite,) + SUITES[suite]["aliases"]
-    other = [
-        name
-        for key, entry in SUITES.items()
-        if key != suite
-        for name in (key,) + entry["aliases"]
-    ]
-    expected = {"total": total, "report": must_report, "quiet": must_stay_quiet}
-    total_quoted = 0
-    for relative in SUITES[suite]["files"]:
-        path = root / relative
-        if not path.exists():
-            problems.append(
-                "%s is missing, so the size of %s cannot be held to anything. "
-                "It is one of the files that quotes it." % (relative, suite)
-            )
-            continue
-        quoted = 0
-        for lineno, block in blocks(path.read_text(encoding="utf-8")):
-            if not any(name in block for name in names):
-                continue
-            if any(name in block for name in other):
-                found = [c for _, cue in CUES for c in numbers(cue, block)]
-                if found:
-                    problems.append(
-                        "%s:%d quotes a count in a paragraph naming two suites, "
-                        "so it cannot be attributed to one of them. Split the "
-                        "claim rather than leaving it unverifiable."
-                        % (relative, lineno)
-                    )
-                continue
-            for kind, cue in CUES:
-                for stated in numbers(cue, block):
-                    quoted += 1
-                    if kind == "total":
-                        totals_quoted += 1
-                    compared += 1
-                    if stated != expected[kind]:
-                        problems.append(
-                            "%s:%d states %d where %s runs %d (%s)"
-                            % (relative, lineno, stated, suite, expected[kind], kind)
-                        )
-        total_quoted += quoted
-    # A claim must exist SOMEWHERE, and that is the whole completeness rule.
-    # The first version demanded one per listed file, which made trimming a
-    # STATUS.md paragraph -- the routine maintenance of a file whose own first
-    # lines call it "a status file, not a history" -- fail a job. Requiring the
-    # number to be quoted and correct at least once keeps the guard; requiring
-    # it in every file was a tripwire on ordinary editing. Found in review.
-    #
-    # And the completeness rule is about the SIZE, which is what the message
-    # says: the first version counted any cue, so a document quoting only "7
-    # demand a report" satisfied a rule whose diagnostic reads "nothing quotes
-    # the size". The split halves are still checked wherever they appear; they
-    # just do not stand in for the total. Found in review.
-    if not totals_quoted:
-        problems.append(
-            "nothing in %s quotes the size of %s any more, so the number the "
-            "suite prints is checked against nothing (a split half like \"7 "
-            "demand a report\" is not the size). Quote it in one of them -- "
-            "\"holds N cases\" or \"with N mutation tests\" -- or drop the "
-            "suite from SUITES deliberately."
-            % (", ".join(SUITES[suite]["files"]), suite)
-        )
-    return problems, compared
-
-
-def suite_size(root, suite=SUITE):
-    """How big a suite is, and how it splits, asked of the suite itself.
-
-    Asking it is the only honest way: counting `case(` calls in the source would
-    count the helper's own definition and miss any case a loop generates.
-    `--count` registers every scenario and runs none, which matters because
-    this checker's own mutation tests invoke it inside a fixture whose
-    index.html and site.js have been broken on purpose -- running the head-sync
-    cases there would fail for reasons unrelated to the case under test, and
-    the failure would be reported as "the suite printed no count". Found in
-    review.
-    """
-    try:
-        done = subprocess.run(
-            [sys.executable, suite, "--count"],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return None, "could not run %s: %s" % (suite, exc)
-    found = CASES_SPLIT.search(done.stdout)
-    if not found or found.group(1) != suite:
-        return None, (
-            "%s did not report its case count and split. It prints them on "
-            "success; if it failed, that is the finding." % suite
-        )
-    return (int(found.group(2)), int(found.group(3)), int(found.group(4))), None
 
 
 def png_size(data):
@@ -680,27 +420,8 @@ def main(root="."):
             "needs both or neither." % next(iter(og_dims))
         )
 
-    # 5. The size of the head-sync mutation suite, which the suite itself
-    # reports -- in SEO.md, in STATUS.md and in the CI comment. The first was
-    # enforced from the start and has not drifted since; the other two were
-    # guarded by a sentence saying to fix them by hand, and review found the CI
-    # one stale. Both halves of the split are held too: a case that changes
-    # polarity moves 31 and 9 while leaving 40 alone.
-    claims = 0
-    for which in (SUITE, REVEAL_SUITE):
-        counts, failure = suite_size(root, which)
-        if failure:
-            problems.append(failure)
-            continue
-        found, held = verify_case_claims(root, which, *counts)
-        problems.extend(found)
-        claims += held
 
-    # A check with nothing to check is the failure this file was rewritten for.
-    # Counted separately from the case claims above deliberately: those live in
-    # STATUS.md and the workflow, so counting them here would let a document
-    # that lost every number of its own still look like a document with facts
-    # in it -- which is the exact substitution this guard exists to refuse.
+    # A check with nothing to check must not print the same result as agreement.
     if not compared:
         problems.append(
             "no fact in docs/site/SEO.md or docs/index.html could be "
@@ -715,8 +436,7 @@ def main(root="."):
         return 1
     print(
         "Site facts agree with the repository: %d claims compared, %d images "
-        "measured from their own headers, %d quoted suite sizes held to what "
-        "the suite ran" % (compared, len(sizes), claims)
+        "measured from their own headers" % (compared, len(sizes))
     )
     return 0
 

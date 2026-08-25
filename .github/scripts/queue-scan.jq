@@ -58,7 +58,6 @@
   | select((.labels | index("agent:working")) == null)
   | select((.labels | index("agent:review")) == null)
   | select((.labels | index("agent:blocked")) == null)
-  | select((.labels | index("agent:done")) == null)
   # `agent:failed` alone (no `agent:ready` beside it) is not "waiting" — it is
   # a task the hand-over never re-queued, and it needs a person rather than a
   # silent hourly retry. `agent:failed` WITH `agent:ready` is the pair the

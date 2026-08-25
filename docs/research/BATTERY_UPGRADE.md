@@ -30,18 +30,19 @@ blocked on four measurements only the owner can take.** Raised by the owner
 > unlikely. Row A *is* the 4.4–5.1 mm band, and 5.1 mm is where Row B starts, so
 > telling Row A from Row B is telling 0.1 mm of clearance from 1.1 mm — which is
 > precisely what an eye and a hand cannot do. It does **not** substitute for M1
-> for a second reason as well: this was judged with the cover off, and T-106's M1
+> for a second reason as well: this was judged with the cover off, and §4's M1
 > is *closed-case* clearance, because a cell chosen against the recess depth fits
 > until the case is closed on it. Nothing in §5 has been promoted on the strength
 > of it.
 >
-> **What this note does not settle, and does not try to.** `TASKS.md` T-106 says
+> **What this note does not settle, and does not try to.** The measurement gate
+> below says
 > *"M1 through M3 are the gate, they wait on nothing"*. That sentence is about
 > M4's `0x0C`/`0x0D` legs — I²C addresses waiting on a module in the post — and
 > this note is about the cavity the cell and the magnetometer would share. The
 > two are not the same claim and neither refutes the other, but whether the
 > **cell choice** is downstream of the magnetometer's **size** is the owner's,
-> and T-106's acceptance is deliberately left as it stands until they say. Filed
+> and the measurement gate is deliberately left as it stands until they say. Filed
 > rather than decided here.
 
 ## 0. What this note is
@@ -405,8 +406,8 @@ Then, off the board:
 ### Plug pitch
 
 Caliper across the **crimp centres** of the two contacts, not across the
-housing. Expect 1.25 mm. One reading closes a row `HARDWARE_MATRIX` carries as
-`LIKELY` and `STATUS.md` lists as `CONFLICTING`.
+housing. Expect 1.25 mm. One reading closes the `LIKELY` row in
+`HARDWARE_MATRIX`.
 
 ### On the powered board, whenever convenient
 
@@ -954,7 +955,7 @@ cell is `ESTIMATED`; every hardware test named here is
    criterion in §8 can be given a number instead of a sentence.
    `needs-hardware`.
 10. **Caliper the plug pitch on the fitted cell.** Closes a `LIKELY` row in
-    `HARDWARE_MATRIX` and a `CONFLICTING` row in `STATUS.md` with one reading.
+    `HARDWARE_MATRIX` with one reading.
     `needs-hardware`.
 11. **Confirm stock and shipping before naming any part as the one to buy.**
     Datasheet existence was verified; orderability was not, and a standalone

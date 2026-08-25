@@ -2,29 +2,15 @@
 # The two steps that CALL the invalidation, executed rather than read.
 #
 # `.github/tests/review-published-test.sh` asserts what
-# `.github/scripts/review-invalidate.sh` does. This file asserts that
-# `claude-pr-review.yml` actually reaches it, with the right environment, and
-# takes its exit status as the step's -- which is the half a unit test of the
+# `.github/scripts/review-invalidate.sh` and `review-not-run.sh` do. This file
+# asserts that `claude-pr-review.yml` reaches them with the right environment
+# and takes their exit status -- the half a unit test of the
 # helper cannot see. The shell bodies are extracted from the YAML and run
 # against a stub `gh`, the same way orchestration-bundle-test.sh runs the
 # hand-over. A guard whose failure mode is a label quietly staying put cannot be
 # verified by grep.
 #
-# IT READS THE WORKFLOW FROM ONE OF TWO PLACES, AND SAYS WHICH. The steps it
-# asserts are inside `.github/workflows/`, which a GitHub App may not push
-# without the `workflows` permission, so while nobody has landed them they live
-# in `docs/automation/pending/240-review-invalidation-order.patch`. Rather than
-# sit dormant until then -- the usual shape for a parked fix, and one that means
-# the fix is unexecuted on the day it lands -- this applies that patch to a
-# scratch copy of the workflow and runs against the result. The same assertions
-# then run in both states: from the patch while it is parked, from
-# `.github/workflows/claude-pr-review.yml` itself the moment it is not, with no
-# edit here in between. If neither has the fix, that is a failure and not a skip.
-#
-# It has no line of its own in `ci.yml`, and that is a constraint rather than an
-# oversight: `75-approval-stall.patch` already carries `ci.yml`, and
-# `gh-api-usage-test.sh` refuses two parked patches carrying one workflow file.
-# So `review-published-test.sh` runs it, on the `ci.yml` line already there.
+# `review-published-test.sh` runs this file from the CI line it already owns.
 
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
@@ -36,39 +22,17 @@ no() { printf '  FAIL  %s\n     %s\n' "$1" "$2"; fail=$((fail + 1)); }
 say() { if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "wanted '$3', got '$2'"; fi; }
 
 LIVE=.github/workflows/claude-pr-review.yml
-PARKED=docs/automation/pending/240-review-invalidation-order.patch
-
-ROOT=$PWD
-scratch=$(mktemp -d) || exit 1
 sandbox=$(mktemp -d) || exit 1
-trap 'rm -rf "$scratch" "$sandbox"' EXIT
+trap 'rm -rf "$sandbox"' EXIT
 
-# Whichever of the two has the fix in it is the one under test, and the choice
-# is made by reading the file rather than by a flag somebody has to remember to
-# flip. `git apply` is given the patch as a plain patch file against a scratch
-# tree; it needs no repository there and touches nothing in this one.
-if grep -q 'review-invalidate.sh' "$LIVE"; then
-  WF=$LIVE
-  STATE="the workflow on this branch"
-elif [ -r "$PARKED" ]; then
-  mkdir -p "$scratch/.github/workflows"
-  cp "$LIVE" "$scratch/.github/workflows/claude-pr-review.yml"
-  if ( cd "$scratch" && git apply "$ROOT/$PARKED" ) 2>"$scratch/apply.err"; then
-    WF="$scratch/.github/workflows/claude-pr-review.yml"
-    STATE="$PARKED, applied to a scratch copy"
-  else
-    no "the parked patch applies to the workflow it is parked against" \
-       "git apply failed: $(head -c 300 "$scratch/apply.err") -- rebuild the patch, never git rm it"
-    printf '\n%d passed, %d failed\n' "$pass" "$fail"
-    exit 1
-  fi
-else
-  no "the fix is either in the workflow or in the pending directory" \
-     "$LIVE does not call review-invalidate.sh and $PARKED does not exist -- if the patch landed and was reverted, this is the regression; if it was deleted unlanded, it is lost work"
+WF=$LIVE
+if ! grep -q 'review-invalidate.sh' "$WF" || ! grep -q 'review-not-run.sh' "$WF"; then
+  no "the live workflow calls both shipping helpers" \
+     "$WF does not call review-invalidate.sh and review-not-run.sh"
   printf '\n%d passed, %d failed\n' "$pass" "$fail"
   exit 1
 fi
-echo "  reading  $STATE"
+echo "  reading  $WF"
 
 # The same extractor orchestration-bundle-test.sh uses, and for the same reason:
 # a `run: |` body that takes every value through `env:` is executable outside
@@ -147,7 +111,8 @@ STUB
 chmod +x "$sandbox/bin/gh"
 
 # The bundle the workflow stages from the default branch...
-cp .github/scripts/review-invalidate.sh "$sandbox/trusted/" || exit 1
+cp .github/scripts/review-invalidate.sh .github/scripts/review-not-run.sh \
+   "$sandbox/trusted/" || exit 1
 # ...and the workspace the reviewed branch leaves behind. The step must never
 # read this one. `contents: read` bounds the damage; it does not make reading
 # the branch's own copy of a privileged helper correct.
@@ -157,6 +122,12 @@ touch "$PWNED_MARKER"
 echo "PWNED"
 HOSTILE
 chmod +x "$sandbox/ws/.github/scripts/review-invalidate.sh"
+cat > "$sandbox/ws/.github/scripts/review-not-run.sh" <<'HOSTILE'
+#!/usr/bin/env bash
+touch "$PWNED_MARKER"
+echo "PWNED"
+HOSTILE
+chmod +x "$sandbox/ws/.github/scripts/review-not-run.sh"
 
 # step <block> <trusted-dir-or-empty>; knobs through the caller's environment.
 step() {
@@ -247,6 +218,12 @@ say '...and leaves ai-review:blocking alone' \
 say '...and posts one note' \
     "$(grep -c 'attadipa-review-did-not-run:deadbeefcafe1234' "$sandbox/comment")" 1
 say '...and exits 0' "$(sign "$rc")" zero
+if [ -e "$sandbox/pwned" ]; then
+  no "...and the reviewed branch cannot replace the no-review helper" \
+     "the workspace copy ran instead of the staged default-branch helper"
+else
+  ok "...and the reviewed branch cannot replace the no-review helper"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

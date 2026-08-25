@@ -1,101 +1,11 @@
 #!/usr/bin/env python3
-"""Eight checks: documentation failures that have already happened here.
-`test_check_docs.py` reads this number back against the `CHECKS` tuple at the
-foot of this file. It did not, until #152's third review round: the guard
-covered STATUS.md, TASKS.md and the CI comment, and this docstring was a fourth
-copy nothing looked at -- so the three guarded ones were dragged to Eight and
-the one inside the checker stayed at Seven, on the very commit that made it
-eight. That is the failure this file is proudest of catching, recurring one
-file further in. The colon above is load-bearing: the cue requires it, because
-"the two checks this pull request added" is prose and a claim about the whole
-checker enumerates.
+"""Check repository documentation facts that are cheap to verify mechanically.
 
-1. Relative links resolve. This repository's documents cite each other
-   constantly, and a link that 404s reads exactly like one that works until
-   somebody clicks it. A rename with a stale reference behind it is the normal
-   way this happens.
-
-2. Inline code spans close on the line that opens them. A stray backtick is
-   invisible in a diff and turns everything after it into code until the next
-   one, so a heading that lands inside the span stops being a heading. That is
-   not hypothetical: this checker's own pull request shipped a `TASKS.md` where a
-   splice landed inside `` `## DONE` ``, truncating one task's body and
-   re-parenting its entire field list onto the next heading. The uniqueness check
-   passed cleanly, because every heading was still unique.
-
-3. Task IDs in TASKS.md are unique. A duplicate ID means two tasks answer to one
-   name and an agent picking work up cannot tell which it was handed. Headings
-   inside a `<details>` block are deliberately excluded: TASKS.md keeps a
-   rejected task's original scope in one, and that is a record rather than a
-   second live task.
-
-4. One OD number names one decision. Four open pull requests each inserted
-   `## OD-16` into OWNER_DECISIONS.md at the same line, for four different
-   decisions. They share no file, so git merges them clean and nothing forces a
-   choice; "keep both" leaves two OD-16 headings and two ambiguous anchors with
-   CI green. Check 3 is TASKS.md-only and check 1 captures a link's `#anchor`
-   and then never looks at it, so nothing saw it. See T-127 for the anchor half,
-   which is a bigger job and is not this check.
-
-5. A live task has a body, and a finished one is filed under DONE. Check 2
-   catches the splice at its cause; this catches it at its effect, and catches
-   the effect however it got there. The rule is TASKS.md's own, stated two
-   paragraphs into it: every live task carries priority, dependencies, goal,
-   acceptance, status and tests. It found four records left in live sections the
-   first time it ran -- drift that predates the splice by weeks and that no
-   syntactic check would ever see.
-
-   THE NUMBERS ABOVE ARE THE `CHECKS` ORDER, which is the order this tool
-   prints. They had not been: 4 and 5 were swapped here relative to the tuple,
-   from before the tuple existed, and nothing reconciles a docstring with a
-   data structure. The first prose to cite one of these numbers did so twice,
-   differently -- TASKS.md said Check 4 for OD numbers and STATUS.md said Check
-   5 -- which is how a stale ordering becomes a wrong instruction. Reconciled in
-   the third review round of #152; a reader can now check any of these against
-   the tool's own output.
-
-6. Nothing unexpected is tracked at the repository root. `git add -A` run from
-   the root has twice swept in a file that was only ever meant to be read: an
-   archive waiting to be unpacked, and later a vendor documentation page saved
-   while researching a part. Both are somebody else's copyrighted material and
-   the second one reached `main` before anyone noticed. .gitignore now covers
-   the two shapes that have occurred; the allow-list here covers the shape that
-   has not occurred yet, because the failure is the sweep and not the extension.
-
-7. A `file.md:123` citation lands on a line that exists and is not blank. These
-   documents cite each other by line number constantly, and a line number is a
-   fact about a file at one moment. A branch that inserted seven lines into
-   HARDWARE_MATRIX.md moved two PMU-rail rows from :144 and :145 to :151 and
-   :152, and left two citations behind -- one of them pointing at a blank line,
-   inside a `BLOCKED:` block whose whole subject is that guessing the GNSS rail
-   means GNSS silently never starts. A citation with nothing at the end of it
-   reads as a claim with no source.
-
-   Without a fingerprint this checks only that there is something there, not
-   that the line still *says* the right thing. WITH one -- a quoted snippet on
-   the citation's own physical line -- it checks the content too, which is what
-   `_report` below does and what this sentence denied until 2026-08-24: it was
-   written before fingerprints existed and never revisited. So a bare citation
-   is the cheap half and a fingerprinted one is not, and which you get is the
-   author's choice per citation. Citations to paths outside the repository
-   -- upstream MeshCore sources and the like -- are skipped, because their line
-   numbers are facts about somebody else's tree.
-
-8. One open-question ID names one question. Check 4 does this for OWNER_DECISIONS
-   and nothing did it for OPEN_QUESTIONS, which is the same register one step
-   earlier and has four times as many identifiers in it. A branch filed the
-   panel's wire byte order as `D19` while `main` was taking `D19` for the
-   display-FPC part marking; the branch merged `main` and nothing re-checked the
-   number, so two unrelated questions shared one ID across nineteen citations in
-   eight files, with every check green. Struck rows count: `~~D12~~` is still
-   spent, and reusing a retired number is the same ambiguity with a subtler
-   cause. Found in review of #152.
+Checks resolve relative links, validate inline-code spans, keep decision and
+open-question IDs unique, reject unexpected tracked root files, and verify that
+line-number citations still land on nonblank content.
 
 Run: python3 tools/docs/check_docs.py [root]
-Exits non-zero on the first category that has findings, after printing all of
-them. Invoke through `python3`, never as `./check_docs.py` -- the working copies
-this repository is edited from report core.filemode=false, so an executable bit
-never reaches a commit.
 """
 
 from __future__ import annotations
@@ -120,13 +30,8 @@ LINK = re.compile(r"\]\(\s*([^)\s#]*)(#[^)\s]*)?\s*\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 ANCHOR_STRIP = re.compile(r"[^\w\- ]", re.UNICODE)
 FENCE = re.compile(r"^\s*(```|~~~)")
-TASK_HEADING = re.compile(r"^###\s+(T-\d+[a-z]?)\b")
-# Runs of backticks delimit an inline code span, and a span does not survive a
-# blank line. Counting runs rather than characters is what makes ``a `b` c``
-# work.
+# Runs of backticks delimit inline code spans; run length matters for CommonMark.
 TICK_RUN = re.compile(r"`+")
-DETAILS_OPEN = re.compile(r"<details\b", re.I)
-DETAILS_CLOSE = re.compile(r"</details\s*>", re.I)
 
 SKIP_DIRS = {".git", "build", "node_modules", "external", ".venv", "__pycache__"}
 EXTERNAL = ("http://", "https://", "mailto:", "tel:", "ftp://", "//")
@@ -614,146 +519,12 @@ def _unclosed(runs: list[int]) -> bool:
             return True
     return False
 
-
-def check_task_ids(root: str) -> list[str]:
-    path = os.path.join(root, "TASKS.md")
-    if not os.path.exists(path):
-        return []
-    with open(path, encoding="utf-8") as handle:
-        text = handle.read()
-
-    seen: dict[str, int] = {}
-    problems = []
-    depth = 0
-    for lineno, line in strip_fences(text):
-        # Count first so that a heading on the same line as <details> is excluded.
-        opens = len(DETAILS_OPEN.findall(line))
-        closes = len(DETAILS_CLOSE.findall(line))
-        inside = depth > 0 or opens > 0
-        depth = max(0, depth + opens - closes)
-        if inside:
-            continue
-        match = TASK_HEADING.match(line)
-        if not match:
-            continue
-        task = match.group(1)
-        if task in seen:
-            problems.append(
-                f"TASKS.md:{lineno}: duplicate task ID {task}, first seen at line {seen[task]}"
-            )
-        else:
-            seen[task] = lineno
-    return problems
-
-
-# A section heading, so a task can be told from the section it sits in.
-SECTION = re.compile(r"^##\s+(.+?)\s*$")
-PRIORITY = re.compile(r"^\s*[-*]\s+\*\*Priority:\*\*")
-# A blocked task carries a blocker instead of a field list -- CLAUDE.md's own
-# format, and TASKS.md writes it inside a fence, where nothing else here looks.
-BLOCKER = re.compile(r"^\s*BLOCKED:")
-# "### T-102 · Documentation consistency in CI — **DONE** 2026-08-22"
-DONE_MARK = re.compile(r"\*\*DONE\*\*|\*\*REJECTED\*\*")
-
-# Sections whose tasks are records rather than work to pick up. A record does
-# not carry a field list and is not expected to.
-RECORD_SECTIONS = {"DONE"}
-# Sections whose tasks carry a blocker rather than a priority.
-BLOCKED_SECTIONS = {"BLOCKED"}
-
-
-def check_task_bodies(root: str) -> list[str]:
-    """Every task in a live section has a body, and every task marked DONE or
-    REJECTED is filed in a section for records.
-
-    Both halves are one defect seen from two sides. When a heading is spliced
-    into another task's text, the task above it loses its fields and the task
-    below it inherits them -- so the first half catches the victim and the
-    second catches the intruder, and a splice trips at least one of them
-    wherever it lands. Unlike check_code_spans this does not care how the file
-    got that way, which is why it also finds drift nobody typed in one edit.
-
-    What counts as a body depends on the section. Under ## BLOCKED a task
-    carries the blocker block CLAUDE.md specifies and no priority, which is
-    correct rather than missing; everywhere else it is the field list, of which
-    **Priority:** is the first line.
-    """
-    path = os.path.join(root, "TASKS.md")
-    if not os.path.exists(path):
-        return []
-    with open(path, encoding="utf-8") as handle:
-        text = handle.read()
-
-    problems = []
-    section = ""
-    depth = 0
-    pending: tuple[str, int, str, str] | None = None  # task, line, heading, section
-
-    def close(pending, saw_body: bool) -> None:
-        if pending is None:
-            return
-        task, lineno, heading, where = pending
-        if where in RECORD_SECTIONS:
-            return
-        if DONE_MARK.search(heading):
-            problems.append(
-                f"TASKS.md:{lineno}: {task} is marked DONE or REJECTED but sits under "
-                f"## {where}; finished work is filed under ## DONE"
-            )
-        elif not saw_body:
-            wanted = (
-                "BLOCKED: block" if where in BLOCKED_SECTIONS else "**Priority:** field"
-            )
-            problems.append(
-                f"TASKS.md:{lineno}: {task} under ## {where} has no {wanted} "
-                f"-- a live task with no body cannot be picked up"
-            )
-
-    saw_body = False
-    for lineno, line, fenced in scan_lines(text):
-        if not fenced:
-            opens = len(DETAILS_OPEN.findall(line))
-            closes = len(DETAILS_CLOSE.findall(line))
-            inside = depth > 0 or opens > 0
-            depth = max(0, depth + opens - closes)
-            if inside:
-                continue
-
-            heading = SECTION.match(line)
-            if heading:
-                close(pending, saw_body)
-                pending, saw_body = None, False
-                section = heading.group(1)
-                continue
-
-            task_match = TASK_HEADING.match(line)
-            if task_match:
-                close(pending, saw_body)
-                pending = (task_match.group(1), lineno, line, section)
-                saw_body = False
-                continue
-
-        if pending is None:
-            continue
-        if pending[3] in BLOCKED_SECTIONS:
-            # The blocker lives inside the fence, so this is the one thing here
-            # that reads fenced lines.
-            if BLOCKER.match(line):
-                saw_body = True
-        elif not fenced and PRIORITY.match(line):
-            saw_body = True
-
-    close(pending, saw_body)
-    return problems
-
-
 # Everything git tracks at the repository root, and nothing else belongs there.
 # Kept as a literal list rather than a pattern because the point is that adding
 # a root-level file should be a deliberate act that edits this line.
 ROOT_ALLOWED = {
-    # Agent-tool entry points. Each is a pointer to CLAUDE.md or a tool's own
-    # registration, never a second copy of the rules — CLAUDE.md, "The tooling
-    # around the work", says which is which and why none of them is a symlink.
+    # Agent-tool entry points point to AGENTS.md or register a tool; they do not
+    # copy repository rules.
     ".clinerules",
     ".gitignore",
     ".ignore",
@@ -893,19 +664,10 @@ def check_question_ids(root: str) -> list[str]:
     return sorted(problems)
 
 
-# The checks this file runs, as data. How many there are is quoted in STATUS.md,
-# TASKS.md, the CI comment AND this file's own docstring, and the copy in
-# STATUS.md said Six on the very commit that added the seventh -- so the number
-# now has one source, and test_check_docs.py holds the quotes to it. The
-# docstring joined that list one round later, having gone stale in exactly the
-# way the sentence above describes while sitting six hundred lines above it.
-# Found in review, twice.
 CHECKS = (
     ("Broken relative links", "check_links"),
     ("Unclosed inline code spans", "check_code_spans"),
-    ("Duplicate task IDs", "check_task_ids"),
     ("Duplicate owner-decision numbers", "check_decision_ids"),
-    ("Tasks with no body, or finished work outside DONE", "check_task_bodies"),
     ("Unexpected files tracked at the repository root", "check_root_files"),
     (
         "Citations pointing at a blank line or past the end of a file",

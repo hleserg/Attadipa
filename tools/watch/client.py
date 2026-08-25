@@ -677,7 +677,7 @@ class Watch:
         only `steps - 1` sleeps, the first of them of length zero, so a swipe
         runs `1/steps` short of `duration` -- 4% at the default. `gesture()`
         had the same shape of error and it was not proportional there: see its
-        docstring and, for what the two verbs now promise, T-114 in `TASKS.md`.
+        docstring and issue #117 for the firmware endpoint contract.
         Left as it is on purpose rather than by omission; changing it moves
         the timing of every swipe in the repository and wants its own test.
         """

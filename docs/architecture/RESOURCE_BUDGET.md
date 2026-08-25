@@ -99,8 +99,8 @@ another:
 So the Waveshare board needs either partial-buffer rendering or PSRAM-backed
 buffers. Both are real options with different costs — PSRAM buffers trade
 bandwidth and add a cache-coherency requirement for DMA; partial buffers trade
-tearing behaviour and redraw complexity. **That is an ADR, not a default**, and
-it is listed as a pending decision in [TASKS.md](../../TASKS.md).
+tearing behaviour and redraw complexity. **That is an ADR, not a default**;
+implementation waits for that decision.
 
 **And a third cost belongs in that ADR, in time rather than in bytes.** The one
 complete display path readable in pinned source sets `swap_bytes` and therefore

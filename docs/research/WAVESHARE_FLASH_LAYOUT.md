@@ -129,7 +129,7 @@ Three things follow, and each is worth more than the dump it came from.
 **`xiaozhi` is on the device, in full, at a known version.** Not inferred from a
 wake-word model this time — the string `xiaozhi` and the version `1.8.5` are in
 the application descriptor. §3 reached the right conclusion by the wrong route
-and is corrected below. For [T-104](../../TASKS.md) this matters concretely:
+and is corrected below. For the `xiaozhi-esp32` licence review this matters concretely:
 the audio path to read is the one at **tag `1.8.5`**, not at `HEAD`. Reading a
 newer version of somebody's code than the one on the board in front of you is
 research into a different program.

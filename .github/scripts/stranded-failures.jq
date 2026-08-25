@@ -60,7 +60,6 @@
   | select((.labels | index("agent:ready")) == null)
   | select((.labels | index("agent:working")) == null)
   | select((.labels | index("agent:blocked")) == null)
-  | select((.labels | index("agent:done")) == null)
   | select((.labels | index("agent:review")) == null)
   | .number
 ]
