@@ -106,7 +106,9 @@ esp_err_t initialize_i2c() {
   config.clk_source = I2C_CLK_SRC_DEFAULT;
   config.glitch_ignore_cnt = 7;
   config.flags.enable_internal_pullup = true;
-  return i2c_new_master_bus(&config, &state.i2c);
+  ESP_RETURN_ON_ERROR(i2c_new_master_bus(&config, &state.i2c), kTag,
+                      "initialize I2C bus");
+  return i2c_master_bus_reset(state.i2c);
 }
 
 esp_err_t initialize_pmu() {
