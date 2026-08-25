@@ -1,6 +1,6 @@
 {
-  "name": "Attadipa",
-  "short_name": "Attadipa",
+  "name": "Atta-dipa",
+  "short_name": "Atta-dipa",
   "description": "Open-source wearable platform for ESP32-S3.",
   "start_url": "./",
   "display": "standalone",

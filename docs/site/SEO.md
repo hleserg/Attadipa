@@ -88,11 +88,11 @@ that implies a downloadable product exists. No `aggregateRating` and no
 
 | File | Was served | Now served | Saved |
 |---|---|---|---|
-| hero banner | `attadipa-banner.png`, **1.32 MB** | `banner.webp`, **43 KB**, identical 1774 × 887 | 1.28 MB |
-| design board | `attadipa-style-board.png`, **1.70 MB** | `style-board.webp`, **150 KB**, identical 1448 × 1086 | 1.55 MB |
+| hero banner | `attadipa-banner.png`, **996 KB** | `banner.webp`, **49 KB**, identical 1774 × 887 | 947 KB |
+| design board | `attadipa-style-board.png`, **1.44 MB** | `style-board.webp`, **138 KB**, identical 1448 × 1086 | 1.30 MB |
 
 Both `.webp` files were already in the repository and simply unreferenced. That
-is **2.8 MB off the first page view**, which on a mobile connection is the
+is **2.25 MB off the first page view**, which on a mobile connection is the
 difference between a Largest Contentful Paint a search engine counts as good and
 one it counts as poor.
 
@@ -468,7 +468,7 @@ worse than the problem. **It is an owner decision, and the recommended one.**
 descriptions.** The site is one page because the project is one project.
 
 **`attadipa-banner.png` and `attadipa-style-board.png` are now unreferenced**
-and together weigh 3.0 MB in the repository. They are not deleted here: they may
+and together weigh 2.44 MB in the repository. They are not deleted here: they may
 be the source originals the `.webp` files were derived from, and that is not a
 call to make inside an SEO commit. If they are not, dropping them takes 3 MB off
 every clone.
@@ -483,7 +483,7 @@ None of these are blockers, and none were registered, per the brief.
 | Verify in **Bing Webmaster Tools** | <https://www.bing.com/webmasters> — can import from Search Console in one click | Bing, DuckDuckGo and ChatGPT search all read this index |
 | Submit `sitemap.xml` | both consoles | **the only way the sitemap is found at all.** `docs/robots.txt` publishes below the origin root and no crawler reads it (§3), and no crawler is documented as reading the `<link rel="sitemap">` in the head either — so until this is done there is no discovery path, not a weaker one. Also first-crawl latency: hours instead of weeks |
 | Check the **Open Graph card** renders | <https://cards-dev.twitter.com/validator> and Facebook's sharing debugger | the OG tags are new and unproven against a real scraper |
-| Run **PageSpeed Insights** | <https://pagespeed.web.dev> | confirms the 2.8 MB image saving as a field number rather than an arithmetic one |
+| Run **PageSpeed Insights** | <https://pagespeed.web.dev> | confirms the 2.25 MB image saving as a field number rather than an arithmetic one |
 
 ## 6. Repository metadata
 
@@ -524,7 +524,7 @@ searches for and which no current topic covers.
   a sentence saying they must be re-read; a sentence is what had just failed, so
   this reads them instead. It measures PNG, JPEG and WebP from their own
   headers and covers the dimension pairs, the byte sizes, both statements of the
-  2.8 MB total, the bounds on the stylesheet and the script, and the case count
+  2.25 MB total, the bounds on the stylesheet and the script, and the case count
   quoted above — in this document, in `STATUS.md` and in the CI comment, all
   three read back against what the suite actually ran.
   It compares by proportion, not by scale, so the 64 × 64 `favicon.png` drawn

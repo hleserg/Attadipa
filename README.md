@@ -1,12 +1,12 @@
 <p align="center">
   <img src="pics/AttadipaBanner.png"
-       alt="Attadipa — Lumar, a firefly with a glowing amber abdomen, beside the wordmark and the motto Independent by design"
+       alt="Atta-dipa — Lumar, a firefly with a glowing amber abdomen, beside the wordmark and the motto Independent by design"
        width="820">
 </p>
 
 **English** · [Русский](README.ru.md) · [Project page](https://hleserg.github.io/Attadipa/)
 
-# Attadipa
+# Atta-dipa
 
 A wearable firmware platform for ESP32-S3 smartwatches — mesh messaging,
 offline navigation, and a UI that is meant to be genuinely pleasant to use.
@@ -16,7 +16,7 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 > GNSS trust evaluator, the design-token system, and the desktop simulator.
 > One target board is now on the owner's desk and has been read over
 > its own USB port, which is the first evidence in this repository that came
-> from silicon rather than from a document. **The T-165 Attadipa firmware now
+> from silicon rather than from a document. **The T-165 Atta-dipa firmware now
 > boots on it from flash** and has measured the flash, octal PSRAM and development
 > partition table. Display, touch, PMU, RTC, power, timing and GNSS remain
 > unexercised. [Issues](https://github.com/hleserg/Attadipa/issues) and
@@ -31,7 +31,7 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 | **Runs two geometries from one binary** | 240 × 240 and 410 × 502, selected at run time, fitting any of the five candidate T-Watch radios and a present-or-absent node without a rebuild |
 | **Draws through design tokens** | twelve colour roles across day and night themes with WCAG contrast arithmetic, plus a CI check that refuses a raw hex value or a pixel count back into screen code |
 | **Renders every character it claims to** | four generated Montserrat subsets covering all 181 codepoints of the charset; an undrawable codepoint **fails the run** rather than printing a warning |
-| **Has one board on the desk** | a Waveshare ESP32-S3 Touch AMOLED 2.06 running Attadipa T-165 from flash: chip revision v0.2, physical flash `0xC8 0x4019` (32 MB) behind a deliberate 16 MB build ceiling, and 8 MB octal PSRAM initialised and tested |
+| **Has one board on the desk** | a Waveshare ESP32-S3 Touch AMOLED 2.06 running Atta-dipa T-165 from flash: chip revision v0.2, physical flash `0xC8 0x4019` (32 MB) behind a deliberate 16 MB build ceiling, and 8 MB octal PSRAM initialised and tested |
 | **Hardware evidence has a narrow boundary** | boot, flash/PSRAM diagnostics, the development partition table and a 30-second PURE_RAM run are measured. Display, touch, PMU rails, RTC, power, timing, GNSS and interference are not; the hardware plans keep those claims visibly unproven |
 | **Runs its own engineering queue** | work arrives as a GitHub issue, an agent opens a branch and a draft pull request, and a second agent reviews it independently. The workflows, their security model and their cost controls are in [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md) |
 
@@ -42,7 +42,7 @@ T-166: the Waveshare display, touch controller, PMU rails and RTC, followed by a
 real Clock and then sleep/wake. [`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole
 plan and the reasoning behind it.
 
-Attadipa is not a Linux-like OS. It is a single embedded
+Atta-dipa is not a Linux-like OS. It is a single embedded
 firmware/application platform on top of ESP32-S3 and ESP-IDF/FreeRTOS,
 designed to support several watch models from one codebase.
 
@@ -57,7 +57,7 @@ designed to support several watch models from one codebase.
 - **Independent of your phone.** Mesh messaging, navigation, and time work with
   no companion app and no internet. A phone is an optional companion, never the
   brain of the watch. Where a capability needs hardware a particular watch does
-  not have, it comes from a **Attadipa node** — a dedicated box built for this,
+  not have, it comes from a **Atta-dipa node** — a dedicated box built for this,
   not a handset — and the interface says which situation it is in rather than
   pretending.
 - **Mesh-native.** Long-range LoRa messaging built on
@@ -83,12 +83,12 @@ designed to support several watch models from one codebase.
 |---|---|---|
 | LilyGO T-Watch S3 Plus | first target — the full product | LoRa + GNSS |
 | Waveshare ESP32-S3 Touch AMOLED 2.06 | second target | **neither** |
-| Attadipa node | separate device — LoRa, GNSS, ESP32 | provides both, over a link |
+| Atta-dipa node | separate device — LoRa, GNSS, ESP32 | provides both, over a link |
 | Desktop simulator | first-class development target | simulated, including the node |
 
 The second board has no sub-GHz radio and no GNSS receiver. That is not an
 oversight in the plan — it is the reason the capability layer exists. Nor does
-it make that board a lesser device: a **Attadipa node** is a separate box
+it make that board a lesser device: a **Atta-dipa node** is a separate box
 carrying LoRa, GNSS and an ESP32, and a watch attached to one runs the same
 applications a watch with its own radio runs. Mesh and navigation are
 unavailable there *without a node*, and the interface says which of those two
@@ -134,7 +134,7 @@ somebody measures them. A datasheet number is not a measurement.
 **Capability-driven, in two layers.** Applications ask what the device can
 *do* — `availability(Capability::Position)` — and never what is on it. They do
 not learn which GPIO powers the GNSS module, which SPI the radio sits on, or
-whether there is a GNSS module at all: an Attadipa node supplies one over a link,
+whether there is a GNSS module at all: an Atta-dipa node supplies one over a link,
 and the answer is the same shape either way. The hardware inventory is a
 separate layer that lives below the service boundary and is not linked into
 applications, so asking a chip a question is a build error rather than a review
@@ -184,7 +184,7 @@ cmake/                         the pinned LVGL dependency
 
 docs/master-prompt-final.md    product specification (source of truth)
 docs/research/                 verified facts, owner decisions, open questions, deps, reuse ledger
-docs/node/                     the Attadipa node — mostly what is *not* known about it
+docs/node/                     the Atta-dipa node — mostly what is *not* known about it
 docs/hardware/                 interference matrix, board notes
 docs/architecture/             architecture, resource budget
 docs/adr/                      architecture decision records
@@ -223,7 +223,7 @@ cmake --build build-sim
 ```
 --board <id>      t-watch-s3-plus (240x240) | waveshare-amoled-206 (410x502)
 --radio <chip>    fit any of the five candidate T-Watch radios
---node            present a paired, reachable Attadipa node
+--node            present a paired, reachable Atta-dipa node
 --no-bring-up     leave every part untouched, to see the unavailable states
 --screenshot <p>  write the screen to a PNG
 --frames <n>      render n frames and exit; with SDL_VIDEODRIVER=dummy, headless
