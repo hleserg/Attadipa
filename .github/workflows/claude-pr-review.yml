@@ -90,6 +90,52 @@ jobs:
         with:
           fetch-depth: 0
 
+      # THE SAME BUNDLE AS claude-agent.yml, AND THE SAME REASON -- #133.
+      #
+      # This workflow's only trigger is `pull_request`, so GITHUB_REF is always
+      # `refs/pull/N/merge` and the checkout above is always the reviewed branch
+      # merged into the base. `Work out why the review did not happen` below
+      # runs `failure-reason.sh`, whose entire job is to decide what is safe to
+      # quote out of an execution log into a comment this workflow authors. A
+      # pull request that edits that file would have had its own version make
+      # that decision -- and `failure-reason.sh` is a file agents are actually
+      # sent to edit (#106).
+      #
+      # `contents: read` bounds what that could do; it does not make it right,
+      # and the redaction whitelist is the wrong place to find out. Same sparse
+      # default-branch checkout, staged out of the workspace before the model
+      # runs, for the cost of two steps.
+      - name: Fetch the failure classifier from the default branch
+        if: steps.auth.outputs.ok == 'true'
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          path: .attadipa-bundle
+
+      - name: Move it out of the reviewer's reach
+        if: steps.auth.outputs.ok == 'true'
+        run: |
+          # No `set -e`: an unstaged bundle degrades one sentence of one
+          # comment, and must not cost the review itself.
+          set -uo pipefail
+          DEST="$RUNNER_TEMP/attadipa-orchestration"
+          rm -rf "$DEST"
+          if [ -d .attadipa-bundle/.github/scripts ]; then
+            mkdir -p "$DEST" && cp -R .attadipa-bundle/.github/scripts "$DEST/scripts"
+          fi
+          rm -rf .attadipa-bundle
+          if [ -r "$DEST/scripts/failure-reason.sh" ]; then
+            echo "ATTADIPA_TRUSTED_SCRIPTS=$DEST/scripts" >> "$GITHUB_ENV"
+            echo "::notice::failure classifier staged from the default branch at $DEST/scripts"
+          else
+            echo "ATTADIPA_TRUSTED_SCRIPTS=" >> "$GITHUB_ENV"
+            echo "::warning::the failure classifier could not be staged from the default branch; a failed review will report its structural fields only"
+          fi
+
       # continue-on-error, and the reason is evidence rather than taste.
       #
       # On 2026-08-21 this job went red on pull request #9 after 373 ms, one
@@ -366,7 +412,7 @@ jobs:
           set -uo pipefail
           comments="$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp 2>/dev/null | jq -c 'flatten(1)' 2>/dev/null || true)"
           labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)"
-          answer="$(bash .github/scripts/review-published.sh yes "$OUTCOME" "$comments" "$labels" "$STARTED" || echo 'unknown helper failed')"
+          answer="$(bash "$ATTADIPA_TRUSTED_SCRIPTS/review-published.sh" yes "$OUTCOME" "$comments" "$labels" "$STARTED" || echo 'unknown helper failed')"
           case "$answer" in
             published\ *) state=published ;;
             silent\ *) state=silent ;;
@@ -427,9 +473,18 @@ jobs:
             # an API status, a context refusal, a credit balance, an expired
             # token -- so the free-text `result` still never reaches a comment
             # we author, but a recognised failure gets to say its own name.
-            reason="$(bash .github/scripts/failure-reason.sh "${EXEC_FILE}")"
+            #
+            # From the default-branch bundle, never from the workspace -- the
+            # workspace here is `refs/pull/N/merge`, which is the branch being
+            # reviewed. See the bundle step near the checkout. With no bundle
+            # the structural fields above still get reported; only the named
+            # reason is lost, which is the right thing to lose.
+            reason=""
+            if [ -n "${ATTADIPA_TRUSTED_SCRIPTS:-}" ] && [ -r "${ATTADIPA_TRUSTED_SCRIPTS}/failure-reason.sh" ]; then
+              reason="$(bash "${ATTADIPA_TRUSTED_SCRIPTS}/failure-reason.sh" "${EXEC_FILE}")"
+            fi
             case "${reason}" in
-              unclassified*|"the run reported no error"*) ;;
+              ""|unclassified*|"the run reported no error"*) ;;
               *) detail="${detail}"$'\n'"Reason: ${reason}" ;;
             esac
           fi

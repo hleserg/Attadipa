@@ -385,6 +385,17 @@ jobs:
       - name: The gh calls in the workflows are ones gh accepts
         run: bash .github/tests/gh-api-usage-test.sh
 
+      # The hand-over used to read its own code out of $GITHUB_WORKSPACE, which
+      # on two of claude-agent.yml's five triggers is `refs/pull/N/merge` and on
+      # all five is whatever the model session left behind. A branch that edits
+      # `.github/scripts` had its version run with issues:write in hand; a
+      # branch missing a helper killed the step under `set -euo pipefail`,
+      # before the outcome comment, leaving the issue on agent:working. This
+      # extracts the Hand over shell from the YAML and runs it against a stub
+      # `gh` with a hostile working tree -- the boundary is executed, not read.
+      - name: The hand-over runs the default branch's code, or says it could not
+        run: bash .github/tests/orchestration-bundle-test.sh
+
   docs:
     name: Documentation consistency
     runs-on: ubuntu-latest

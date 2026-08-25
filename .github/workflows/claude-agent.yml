@@ -747,10 +747,94 @@ jobs:
               gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true ;;
           esac
 
+      # THE BRANCH, FOR THE CODING WORK. Deliberately whatever the event points
+      # at, because that is the code the task is about. What it is NOT any more
+      # is where the hand-over reads its own logic from -- see the next step.
       - uses: actions/checkout@v7
         if: steps.auth.outputs.ok == 'true'
         with:
           fetch-depth: 0
+
+      # THE ORCHESTRATION BUNDLE: THE HAND-OVER'S OWN CODE, FROM main, KEPT OUT
+      # OF THE SESSION'S REACH.
+      #
+      # Everything after `Run Claude` in this job is privileged. It holds
+      # `contents: write`, `issues: write`, `pull-requests: write` and a live
+      # GH_TOKEN, and it decides what this run is allowed to say and which state
+      # the queue is left in. Until this step existed it read that code out of
+      # $GITHUB_WORKSPACE, and the workspace is not ours to trust:
+      #
+      #   - `pull_request_review` and `pull_request_review_comment` -- two of
+      #     this workflow's five triggers -- set GITHUB_REF to
+      #     `refs/pull/N/merge` (GitHub's own events table). The checkout above
+      #     is then the reviewed branch merged into the base, and a branch that
+      #     edits `.github/scripts` wins that merge for the files it edits;
+      #   - the model session runs BETWEEN that checkout and those steps, with
+      #     write access to every file in the tree, and is routinely handed
+      #     tasks whose subject is these very helpers -- #106 rewrites
+      #     `failure-reason.sh`, #129 adds a hand-over script. The reporting
+      #     step was executing the half-finished reporting code the run had just
+      #     written;
+      #   - a tree that has no such file at all -- a branch predating a helper,
+      #     a branch that deletes one, a session that moved it -- met
+      #     `set -euo pipefail` and killed the step before the outcome comment.
+      #     The issue then sat on `agent:working` with nothing said until the
+      #     watchdog picked it up two hours later. That is #133, and it is the
+      #     same execution path already reported once against #85.
+      #
+      # So the hand-over's code comes from the default branch, which is
+      # protected by CI and by review, or it does not come at all. The pattern
+      # is the sparse checkout the gate above already uses, and the acknowledge
+      # job, and agent-queue-watchdog.yml, and pr-merge-sweep.yml: no new
+      # dependency, a fourth caller of a shape this repository already trusts.
+      #
+      # It lands INSIDE the workspace because actions/checkout refuses a `path:`
+      # outside it, and the very next step moves it to RUNNER_TEMP and deletes
+      # the staging copy. THAT ORDERING IS THE GUARANTEE RATHER THAN A TIDY-UP:
+      # both steps run before `Run Claude`, so there is no moment at which the
+      # session and the trusted copy are in the same tree.
+      #
+      # continue-on-error, because a fetch that fails must not take the run's
+      # only report down with it. `Hand over` treats an unusable bundle as a
+      # reason to write a shorter outcome inline -- never as a reason to fall
+      # back to the workspace, and never as a reason to say nothing.
+      - name: Fetch the hand-over's own code from the default branch
+        if: steps.auth.outputs.ok == 'true'
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          path: .attadipa-bundle
+
+      - name: Move it out of the agent's reach
+        if: steps.auth.outputs.ok == 'true'
+        run: |
+          # No `set -e` here on purpose. A bundle that cannot be staged is a
+          # degraded hand-over, which the hand-over handles by itself; it is not
+          # a reason to fail this job before the agent has run at all.
+          set -uo pipefail
+          DEST="$RUNNER_TEMP/attadipa-orchestration"
+          rm -rf "$DEST"
+          if [ -d .attadipa-bundle/.github/scripts ]; then
+            mkdir -p "$DEST" && cp -R .attadipa-bundle/.github/scripts "$DEST/scripts"
+          fi
+          # Unconditionally, whether that copy worked or not: nothing this step
+          # brought in may still be in the workspace when the session starts.
+          # RUNNER_TEMP is outside $GITHUB_WORKSPACE and is not what the agent
+          # is pointed at, working in, or asked to commit.
+          rm -rf .attadipa-bundle
+          if [ -r "$DEST/scripts/agent-say.sh" ]; then
+            echo "ATTADIPA_TRUSTED_SCRIPTS=$DEST/scripts" >> "$GITHUB_ENV"
+            echo "::notice::hand-over code staged from the default branch at $DEST/scripts"
+          else
+            # Written empty rather than left unset, so the hand-over reads a
+            # decision rather than an absence.
+            echo "ATTADIPA_TRUSTED_SCRIPTS=" >> "$GITHUB_ENV"
+            echo "::warning::the hand-over code could not be staged from the default branch; the outcome will be the reduced inline one"
+          fi
 
       # WHERE THE BRANCH WAS BEFORE THIS RUN TOUCHED IT.
       #
@@ -1083,7 +1167,16 @@ jobs:
           EXEC_FILE: ${{ steps.claude.outputs.execution_file }}
         run: |
           set -uo pipefail
-          REASON=$(bash .github/scripts/failure-reason.sh "${EXEC_FILE:-}")
+          # From the default-branch bundle, never from the workspace. This step
+          # is already inside the privileged tail, it reads a file the session
+          # produced, and `failure-reason.sh` is itself one of the things agents
+          # are sent to edit (#106). See the bundle step above for why the
+          # workspace is not a source of orchestration code.
+          if [ -n "${ATTADIPA_TRUSTED_SCRIPTS:-}" ] && [ -r "${ATTADIPA_TRUSTED_SCRIPTS}/failure-reason.sh" ]; then
+            REASON=$(bash "${ATTADIPA_TRUSTED_SCRIPTS}/failure-reason.sh" "${EXEC_FILE:-}")
+          else
+            REASON="unclassified: the failure classifier could not be read from the default branch"
+          fi
           echo "::notice::why the run died: ${REASON}"
           {
             echo "reason<<ATTADIPA_EOF"
@@ -1123,8 +1216,54 @@ jobs:
           # scheduled trigger dispatches. See .github/scripts/gh-label.sh for
           # why `gh issue edit` is not safe to point at a pull request.
           TARGET="${ATTADIPA_TARGET_KIND:-issue}"
-          # shellcheck source=.github/scripts/gh-label.sh
-          . .github/scripts/gh-label.sh
+
+          # WHICH COPY OF THE HAND-OVER'S CODE IS THIS STEP ALLOWED TO RUN?
+          #
+          # Only the one staged from the default branch before the session
+          # started. `ATTADIPA_TRUSTED_SCRIPTS` points at it; empty means the
+          # staging failed. The copy in $GITHUB_WORKSPACE is NEVER a fallback --
+          # it is the reviewed branch merged into the base plus whatever the
+          # session did to the tree, and this step runs with write access. See
+          # the bundle step for the three ways that goes wrong.
+          #
+          # Resolved first and with no side effects, so the decision is made
+          # before anything is written anywhere.
+          TRUSTED="${ATTADIPA_TRUSTED_SCRIPTS:-}"
+          MISSING=""
+          for f in gh-label.sh handover-decision.sh agent-say.sh promote-decision.sh; do
+            if [ -z "$TRUSTED" ] || [ ! -r "$TRUSTED/$f" ]; then
+              MISSING="${MISSING:+$MISSING }$f"
+            fi
+          done
+          [ -z "$MISSING" ] || echo "::error::the hand-over could not read its own code from the default branch ($MISSING); reporting the reduced outcome inline rather than running the copy in this branch's working tree"
+
+          # The `gh issue` / `gh pr` split. From the bundle when it is readable,
+          # written out here when it is not -- the same two lines the claim step
+          # writes out for a sibling reason, and for the same reason: a step
+          # that cannot reach the file still must not point `gh issue edit` at a
+          # pull request. .github/tests/orchestration-bundle-test.sh holds the
+          # copies in agreement, exactly as blocked-restart-test.sh does for the
+          # claim step's copy.
+          if [ -z "$MISSING" ]; then
+            # shellcheck source=.github/scripts/gh-label.sh
+            # shellcheck disable=SC1091
+            . "$TRUSTED/gh-label.sh"
+          else
+            attadipa_label_edit() {
+              local kind="$1" number="$2" slug="$3"; shift 3
+              case "$kind" in
+                pr) gh pr edit "$number" --repo "$slug" "$@" ;;
+                *)  gh issue edit "$number" --repo "$slug" "$@" ;;
+              esac
+            }
+            attadipa_label_comment() {
+              local kind="$1" number="$2" slug="$3"; shift 3
+              case "$kind" in
+                pr) gh pr comment "$number" --repo "$slug" "$@" ;;
+                *)  gh issue comment "$number" --repo "$slug" "$@" ;;
+              esac
+            }
+          fi
 
           LABELS=$(gh api "repos/$REPO/issues/$ISSUE" --jq '[.labels[].name] | join(",")')
 
@@ -1200,12 +1339,36 @@ jobs:
           # for an issue outranks even a missing conclusion, because an agent
           # that opened a pull request and then timed out has still done the
           # work.
-          {
-            read -r KIND
-            read -r DETAIL
-            read -r EXTRA
-          } < <(bash .github/scripts/handover-decision.sh \
-                  "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}")
+          if [ -z "$MISSING" ]; then
+            {
+              read -r KIND
+              read -r DETAIL
+              read -r EXTRA
+            } < <(bash "$TRUSTED/handover-decision.sh" \
+                    "$FOUND" "$HEAD_BEFORE" "${CONCLUSION:-}")
+          else
+            # THE REDUCED CLASSIFIER, and reduced is the honest word for it.
+            #
+            # `$FOUND` is produced by the GraphQL query above, which lives in
+            # this file and therefore comes from the default branch whatever the
+            # workspace holds -- so the one fact that matters is still available
+            # even with no bundle: is there an open pull request that closes
+            # this issue, or is the trigger itself an open pull request.
+            #
+            # What is deliberately NOT reconstructed here is the rest of
+            # handover-decision.sh's judgement: whether the head moved, whether
+            # a run without a conclusion still counts, whether a draft may be
+            # promoted. Those are the questions worth getting right, which is
+            # why they live in a tested file, and guessing at them inline would
+            # be the duplication this repository keeps refusing to make. The
+            # split below is the one that cannot be got wrong: something exists
+            # to look at, or nothing does.
+            case "$FOUND" in
+              here\ *|pr\ *) KIND=degraded_pr;   DETAIL=$(printf '%s' "$FOUND" | cut -d' ' -f2) ;;
+              *)             KIND=degraded_nopr; DETAIL="" ;;
+            esac
+            EXTRA=""
+          fi
           echo "::notice::hand over as $KIND (${DETAIL:-no detail}${EXTRA:+, $EXTRA})"
 
           # THE AGENT LABELS THE ISSUE ITSELF WHEN IT BLOCKS -- OR SOMEBODY
@@ -1227,8 +1390,11 @@ jobs:
           #
           # `.github/tests/blocked-restart-test.sh` asserts the pair, which lives
           # in two steps of one workflow and is correct in neither alone.
-          BLOCKED_OUTCOME=$(bash .github/scripts/blocked-outcome.sh \
-            "$LABELS" "${ATTADIPA_BLOCKED_AT_CLAIM:-unknown}" 2>/dev/null) || BLOCKED_OUTCOME=report
+          BLOCKED_OUTCOME=normal
+          if [ -z "$MISSING" ] && [ -r "$TRUSTED/blocked-outcome.sh" ]; then
+            BLOCKED_OUTCOME=$(bash "$TRUSTED/blocked-outcome.sh" \
+              "$LABELS" "${ATTADIPA_BLOCKED_AT_CLAIM:-unknown}" 2>/dev/null) || BLOCKED_OUTCOME=report
+          fi
           case "$BLOCKED_OUTCOME" in
             silent|report|normal) ;;
             *) BLOCKED_OUTCOME=report ;;
@@ -1242,8 +1408,36 @@ jobs:
             echo "::notice::#$ISSUE carries a pre-existing or unreadable blocker; reporting without changing its state."
           fi
 
-          bash .github/scripts/agent-say.sh outcome \
-            "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" "${REASON:-}" > /tmp/outcome.md
+          if [ -z "$MISSING" ]; then
+            bash "$TRUSTED/agent-say.sh" outcome \
+              "$KIND" "$RUN_URL" "$DETAIL" "$EXTRA" "${REASON:-}" > /tmp/outcome.md
+          else
+            # Never execute a fallback from the reviewed/session-mutated tree.
+            # This inline reduced report is part of the trusted workflow itself.
+            {
+              echo "### The run finished; the hand-over could not read its own code"
+              echo
+              echo "\`$MISSING\` could not be staged from the default branch. This is a"
+              echo "reduced report; it deliberately does **not** fall back to the working"
+              echo "tree, because that is reviewed/session-mutated code with write access."
+              echo
+              case "$KIND" in
+                degraded_pr)
+                  echo "**There is something to inspect.** #$DETAIL remains a draft and is"
+                  echo "marked \`agent:review\`; a person or orchestrator must decide it."
+                  ;;
+                *)
+                  echo "**No open pull request closes this issue.** It returns to the queue as"
+                  echo "\`agent:failed\` + \`agent:ready\`; nothing was merged."
+                  ;;
+              esac
+              echo
+              echo "The session's conclusion was \`${CONCLUSION:-none}\`. Run log: $RUN_URL"
+              echo
+              echo "This is an automation fault: check the default-branch bundle checkout"
+              echo "before restarting anything."
+            } > /tmp/outcome.md
+          fi
           attadipa_label_comment "$TARGET" "$ISSUE" "$REPO" --body-file /tmp/outcome.md
 
           if [ "$BLOCKED_OUTCOME" = "report" ]; then
@@ -1308,8 +1502,15 @@ jobs:
               fi ;;
           esac
 
-          PROMOTE=$(bash .github/scripts/promote-decision.sh \
-                      "$KIND" "$PR_CREATED" "$PR_HEAD_AT" "${ATTADIPA_RUN_STARTED_AT:-}")
+          # `hold` when there is no bundle, and that is the safe direction
+          # rather than a shrug: taking a pull request out of draft is what
+          # makes it eligible for the unattended backstop, so a hand-over that
+          # could not read its own decision code must not make that one.
+          PROMOTE="hold the hand-over could not read promote-decision.sh"
+          if [ -z "$MISSING" ]; then
+            PROMOTE=$(bash "$TRUSTED/promote-decision.sh" \
+                        "$KIND" "$PR_CREATED" "$PR_HEAD_AT" "${ATTADIPA_RUN_STARTED_AT:-}")
+          fi
 
           case "$KIND" in
             done_pr|done_here)
@@ -1325,7 +1526,12 @@ jobs:
           case "$KIND" in
             done_pr|done_here|done_here_nopush|done_nopr)
               attadipa_label_edit "$TARGET" "$ISSUE" "$REPO" --add-label agent:review --remove-label agent:working || true ;;
-            done_pr_cut|done_here_cut)
+            done_pr_cut|done_here_cut|degraded_pr)
+              # `degraded_pr` sits here for the same reason `done_pr_cut` does:
+              # there is something open to look at, and nothing about it is
+              # finished enough to promote. It reaches this arm having skipped
+              # `gh pr ready` above, so the draft stays a draft.
+              #
               # agent:review only, and NOT agent:ready. The first version added
               # both -- a commit to read, and somebody to pick up the rest --
               # and review pointed out that the second label is inert on a pull
