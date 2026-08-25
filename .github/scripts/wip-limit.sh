@@ -149,4 +149,6 @@ if [ -n "$counted" ]; then
 else
   echo "Active pull requests: $count ($state)"
 fi
-[ "$mode" = --admit ] && printf '%s %s\n' "$state" "$count"
+if [ "$mode" = --admit ]; then
+  printf '%s %s\n' "$state" "$count"
+fi

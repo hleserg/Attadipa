@@ -129,6 +129,15 @@ $(sed 's/^/       /' "$work/log")"; fi
 
 # 1. The exact field list, asserted as a list. A substring match would pass on a
 #    line that also asked for something unsupported.
+printf '%s' "[$(ghpr 1)]" > "$work/payload"
+: > "$work/output"
+if PATH="$work/bin:$PATH" ATTADIPA_STUB_DIR="$work" ATTADIPA_STUB_MODE=ok \
+    GITHUB_OUTPUT="$work/output" GITHUB_REPOSITORY=hleserg/Attadipa \
+    bash .github/scripts/wip-limit.sh > "$work/log" 2>&1; then
+  ok 'the production workflow invocation exits zero after writing its outputs'
+else
+  bad 'the production workflow invocation exits non-zero and skips its reporting steps'
+fi
 run_caller .github/scripts/wip-limit.sh "[$(ghpr 1)]" > /dev/null
 asked=$(cat "$work/fields")
 if [ "$asked" = "$ATTADIPA_WIP_JSON_FIELDS" ]; then
