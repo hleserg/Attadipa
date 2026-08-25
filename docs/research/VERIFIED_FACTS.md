@@ -690,6 +690,26 @@ BSP already demonstrated to be an incomplete description of its own board.
 - **Status:** **CONFLICTING** — or, more likely, one board wiring that supports
   both modes with the BSP choosing one. Either way the chip-select on GPIO 17 is
   a pin the pin map did not have. D14.
+- **Still conflicting after S13, and the reading that says otherwise is wrong.**
+  The factory firmware's boot log shows the vendor's *software* selecting the
+  SDMMC host driver — into an **empty** slot, where `send_op_cond` times out for
+  every possible wiring alike. That moves the conflict from *"two documents
+  disagree"* to *"two documents disagree and the vendor's running firmware sides
+  with the BSP"*, which is worth having and is not a measurement of copper.
+  Two things this second reading cannot supply either: on the ESP32-S3 the SDMMC
+  slots route through the GPIO matrix, so *"any GPIO may be used for each of the
+  SD card signals"* and the pin numbers constrain nothing; and the two modes
+  share the card's own contacts **by specification** — pin 2 is `CMD`/`DI`,
+  pin 5 `CLK`/`SCK`, pin 7 `DAT0`/`DO`, with SPI adding only a chip select on
+  pin 1 — so `MOSI` and `CMD` are one net rather than two readings of one.
+  (This bullet used to argue that from ESP-IDF's
+  `SDSPI_DEVICE_CONFIG_DEFAULT()` instead; at v5.4 that macro fills in `gpio_cs`
+  and three `GPIO_NUM_NC`s, and its struct has no clock, MOSI or MISO field, so
+  the quote did not support the claim. Same conclusion, sounder reason.) **No card
+  has ever enumerated on this board.** [#131](https://github.com/hleserg/Attadipa/issues/131);
+  the procedure that would settle it is
+  [SD_CARD_MODE_TEST](../hardware/SD_CARD_MODE_TEST.md), `NOT EXECUTED —
+  HARDWARE REQUIRED`.
 
 ### What is still not resolved from this schematic
 
@@ -1281,8 +1301,9 @@ constants.
 - **Claim, all read from the unit's own firmware booting unaided:** octal PSRAM
   enumerated by the `octal_psram` driver at 80 MHz with 10-cycle fixed read
   latency and 32-byte hybrid-wrap bursts (**D12a confirmed on silicon**); the SD
-  card driven through `sdmmc_common`/`vfs_fat_sdmmc` rather than `sdspi`
-  (**D14 resolved**); `sh8601: LCD panel create success, version: 1.0.2` followed
+  slot mounted through the **SDMMC host driver** and failing at `send_op_cond`
+  into an empty socket (**D14 half answered — see the correction below**);
+  `sh8601: LCD panel create success, version: 1.0.2` followed
   by `Backlight on`; flash booted **QIO at 80 MHz**, `detected chip: gd`, 32 MB;
   `chip revision: v0.2`; `efuse block revision: v1.4`;
   `QMI8658 initialized successfully`.
@@ -1295,3 +1316,14 @@ constants.
   **not** say: the QMI8658 line names no I2C address — the bus scan above
   settles `0x6B` by measurement instead — and the `sh8601` line is evidence about
   the driver rather than about the die.
+- **And the same caution applies to the SD line, which is where it was first
+  missed.** A log of the vendor's *software* is a fact about the software. The
+  slot was empty, so `send_op_cond` timing out is what every wiring produces —
+  the line says which host driver the vendor picked and nothing about the
+  connector behind it. It was recorded here as *"D14 resolved"* for one day,
+  while *"A conflict about the SD card interface"* earlier in this same file went
+  on saying `CONFLICTING` — one document holding both readings at once, which is
+  the shape this repository is supposed to notice.
+  [#131](https://github.com/hleserg/Attadipa/issues/131), and
+  the full correction is in
+  [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §4.3.
