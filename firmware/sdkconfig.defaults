@@ -21,6 +21,13 @@ CONFIG_ESP32S3_REV_MIN_0=y
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 
+# The build will report `--flash_mode dio` even though QIO is selected above,
+# and that is correct rather than a setting that failed to take. ESP-IDF derives
+# the *image header* mode as `dio` for every quad choice, because the ROM reads
+# the header before anything has configured the bus; the second-stage bootloader
+# switches to QIO afterwards. `components/esptool_py/Kconfig.projbuild:81`.
+# Left here because the obvious reaction to seeing `dio` is to "fix" it.
+
 # 16 MB, and the part is 32 MB. That is not a mistake: only the low half is
 # addressable by the ROM and the second-stage bootloader, and what a *running*
 # application may do above the line is UNKNOWN and unmeasured
@@ -43,11 +50,14 @@ CONFIG_SPIRAM_SPEED_80M=y
 # The only console this board exposes. There is no UART bridge: USB D-/D+ land
 # straight on GPIO 19/20, the SoC's native USB pins — HARDWARE_MATRIX.md "USB".
 #
-# The ROM's putc channel is left disabled, which is ESP-IDF's default and is
-# recorded here because it has already cost this project four debugging runs:
-# with it off, esp_rom_printf writes nowhere at all and an image that is running
-# perfectly looks dead. Use ESP_LOGx or printf.
-# WAVESHARE_RUNNING_OUR_CODE.md §2.4.
+# Choosing it also decides something this project has been burnt by. Selecting
+# USB-Serial/JTAG here sets CONFIG_ESP_CONSOLE_ROM_SERIAL_PORT_NUM to 4 rather
+# than -1 (`components/esp_system/Kconfig:362`), so **esp_rom_printf works in
+# this build**. The image that went mute in WAVESHARE_RUNNING_OUR_CODE.md §2.4
+# was built with CONFIG_ESP_CONSOLE_NONE, which sets that number to -1 and sends
+# the ROM's putc nowhere at all. The rule that generalises is not "never use
+# esp_rom_printf" — it is that this symbol decides whether it writes anywhere,
+# so anything that turns the console off silently takes it with it.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
 # A development table, and partitions.csv says so in its own header.

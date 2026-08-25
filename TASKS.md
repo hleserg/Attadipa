@@ -39,6 +39,72 @@ stale silently. The protocol is
 
 ## NOW
 
+### T-165 · There is no ESP-IDF project, and every device task waits behind that
+- **Priority:** P0 — item 2 on the M2 critical path ([ROADMAP](docs/ROADMAP.md)),
+  and the one that unblocks the rest of it.
+  [#189](https://github.com/hleserg/Attadipa/issues/189).
+- **Dependencies:** T-004 — **closed**, `v5.5.5`, in the same change.
+- **Goal:** an ESP-IDF project that builds for `esp32s3` from a clean checkout,
+  for **one** board: a `main/` component, `sdkconfig.defaults`, a partition
+  table, a boot path, serial diagnostics, a reproducible build proved by CI, and
+  a flash procedure somebody else can follow.
+- **Where it lives:** `firmware/`, not the repository root. The root
+  `CMakeLists.txt` is host-native deliberately — the simulator and the host tests
+  must keep working on a machine with no toolchain — so the two builds are
+  separate CMake projects that never share a cache. The issue does not name a
+  path; this is the reason for the one chosen.
+- **Acceptance:** `idf.py build` from a clean checkout on the pinned IDF;
+  `attadipa_core`, `attadipa_platform`, `attadipa_link` and `attadipa_l10n`
+  **link into it rather than being copied**; boot diagnostics print chip
+  revision, flash id, PSRAM presence and mode, reset reason and free heap; the
+  partition table stays below the 16 MB addressing ceiling; a documented flash
+  procedure.
+- **How the libraries are linked, since that was the acceptance item most likely
+  to be faked:** `firmware/main/CMakeLists.txt` calls `add_subdirectory()` on the
+  *same* `core/`, `platform/`, `link/` and `l10n/` CMakeLists the desktop build
+  uses. There is no second source list to keep in step, and a library that stops
+  compiling for xtensa breaks this build rather than being discovered later.
+  `main/` is also the one place allowed to link `attadipa_platform`: it is the
+  composition root, which is where a board is chosen. ADR-0007 §5 binds
+  *applications*, and `tests/boundary/` still enforces it where it applies.
+- **The partition table is a development table and says so in its own header.**
+  It must not pre-empt **T-025**, the partitions/NVS/OTA ADR for two devices,
+  which is what freezes it. There is no OTA slot, because a second app partition
+  is that ADR's decision and not a default worth inheriting.
+- **Two values that look like mistakes and are not.** The flash is declared
+  **16 MB on a 32 MB part**, because only the low half is addressable by the ROM
+  and the second-stage bootloader — that makes ESP-IDF's own partition check
+  enforce the ceiling as a second guard beside
+  `tools/flash/partition_check.py`, and the bootloader's mismatch warning on
+  every boot is the reminder. And **nothing in `sdkconfig.defaults` works around
+  an erratum**, which is a checked statement: all eight in sheet v1.3 apply to
+  this die and none of them wants a value there
+  ([ESP32S3_ERRATA_V02](docs/research/ESP32S3_ERRATA_V02.md) §1).
+- **Research status:** done. Every board value cites the note it came from; none
+  is copied from a vendor example, because a vendor example is a claim about
+  their build rather than a measurement of this part.
+- **Implementation status:** `firmware/CMakeLists.txt`, `firmware/main/`,
+  `firmware/sdkconfig.defaults`, `firmware/sdkconfig.ramprobe`,
+  `firmware/partitions.csv`. Beside it:
+  `tools/flash/ramhold.py` — the RAM loader recovered from
+  [#116](https://github.com/hleserg/Attadipa/issues/116) into a durable home,
+  with a port resolver keyed to USB serial, because two ESP32-S3 boards
+  enumerate identically on this bench and picking the wrong one is a *silent*
+  wrong answer ([BENCH_DEVICES](docs/research/BENCH_DEVICES.md)) —
+  `tools/flash/backup_flash.py`, and
+  [FIRMWARE_BRINGUP](docs/hardware/FIRMWARE_BRINGUP.md).
+- **Tests:** the CI job `firmware-build` builds both variants on
+  `espressif/idf:v5.5.5`, which is what makes "reproducible from a clean
+  checkout" a proof rather than a sentence in a pull request. It runs
+  `partition_check.py` before the compiler, because that is the check no ESP-IDF
+  tool performs. `tools/flash/ramhold_selftest.py` covers the port resolver's
+  refusals — the cases where guessing would load a watch image into the other
+  board.
+- **Non-goals, and they were kept:** the second board, any driver, LVGL, OTA,
+  secure boot, flash encryption. This is the floor, not the building.
+- **Hardware required:** for the build, no. For the boot transcript, yes — and
+  see the hardware note recorded with this task's result.
+
 ### T-100 · The agent queue, verified by running it rather than by reading it
 - **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
   different pieces of work carried that ID: this one, and the transport tests

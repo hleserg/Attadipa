@@ -1,7 +1,14 @@
 # Overlay: build an image that runs entirely from RAM and writes nothing to
 # flash. Use it with the flash profile, not instead of it:
 #
-#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+#   idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+#
+# `-DSDKCONFIG=` is not optional and the reason is a trap worth naming: idf.py
+# writes `sdkconfig` in the *project* directory, not the build directory, so a
+# second build directory silently reuses the first one's configuration and
+# ignores SDKCONFIG_DEFAULTS entirely. The symptom is a `build-ram/attadipa.bin`
+# that is byte-identical to the flash image and boots from flash — a RAM build
+# that is not one, reported as success. Give each variant its own sdkconfig.
 #
 # This is the route that is *proved* to work on this unit, and it is the one to
 # prefer for anything experimental, because there is nothing to undo afterwards.

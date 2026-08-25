@@ -149,7 +149,10 @@ void report_silicon()
         // this line is to show the physical part disagreeing with it.
         const std::uint8_t capacity_code = jedec & 0xFF;
         char               physical[16]  = "unrecognised";
-        if (capacity_code >= 0x10 && capacity_code <= 0x1A) {
+        // 0x14 and not 0x10: the code is log2 of the size in *bytes*, so
+        // anything below 20 is a part smaller than a megabyte and would shift
+        // by a negative amount, which is undefined rather than merely wrong.
+        if (capacity_code >= 0x14 && capacity_code <= 0x1A) {
             std::snprintf(physical, sizeof(physical), "%u MB",
                           1u << (capacity_code - 20));
         }

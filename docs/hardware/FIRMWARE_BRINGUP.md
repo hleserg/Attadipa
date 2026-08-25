@@ -53,12 +53,23 @@ say so, rather than to flash and hope.
 ## 2. The RAM route
 
 ```bash
-idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
-python3 ../tools/flash/ramhold.py build/attadipa.bin 20
+idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+python3 ../tools/flash/ramhold.py build-ram/attadipa.bin 20
 ```
 
 `sdkconfig.ramprobe` sets `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP`; the image runs
 from IRAM and DRAM and the flash is never opened for writing.
+
+**`-DSDKCONFIG=` is load-bearing.** `idf.py` keeps `sdkconfig` in the *project*
+directory rather than the build directory, so a second build directory reuses
+the first one's configuration and ignores `SDKCONFIG_DEFAULTS` without a word.
+The symptom is a `build-ram/attadipa.bin` byte-identical to the flash image —
+a RAM build that is not one, and it reports success. Check it rather than
+assume it:
+
+```sh
+grep CONFIG_APP_BUILD_TYPE_PURE_RAM_APP build-ram/sdkconfig
+```
 
 **Use `ramhold.py` and not `esptool load-ram`.** The CLI tool loads the image
 correctly and then kills it a few milliseconds later by exiting: on a

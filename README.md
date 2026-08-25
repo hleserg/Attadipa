@@ -173,10 +173,12 @@ ui/assets/                     source art, the generated LVGL masks, and the one
 assets/fonts/                  the generated Montserrat subsets, with their provenance
 apps/                          applications; links core and cannot reach platform
 sim/                           the desktop simulator, and its LVGL configuration
+firmware/                      the ESP-IDF project: the device build, its config and partitions
 tests/                         host tests, including three where a fixture must fail to build
 tests/replay/                  the deterministic navigation rig, and its recorded traces
 tools/                         the font subsetter, the image pipeline, and the checks CI runs
 tools/watch_control.py         drive the screen and photograph it — see docs/testing/WATCH_CONTROL.md
+tools/flash/                   the partition-ceiling check, the RAM loader, the flash backup
 tests/ui/scenarios/            journeys through the interface, as data rather than as code
 cmake/                         the pinned LVGL dependency
 
@@ -234,9 +236,33 @@ this project has no per-board binaries.
 LVGL is pinned at v9.5.0 and fetched by CMake at the commit; the build refuses
 to continue if the version it finds is not the version that was chosen. To
 build offline against a tree you already have, pass
-`-DATTADIPA_LVGL_SOURCE_DIR=/path/to/lvgl`. The ESP-IDF version is still not
-chosen, and it blocks the device build rather than this one — see
-[`docs/research/DEPENDENCIES.md`](docs/research/DEPENDENCIES.md).
+`-DATTADIPA_LVGL_SOURCE_DIR=/path/to/lvgl`.
+
+### The device build
+
+Separate from the host build on purpose: the root `CMakeLists.txt` is
+host-native so that the simulator and the tests keep working on a machine with
+no toolchain. The ESP-IDF project lives in `firmware/` and is pinned at **ESP-IDF
+v5.5.5** — see [`docs/research/DEPENDENCIES.md`](docs/research/DEPENDENCIES.md)
+for why that version and not a newer one.
+
+```sh
+. $IDF_PATH/export.sh
+cd firmware
+idf.py set-target esp32s3
+idf.py build
+```
+
+It targets one board, the Waveshare ESP32-S3-Touch-AMOLED-2.06, and it is a
+skeleton: it boots, prints what the silicon says it is, and links the same
+`core/`, `platform/`, `link/` and `l10n/` libraries the host build uses. No
+display, no touch, no LVGL yet.
+
+There is a second variant that runs entirely from RAM and writes nothing to the
+flash at all, which is the route to prefer for anything experimental —
+[`docs/hardware/FIRMWARE_BRINGUP.md`](docs/hardware/FIRMWARE_BRINGUP.md) is the
+procedure, including what a good boot looks like and what to do when it is not
+one.
 
 ## Contributing
 

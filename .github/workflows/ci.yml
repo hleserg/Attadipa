@@ -577,7 +577,11 @@ jobs:
         run: |
           . "$IDF_PATH/export.sh"
           cd firmware
-          idf.py -B build-ram -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+          idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+          # idf.py keeps sdkconfig in the project directory, so without
+          # the line above this silently rebuilds the flash image and
+          # calls it a RAM build. Prove the option actually took.
+          grep -q "^CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y$" build-ram/sdkconfig
 
   evidence:
     name: What this run did not prove
