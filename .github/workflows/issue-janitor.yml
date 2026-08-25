@@ -23,7 +23,6 @@ jobs:
 
           while read -r issue; do
             NUMBER=$(echo "$issue" | jq -r '.number')
-            TITLE=$(echo "$issue" | jq -r '.title')
             BODY=$(echo "$issue" | jq -r '.body // ""')
 
             # Conservative automatic cleanup only.
