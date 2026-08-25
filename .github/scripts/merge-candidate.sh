@@ -263,31 +263,11 @@ attadipa_merge_candidate() {
   # different fact wearing its clothes -- and it is wrong in the merging
   # direction. See FACTS_COMPLETE above and issue #170.
   #
-  # NINE ARGUMENTS IS THE OLD CALLER, AND THE OLD CALLER IS THE DEFECT. It read
-  # bounded pages and never asked whether there were more, so there is no
-  # reading of its nine arguments under which this rule may merge. Refusing it
-  # by arity rather than by an empty tenth argument is deliberate: an empty
-  # string is something a caller can pass by accident, while nine arguments is
-  # a caller that predates the condition entirely, and the two deserve
-  # different sentences in the log. The message names the fix because this line
-  # is what a reader will see 48 times a day until somebody applies it.
-  #
-  # ELEVEN SINCE #199, AND STILL ONE PATCH AND ONE TRANSITION. That fix parked
-  # its caller edits in the same file rather than beside it, precisely so that
-  # this number moves once. The live sweep passes nine today and eleven the
-  # moment the patch lands; there is no state in between, and no second "apply
-  # this one first" to reconcile. T-144.
+  # Old callers cannot prove completeness or bind the verdict to a head object.
+  # Fail closed until they adopt the eleven-argument contract.
   if [ "$argc" -lt 11 ]; then
-    # Also to **stderr**, as a workflow warning. The caller turns every HOLD
-    # into a `::notice::` and carries on, so the job stays green and reads
-    # "sweep finished, 0 merged" -- the same line a sweep with nothing to do
-    # prints, 48 times a day, while the sweep is in fact disabled. This file
-    # already carries that lesson for the empty-repository case; it was not
-    # applied to the one state in which the gate refuses *everything*. Only
-    # stdout is captured into the caller's verdict and compared by the tests,
-    # so this reaches the run log without changing either.
-    echo "::warning::the merge sweep is holding every pull request: its caller predates the completeness condition. Apply docs/automation/pending/170-merge-sweep-completeness.patch (T-144)." >&2
-    echo "HOLD this caller cannot prove it read all of the pull request; apply docs/automation/pending/170-merge-sweep-completeness.patch"
+    echo "::warning::the merge sweep caller is obsolete: it must pass completeness and head OID" >&2
+    echo "HOLD this caller cannot prove completeness or head identity"
     return 0
   fi
   case "${facts_complete:-}" in

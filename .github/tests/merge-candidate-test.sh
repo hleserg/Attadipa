@@ -335,51 +335,21 @@ ok "a draft whose facts are truncated is not undrafted either" \
                                 "HOLD the facts read about this pull request were truncated" \
                                  "success" "ai-review:pass" 0 0 draft true "$OLD" "docs/research/status-example.md" true false
 
-# THE OLD CALLER IS THE DEFECT, so it is refused by arity rather than reinstated
-# by a default. Nine arguments is a caller that read bounded pages and never
-# asked whether there were more; there is no reading of those nine under which
-# this may merge. The message names the fix, because this line is what a reader
-# sees in the sweep log until somebody applies it.
+# Old callers cannot prove completeness or bind a verdict to a head object.
 got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true 2>/dev/null)"
 case "$got" in
-  "HOLD this caller cannot prove it read all of the pull request"*)
-    printf '  ok    a nine-argument caller cannot merge, and is told what to apply\n'; pass=$((pass + 1)) ;;
+  "HOLD this caller cannot prove completeness or head identity")
+    printf '  ok    a nine-argument caller cannot merge\n'; pass=$((pass + 1)) ;;
   *)
-    printf '  FAIL  a nine-argument caller is the pre-#170 sweep and must not merge\n        got: %s\n' "$got"
+    printf '  FAIL  an obsolete nine-argument caller must not merge\n        got: %s\n' "$got"
     fail=$((fail + 1)) ;;
 esac
 
-# The redirect above is deliberate, and so is this. `ci.yml` runs this suite as
-# a plain `run:` step, so an unredirected fixture prints `::warning::the merge
-# sweep is holding every pull request` into the log of every CI run of every
-# pull request, and keeps printing it after the patch lands and the state is no
-# longer true. The one signal that separates a disabled sweep from an idle one
-# would be buried in its own noise long before the day it matters. Discarding it
-# there means asserting it here, or the remedy is inert and nothing would say so.
-#
-# WHETHER THE RUNNER PARSES A WORKFLOW COMMAND OFF STDERR IS **NOT ESTABLISHED**
-# in this repository, and an earlier version of this comment stated that it does
-# as though it were a fact. `75-approval-stall.patch`, parked in the same
-# directory, says the opposite in as many words -- "whether the runner parses
-# workflow commands off stderr at all is not established anywhere in this
-# repository" -- and moved a warning to stdout rather than rest a diagnostic on
-# it, in the fifth review round of #128.
-#
-# Nothing here needs it decided, and the two files are not actually in conflict
-# about what to DO. #128 had somewhere else to put its warning: its block's
-# stdout is a comment body, so it emitted the line earlier, outside the block.
-# `merge-candidate.sh` has no such place -- its stdout IS the verdict the caller
-# captures, so a workflow command written there corrupts the value the gate is
-# computed from. stderr is the only stream left, and the assertion below holds
-# either way: if the runner does parse it, the line is an annotation; if it does
-# not, the line still reaches the log as text and the caller re-emits it as a
-# `::notice::`. What is at stake is the SEVERITY, not the information.
-#
-# One `workflow_dispatch` of the sweep after the patch lands settles it, and
-# whoever lands it should look: `merge-candidate.sh` has never run on `main`.
+# stdout is the verdict the workflow captures, so the diagnostic belongs on
+# stderr. Assert it separately from the verdict fixture above.
 warned="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true 2>&1 >/dev/null)"
 case "$warned" in
-  *"::warning::"*"merge sweep is holding every pull request"*)
+  *"::warning::"*"merge sweep caller is obsolete"*)
     printf '  ok    and it warns on stderr, which is where the sweep log shows it\n'; pass=$((pass + 1)) ;;
   *)
     printf '  FAIL  the nine-argument refusal is silent on stderr, so a disabled sweep reads as an idle one\n        got: %s\n' "$warned"
@@ -863,7 +833,7 @@ ok "identity is answered before the verdict, because the verdict was bound to it
 # reason nine is: it never established which commit it was deciding about.
 got="$(bash "$SCRIPT_UNDER_TEST" "success" "ai-review:pass" 0 0 clean false "$OLD" "docs/research/status-example.md" true true 2>/dev/null)"
 case "$got" in
-  "HOLD this caller cannot prove it read all of the pull request"*)
+  "HOLD this caller cannot prove completeness or head identity")
     printf '  ok    a ten-argument caller cannot merge either\n'; pass=$((pass + 1)) ;;
   *)
     printf '  FAIL  a ten-argument caller predates the head-identity condition and must not merge\n        got: %s\n' "$got"
@@ -974,55 +944,15 @@ else
 fi
 
 echo
-echo "A rule nothing calls, and nothing tracks, is the state this must never be in"
-# THIS IS THE ASSERTION THAT KEEPS THE FIX HONEST WHILE HALF OF IT IS PARKED.
-#
-# Agents here run as `claude[bot]`, and that installation token holds no
-# `workflows` permission -- a push touching `.github/workflows/` is refused by
-# the remote, verified on 2026-08-24:
-#
-#   ! [remote rejected] (refusing to allow a GitHub App to create or update
-#     workflow `.github/workflows/pr-merge-sweep.yml` without `workflows`
-#     permission)
-#
-# So the caller half of #170 travels as a patch. There are exactly two states
-# this repository may be in, and this asserts it is in one of them: either the
-# sweep already calls the rule, or the patch that makes it do so is still here
-# waiting. What it refuses is the third state -- a tested rule, an unchanged
-# caller, and nothing on disk that remembers the two are meant to meet.
+echo "The shipping sweep calls the tested rules"
 SWEEP=.github/workflows/pr-merge-sweep.yml
-PENDING=docs/automation/pending/170-merge-sweep-completeness.patch
-# COMMENT LINES ARE DROPPED FIRST, for the reason the query scan above gives and
-# for one more concrete than a principle: hunk 1 of the parked patch inserts
-# `# is .github/scripts/merge-facts.jq, driven by .github/scripts/merge-facts.sh,`
-# into the workflow's own header comment. A scan that reads the whole file is
-# therefore satisfied by the patch's own prose, so the third state this block
-# exists to refuse -- rule tested, caller unchanged, patch gone -- passed both
-# assertions. Match a CALL, not a mention.
 SWEEP_BODY="$(grep -vE '^[[:space:]]*#' "$SWEEP" 2>/dev/null)"
-# The verdict call itself, from the line naming the script to the first line that
-# does not continue. Its ARITY is the one line everything here depends on and
-# nothing read: nine arguments is the pre-#170 caller, which merge-candidate.sh
-# now refuses outright, and eleven is the caller that passes "$COMPLETE" and
-# "$HEAD_OID". A hand resolution that drops either hunk while keeping the header
-# comment is how the two permitted states quietly become the forbidden one.
-#
-# ELEVEN AND NOT TEN, AND THE NUMBER MOVES ONCE. #199 folded its caller edits
-# into the same parked patch rather than beside it, so there is no intermediate
-# ten-argument state for anybody to land, and no second "apply this one first"
-# to reconcile against T-144.
 VERDICT_CALL="$(printf '%s\n' "$SWEEP_BODY" | awk '
   /merge-candidate[.]sh/ { inside = 1 }
   inside { print; if ($0 ~ /[)]"[[:space:]]*$/) exit }')"
 VERDICT_ARGC="$(printf '%s\n' "$VERDICT_CALL" | grep -oE '"\$[A-Za-z_][A-Za-z0-9_]*"' | wc -l | tr -d ' ')"
 if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-facts.sh'; then
   printf '  ok    the sweep calls the rule that has a test\n'; pass=$((pass + 1))
-  if [ -e "$PENDING" ]; then
-    printf '  FAIL  the sweep calls the rule, so %s has landed and should be deleted\n' "$PENDING"
-    fail=$((fail + 1))
-  else
-    printf '  ok    and the pending patch has been cleared away\n'; pass=$((pass + 1))
-  fi
   if [ "$VERDICT_ARGC" = "11" ]; then
     printf '  ok    and the verdict call passes the completeness and head arguments\n'; pass=$((pass + 1))
   else
@@ -1035,69 +965,8 @@ if printf '%s\n' "$SWEEP_BODY" | grep -q 'bash .github/scripts/merge-facts.sh'; 
     printf '  FAIL  the sweep calls merge-facts.sh but not merge-head-trust.sh, so the head is timed by nothing\n'
     fail=$((fail + 1))
   fi
-elif [ -f "$PENDING" ]; then
-  printf '  ok    the sweep does not call the rule yet, and %s says so\n' "$PENDING"
-  pass=$((pass + 1))
-  if git --no-pager apply --check "$PENDING" >/dev/null 2>&1; then
-    printf '  ok    and that patch still applies cleanly to this tree\n'; pass=$((pass + 1))
-  else
-    printf '  FAIL  %s no longer applies; the parked half has rotted\n' "$PENDING"
-    fail=$((fail + 1))
-  fi
-  if [ "$VERDICT_ARGC" = "9" ]; then
-    printf '  ok    and the caller is still the nine-argument one the patch replaces\n'; pass=$((pass + 1))
-  else
-    printf '  FAIL  the patch is still parked but the caller passes %s arguments, not 9\n' "$VERDICT_ARGC"
-    fail=$((fail + 1))
-  fi
-  # ONE PATCH FOR THIS WORKFLOW, STILL. #199 needed four more edits to the same
-  # file and put them in the same patch, because a second parked patch against
-  # one workflow is two apply orders and a hand merge -- which is the state
-  # T-144 exists to stop growing. If the head-trust half is not in there, it is
-  # somewhere else, and nothing knows where.
-  if grep -q 'merge-head-trust.sh' "$PENDING"; then
-    printf '  ok    and that one patch also carries the head-trust half\n'; pass=$((pass + 1))
-  else
-    printf '  FAIL  %s does not point the sweep at merge-head-trust.sh, so #199 is parked somewhere nothing tracks\n' "$PENDING"
-    fail=$((fail + 1))
-  fi
 else
-  printf '  FAIL  merge-facts.sh is tested but nothing calls it and no patch is pending\n'
-  fail=$((fail + 1))
-fi
-
-echo
-echo "Every patch parked in pending/ still applies"
-# THE ASSERTION ABOVE PROTECTED ONLY THE PATCH THAT WROTE IT. 75-approval-stall.patch
-# had been parked since #128 and nothing checked it, so an edit to a table one of
-# its hunks deleted as a contiguous block broke it silently -- and it carries
-# three workflow edits that would have gone down with the README hunk, because
-# `git apply` is all-or-nothing. A directory whose whole purpose is holding work
-# a person has to finish later is exactly where rot is invisible.
-# ONE ASSERTION, NOT ONE PER PATCH, on purpose: parking a patch must not change
-# how many assertions this suite reports. Six documents quote that number, and a
-# count that moves when somebody adds a file to a directory is a count nobody
-# can keep true. The names go in the failure message instead, which is where
-# they are actually needed.
-rotted=""
-found_patch=0
-for patch in docs/automation/pending/*.patch; do
-  [ -f "$patch" ] || continue
-  found_patch=$((found_patch + 1))
-  git --no-pager apply --check "$patch" >/dev/null 2>&1 || rotted="$rotted $patch"
-done
-if [ ! -d docs/automation/pending ]; then
-  printf '  FAIL  docs/automation/pending/ is not here, so nothing was checked\n'
-  printf '        (a sparse checkout without docs/ is indistinguishable from an empty\n'
-  printf '        directory, and a vacuous pass is what this suite refuses elsewhere)\n'
-  fail=$((fail + 1))
-elif [ -z "$rotted" ]; then
-  printf '  ok    all %d of them apply to this tree\n' "$found_patch"; pass=$((pass + 1))
-else
-  printf '  FAIL  these parked patches no longer apply:%s\n' "$rotted"
-  printf '        a rotted patch is work nobody can finish, and git apply is all-or-nothing,\n'
-  printf '        so one stale hunk takes its workflow edits down with it. Refresh it, or\n'
-  printf '        turn the hunk that broke into an instruction in its header.\n'
+  printf '  FAIL  the shipping sweep does not call merge-facts.sh\n'
   fail=$((fail + 1))
 fi
 

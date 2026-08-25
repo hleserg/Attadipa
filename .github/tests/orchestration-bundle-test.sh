@@ -32,14 +32,6 @@
 # living in files -- logic nothing has ever executed against a hostile input is
 # a hypothesis.
 
-# THIS TEST IS RED ON `main` UNTIL A PERSON APPLIES THE PATCH, AND THAT IS NOT
-# A BUG IN IT. The fix it guards is entirely inside `.github/workflows/`, which
-# a GitHub App may not push without the `workflows` permission, so it is parked
-# as `docs/automation/pending/133-orchestration-bundle.patch`. That patch also
-# carries this file's line in `ci.yml` -- so until it is applied nothing runs
-# this test, and CI does not go red over a fix that is not there yet. Applying
-# the patch turns it green; see docs/automation/pending/README.md.
-
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
