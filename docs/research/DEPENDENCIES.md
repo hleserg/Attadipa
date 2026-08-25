@@ -20,6 +20,7 @@ Required for every entry:
 
 | Dependency | Pinned at | Licence | Upgrade strategy |
 |---|---|---|---|
+| **ESP-IDF** | **v5.5.5** — `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013`, 2026-07-16 | Apache-2.0 | tagged releases only, and **never below v5.5.5** while this pin is in force: that release adds a useful refusal for `spi_flash_mmap` above `0x1000000`, but it is defence-in-depth for one path, not the safety boundary — read, write and erase remain unguarded, so the binding rule is still that Attadipa places and accesses nothing above the ceiling ([FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) §§4–5). A bump retests `firmware/` for both boards, re-reads the `sdkconfig.defaults` symbols (Kconfig names move between minor releases) and re-runs the RAM-load route, because that path is the one with no fallback |
 | **LVGL** | **v9.5.0** — `85aa60d18b3d5e5588d7b247abf90198f07c8a63`, 2026-02-18 | MIT | tagged releases only. Retest both geometries, the font-subset size and asset regeneration on every bump |
 | **MeshCore** | `d92964352441e53b93e8667b802e04f6e072b39e`, 2026-08-14, tag `companion-v1.17.1` | MIT | upstream is active. Re-run the radio census (`grep RADIO_CLASS variants/`) on every bump — [ADR-0003](../adr/0003-radio-not-lora.md) is *about* this revision |
 | **RadioLib** | `510e00cfb05bbc3c2b7b524262785454944adb6e`, tag **7.7.1**, 2026-08-13 | MIT | follows MeshCore's pin |
@@ -102,34 +103,34 @@ and render performance.
 
 ## Under consideration
 
-### ESP-IDF
+### ESP-IDF — the reasoning
 
-- **Status:** version not chosen, but narrowed — and a v5.5 toolchain is
-  installed and **verified** by an actual `idf.py set-target esp32s3 && idf.py
-  build` on a stock example (`v5.5.5-496-gc197d718bcc`). Installed and verified
-  are still not *decided*.
-- **Evidence:** Waveshare states support for **v5.5.5 and v6.0.2**; its BSP
-  v2.0.0 requires `idf >= 5.3`. LilyGO's library targets the Arduino layer
-  (arduino-esp32 ≥ 3.3.0-alpha1) and its PlatformIO path is pinned to the older
-  2.0.17 / IDF 4.4.7 — which probably does not bind Attadipa, since Attadipa is
-  ESP-IDF-native and does not use the Arduino layer. That assumption is flagged
-  in OPEN_QUESTIONS T7.
-- **Constraint:** must be a supported release that LVGL 9.5.0 and both board
-  BSPs work with. The version named in the superseded
-  [`../master-prompt.md`](../master-prompt.md) is explicitly not a requirement.
-- **A floor, and it is a safety property rather than a preference: not below
-  `v5.5.5`.** `spi_flash_mmap` refuses to map flash at or above `0x1000000`
-  unless the experimental 32-bit cache option is on — and that refusal was
-  **added in v5.5.5**. `v5.5.4`, `v5.5.3`, `v5.5.2`, `v5.5.1`, `v5.4.2` and
-  `v5.3.3` were each checked and none of them contains the constant; they map an
-  address that aliases to the low half of the flash and report success. On the
-  Waveshare's 32 MB part that is the difference between a loud
-  `ESP_ERR_INVALID_ARG` and silently reading the wrong sixteen megabytes.
-  **Waveshare's own shipped firmware is built with v5.5.1**, so lifting a
-  configuration or a BSP example from it inherits the version without the guard.
-  [FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) §4.1.
-- **Blocks:** all embedded work. It does **not** block M1, which is the
-  simulator.
+**Decided 2026-08-25, T-004: `v5.5.5`.** The row is in *Decided* above. Version
+had been narrowed for weeks and never chosen, and the cost of leaving it open
+was not abstract — the development host had drifted onto `master`
+(`v6.1-dev-7351-ge37a7ae137c`) simply because nothing said otherwise.
+
+| Requirement | v5.5.5 |
+|---|---|
+| A tagged release, not a branch | yes. `master` cannot be reproduced by a CI image or by the next person to install a toolchain, and final §76 forbids floating versions for the same reason it forbids them for LVGL |
+| Refuses a flash mapping above `0x1000000` | **yes, for `mmap` only.** The constant appears in v5.5.5 and in no earlier release checked — `v5.5.4`, `v5.5.3`, `v5.5.2`, `v5.5.1`, `v5.4.2`, `v5.3.3`. This is defence-in-depth; it does not guard the destructive read/write/erase paths and does not replace the repository ceiling rule |
+| Vendor-supported for the board on the desk | Waveshare states support for **v5.5.5 and v6.0.2**, and its BSP v2.0.0 requires `idf >= 5.3`; the vendor image actually read from this unit reports **v5.5.1-dirty**, so the statement is vendor documentation rather than a measurement of its v5.5.5 BSP path |
+| LVGL 9.5.0 | **NOT EXECUTED on the physical board.** The host simulator uses the pin, but device compatibility with the BSP/display path remains hardware work |
+| Continuity with what this repository has already measured | yes. Every hardware result on file — the RAM-load route, the I2C scan, the `ota_1` finding — was produced by a v5.5.x toolchain, and `FLASH_ADDRESSING_LIMITS` traces v5.5.5's sources specifically |
+
+**Rejected — `v6.0.2`.** Waveshare supports it and it is newer. Rejected for
+*now* on one ground only: nothing this project has measured was measured on it,
+and the first device milestone is the wrong moment to hold two variables. It is
+the obvious next bump once `firmware/` builds and boots on the pinned version,
+and the row above says what a bump has to retest.
+
+**Rejected — `master` / `v6.1-dev`.** Not a release. It is what happened to be
+installed, which is the argument against it rather than for it.
+
+**Not a constraint after all — LilyGO's IDF 4.4.7.** Its PlatformIO path pins
+the Arduino layer, and Attadipa is ESP-IDF-native and does not use it. Flagged
+as an assumption in OPEN_QUESTIONS T7 and still worth confirming against a real
+T-Watch bring-up; it does not bind this decision.
 
 ### SDL2 — the simulator display backend
 

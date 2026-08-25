@@ -39,6 +39,89 @@ stale silently. The protocol is
 
 ## NOW
 
+### T-165 · ESP-IDF project and first physical boot
+- **Priority:** P0 — item 2 on the M2 critical path ([ROADMAP](docs/ROADMAP.md)),
+  and the one that unblocks the rest of it.
+  [#189](https://github.com/hleserg/Attadipa/issues/189).
+- **Dependencies:** T-004 — **closed**, `v5.5.5`, in the same change.
+- **Goal:** an ESP-IDF project that builds for `esp32s3` from a clean checkout,
+  for **one** board: a `main/` component, `sdkconfig.defaults`, a partition
+  table, a boot path, serial diagnostics, a reproducible build proved by CI, and
+  a flash procedure somebody else can follow.
+- **Where it lives:** `firmware/`, not the repository root. The root
+  `CMakeLists.txt` is host-native deliberately — the simulator and the host tests
+  must keep working on a machine with no toolchain — so the two builds are
+  separate CMake projects that never share a cache. The issue does not name a
+  path; this is the reason for the one chosen.
+- **Acceptance:** `idf.py build` from a clean checkout on the pinned IDF;
+  `attadipa_core`, `attadipa_platform`, `attadipa_link` and `attadipa_l10n`
+  **link into it rather than being copied**; boot diagnostics print chip
+  revision, flash id, PSRAM presence and mode, reset reason and free heap; the
+  partition table stays below the 16 MB addressing ceiling; a documented flash
+  procedure.
+- **How the libraries are linked, since that was the acceptance item most likely
+  to be faked:** `firmware/main/CMakeLists.txt` calls `add_subdirectory()` on the
+  *same* `core/`, `platform/`, `link/` and `l10n/` CMakeLists the desktop build
+  uses. There is no second source list to keep in step, and a library that stops
+  compiling for xtensa breaks this build rather than being discovered later.
+  `main/` is also the one place allowed to link `attadipa_platform`: it is the
+  composition root, which is where a board is chosen. ADR-0007 §5 binds
+  *applications*, and `tests/boundary/` still enforces it where it applies.
+  CI now checks both final firmware ELFs for a real callable symbol from every
+  required library, and configuration fails if any direct dependency is removed;
+  compiling four unused archives is no longer accepted as linkage evidence.
+- **The partition table is a development table and says so in its own header.**
+  It must not pre-empt **T-025**, the partitions/NVS/OTA ADR for two devices,
+  which is what freezes it. There is no OTA slot, because a second app partition
+  is that ADR's decision and not a default worth inheriting.
+- **Two values that look like mistakes and are not.** The flash is declared
+  **16 MB on a 32 MB part**, because only the low half is addressable by the ROM
+  and the second-stage bootloader — that makes ESP-IDF's own partition check
+  enforce the ceiling as a second guard beside
+  `tools/flash/partition_check.py`, and the bootloader's mismatch warning on
+  every boot is the reminder. And **nothing in `sdkconfig.defaults` works around
+  an erratum**, which is a checked statement: all eight in sheet v1.3 apply to
+  this die and none of them wants a value there
+  ([ESP32S3_ERRATA_V02](docs/research/ESP32S3_ERRATA_V02.md) §1).
+- **Research status:** done. Every board value cites the note it came from; none
+  is copied from a vendor example, because a vendor example is a claim about
+  their build rather than a measurement of this part.
+- **Implementation status:** `firmware/CMakeLists.txt`, `firmware/main/`,
+  `firmware/sdkconfig.defaults`, `firmware/sdkconfig.ramprobe`,
+  `firmware/partitions.csv`. Beside it:
+  `tools/flash/ramhold.py` — the RAM loader recovered from
+  [#116](https://github.com/hleserg/Attadipa/issues/116) into a durable home,
+  with a port resolver keyed to USB serial, because two ESP32-S3 boards
+  enumerate identically on this bench and picking the wrong one is a *silent*
+  wrong answer ([BENCH_DEVICES](docs/research/BENCH_DEVICES.md)) —
+  `tools/flash/backup_flash.py`, and
+  [FIRMWARE_BRINGUP](docs/hardware/FIRMWARE_BRINGUP.md).
+- **Tests:** the CI job `firmware-build` builds both variants on
+  `espressif/idf:v5.5.5`, which is what makes "reproducible from a clean
+  checkout" a proof rather than a sentence in a pull request. It runs
+  `partition_check.py` before the toolchain as an independent repository check;
+  ESP-IDF separately validates the generated table against the declared 16 MB
+  size. `tools/flash/ramhold_selftest.py` covers the port resolver's
+  refusals — the cases where guessing would load a watch image into the other
+  board.
+- **Non-goals, and they were kept:** the second board, any driver, LVGL, OTA,
+  secure boot, flash encryption. This is the floor, not the building.
+- **Hardware required:** yes, and it was run. **The firmware boots on the
+  physical Waveshare unit, from flash**, and prints chip revision, flash id,
+  PSRAM presence and mode, reset reason, the partition table and the heap —
+  [BRINGUP_2026-08-25](docs/hardware/BRINGUP_2026-08-25.md), 2026-08-25,
+  `MEASURED`. The RAM route runs too, and finding that out cost three fixes that
+  are in this branch: `sdkconfig.ramprobe` never produced a RAM image at all,
+  `CONFIG_ESPTOOLPY_FLASHSIZE` does not exist in a pure-RAM build, and
+  `esp_partition_find()` panics there rather than returning nothing.
+- **Documentation reconciliation:** the measured RAM/flash behaviour is carried
+  into `docs/hardware/FIRMWARE_BRINGUP.md`; the host-dependent SLIP congruence
+  replaces the stale `UNKNOWN` in `docs/research/WAVESHARE_FLASH_LAYOUT.md`;
+  `docs/research/BENCH_DEVICES.md` records the measured Attadipa boot, the later
+  owner-requested factory restore and the durable backup evidence; and
+  `docs/research/VERIFIED_FACTS.md` separates the unit's measurements from what
+  T-165 did not exercise.
+
 ### T-100 · The agent queue, verified by running it rather than by reading it
 - **Renumbered from T-054 on 2026-08-22, and do not renumber it back.** Two
   different pieces of work carried that ID: this one, and the transport tests
@@ -183,11 +266,11 @@ stale silently. The protocol is
     than adding them`) but not *reported* to the operator — decide with the
     transport, where the achieved duration is worth printing beside the
     requested one.
-- **Priority:** P2 today, **P1 the moment an ESP-IDF project exists.** Every UI
-  task after that point is supposed to end with a real screenshot, and this is
-  what makes one possible.
-- **Dependencies:** an ESP-IDF firmware project. There is none — `README.md`
-  says so — which is why this is a task rather than an omission.
+- **Priority:** P1. T-165 supplied the ESP-IDF project; every UI task after that
+  point is supposed to end with a real screenshot, and this is what makes one
+  possible.
+- **Dependencies:** the ESP-IDF dependency is satisfied by T-165. T-166 still
+  owns the physical display and touch drivers this endpoint must sit on.
 - **Why it is separate:** the vertical
   `agent → host tool → protocol → input layer → UI → framebuffer → PNG` is
   complete except for the transport at the device end. `attadipa_debug` is a
@@ -284,11 +367,13 @@ stale silently. The protocol is
   simulator.
 - **What must not be assumed:** that `SerialTransport` in
   `tools/watch/client.py` works. It is written and **has never spoken to a
-  device**, because there has been no device to speak to. It is marked
+  device**, because the device endpoint is not implemented. It is marked
   `NOT EXECUTED` in its own docstring and must stay so until it has run.
-- **Hardware required:** yes, and **flashing needs the owner's authorisation**
-  ([CLAUDE.md](CLAUDE.md)). The received Waveshare currently runs the vendor's
-  own firmware and is byte-identical to the T-099 backup.
+- **Hardware required:** yes. OD-19 authorises reversible flashing, and the
+  received Waveshare has a measured Attadipa T-165 boot and a verified
+  host-local factory backup; after acceptance the factory image was restored
+  and the owner set its brightness to minimum. The T-114 device debug endpoint itself remains
+  **NOT EXECUTED — HARDWARE REQUIRED** because it has not been implemented.
 
 ### T-110 · The mandated reading list is 500 KB before the agent opens a file
 - **Priority:** P2
@@ -436,6 +521,36 @@ stale silently. The protocol is
   `merge-candidate.sh` does not enumerate, and a `gh pr merge` refused by branch
   protection, which the workflow deliberately turns into one loud failure rather
   than 48 quiet warnings a day.
+- **Hardware required:** no.
+
+### T-168 · A stale verdict survives a review that published nothing
+- **Priority:** P2. It is not a standalone merge bypass — the unattended sweep
+  binds `ai-review:pass` to the exact head as well — but a live orchestrator, a
+  person, and any consumer that reads the label alone are all told the current
+  head passed a review nobody gave it.
+- **Dependencies:** none. The helper and its assertions are on `main`.
+- **Goal:** `claude-pr-review.yml`'s two invalidation steps strip the previous
+  head's verdict labels **before** anything fallible, so a rate-limited `gh api`
+  or a 502 on `gh pr comment` cannot leave an `ai-review:pass` behind. The rule
+  lives in `.github/scripts/review-invalidate.sh` and is asserted by
+  `.github/tests/review-published-test.sh` on every push, including against the
+  pre-fix order, which must fail those assertions.
+- **Blocked on:** a person applying
+  `docs/automation/pending/240-review-invalidation-order.patch`. The two steps
+  are inside `.github/workflows/`, which the `claude[bot]` installation token may
+  not write — verified on 2026-08-25 by a push GitHub rejected by name. Until it
+  lands, the live workflow keeps the old order and the helper is unreached.
+- **Acceptance:** the patch applied and `actionlint` clean. The behaviour is
+  already asserted in both states —
+  `.github/tests/review-invalidate-workflow-test.sh` reads the patch while it is
+  parked and the workflow once it is not, so landing it changes which file the
+  same 25 assertions run against and nothing else. What is left is the half no
+  local run can prove: one real pull request whose review reaches the model,
+  publishes nothing, and loses its labels. `NOT EXECUTED` until then.
+- **Watch for:** `gh pr edit --remove-label` on a label the repository has never
+  created, which is the one way the new hard failure could be a false one. Every
+  environment `setup-labels.sh` has run in has both, and the convergence step
+  below has depended on the same behaviour since it was written.
 - **Hardware required:** no.
 
 ### T-145 · The recursion bound must stop depending on who wrote the issue
@@ -604,6 +719,81 @@ stale silently. The protocol is
   count guard (`CLAIM_FILES` in `test_check_docs.py`) reads *how many* checks
   are claimed; this is about *which check is which*, and the count was right in
   both files that got the number wrong.
+- **Hardware required:** no.
+
+
+### T-175 · `main` is red, every pull request inherits it, and the fix is one line
+- **Priority:** P1 — this is the "automation defect that actually stalls the
+  queue" CLAUDE.md ranks ahead of other work. Nothing merges while it holds:
+  the sweep refuses a red head and so does an orchestrator.
+- **Dependencies:** T-144. It is a `.github/workflows/` file, so no agent here
+  can push it.
+- **Goal:** CI's `Workflow lint` job fails on `main` at `d150f34`, and therefore
+  on every open pull request that has merged `main`:
+
+```
+.github/workflows/issue-janitor.yml:21:9: shellcheck reported issue in this
+script: SC2034:warning:5:3: TITLE appears unused. Verify use (or export if used
+externally) [shellcheck]
+```
+
+  `issue-janitor.yml` was pushed straight to `main` on 2026-08-25, so no pull
+  request ran `actionlint` over it first. Every other CI job on that head is
+  green, including the new firmware build; this one line is the whole failure.
+- **Acceptance:** `actionlint -color` clean on `main`. The smallest change that
+  keeps the author's intent is to use the variable that was clearly meant to be
+  used, inside the branch that closes an issue:
+
+```
+              echo "::notice::#$NUMBER ($TITLE): closing, marked completed or obsolete"
+```
+
+  one line above the `gh issue comment`. Verified locally with `actionlint`
+  1.7.7, the version CI pins: clean. Deleting the `TITLE=` assignment instead is
+  equally green and loses the log line, which for an unattended issue closer is
+  the only record of what it touched.
+- **Not parked as a patch**, deliberately: a one-line change needs the owner
+  either way, and `pending/` asks a patch to carry every edit its own landing
+  forces — more machinery than the fix. T-144 is the standing blocker; this is
+  an instance of it, urgent enough to name separately.
+- **What must not be assumed:** that the janitor's *behaviour* is in scope here.
+  It closes any open issue whose body matches `status: done|completed|obsolete`,
+  and this repository writes structured markers into issue bodies. Whether that
+  is what the owner wants is the owner's question, not this task's.
+- **Hardware required:** no.
+
+
+### T-176 · The intake gate recognises `@claude` with the stripper #130 had to replace
+- **Priority:** P2 — same class of defect as [#130](https://github.com/hleserg/Attadipa/issues/130)'s
+  second path, on a boundary that costs a run rather than a merge.
+- **Dependencies:** none. `.github/scripts/intake-decision.sh` and its test.
+- **Goal:** `attadipa_strip_code()` removes exactly two markdown forms — a
+  fenced block whose fence starts in column one, and a matched pair of single
+  backticks — and `attadipa_asks_for_agent()` then asks whether `@claude`
+  survives. Everything else markdown can do with a string goes straight
+  through: a double-backtick span, four spaces of indent, an HTML comment, a
+  fence indented one to three spaces, a tilde run inside a backtick fence. Each
+  of those was proved to pass on `main@36e1ba9` while #130 was being fixed, run
+  rather than read; the difference is only that here the consequence is a
+  billable agent run started by somebody writing *about* asking for one, not an
+  unattended merge. Write access is still required, so this is not an
+  authorisation hole.
+- **Why it was not fixed alongside #130.** The Codex acknowledgement could
+  become an exact standalone line, and did — that is what makes its recogniser
+  simple and total. `@claude` is a mention *inside a sentence* and an exact-line
+  rule would refuse every real one, including the owner's. So the two boundaries
+  now have two recognisers on purpose (`codex-answered.sh` says so where it
+  declines to source this file), and closing this one needs its own answer: a
+  conservative block-level pass that drops fenced, indented, quoted and
+  commented regions, and then a mention test over what is left.
+- **Acceptance:** `intake-gate-test.sh` covers each of the five forms above as
+  a **refusal**, plus the passing cases that must not regress — a mention in
+  ordinary prose, a mention after a closed fence, a mention in a sentence that
+  also quotes one in a code span. A mutant that restores the two-form stripper
+  turns them red.
+- **What must not be assumed:** that the fix is to reuse #130's recogniser.
+  It answers a different question and returning 1 for every real mention is how
+  it would fail.
 - **Hardware required:** no.
 
 
@@ -860,7 +1050,9 @@ stale silently. The protocol is
   provenance survives the decision rather than being flattened into it —
   `is_established()` and `fully_established()` are how "T-051 is finished"
   becomes a check a machine makes instead of a field somebody remembers, and
-  `to_string(SupportState)` keeps `Unknown` sayable on a diagnostics screen. A
+  `to_string(SupportState)` keeps `Unknown` sayable in a log — a screen reaches
+  it through a future `label_of(SupportState) -> StringId` instead, so ADR-0010
+  §3's coverage check can see it (#194). A
   scoped enum also means `GnssCapabilities{false, false, false, false}` no
   longer compiles, and `tests/CMakeLists.txt` pins that with a compile-fail test
   beside the two layer boundaries, so the collision cannot return quietly.
@@ -1678,7 +1870,7 @@ stale silently. The protocol is
 - **Tests:** host — the third boundary test, alongside
   `capability_boundary_negative` and `l10n_boundary_negative`.
 - **Hardware required:** no.
-- **Note added 2026-08-23 (T-173):** "bumping the pin cannot require an edit
+- **Note added 2026-08-23 (T-178):** "bumping the pin cannot require an edit
   above the adapter" is a compile-time property, and it is not the whole of what
   a bump costs. The pinned revision has five verified parser defects, two of
   which leave a buffer
@@ -1686,7 +1878,7 @@ stale silently. The protocol is
   adapter is also where a malformed-frame consequence stops being MeshCore's and
   starts being ours. That does not change this task's acceptance; it says which
   boundary the corpus in T-013's entry condition is protecting.
-- **Entry condition added 2026-08-24 (T-173):** the boundary test must include the
+- **Entry condition added 2026-08-24 (T-178):** the boundary test must include the
   case where the far side's declared length exceeds what the receiving buffer
   holds, and must assert the **rejection** — that the frame is refused, that no
   partially-consumed state is left behind, and that whatever buffer the attempt
@@ -1720,7 +1912,7 @@ stale silently. The protocol is
 - **Hardware required:** for a working link, yes — and **two** radio devices
   (A3). For the cost numbers, no.
 - **Constraint that is already fixed:** `Arduino.h` does not enter `core/`.
-- **Entry condition added 2026-08-23 (T-173):** whichever revision this spike
+- **Entry condition added 2026-08-23 (T-178):** whichever revision this spike
   proposes to pin, run the corpus in
   [`docs/research/meshcore-parser-bounds/`](docs/research/meshcore-parser-bounds/)
   against it first, and run `path_arith` and `decrypt_bounds` too — they are not
@@ -1735,7 +1927,7 @@ stale silently. The protocol is
   the `PAYLOAD_TYPE_PATH` lines `path_arith` hand-copies have moved at the
   candidate; that refusal means "re-read P3 by hand here", not "the tool is
   broken".
-- **Entry condition added 2026-08-24 (T-173), and it is not about MeshCore:** the
+- **Entry condition added 2026-08-24 (T-178), and it is not about MeshCore:** the
   radio path this spike produces must check a wire-supplied length **at the point
   of use, in the shipping build, in code that rejects** — not in an `assert`, and
   not only in the parser upstream of it — and the rejection must leave the caller
@@ -1979,21 +2171,6 @@ stale silently. The protocol is
 - **Research status:** not started
 - **Implementation status:** not started
 - **Tests:** this *is* test infrastructure
-- **Hardware required:** no
-
-### T-004 · ESP-IDF version decision
-- **Priority:** P1 — lowered from P0. It blocks embedded work; it does not block
-  M1, which is the simulator.
-- **Dependencies:** none
-- **Goal:** pin ESP-IDF with recorded reasoning.
-- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
-  source, version, licence, rationale and upgrade strategy.
-- **Research status:** narrowed — Waveshare supports v5.5.5 and v6.0.2, its BSP
-  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 probably does not bind
-  Attadipa (T7)
-- **Implementation status:** `v5.5.5-496-gc197d718bcc` installed and **verified**
-  by a real `idf.py set-target esp32s3 && idf.py build`. Verified is not decided.
-- **Tests:** a trivial esp32s3 build — **passed**
 - **Hardware required:** no
 
 ---
@@ -2832,7 +3009,7 @@ Recommended next action:
   reason: that unit has **no vibration motor fitted**, so there is nothing to
   interfere with the compass even once the compass exists.
 
-### T-144 · An agent cannot land a change to `.github/workflows/`, and two fixes are parked behind it
+### T-144 · An agent cannot land a change to `.github/workflows/`, and three fixes are parked behind it
 - **Priority:** P1
 - **Dependencies:** none. This is a token permission, not a design problem.
 - **Goal:** let a fix that has to touch a workflow file actually reach `main`.
@@ -2850,37 +3027,39 @@ Evidence:       Verified 2026-08-24 on a scratch branch, one character changed:
                     (refusing to allow a GitHub App to create or update
                      workflow `.github/workflows/pr-merge-sweep.yml` without
                      `workflows` permission)
-                Two fixes are parked on it, both against the same file:
-                  · #170 — docs/automation/pending/170-merge-sweep-completeness.patch
-                    (the merge sweep proving it read the whole pull request)
-                  · #130 — docs/automation/pending/130-merge-sweep-caller.patch
-                    on pull request #154, which files this same blocker as
-                    "T-127" — a number already taken by the anchor check in
-                    DONE. Whichever of the two lands second should fold its
-                    entry into this one rather than leave three numbers for
-                    one problem.
-                Apply both **in one commit**, not in either order: they edit the
-                same workflow. `merge-candidate-test.sh` hard-fails CI for every
-                open pull request if #154's patch lands first — but **not** in the
-                other direction: its state machine keys on the 170 patch, and
-                #154's is on that pull request rather than in `pending/`, so
-                landing 170 alone goes green while leaving #154's patch stale.
-                The order this entry recommends is the unguarded one. Each `git rm`s only its own file, so neither deletes the
-                other's while it is still parked.
+                THREE FIXES ARE PARKED ON IT AND THEY ARE NOW ONE FILE:
+                docs/automation/pending/170-merge-sweep-completeness.patch
+                carries #170 (the sweep proving it read the whole pull
+                request), #199 (the head timed by GitHub rather than by the
+                committer clock) and, since 2026-08-25, #130 (the Codex answer
+                bound to the head's object id). Eleven edits, one apply, one
+                `merge-candidate.sh` arity transition — nine arguments to
+                eleven, with no middle state anybody can land.
+                It was two files until #154 was closed unmerged in the
+                recovery. `130-merge-sweep-caller.patch` never reached
+                `pending/`, and the ordering hazard this entry used to describe
+                — CI hard-failing if that one landed first, and going green
+                while leaving it stale in the other direction — went with it.
+                `75-approval-stall.patch` beside it edits four other files and
+                never the sweep, so the two are independent and may land in
+                either order. Each `git rm`s only its own file.
 Impact:         #170 is closed fail-closed rather than fixed: until the patch
                 lands, `merge-candidate.sh` refuses the pre-#170 nine-argument
                 caller by arity, so the sweep merges NOTHING and logs the file
                 to apply once per open pull request per run. Correct, and not
                 finished. Everything still merges through an orchestrator
                 session, which is unaffected.
-                The two patches touch the same file and will conflict with
-                each other, not with `main`.
+                #130 holds the same way and on a second line: the live caller
+                hands `codex-answered.sh` a timestamp where it now requires an
+                object id, so any pull request carrying a Codex finding answers
+                `unknown`. Both end on the same apply.
 Possible options:
-                1. An orchestrator session applies both patches in one
-                   commit, resolving the one overlap by hand, and `git rm`s
-                   the two patch files it applied — not the directory, which
-                   also holds README.md, the target of three links in
-                   APPROVAL_STALLS.md. Costs one live session.
+                1. An orchestrator session applies the patch and `git rm`s
+                   that one file — not the directory, which also holds
+                   README.md, the target of three links in APPROVAL_STALLS.md,
+                   and `75-approval-stall.patch`. No overlap to resolve by hand
+                   since the three issues were folded into one patch. Costs one
+                   live session.
                 2. Owner grants the Claude GitHub App `workflows: write` on
                    this installation. Fixes the class, not just these two —
                    and widens what an agent may change to include the files
@@ -2891,7 +3070,7 @@ Possible options:
                 4. Leave both parked. The merge sweep stays a no-op, and the
                    next workflow-level finding parks behind these two.
 Recommended next action:
-                Option 1 for these two, then decide 2 or 3 at leisure. It
+                Option 1 for what is parked, then decide 2 or 3 at leisure. It
                 needs no permission change and no new trust boundary, and the
                 sweep is back the same day. Options 2 and 3 hand an agent
                 write access to the workflows that constrain agents, which is
@@ -2975,7 +3154,7 @@ A1's schematic-revision
 
 ## DONE
 
-### T-173 · MeshCore parser bounds at the pinned revision — **DONE** 2026-08-25
+### T-178 · MeshCore parser bounds at the pinned revision — **DONE** 2026-08-25
 Research only, from [#142](https://github.com/hleserg/Attadipa/issues/142). Full
 record: [MESHCORE_PARSER_BOUNDS](docs/research/MESHCORE_PARSER_BOUNDS.md);
 harness and corpus:
@@ -3038,12 +3217,10 @@ whole one from the commit list.
   `payload_len` 181…184, reproduced against the real translation unit. Both sit
   behind a **2-byte** MAC ([M11](docs/research/OPEN_QUESTIONS.md)), which is not
   the authentication gate it looks like.
-- **Reporting the `Utils::decrypt` defect upstream is the owner's call.** Filing
-  on a third-party repository is outward-facing and this run had no authority for
-  it. The evidence reproduces in one command. **What is not open is whether it is
-  public — it is**, from the moment #160 was opened, so the decision left is the
-  *ordering*: notify upstream first, or accept publication-without-notice
-  deliberately. `needs-owner`, and it is live now rather than later.
+- **No separate upstream notification is sent.** Filing on a third-party
+  repository is outward-facing; the owner chose on 2026-08-25 to merge this
+  already-public research without another outbound action. The evidence remains
+  reproducible in one command.
 - **A second ecosystem reached the same invariant, added 2026-08-24.** The owner
   brought Meshtastic
   [firmware#11573](https://github.com/meshtastic/firmware/pull/11573) — merged
@@ -3066,7 +3243,146 @@ whole one from the commit list.
   they read can be groomed, what the eight over-written bytes hit on an
   ESP32-S3, and whether a real fuzzing pass finds more. None blocks anything
   while we link no MeshCore.
+### T-174 · The queue's width limit asked `gh` for a field it does not have — **DONE** 2026-08-25
+- **Priority:** P1
+- **Dependencies:** none. Issue
+  [#239](https://github.com/hleserg/Attadipa/issues/239), reviewing
+  `945c16a..36e1ba9`.
+- **Goal:** `.github/scripts/wip-limit.sh` asked `gh pr list --json` for
+  `baseRepository`, a name that belongs to the REST API and that the CLI does
+  not have. `gh` answers `Unknown JSON field: "baseRepository"` and exits 1
+  before making a request; `2>/dev/null || true` discarded that, the empty
+  payload normalised to nothing, and the decision fell through to `unknown`.
+  So `full` and `incident` were unreachable states and the WIP policy
+  *2 normal / 3 hard* was enforced on nothing from #216 onwards — observed on
+  #219, #236 and #237, each of which got
+  `Could not determine the active pull-request count`. Codex named the exact
+  field reviewing #216 and the merged implementation did not carry the
+  correction.
+- **Why nothing caught it:** the suite called the pure decision function with
+  hand-built JSON, six cases, 6/6 green on every run. The transport was never
+  executed. `shellcheck` saw a well-formed command, `actionlint` saw valid YAML,
+  and the `--slurp`/`--jq` scan looks at a different pair of flags.
+- **Acceptance:** the transport asks for `number,isCrossRepository,labels`; the
+  base repository comes from the trusted `GITHUB_REPOSITORY` rather than from
+  the payload; a fork is decided by `isCrossRepository`; the `queue:parked` and
+  `queue:emergency` exemptions and the 2/3 limits are unchanged; a transient API
+  failure still fails closed to `unknown` while a CLI schema error raises a
+  distinct `::error::` diagnostic naming the field, since one is worth retrying
+  and the other will refuse every run until somebody edits the file.
+- **Research status:** n/a. The field lists were read off `gh` 2.97.0 itself
+  (`gh <command> --json` with no value is a flag-parse error `gh` answers with
+  the list, before any network call).
+- **Implementation status:** done. `.github/scripts/wip-limit.sh`. **No workflow
+  change was needed**, which is deliberate: `pr-wip-limit.yml` reads `state` and
+  `count` and nothing else, so the fix lands entirely in a file an agent token
+  can write.
+- **Tests:** `.github/tests/wip-limit-test.sh` — **26 pass, up from 6**. Seven
+  are pure-rule cases, one of them new (`queue:emergency` was exempt in the code
+  and asserted nowhere). The other nineteen run the shipping script end to end
+  against a stub `gh` on `PATH` which refuses an unknown `--json` field exactly
+  as `gh` does, with `gh`'s real fifty-line refusal rather than a tidy one-liner.
+  Five of those put the pre-#239 field list back into a copy of the script and
+  require `unknown` **with** the hard diagnostic, on one line, and `gh`'s full
+  stderr in the log; regressing the shipping file turns 9 of the 26 red, which
+  was checked by doing it rather than reasoned about.
+  `.github/tests/gh-api-usage-test.sh` — **82 pass, up from 68**: the same rule
+  as a static scan over workflows, scripts and parked-patch post-images. It
+  resolves a one-line shell assignment, so it reads
+  `--json "$ATTADIPA_WIP_JSON_FIELDS"` rather than skipping it, and it names what
+  it cannot resolve instead of reporting it clean. Run against the pre-fix file
+  it reports `wip-limit.sh:33 unknown-field baseRepository`. Every
+  `.github/tests/*.sh` suite green, `shellcheck -x` clean, `actionlint` clean,
+  `check_docs.py` clean, `ctest` 33/33 once Pillow is installed — without it
+  `ui_image_checks_unavailable` is the deliberate placeholder failure, on `main`
+  as much as here.
+- **Not verified here, and it cannot be:** `pr-wip-limit.yml` checks out
+  `ref: default_branch`, so a live run always executes **main's** copy of the
+  script. The first live numeric count therefore lands on the first pull request
+  opened after this merges, not on the pull request that fixes it. The fixed
+  script *was* run against the live repository from this session and returned
+  `full 3` for #238, #218 and #217 — a real `gh` call, not a stub, but from a
+  shell rather than from the workflow.
+- **Hardware required:** none. GitHub and host only.
 
+### T-004 · ESP-IDF version decision — **DONE** 2026-08-25
+- **Priority:** P1 — lowered from P0 when it was open. It blocked embedded work
+  and never blocked M1.
+- **Dependencies:** none
+- **Goal:** pin ESP-IDF with recorded reasoning.
+- **Acceptance:** a row in [DEPENDENCIES](docs/research/DEPENDENCIES.md) with
+  source, version, licence, rationale and upgrade strategy.
+- **Research status:** done. Waveshare supports **v5.5.5 and v6.0.2** and its BSP
+  needs ≥ 5.3; LilyGO's PlatformIO pin to IDF 4.4.7 does not bind Attadipa,
+  which is ESP-IDF-native (T7, still flagged as an assumption).
+- **Implementation status:** **decided: `v5.5.5`**, commit
+  `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013`, 2026-07-16, Apache-2.0. The
+  deciding requirement was not recency: the `spi_flash_mmap` refusal above
+  `0x1000000` first appears in v5.5.5 and in no earlier release checked, and on
+  this board that is the difference between a loud error and silently reading
+  the wrong sixteen megabytes ([FLASH_ADDRESSING_LIMITS](docs/research/FLASH_ADDRESSING_LIMITS.md)
+  §4.1). `v6.0.2` is the obvious next bump and is rejected only for now, because
+  nothing measured on this project was measured on it.
+- **What this closed that was quietly costing something:** the development host
+  had drifted onto `master` (`v6.1-dev-7351-ge37a7ae137c`) because nothing said
+  otherwise, and an unpinned dev branch cannot be reproduced by a CI image. The
+  toolchain was moved to the tag as part of the same change.
+- **Tests:** the CI job added by T-165 builds `firmware/` on
+  `espressif/idf:v5.5.5`, which is what makes the pin enforced rather than
+  written down.
+- **Hardware required:** no
+
+### T-171 · A verdict decided by an unauthenticated comment, and a rule that never ran — **DONE** 2026-08-25
+- **Priority:** P1
+- **Dependencies:** none. Found by the post-recovery review of
+  `a866d10..07d92df`, not by an issue.
+- **Goal:** three defects the recovery restored into `main`, all in the path
+  that sets `ai-review:pass`. (1) The findings query used `startswith` on a
+  marker the prompt puts at the END of the comment, so #169's convergence rule
+  never selected anything and never ran. (2) The ledger query had no author
+  condition, so any account could post `<!-- attadipa-review-ledger -->` and
+  supply the `first_round` and `status` the rule reads. (3)
+  `review-published.sh` accepted the review marker from any author, so a
+  drive-by comment kept a stale `ai-review:pass` alive across a head change.
+- **Acceptance:** the findings block is matched with `contains`; both queries
+  name their author in the workflow env; the marker admits only the configured
+  publisher accounts. Assertions moved off the parked patch and onto the live
+  workflow, so a subject that disappears fails rather than passing four times.
+- **Research status:** n/a.
+- **Implementation status:** done. `.github/workflows/claude-pr-review.yml`,
+  `.github/scripts/review-published.sh`.
+- **Tests:** `.github/tests/review-verdict-test.sh` (100 pass, seven of them
+  new and about the live queries), `.github/tests/review-published-test.sh` (10
+  pass, two new: the marker from an untrusted login, and a bot name that only
+  looks official). Every `.github/tests/*.sh` suite run locally, all green.
+  `shellcheck` and `actionlint` are **not installed on this machine** and were
+  not run here; CI runs both.
+- **Hardware required:** none.
+
+### T-173 · A wrist's stillness judged a distance it had not measured — **DONE** 2026-08-25
+- **Priority:** P2
+- **Dependencies:** [ADR-0013](docs/adr/0013-node-motion.md).
+- **Goal:** ADR-0013 scopes motion evidence to a `SensorBody` and
+  `TrustEvaluator::observe()` applied that to the sample only. `moved` is the
+  distance from the previous fix, which carried no body, so a mixed-source
+  stream compared a node's position against a watch's and judged the result
+  with the wrist's stillness — a `MotionDisagreement` about a watch that never
+  moved, and the mirror image, a real node teleport unseen.
+- **Acceptance:** a change of `body_of(observation.source)` drops the position,
+  altitude, satellites-in-view and `local_comparable_` baselines rather than
+  comparing across it. One sample is spent; the next same-body pair detects
+  normally.
+- **Research status:** ADR-0013 already states the invariant; this is the half
+  it did not reach.
+- **Implementation status:** done. `core/src/trust.cpp`,
+  `core/include/attadipa/core/trust.h`.
+- **Tests:** `test_a_change_of_body_is_not_a_movement` in
+  `tests/test_trust.cpp`; replay traces 07, 08 and 15 now name their source, so
+  their `expect no-reason motion-disagreement` lines stop being vacuous. 33/33
+  host tests pass. Reproduced against `main` before the change and confirmed
+  gone after it with a standalone probe against the built library.
+- **Hardware required:** none. No production caller constructs a
+  `TrustEvaluator` yet, so this was latent rather than live.
 ### T-127 · A link's `#anchor` is captured and then never checked — **DONE** 2026-08-23
 - **Priority:** P3
 - **Dependencies:** none.
@@ -3804,6 +4120,14 @@ whole one from the commit list.
   with nothing in it; and `start_kind()` read *having* a backup domain as
   evidence the domain had been *powered*, reporting a warm start where the truth
   was cold. `GnssContext` gained `backup_retained`, the fact that was missing.
+  `ephemeris_retained` is separately direct evidence, never inferred from a
+  recent fix, and its owner clears it whenever neither retaining rail stayed up;
+  that is why `Hot` need not depend on the backup-domain capability `Warm`
+  requires. Both halves of that asymmetry are checks rather than prose (#194): a
+  recent fix with nothing retained is never `Hot`, across every capability and
+  both retention flags, and a receiver whose own rail never dropped is `Hot`
+  with no backup domain at all — so neither "infer retention from recency" nor
+  "make `Hot` require `backup_retained` too" can be reintroduced quietly.
 - **Also pinned:** no wake source that exists only while the radio is powered may
   be armed in `DeepSleep` — the rule the MeshCore review found broken upstream.
 - **Tests:** `tests/test_power.cpp`.

@@ -90,6 +90,52 @@ jobs:
         with:
           fetch-depth: 0
 
+      # THE SAME BUNDLE AS claude-agent.yml, AND THE SAME REASON -- #133.
+      #
+      # This workflow's only trigger is `pull_request`, so GITHUB_REF is always
+      # `refs/pull/N/merge` and the checkout above is always the reviewed branch
+      # merged into the base. `Work out why the review did not happen` below
+      # runs `failure-reason.sh`, whose entire job is to decide what is safe to
+      # quote out of an execution log into a comment this workflow authors. A
+      # pull request that edits that file would have had its own version make
+      # that decision -- and `failure-reason.sh` is a file agents are actually
+      # sent to edit (#106).
+      #
+      # `contents: read` bounds what that could do; it does not make it right,
+      # and the redaction whitelist is the wrong place to find out. Same sparse
+      # default-branch checkout, staged out of the workspace before the model
+      # runs, for the cost of two steps.
+      - name: Fetch the failure classifier from the default branch
+        if: steps.auth.outputs.ok == 'true'
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          path: .attadipa-bundle
+
+      - name: Move it out of the reviewer's reach
+        if: steps.auth.outputs.ok == 'true'
+        run: |
+          # No `set -e`: an unstaged bundle degrades one sentence of one
+          # comment, and must not cost the review itself.
+          set -uo pipefail
+          DEST="$RUNNER_TEMP/attadipa-orchestration"
+          rm -rf "$DEST"
+          if [ -d .attadipa-bundle/.github/scripts ]; then
+            mkdir -p "$DEST" && cp -R .attadipa-bundle/.github/scripts "$DEST/scripts"
+          fi
+          rm -rf .attadipa-bundle
+          if [ -r "$DEST/scripts/failure-reason.sh" ]; then
+            echo "ATTADIPA_TRUSTED_SCRIPTS=$DEST/scripts" >> "$GITHUB_ENV"
+            echo "::notice::failure classifier staged from the default branch at $DEST/scripts"
+          else
+            echo "ATTADIPA_TRUSTED_SCRIPTS=" >> "$GITHUB_ENV"
+            echo "::warning::the failure classifier could not be staged from the default branch; a failed review will report its structural fields only"
+          fi
+
       # continue-on-error, and the reason is evidence rather than taste.
       #
       # On 2026-08-21 this job went red on pull request #9 after 373 ms, one
@@ -285,6 +331,22 @@ jobs:
             reproduces. Rank by severity. Say explicitly if you found nothing
             blocking — a review that always finds something is noise.
 
+            **READ THE LEDGER BEFORE YOU WRITE ANYTHING.** This may not be the
+            first round on this branch. Run `gh pr view
+            ${{ github.event.pull_request.number }} --comments` and look for the
+            comment beginning `<!-- attadipa-review-ledger -->`. Its
+            `<!-- attadipa-review-ledger-state` block lists every finding ever
+            raised here, with the round it was first seen, its kind and its
+            state.
+
+            **Re-use those ids exactly.** An id you invent for a problem the
+            ledger already names is a new finding dated this round, which is how
+            a real blocker quietly stops blocking — and, in the other direction,
+            how a defect you already reported comes back as if it were fresh.
+            Account for every finding the ledger still shows as `open`: one that
+            you do not mention stays open, because "it did not come up again" is
+            not evidence that a push fixed it.
+
             **Publish the review — it does not publish itself.** Post your
             findings as a comment with `gh pr comment`. Nothing you write
             reaches the pull request otherwise; the action leaves it in the run
@@ -296,9 +358,46 @@ jobs:
             than adding another — a fresh wall of text on every push is how a
             review becomes something people scroll past.
 
-            Finish by setting exactly one label on this pull request using the
-            gh CLI: `ai-review:blocking` if anything must be fixed before merge,
+            **End the comment with a findings block**, which is what actually
+            decides the verdict. One line per finding, four fields, pipes
+            between them:
+
+                <!-- attadipa-review-findings
+                gnss-trust-source | open  | floor  | The trust state is claimed with no source
+                adr-section-number | fixed | normal | ADR-0007 §4.1 should read §2.4
+                -->
+
+            - **id** — lower-case letters, digits and hyphens, and the SAME id
+              every round for the same problem.
+            - **state** — `open` or `fixed`. `fixed` means you looked at the
+              current head and the problem is gone, not that somebody said they
+              had fixed it.
+            - **kind** — `floor` or `normal`. **`floor` is a short list and it is
+              not a severity rating**: a hardware fact with no source, a `PASS`
+              for a test that did not run on a board, an application-layer
+              hardware access, or an architecture-boundary violation. Those four
+              hold the pull request at any round, however late they are found.
+              Everything else is `normal` — including things you consider
+              serious. Anything you type that is neither word is read as `floor`.
+            - **description** — one line, no pipes.
+
+            List every finding you are reporting AND every one the ledger still
+            shows as open, so that a `fixed` is said out loud rather than
+            inferred from silence.
+
+            Then set exactly one label on this pull request using the gh CLI:
+            `ai-review:blocking` if anything must be fixed before merge,
             otherwise `ai-review:pass`. Remove the other one if present.
+
+            **A later step may correct that label**, and this is deliberate
+            rather than a disagreement with you. From the convergence floor on,
+            a `normal` finding first raised at or after that round is published
+            and filed rather than held — because this workflow reviews the head
+            commit, so answering every finding produces a new head, a new diff
+            and new findings, and four branches reached rounds five, eight, ten
+            and two with the label never coming off (issue #169). The rule is
+            `.github/scripts/review-verdict.sh`. Your block is its input; nothing
+            you can write to it weakens the four `floor` kinds.
 
       # What actually went wrong, read from the action's own execution log
       # rather than guessed at.
@@ -366,7 +465,7 @@ jobs:
           set -uo pipefail
           comments="$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp 2>/dev/null | jq -c 'flatten(1)' 2>/dev/null || true)"
           labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)"
-          answer="$(bash .github/scripts/review-published.sh yes "$OUTCOME" "$comments" "$labels" "$STARTED" || echo 'unknown helper failed')"
+          answer="$(bash "$ATTADIPA_TRUSTED_SCRIPTS/review-published.sh" yes "$OUTCOME" "$comments" "$labels" "$STARTED" || echo 'unknown helper failed')"
           case "$answer" in
             published\ *) state=published ;;
             silent\ *) state=silent ;;
@@ -398,6 +497,60 @@ jobs:
           gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || true
           gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:blocking || true
 
+      - name: Converge the published reviewer verdict
+        # This is deliberately after publication: no model output, missing bundle,
+        # or failed API read may manufacture a pass. In every such case the
+        # reviewer's own label remains the only verdict.
+        if: >-
+          !cancelled() && steps.auth.outputs.ok == 'true' &&
+          steps.happened.outputs.ran == 'yes' &&
+          steps.published.outputs.state == 'published' &&
+          vars.CLAUDE_PR_REVIEW_ENABLED != 'false'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TRUSTED: ${{ env.ATTADIPA_TRUSTED_SCRIPTS }}
+          # WHOSE COMMENTS MAY DECIDE A VERDICT, named here rather than spelled
+          # inside the queries below, so that changing an account is an edit to
+          # a workflow rather than to a `jq` string nothing reads twice.
+          #
+          # The reviewer publishes as the account the action authenticates as.
+          # The ledger is written by this step, with `github.token`, so it
+          # arrives as `github-actions[bot]` — and the ledger query below had no
+          # author condition at all. This repository is public, so that was an
+          # unauthenticated write into the rule that sets `ai-review:pass`: a
+          # comment beginning with the ledger marker is picked by `tail -1` over
+          # the real one, and `review-verdict.sh` reads `first_round` and
+          # `status` out of it for every finding.
+          ATTADIPA_REVIEW_ACTOR: claude[bot]
+          ATTADIPA_LEDGER_ACTOR: github-actions[bot]
+        run: |
+          set -euo pipefail
+          [ -n "${TRUSTED:-}" ] && [ -r "$TRUSTED/review-verdict.sh" ] || exit 0
+          : > /tmp/previous-ledger.md
+          : > /tmp/findings.md
+          ledger_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_LEDGER_ACTOR) | select(.body | startswith("<!-- attadipa-review-ledger -->")) | .id' | tail -1)
+          [ -z "$ledger_id" ] || gh api "repos/$REPO/issues/comments/$ledger_id" --jq '.body' > /tmp/previous-ledger.md
+          # `contains`, NOT `startswith`, AND THE DIFFERENCE WAS THE WHOLE RULE.
+          # The prompt above tells the reviewer to BEGIN the comment with
+          # `<!-- attadipa-ai-review -->` and to END it with the findings block,
+          # so `startswith` on the findings marker matched nothing the reviewer
+          # can write: `finding_id` was always empty, `review-verdict.sh` always
+          # answered `label=unknown`, no ledger was ever written and the
+          # convergence rule of #169 never ran once. `_attadipa_block()` anchors
+          # on the first marker line itself, so matching the comment loosely
+          # here costs nothing.
+          finding_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_REVIEW_ACTOR) | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not) | select(.body | contains("<!-- attadipa-review-findings")) | .id' | tail -1)
+          [ -z "$finding_id" ] || gh api "repos/$REPO/issues/comments/$finding_id" --jq '.body' > /tmp/findings.md
+          bash "$TRUSTED/review-verdict.sh" /tmp/previous-ledger.md /tmp/findings.md 4 /tmp/new-ledger.md /tmp/deferred.md "$PR" > /tmp/verdict.txt
+          label=$(sed -n 's/^label=//p' /tmp/verdict.txt)
+          [ "$label" = "ai-review:pass" ] || [ "$label" = "ai-review:blocking" ] || exit 0
+          if [ -n "$ledger_id" ]; then gh api -X PATCH "repos/$REPO/issues/comments/$ledger_id" -F body=@/tmp/new-ledger.md > /dev/null; else gh pr comment "$PR" --repo "$REPO" --body-file /tmp/new-ledger.md; fi
+          case "$label" in ai-review:pass) other=ai-review:blocking;; *) other=ai-review:pass;; esac
+          gh pr edit "$PR" --repo "$REPO" --add-label "$label" --remove-label "$other"
+
       - name: Work out why the review did not happen
         id: why
         if: always() && steps.auth.outputs.ok == 'true' && (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no')
@@ -427,9 +580,18 @@ jobs:
             # an API status, a context refusal, a credit balance, an expired
             # token -- so the free-text `result` still never reaches a comment
             # we author, but a recognised failure gets to say its own name.
-            reason="$(bash .github/scripts/failure-reason.sh "${EXEC_FILE}")"
+            #
+            # From the default-branch bundle, never from the workspace -- the
+            # workspace here is `refs/pull/N/merge`, which is the branch being
+            # reviewed. See the bundle step near the checkout. With no bundle
+            # the structural fields above still get reported; only the named
+            # reason is lost, which is the right thing to lose.
+            reason=""
+            if [ -n "${ATTADIPA_TRUSTED_SCRIPTS:-}" ] && [ -r "${ATTADIPA_TRUSTED_SCRIPTS}/failure-reason.sh" ]; then
+              reason="$(bash "${ATTADIPA_TRUSTED_SCRIPTS}/failure-reason.sh" "${EXEC_FILE}")"
+            fi
             case "${reason}" in
-              unclassified*|"the run reported no error"*) ;;
+              ""|unclassified*|"the run reported no error"*) ;;
               *) detail="${detail}"$'\n'"Reason: ${reason}" ;;
             esac
           fi

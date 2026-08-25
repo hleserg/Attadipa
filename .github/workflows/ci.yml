@@ -292,6 +292,15 @@ jobs:
       - name: What may be merged unattended
         run: bash .github/tests/merge-candidate-test.sh
 
+      # And who is entitled to close the other reviewer's findings. That
+      # condition's trust test was `user.type != "Bot"` -- a classification
+      # doing the work of an authorisation, on a public repository, where the
+      # "answer" needed no relation to the finding beyond a later timestamp. A
+      # stranger's comment cleared it. The rule is a file now, and the first
+      # fixture below is the bypass, asserted as one.
+      - name: Who may answer the other reviewer
+        run: bash .github/tests/codex-answered-test.sh
+
       # And whether it says WHY, when the answer is in a log nobody may read.
       # `show_full_output: false` empties the published run log of exactly the
       # cause -- deliberately, because tool results carry file contents -- so a
@@ -330,6 +339,9 @@ jobs:
 
       - name: A completed review reaches the pull request
         run: bash .github/tests/review-published-test.sh
+
+      - name: A re-review eventually converges without weakening floor findings
+        run: bash .github/tests/review-verdict-test.sh
 
       - name: The pull-request queue has a bounded width
         run: bash .github/tests/wip-limit-test.sh
@@ -375,6 +387,17 @@ jobs:
       # a well-formed command and actionlint saw valid YAML.
       - name: The gh calls in the workflows are ones gh accepts
         run: bash .github/tests/gh-api-usage-test.sh
+
+      # The hand-over used to read its own code out of $GITHUB_WORKSPACE, which
+      # on two of claude-agent.yml's five triggers is `refs/pull/N/merge` and on
+      # all five is whatever the model session left behind. A branch that edits
+      # `.github/scripts` had its version run with issues:write in hand; a
+      # branch missing a helper killed the step under `set -euo pipefail`,
+      # before the outcome comment, leaving the issue on agent:working. This
+      # extracts the Hand over shell from the YAML and runs it against a stub
+      # `gh` with a hostile working tree -- the boundary is executed, not read.
+      - name: The hand-over runs the default branch's code, or says it could not
+        run: bash .github/tests/orchestration-bundle-test.sh
 
   docs:
     name: Documentation consistency
@@ -438,6 +461,33 @@ jobs:
       - name: Links and anchors, spans, task IDs, OD numbers, task bodies, root files, citations, open-question IDs
         run: python3 tools/docs/check_docs.py .
 
+      # The public site has two render paths: static HTML for non-JavaScript
+      # crawlers and the runtime language switcher. Keep their metadata and
+      # reveal fallback as explicit invariants, and test the checkers with the
+      # historical mutations they are meant to reject. The head-sync suite
+      # holds 44 cases: 34 break the pair and 10 leave it valid.
+      - name: The site head-sync check actually checks
+        run: python3 tools/site/test_check_head_sync.py
+
+      - name: The rendered site head matches its static HTML
+        run: python3 tools/site/check_head_sync.py .
+
+      # The site-facts suite holds 25 cases: 21 demand a report, 4 demand
+      # silence.
+      - name: The site-facts check actually checks
+        run: python3 tools/site/test_check_site_facts.py
+
+      - name: SEO image facts match repository assets
+        run: python3 tools/site/check_site_facts.py .
+
+      # The reveal-contract suite holds 13 cases: 9 demand a
+      # report, 4 demand silence.
+      - name: The reveal-contract check actually checks
+        run: python3 tools/site/test_check_reveal_contract.py
+
+      - name: The site remains readable without JavaScript
+        run: python3 tools/site/check_reveal_contract.py .
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest
@@ -493,17 +543,61 @@ jobs:
           # bury the real message under an artifact-step error.
           if-no-files-found: warn
 
+  firmware-build:
+    name: Firmware build (ESP32-S3, ESP-IDF v5.5.5)
+    runs-on: ubuntu-latest
+    # The pinned toolchain, as a container rather than as an install script, so
+    # that "reproducible from a clean checkout" is something this job proves
+    # rather than something a pull-request body asserts. The tag is the version
+    # pinned in docs/research/DEPENDENCIES.md and the two move together.
+    container: espressif/idf:v5.5.5
+    steps:
+      - uses: actions/checkout@v7
+
+      # Host-side and independent of ESP-IDF. The firmware build also validates
+      # its generated table against the declared 16 MB size; this check covers
+      # every repository CSV before a toolchain starts.
+      - name: Partition table stays below the 16 MB addressing ceiling
+        run: python3 tools/flash/partition_check.py
+
+      - name: Build
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          idf.py set-target esp32s3
+          idf.py build
+          python3 ../tools/flash/firmware_elf_check.py build/attadipa.elf
+          # app_main owns the degraded-PSRAM diagnostic. Without this option,
+          # ESP-IDF aborts before that diagnostic can run.
+          grep -q "^CONFIG_SPIRAM_IGNORE_NOTFOUND=y$" sdkconfig
+
+      # The RAM route is the one proved to work on the received unit and the one
+      # with nothing to undo, so it is the one a bench session reaches for first.
+      # If it stops building, that is found here rather than at the bench.
+      - name: Build the RAM-load variant
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe" build
+          # idf.py keeps sdkconfig in the project directory, so without
+          # the line above this silently rebuilds the flash image and
+          # calls it a RAM build. Prove the option actually took.
+          grep -q "^CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y$" build-ram/sdkconfig
+          python3 ../tools/flash/pure_ram_elf_check.py build-ram/attadipa.elf
+          python3 ../tools/flash/firmware_elf_check.py build-ram/attadipa.elf
+
   evidence:
     name: What this run did not prove
     runs-on: ubuntu-latest
     if: always()
-    needs: [host-build, strict-warnings, clang, sanitizers, simulator]
+    needs: [host-build, strict-warnings, clang, sanitizers, simulator, firmware-build]
     steps:
       # CLAUDE.md's rule, made visible where people actually look. A green badge
-      # on this repository means host builds and a simulator render. It is not
-      # evidence about firmware and it is not evidence about hardware, and the
-      # only reliable way to stop that being forgotten is to write it down on
-      # every single run.
+      # reports each dependency's real result. A compile is still not evidence
+      # about physical hardware, and the only reliable way to stop that being
+      # forgotten is to write it down on every single run.
       - name: Say so
         run: |
           {
@@ -514,7 +608,7 @@ jobs:
             echo "| Host build, GCC and Clang | UNIT-TESTED |"
             echo "| Strict warnings, sanitizers | UNIT-TESTED |"
             echo "| Simulator, both geometries | SIMULATED |"
-            echo "| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |"
+            echo "| ESP32-S3 firmware build (flash and RAM variants) | CI job: \`${{ needs.firmware-build.result }}\` |"
             echo "| Anything on a physical board | **NOT EXECUTED — HARDWARE REQUIRED** |"
             echo
             echo "Power, timing and RF numbers are \`ESTIMATED\` or \`UNKNOWN\` until"
@@ -523,8 +617,10 @@ jobs:
 
 # Still not present, and still deliberately not faked:
 #
-#   * embedded build  — ESP-IDF version is not chosen (TASKS.md T-004). When it
-#                       is, this becomes a matrix job beside the host builds.
+#   * second board    — the firmware job builds for the Waveshare only. The
+#                       T-Watch is ORDERED and not in hand (TASKS.md T-010), and
+#                       a matrix entry for a board nobody can boot would make
+#                       this run look like it proved more than it did.
 #   * formatting      — rules are not agreed yet (TASKS.md T-039)
 #   * hardware tests  — NOT EXECUTED, HARDWARE REQUIRED. There is no HIL runner,
 #                       and a job that pretended otherwise would be worse than

@@ -76,14 +76,15 @@ flatly contradicts.
 **The claim that the board's PSRAM is absent or undeclared is false, and was
 false before the advice arrived.** [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md)
 "8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
-[VERIFIED_FACTS.md:745](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
+[VERIFIED_FACTS.md:783](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
 ([HARDWARE_MATRIX.md:330](HARDWARE_MATRIX.md)). The only true reading of "not
-declared" is that this repository contains no ESP-IDF build configuration for any
-target: there is no `sdkconfig`, no partition CSV and no `boards/` directory at
-all, which makes the statement vacuous rather than informative. What *was* open
+declared" was that this repository then contained no ESP-IDF build configuration
+for any target, which made the statement vacuous rather than informative. T-165
+has since added and exercised `sdkconfig.defaults` and a partition CSV. What
+*was* open
 is narrower and was already filed: whether that PSRAM is quad or octal, open
 question D12, named there as a blocker on the LVGL draw-buffer decision. That
 question has since been split on the strength of §3.1 — D12a resolved octal for
@@ -117,14 +118,17 @@ the AXP2101 or the PCF85063 that are on the board — which
 [CLAUDE.md:42-43](../../CLAUDE.md) has already promoted to a standing rule.
 Whatever is decided, wrapping the BSP does not cover the board.
 
-**The ESP-IDF mechanics were already constrained by an undecided version.** T1 is
-"narrowed" (the T1 row of [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 is open
-([TASKS.md](../../TASKS.md#t-004--esp-idf-version-decision) — an anchor rather than a line number, which drifts on every insertion above it), and CI prints
-`| ESP32-S3 firmware build | NOT EXECUTED — ESP-IDF version undecided (TASKS.md T-004) |`
-([`.github/workflows/ci.yml:517`](../../.github/workflows/ci.yml) "ESP-IDF version undecided").
-What exists
-is an installed toolchain, `v5.5.5-496-gc197d718bcc` at `/root/esp/esp-idf`;
-installed is not decided.
+**The ESP-IDF mechanics were constrained by an undecided version, and are not
+any more.** When this was written T1 was "narrowed" (the T1 row of
+[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)), T-004 was open, and what existed was an
+installed toolchain — `v5.5.5-496-gc197d718bcc` — which is not the same as a
+decision. **T-004 closed on 2026-08-25 at `v5.5.5`**
+([DEPENDENCIES](DEPENDENCIES.md), "ESP-IDF" in *Decided*), and CI now builds
+`firmware/` on that version and prints the actual `firmware-build` dependency
+result rather than an unconditional success
+([`.github/workflows/ci.yml:611`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
+The paragraph is kept rather than deleted because the constraint it describes is
+what the rest of this section reasons from.
 
 **One thing in the advice was genuinely new: nothing in this repository had ever
 considered that a static face ages an emissive panel.** That is now §1 and §3.5,
@@ -463,7 +467,7 @@ Recorded here because it is the part of §1 that has an architectural answer, an
 it is small.
 
 `platform::PanelTechnology` already exists and the Waveshare profile already sets
-`Amoled` ([`platform/src/board_profiles.cpp:122`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
+`Amoled` ([`platform/src/board_profiles.cpp:124`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
 **Nothing reads it.** A grep across `platform/`, `core/`, `ui/` and `apps/`
 returns the two assignments and no consumers, so no code in this project can
 behave differently on an emissive panel today, whatever is decided.
@@ -663,9 +667,13 @@ Waveshare PMU row records no interrupt line.
 
 **Deliberately not this evening.** Cutting one AXP2101 rail at a time to see
 which parts drop off the scan (D13) needs the address list from step 5 to exist
-first and risks a confusing half-powered board. Re-wiring or re-testing the SD
-card in the other mode (D14) can wait. Anything involving eFuse, secure boot or
-flash encryption is out of scope permanently unless the owner asks in writing.
+first and risks a confusing half-powered board. **Re-wiring** the SD card to
+force the other mode stays excluded permanently — but *testing* it with a card in
+the slot needs no re-wiring at all, and D14 turned out to need exactly that:
+[`../hardware/SD_CARD_MODE_TEST.md`](../hardware/SD_CARD_MODE_TEST.md), which is
+read-only by default and asks for one expendable card. Anything involving eFuse,
+secure boot or flash encryption is out of scope permanently unless the owner asks
+in writing.
 
 ---
 
@@ -693,7 +701,7 @@ answer a vendor file already contains.
 | 10 | Whether 120 MHz PSRAM is viable here, given the vendor ships 80 MHz | Build at `CONFIG_SPIRAM_SPEED_120M` and run the same benchmark |
 | 11 | Which GPIO each tactile key uses (D5) | Step 9 |
 | 12 | Which loads sit on ALDO1/ALDO2/ALDO3, and what runs on the 1.8 V ALDO4 rail (D13) | Cut one rail at a time and watch which addresses drop off the step-5 scan — deferred past evening one |
-| 13 | Whether the SD card is wired for SDMMC 1-bit or SPI (D14) | Try each mode against the card and see which enumerates |
+| 13 | Whether the SD card is wired for SDMMC 1-bit or SPI (D14) | A **card in the slot**, enumerating. The 2026-08-23 boot log is not this: it shows the vendor's firmware choosing the SDMMC host driver and then timing out into an **empty** socket, which every wiring does identically. Written up as a non-destructive procedure — [`../hardware/SD_CARD_MODE_TEST.md`](../hardware/SD_CARD_MODE_TEST.md), T-127 |
 | 14 | Whether `AXP_IRQ` reaches any SoC GPIO — it appears in no row of the schematic's GPIO table | Continuity from AXP2101 pin 38, or a probe while forcing a PMU interrupt |
 | 15 | Whether GPIO45 is held low across every reset path — it is the `VDD_SPI` voltage strap **and** this board's I2S word-select | A scope on GPIO45 through a reset. Getting this wrong switches `VDD_SPI` to 1.8 V and takes down flash and PSRAM together |
 | 16 | Battery capacity and charge-path details (D2) | The cell's own label |
@@ -709,9 +717,9 @@ does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
    [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md) "8 MB **octal**" and
-   [VERIFIED_FACTS.md:745](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
-   Only the build-configuration
-   reading is true, and it is vacuous — no target has a build configuration here.
+   [VERIFIED_FACTS.md:783](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
+   Only the build-configuration reading was true at the time; T-165 has since
+   added and exercised that configuration.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
    asked of it. `CONFIG_SPIRAM_MODE` defaults to QUAD, and a quad image on this
    octal board aborts in `cpu_start` before `app_main` is ever reached. The boot
@@ -750,7 +758,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:517`](../../.github/workflows/ci.yml) "ESP-IDF version undecided"
+    [`.github/workflows/ci.yml:611`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more

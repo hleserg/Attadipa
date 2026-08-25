@@ -388,10 +388,15 @@ EOF
     echo "HOLD $unresolved unresolved review thread(s)"
     return 0
   fi
-  if [ "${codex:-0}" != "0" ]; then
-    echo "HOLD $codex unanswered comment(s) from the other reviewer"
-    return 0
-  fi
+  case "${codex:-}" in
+    0) : ;;
+    ''|unknown|*[!0-9]*)
+      echo "HOLD could not establish whether the other reviewer's findings were answered"
+      return 0 ;;
+    *)
+      echo "HOLD $codex unanswered comment(s) from the other reviewer"
+      return 0 ;;
+  esac
 
   # -- how old is the code -----------------------------------------------------
   # WHEN GITHUB SAW THE HEAD ARRIVE, which is neither of the two things this

@@ -66,3 +66,6 @@ artifacts/
 # CTestCostData.txt was committed once, by this route; ctest rewrites it, so
 # every working tree that ever ran a test showed dirty.
 Testing/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

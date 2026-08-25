@@ -418,7 +418,7 @@ The tables below therefore say who is responsible, not who calls `init()`.
 | Buttons | `InputService` | at least two tactile keys exist; **the vendor BSP declares none** |
 | Expansion header J3 | `BoardService` | ≥ 29 pins; pinout unresolved (D3). Owned so nothing else claims those pins by accident |
 | 1.8 V rail (ALDO4) | `PowerService` | something on this board is 1.8 V; identify it before assuming any level |
-| SD card | `StorageService` | SDMMC 1-bit |
+| SD card | `StorageService` | the BSP says SDMMC 1-bit and the vendor's firmware drives it that way; **the connector has never had a card in it** and the mode is not settled (D14). The service owns the slot either way — the bus mode is the board layer's problem, which is the point |
 | Wi-Fi / BLE | `ConnectivityService` | the only radio *on this board* — and, once a node is attached, the path by which a second one's traffic arrives |
 | LoRa | `MeshService` via the provider registry | **not on this board.** With an Attadipa node attached the device has it; the service exists either way and reports which |
 | GNSS | `LocationService` via the provider registry | **not on this board.** An Attadipa node supplies it; the service exists either way and reports which |
@@ -472,7 +472,7 @@ fine is leaving them unowned.
 | PDM microphone | T-Watch | clock stopped, not sampling |
 | ES7210 dual mics | Waveshare | codec in standby |
 | Gyroscope (QMI8658) | Waveshare | disabled at the sensor, not just ignored |
-| SD card | Waveshare | unmounted, card detect observed |
+| SD card | Waveshare | unmounted. **Not "card detect observed"** — no card-detect pin appears in the BSP pin map or in the schematic reading, so presence is currently answerable only by attempting to enumerate (D14) |
 | Wi-Fi | both | radio off, not merely disconnected |
 
 The IR transmitter deserves its own sentence. It is an infrared diode that can
@@ -661,7 +661,7 @@ budget on a device where internal RAM is the scarce resource.
 | 2 | Rail ownership and reference counting | ADR (TASKS T-035) | open |
 | 3 | Radio abstraction, and what MeshCore actually supports | [ADR-0003](../adr/0003-radio-not-lora.md) (TASKS T-013) | **accepted** |
 | 4 | Partition layout and OTA scheme | ADR (TASKS T-025) | open |
-| 5 | ESP-IDF and LVGL versions | DEPENDENCIES (TASKS T-004, T-032) | **LVGL pinned** at v9.5.0 and building; ESP-IDF still open, and it blocks the device build rather than M1 |
+| 5 | ESP-IDF and LVGL versions | DEPENDENCIES (TASKS T-004, T-032) | **decided** — ESP-IDF v5.5.5 and LVGL v9.5.0 are pinned; CI builds both firmware variants and the simulator |
 | 6 | Whether to depend on the vendor BSPs or take only their pin facts | REUSE_LEDGER (OPEN_QUESTIONS T6) | open |
 | 7 | Capability sources and their runtime lifecycle | [ADR-0004](../adr/0004-capability-sources.md) (TASKS T-015) | **accepted** |
 | 8 | The watch↔node protocol | [ADR-0005](../adr/0005-node-protocol.md) (TASKS T-016) | **provisional** — encoding pending benchmark |

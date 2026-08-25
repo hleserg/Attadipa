@@ -239,14 +239,15 @@ reader ends up citing the one that was not updated.
 
 ## Toolchain / host environment
 
-### Development host currently lacks an embedded toolchain
+### The development host lacked an embedded toolchain on 2026-08-21
 
 - **Claim:** on the development machine (WSL2, Ubuntu 24.04) the following are
   present: cmake 3.28.3, gcc/g++ 13.3.0, Python 3.12.3. The following are
   absent: ESP-IDF (`IDF_PATH` unset), ninja, SDL2, clang-format, ccache.
 - **Source:** direct probe of the host, 2026-08-21.
-- **Impact:** neither an embedded build nor an LVGL simulator build can be run
-  until these are installed. The plain-CMake host build works.
+- **Historical scope:** this was a direct probe on that date, not a statement
+  about the current host. T-165 subsequently built both flash and PURE_RAM
+  firmware with the pinned ESP-IDF v5.5.5 toolchain.
 
 ---
 
@@ -263,8 +264,45 @@ carries, so for that board neither existed while this sentence said they did —
 which sends a reader looking for data rather than for its absence. The addresses
 are there now, each cited. The rails are still D13.
 
-**Neither board has been physically inspected.** Nothing requiring measurement
-is verified.
+The T-Watch has not been physically inspected. The Waveshare unit has now been
+physically probed and has booted Attadipa firmware; the measurements below are
+scoped to USB serial `28:84:85:B2:18:A4` and do not generalise to the T-Watch or
+to every unit of the same model.
+
+### Attadipa's T-165 firmware booted on the physical Waveshare unit
+
+- **MEASURED:** the unit booted Attadipa from flash and continued emitting its
+  one-second heartbeat. The boot log reported ESP32-S3 revision v0.2 and loaded
+  the app from the repository's `factory` partition at `0x10000`.
+- **MEASURED:** JEDEC ID `c8 40 19` identified 32 MB of physical flash while the
+  bootloader and firmware deliberately declared 16 MB. This is the addressing
+  ceiling chosen for the build, not a claim that the upper flash does not exist.
+- **MEASURED:** the octal PSRAM driver identified AP vendor `0x0d`, 64 Mbit
+  (8 MB), 3.3 V PSRAM at 80 MHz; initialisation and the ESP-IDF SRAM test both
+  succeeded.
+- **MEASURED:** the running firmware enumerated `nvs`, `phy_init` and `factory`;
+  every reported end address was below `0x1000000`.
+- **MEASURED failure boundary:** an early PURE_RAM build called
+  `esp_partition_find()` without a flash driver and panicked in
+  `spi_flash_mmap`. The corrected build avoids flash ID and partition APIs in
+  PURE_RAM mode, reports them as unavailable, and ran for 30 heartbeats. This
+  does not measure flash, PSRAM or partitions from the RAM image.
+- **VERIFIED recovery asset:** before flashing, 33 554 432 bytes were captured
+  to a host-local factory backup, SHA-256
+  `c423dad3f0d33d56fa96f8590b3da583b05584e85bc2701a7c48c031ad747dbd`.
+  `esptool verify-flash` checked all 33 554 432 bytes against the device. The
+  binary is intentionally not committed.
+- **MEASURED later bench state:** after the acceptance run, the complete backup
+  was restored to the serial-identified unit. The write's integrated hash check
+  succeeded; a separate post-restore full `verify_flash` was interrupted and
+  produced no verdict. The owner observed the factory UI at high brightness,
+  confirmed touch worked, and set brightness to minimum. The unit currently
+  runs that factory image; this is not evidence for an Attadipa touch driver.
+- **Source:** physical transcript and probe record
+  [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md), 2026-08-25.
+- **Not established by T-165:** display output, touch, PMU/rail ownership, RTC, audio,
+  radio, current draw, sleep/wake behaviour or long-term stability. Those were
+  not exercised by T-165.
 
 ### The two boards share almost nothing but the SoC and the PMU
 
@@ -389,9 +427,9 @@ is verified.
   path is pinned to the older 2.0.17 (IDF 4.4.7).
 - **Source:** S5, S7, S1.
 - **Impact:** feeds the ESP-IDF and LVGL version decisions in
-  [DEPENDENCIES.md](DEPENDENCIES.md). Nothing is pinned yet. The LilyGO
-  PlatformIO constraint likely does not bind Attadipa, which is ESP-IDF-native
-  and does not use the Arduino layer.
+  [DEPENDENCIES.md](DEPENDENCIES.md). Attadipa now pins ESP-IDF v5.5.5; this
+  vendor support corroborates that choice but did not make it. The LilyGO
+  PlatformIO constraint does not bind the current ESP-IDF-native build.
 
 ### Vendor-published power figures exist for the T-Watch
 
@@ -826,6 +864,26 @@ BSP already demonstrated to be an incomplete description of its own board.
 - **Status:** **CONFLICTING** — or, more likely, one board wiring that supports
   both modes with the BSP choosing one. Either way the chip-select on GPIO 17 is
   a pin the pin map did not have. D14.
+- **Still conflicting after S13, and the reading that says otherwise is wrong.**
+  The factory firmware's boot log shows the vendor's *software* selecting the
+  SDMMC host driver — into an **empty** slot, where `send_op_cond` times out for
+  every possible wiring alike. That moves the conflict from *"two documents
+  disagree"* to *"two documents disagree and the vendor's running firmware sides
+  with the BSP"*, which is worth having and is not a measurement of copper.
+  Two things this second reading cannot supply either: on the ESP32-S3 the SDMMC
+  slots route through the GPIO matrix, so *"any GPIO may be used for each of the
+  SD card signals"* and the pin numbers constrain nothing; and the two modes
+  share the card's own contacts **by specification** — pin 2 is `CMD`/`DI`,
+  pin 5 `CLK`/`SCK`, pin 7 `DAT0`/`DO`, with SPI adding only a chip select on
+  pin 1 — so `MOSI` and `CMD` are one net rather than two readings of one.
+  (This bullet used to argue that from ESP-IDF's
+  `SDSPI_DEVICE_CONFIG_DEFAULT()` instead; at v5.4 that macro fills in `gpio_cs`
+  and three `GPIO_NUM_NC`s, and its struct has no clock, MOSI or MISO field, so
+  the quote did not support the claim. Same conclusion, sounder reason.) **No card
+  has ever enumerated on this board.** [#131](https://github.com/hleserg/Attadipa/issues/131);
+  the procedure that would settle it is
+  [SD_CARD_MODE_TEST](../hardware/SD_CARD_MODE_TEST.md), `NOT EXECUTED —
+  HARDWARE REQUIRED`.
 
 ### What is still not resolved from this schematic
 
@@ -927,8 +985,9 @@ still to take.
 - **Source:** S9, corroborating S6's `GD25Q256EYIGR` at `U3`.
 - **Impact:** modest but structural. Whatever is in the SoC package is **not
   flash**, which is what an `R8` suffix means. It corroborates the octal-PSRAM
-  conclusion without re-deriving it. Capacity remains the schematic's 32 MB,
-  unconfirmed on silicon — `esptool.py flash_id` settles it.
+  conclusion without re-deriving it. Capacity is now also measured on silicon:
+  `flash-id` and Attadipa's flash boot both reported JEDEC `c8 40 19`, 32 MB —
+  [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md).
 
 ### Both microphones are populated
 
@@ -1320,8 +1379,9 @@ constants.
 - **Claim:** `CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y` images load over
   USB-Serial/JTAG and **run**, writing nothing to flash. The four earlier runs
   that reset within milliseconds were killed by `esptool` exiting: the kernel
-  drops DTR and RTS on the *last* close of a `ttyACM`, and on this board those
-  lines are GPIO0 and EN.
+  changes the DTR/RTS CDC control state on the *last* close of a `ttyACM`, and
+  the native USB-Serial/JTAG peripheral resets the digital core. These are USB
+  control bits, not GPIO0/EN pins on this board.
 - **Source:** S13. Decisive test — `esptool` used as a library in one process so
   the port is never closed (`detect_chip` → `cmds.load_ram` → read `esp._port`
   directly), run against the *same* minimal driverless image that had failed as
@@ -1342,6 +1402,60 @@ constants.
   dead, and the `BLOCKED` that rested on it.** No partition holding vendor
   firmware needs overwriting; read-only bench work on this unit costs no flash
   write at all.
+
+### The Waveshare main I2C bus is pulled up by 2.2 kΩ, not 4.7 or 10
+
+- **Claim:** on `ESP32-S3-Touch-AMOLED-2.06` V1.0, the main I2C bus pull-ups are
+  **`R49` = 2.2 kΩ on `SDA` (`GPIO15`)** and **`R23` = 2.2 kΩ on `SCL`
+  (`GPIO14`)**, both to `VCC3V3`. Each line also carries **22 pF to `AGND`** —
+  `C35` on `SDA`, `C34` on `SCL`. There is exactly one pull-up per line in the
+  whole drawing.
+- **Source:** the vendor schematic, `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0.pdf`,
+  md5 `b0cdcac0afb0c8605896d995676c4468`, sha256
+  `6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d` —
+  `HARDWARE_MATRIX` S6, re-read by **rendering** the region around `GPIO14`/`GPIO15`
+  and reading the junction dots. The earlier text-only extraction had the value
+  string `2.2k` and no way to attach it to a net, which is why this was missing.
+- **Confirmed independently the same day, by a third method and a second
+  context** that had not made the rendered reading: extracting the PDF's **vector
+  paths**, where wires are line segments and junction dots are filled curves, so
+  connectivity is coordinates rather than a judgement about a picture. The file
+  was re-downloaded and both hashes matched byte for byte. Every value and every
+  net reproduced — including the `R23`↔`SCL` / `R49`↔`SDA` assignment, which the
+  rendered reading had flagged as its weakest part. Endpoints and dot centres are
+  written out in [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §4.3.1.
+- **Checked:** 2026-08-24. **Board revision:** V1.0, which is the revision the
+  received unit's silkscreen matches
+  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1).
+- **Not measured on the board.** This is a schematic reading. A fitted part can
+  differ from a drawing, and an ohmmeter across `IO15`↔`3V3` on the expansion pad
+  row with the board unpowered would settle it in one probe.
+- **Impact:** it is the input the magnetometer retrofit's parallel-pull-up
+  arithmetic was blocked on. At 2.2 kΩ the bus already sinks 1.32 mA at
+  `VOL` = 0.4 V, 44 % of the 3 mA that `UM10204` Rev. 7.0 §7.1 requires every
+  device to sink; two 4.7 kΩ module pull-ups take it to 85 %, which passes —
+  [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §4.3.
+
+### The AK09911C has a reset input, `RSTN`, and it may not be left floating
+
+- **Claim:** the `AK09911C` has a dedicated reset input `RSTN` at ball **`C2`**,
+  a `VID`-domain CMOS input that *"Resets registers by setting to `L`"*, with a
+  minimum effective low pulse `tRSTL` of **5 µs** and input thresholds of 30 % and
+  70 % of `Vid`. It is one of four reset paths, and the datasheet's instruction
+  for not using it is explicit: ***"When Reset pin is not used, connect to VID."***
+  AKM's own recommended external connection drives it from a host CPU GPIO.
+- **Source:** AKM `AK09911` `ShortDatasheet-E-00`, 2014/1, md5
+  `1d7e1960c86b2a1fb38ecc862196c4a7` — §4.3 pin table, §5.3.1, §5.3.2, §6, §7,
+  §8.2. The md5 matches the copy `MAGNETOMETER_RETROFIT` M1 already cited.
+- **Checked:** 2026-08-24.
+- **What this does *not* establish:** whether the CJMCU-9911 breakout routes the
+  ball to its silkscreened `RST` pad, and whether it ties it to `VID`. Both are
+  `UNKNOWN` and need an ohmmeter on a module nobody has yet —
+  [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §2.6.
+- **Impact:** the retrofit is **five wires by default, not four**. It also
+  supersedes the weaker source this was previously known from — a comment in
+  `drivers/iio/magnetometer/ak8975.c` — which was right and is no longer what
+  anything rests on.
 
 ### The main I2C bus, scanned from a RAM app — five devices, and 0x6B settles a conflict
 
@@ -1417,8 +1531,9 @@ constants.
 - **Claim, all read from the unit's own firmware booting unaided:** octal PSRAM
   enumerated by the `octal_psram` driver at 80 MHz with 10-cycle fixed read
   latency and 32-byte hybrid-wrap bursts (**D12a confirmed on silicon**); the SD
-  card driven through `sdmmc_common`/`vfs_fat_sdmmc` rather than `sdspi`
-  (**D14 resolved**); `sh8601: LCD panel create success, version: 1.0.2` followed
+  slot mounted through the **SDMMC host driver** and failing at `send_op_cond`
+  into an empty socket (**D14 half answered — see the correction below**);
+  `sh8601: LCD panel create success, version: 1.0.2` followed
   by `Backlight on`; flash booted **QIO at 80 MHz**, `detected chip: gd`, 32 MB;
   `chip revision: v0.2`; `efuse block revision: v1.4`;
   `QMI8658 initialized successfully`.
@@ -1431,3 +1546,14 @@ constants.
   **not** say: the QMI8658 line names no I2C address — the bus scan above
   settles `0x6B` by measurement instead — and the `sh8601` line is evidence about
   the driver rather than about the die.
+- **And the same caution applies to the SD line, which is where it was first
+  missed.** A log of the vendor's *software* is a fact about the software. The
+  slot was empty, so `send_op_cond` timing out is what every wiring produces —
+  the line says which host driver the vendor picked and nothing about the
+  connector behind it. It was recorded here as *"D14 resolved"* for one day,
+  while *"A conflict about the SD card interface"* earlier in this same file went
+  on saying `CONFLICTING` — one document holding both readings at once, which is
+  the shape this repository is supposed to notice.
+  [#131](https://github.com/hleserg/Attadipa/issues/131), and
+  the full correction is in
+  [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §4.3.

@@ -164,23 +164,41 @@ if(Python3_Interpreter_FOUND)
     #
     # Registered here rather than left to review for the same reason as the
     # boundary compiles above: a rule nobody executes is a rule until the first
-    # hurried afternoon. It currently checks zero tables, because there is no
-    # ESP-IDF project in this repository yet (issue #127) — which is why the
-    # self-test beside it is not optional. It is the only thing proving the
-    # checker works at all, and it runs the vendor's own shipped table through
-    # it and demands the refusal.
+    # hurried afternoon. It checks the development table in firmware/; the
+    # self-test beside it remains the proof that the checker rejects a bad table,
+    # and runs the vendor's own shipped table through it and demands refusal.
     add_test(NAME flash_partitions_below_ceiling
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/flash/partition_check.py)
     add_test(NAME flash_partition_check_rejects_mistakes
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/flash/selftest.py)
+    add_test(NAME flash_backup_is_published_only_after_verification
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/backup_flash_selftest.py)
+    add_test(NAME flash_pure_ram_elf_checker_rejects_flash_symbols
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/pure_ram_elf_check.py --self-test)
+    add_test(NAME firmware_elf_checker_requires_all_libraries
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/firmware_elf_check.py --self-test)
     add_test(NAME flash_spiffs_extract_refuses_mistakes
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/flash/spiffs_selftest.py)
+    # Two ESP32-S3 boards enumerate identically on this bench, so the loader
+    # resolves the watch by USB serial. The cases that matter are the refusals:
+    # picking the wrong board is a silent wrong answer, not an error.
+    # docs/research/BENCH_DEVICES.md.
+    add_test(NAME flash_ramhold_resolves_by_serial
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/tools/flash/ramhold_selftest.py)
     set_tests_properties(flash_partitions_below_ceiling
                          flash_partition_check_rejects_mistakes
+                         flash_backup_is_published_only_after_verification
+                         flash_pure_ram_elf_checker_rejects_flash_symbols
+                         firmware_elf_checker_requires_all_libraries
                          flash_spiffs_extract_refuses_mistakes
+                         flash_ramhold_resolves_by_serial
                          PROPERTIES LABELS flash)
 
     # The other two asset checks have to *draw* something to know whether the

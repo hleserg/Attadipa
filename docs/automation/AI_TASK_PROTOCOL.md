@@ -202,6 +202,13 @@ the watchdog says so and puts it back.
 | humans | `needs-owner` `needs-hardware` |
 | CI | `ci:repairing` `ci:failed` |
 | review | `ai-review:pass` `ai-review:blocking` |
+| queue width | `queue:parked` `queue:emergency` `queue:over-limit` |
+
+The last row is the WIP limit's, and it is on pull requests rather than on
+issues: `queue:parked` and `queue:emergency` are exemptions a human sets, and
+`queue:over-limit` is set by `pr-wip-limit.yml` on a pull request opened while
+the queue was already full. It was missing from this table, and all three were
+missing from `setup-labels.sh`, until #239.
 
 The intake workflow derives the `type:`, `priority:` and `source:` labels from
 the marker, so a producer does not have to set them and cannot set them
@@ -324,6 +331,12 @@ How to resume:
 ```
 
 and the issue gets `agent:blocked` plus `needs-hardware` or `needs-owner`.
+
+Owner-facing blocks on an issue or pull request are bilingual: English first,
+then Russian. Keep the `BLOCKED:` marker and field names in English so the
+queue tooling remains machine-readable; translate the explanatory prose for
+the owner. This is the public-surface application of
+[OD-24](../research/OWNER_DECISIONS.md#od-24--language-follows-the-reader).
 
 **When to stop and ask**, and only these:
 

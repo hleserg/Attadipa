@@ -139,9 +139,59 @@ That closes the issue's evidence table exactly:
 | `c9e00d0` | the owner | ran |
 | `488be1e` | **the agent's own `git push`, over the checkout's persisted `GITHUB_TOKEN`** | `action_required`, 0 jobs |
 
-The workflow already knows the rule — `claude-agent.yml:810-819` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
+The workflow already knows the rule — `claude-agent.yml:894-903` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
 `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
 action's push path was fixed. The agent's own push path was never covered by it.
+
+### And the agent's own push path may not have to wait for the patch
+
+Observed 2026-08-25, in the runner for issue #130, before changing anything: the
+writer's environment holds **two different credentials**, and only one of them
+stalls.
+
+* `http.https://github.com/.extraheader` in the checkout's own config file — the
+  persisted one, `x-access-token` over the built-in `GITHUB_TOKEN`. Every plain
+  `git push` uses it, and the three runs it created for
+  `claude/codex-ack-head-oid-130` came back `action_required` with
+  `actor: github-actions[bot]`, 0 jobs, exactly the fingerprint above;
+* `$GH_TOKEN` in the environment. **Not the same token** — compared by SHA-256
+  of each, never printed — and the runs on the sibling pull request #241, whose
+  heads went out as `claude[bot]`, all started normally.
+
+So a `git push` that names `$GH_TOKEN` explicitly, rather than falling through to
+the persisted header, may avoid the stall on the branch it is pushing without
+`ATTADIPA_AGENT_TOKEN` and without option A, B or C below. **The push of this
+very commit is the test**, and the paragraph that follows it records what
+happened rather than what was expected. If it works it is a workaround for one
+push, not a fix: it does nothing for `claude-agent.yml`'s writer, which is what
+the parked patch is for, and nothing for a run already created.
+
+**It worked, and the two runs sit side by side in the same list.** Head
+`ec8ee11`, pushed the ordinary way, created three runs at 12:04:47Z:
+`action_required`, `actor: github-actions[bot]`, zero jobs. Head `61a817b`, the
+commit above, pushed as
+
+```
+git -c http.https://github.com/.extraheader= \
+    push "https://x-access-token:${GH_TOKEN}@github.com/OWNER/REPO.git" HEAD:BRANCH
+```
+
+created three at 12:07:40Z with `actor: claude[bot]` that **started** — CodeQL
+green, CI running, the review workflow skipping itself on a draft as it should.
+Same branch, same pull request, same minute, one variable.
+
+Two things this does **not** mean. It is not a reason to leave the writer's
+checkout as it is: `claude-agent.yml` pushes from a step this cannot reach, and
+[option A](#the-options-and-what-each-costs) is still the fix. And the three
+stalled runs on the earlier head stay stalled — nothing here approves a run that
+already exists, and the installation token is refused when it tries
+(`POST /actions/runs/{id}/approve` → 403 *"Resource not accessible by
+integration"*, read the same day). The cure is a later head, not a retry.
+
+Emptying `extraheader` for the one command matters as much as naming the token:
+the persisted header is applied to every `https://github.com/` URL, so a
+credential in the URL alone is ignored and the push goes out as
+`github-actions[bot]` again.
 
 ## The options, and what each costs
 
@@ -238,13 +288,13 @@ left unchecked** — *Contents: Read and write*, *Pull requests: Read and write*
 omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
 `github_token:` for `claude-code-action` — one citation per line, because the
 checker reads a fingerprint only from the citation's own physical line:
-`claude-agent.yml:819` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
-`claude-pr-review.yml:116` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+`claude-agent.yml:903` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+`claude-pr-review.yml:162` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
 `claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
 `display_report: "true"` posts the agent's summary **on the triggering issue**
 over it, and the
 agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
-`claude-agent.yml:899` "depends entirely on `gh` being allowed" says the
+`claude-agent.yml:983` "depends entirely on `gh` being allowed" says the
 action has no label feature of its own. That citation read `:846` until
 2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
 asserts this stays in`, an unrelated comment — so a reader checking the evidence
@@ -381,7 +431,7 @@ The intake gate is untouched and the actor check is the security boundary —
 nothing here reads it. **But Option A does change who may drive a write-capable
 agent, and an earlier version of this section said the opposite.** The
 anti-recursion boundary is a *login-name* test —
-`.github/scripts/intake-decision.sh:142` "|claude|github-actions)" rejects
+`.github/scripts/intake-decision.sh:148` "|claude|github-actions)" rejects
 `*"[bot]"`, `claude` and `github-actions`, and `queue-scan.jq` refuses the last
 two as producers because *"our own output would start a billable writer: exactly
 the loop the allowlist was built to avoid."* A fine-grained PAT belongs to a

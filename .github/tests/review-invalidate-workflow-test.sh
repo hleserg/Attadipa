@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+# The two steps that CALL the invalidation, executed rather than read.
+#
+# `.github/tests/review-published-test.sh` asserts what
+# `.github/scripts/review-invalidate.sh` does. This file asserts that
+# `claude-pr-review.yml` actually reaches it, with the right environment, and
+# takes its exit status as the step's -- which is the half a unit test of the
+# helper cannot see. The shell bodies are extracted from the YAML and run
+# against a stub `gh`, the same way orchestration-bundle-test.sh runs the
+# hand-over. A guard whose failure mode is a label quietly staying put cannot be
+# verified by grep.
+#
+# IT READS THE WORKFLOW FROM ONE OF TWO PLACES, AND SAYS WHICH. The steps it
+# asserts are inside `.github/workflows/`, which a GitHub App may not push
+# without the `workflows` permission, so while nobody has landed them they live
+# in `docs/automation/pending/240-review-invalidation-order.patch`. Rather than
+# sit dormant until then -- the usual shape for a parked fix, and one that means
+# the fix is unexecuted on the day it lands -- this applies that patch to a
+# scratch copy of the workflow and runs against the result. The same assertions
+# then run in both states: from the patch while it is parked, from
+# `.github/workflows/claude-pr-review.yml` itself the moment it is not, with no
+# edit here in between. If neither has the fix, that is a failure and not a skip.
+#
+# It has no line of its own in `ci.yml`, and that is a constraint rather than an
+# oversight: `75-approval-stall.patch` already carries `ci.yml`, and
+# `gh-api-usage-test.sh` refuses two parked patches carrying one workflow file.
+# So `review-published-test.sh` runs it, on the `ci.yml` line already there.
+
+set -uo pipefail
+cd "$(dirname "$0")/../.." || exit 1
+
+pass=0
+fail=0
+ok() { printf '  ok    %s\n' "$1"; pass=$((pass + 1)); }
+no() { printf '  FAIL  %s\n     %s\n' "$1" "$2"; fail=$((fail + 1)); }
+say() { if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "wanted '$3', got '$2'"; fi; }
+
+LIVE=.github/workflows/claude-pr-review.yml
+PARKED=docs/automation/pending/240-review-invalidation-order.patch
+
+ROOT=$PWD
+scratch=$(mktemp -d) || exit 1
+sandbox=$(mktemp -d) || exit 1
+trap 'rm -rf "$scratch" "$sandbox"' EXIT
+
+# Whichever of the two has the fix in it is the one under test, and the choice
+# is made by reading the file rather than by a flag somebody has to remember to
+# flip. `git apply` is given the patch as a plain patch file against a scratch
+# tree; it needs no repository there and touches nothing in this one.
+if grep -q 'review-invalidate.sh' "$LIVE"; then
+  WF=$LIVE
+  STATE="the workflow on this branch"
+elif [ -r "$PARKED" ]; then
+  mkdir -p "$scratch/.github/workflows"
+  cp "$LIVE" "$scratch/.github/workflows/claude-pr-review.yml"
+  if ( cd "$scratch" && git apply "$ROOT/$PARKED" ) 2>"$scratch/apply.err"; then
+    WF="$scratch/.github/workflows/claude-pr-review.yml"
+    STATE="$PARKED, applied to a scratch copy"
+  else
+    no "the parked patch applies to the workflow it is parked against" \
+       "git apply failed: $(head -c 300 "$scratch/apply.err") -- rebuild the patch, never git rm it"
+    printf '\n%d passed, %d failed\n' "$pass" "$fail"
+    exit 1
+  fi
+else
+  no "the fix is either in the workflow or in the pending directory" \
+     "$LIVE does not call review-invalidate.sh and $PARKED does not exist -- if the patch landed and was reverted, this is the regression; if it was deleted unlanded, it is lost work"
+  printf '\n%d passed, %d failed\n' "$pass" "$fail"
+  exit 1
+fi
+echo "  reading  $STATE"
+
+# The same extractor orchestration-bundle-test.sh uses, and for the same reason:
+# a `run: |` body that takes every value through `env:` is executable outside
+# the runner, and one that interpolates `${{ }}` is not. That property is
+# asserted below rather than assumed, because the day somebody interpolates a
+# context into either step, this file stops being able to see anything.
+extract_run_block() {
+  awk -v want="$1" '
+    index($0, "- name: " want) { instep = 1; next }
+    instep && $0 ~ /^[[:space:]]*run: \|[[:space:]]*$/ {
+      match($0, /^[[:space:]]*/); indent = RLENGTH; inrun = 1; next
+    }
+    inrun {
+      if ($0 ~ /^[[:space:]]*$/) { print ""; next }
+      match($0, /^[[:space:]]*/)
+      if (RLENGTH <= indent) exit
+      print substr($0, indent + 3)
+    }
+  ' "$2"
+}
+
+SILENT=$(extract_run_block "Say that the review published nothing" "$WF")
+NORUN=$(extract_run_block "Say that the review did not happen" "$WF")
+if [ -z "$SILENT" ] || [ -z "$NORUN" ]; then
+  no "both steps' shell can be extracted and run" \
+     "no 'run: |' body found under one of the two step names in $WF -- if a step was renamed, re-point this test rather than deleting it"
+  printf '\n%d passed, %d failed\n' "$pass" "$fail"
+  exit 1
+fi
+ok "both steps' shell can be extracted and run"
+
+for pair in "SILENT:the silent step" "NORUN:the did-not-run step"; do
+  var=${pair%%:*}
+  what=${pair#*:}
+  # shellcheck disable=SC2016  # the literal characters ${{ are the thing sought.
+  if printf '%s' "${!var}" | grep -q '\${{'; then
+    no "$what takes every value through env:, not \${{ }}" \
+       "a \${{ }} expression appeared in the body; besides being an injection surface, it makes the block unexecutable and this test blind"
+  else
+    ok "$what takes every value through env:, not \${{ }}"
+  fi
+done
+
+mkdir -p "$sandbox/bin" "$sandbox/ws/.github/scripts" "$sandbox/trusted"
+
+cat > "$sandbox/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_LOG"
+prev=
+case "$1 $2" in
+  "pr edit")
+    for a in "$@"; do
+      if [ "$prev" = "--remove-label" ]; then
+        case ":${STUB_FAIL_REMOVE:-}:" in
+          *":$a:"*) echo "gh: HTTP 502 removing $a" >&2; exit 1 ;;
+        esac
+        printf '%s\n' "$a" >> "$STUB_REMOVED"
+      fi
+      prev="$a"
+    done
+    ;;
+  "pr comment")
+    [ -z "${STUB_FAIL_COMMENT:-}" ] || { echo "gh: HTTP 502 posting a comment" >&2; exit 1; }
+    for a in "$@"; do
+      if [ "$prev" = "--body-file" ]; then cat "$a" >> "$STUB_COMMENT"; fi
+      prev="$a"
+    done
+    ;;
+  "api "*)
+    [ -z "${STUB_FAIL_API:-}" ] || { echo "gh: HTTP 502 reading comments" >&2; exit 1; }
+    printf '%s\n' "${STUB_BODIES:-}"
+    ;;
+esac
+exit 0
+STUB
+chmod +x "$sandbox/bin/gh"
+
+# The bundle the workflow stages from the default branch...
+cp .github/scripts/review-invalidate.sh "$sandbox/trusted/" || exit 1
+# ...and the workspace the reviewed branch leaves behind. The step must never
+# read this one. `contents: read` bounds the damage; it does not make reading
+# the branch's own copy of a privileged helper correct.
+cat > "$sandbox/ws/.github/scripts/review-invalidate.sh" <<'HOSTILE'
+#!/usr/bin/env bash
+touch "$PWNED_MARKER"
+echo "PWNED"
+HOSTILE
+chmod +x "$sandbox/ws/.github/scripts/review-invalidate.sh"
+
+# step <block> <trusted-dir-or-empty>; knobs through the caller's environment.
+step() {
+  : > "$sandbox/log"; : > "$sandbox/removed"; : > "$sandbox/comment"
+  rm -f "$sandbox/pwned"
+  ( cd "$sandbox/ws" || exit 1
+    PATH="$sandbox/bin:$PATH" TMPDIR="$sandbox" \
+    STUB_LOG="$sandbox/log" STUB_REMOVED="$sandbox/removed" \
+    STUB_COMMENT="$sandbox/comment" PWNED_MARKER="$sandbox/pwned" \
+    STUB_FAIL_API="${FAIL_API:-}" STUB_FAIL_COMMENT="${FAIL_COMMENT:-}" \
+    STUB_FAIL_REMOVE="${FAIL_REMOVE:-}" STUB_BODIES="${BODIES:-}" \
+    GH_TOKEN=stub REPO=owner/repo PR=42 SHA=deadbeefcafe1234 \
+    RUN_URL=https://example.invalid/run/1 DETAIL="Reason: none" \
+    TRUSTED="$2" \
+    bash -c "$1" ) > "$sandbox/out" 2>&1
+  echo $?
+}
+
+removed() { sort -u "$sandbox/removed" | tr '\n' ' ' | sed 's/ $//'; }
+BOTH='ai-review:blocking ai-review:pass'
+sign() { [ "$1" -eq 0 ] && echo zero || echo nonzero; }
+
+# ---------------------------------------------------------------------------
+echo
+echo "The silent step delegates, and survives a failed notification"
+
+rc=$(FAIL_COMMENT=1 step "$SILENT" "$sandbox/trusted")
+say 'a failed gh pr comment does not keep the stale verdict' "$(removed)" "$BOTH"
+say '...and does not fail the step' "$(sign "$rc")" zero
+if [ -e "$sandbox/pwned" ]; then
+  no "...and the workspace copy of the helper never runs" \
+     "the reviewed branch supplied the code that decides whether its own verdict label survives"
+else
+  ok "...and the workspace copy of the helper never runs"
+fi
+
+rc=$(FAIL_API=1 step "$SILENT" "$sandbox/trusted")
+say 'a failed dedupe read does not keep the stale verdict' "$(removed)" "$BOTH"
+say '...and does not fail the step' "$(sign "$rc")" zero
+# The order this replaced did not lose the labels on THIS path -- the read sits
+# in an `if` condition, which `set -e` exempts -- but it did fall through to the
+# `else` and post a note it could not prove was absent. A dedupe that cannot
+# read is a dedupe that does not know, and a second copy of the same note is how
+# the 2026-08-22 turn-limit note was misread on the step below.
+say '...and does not post a note it could not prove was absent' \
+    "$(wc -c < "$sandbox/comment" | tr -d ' ')" 0
+
+rc=$(FAIL_REMOVE=ai-review:pass step "$SILENT" "$sandbox/trusted")
+say 'a failed removal fails the step' "$(sign "$rc")" nonzero
+say '...and the helper is what decided that' \
+    "$(grep -c '::error::could not remove the stale' "$sandbox/out")" 1
+
+rc=$(step "$SILENT" "$sandbox/trusted")
+say 'the ordinary path removes both labels' "$(removed)" "$BOTH"
+say '...and posts exactly one note' \
+    "$(grep -c 'attadipa-review-not-published:deadbeefcafe1234' "$sandbox/comment")" 1
+say '...and exits 0' "$(sign "$rc")" zero
+
+# ---------------------------------------------------------------------------
+echo
+echo "...and without the bundle it drops the note rather than the invalidation"
+
+rc=$(step "$SILENT" "")
+say 'an unstaged helper still removes both labels' "$(removed)" "$BOTH"
+say '...and says so in the log' \
+    "$(grep -c '::warning::the review invalidation helper was not staged' "$sandbox/out")" 1
+say '...and exits 0' "$(sign "$rc")" zero
+rc=$(FAIL_REMOVE=ai-review:blocking step "$SILENT" "")
+say '...and a removal that fails there is a failed step too' "$(sign "$rc")" nonzero
+
+# ---------------------------------------------------------------------------
+echo
+echo "The did-not-run step invalidates before it says anything"
+
+rc=$(FAIL_COMMENT=1 step "$NORUN" "$sandbox/trusted")
+say 'a failed note does not keep the stale pass' "$(removed)" ai-review:pass
+say '...and the step is red rather than quietly green' "$(sign "$rc")" nonzero
+
+rc=$(FAIL_REMOVE=ai-review:pass step "$NORUN" "$sandbox/trusted")
+say 'a failed removal there is a failed step, not a swallowed one' "$(sign "$rc")" nonzero
+
+rc=$(step "$NORUN" "$sandbox/trusted")
+say 'the ordinary path removes the stale pass' "$(removed)" ai-review:pass
+# `ai-review:blocking` is deliberately left alone: a review that did not run has
+# said nothing that justifies releasing a hold somebody else put on.
+say '...and leaves ai-review:blocking alone' \
+    "$(grep -c 'remove-label ai-review:blocking' "$sandbox/log")" 0
+say '...and posts one note' \
+    "$(grep -c 'attadipa-review-did-not-run:deadbeefcafe1234' "$sandbox/comment")" 1
+say '...and exits 0' "$(sign "$rc")" zero
+
+printf '\n%d passed, %d failed\n' "$pass" "$fail"
+[ "$fail" -eq 0 ]

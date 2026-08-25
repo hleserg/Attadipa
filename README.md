@@ -16,23 +16,30 @@ offline navigation, and a UI that is meant to be genuinely pleasant to use.
 > GNSS trust evaluator, the design-token system, the desktop simulator, and 30
 > host tests. One target board is now on the owner's desk and has been read over
 > its own USB port, which is the first evidence in this repository that came
-> from silicon rather than from a document. **No Attadipa firmware has run on
-> it**, no power, timing or GNSS number has been measured, and nothing here is
-> written as if any of that had happened. See [STATUS.md](STATUS.md) for exactly
-> where things stand.
+> from silicon rather than from a document. **The T-165 Attadipa firmware now
+> boots on it from flash** and has measured the flash, octal PSRAM and development
+> partition table. Display, touch, PMU, RTC, power, timing and GNSS remain
+> unexercised. See [STATUS.md](STATUS.md) for exactly where things stand.
 
 ### What exists today
 
 | | |
 |---|---|
-| **Builds and is tested on a host** | seven libraries and **32 tests** — **37** when the desktop simulator is built, which needs SDL2 and is off by default — under GCC and Clang, under `-Werror` and under ASan+UBSan. Three pairs of them compile one fixture twice and require the second to fail, each guarding a different boundary: an application still cannot include a hardware header (ADR-0007 §5), the core still cannot reach the translation table (ADR-0010 §4), and a receiver capability still cannot be written as a `bool` |
-| **Can be looked at while it runs** | the interface can be screenshotted and driven from another process — tap, swipe, press a button, take another picture. Against the simulator today; the same protocol and the same tool will reach a device when there is firmware for one |
+| **Builds and is tested on a host** | seven libraries and **34 tests** — **41** when the desktop simulator is built, which needs SDL2 and is off by default — under GCC and Clang, under `-Werror` and under ASan+UBSan. Three pairs of them compile one fixture twice and require the second to fail, each guarding a different boundary: an application still cannot include a hardware header (ADR-0007 §5), the core still cannot reach the translation table (ADR-0010 §4), and a receiver capability still cannot be written as a `bool` |
+| **Can be looked at while it runs** | the interface can be screenshotted and driven from another process — tap, swipe, press a button, take another picture. Against the simulator today; the device transport and framebuffer endpoint remain T-114 even though minimal firmware now exists |
 | **Runs two geometries from one binary** | 240 × 240 and 410 × 502, selected at run time, fitting any of the five candidate T-Watch radios and a present-or-absent node without a rebuild |
 | **Draws through design tokens** | twelve colour roles across day and night themes with WCAG contrast arithmetic, plus a CI check that refuses a raw hex value or a pixel count back into screen code |
 | **Renders every character it claims to** | four generated Montserrat subsets covering all 181 codepoints of the charset; an undrawable codepoint **fails the run** rather than printing a warning |
-| **Has one board on the desk** | a Waveshare ESP32-S3 Touch AMOLED 2.06, read over its own USB-Serial/JTAG port: every eFuse still at its factory default, 8 MB PSRAM on the `VDD_SPI` rail, external quad flash `0xC8 0x4019`, chip revision v0.2 — which decides `CONFIG_ESP32S3_REV_MIN` and brings all eight errata of sheet v1.3 into scope |
-| **Has not been measured** | there is no Attadipa firmware to flash yet, and no power, timing, GNSS or interference number exists. Ten hardware-in-the-loop plans are written with equipment, procedure and pass/fail criteria, so each unproven claim is visibly unproven rather than merely absent |
+| **Has one board on the desk** | a Waveshare ESP32-S3 Touch AMOLED 2.06 running Attadipa T-165 from flash: chip revision v0.2, physical flash `0xC8 0x4019` (32 MB) behind a deliberate 16 MB build ceiling, and 8 MB octal PSRAM initialised and tested |
+| **Hardware evidence has a narrow boundary** | boot, flash/PSRAM diagnostics, the development partition table and a 30-second PURE_RAM run are measured. Display, touch, PMU rails, RTC, power, timing, GNSS and interference are not; the hardware plans keep those claims visibly unproven |
 | **Runs its own engineering queue** | work arrives as a GitHub issue, an agent opens a branch and a draft pull request, and a second agent reviews it independently. The workflows, their security model and their cost controls are in [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md) |
+
+**What is next, and it is deliberately narrow.** That last row is the one that
+sets the direction: the architecture, the tests, the simulator and the research
+are still ahead of the device, but the ESP-IDF floor now boots. The next step is
+T-166: the Waveshare display, touch controller, PMU rails and RTC, followed by a
+real Clock and then sleep/wake. [`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole
+plan and the reasoning behind it.
 
 Attadipa is not a Linux-like OS. It is a single embedded
 firmware/application platform on top of ESP32-S3 and ESP-IDF/FreeRTOS,
@@ -165,10 +172,12 @@ ui/assets/                     source art, the generated LVGL masks, and the one
 assets/fonts/                  the generated Montserrat subsets, with their provenance
 apps/                          applications; links core and cannot reach platform
 sim/                           the desktop simulator, and its LVGL configuration
+firmware/                      the ESP-IDF project: the device build, its config and partitions
 tests/                         host tests, including three where a fixture must fail to build
 tests/replay/                  the deterministic navigation rig, and its recorded traces
 tools/                         the font subsetter, the image pipeline, and the checks CI runs
 tools/watch_control.py         drive the screen and photograph it — see docs/testing/WATCH_CONTROL.md
+tools/flash/                   the partition-ceiling check, the RAM loader, the flash backup
 tests/ui/scenarios/            journeys through the interface, as data rather than as code
 cmake/                         the pinned LVGL dependency
 
@@ -226,9 +235,33 @@ this project has no per-board binaries.
 LVGL is pinned at v9.5.0 and fetched by CMake at the commit; the build refuses
 to continue if the version it finds is not the version that was chosen. To
 build offline against a tree you already have, pass
-`-DATTADIPA_LVGL_SOURCE_DIR=/path/to/lvgl`. The ESP-IDF version is still not
-chosen, and it blocks the device build rather than this one — see
-[`docs/research/DEPENDENCIES.md`](docs/research/DEPENDENCIES.md).
+`-DATTADIPA_LVGL_SOURCE_DIR=/path/to/lvgl`.
+
+### The device build
+
+Separate from the host build on purpose: the root `CMakeLists.txt` is
+host-native so that the simulator and the tests keep working on a machine with
+no toolchain. The ESP-IDF project lives in `firmware/` and is pinned at **ESP-IDF
+v5.5.5** — see [`docs/research/DEPENDENCIES.md`](docs/research/DEPENDENCIES.md)
+for why that version and not a newer one.
+
+```sh
+. $IDF_PATH/export.sh
+cd firmware
+idf.py set-target esp32s3
+idf.py build
+```
+
+It targets one board, the Waveshare ESP32-S3-Touch-AMOLED-2.06, and it is a
+skeleton: it boots, prints what the silicon says it is, and links the same
+`core/`, `platform/`, `link/` and `l10n/` libraries the host build uses. No
+display, no touch, no LVGL yet.
+
+There is a second variant that runs entirely from RAM and writes nothing to the
+flash at all, which is the route to prefer for anything experimental —
+[`docs/hardware/FIRMWARE_BRINGUP.md`](docs/hardware/FIRMWARE_BRINGUP.md) is the
+procedure, including what a good boot looks like and what to do when it is not
+one.
 
 ## Contributing
 

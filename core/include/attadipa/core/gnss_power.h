@@ -107,6 +107,18 @@ struct GnssCapabilities {
 // What the receiver's owner knows when it decides what to do next.
 struct GnssContext {
     Millis           since_last_fix{0};
+
+    // Direct evidence that usable ephemeris survived — in a receiver whose own
+    // rail never dropped, or in backup storage that stayed powered. "We had a
+    // fix recently" is not evidence: the owner must clear this when neither
+    // main nor backup storage remains powered, and nothing below does it for
+    // them — `next_state()` cuts the rail to `Off` on every `DeepSleep` and
+    // `PowerOff` where the backup domain is not established as supported.
+    //
+    // This is why Hot does not also require `backup_retained` below — main
+    // power may never have gone away, while Warm specifically means the
+    // backup domain survived. `tests/test_power.cpp` checks both halves, so
+    // neither the inference nor the plausible wrong fix is a silent change.
     bool             ephemeris_retained = false;
 
     // Whether the backup domain was actually kept powered — which is a
@@ -138,10 +150,10 @@ struct GnssContext {
 
 // Which start a transition from this state, with this context, would be.
 //
-// `Hot` requires retained ephemeris *and* a recent fix; `Warm` requires the
-// backup domain to be real. Everything else is `Cold`, because a receiver that
-// might have kept something and might not has, for planning purposes, kept
-// nothing.
+// `Hot` requires directly observed retained ephemeris *and* a recent fix;
+// `Warm` requires the backup domain to be real. Everything else is `Cold`,
+// because a receiver that might have kept something and might not has, for
+// planning purposes, kept nothing.
 StartKind start_kind(const GnssContext& context);
 
 // Whether the receiver may move directly between two states.
@@ -162,9 +174,10 @@ GnssState next_state(GnssState current, const GnssContext& context);
 const char* to_string(GnssState state);
 const char* to_string(StartKind kind);
 
-// `Unknown` has to stay sayable all the way out to a diagnostics screen. A
-// renderer that printed it as "Unsupported" would put the collision back one
-// layer up, where it is harder to see and nobody is testing for it.
+// For logs only. A future screen maps SupportState through
+// `label_of(SupportState) -> StringId`, as MeshCoreSupport already does, so
+// localization coverage can see every user-facing value. `Unknown` must remain
+// distinct from `Unsupported` on both routes.
 const char* to_string(SupportState state);
 
 }  // namespace attadipa::core

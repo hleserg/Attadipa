@@ -5,8 +5,8 @@ buttons, touches its screen, and takes another picture. That is the whole idea:
 a change to the interface is checked by **looking at the interface**, not by
 watching the build succeed.
 
-It talks to the desktop simulator today and to a device when there is firmware
-for one, over the same protocol and with the same commands.
+It talks to the desktop simulator today. T-114 will add the device endpoint to
+the existing firmware over the same protocol and with the same commands.
 
 - The agent-facing version is
   [`.claude/skills/watch-ui-testing/SKILL.md`](../../.claude/skills/watch-ui-testing/SKILL.md).
@@ -16,9 +16,9 @@ for one, over the same protocol and with the same commands.
 
 ## What this can and cannot tell you
 
-**There is no Attadipa firmware yet** — `README.md` says so in its own status
-table. So "the watch" here means the **simulator**: a real LVGL stack with a
-real framebuffer and a real input path, on a desktop.
+**The T-165 firmware has no display, input or debug endpoint.** So "the watch"
+here still means the **simulator**: a real LVGL stack with a real framebuffer
+and a real input path, on a desktop.
 
 | A screenshot from the simulator **is** evidence about | It is **not** evidence about |
 |---|---|

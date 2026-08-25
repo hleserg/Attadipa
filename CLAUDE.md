@@ -18,6 +18,8 @@
   which are not ours to overturn.
 - [`STATUS.md`](STATUS.md) — where things actually are.
 - [`TASKS.md`](TASKS.md) — what to pick up.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — **which of two tasks to pick up
+  first.** Owner course correction, 2026-08-24. Short section below.
 
 There is a matching `esp-idf-firmware` skill covering ESP-IDF mechanics,
 bring-up order and the hardware-verification discipline. Use it rather than
@@ -64,10 +66,17 @@ Never write `PASS` for a test that did not run on a physical board. Write
 
 ## Never irreversible without being asked
 
-No eFuse burning, no irreversible secure boot or flash encryption, no flashing
-a physical device, no production secrets, no destroying keys. Preparing the
-config, writing the instructions and generating dev keys are all fine. Never
-commit private keys.
+No eFuse burning, no irreversible secure boot or flash encryption, no production
+secrets, no destroying keys. Preparing the config, writing the instructions and
+generating dev keys are all fine. Never commit private keys.
+
+**Flashing was on that list and is not any more** — owner decision **OD-19**,
+2026-08-24. A session with the board physically on its desk flashes it, runs the
+firmware and tests on it; that is what the watch-control tooling was built for.
+The reason it can move is that it is *reversible* here: the factory image is
+backed up and byte-verified (T-099), and `PURE_RAM_APP` writes nothing at all.
+The items still on the list cannot be undone by re-flashing, which is exactly
+what puts them there.
 
 ## Architecture in one paragraph
 
@@ -95,6 +104,37 @@ implementing anything non-trivial. Several open-source firmwares already target
 these exact boards. Record the decision either way — "we wrote our own" is
 allowed, undocumented is not. Check the license before depending on anything.
 
+## Which of two tasks wins
+
+The engineering base got far ahead of the device. T-165 has now established the
+ESP-IDF project and measured a physical flash boot, but it is only the floor: no
+display, touch, PMU or RTC driver is live yet. The owner's correction of
+2026-08-24 remains an **ordering** change, not a reset:
+[`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole of it, and T-166 is next on the
+path to a watch that shows a Clock, takes touch, sleeps and wakes.
+
+Before starting a task, ask:
+
+> When this is finished, what can a real user — or a real physical Attadipa unit
+> — do that it could not do before?
+
+If the answer is *"nothing, but the architecture is more correct"*, the task can
+still be a good one, and it now **loses** to a task that closes part of a device
+vertical slice unless it blocks one. A new meta-framework, a new orchestration
+layer, automation for automation's sake, a large future subsystem, an ML runtime
+before there is firmware to run it in, or a generic abstraction with fewer than
+two real consumers each need an argument about **now** rather than about merit.
+
+Three things keep their place ahead of that: a correctness or security defect,
+an automation defect that actually stalls the queue, and work that is nearly
+finished. Finishing beats reprioritising.
+
+Nothing here lowers the bar — the Definition of Done gains a line rather than
+losing one. And use the hardware *early*: if a change rests on an assumption
+about display, touch, GPIO, flash, power, timing, PSRAM, I²C, GNSS, radio,
+sleep/wake, memory or performance, a ten-minute probe first is cheaper than days
+of architecture built around a wrong number.
+
 ## The agent queue
 
 Work arrives as a **GitHub issue**, and that issue is the canonical task —
@@ -114,6 +154,25 @@ If you are working from an issue:
   subsystems has been guessed at, not done.
 - **One writer.** Reading, reviewing and analysing in parallel is free; two
   agents editing one branch is a merge conflict with a robot on both ends.
+- **More than one agent works here, and the boards are how the work divides.**
+  A session with a board physically on its desk owns everything that touches it:
+  probes, part markings, bus scans, **flashing it and running our firmware on
+  it**, and every number that is allowed to be `MEASURED`. Flashing is on that
+  list since **OD-19** (2026-08-24) and the list above was edited in the same
+  commit, so the two agree; what stays off it is the genuinely irreversible set —
+  eFuses, secure boot, flash encryption, secrets, keys. A session without a board
+  owns the queue: issues, branches,
+  reviews, merges, documents, host tests and the simulator. Neither waits on the
+  other for permission, and **neither re-does the other's half** — a cloud
+  session that writes a bring-up procedure hands it over rather than
+  approximating the result, and a bench session that measures something files the
+  number rather than rewriting the surrounding subsystem.
+  **Claim work where the other can see it**: assign yourself the issue, or open
+  the draft pull request early. Before starting anything, read the open issues
+  and pull requests — if one is already assigned or already has a branch, that is
+  taken, and picking a different task is faster for everybody than discovering
+  the collision at merge time. The hand-off runs through the issue, never through
+  the owner.
 - **A branch and a pull request**, never a push to `main`. Open it as a draft
   while it is still moving; mark it ready when it is not. **The orchestrator
   merges it once CI is green** — owner decision 2026-08-21, replacing the
@@ -203,14 +262,84 @@ marked · no application-layer hardware access · simulator tested · **a real
 screenshot taken and looked at, if the interface changed** · reviewed at both
 geometries · day and night themes checked · Child Mode considered · power
 and coexistence implications considered · errors handled in human language ·
-loading, empty, offline and error states exist · docs and `STATUS.md` updated.
+loading, empty, offline and error states exist · docs and `STATUS.md` updated ·
+**for anything about physical behaviour, real hardware evidence — or an explicit
+and accurate statement that there is none yet.**
 
 A screen with the right elements on it is not done. Design is part of Done.
 
+## The tooling around the work
+
+Three tools sit between an agent and this repository. Each is useful and each
+has a place where it must not be let in.
+
+**The rules have one home, and it is this file.** `AGENTS.md`, `GEMINI.md`,
+`.clinerules`, `.windsurfrules`, `.kilocode/rules/` and `.agents/rules/` are
+pointers to it. They are pointers rather than symlinks because `rtk` and `graft`
+rewrite their own marker-delimited blocks *inside* those files, so a symlink
+would send the next `rtk init` straight into `CLAUDE.md`. `AGENTS.md` is the one
+that matters most: Codex, Cline, Windsurf, Kilo Code, Antigravity and opencode
+all read it first, and before this was written it told them about two tools and
+nothing about the boards. If a tool overwrites a pointer with its own manual,
+put the pointer back.
+
+**`ponytail` is in force in `tools/`, `firmware/`, `core/` and `apps/`, and it
+is off in `docs/research/`.** The line is code against evidence, so the rest of
+the source — `platform/`, `link/`, `l10n/`, `sim/`, `tests/` — falls on the same
+side as the four named. Where code is the product, the shortest thing that
+works is the right thing. In the research notes the
+*explanation* is the product — which fact was checked, against which document,
+and which plausible reading was refuted — and "if the explanation is longer than
+the code, delete the explanation" would delete exactly the evidence this
+repository exists to keep. `STATUS.md`, `TASKS.md`, the ADRs and
+`OWNER_DECISIONS.md` sit on the research side of that line for the same reason.
+Brevity there is still a virtue; it is just not the deciding one.
+
+**`graft` indexes code and does not index prose, and that is settled rather than
+deferred.** Its parsers cover source extensions only — a `.md` file is refused
+with *"no parser registered for this extension"* — so `STATUS.md`, `TASKS.md`
+and `docs/research/` are invisible to `graft ask`, while C++ and Python living
+*under* `docs/research/` are indexed like any other code. Do not go looking for
+the setting that would fix this: for prose, `rg` over the tree is the tool, and
+`.ignore` exists so that ripgrep still searches `graft/` after `.gitignore`
+hides it from git. The graph refreshes itself before a query — `graft ask` says
+so in its first line — so a stale index is not a thing to guard against with a
+commit hook, and `graft/` is generated, git-ignored and rebuilt with
+`graft build`.
+
+**`rtk` compacts command output, and never the hardware's.** The compaction is a
+`PreToolUse` hook, not something an agent opts into per command, and it is
+configured on the host rather than in the repository: `[hooks] exclude_commands`
+in `~/.config/rtk/config.toml`, which is the only file read — a project-local
+`.rtk/config.toml` is ignored, tested. `esptool`, `idf.py`, `tools/flash/` and
+`tools/watch_control.py` are excluded there, because a bench diagnosis is read
+out of raw tool output: the block that stalls a stub flash read was found in the
+tail of an esptool progress log, in the `Reading from 0x0023d000` lines a filter
+would drop as noise. `rtk 0.45.0` rewrites none of those commands anyway, which
+is what the exclusions are there to keep true.
+
+**Codex gets the same three, and one of them is not proven.** `~/.codex/`
+registers the `graft` MCP server and its hooks and enables the `ponytail`
+plugin, all installed by the tools themselves; what it had no route to was
+`rtk`, whose hook processor speaks Claude Code's payload — one command string —
+while Codex sends argv. `tools/agents/rtk-codex-hook.cjs` translates between
+them and is installed at `~/.codex/hooks/rtk/rtk-hook.cjs`. Its own shapes are
+covered by `--self-test`; **that Codex fires the hook at all is NOT VERIFIED**,
+because the account is rate-limited until 2026-09-01. The check when it is not:
+`codex exec --sandbox read-only "run: git status"` and look for `rtk git status`
+in what it executed.
+
 ## Conventions
 
-- Code, comments, and documentation in English. The two specification documents
-  are the author's own and stay in Russian.
+- **Language follows the reader, not the surface.** Repository artefacts read
+  by CI or other agents — code, comments, documentation, commits, branch names,
+  pull-request titles and review findings — are English. The owner is addressed
+  in Russian in chat, status reports and questions. Owner-facing text on public
+  GitHub issues and pull requests is bilingual: English first, then Russian, so
+  both automation and the owner can read it. The two specification documents
+  and the owner's own files under `docs/ideas/` stay verbatim in Russian. This
+  convention does not govern product localisation; that remains `l10n/` and
+  ADR-0010. See [OD-24](docs/research/OWNER_DECISIONS.md#od-24--language-follows-the-reader).
 - **The README exists twice, and the two are one document.** `README.md` is the
   English original and [`README.ru.md`](README.ru.md) is its Russian version.
   Any change to one is made in the other **in the same commit** — not "later",

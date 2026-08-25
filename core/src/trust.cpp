@@ -340,6 +340,36 @@ void TrustEvaluator::observe(const GnssObservation& observation, PositionValidit
 {
     const TrustPolicy& policy = engine_.policy();
 
+    // A CHANGE OF BODY IS A DISCONTINUITY, NOT A MEASUREMENT.
+    //
+    // Every baseline below is a coordinate, an altitude and a timestamp taken
+    // from some earlier observation, and until this block existed none of them
+    // recorded whose body produced it. ADR-0013 scopes motion evidence to a
+    // body and `moved_at_rest` checks the sample against it — but `moved` is
+    // the distance from the *baseline*, and a baseline from another body makes
+    // that distance a fact about neither. A watch that falls back to its node's
+    // receiver, which is exactly what a node supplying GNSS to a watch that has
+    // none looks like, measured the gap between a bag and a wrist and raised
+    // `MotionDisagreement` against a wrist the accelerometer said was still.
+    // The rate detectors have the same shape: an implied speed across two
+    // bodies is not a speed.
+    //
+    // Dropping the baselines is the safe direction and the cheap one. The next
+    // observation from this body re-seeds them through the ordinary adoption
+    // gate below, so one sample is spent rather than a wrong answer given, and
+    // a stream that never changes source — every caller today — reaches this
+    // branch exactly once, on its first observation.
+    if (const SensorBody body = body_of(observation.source); body != previous_body_) {
+        previous_body_          = body;
+        have_previous_          = false;
+        have_previous_altitude_ = false;
+        have_previous_in_view_  = false;
+        // `compare_provider()` calls this "this device's own answer", which is
+        // a claim about a body as much as about a receiver. A coordinate the
+        // other body produced may not stand in for it.
+        local_comparable_.reset();
+    }
+
     // --- what the receiver says about itself --------------------------------
     //
     // First, because it sees what we cannot. `Unknown` and `Unsupported` are
