@@ -419,10 +419,13 @@ diff --git a/.github/workflows/claude-agent.yml b/.github/workflows/claude-agent
 index 9a25754..ec72201 100644
 --- a/.github/workflows/claude-agent.yml
 +++ b/.github/workflows/claude-agent.yml
-@@ -732,10 +732,53 @@ jobs:
+@@ -732,13 +732,56 @@ jobs:
                gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:blocked --add-label needs-owner --remove-label agent:working || true ;;
            esac
  
+       # THE BRANCH, FOR THE CODING WORK. Deliberately whatever the event points
+       # at, because that is the code the task is about. What it is NOT any more
+       # is where the hand-over reads its own logic from -- see the next step.
 +      # THE ONE CHECKOUT IN THIS FILE THAT PUSHES, AND THE `token:` IS WHY #75
 +      # HAPPENED.
 +      #
@@ -471,8 +474,8 @@ index 9a25754..ec72201 100644
 +          # that is **T-146**, not this patch. Found in review.
 +          token: ${{ secrets.ATTADIPA_AGENT_TOKEN || github.token }}
  
-       # WHERE THE BRANCH WAS BEFORE THIS RUN TOUCHED IT.
-       #
+       # THE ORCHESTRATION BUNDLE: THE HAND-OVER'S OWN CODE, FROM main, KEPT OUT
+       # OF THE SESSION'S REACH.
 diff --git a/docs/automation/APPROVAL_STALLS.md b/docs/automation/APPROVAL_STALLS.md
 index 4e21eda..eaf6fc3 100644
 --- a/docs/automation/APPROVAL_STALLS.md
@@ -481,8 +484,8 @@ index 4e21eda..eaf6fc3 100644
  | `c9e00d0` | the owner | ran |
  | `488be1e` | **the agent's own `git push`, over the checkout's persisted `GITHUB_TOKEN`** | `action_required`, 0 jobs |
  
--The workflow already knows the rule — `claude-agent.yml:810-819` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
-+The workflow already knows the rule — `claude-agent.yml:838-847` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
+-The workflow already knows the rule — `claude-agent.yml:894-903` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
++The workflow already knows the rule — `claude-agent.yml:922-931` "Deliberately NOT secrets.GITHUB_TOKEN" explains why
  `claude-code-action` is deliberately *not* handed `secrets.GITHUB_TOKEN`. The
  action's push path was fixed. The agent's own push path was never covered by it.
  
@@ -490,15 +493,15 @@ index 4e21eda..eaf6fc3 100644
  omitted it.** `ATTADIPA_AGENT_TOKEN` is not a checkout credential: it is the
  `github_token:` for `claude-code-action` — one citation per line, because the
  checker reads a fingerprint only from the citation's own physical line:
--`claude-agent.yml:819` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
-+`claude-agent.yml:847` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
- `claude-pr-review.yml:116` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+-`claude-agent.yml:903` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
++`claude-agent.yml:931` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
+ `claude-pr-review.yml:162` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}",
  `claude-ci-repair.yml:289` "github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}".
  `display_report: "true"` posts the agent's summary **on the triggering issue**
  over it, and the
  agent's own `gh issue comment` and `gh issue edit --add-label` use it too —
--`claude-agent.yml:899` "depends entirely on `gh` being allowed" says the
-+`claude-agent.yml:927` "depends entirely on `gh` being allowed" says the
+-`claude-agent.yml:983` "depends entirely on `gh` being allowed" says the
++`claude-agent.yml:1011` "depends entirely on `gh` being allowed" says the
  action has no label feature of its own. That citation read `:846` until
  2026-08-24 — 38 lines short, landing on `# .github/tests/bot-actor-test.sh
  asserts this stays in`, an unrelated comment — so a reader checking the evidence
