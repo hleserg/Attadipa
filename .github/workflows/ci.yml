@@ -292,6 +292,15 @@ jobs:
       - name: What may be merged unattended
         run: bash .github/tests/merge-candidate-test.sh
 
+      # And who is entitled to close the other reviewer's findings. That
+      # condition's trust test was `user.type != "Bot"` -- a classification
+      # doing the work of an authorisation, on a public repository, where the
+      # "answer" needed no relation to the finding beyond a later timestamp. A
+      # stranger's comment cleared it. The rule is a file now, and the first
+      # fixture below is the bypass, asserted as one.
+      - name: Who may answer the other reviewer
+        run: bash .github/tests/codex-answered-test.sh
+
       # And whether it says WHY, when the answer is in a log nobody may read.
       # `show_full_output: false` empties the published run log of exactly the
       # cause -- deliberately, because tool results carry file contents -- so a
