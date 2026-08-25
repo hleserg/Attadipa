@@ -97,17 +97,7 @@ class SocketTransport(Transport):
 
 
 class SerialTransport(Transport):
-    """The device transport. Untested against a device, because none exists yet.
-
-    There is no Attadipa firmware, so nothing on the far end of a serial port
-    speaks this protocol today. The class is here because the alternative --
-    leaving a hole where the device transport goes -- makes the shape of the
-    thing harder to see, and because the framing has to survive a byte stream
-    that arrives in arbitrary fragments either way, which is exactly what the
-    decoder was built for.
-
-    Marked in the report as NOT EXECUTED rather than claimed as working.
-    """
+    """USB-Serial/JTAG transport used by the physical Waveshare watch."""
 
     def __init__(self, port: str, baud: int = 921600) -> None:
         try:
@@ -123,19 +113,32 @@ class SerialTransport(Transport):
         self._port = port
 
     def send(self, data: bytes) -> None:
-        self._serial.write(data)
+        try:
+            self._serial.write(data)
+        except Exception as exc:  # pragma: no cover - needs a device
+            raise WatchError(
+                f"the serial connection dropped while sending to {self._port}: {exc}"
+            ) from exc
 
     def recv(self, timeout: float) -> bytes:
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            waiting = self._serial.in_waiting
-            if waiting:
-                return self._serial.read(waiting)
-            time.sleep(0.002)
+        try:
+            while time.monotonic() < deadline:
+                waiting = self._serial.in_waiting
+                if waiting:
+                    return self._serial.read(waiting)
+                time.sleep(0.002)
+        except Exception as exc:  # pragma: no cover - needs a device
+            raise WatchError(
+                f"the serial connection dropped while reading from {self._port}: {exc}"
+            ) from exc
         return b""
 
     def close(self) -> None:
-        self._serial.close()
+        try:
+            self._serial.close()
+        except Exception as exc:  # pragma: no cover - needs a device
+            raise WatchError(f"could not close {self._port}: {exc}") from exc
 
     def describe(self) -> str:
         return f"serial:{self._port}"
@@ -483,8 +486,11 @@ class Watch:
 
         missing = seen.count(0)
         if missing:
+            stats = self._decoder.stats
             raise p.ProtocolError(
-                f"the frame is incomplete: {missing} of {len(buffer)} bytes never arrived")
+                f"the frame is incomplete: {missing} of {len(buffer)} bytes never arrived; "
+                f"decoder saw {stats.bad_crc} bad CRC, {stats.bad_length} bad length, "
+                f"{stats.resyncs} discarded bytes")
         # The image CRC is a second, independent check. The framing already
         # proved every chunk arrived intact; this proves they were assembled
         # correctly -- none missing, none doubled, none out of order.

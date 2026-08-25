@@ -12,16 +12,15 @@ checks it:
 screenshot → open the image and look → act → wait → screenshot → compare → fix and repeat
 ```
 
-The tool is `tools/watch_control.py`. It talks to whatever is running: the
-desktop simulator today, a device when there is firmware for one. Nothing in
-this file changes when that happens, because the tool asks the device what it is
-rather than holding a table of board facts.
+The tool is `tools/watch_control.py`. It talks to the physical Waveshare over
+USB-Serial/JTAG or to the simulator over a Unix socket, and asks the endpoint
+for its board facts. When the bench watch is attached, use it; the simulator is
+still required for the second 240×240 geometry.
 
 ## 0. What exists, and what does not
 
-**There is no Attadipa firmware yet.** `README.md` says so. So "the watch" in
-this skill means the **simulator**, which is a real LVGL stack with a real
-framebuffer and a real input path — not a mock, but not a panel either.
+`info` says `device ...` for the physical firmware and `sim ...` for the
+desktop LVGL endpoint. That build string is the evidence boundary.
 
 That distinction is not a formality:
 
@@ -73,13 +72,10 @@ Two things it will tell you that matter:
 - **`touch points 1`.** Single touch. LVGL's pointer device carries one point,
   so there is no pinch and no rotate, and asking for a second finger is a typed
   error rather than a silent merge. Do not write a test that needs two.
-- **`role NOT established`** beside a button. On the Waveshare the owner counted
-  two pressable buttons and **which named input each one reaches is open
-  question D5**. They are called `button-1` and `button-2` because naming one
-  "power" would be inventing the answer. **The harness will not synthesise
-  either press** — both are `injectable = false` while D5 is open, so
-  `button button-1 click` is refused host-side, before anything reaches the
-  device. Observe them on real hardware; the simulator cannot answer this one.
+- **`power` / `boot` on the Waveshare.** `power` is observable through AXP2101
+  edge status and is remotely injectable. `boot` is active-low GPIO0 and stays
+  non-injectable because it is a reset strap. Both physical paths enter the
+  same `InputQueue` as remote input.
 
 ## 3. Look before you touch
 
@@ -102,9 +98,7 @@ python3 tools/watch_control.py long-tap --x 205 --y 250 --duration 1.0
 python3 tools/watch_control.py swipe --from 350,120 --to 60,420 --duration 0.5
 #   those are Waveshare pixels; `info` prints the size of the board you are on
 python3 tools/watch_control.py drag  --from 60,420  --to 350,420 --duration 1.2
-python3 tools/watch_control.py button power click        # T-Watch
-#   the Waveshare declares no button it will simulate -- `info` says so, and
-#   section 2 says why; on that board this one exits 1 rather than presses.
+python3 tools/watch_control.py button power click
 #   A *hold* is demonstrated on the pointer above rather than on this key:
 #   injection bypasses the PMU, but `power` is SW7 on the AXP2101's `PWRON`
 #   pin and long-press behaviour is PMU register policy, so on a device a held
@@ -187,12 +181,7 @@ renderer fails on an antialiased glyph and gets switched off within a week.
 **The strong check is you, opening the PNGs.**
 
 **A step has three outcomes, not two** — `ok`, `FAIL` and `skip`. A step this
-board cannot run is skipped: today that is the `button` step of
-`diagnostic_tour.yaml`, on the Waveshare, which declares no button it will
-simulate while D5 is open. The summary line and `--json` count it apart from
-the passes and never as one. Read it as coverage that did not happen, because a
-skipped step reading as green is exactly how a scenario reports coverage it
-never had.
+profile cannot run is counted separately and never as a pass.
 
 Images land in `artifacts/watch/<scenario>/` and every path is printed. The run
 stops at the first failure with everything written so far kept.
@@ -203,8 +192,7 @@ stops at the first failure with everything written so far kept.
 python3 tools/watch_control.py live --screenshot-after
 ```
 
-Then `tap 120 180`, `swipe 200 180 40 180`, `click power` (T-Watch; the
-Waveshare refuses it, see section 2), `shot`,
+Then `tap 120 180`, `swipe 200 180 40 180`, `click power`, `shot`,
 `series 5 0.2`, `reset`, `help`, `quit`. One handshake, no reconnect per action,
 so a `press` and a much later `release` genuinely test a hold.
 
@@ -215,7 +203,7 @@ so a `press` and a much later `release` genuinely test a hold.
 | `no watch found` | nothing is listening | start the simulator with `--debug-socket` |
 | `the device did not answer within 10.0s` | it is wedged, or something else is connected | check the simulator is alive; only one client is served at a time |
 | `the device refused: that input is impossible…` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info`. **If you ran `press` in one command and `release` in the next, this is the expected answer, not a fault** — see section 4 |
-| `'button-1' has no established role on this board and is not simulated` | the harness refuses it host-side; on the Waveshare both buttons are `injectable = false` while D5 is open | not a fault and not fixable from here — use the T-Watch's `power`, or press the real board by hand |
+| `button 'boot' is not remotely injectable` | the harness refuses the reset strap host-side | use `power` for an application-level injected button, or press BOOT physically |
 | `the device refused: this stack is single-touch` | you asked for a second finger | there is no multitouch; use one-point gestures |
 | `the device refused: a screenshot is already in progress` | two overlapping requests | let the first finish |
 | `the device refused: the device could not produce a frame at all…` | the renderer is out of memory | **retrying will not fix it.** A 410 × 502 screenshot asks LVGL's 1 MiB pool for 617 kB over the widget tree; simplify the screen or look at what is holding memory. It used to answer `nothing has been rendered yet`, which sent you to wait for a frame that was already drawn |

@@ -301,24 +301,16 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
             elif action == "button":
                 name = str(step["button"])
                 if name == "first-injectable":
-                    # The two boards share no button name: the T-Watch has
-                    # `power`/`boot`, the Waveshare `button-1`/`button-2`, and
-                    # which physical input either of the latter reaches is open
-                    # question D5. A scenario that must run on both asks for
-                    # "one this board will actually simulate" instead of
-                    # naming one and failing everywhere else.
+                    # A scenario that must run on both asks for one button the
+                    # current profile permits rather than hard-coding a board.
                     injectable = [b for b in watch._caps().buttons if b.injectable]  # noqa: SLF001
                     if not injectable:
-                        # Not a failure: the Waveshare declares none, because
-                        # whether either of its two keys reaches software is
-                        # open question D5 and `injectable` defaults to the
-                        # restrictive side. Marked skipped so it reads as
-                        # coverage that did not happen rather than as a press
-                        # that worked.
+                        # Marked skipped so it reads as coverage that did not
+                        # happen rather than as a press that worked.
                         result.skipped = True
                         result.detail = (
                             "skipped: this board declares no injectable button "
-                            "(the Waveshare's two are open question D5)")
+                            "for this profile")
                     else:
                         name = injectable[0].id
                 if not result.skipped:

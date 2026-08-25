@@ -869,16 +869,16 @@ std::vector<std::uint8_t> input_request(core::InputEventType type, std::uint16_t
 void an_injected_tap_reaches_the_same_queue_a_finger_would()
 {
     Rig rig;
-    rig.send(input_request(core::InputEventType::PointerDown, 1, 100, 120), 500);
+    rig.send(input_request(core::InputEventType::PointerDown, 1, 10, 12), 500);
     CHECK(rig.sink.last_is(Opcode::InputOk));
-    rig.send(input_request(core::InputEventType::PointerUp, 2, 100, 120), 560);
+    rig.send(input_request(core::InputEventType::PointerUp, 2, 10, 12), 560);
     CHECK(rig.sink.last_is(Opcode::InputOk));
 
     core::InputEvent down;
     CHECK(rig.queue.pop(down));
     CHECK(down.type == core::InputEventType::PointerDown);
-    CHECK(down.x == 100);
-    CHECK(down.y == 120);
+    CHECK(down.x == 10);
+    CHECK(down.y == 12);
     // Marked Remote so a disconnect can clean up after it, and for no other
     // reason: nothing above the queue is allowed to branch on this.
     CHECK(down.origin == core::InputOrigin::Remote);
@@ -907,8 +907,26 @@ void a_second_finger_is_named_as_a_stack_limit()
     Rig rig;
     rig.send(input_request(core::InputEventType::PointerDown, 1, 10, 10, 0, 0));
     rig.sink.clear();
-    rig.send(input_request(core::InputEventType::PointerDown, 2, 90, 90, 0, /*touch_id=*/1));
+    rig.send(input_request(core::InputEventType::PointerDown, 2, 20, 20, 0, /*touch_id=*/1));
     CHECK(rig.sink.last_error() == ErrorCode::TooManyTouches);
+}
+
+void pointer_coordinates_are_bounded_by_the_reported_screen()
+{
+    Rig rig(40, 30);
+    const std::pair<std::int16_t, std::int16_t> outside[] = {
+        {-1, 0},
+        {0, -1},
+        {40, 0},
+        {0, 30},
+    };
+    for (const auto& [x, y] : outside) {
+        rig.sink.clear();
+        rig.send(input_request(core::InputEventType::PointerDown, 1, x, y));
+        CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+        CHECK(rig.queue.empty());
+        CHECK(!rig.state.pointer_down());
+    }
 }
 
 void an_impossible_press_is_a_different_error_from_a_second_finger()
@@ -1021,7 +1039,7 @@ void a_button_held_past_the_cap_is_released_by_the_device()
 void a_disconnect_lifts_what_the_remote_was_holding()
 {
     Rig rig;
-    rig.send(input_request(core::InputEventType::PointerDown, 1, 55, 66), 10);
+    rig.send(input_request(core::InputEventType::PointerDown, 1, 15, 16), 10);
     rig.send(input_request(core::InputEventType::ButtonDown, 2, 0, 0, 1), 11);
     rig.queue.clear();
     rig.send(request(Opcode::ScreenRequest, 3));
@@ -1041,8 +1059,8 @@ void a_disconnect_lifts_what_the_remote_was_holding()
     while (rig.queue.pop(event)) {
         if (event.type == core::InputEventType::PointerUp) {
             saw_pointer_up = true;
-            CHECK(event.x == 55);
-            CHECK(event.y == 66);
+            CHECK(event.x == 15);
+            CHECK(event.y == 16);
         }
         if (event.type == core::InputEventType::ButtonUp) {
             saw_button_up = true;
@@ -1302,7 +1320,7 @@ void a_refused_pointer_event_does_not_move_the_finger()
 
         fill_queue(rig.queue);
         rig.sink.clear();
-        rig.send(input_request(core::InputEventType::PointerMove, 2, 300, 400));
+        rig.send(input_request(core::InputEventType::PointerMove, 2, 30, 20));
 
         CHECK(rig.sink.last_error() == ErrorCode::QueueFull);
         CHECK(rig.state.pointer_down());
@@ -1316,7 +1334,7 @@ void a_refused_pointer_event_does_not_move_the_finger()
 
         fill_queue(rig.queue);
         rig.sink.clear();
-        rig.send(input_request(core::InputEventType::PointerUp, 2, 300, 400));
+        rig.send(input_request(core::InputEventType::PointerUp, 2, 30, 20));
 
         // Still held -- the release never reached the interface -- and still at
         // the coordinate the finger is actually at.
@@ -1593,6 +1611,7 @@ int main()
     an_injected_tap_reaches_the_same_queue_a_finger_would();
     a_clients_own_timestamps_are_kept();
     a_second_finger_is_named_as_a_stack_limit();
+    pointer_coordinates_are_bounded_by_the_reported_screen();
     an_impossible_press_is_a_different_error_from_a_second_finger();
     a_malformed_input_body_is_rejected();
     the_event_rate_is_capped();

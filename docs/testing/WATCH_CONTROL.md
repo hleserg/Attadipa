@@ -5,8 +5,9 @@ buttons, touches its screen, and takes another picture. That is the whole idea:
 a change to the interface is checked by **looking at the interface**, not by
 watching the build succeed.
 
-It talks to the desktop simulator today. T-114 will add the device endpoint to
-the existing firmware over the same protocol and with the same commands.
+It talks to both the desktop simulator and the physical Waveshare firmware over
+the same protocol and with the same commands. With the bench watch attached,
+no port argument is needed: the tool resolves its USB serial identity.
 
 - The agent-facing version is
   [`.claude/skills/watch-ui-testing/SKILL.md`](../../.claude/skills/watch-ui-testing/SKILL.md).
@@ -16,9 +17,10 @@ the existing firmware over the same protocol and with the same commands.
 
 ## What this can and cannot tell you
 
-**The T-165 firmware has no display, input or debug endpoint.** So "the watch"
-here still means the **simulator**: a real LVGL stack with a real framebuffer
-and a real input path, on a desktop.
+The build string is the evidence boundary. `sim ...` is a desktop LVGL result;
+`device ...` is the ESP32-S3 endpoint on the physical Waveshare. A real-device
+screenshot proves the rendered frame, transport and input loop, but it still
+does not prove sunlight readability, touch sensitivity or power behaviour.
 
 | A screenshot from the simulator **is** evidence about | It is **not** evidence about |
 |---|---|
@@ -93,8 +95,7 @@ python3 tools/watch_control.py gesture --file tests/ui/gestures/example.json
 #   the shipped file is written in fractions of the panel, so it runs on both
 #   boards; whole numbers in a gesture file are pixels, same rule as a scenario
 
-python3 tools/watch_control.py button power click        # T-Watch
-#   the Waveshare declares no button it will simulate -- see `info` below.
+python3 tools/watch_control.py button power click
 #   `hold` is shown on the pointer above, not here: `power` is SW7 on the
 #   AXP2101's `PWRON` pin and its long-press behaviour is PMU register policy,
 #   so on a device a held power key may be a shutdown rather than an event
@@ -140,9 +141,9 @@ rather than assumed here.
 **`0` is a host convention and not a device declaration, and the two do not
 agree.** A device that advertises `0` has given the tool no bound to enforce,
 so the tool does not invent one and lets the gesture through. The bridge reads
-the same `0` as *expire immediately*: `debug/src/bridge.cpp:597` releases when
+the same `0` as *expire immediately*: `debug/src/bridge.cpp:614` releases when
 `now_ms - pointer_down_at_ > limits_.max_hold_ms`, which is already true one
-millisecond after the `PointerDown`, and `:583` does the same for buttons.
+millisecond after the `PointerDown`, and `:600` does the same for buttons.
 `info` says so out loud — it prints `hold released after 0 ms`. So `0` is not a
 way to ask for an unbounded hold; a firmware that wants one has to raise the
 limit, not zero it. The default is `30000`
@@ -188,21 +189,11 @@ are worth reading every time:
   Whether either panel's controller can report two is a separate and still open
   question (T-113: the Waveshare's part number behind chip ID `0x64` has no
   datasheet yet).
-- **`role NOT established`** beside a button — the board has it, and nobody has
-  traced what it does. On the Waveshare the owner counted two pressable buttons
-  by pressing them; which of `Key1`, `Key3` and the PMU's `PWRON` each one
-  reaches is **open question D5**. They are `button-1` and `button-2` because
-  calling one "power" would be inventing the answer.
-- **`not simulated`** beside those same two. `injectable` says the harness may
-  synthesise a press, and on the Waveshare it is `false` for both, for the same
-  reason `role_known` is: `HARDWARE_MATRIX` calls its key list "a floor, not a
-  census" and says `Key1` may never be brought out at all. So the T-Watch runs
-  the button step of a scenario and the Waveshare prints `skip` — coverage that
-  did not happen, counted separately from the passes and never as one. Flip
-  either to `true` in `platform/src/board_profiles.cpp` when D5 closes, with the
-  evidence beside it. The T-Watch's `boot` carries the same flag for the
-  opposite reason: its role **is** established, and it is a boot-mode strap that
-  produces no software event.
+- **`power` / `boot` on the Waveshare** — the official schematic and product
+  page identify both case keys. Physical `power` edges are read from AXP2101
+  interrupt status; `boot` is active-low GPIO0. `power` is remotely injectable.
+  `boot` remains `not simulated` because it is a reset strap, even though a
+  running firmware can observe its physical level.
 
 ### Series, for animations
 
@@ -254,12 +245,8 @@ is the worked example.
 The run stops at the first failure and keeps every image taken so far.
 
 **A step has three outcomes, not two.** `ok`, `FAIL`, and `skip` — a step this
-board cannot run. Today that is the `button` step with `button: first-injectable`
-on the Waveshare, which declares no button it will simulate while D5 is open. It
-is counted separately in the summary line and in `--json`, and it is never
-counted as a pass: a skipped step that reads as green is how a scenario reports
-coverage it never had, and that is the failure this repository keeps finding in
-its own tests.
+board cannot run. `first-injectable` selects from the device capabilities; if a
+profile declares none, the skip is counted separately and never as a pass.
 
 ---
 
@@ -303,7 +290,7 @@ the expectation would move together.
 | `the frame did not finish arriving in time…` | the device is still sending after the whole transfer's budget ran out | `--timeout` to allow longer, then look at why it is trickling. **Distinct from the row below:** this one means chunks are still coming, not that they stopped. It also used never to fire — the deadline bounded each individual wait and nothing bounded the transfer, so a trickling device was awaited for ever |
 | `the frame is incomplete: N bytes never arrived` | a torn transfer | **not retried automatically** — run the command again. The retry in `request()` covers a lost request, not a torn stream, and a screenshot does not go through it |
 | `the assembled frame does not match its checksum` | chunks assembled wrongly | same — the framing already proved each chunk was intact, so this is an assembly bug |
-| `this build of the firmware cannot do that` | the debug channel is compiled out, **or** the frame buffer is smaller than the panel, **or** the button is one this board will not simulate | for a button, `info` prints which are simulated; the T-Watch's `boot` is a boot-mode strap and produces no software event on real hardware, and the Waveshare simulates neither of its two while D5 is open |
+| `this build of the firmware cannot do that` | the debug channel is compiled out, **or** the frame buffer is smaller than the panel, **or** the button is one this board will not simulate | for a button, `info` prints which are simulated; `boot` is intentionally not injectable |
 | the screen is stuck mid-gesture | a crashed run left a finger down | `input-reset` |
 
 `input-reset` lifts only what the **remote** is holding, never what a person is
@@ -329,22 +316,17 @@ screen.
 
 | | |
 |---|---|
-| **Off by default** | The simulator listens only with `--debug-socket`. A firmware build will gate the whole subsystem behind a config option, off in release. |
-| **RAM, when on** | **three** allocations at the peak, and the third has no declared bound. The bridge's own buffer is 410 × 502 × 3 = **617 kB** on the Waveshare at RGB888 and 240 × 240 × 3 = **173 kB** on the T-Watch — but `lv_snapshot_take` allocates a second one of its own before the row copy, so the peak is ~**1.24 MB** and ~**346 kB**. At RGB565 on a device, half of each. This row said one frame and the whole argument for the design rested on it; the second allocation is in the capture path, `sim/screen_source.cpp`, and `screen_source.h` says that call would be the right one on a device too, so T-114 inherits the peak rather than avoiding it. The bridge's buffer is allocated by the composition root, not by the debug code, so a build that does not want it does not have it — the snapshot's is not, which is the part to fix on a device. **Third: the output vector.** `DebugServer::flush` compacts only when everything queued has gone out (`sim/debug_server.cpp:321-324`), so while the socket does not fully drain inside one poll, `out_` grows by everything written since the last full drain — up to a whole framed image, ~**690 kB** on the Waveshare. `kOutputMax` bounds *unsent* bytes, not the vector, and `clear()` keeps the capacity it reached. Almost certainly never reached against a host that reads promptly, and it is in this row anyway because **T-114 names this file as the model for the firmware transport**, where the reader is a USB link rather than a local socket. A bound on the vector itself, or a front-erase once it passes a threshold, is the thing to decide there rather than to inherit by accident. |
+| **Off by default** | The simulator listens only with `--debug-socket`. Firmware uses `CONFIG_ATTADIPA_WATCH_CONTROL` (Kconfig default `n`; development defaults enable it and PURE_RAM disables it). |
+| **RAM, when on** | One caller-owned 410 × 502 × 2 RGB565 frame in PSRAM: **411,640 bytes**. `lv_snapshot_take_to_draw_buf` renders into it directly. Firmware TX is a fixed **16 KiB** queue and cannot grow to a second frame. |
 | **RAM, always** | the input queue: 64 events × 16 bytes ≈ **1 kB**, and it is the ordinary input path rather than a debug cost. |
-| **Flash** | the protocol and bridge are a few kB of code, plus a bitwise CRC-32 chosen over a 1 kB table for exactly this reason. |
-| **Time, per screenshot** | **0.48 s Waveshare, 0.14 s T-Watch**, MEASURED 2026-08-23 — median of five over a Unix socket after one warm-up, on this desktop; repeated runs land between 0.47 and 0.50 for the Waveshare. On USB it will be bounded by the link, not by the device. **Re-measure this row whenever `kOutputWatermark`, `kMaxChunksPerPoll` or the loop delay in `sim/main.cpp` changes** — a chunk cap of 16 made it 1.05 s and left this row still reading 0.5, which is a measurement that has quietly stopped being one. |
+| **Flash** | the protocol and bridge are a few kB. ESP32-S3 uses the ROM CRC-32 table; the host keeps the small bitwise implementation. |
+| **Time, per screenshot** | Physical Waveshare over USB: **4,474.5 ms median of five**, measured 2026-08-25 after one connection. Simulator figures remain 0.48 s Waveshare / 0.14 s T-Watch on the 2026-08-23 desktop run. |
 | **Interface pause, streaming** | none measurable, and the construction is the **pair** of bounds in `sim/debug_server.cpp` rather than the watermark alone: one poll hands over at most `kMaxChunksPerPoll` chunks *and* stops once `kOutputWatermark` bytes are waiting. At 64 × 199 = 12.7 kB the count binds first while the socket keeps draining, and the watermark takes over when it stops. Either way the transport sets the pace and nothing blocks waiting for a transfer to finish. |
-| **Interface pause, capture** | **3.6 ms MEASURED on this desktop** for a 617 kB frame; **UNKNOWN on a device.** Synchronous on the interface's own thread, and the watermark above does not protect it. The row copy is nothing — 0.008 ms — and the **bitwise** CRC-32 is everything: 4.94 M inner loops, 3.605 ms, a factor of 450. On the T-Watch's 173 kB, 1.009 ms. The device figure is deliberately *not* this one scaled by clock. The ESP32-S3 runs at 240 MHz against this host's several GHz and has none of its width — and, the part that actually decides it, **a 617 kB frame buffer cannot live in internal SRAM and must sit in PSRAM**, which on this board is octal at 80 MHz with a 10-cycle fixed latency (D12a, from the vendor boot log). A byte-at-a-time CRC over PSRAM is a different machine from one over cache-resident DRAM, so scaling would be an estimate wearing a measurement's clothes. **T-114** owns the number; this row exists so nobody re-derives the question. |
+| **Interface pause, capture** | Physical request-to-`ScreenInfo` is a measured **85.1 ms median of five** (78.7–98.7 ms), an upper bound on synchronous snapshot + CRC because it also includes USB/poll scheduling. The pre-fix bitwise CRC path was 341.8 ms median. Streaming after `ScreenInfo` remains bounded and non-blocking. |
 | **Wire cost** | ~10 % overhead: 7 bytes of framing and 10 of envelope per 182-byte body. |
 
-Every figure above is **MEASURED** on a desktop simulator over a Unix socket
-**and none of them is a device figure** — including the capture pause, whose
-desktop number is measured and whose device number is `UNKNOWN` for the reason
-in its own row. No figure here is a hardware measurement, because there is no
-firmware to measure — and the one row that would matter most on hardware is the
-one nothing has measured yet, which is why it says so rather than sitting under
-the banner with the others.
+The device figures above are from the physical Waveshare unit identified by USB
+serial `28:84:85:B2:18:A4`; simulator figures are labelled separately.
 
 ---
 
@@ -355,10 +337,10 @@ tools/watch_control.py                the command line
   └─ tools/watch/client.py            handshake, requests, retries, PNG
        └─ tools/watch/protocol.py     framing, envelope, pixels — a pure module
             │
-            │  Unix socket (simulator)  ·  USB-Serial/JTAG (a device, later)
+            │  Unix socket (simulator)  ·  USB-Serial/JTAG (physical device)
             │
        ┌────┴──────────────────────────────────────────────┐
-       │ sim/debug_server.cpp        the transport         │
+       │ sim/debug_server.cpp / firmware/main/watch_control.cpp │
        │ debug/bridge.cpp            dispatch, limits      │
        │ debug/protocol.cpp          the same wire format  │
        │ core/input.cpp              the ONE input queue   │
@@ -386,12 +368,11 @@ Five decisions worth knowing:
    test that drove the interface through a private door would pass against code
    no finger can reach.
 
-   Said precisely, because a looser sentence here was wrong: the simulator's
+   Said precisely: the simulator's
    own mouse is LVGL's `lv_sdl_mouse_create()` and reaches LVGL as its **own**
-   indev without passing through the queue. The two coexist because LVGL runs
-   each indev independently, not because they meet in the queue. The bridge is
-   the queue's only producer today; the touch controller and the buttons are
-   T-114's, and they are what `InputOrigin::Physical` is for.
+   indev without passing through the queue. On firmware, the FT3168, AXP2101
+   power key, GPIO0 boot key and remote bridge all share one `InputQueue` on the
+   LVGL task; physical events carry `InputOrigin::Physical`.
 
 4. **Physical input keeps working** while remote input is connected. Events
    carry an origin, and the origin is used for exactly one thing: cleaning up
@@ -424,26 +405,16 @@ behind.
 
 ## Running against a device
 
-**Not possible yet, and nothing here pretends otherwise.** There is no ESP-IDF
-project in this repository, so nothing on the far end of a USB cable speaks this
-protocol. When there is:
+With the bench Waveshare attached and the development firmware flashed:
 
-1. build the firmware with the debug channel enabled;
-2. flash it — **which needs the owner's authorisation**, `CLAUDE.md`;
-3. `python3 tools/watch_control.py --port <the unit's port> info` — and
-   **resolve that port from the unit's USB serial, never type `ttyACM0`.** Two
-   ESP32-S3 devices are attached to this host and both enumerate as
-   `303a:1001`; one of them is the owner's MeshCore node. No tool resolves it
-   yet, which is **T-116**, so until it exists a session writes its own guard or
-   does not write.
+```bash
+python3 tools/watch_control.py info
+python3 tools/watch_control.py screenshot --output artifacts/watch/device.png
+python3 tools/watch_control.py tap --x 205 --y 285 --screenshot-after
+```
 
-`SerialTransport` in `tools/watch/client.py` is written and **NOT EXECUTED** —
-it has never spoken to a device, because there has been no device to speak to.
-It is marked that way in the source rather than left as a hole, and the framing
-beneath it is fragment-agnostic by construction, which is the property a byte
-stream needs either way.
-
-Two things will need doing on the device that the simulator does not need: a
-frame buffer sized for the panel behind the same config option, and a task that
-calls `Bridge::pump` from the same context that services the interface. The
-watermark shape in `sim/debug_server.cpp` is the model for the second.
+The default is resolved from USB serial `28:84:85:B2:18:A4`, never from a
+`ttyACM` number. Use `--serial` or `ATTADIPA_WATCH_SERIAL` for another unit and
+`--port` only as an explicit override. `SerialTransport`, screenshots and
+remote taps were executed against this physical unit on 2026-08-25; see
+[`WATCH_CONTROL_2026-08-25.md`](../hardware/WATCH_CONTROL_2026-08-25.md).
