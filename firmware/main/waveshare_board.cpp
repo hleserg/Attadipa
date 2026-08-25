@@ -25,7 +25,7 @@ constexpr char kBoardProfileId[] = "waveshare-amoled-206";
 constexpr int kWidth = 410;
 constexpr int kHeight = 502;
 constexpr int kPanelGapX = 0x16;
-constexpr int kBrightnessPercent = 1;
+constexpr int kBrightnessPercent = 5;
 
 constexpr gpio_num_t kLcdCs = GPIO_NUM_12;
 constexpr gpio_num_t kLcdClock = GPIO_NUM_11;
@@ -53,7 +53,8 @@ constexpr std::uint8_t kRows[] = {0x00, 0x00, 0x01, 0xF5};
 
 // The exact panel sequence used by the known-working vendor implementation,
 // except display-on is delayed until the black UI objects exist. Brightness
-// starts at zero and is raised to 1% only after that.
+// starts at zero and is raised to the measured 5% visible floor only after
+// that.
 constexpr co5300_lcd_init_cmd_t kPanelInit[] = {
     {0x11, nullptr, 0, 120},
     {0xC4, kC4, sizeof(kC4), 0},
@@ -137,29 +138,68 @@ esp_err_t initialize_pmu() {
   return ESP_OK;
 }
 
-std::uint8_t from_bcd(std::uint8_t value) {
+struct RtcDateTime {
+  unsigned year;
+  unsigned month;
+  unsigned day;
+  unsigned hour;
+  unsigned minute;
+  unsigned second;
+};
+
+constexpr bool valid_bcd(std::uint8_t value) {
+  return (value & 0x0F) <= 9 && (value >> 4) <= 9;
+}
+
+constexpr std::uint8_t from_bcd(std::uint8_t value) {
   return static_cast<std::uint8_t>((value >> 4) * 10 + (value & 0x0F));
 }
 
-esp_err_t read_rtc(char *text, std::size_t text_size) {
+static_assert(valid_bcd(0x59) && !valid_bcd(0x5A) && from_bcd(0x59) == 59);
+
+esp_err_t read_rtc(RtcDateTime *time) {
   constexpr std::uint8_t kSecondsRegister = 0x04;
   std::uint8_t raw[7]{};
   esp_err_t err = i2c_master_transmit_receive(state.rtc, &kSecondsRegister, 1,
                                               raw, sizeof(raw), 100);
   if (err != ESP_OK) {
-    std::snprintf(text, text_size, "RTC I2C ERROR");
     return err;
   }
 
-  const unsigned second = from_bcd(raw[0] & 0x7F);
-  const unsigned minute = from_bcd(raw[1] & 0x7F);
-  const unsigned hour = from_bcd(raw[2] & 0x3F);
-  if ((raw[0] & 0x80) != 0 || second > 59 || minute > 59 || hour > 23) {
-    std::snprintf(text, text_size, "RTC NOT SET");
-    return ESP_ERR_INVALID_RESPONSE;
+  const std::uint8_t values[] = {static_cast<std::uint8_t>(raw[0] & 0x7F),
+                                 static_cast<std::uint8_t>(raw[1] & 0x7F),
+                                 static_cast<std::uint8_t>(raw[2] & 0x3F),
+                                 static_cast<std::uint8_t>(raw[3] & 0x3F),
+                                 static_cast<std::uint8_t>(raw[5] & 0x1F),
+                                 raw[6]};
+  for (const std::uint8_t value : values) {
+    if (!valid_bcd(value)) {
+      return ESP_ERR_INVALID_RESPONSE;
+    }
   }
 
-  std::snprintf(text, text_size, "RTC %02u:%02u:%02u", hour, minute, second);
+  *time = {2000U + from_bcd(values[5]), from_bcd(values[4]),
+           from_bcd(values[3]),         from_bcd(values[2]),
+           from_bcd(values[1]),         from_bcd(values[0])};
+  if ((raw[0] & 0x80) != 0 || time->second > 59 || time->minute > 59 ||
+      time->hour > 23 || time->day == 0 || time->day > 31 || time->month == 0 ||
+      time->month > 12 || (raw[4] & 0x07) > 6) {
+    return ESP_ERR_INVALID_RESPONSE;
+  }
+  return ESP_OK;
+}
+
+esp_err_t format_rtc(char *text, std::size_t text_size) {
+  RtcDateTime time{};
+  const esp_err_t err = read_rtc(&time);
+  if (err != ESP_OK) {
+    std::snprintf(text, text_size,
+                  err == ESP_ERR_INVALID_RESPONSE ? "RTC NOT SET"
+                                                  : "RTC I2C ERROR");
+    return err;
+  }
+  std::snprintf(text, text_size, "RTC %02u:%02u:%02u", time.hour, time.minute,
+                time.second);
   return ESP_OK;
 }
 
@@ -170,7 +210,7 @@ void round_flush_area(lv_area_t *area) {
 
 void refresh_rtc(lv_timer_t *) {
   char text[24]{};
-  read_rtc(text, sizeof(text));
+  format_rtc(text, sizeof(text));
   lv_label_set_text(state.rtc_label, text);
 }
 
@@ -298,9 +338,12 @@ void create_ui() {
 
   lv_obj_t *title = lv_label_create(screen);
   lv_label_set_text(title, "ATTADIPA / T-166");
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, LV_PART_MAIN);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 42);
 
   state.rtc_label = lv_label_create(screen);
+  lv_obj_set_style_text_font(state.rtc_label, &lv_font_montserrat_28,
+                             LV_PART_MAIN);
   refresh_rtc(nullptr);
   lv_obj_align(state.rtc_label, LV_ALIGN_TOP_MID, 0, 82);
 
@@ -323,10 +366,12 @@ void create_ui() {
 
   state.touch_label = lv_label_create(button);
   lv_label_set_text(state.touch_label, "TOUCH ME");
+  lv_obj_set_style_text_font(state.touch_label, &lv_font_montserrat_28,
+                             LV_PART_MAIN);
   lv_obj_center(state.touch_label);
 
   lv_obj_t *safety = lv_label_create(screen);
-  lv_label_set_text(safety, "AMOLED 1% / RGB TEST");
+  lv_label_set_text(safety, "AMOLED 5% / RGB TEST");
   lv_obj_set_style_text_color(safety, lv_color_hex(0x808080), LV_PART_MAIN);
   lv_obj_align(safety, LV_ALIGN_BOTTOM_MID, 0, -38);
 
@@ -341,7 +386,7 @@ esp_err_t start_waveshare_ui() {
   ESP_RETURN_ON_ERROR(add_i2c_device(kPcf85063Address, &state.rtc), kTag,
                       "add PCF85063");
   char rtc_text[24]{};
-  const esp_err_t rtc_result = read_rtc(rtc_text, sizeof(rtc_text));
+  const esp_err_t rtc_result = format_rtc(rtc_text, sizeof(rtc_text));
   if (rtc_result == ESP_OK) {
     ESP_LOGI(kTag, "PCF85063: %s", rtc_text);
   } else {

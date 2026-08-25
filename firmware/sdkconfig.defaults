@@ -78,6 +78,7 @@ CONFIG_COMPILER_CXX_RTTI=n
 # ESP-IDF default main-task stack is too small for that measured call path.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_LV_BUILD_EXAMPLES=n
+CONFIG_LV_FONT_MONTSERRAT_28=y
 
 # Nothing here works around an erratum, and that is a checked statement rather
 # than an omission. All eight errata in sheet v1.3 apply to this die and none of
