@@ -60,7 +60,7 @@ want to inherit the experience, not only the code.
 | Project | Repository | Commit at examination | Last commit | Why it is here |
 |---|---|---|---|---|
 | `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006. **Re-checked 2026-08-23**: still `main`'s tip and still the newest release (`companion-v1.17.1`), so the pin is current rather than lagging. `dev` is at `9d7cee66` (2026-08-22) and contains none of the parser guards below — [MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md). **Re-checked again 2026-08-24**: `main` is now `0679dbe`, two commits ahead, **both `docs/faq.md`** — so the pin is no longer the literal tip and is still upstream's newest *code* and newest release. Stated that way on purpose: "our pin is `main`" ages badly, "no code has moved" does not |
-| `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API. **GPL-3.0 — read only, always.** This is the local clone's revision and it *predates* `ac330e6a` (2026-08-23), so the bounds fix in the monitored-deltas table below is not in it; that one was read from the merged diff over the API |
+| `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API. **GPL-3.0, compatible with the project licence; evidence only here because OD-12 rejects Meshtastic integration.** This is the local clone's revision and it *predates* `ac330e6a` (2026-08-23), so the bounds fix in the monitored-deltas table below is not in it; that one was read from the merged diff over the API |
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
 | `lvgl` | github.com/lvgl/lvgl | `85aa60d1` (**v9.5.0**) | 2026-08-23 | the UI toolkit. **T2 is settled**: [`DEPENDENCIES.md`](DEPENDENCIES.md) pins v9.5.0 = `85aa60d1…`, verified by `git ls-remote` and observed in CI, and source **S14** in [`VERIFIED_FACTS`](VERIFIED_FACTS.md) reads that revision. This row carried `7cc13aaf…` with *"version choice is open question T2"* until 2026-08-24, so the ledger and the dependency record named two different revisions of the same dependency — the ledger being the file `CLAUDE.md` sends an agent to before implementing anything. Found in review |
@@ -228,7 +228,7 @@ speaks to it.
 
 **Projects investigated:** MeshCore (MIT, `d92964352441e53b93e8667b802e04f6e072b39e`,
 tags `companion-v1.17.1`) · RadioLib (MIT, `510e00cfb05bbc3c2b7b524262785454944adb6e`)
-· Meshtastic (GPL-3.0 — read only) · `orlp/ed25519` vendored in MeshCore (zlib)
+· Meshtastic (GPL-3.0-compatible; evidence only under OD-12) · `orlp/ed25519` vendored in MeshCore (zlib)
 · `rweather/Crypto` (**licence UNVERIFIED**, not cloned).
 
 **Useful implementation:** MeshCore's `companion_radio` role, and its transport
@@ -319,9 +319,9 @@ known-good keypair embedded at `src/Identity.cpp:68-110`.
 §32 mandates.
 
 **Projects investigated:** nanopb (zlib-style, MIT-compatible) · protobuf-c ·
-Meshtastic's `PhoneAPI` (GPL-3.0 — read only) · MeshCore's companion protocol
-(MIT) · Apple ANCS (specification) · InfiniTime's GATT services (GPL-3.0 — read
-only).
+Meshtastic's `PhoneAPI` (GPL-3.0-compatible; evidence only under OD-12) ·
+MeshCore's companion protocol (MIT) · Apple ANCS (specification) · InfiniTime's
+GATT services (GPL-3.0-compatible; inspected as prior art in this record).
 
 **Decision:** `INSPIRE ARCHITECTURE` — write Attadipa's own versioned binary TLV,
 take no schema-codec dependency.
@@ -370,14 +370,16 @@ implementations closest to Attadipa's problem are GPL-3.0 and AGPL-3.0.
 is — with providers that attach and detach at runtime.
 
 **Projects investigated:** Zephyr device model and GATT service discovery ·
-Meshtastic's `variants` system (GPL-3.0 — read only) · espressif/esp-bsp
-(Apache-2.0) · InfiniTime (GPL-3.0 — read only) · BLE GATT, USB device classes,
+Meshtastic's `variants` system (GPL-3.0-compatible; evidence only under OD-12) ·
+espressif/esp-bsp (Apache-2.0) · InfiniTime (GPL-3.0-compatible; prior art here) ·
+BLE GATT, USB device classes,
 ANT+ device profiles as specifications.
 
 **Decision:** `INSPIRE ARCHITECTURE`.
 
-**Reason:** the licence forecloses everything else for the two closest
-comparables, and independently **no candidate actually solves it**. esp-bsp's
+**Reason:** **no candidate actually solves it**, so copying a neighbouring
+implementation would not supply the required model. The GPL sources are now
+licence-compatible; this record uses them only as prior art. esp-bsp's
 `BSP_CAPS_*` are compile-time macros and cannot express a provider that arrives
 later at all. Meshtastic's variants are a build-time selection across ~200
 boards. Both answer "which board was this compiled for", which is the question
@@ -412,16 +414,17 @@ Attadipa's architecture forbids asking.
 **Problem:** §33's lifecycle, plus surviving a capability that vanishes while an
 application is open.
 
-**Projects investigated:** InfiniTime (GPL-3.0 — read only; the closest mature
+**Projects investigated:** InfiniTime (GPL-3.0-compatible; the closest mature
 comparable that exists) · esp-brookesia (Apache-2.0) · Watchy (read) ·
 Android/Wear OS lifecycle contracts (specification).
 
 **Decision:** `INSPIRE ARCHITECTURE`.
 
 **Reason:** InfiniTime is the only project solving Attadipa's exact shape — an
-LVGL watch firmware with a real app model on far less RAM — and it is GPL-3.0.
-Recorded explicitly so nobody relitigates it later when `DisplayApp`'s message
-loop looks copyable. It is not.
+LVGL watch firmware with a real app model on far less RAM. Its GPL-3.0 licence is
+compatible with Attadipa. This record imports no code because its decision is to
+reuse the lifecycle lessons, not the implementation; any future port or
+adaptation must be recorded explicitly with the upstream notices preserved.
 
 **Lessons from upstream issues:**
 
@@ -457,13 +460,15 @@ by law.
 
 **Projects investigated:** ESP-IDF NVS (Apache-2.0, at
 `c197d718bcc240e82d31536f5c671a3503ac9c78`) · Meshtastic config/moduleConfig
-(GPL-3.0 — read only) · MeshCore `ConfigSerializer` (MIT) · InfiniTime
-`Settings` (GPL-3.0 — read only) · Zephyr settings subsystem.
+(GPL-3.0-compatible; evidence only under OD-12) · MeshCore `ConfigSerializer`
+(MIT) · InfiniTime `Settings` (GPL-3.0-compatible; prior art here) · Zephyr
+settings subsystem.
 
 **Decision:** `INSPIRE ARCHITECTURE`, with ESP-IDF NVS as the storage dependency
 and MeshCore's `ConfigSerializer` tests portable as code.
 
-**Reason:** licence, and one hard constraint — **NVS has no float accessor**
+**Reason:** the selected storage and data model, plus one hard constraint —
+**NVS has no float accessor**
 (`espressif/esp-idf#11182`, open since 2023-04-12), which combined with the float
 precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
 §2 forces integer storage regardless of what anyone prefers.
@@ -496,8 +501,8 @@ precision measurements in [ADR-0006](../adr/0006-settings-and-bounded-values.md)
 
 **Tests to port:** MeshCore's `test_config_serializer` and
 `test_companion_node_prefs` are MIT and portable as code. Meshtastic's and
-InfiniTime's are GPL-3.0 — their *case lists* may inform, their code may not be
-copied.
+InfiniTime's tests are GPL-3.0 and licence-compatible; this record uses their
+case lists as evidence and imports none of their code.
 
 **Attadipa integration:** [ADR-0006](../adr/0006-settings-and-bounded-values.md).
 
@@ -511,7 +516,7 @@ compass.
 **Projects investigated:** minmea (**MIT** via `LICENSE.grants`) · TinyGPS++ and
 Meshtastic's fork (LGPL-2.1 — a relink obligation this project should not take)
 · MicroNMEA (LGPL-2.1) · GeographicLib (MIT) · Meshtastic's GPS handling
-(GPL-3.0 — read only).
+(GPL-3.0-compatible; evidence only under OD-12).
 
 **Decision:** `WRAP` — take `minmea.c` / `minmea.h` unmodified at
 `2dd2cd11a359de5583e68053182d5bbf29725934`, behind an Attadipa wrapper that owns
@@ -1148,8 +1153,9 @@ reasons.
 **Projects investigated:** u-blox's own `UBX-SEC-SIG` and `UBX-NAV-STATUS`
 jamming and spoofing indicators (a receiver feature, not code we can take) ·
 RTKLIB (**BSD-2-Clause**, and a full RTK/PPP engine — orders of magnitude beyond
-this problem) · GNSS-SDR (GPL-3.0, read-only, and a software-defined receiver) ·
-Meshtastic's position handling (GPL-3.0, read-only) · Android's
+this problem) · GNSS-SDR (GPL-3.0-compatible, inspected only as prior art, and a
+software-defined receiver) · Meshtastic's position handling
+(GPL-3.0-compatible; evidence only under OD-12) · Android's
 `GnssMeasurement` API model (not code, but a data model worth studying).
 
 **Decision:** `REIMPLEMENT` for the trust engine; `INSPIRE ARCHITECTURE` from

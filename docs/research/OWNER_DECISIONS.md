@@ -760,9 +760,9 @@ the blocker:
 `meshtastic/protobufs` is a separate repository with its own `LICENSE`, and that
 file is **GPL-3.0** with no linking exception. At the time, generating code from
 those `.proto` files and linking it into the firmware would have made Attadipa's
-then-MIT firmware a derivative work under GPL-3.0. The reuse ledger's former rule —
-read it, learn from it, copy nothing — applies to protocol definitions exactly
-as it applies to C++.
+then-MIT firmware a derivative work under GPL-3.0. The reuse-ledger policy at
+the time prohibited copying protocol definitions just as it prohibited copying
+C++.
 
 Four options were put to the owner: a real clean-room from published
 documentation only; shipping the provider as a separately distributed GPL-3.0

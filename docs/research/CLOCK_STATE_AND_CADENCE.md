@@ -77,15 +77,16 @@ Every claim below was read from the file at the commit named, downloaded on
 
 | Project | Revision | Licence | What Attadipa may do |
 |---|---|---|---|
-| InfiniTime | [`8250565`](https://github.com/InfiniTimeOrg/InfiniTime/tree/825056574f47a8187b410b860f326050566553e2) | **GPL-3.0**, no linking exception | read it, copy nothing — `INSPIRE ARCHITECTURE` only |
-| ZSWatch | [`466a5ae`](https://github.com/ZSWatch/ZSWatch/tree/466a5ae5f3c1cc3dd53da6da2f1c7f50cfae0394) | **GPL-3.0**, read from **`LICENCE`** — the British spelling; `LICENSE` 404s at that commit | as above |
-| wasp-os | [`5625c1d`](https://github.com/wasp-os/wasp-os/tree/5625c1df433d43b078dd511f30204f10d9c28f6c), `watch_faces/clock.py` | **GPL-3.0** at the tree (`COPYING`), **LGPL-3.0-or-later** on this file (SPDX header, line 1) — a mixed-licence tree | as above; LGPL's linking relief does not survive static linking into firmware, and it is a different language regardless |
+| InfiniTime | [`8250565`](https://github.com/InfiniTimeOrg/InfiniTime/tree/825056574f47a8187b410b860f326050566553e2) | **GPL-3.0**, no linking exception | licence-compatible; this record uses it as prior art and imports no code |
+| ZSWatch | [`466a5ae`](https://github.com/ZSWatch/ZSWatch/tree/466a5ae5f3c1cc3dd53da6da2f1c7f50cfae0394) | **GPL-3.0**, read from **`LICENCE`** — the British spelling; `LICENSE` 404s at that commit | licence-compatible; this record uses it as prior art and imports no code |
+| wasp-os | [`5625c1d`](https://github.com/wasp-os/wasp-os/tree/5625c1df433d43b078dd511f30204f10d9c28f6c), `watch_faces/clock.py` | **GPL-3.0** at the tree (`COPYING`), **LGPL-3.0-or-later** on this file (SPDX header, line 1) — a mixed-licence tree | licence-compatible; reuse must follow the exact per-file terms, but this record imports no code |
 | LVGL | `85aa60d` = v9.5.0 | **MIT** | already a pinned dependency ([DEPENDENCIES](DEPENDENCIES.md)) |
 | Wear OS watch-face guidance | developer.android.com, read 2026-08-23 | documentation | read for interaction lessons; **no assets, no XML model, no visual identity** (final §85) |
 
-The three watch firmwares are all copyleft. The ledger already records that
-[boundary](REUSE_LEDGER.md) for InfiniTime; ZSWatch and wasp-os are added by
-this work.
+The three watch firmwares are all copyleft and compatible with Attadipa's
+current licence. They are evidence sources in this document, not imported code;
+any future reuse must be recorded in the [ledger](REUSE_LEDGER.md) with the
+exact per-file obligations.
 
 ### 2.1 The finding the issue did not predict: none of them schedules on the datum
 
