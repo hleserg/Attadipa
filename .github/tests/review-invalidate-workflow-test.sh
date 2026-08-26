@@ -54,6 +54,14 @@ extract_run_block() {
   ' "$2"
 }
 
+extract_step() {
+  awk -v want="$1" '
+    index($0, "- name: " want) { instep = 1 }
+    instep && $0 ~ /^[[:space:]]*- name: / && index($0, "- name: " want) == 0 { exit }
+    instep { print }
+  ' "$2"
+}
+
 SILENT=$(extract_run_block "Say that the review published nothing" "$WF")
 NORUN=$(extract_run_block "Say that the review did not happen" "$WF")
 if [ -z "$SILENT" ] || [ -z "$NORUN" ]; then
@@ -63,6 +71,31 @@ if [ -z "$SILENT" ] || [ -z "$NORUN" ]; then
   exit 1
 fi
 ok "both steps' shell can be extracted and run"
+
+# The routing around those bodies is part of the production guard. A completed
+# comment can coexist with `steps.review.outcome == failure` because
+# `--max-turns` is checked after the action has published. The publication step
+# must therefore run for that outcome, while the no-review path must explicitly
+# exclude a proven publication.
+PUBLISHED_STEP=$(extract_step "Establish whether the review was published" "$WF")
+WHY_STEP=$(extract_step "Work out why the review did not happen" "$WF")
+NORUN_STEP=$(extract_step "Say that the review did not happen" "$WF")
+if printf '%s\n' "$PUBLISHED_STEP" | grep -Fq "steps.review.outcome != 'failure'"; then
+  no "a failed action still checks whether its verdict was published" \
+     "the publication step is skipped on failure"
+else
+  ok "a failed action still checks whether its verdict was published"
+fi
+for pair in "WHY_STEP:the diagnosis step" "NORUN_STEP:the did-not-run step"; do
+  var=${pair%%:*}
+  what=${pair#*:}
+  if printf '%s\n' "${!var}" | grep -Fq "steps.published.outputs.state != 'published'"; then
+    ok "$what excludes an already-published verdict"
+  else
+    no "$what excludes an already-published verdict" \
+       "its live workflow condition does not test publication"
+  fi
+done
 
 for pair in "SILENT:the silent step" "NORUN:the did-not-run step"; do
   var=${pair%%:*}
