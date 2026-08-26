@@ -388,6 +388,7 @@ set_tests_properties(link PROPERTIES LABELS transport)
 # a move with nothing down, or a protocol that answers an unknown opcode with
 # silence, passes every legal-sequence test ever written.
 add_executable(test_input test_input.cpp)
+target_include_directories(test_input PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
 target_link_libraries(test_input PRIVATE attadipa_core)
 add_test(NAME input COMMAND test_input)
 set_tests_properties(input PROPERTIES LABELS input)
