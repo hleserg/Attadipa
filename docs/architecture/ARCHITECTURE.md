@@ -8,9 +8,9 @@ It began as the first of those. The second arrived with the Attadipa node, and
 the widening matters: a capability that arrives over a link still costs power,
 still needs an owner, and still has to be somewhere when it goes away.
 
-It is a target, not a description. Nothing here is implemented. Where it
-disagrees with [`../master-prompt.md`](../master-prompt.md), the disagreement is
-argued from evidence in [`../research/`](../research/) and belongs in an ADR.
+This is the target ownership contract, not a point-in-time status. Current
+evidence, gaps and migration live in [`PLATFORM_AUDIT.md`](PLATFORM_AUDIT.md).
+GitHub issues and PRs are canonical; disagreements with [`../master-prompt.md`](../master-prompt.md) require [`../research/`](../research/) evidence and an ADR.
 
 ---
 
