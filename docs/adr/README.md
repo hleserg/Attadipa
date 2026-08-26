@@ -48,6 +48,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0011](0011-gnss-integrity.md) | GNSS integrity: the receiver's own defences, and a trust state with reasons | **accepted** |
 | [0012](0012-project-name-attadipa.md) | Project name is Attadipa | **accepted** |
 | [0013](0013-node-motion.md) | Motion evidence belongs to a physical body | **accepted** |
+| [0014](0014-time-source-and-synchronization.md) | Time source, trust and synchronization | **accepted** |
 
 ### What the statuses mean here
 

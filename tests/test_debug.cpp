@@ -524,6 +524,27 @@ void the_bodies_survive_a_round_trip()
     CHECK(event_back.x == -12);
     CHECK(event_back.y == 1000);
     CHECK(event_back.at_ms == 123456u);
+
+    TimeSyncBody sync;
+    sync.utc_seconds = 1'787'687'654;
+    sync.timezone_offset_minutes = 300;
+    sync.valid_for_ms = 86400000;
+    sync.flags = kTimeSyncAllowLargeCorrection;
+    std::uint8_t sync_buffer[kTimeSyncBodyBytes] = {};
+    CHECK(encode_time_sync(sync, sync_buffer, sizeof(sync_buffer)) ==
+          kTimeSyncBodyBytes);
+    const std::uint8_t expected_sync[kTimeSyncBodyBytes] = {
+        0xE6, 0xF2, 0x8D, 0x6A, 0x00, 0x00, 0x00, 0x00,
+        0x2C, 0x01, 0x00, 0x5C, 0x26, 0x05, 0x01};
+    CHECK(std::memcmp(sync_buffer, expected_sync, sizeof(expected_sync)) == 0);
+    TimeSyncBody sync_back;
+    CHECK(decode_time_sync(sync_buffer, sizeof(sync_buffer), sync_back));
+    CHECK(sync_back.utc_seconds == sync.utc_seconds);
+    CHECK(sync_back.timezone_offset_minutes == 300);
+    CHECK(sync_back.valid_for_ms == 86400000u);
+    CHECK(sync_back.flags == kTimeSyncAllowLargeCorrection);
+    sync_buffer[14] = 0x80;
+    CHECK(!decode_time_sync(sync_buffer, sizeof(sync_buffer), sync_back));
 }
 
 void bytes_per_pixel_is_defined_for_every_format()
@@ -537,6 +558,20 @@ void bytes_per_pixel_is_defined_for_every_format()
 
 // --- the bridge -----------------------------------------------------------
 
+class FakeTimeSink : public TimeSink {
+public:
+    TimeSinkResult synchronize(const TimeSyncBody& incoming) override
+    {
+        request = incoming;
+        ++calls;
+        return result;
+    }
+
+    TimeSyncBody request{};
+    TimeSinkResult result = TimeSinkResult::Accepted;
+    unsigned calls = 0;
+};
+
 struct Rig {
     FakeScreen                screen;
     core::InputQueue          queue;
@@ -545,10 +580,12 @@ struct Rig {
     Bridge                    bridge;
     Collector                 sink;
 
-    Rig(std::uint16_t w = 40, std::uint16_t h = 30, PixelFormat f = PixelFormat::Rgb888,
-        bool with_buffer = true)
+    Rig(std::uint16_t w = 40, std::uint16_t h = 30,
+        PixelFormat f = PixelFormat::Rgb888, bool with_buffer = true,
+        TimeSink* time_sink = nullptr)
         : screen(w, h, f), frame(with_buffer ? screen.image().size() : 0),
-          bridge(queue, state, screen, with_buffer ? frame.data() : nullptr, frame.size())
+          bridge(queue, state, screen, with_buffer ? frame.data() : nullptr,
+                 frame.size(), time_sink)
     {
     }
 
@@ -557,6 +594,42 @@ struct Rig {
         bridge.handle(message.data(), message.size(), now, &Collector::emit, &sink);
     }
 };
+
+void time_sync_is_typed_and_requires_a_sink()
+{
+    TimeSyncBody sync;
+    sync.utc_seconds = 1'787'687'654;
+    sync.timezone_offset_minutes = 300;
+    sync.valid_for_ms = 86400000;
+    std::uint8_t body[kTimeSyncBodyBytes] = {};
+    CHECK(encode_time_sync(sync, body, sizeof(body)) == sizeof(body));
+
+    Rig unsupported;
+    unsupported.send(request(Opcode::TimeSync, 1, body, sizeof(body)));
+    CHECK(unsupported.sink.last_error() == ErrorCode::Unsupported);
+
+    FakeTimeSink time_sink;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, &time_sink);
+    rig.send(request(Opcode::TimeSync, 2, body, sizeof(body)));
+    CHECK(rig.sink.last_is(Opcode::TimeSyncOk));
+    CHECK(time_sink.calls == 1);
+    CHECK(time_sink.request.utc_seconds == sync.utc_seconds);
+    CHECK(time_sink.request.timezone_offset_minutes == 300);
+
+    rig.sink.clear();
+    time_sink.result = TimeSinkResult::Rejected;
+    rig.send(request(Opcode::TimeSync, 3, body, sizeof(body)));
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+
+    rig.sink.clear();
+    time_sink.result = TimeSinkResult::Failed;
+    rig.send(request(Opcode::TimeSync, 4, body, sizeof(body)));
+    CHECK(rig.sink.last_error() == ErrorCode::OperationFailed);
+
+    rig.sink.clear();
+    rig.send(request(Opcode::TimeSync, 5, body, sizeof(body) - 1));
+    CHECK(rig.sink.last_error() == ErrorCode::BadBody);
+}
 
 void an_unknown_opcode_is_answered_with_a_typed_error()
 {
@@ -1591,6 +1664,7 @@ int main()
     the_bodies_survive_a_round_trip();
     bytes_per_pixel_is_defined_for_every_format();
 
+    time_sync_is_typed_and_requires_a_sink();
     an_unknown_opcode_is_answered_with_a_typed_error();
     a_wrong_version_is_answered_rather_than_ignored();
     a_handshake_at_the_wrong_version_still_says_what_this_device_is();

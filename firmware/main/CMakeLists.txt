@@ -48,6 +48,7 @@ if(CONFIG_ATTADIPA_WATCH_CONTROL)
     list(APPEND ATTADIPA_DIRECT_LIBRARIES attadipa_debug)
 endif()
 target_link_libraries(${COMPONENT_LIB} PRIVATE ${ATTADIPA_DIRECT_LIBRARIES})
+target_link_libraries(${COMPONENT_LIB} PRIVATE idf::nvs_flash)
 
 # Transitive dependencies can make a removed direct link look healthy (link,
 # for example, also brings core). Keep the composition-root contract explicit;

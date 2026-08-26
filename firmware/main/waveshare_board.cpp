@@ -1,8 +1,11 @@
 #include "waveshare_board.h"
 
+#include "pcf85063_time.h"
+
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 
 #include "driver/i2c_master.h"
 #include "driver/spi_master.h"
@@ -13,14 +16,19 @@
 #include "esp_lcd_touch_ft5x06.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "esp_timer.h"
 #include "lvgl.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 #include "sdkconfig.h"
 
 #include "attadipa/apps/clock.h"
+#include "attadipa/core/time_service.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/clock_face.h"
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
+#include "attadipa/debug/bridge.h"
 #include "watch_control.h"
 #endif
 
@@ -48,6 +56,9 @@ constexpr gpio_num_t kI2cScl = GPIO_NUM_14;
 
 constexpr std::uint8_t kAxp2101Address = 0x34;
 constexpr std::uint8_t kPcf85063Address = 0x51;
+constexpr char kTimeNvsNamespace[] = "attadipa_time";
+constexpr char kTimezoneNvsKey[] = "tz_min";
+constexpr char kLastSyncNvsKey[] = "last_utc";
 
 constexpr std::uint8_t kC4[] = {0x80};
 constexpr std::uint8_t kTearingLine[] = {0x01, 0xD1};
@@ -82,6 +93,7 @@ struct BoardState {
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
   attadipa::ui::ClockFace clock_face;
+  attadipa::core::TimeService time_service;
 };
 
 BoardState state;
@@ -144,38 +156,8 @@ esp_err_t initialize_pmu() {
   return ESP_OK;
 }
 
-struct RtcDateTime {
-  unsigned year;
-  unsigned month;
-  unsigned day;
-  unsigned hour;
-  unsigned minute;
-  unsigned second;
-};
-
-constexpr bool valid_bcd(std::uint8_t value) {
-  return (value & 0x0F) <= 9 && (value >> 4) <= 9;
-}
-
-constexpr std::uint8_t from_bcd(std::uint8_t value) {
-  return static_cast<std::uint8_t>((value >> 4) * 10 + (value & 0x0F));
-}
-
-constexpr unsigned days_in_month(unsigned year, unsigned month) {
-  constexpr std::uint8_t kDays[] = {31, 28, 31, 30, 31, 30,
-                                    31, 31, 30, 31, 30, 31};
-  if (month == 0 || month > 12) {
-    return 0;
-  }
-  const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-  return month == 2 && leap ? 29 : kDays[month - 1];
-}
-
-static_assert(valid_bcd(0x59) && !valid_bcd(0x5A) && from_bcd(0x59) == 59 &&
-              days_in_month(2024, 2) == 29 && days_in_month(2023, 2) == 28 &&
-              days_in_month(2024, 4) == 30 && days_in_month(2024, 0) == 0);
-
-esp_err_t read_rtc(RtcDateTime *time) {
+esp_err_t read_rtc(attadipa::firmware::RtcDateTime *time,
+                   attadipa::firmware::RtcDecodeStatus *status) {
   constexpr std::uint8_t kSecondsRegister = 0x04;
   std::uint8_t raw[7]{};
   esp_err_t err = i2c_master_transmit_receive(state.rtc, &kSecondsRegister, 1,
@@ -183,62 +165,187 @@ esp_err_t read_rtc(RtcDateTime *time) {
   if (err != ESP_OK) {
     return err;
   }
-
-  const std::uint8_t values[] = {static_cast<std::uint8_t>(raw[0] & 0x7F),
-                                 static_cast<std::uint8_t>(raw[1] & 0x7F),
-                                 static_cast<std::uint8_t>(raw[2] & 0x3F),
-                                 static_cast<std::uint8_t>(raw[3] & 0x3F),
-                                 static_cast<std::uint8_t>(raw[5] & 0x1F),
-                                 raw[6]};
-  for (const std::uint8_t value : values) {
-    if (!valid_bcd(value)) {
-      return ESP_ERR_INVALID_RESPONSE;
-    }
-  }
-
-  *time = {2000U + from_bcd(values[5]), from_bcd(values[4]),
-           from_bcd(values[3]),         from_bcd(values[2]),
-           from_bcd(values[1]),         from_bcd(values[0])};
-  if ((raw[0] & 0x80) != 0 || time->second > 59 || time->minute > 59 ||
-      time->hour > 23 || time->day == 0 ||
-      time->day > days_in_month(time->year, time->month) ||
-      (raw[4] & 0x07) > 6) {
-    return ESP_ERR_INVALID_RESPONSE;
-  }
+  *status = attadipa::firmware::decode_pcf85063(raw, *time);
   return ESP_OK;
 }
+
+esp_err_t write_rtc(const attadipa::firmware::RtcDateTime &time) {
+  std::uint8_t raw[7]{};
+  if (!attadipa::firmware::encode_pcf85063(time, raw)) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  std::uint8_t request[8] = {0x04};
+  for (std::size_t i = 0; i < sizeof(raw); ++i) {
+    request[i + 1] = raw[i];
+  }
+  // NXP PCF85063A Rev. 7.3 section 7.4 requires seconds through years in one
+  // access shorter than one second; splitting time and date can corrupt them.
+  return i2c_master_transmit(state.rtc, request, sizeof(request), 100);
+}
+
+bool wall_time_from_rtc(const attadipa::firmware::RtcDateTime &rtc,
+                        attadipa::core::WallTime &out) {
+  return attadipa::apps::wall_time_from_civil(
+      {static_cast<std::int64_t>(rtc.year), rtc.month, rtc.day, rtc.weekday,
+       rtc.hour, rtc.minute, rtc.second},
+      out);
+}
+
+esp_err_t restore_time_metadata() {
+  ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, "initialize time metadata");
+  nvs_handle_t handle{};
+  esp_err_t err = nvs_open(kTimeNvsNamespace, NVS_READONLY, &handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
+  }
+  ESP_RETURN_ON_ERROR(err, kTag, "open time metadata");
+  std::int16_t offset = 0;
+  err = nvs_get_i16(handle, kTimezoneNvsKey, &offset);
+  nvs_close(handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
+  }
+  ESP_RETURN_ON_ERROR(err, kTag, "read timezone metadata");
+  ESP_RETURN_ON_FALSE(state.time_service.set_provisional_timezone(offset),
+                      ESP_ERR_INVALID_STATE, kTag,
+                      "stored timezone metadata is invalid");
+  ESP_LOGI(kTag, "restored provisional UTC offset %+d minutes", offset);
+  return ESP_OK;
+}
+
+#if CONFIG_ATTADIPA_WATCH_CONTROL
+esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {
+  nvs_handle_t handle{};
+  ESP_RETURN_ON_ERROR(
+      nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle), kTag,
+      "open time metadata for write");
+  esp_err_t err = nvs_set_i16(handle, kTimezoneNvsKey, offset);
+  if (err == ESP_OK) {
+    err = nvs_set_i64(handle, kLastSyncNvsKey, last_sync_utc);
+  }
+  if (err == ESP_OK) {
+    err = nvs_commit(handle);
+  }
+  nvs_close(handle);
+  return err;
+}
+#endif
 
 attadipa::apps::ClockState read_clock_state() {
   attadipa::apps::ClockState clock;
   clock.locale = attadipa::l10n::Locale::En;
-  RtcDateTime rtc{};
-  const esp_err_t err = read_rtc(&rtc);
+  const attadipa::core::MonotonicTime now{
+      static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
+  attadipa::firmware::RtcDateTime rtc{};
+  attadipa::firmware::RtcDecodeStatus status{};
+  const esp_err_t err = read_rtc(&rtc, &status);
   if (err != ESP_OK) {
-    clock.availability = err == ESP_ERR_INVALID_RESPONSE
-                             ? attadipa::core::Availability::Unprovisioned
-                             : attadipa::core::Availability::Failed;
-    clock.time.validity = err == ESP_ERR_INVALID_RESPONSE
-                              ? attadipa::core::Validity::Unknown
-                              : attadipa::core::Validity::Invalid;
-    return clock;
+    state.time_service.report(attadipa::core::TimeSource::Rtc,
+                              attadipa::core::Availability::Unreachable,
+                              attadipa::core::Validity::Invalid);
+  } else if (status == attadipa::firmware::RtcDecodeStatus::VoltageLow) {
+    state.time_service.report(attadipa::core::TimeSource::Rtc,
+                              attadipa::core::Availability::Unprovisioned,
+                              attadipa::core::Validity::Unknown);
+  } else if (status == attadipa::firmware::RtcDecodeStatus::InvalidData) {
+    state.time_service.report(attadipa::core::TimeSource::Rtc,
+                              attadipa::core::Availability::Failed,
+                              attadipa::core::Validity::Invalid);
+  } else {
+    attadipa::core::WallTime utc;
+    if (!wall_time_from_rtc(rtc, utc)) {
+      state.time_service.report(attadipa::core::TimeSource::Rtc,
+                                attadipa::core::Availability::Failed,
+                                attadipa::core::Validity::Invalid);
+    } else {
+      (void)state.time_service.observe(
+          {utc, now, {}, 0, attadipa::core::TimeSource::Rtc,
+           attadipa::core::TimeQuality::Provisional, false});
+    }
   }
-
-  attadipa::apps::CivilTime civil{static_cast<std::int64_t>(rtc.year),
-                                  rtc.month,
-                                  rtc.day,
-                                  0,
-                                  rtc.hour,
-                                  rtc.minute,
-                                  rtc.second};
-  if (!attadipa::apps::wall_time_from_civil(civil, clock.time.value)) {
-    clock.availability = attadipa::core::Availability::Failed;
-    clock.time.validity = attadipa::core::Validity::Invalid;
-    return clock;
-  }
-  clock.availability = attadipa::core::Availability::Ready;
-  clock.time.validity = attadipa::core::Validity::Valid;
+  const attadipa::core::TimeState time = state.time_service.state(now);
+  clock.availability = time.availability;
+  clock.time = time.local;
   return clock;
 }
+
+#if CONFIG_ATTADIPA_WATCH_CONTROL
+class BoardTimeSink final : public attadipa::debug::TimeSink {
+public:
+  attadipa::debug::TimeSinkResult
+  synchronize(const attadipa::debug::TimeSyncBody &request) override {
+    const attadipa::core::MonotonicTime now{
+        static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
+    if (request.valid_for_ms == 0 ||
+        now.ms > std::numeric_limits<std::uint64_t>::max() -
+                     request.valid_for_ms) {
+      return attadipa::debug::TimeSinkResult::Rejected;
+    }
+
+    attadipa::apps::CivilTime civil;
+    if (!attadipa::apps::civil_from_wall_time(
+            attadipa::core::WallTime{request.utc_seconds}, civil) ||
+        civil.year < 2000 || civil.year > 2099) {
+      return attadipa::debug::TimeSinkResult::Rejected;
+    }
+    const attadipa::firmware::RtcDateTime rtc{
+        static_cast<unsigned>(civil.year), civil.month, civil.day,
+        civil.weekday, civil.hour, civil.minute, civil.second};
+
+    attadipa::core::TimeService candidate = state.time_service;
+    const attadipa::core::MonotonicTime valid_until{
+        now.ms + request.valid_for_ms};
+    if (!candidate.set_timezone(request.timezone_offset_minutes, valid_until,
+                                now) ||
+        !candidate.observe(
+            {attadipa::core::WallTime{request.utc_seconds}, now,
+             attadipa::core::Millis{request.valid_for_ms}, 0,
+             attadipa::core::TimeSource::Manual,
+             attadipa::core::TimeQuality::Trusted,
+             (request.flags &
+              attadipa::debug::kTimeSyncAllowLargeCorrection) != 0})) {
+      return attadipa::debug::TimeSinkResult::Rejected;
+    }
+
+    const esp_err_t write_result = write_rtc(rtc);
+    if (write_result != ESP_OK) {
+      ESP_LOGW(kTag, "write PCF85063 time: %s",
+               esp_err_to_name(write_result));
+      return attadipa::debug::TimeSinkResult::Failed;
+    }
+    attadipa::firmware::RtcDateTime verified{};
+    attadipa::firmware::RtcDecodeStatus status{};
+    const esp_err_t read_result = read_rtc(&verified, &status);
+    attadipa::core::WallTime verified_utc;
+    if (read_result != ESP_OK) {
+      ESP_LOGW(kTag, "read PCF85063 after write failed: %s",
+               esp_err_to_name(read_result));
+      return attadipa::debug::TimeSinkResult::Failed;
+    }
+    if (status != attadipa::firmware::RtcDecodeStatus::Valid ||
+        !wall_time_from_rtc(verified, verified_utc) ||
+        attadipa::core::seconds_between(
+            attadipa::core::WallTime{request.utc_seconds}, verified_utc) > 1) {
+      ESP_LOGW(kTag, "PCF85063 readback did not match synchronized UTC");
+      return attadipa::debug::TimeSinkResult::Failed;
+    }
+
+    const esp_err_t metadata_result = save_time_metadata(
+        request.timezone_offset_minutes, request.utc_seconds);
+    if (metadata_result != ESP_OK) {
+      ESP_LOGW(kTag, "persist time metadata failed: %s",
+               esp_err_to_name(metadata_result));
+      return attadipa::debug::TimeSinkResult::Failed;
+    }
+
+    state.time_service = candidate;
+    ESP_LOGI(kTag, "PCF85063 synchronized from host");
+    return attadipa::debug::TimeSinkResult::Accepted;
+  }
+};
+
+BoardTimeSink time_sink;
+#endif
 
 void round_flush_area(lv_area_t *area) {
   area->x1 &= ~1;
@@ -386,6 +493,11 @@ esp_err_t start_waveshare_ui() {
   ESP_RETURN_ON_ERROR(initialize_pmu(), kTag, "initialize AXP2101");
   ESP_RETURN_ON_ERROR(add_i2c_device(kPcf85063Address, &state.rtc), kTag,
                       "add PCF85063");
+  const esp_err_t metadata_result = restore_time_metadata();
+  if (metadata_result != ESP_OK) {
+    ESP_LOGW(kTag, "time metadata unavailable; continuing without it: %s",
+             esp_err_to_name(metadata_result));
+  }
   const attadipa::apps::ClockState clock = read_clock_state();
   ESP_LOGI(kTag, "PCF85063: %s",
            clock.availability == attadipa::core::Availability::Ready
@@ -399,7 +511,8 @@ esp_err_t start_waveshare_ui() {
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   const esp_err_t watch_control_result =
       start_watch_control(state.touch, state.pmu, state.panel,
-                          kBrightnessPercent, [] { refresh_clock(nullptr); });
+                          kBrightnessPercent, [] { refresh_clock(nullptr); },
+                          &time_sink);
 #endif
   lvgl_port_unlock();
 #if CONFIG_ATTADIPA_WATCH_CONTROL

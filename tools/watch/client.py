@@ -562,6 +562,23 @@ class Watch:
                 return False
             time.sleep(poll)
 
+    def sync_time(self, utc_seconds: int, timezone_offset_minutes: int,
+                  valid_for_seconds: int, *, allow_large_correction: bool = False) -> None:
+        """Set UTC, local offset and trust lifetime in one verified device operation."""
+        if not -14 * 60 <= timezone_offset_minutes <= 14 * 60:
+            raise WatchError("timezone offset must be between -840 and +840 minutes")
+        if not 0 < valid_for_seconds <= 0xFFFFFFFF // 1000:
+            raise WatchError("validity must be between 1 and 4294967 seconds")
+        try:
+            body = p.time_sync_encode(
+                utc_seconds, timezone_offset_minutes, valid_for_seconds * 1000,
+                allow_large_correction=allow_large_correction)
+        except (TypeError, ValueError, struct.error) as exc:
+            raise WatchError(str(exc)) from exc
+        # Writing the RTC is not retried: a lost acknowledgement must not turn
+        # one requested wall-clock correction into two hardware writes.
+        self.request(p.Op.TIME_SYNC, body, (p.Op.TIME_SYNC_OK,), retries=0)
+
     # --- input ------------------------------------------------------------
 
     def button_index(self, name: str) -> int:

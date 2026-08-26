@@ -75,6 +75,7 @@ enum class Opcode : std::uint16_t {
     InputEvent    = 0x0020,
     InputReset    = 0x0021,
     WaitStable    = 0x0030,
+    TimeSync      = 0x0040,
 
     // Responses
     HelloOk       = 0x8001,
@@ -84,6 +85,7 @@ enum class Opcode : std::uint16_t {
     ScreenEnd     = 0x8012,
     InputOk       = 0x8020,
     StableOk      = 0x8030,
+    TimeSyncOk    = 0x8040,
     Error         = 0x80FF,
 };
 
@@ -104,6 +106,7 @@ enum class ErrorCode : std::uint16_t {
     QueueFull        = 10,  // the input queue overran; the event was dropped
     CaptureFailed    = 11,  // the renderer could not produce a frame -- typically out of memory
     ScreenGeometry   = 12,  // the active screen is not the panel size
+    OperationFailed  = 13,  // valid request; the device-side operation failed
 };
 
 // Appended, never renumbered. A value on this wire is a fact somebody's log
@@ -274,6 +277,24 @@ inline constexpr std::size_t kInputEventBodyBytes = 1 + 1 + 2 + 2 + 1 + 4;
 
 std::size_t encode_input_event(const InputEventBody& in, std::uint8_t* out, std::size_t capacity);
 bool        decode_input_event(const std::uint8_t* body, std::size_t len, InputEventBody& out);
+
+// A deliberate wall-clock correction from the development host. UTC and the
+// presentation offset are separate fields; `valid_for_ms` bounds both the
+// sample's freshness and how long the current offset may be trusted offline.
+struct TimeSyncBody {
+    std::int64_t  utc_seconds             = 0;
+    std::int16_t  timezone_offset_minutes = 0;
+    std::uint32_t valid_for_ms             = 0;
+    std::uint8_t  flags                    = 0;
+};
+
+inline constexpr std::uint8_t kTimeSyncAllowLargeCorrection = 0x01;
+inline constexpr std::size_t kTimeSyncBodyBytes = 8 + 2 + 4 + 1;
+
+std::size_t encode_time_sync(const TimeSyncBody& in, std::uint8_t* out,
+                             std::size_t capacity);
+bool decode_time_sync(const std::uint8_t* body, std::size_t len,
+                      TimeSyncBody& out);
 
 // ---------------------------------------------------------------------------
 // Integrity

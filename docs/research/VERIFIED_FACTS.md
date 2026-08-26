@@ -1602,3 +1602,18 @@ constants.
 - **Source:** [CLOCK_2026-08-26](../hardware/CLOCK_2026-08-26.md), including the
   final device framebuffer capture. Measured 2026-08-26 on USB serial
   `28:84:85:B2:18:A4`.
+
+### Host-to-watch UTC synchronization runs on the physical Waveshare
+
+- **MEASURED:** PR #279's final candidate accepted host UTC plus a `+300` minute
+  presentation offset, wrote and read back the PCF85063 calendar, and removed
+  the stale warning. After a software reset, the RTC advanced and the persisted
+  offset restored the same local time while trust correctly returned to stale;
+  a second synchronization without the large-correction override restored the
+  valid state.
+- **Boundary:** this establishes the device path and effective-offset
+  persistence, not independent absolute accuracy, long-term RTC drift, DST
+  rules, or any companion/network/GNSS/mesh provider.
+- **Source:** [TIME_SYNC_2026-08-26](../hardware/TIME_SYNC_2026-08-26.md),
+  measured 2026-08-26 on USB serial `28:84:85:B2:18:A4` at source commit
+  `1e51897`.

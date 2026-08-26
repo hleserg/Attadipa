@@ -16,6 +16,7 @@ add_library(attadipa_core
     src/motion.cpp
     src/position.cpp
     src/power_state.cpp
+    src/time_service.cpp
     src/trust.cpp
 )
 add_library(attadipa::core ALIAS attadipa_core)
