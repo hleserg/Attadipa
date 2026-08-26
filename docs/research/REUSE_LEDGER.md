@@ -128,10 +128,10 @@ anywhere in this repository, and none may be.
 
 ### Licences, checked before anything was depended on
 
-Attadipa is MIT. `CLAUDE.md` says anything incompatible with MIT does not enter
-this repository, and the licence is checked *before* the code is depended on,
-never after. Every licence below was read from the file in the clone, not from a
-badge or a recollection.
+Attadipa is `GPL-3.0-or-later`. Anything incompatible with that licence does not
+enter this repository, and the licence is checked *before* the code is depended
+on, never after. Every licence below was read from the file in the clone, not
+from a badge or a recollection.
 
 | Project | Licence | Where it was read | What Attadipa may do with it |
 |---|---|---|---|
@@ -142,26 +142,19 @@ badge or a recollection.
 | LilyGO T-Watch library | **MIT** | `LICENSE` | anything |
 | esp-bsp (Espressif) | **Apache-2.0** | README, "Copyrights and License" | use and modify, with attribution |
 | esp-brookesia | **Apache-2.0** | `license.txt` | use and modify, with attribution |
-| **Meshtastic** | **GPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
-| **InfiniTime** | **GPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
+| **Meshtastic** | **GPL-3.0** | `LICENSE` | licence-compatible, but rejected by owner decision [OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence) |
+| **InfiniTime** | **GPL-3.0** | `LICENSE` | use and modify under GPLv3 obligations |
 | `lv_i18n` | **MIT** | `LICENSE` in the clone | anything |
-| `cldr-core` (plural rules data) | **Unicode-DFS-2016** | npm registry metadata — **not** the file, because it is not vendored | permissive and MIT-compatible; read the file itself before vendoring any of it |
-| **Gadgetbridge** | **AGPL-3.0** | `LICENSE` | **read it, learn from it, copy nothing** |
+| `cldr-core` (plural rules data) | **Unicode-DFS-2016** | npm registry metadata — **not** the file, because it is not vendored | permissive and GPL-compatible; read the file itself before vendoring any of it |
+| **Gadgetbridge** | **AGPL-3.0** | `LICENSE` | read for evidence; combining code would require distributing the combined work under AGPL terms, not solely under Attadipa's licence |
 
-The bottom three matter more than the top six, because they are the projects
-that have already solved Attadipa's hardest problems. Meshtastic ships worldwide
-and has therefore had to solve regulatory bounds on radio settings. InfiniTime
-is a mature LVGL watch firmware with a real application lifecycle running on far
-less RAM than either Attadipa board has. They are the obvious places to look —
-and **GPL-3.0 with no linking exception forecloses every ledger verb with copy
-semantics**: not `USE AS DEPENDENCY`, not `PORT`, not `ADAPT`, and not
-`EXTRACT ALGORITHM`, which is copying with extra steps. It applies to their
-tests as much as their source, so "port the reference vectors" is not available
-either.
-
-What remains lawful is to read them, understand the shape of the solution, and
-write MIT code. That is `INSPIRE ARCHITECTURE`, and it is the honest verb for
-what several records below do.
+These projects matter because they have already solved some of Attadipa's
+hardest problems. GPL-3.0 code is compatible with Attadipa after the licence
+migration, so copy-semantic ledger verbs are available when the source's exact
+GPL terms and notices are preserved. A separate owner decision can still reject
+a dependency, as OD-12 does for Meshtastic. AGPL-3.0 is different: a combined
+work would carry AGPL terms and cannot be distributed solely as
+`GPL-3.0-or-later`, so AGPL code is not imported under the current policy.
 
 This is written out at length because it is the kind of constraint that gets
 quietly forgotten six months in, when a `DisplayApp` message loop or a region
@@ -174,7 +167,7 @@ to look up is a licence that gets assumed.
 ## Rules
 
 - License is checked **before** the code is depended on, never after. Anything
-  incompatible with MIT does not enter this repository.
+  incompatible with `GPL-3.0-or-later` does not enter this repository.
 - Pin a revision. "Latest" tells the next reader nothing.
 - Prefer an upstream patch to a fork. If a fork is unavoidable, keep the delta
   small and record what it is and why.
@@ -1131,14 +1124,11 @@ exception paragraph, no SPDX identifier in any `.proto`, no dual licensing.
 **Decision:** `REJECT` — and since 2026-08-22 the rejection is the owner's, not
 a holding position. [OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence).
 
-**Reason.** Generating code from those definitions and linking it into an MIT
-firmware image is the thing this ledger's rule about GPL-3.0 exists to prevent.
-The separate repository was the hypothesis worth testing and it did not survive
-contact with the file. The alternatives — a clean-room from published
-documentation, separate distribution, or asking upstream for an exception — are
-put to the owner as four options, and the owner chose the last of them:
-Meshtastic is not supported. The licence closed the cheap path; the *decision*
-is that the expensive one is not worth taking.
+**Reason.** At the time of OD-12, generating code from those definitions and
+linking it into the then-MIT firmware was blocked by GPL-3.0. The migration to
+`GPL-3.0-or-later` removes that licence incompatibility. The independent owner
+decision remains: Meshtastic is not supported because MeshCore answers the
+product need without adding a second protocol.
 
 **Source revision:** `protobufs` `aca181b`; firmware
 `68bfe015e6ab9ec2ab8f1657066898b7880eaf63`. Read on 2026-08-22.
@@ -1260,7 +1250,8 @@ mechanism for Samsung tags only (`device/DeviceManager.kt`,
 catch (`ui/dashboard/articles/en/limitations_of_the_app.md`).
 
 **License:** **Apache-2.0**, read from `LICENSE` at the repository root, not
-a badge. Compatible with Attadipa's MIT: permissive, no copyleft, requires
+a badge. Compatible with Attadipa's `GPL-3.0-or-later`: permissive and
+GPLv3-compatible, but requires
 retaining the Apache notice for anything actually taken. Copyright per
 `CITATION.cff`: Niklas Bittner, Alexander Matern, Dennis Arndt, Matthias
 Hollick (SEEMOO, TU Darmstadt).
@@ -1430,17 +1421,17 @@ repository — and under the same licence.
 **Strengths:** a large installed base, and the only other ESP32 LoRa mesh with
 comparable reach. Answering OD-7 with it would have cost nothing in hardware.
 
-**Weaknesses:** generating from those `.proto` files and linking the result into
-Attadipa would make an MIT firmware a derivative work under GPL-3.0. The rule in
-this file — read it, learn from it, copy nothing — applies to protocol
-definitions exactly as to C++.
+**Weaknesses:** generating from those `.proto` files creates GPL-3.0-covered
+code. That is compatible with Attadipa's current licence, but it carries the
+same source and notice obligations as copied C++.
 
 **Decision:** `REJECT`.
 
 **Reason:** two, and they are not the same one.
 
-*The licence* closed the cheap path. That is a fact about the sources and it is
-not a judgement.
+*The licence* closed the cheap path while Attadipa was MIT. The 2026-08-26
+licence migration removes that incompatibility; this paragraph records the
+historical reason presented to the owner.
 
 *The owner* then closed the expensive one
 ([OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence),
@@ -1456,14 +1447,14 @@ later the same day, and the detail is in
 host-side client the cheapest bring-up available. **The rejection above never
 depended on that number and does not change now that it exists.**
 
-Recording both matters. If Meshtastic's protocol licensing ever changes, the
-licence half of this is answered and only the product decision needs revisiting.
+Recording both matters. The licence is now compatible; only the product
+decision needs revisiting if Meshtastic support is proposed again.
 
 **Source revision:** `meshtastic/protobufs` submodule `aca181b`, under
 `meshtastic/firmware` `68bfe015e`, read 2026-08-21.
 
-**Attadipa integration:** none. MeshCore remains the one companion protocol a
-client may lawfully be written for, under ADR-0008's provider list. No such
+**Attadipa integration:** none. MeshCore remains the one supported companion
+protocol under ADR-0008's provider list. No such
 client exists yet.
 
 **Tests required:** none — nothing is taken.
@@ -1479,10 +1470,10 @@ located by strangers' phones rather than only by its owner's.
 
 **Projects investigated:**
 
-| | Licence | Reachable from an MIT ESP32 firmware? |
+| | Licence | Compatible with a `GPL-3.0-or-later` firmware distribution? |
 |---|---|---|
-| `seemoo-lab/openhaystack` | **AGPL-3.0** | no — copying into an MIT repository is not available, and AGPL is the strongest copyleft here |
-| `dchristl/macless-haystack` | **AGPL-3.0** | no, same |
+| `seemoo-lab/openhaystack` | **AGPL-3.0** | not under GPL alone — a combined work would be subject to AGPL terms |
+| `dchristl/macless-haystack` | **AGPL-3.0** | not under GPL alone — same |
 | Google's Find My Device reference | proprietary, and licensed *"only … with a Nordic Semiconductor ASA integrated circuit"* | no — the silicon clause alone ends it, before the approval form, the email allowlist and the third-party certification |
 | Samsung SmartThings Find SDK | proprietary | no — ships for no Espressif part, and an unregistered advertisement is inert by construction |
 
@@ -1708,14 +1699,13 @@ xiaozhi as a whole would have to start that audit from the beginning.
   and nothing more is decided here — whether Attadipa takes it is a step-2 and
   implementation call, not a licence one.
 
-**Reason.** The gate is passed for the repository and failed for three of its
-four audio dependencies, and the two facts are independent: an MIT project that
-calls a restricted component does not become restricted, and Attadipa reading
-that MIT source is unaffected. The restriction is also wider than "avoid
+**Reason.** The gate is passed for the xiaozhi source and failed for three of
+its four audio dependencies. Attadipa may use the MIT source under GPL, but the
+field-of-use terms on the restricted components add conditions GPLv3 does not
+permit. The restriction is also wider than "avoid
 esp-adf" — it arrives through the component manager under Espressif names, and
-`esp_audio_codec`'s own registry metadata is what reveals it as esp-adf-libs. A
-field-of-use restriction is not MIT; this ledger's rule is that anything
-incompatible with MIT does not enter the repository, so those three do not.
+`esp_audio_codec`'s own registry metadata is what reveals it as esp-adf-libs.
+Those three therefore do not enter the repository.
 
 **The precise constraint on `main/audio/` is functional, not legal, and the
 distinction matters.** Those files are MIT and lawful to copy verbatim. They
@@ -1763,22 +1753,19 @@ packaged out of the dependency. Upstream the directory holds `_MODEL_INFO_`
 — it does not exactly match — the owner's `model` partition, an esp-sr
 `srmodels` container carrying two 32-byte name records, `wn9_nihaoxiaozhi_tts`
 and `wn9_data`, with no sizes and no `wn9_index`: a packed container is not the
-source directory. Redistribution is a **qualified no** for an MIT repository:
+source directory. Redistribution with Attadipa is a **no**:
 there is no `LICENSE` or `NOTICE` anywhere under `esp-sr/model/`, so the blobs
 inherit the ESPRESSIF MIT field-of-use restriction and cannot be shipped under
-Attadipa's MIT licence. A second, independent encumbrance sits on top of the
+Attadipa's GPL terms. A second, independent encumbrance sits on top of the
 first: esp-sr's own README warns that wake-word names and brands belong to their
 rights holders and that commercial use requires being, or being authorised by,
 that holder. 你好小智 is the xiaozhi project's wake word and Attadipa is not its
 rights holder.
 
-**One question is flagged, not decided — `needs-owner`.** Both Attadipa targets
-are Espressif silicon, so the Espressif-only field of use would in fact be
-satisfied *in operation*. Whether Attadipa may ever consume esp-sr or
-esp-adf-libs as pinned components on that basis — accepting that Attadipa's
-source stays MIT while its **build** stops being redistributable to non-Espressif
-targets — is a licence-policy call above a research task. It blocks nothing:
-T-104 step 2 does not need it.
+Both Attadipa targets are Espressif silicon, so the field of use would be
+satisfied in operation. That does not cure the GPL incompatibility: the added
+platform restriction still prevents combining those components with the
+current project. It blocks nothing because T-104 step 2 does not need them.
 
 **Source revision:** `78/xiaozhi-esp32`
 `bb9122ab08c3083eeb4f67b3974b7afe771723b8` ("Add streamed notify playback

@@ -158,8 +158,8 @@ Repository `seemoo-lab/AirGuard`, HEAD `7f71a37d0776acc5f0e8d3046d3daaf8b71ad58d
 `LICENSE` at the repository root is the verbatim Apache License 2.0; GitHub's
 licence API agrees (`spdx_id: Apache-2.0`). `PUBLISHED-SPEC` — the ledger
 rule of reading the file rather than a badge, satisfied. **Compatible with
-Attadipa's MIT** — permissive, no copyleft, requires retaining the Apache
-notice for anything actually taken. Copyright holders per `CITATION.cff`:
+Attadipa's `GPL-3.0-or-later`** — permissive and GPLv3-compatible, but requires
+retaining the Apache notice for anything actually taken. Copyright holders per `CITATION.cff`:
 Niklas Bittner, Alexander Matern, Dennis Arndt, Matthias Hollick (SEEMOO, TU
 Darmstadt).
 

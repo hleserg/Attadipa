@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // The device entry point, and for now the whole of the firmware.
 //
 // Its job is the device composition root: report the board, then start the

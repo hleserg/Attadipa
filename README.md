@@ -282,7 +282,11 @@ of things worth knowing.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Atta-dipa is distributed under the GNU General Public License v3.0 or later
+(`GPL-3.0-or-later`) — see [LICENSE](LICENSE). The project remains open source:
+you may use, study, modify, and redistribute it under those terms. Distributed
+modifications and derivative works must comply with the GPL, including its
+source-availability requirements.
 
 Third-party components keep their own licenses; each one is recorded in
 `docs/research/DEPENDENCIES.md` with its license before anything depends on it.

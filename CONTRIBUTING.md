@@ -98,6 +98,22 @@ most before a first pull request:
 [GitHub Issues](https://github.com/hleserg/Attadipa/issues) are the task queue;
 linked pull requests and their checks show current implementation status.
 
+## Licensing contributions
+
+By submitting a contribution for inclusion in Attadipa, you agree that it may
+be distributed under the same `GPL-3.0-or-later` license as the project.
+Contributors retain copyright and authorship in their work. Submit only work you
+have the right to contribute and that is compatible with the project's license.
+No separate Contributor License Agreement is required.
+
+## Лицензирование вклада
+
+Отправляя вклад для включения в Attadipa, вы соглашаетесь с тем, что он может
+распространяться по той же лицензии `GPL-3.0-or-later`, что и проект. Автор
+сохраняет авторские права и авторство на свой вклад. Отправляйте только
+материалы, которые вы вправе передать проекту и лицензия которых совместима с
+лицензией проекта. Отдельное Contributor License Agreement не требуется.
+
 ## How the agent queue works
 
 Work reaches coding agents as GitHub Issues carrying a machine-readable marker,

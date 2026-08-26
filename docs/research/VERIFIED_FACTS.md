@@ -19,7 +19,7 @@ An entry that cannot name its source does not belong here. It belongs in
 
 - **Claim:** the canonical MeshCore repository is `meshcore-dev/MeshCore`.
   The older path `ripplebiz/MeshCore` still resolves but redirects there.
-- **License:** MIT (as reported by the GitHub API for the repository).
+- **License:** MIT (read from upstream's `license.txt`; the GitHub API agrees).
 - **Source:** GitHub API `repos/ripplebiz/MeshCore` returns
   `full_name: meshcore-dev/MeshCore`.
 - **Checked:** 2026-08-21.

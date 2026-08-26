@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "attadipa/core/capability_registry.h"
 
 #include "attadipa/platform/hardware_inventory.h"

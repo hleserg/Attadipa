@@ -1,8 +1,8 @@
 # Dependencies
 
 No external component may be depended on until it has a row here. "Latest"
-is not a version. A dependency without a recorded license cannot be used in an
-MIT-licensed repository.
+is not a version. A dependency without a recorded licence and compatibility
+decision cannot be used in this `GPL-3.0-or-later` repository.
 
 Required for every entry:
 
@@ -10,7 +10,7 @@ Required for every entry:
 |---|---|
 | Source | where it actually comes from |
 | Version / commit | pinned, not floating |
-| License | compatibility with MIT, checked not assumed |
+| License | compatibility with `GPL-3.0-or-later`, checked not assumed |
 | Why selected | so the next person can re-evaluate the choice |
 | Upgrade strategy | how it gets bumped, and what has to be retested |
 
@@ -21,16 +21,33 @@ Required for every entry:
 | Dependency | Pinned at | Licence | Upgrade strategy |
 |---|---|---|---|
 | **ESP-IDF** | **v5.5.5** — `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013`, 2026-07-16 | Apache-2.0 | tagged releases only, and **never below v5.5.5** while this pin is in force: that release adds a useful refusal for `spi_flash_mmap` above `0x1000000`, but it is defence-in-depth for one path, not the safety boundary — read, write and erase remain unguarded, so the binding rule is still that Attadipa places and accesses nothing above the ceiling ([FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) §§4–5). A bump retests `firmware/` for both boards, re-reads the `sdkconfig.defaults` symbols (Kconfig names move between minor releases) and re-runs the RAM-load route, because that path is the one with no fallback |
+| **`espressif/esp_lcd_co5300`** | **2.1.0**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild the display path and re-check the licence file |
+| **`espressif/esp_lcd_touch_ft5x06`** | **1.1.1**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild the touch path and re-check the licence file |
+| **`esp_lvgl_port`** | **2.8.0~1**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild both display geometries and re-check the licence file |
+| **`espressif/esp_lcd_touch`** | **1.2.1**, transitive resolution audited 2026-08-26 | Apache-2.0, read from the resolved component's `license.txt` | re-audit after any clean dependency resolution; the uncommitted lock is tracked in [#284](https://github.com/hleserg/Attadipa/issues/284) |
+| **`espressif/cmake_utilities`** | **0.5.3**, transitive resolution audited 2026-08-26 | Apache-2.0, read from the resolved component's `license.txt` | re-audit after any clean dependency resolution; the uncommitted lock is tracked in [#284](https://github.com/hleserg/Attadipa/issues/284) |
 | **LVGL** | **v9.5.0** — `85aa60d18b3d5e5588d7b247abf90198f07c8a63`, 2026-02-18 | MIT | tagged releases only. Retest both geometries, the font-subset size and asset regeneration on every bump |
 | **MeshCore** | `d92964352441e53b93e8667b802e04f6e072b39e`, 2026-08-14, tag `companion-v1.17.1` | MIT | upstream is active. Re-run the radio census (`grep RADIO_CLASS variants/`) on every bump — [ADR-0003](../adr/0003-radio-not-lora.md) is *about* this revision |
 | **RadioLib** | `510e00cfb05bbc3c2b7b524262785454944adb6e`, tag **7.7.1**, 2026-08-13 | MIT | follows MeshCore's pin |
 | **`lv_font_conv`** | **1.5.3** — npm, integrity `sha512-0xJQThBOw2ipt…TuBIbQ==` | MIT (read from the tarball, not the manifest) | it generates a build artefact that ships in flash, so a bump means re-measuring the subset. [FONT_MEASUREMENTS](FONT_MEASUREMENTS.md) |
 | **`LVGLImage.py`** | **v9.5.0**, commit `85aa60d18`, SHA-256 `c4b59a99…1bff3` — **vendored** at `tools/assets/vendor/LVGLImage.py`, unmodified | MIT, copied beside it from the same tree | it emits a build artefact that ships in flash, so a bump re-encodes every asset. Its hash is inside the pipeline's inputs digest, so a bump that changes bytes fails `ui_images_are_current` until the tree is regenerated |
 | **`pypng`** | whatever the environment has — `LVGLImage.py` imports it | MIT | a **tool-time** dependency of the vendored converter, not of the firmware. Nothing links it and nothing ships it. Its output is committed, so a machine with no `pypng` can still build and test everything except a regeneration |
-| **`lz4` (Python)** | the same | MIT | imported at module scope by `LVGLImage.py` and then never used, because Attadipa passes `--compress NONE`. Required to import the module at all, which is why it is listed |
-| **Pillow** | whatever the environment has — `python3-pil` on the CI runners | HPND (MIT-compatible) | tool-time only, for `tools/assets/` — authoring the source masks, the dimension cap, and the contact sheet. Deliberately **not** needed by `generate_images.py --check`, so the primary staleness gate never depends on a package being installed; the two checks that do need it are replaced by a failing test when it is absent |
+| **`lz4` (Python)** | the same | BSD-3-Clause | imported at module scope by `LVGLImage.py` and then never used, because Attadipa passes `--compress NONE`. Required to import the module at all, which is why it is listed |
+| **Pillow** | whatever the environment has — `python3-pil` on the CI runners | HPND (GPL-compatible) | tool-time only, for `tools/assets/` — authoring the source masks, the dimension cap, and the contact sheet. Deliberately **not** needed by `generate_images.py --check`, so the primary staleness gate never depends on a package being installed; the two checks that do need it are replaced by a failing test when it is absent |
 | **Inter** | `Inter[opsz,wght].ttf`, `google/fonts`, SHA-256 `29160a80…c559031` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; used **unmodified**, because instancing it costs its kerning |
 | **Nunito Sans** | `NunitoSans[YTLC,opsz,wdth,wght].ttf`, `google/fonts`, SHA-256 `f934d714…ae2491d` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; must be instanced to `wght=400`, because its default is 200 |
+
+### GPL-3.0-or-later compatibility audit — 2026-08-26
+
+| Result | Components | Distribution consequence |
+|---|---|---|
+| **Compatible** | ESP-IDF and the five managed components above (Apache-2.0); LVGL, FreeRTOS, MeshCore and RadioLib (MIT); Newlib and the GCC runtime libraries with their runtime exception; Nunito Sans (OFL-1.1) | These may be used with GPLv3 code. Their own copyright, licence and notice obligations remain; the OFL font remains under OFL-1.1 rather than being relicensed |
+| **Build/tool only** | CMake (BSD), SDL2 (Zlib), `lv_font_conv` and its npm graph (permissive), `pypng` (MIT), Python `lz4` (BSD-3-Clause), Pillow (HPND) and GitHub Actions used by CI | They are not linked into or shipped as the firmware. Preserve their licences if a tool is redistributed |
+| **Requires attention** | the ignored ESP-IDF dependency lock and future release notice bundle | The audited graph is compatible today, but transitive versions can drift; resolution and redistribution notices are tracked in [#284](https://github.com/hleserg/Attadipa/issues/284) |
+| **Do not combine into the current distribution** | Espressif `esp-sr`, `esp_audio_codec`, `esp_audio_effects` and `esp_codec_dev` 2.x field-of-use licences; proprietary vendor SDKs; AGPL-3.0 code unless the combined work is distributed under AGPL terms | These are not current dependencies. The field-of-use and proprietary terms are incompatible with the project's GPL terms; an AGPL combination could not be distributed solely as `GPL-3.0-or-later` |
+
+No incompatible component or proprietary blob was found in the current linked
+firmware image. Apache-2.0 compatibility here relies on GPLv3, not GPLv2.
 
 MeshCore and RadioLib are pinned as *read* rather than as *linked* — nothing
 compiles against them yet. The pin is what makes ADR-0003's compatibility matrix
@@ -202,7 +219,7 @@ simulator driving timed frames, or a board.
   T-Watch family broadly, and carries the schematics and the authoritative pin
   documentation.
 - **Open question T6:** depend on these, or take only the pin facts and write
-  Attadipa's own BSP? Apache-2.0 is compatible with an MIT project but carries
+  Attadipa's own BSP? Apache-2.0 is compatible with GPLv3 but carries
   notice and patent terms that must be preserved if code is vendored. This is a
   reuse-ledger decision, not a default.
 
@@ -230,7 +247,7 @@ simulator driving timed frames, or a board.
 |---|---|
 | **LVGL 8.x** | the SDL simulator driver is out-of-tree there, and the simulator is a first-class target |
 | **LVGL `master`** | floating versions are forbidden (final §76), and pinning docs to one version while building against another is worse than either |
-| **Meshtastic (any part)** | **GPL-3.0.** Incompatible with this MIT repository. Read for evidence and measurement only; not one line may be copied |
+| **Meshtastic (any part)** | **GPL-3.0.** Licence-compatible after the project migration, but still rejected by owner decision [OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence); no code is imported |
 | **`rweather/Crypto`** | licence **UNVERIFIED**. Not cloned, not read, not usable until that changes. Recorded so it is not re-proposed |
 
 Record rejections here with the reason — it stops the same option being
