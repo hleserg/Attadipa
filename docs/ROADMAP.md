@@ -8,9 +8,9 @@ Written 2026-08-24, after an independent cold read of the repository.
 
 > **Update 2026-08-26:** T-165 and T-166 established the physical firmware;
 > T-114 connected the real screenshot/control endpoint; T-037 shipped the first
-> Clock; and T-068 resolved the RTC slow-clock prerequisite. T-167 sleep/wake is
-> now the current device slice. The diagnosis below records the earlier state;
-> GitHub Issues and pull requests hold live status.
+> Clock; T-068 resolved the RTC slow-clock prerequisite; and T-167 completed the
+> sleep/wake lifecycle. The diagnosis below records the earlier state; GitHub
+> Issues and pull requests hold live status and select the next device work.
 
 ## Where the project actually is
 
@@ -116,12 +116,13 @@ behind it has not been tested, only asserted.
 | 3 | **T-166** ([#190](https://github.com/hleserg/Attadipa/issues/190)) | the Waveshare BSP driven vertically — display, LVGL, touch, PMU, RTC, **up to the driver** | done; D21 resolved by the physical asymmetric RGB pattern |
 | 4 | **T-114** ([#117](https://github.com/hleserg/Attadipa/issues/117)) | the debug channel's firmware end, so the agent's screenshot loop reaches the real panel — **and the `InputOrigin::Physical` producer for touch *and buttons*, which is T-114's alone** | done |
 | 5 | **T-037** | the first Clock, running on the watch, on real input, with the real tokens and fonts | done |
-| 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | current device slice; T-166 and T-068 are satisfied |
+| 6 | **T-167** ([#191](https://github.com/hleserg/Attadipa/issues/191)) | screen off, controlled sleep, wake, UI restored, wake reason diagnosable, and the cycle repeatable under the debug channel | done |
 
-T-165, T-166, T-114 and T-037 are complete. T-167 is the current device slice;
-its issue and pull request own live status. The old cross-branch conflict gate
-is gone: [#172](https://github.com/hleserg/Attadipa/issues/172) removed the
-shared `TASKS.md` and `STATUS.md` ledgers that made unrelated work collide.
+All six Waveshare steps above are complete. GitHub Issues select the next finite
+device task; there is no automation umbrella waiting to take their place. The
+old cross-branch conflict gate is gone: [#172](https://github.com/hleserg/Attadipa/issues/172)
+removed the shared `TASKS.md` and `STATUS.md` ledgers that made unrelated work
+collide.
 
 **D21 was the one technical unknown on the path:** in what byte order does the
 CO5300 want a 16-bit pixel on the wire. T-166 resolved the operational board
