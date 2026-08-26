@@ -143,5 +143,15 @@ int main()
     CHECK(!state.timezone_valid);
     CHECK(!timezone.set_timezone(841, {6000}, {5000}));
 
+    TimeService restored;
+    CHECK(restored.set_provisional_timezone(300));
+    CHECK(restored.observe(sample({10000}, {0}, TimeSource::Rtc,
+                                  TimeQuality::Provisional, {})));
+    state = restored.state({1000});
+    CHECK(state.local.value == WallTime{28001});
+    CHECK(state.local.validity == Validity::Stale);
+    CHECK(!state.timezone_valid);
+    CHECK(!restored.set_provisional_timezone(-841));
+
     return failures == 0 ? 0 : 1;
 }

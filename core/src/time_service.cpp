@@ -144,6 +144,17 @@ bool TimeService::set_timezone(std::int16_t minutes_east_of_utc,
     return true;
 }
 
+bool TimeService::set_provisional_timezone(std::int16_t minutes_east_of_utc)
+{
+    constexpr std::int16_t kMaximumOffsetMinutes = 14 * 60;
+    if (minutes_east_of_utc < -kMaximumOffsetMinutes ||
+        minutes_east_of_utc > kMaximumOffsetMinutes) {
+        return false;
+    }
+    timezone_ = {minutes_east_of_utc, {}, true};
+    return true;
+}
+
 void TimeService::report(TimeSource source, Availability availability,
                          Validity validity_value)
 {

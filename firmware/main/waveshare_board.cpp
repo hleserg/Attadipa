@@ -18,6 +18,8 @@
 #include "esp_lvgl_port.h"
 #include "esp_timer.h"
 #include "lvgl.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 #include "sdkconfig.h"
 
 #include "attadipa/apps/clock.h"
@@ -54,6 +56,9 @@ constexpr gpio_num_t kI2cScl = GPIO_NUM_14;
 
 constexpr std::uint8_t kAxp2101Address = 0x34;
 constexpr std::uint8_t kPcf85063Address = 0x51;
+constexpr char kTimeNvsNamespace[] = "attadipa_time";
+constexpr char kTimezoneNvsKey[] = "tz_min";
+constexpr char kLastSyncNvsKey[] = "last_utc";
 
 constexpr std::uint8_t kC4[] = {0x80};
 constexpr std::uint8_t kTearingLine[] = {0x01, 0xD1};
@@ -186,6 +191,46 @@ bool wall_time_from_rtc(const attadipa::firmware::RtcDateTime &rtc,
       out);
 }
 
+esp_err_t restore_time_metadata() {
+  ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, "initialize time metadata");
+  nvs_handle_t handle{};
+  esp_err_t err = nvs_open(kTimeNvsNamespace, NVS_READONLY, &handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
+  }
+  ESP_RETURN_ON_ERROR(err, kTag, "open time metadata");
+  std::int16_t offset = 0;
+  err = nvs_get_i16(handle, kTimezoneNvsKey, &offset);
+  nvs_close(handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
+  }
+  ESP_RETURN_ON_ERROR(err, kTag, "read timezone metadata");
+  ESP_RETURN_ON_FALSE(state.time_service.set_provisional_timezone(offset),
+                      ESP_ERR_INVALID_STATE, kTag,
+                      "stored timezone metadata is invalid");
+  ESP_LOGI(kTag, "restored provisional UTC offset %+d minutes", offset);
+  return ESP_OK;
+}
+
+#if CONFIG_ATTADIPA_WATCH_CONTROL
+esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {
+  nvs_handle_t handle{};
+  ESP_RETURN_ON_ERROR(
+      nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle), kTag,
+      "open time metadata for write");
+  esp_err_t err = nvs_set_i16(handle, kTimezoneNvsKey, offset);
+  if (err == ESP_OK) {
+    err = nvs_set_i64(handle, kLastSyncNvsKey, last_sync_utc);
+  }
+  if (err == ESP_OK) {
+    err = nvs_commit(handle);
+  }
+  nvs_close(handle);
+  return err;
+}
+#endif
+
 attadipa::apps::ClockState read_clock_state() {
   attadipa::apps::ClockState clock;
   clock.locale = attadipa::l10n::Locale::En;
@@ -282,6 +327,14 @@ public:
         attadipa::core::seconds_between(
             attadipa::core::WallTime{request.utc_seconds}, verified_utc) > 1) {
       ESP_LOGW(kTag, "PCF85063 readback did not match synchronized UTC");
+      return attadipa::debug::TimeSinkResult::Failed;
+    }
+
+    const esp_err_t metadata_result = save_time_metadata(
+        request.timezone_offset_minutes, request.utc_seconds);
+    if (metadata_result != ESP_OK) {
+      ESP_LOGW(kTag, "persist time metadata failed: %s",
+               esp_err_to_name(metadata_result));
       return attadipa::debug::TimeSinkResult::Failed;
     }
 
@@ -440,6 +493,11 @@ esp_err_t start_waveshare_ui() {
   ESP_RETURN_ON_ERROR(initialize_pmu(), kTag, "initialize AXP2101");
   ESP_RETURN_ON_ERROR(add_i2c_device(kPcf85063Address, &state.rtc), kTag,
                       "add PCF85063");
+  const esp_err_t metadata_result = restore_time_metadata();
+  if (metadata_result != ESP_OK) {
+    ESP_LOGW(kTag, "time metadata unavailable; continuing without it: %s",
+             esp_err_to_name(metadata_result));
+  }
   const attadipa::apps::ClockState clock = read_clock_state();
   ESP_LOGI(kTag, "PCF85063: %s",
            clock.availability == attadipa::core::Availability::Ready

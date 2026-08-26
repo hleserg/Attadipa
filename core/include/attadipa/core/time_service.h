@@ -60,6 +60,7 @@ public:
     bool observe(const TimeObservation& observation);
     bool set_timezone(std::int16_t minutes_east_of_utc,
                       MonotonicTime valid_until, MonotonicTime now);
+    bool set_provisional_timezone(std::int16_t minutes_east_of_utc);
     void report(TimeSource source, Availability availability, Validity validity);
     TimeState state(MonotonicTime now) const;
 
