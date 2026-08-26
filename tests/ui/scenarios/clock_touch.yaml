@@ -1,0 +1,11 @@
+# Clock touch motion must finish even though the foliage keeps pulsing.
+- action: screenshot
+  name: before
+- action: tap
+  x: 205
+  y: 315
+- action: wait_stable
+  quiet_ms: 200
+  timeout: 3.0
+- action: screenshot
+  name: stable
