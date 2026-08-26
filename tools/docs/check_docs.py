@@ -537,6 +537,8 @@ ROOT_ALLOWED = {
     "CLAUDE.md",
     "CMakeLists.txt",
     "CONTRIBUTING.md",
+    "COPYRIGHT.md",
+    "DCO",
     "LICENSE",
     "README.md",
     "README.ru.md",

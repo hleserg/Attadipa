@@ -106,6 +106,24 @@ Contributors retain copyright and authorship in their work. Submit only work you
 have the right to contribute and that is compatible with the project's license.
 No separate Contributor License Agreement is required.
 
+### Developer Certificate of Origin
+
+Every human-authored contribution must carry a `Signed-off-by` trailer in each
+commit. The trailer certifies the unmodified
+[Developer Certificate of Origin 1.1](DCO):
+
+```text
+Signed-off-by: Your Name <your-email-address@example.com>
+```
+
+Git can add it automatically with `git commit -s`. For the latest commit, a
+missing trailer can be added with `git commit --amend --signoff`. The sign-off
+confirms that you have the right to submit the contribution under its stated
+open-source license. It does not assign your copyright to Attadipa and is not a
+CLA. Repository-managed bots cannot make a personal certification; their
+identity and the upstream source of a mechanical update must remain visible in
+the public contribution record.
+
 ## Лицензирование вклада
 
 Отправляя вклад для включения в Attadipa, вы соглашаетесь с тем, что он может
@@ -113,6 +131,24 @@ No separate Contributor License Agreement is required.
 сохраняет авторские права и авторство на свой вклад. Отправляйте только
 материалы, которые вы вправе передать проекту и лицензия которых совместима с
 лицензией проекта. Отдельное Contributor License Agreement не требуется.
+
+### Developer Certificate of Origin
+
+Каждый коммит с вкладом человека должен содержать строку `Signed-off-by`. Этой
+строкой автор подтверждает неизменённый
+[Developer Certificate of Origin 1.1](DCO):
+
+```text
+Signed-off-by: Ваше Имя <ваш-email@example.com>
+```
+
+Git добавляет её командой `git commit -s`. В последний коммит пропущенную строку
+можно добавить командой `git commit --amend --signoff`. Подтверждение означает,
+что вы вправе передать вклад под указанной open-source лицензией. Оно не
+передаёт ваши авторские права Attadipa и не является CLA. Управляемые
+репозиторием боты не могут сделать личное подтверждение; их идентификатор и
+источник механического обновления должны оставаться видны в публичной истории
+вклада.
 
 ## How the agent queue works
 

@@ -288,5 +288,10 @@ you may use, study, modify, and redistribute it under those terms. Distributed
 modifications and derivative works must comply with the GPL, including its
 source-availability requirements.
 
+Copyright ownership and contribution provenance are documented in
+[COPYRIGHT.md](COPYRIGHT.md); future contributions use the lightweight
+[Developer Certificate of Origin 1.1](DCO), without copyright assignment or a
+CLA.
+
 Third-party components keep their own licenses; each one is recorded in
 `docs/research/DEPENDENCIES.md` with its license before anything depends on it.

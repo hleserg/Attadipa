@@ -1,3 +1,4 @@
+// SPDX-FileCopyrightText: 2026 Sergey Khlebnikov and Attadipa contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // The device entry point, and for now the whole of the firmware.
