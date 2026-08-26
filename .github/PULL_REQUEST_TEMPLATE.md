@@ -8,10 +8,10 @@
 
 ## Contribution certification
 
-- [ ] Every human-authored commit includes a `Signed-off-by` trailer
-      (`git commit -s`) that certifies the
-      [Developer Certificate of Origin 1.1](https://developercertificate.org/), or
-      the change is a mechanical update from an approved repository bot with
-      its upstream source recorded.
+- [ ] Every commit, including substantive bot-authored commits, includes a
+      human `Signed-off-by` trailer (`git commit -s`) that certifies the
+      [Developer Certificate of Origin 1.1](https://developercertificate.org/).
+      Only a purely mechanical update from an approved repository bot may use
+      its recorded upstream source instead.
 
 <!-- Public PR text is English first and Russian second. -->
