@@ -1068,6 +1068,39 @@ def a_gesture_longer_than_the_device_will_hold_is_refused() -> None:
     check(len(events) == 2, "and a device that gave no bound is not given an invented one")
 
 
+def every_pointer_hold_verb_is_bounded_before_pointer_down() -> None:
+    """One device limit covers every host verb that keeps a pointer down."""
+    from watch import client as client_module  # noqa: PLC0415
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    calls = (
+        ("long tap", lambda watch: watch.long_tap(10, 10, duration=2.04)),
+        ("swipe", lambda watch: watch.swipe((10, 10), (60, 80), duration=2.04, steps=2)),
+        ("drag", lambda watch: watch.drag((10, 10), (60, 80), duration=2.04, steps=2)),
+        ("gesture", lambda watch: watch.gesture([(10, 10), (60, 80)], duration=2.04)),
+    )
+    for name, call in calls:
+        clock = FakeClock()
+        device = InputLog(clock)
+        watch = Watch(device, timeout=1.0)
+        watch.capabilities = p.Capabilities(width=240, height=240,
+                                            format=p.PixelFormat.RGB888,
+                                            max_hold_ms=2000)
+        refused = False
+        real, client_module.time = client_module.time, clock
+        try:
+            call(watch)
+        except WatchError as exc:
+            refused = True
+            check("requested 2040 ms" in str(exc),
+                  f"{name} reports the unrounded request in milliseconds: {exc}")
+        finally:
+            client_module.time = real
+        check(refused, f"{name} over the device hold limit is refused")
+        check(device.events == [],
+              f"and {name} is refused before pointer down ({len(device.events)} event(s))")
+
+
 def a_gesture_that_cannot_be_timed_is_refused_before_the_finger_lands() -> None:
     """And refused *before* the `PointerDown`, which is the half that matters.
 
@@ -1228,6 +1261,7 @@ CASES = (
     a_gesture_takes_the_time_it_was_given,
     a_gesture_absorbs_its_round_trips_rather_than_adding_them,
     a_gesture_longer_than_the_device_will_hold_is_refused,
+    every_pointer_hold_verb_is_bounded_before_pointer_down,
     a_gesture_that_cannot_be_timed_is_refused_before_the_finger_lands,
     the_shipped_gesture_keeps_its_timing_on_both_panels,
     an_error_code_this_build_does_not_know_is_still_a_sentence,
