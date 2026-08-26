@@ -108,7 +108,7 @@ bool TimeService::observe(const TimeObservation& candidate)
 
         const WallTime expected = projected(observation_, candidate.observed_at);
         const std::uint64_t correction = seconds_between(expected, candidate.utc);
-        if (!has_report_ && observation_.quality == TimeQuality::Trusted &&
+        if (observation_.quality == TimeQuality::Trusted &&
             candidate.quality == TimeQuality::Trusted &&
             current_validity == Validity::Valid &&
             correction > policy_.max_silent_correction_seconds &&

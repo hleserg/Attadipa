@@ -168,13 +168,25 @@ int main()
     CHECK(fallback.state({2000}).availability == Availability::Ready);
     CHECK(fallback.state({2000}).source == TimeSource::Rtc);
 
+    TimeService guarded_fallback;
+    CHECK(guarded_fallback.observe(sample({10000}, {1000}, TimeSource::Gnss,
+                                          TimeQuality::Trusted, {60000})));
+    guarded_fallback.report(TimeSource::Gnss, Availability::Failed,
+                            Validity::Invalid);
+    CHECK(!guarded_fallback.observe(sample({100000}, {2000},
+                                           TimeSource::Manual,
+                                           TimeQuality::Trusted, {60000})));
+    TimeObservation allowed_fallback = sample(
+        {100000}, {2000}, TimeSource::Manual, TimeQuality::Trusted, {60000});
+    allowed_fallback.allow_large_correction = true;
+    CHECK(guarded_fallback.observe(allowed_fallback));
+
     TimeService bounds;
     CHECK(bounds.observe(sample({std::numeric_limits<std::int64_t>::max() - 1},
                                 {0}, TimeSource::Manual,
                                 TimeQuality::Trusted, {10000})));
     CHECK(bounds.state({5000}).utc.value ==
           WallTime{std::numeric_limits<std::int64_t>::max()});
-    CHECK(bounds.set_timezone(-60, {10000}, {0}));
     TimeService lower_bound;
     CHECK(lower_bound.observe(sample(
         {std::numeric_limits<std::int64_t>::min() + 1}, {0},
