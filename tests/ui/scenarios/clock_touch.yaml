@@ -2,8 +2,8 @@
 - action: screenshot
   name: before
 - action: tap
-  x: 205
-  y: 315
+  x: 0.5
+  y: 0.63
 - action: wait_stable
   quiet_ms: 200
   timeout: 3.0
