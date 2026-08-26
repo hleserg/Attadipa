@@ -153,5 +153,35 @@ int main()
     CHECK(!state.timezone_valid);
     CHECK(!restored.set_provisional_timezone(-841));
 
+    TimeService fallback;
+    CHECK(fallback.observe(sample({10000}, {1000}, TimeSource::Manual,
+                                  TimeQuality::Trusted, {60000})));
+    fallback.report(TimeSource::Rtc, Availability::Unreachable,
+                    Validity::Invalid);
+    CHECK(fallback.state({2000}).availability == Availability::Ready);
+    CHECK(fallback.state({2000}).source == TimeSource::Manual);
+    fallback.report(TimeSource::Manual, Availability::Failed,
+                    Validity::Invalid);
+    CHECK(fallback.state({2000}).availability == Availability::Failed);
+    CHECK(fallback.observe(sample({10001}, {2000}, TimeSource::Rtc,
+                                  TimeQuality::Provisional, {})));
+    CHECK(fallback.state({2000}).availability == Availability::Ready);
+    CHECK(fallback.state({2000}).source == TimeSource::Rtc);
+
+    TimeService bounds;
+    CHECK(bounds.observe(sample({std::numeric_limits<std::int64_t>::max() - 1},
+                                {0}, TimeSource::Manual,
+                                TimeQuality::Trusted, {10000})));
+    CHECK(bounds.state({5000}).utc.value ==
+          WallTime{std::numeric_limits<std::int64_t>::max()});
+    CHECK(bounds.set_timezone(-60, {10000}, {0}));
+    TimeService lower_bound;
+    CHECK(lower_bound.observe(sample(
+        {std::numeric_limits<std::int64_t>::min() + 1}, {0},
+        TimeSource::Manual, TimeQuality::Trusted, {10000})));
+    CHECK(lower_bound.set_timezone(-60, {10000}, {0}));
+    CHECK(lower_bound.state({0}).local.value ==
+          WallTime{std::numeric_limits<std::int64_t>::min()});
+
     return failures == 0 ? 0 : 1;
 }

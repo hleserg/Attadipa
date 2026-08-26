@@ -98,7 +98,7 @@ bool TimeService::observe(const TimeObservation& candidate)
     bool corrected = false;
     if (has_observation_) {
         const Validity current_validity = validity(observation_, candidate.observed_at);
-        if (current_validity == Validity::Valid) {
+        if (!has_report_ && current_validity == Validity::Valid) {
             if (candidate.quality < observation_.quality ||
                 (candidate.quality == observation_.quality &&
                  priority(candidate.source) < priority(observation_.source))) {
@@ -108,7 +108,7 @@ bool TimeService::observe(const TimeObservation& candidate)
 
         const WallTime expected = projected(observation_, candidate.observed_at);
         const std::uint64_t correction = seconds_between(expected, candidate.utc);
-        if (observation_.quality == TimeQuality::Trusted &&
+        if (!has_report_ && observation_.quality == TimeQuality::Trusted &&
             candidate.quality == TimeQuality::Trusted &&
             current_validity == Validity::Valid &&
             correction > policy_.max_silent_correction_seconds &&
@@ -158,7 +158,8 @@ bool TimeService::set_provisional_timezone(std::int16_t minutes_east_of_utc)
 void TimeService::report(TimeSource source, Availability availability,
                          Validity validity_value)
 {
-    if (availability == Availability::Ready) {
+    if (availability == Availability::Ready ||
+        (has_observation_ && source != observation_.source)) {
         return;
     }
     reported_source_ = source;
