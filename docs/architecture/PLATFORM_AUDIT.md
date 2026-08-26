@@ -381,7 +381,8 @@ The accepted architecture is already protocol-first:
   only on its own branch, the shipping composition does not construct them even
   there, and its NimBLE runtime and physical validation remain in progress.
 
-Everything below is therefore the target seam, not current behavior.
+The rest of this section therefore describes the target seam, not behavior the
+baseline has.
 
 Applications should continue to call `MeshService`, not `SX1262`, LoRa, BLE, or
 UART. A public generic Radio Service would either expose radio-specific details
