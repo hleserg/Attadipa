@@ -86,16 +86,17 @@ if printf '%s\n' "$PUBLISHED_STEP" | grep -Fq "steps.review.outcome != 'failure'
 else
   ok "a failed action still checks whether its verdict was published"
 fi
-for pair in "WHY_STEP:the diagnosis step" "NORUN_STEP:the did-not-run step"; do
-  var=${pair%%:*}
-  what=${pair#*:}
-  if printf '%s\n' "${!var}" | grep -Fq "steps.published.outputs.state != 'published'"; then
+check_published_guard() {
+  local block="$1" what="$2"
+  if printf '%s\n' "$block" | grep -Fq "steps.published.outputs.state != 'published'"; then
     ok "$what excludes an already-published verdict"
   else
     no "$what excludes an already-published verdict" \
        "its live workflow condition does not test publication"
   fi
-done
+}
+check_published_guard "$WHY_STEP" "the diagnosis step"
+check_published_guard "$NORUN_STEP" "the did-not-run step"
 
 for pair in "SILENT:the silent step" "NORUN:the did-not-run step"; do
   var=${pair%%:*}
