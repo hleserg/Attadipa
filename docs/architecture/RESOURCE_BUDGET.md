@@ -180,8 +180,8 @@ burden. Convenient, not planned; do the arithmetic once there is an image.
 #### The two asset pipelines, with numbers
 
 The asset rows are calculated from what the generators emit. The current flash
-firmware links them and measures 0x15d9a0 bytes in the 0x400000-byte app
-partition; 0x2a2660 bytes (66%) remain.
+firmware links them and measures 0x15d9e0 bytes in the 0x400000-byte app
+partition; 0x2a2620 bytes (66%) remain.
 
 | Asset set | Bytes | How |
 |---|---|---|

@@ -34,9 +34,11 @@ private:
   lv_obj_t *seconds_ = nullptr;
   lv_obj_t *status_ = nullptr;
   lv_obj_t *steps_ = nullptr;
+  lv_obj_t *leaf_fireflies_[4]{};
   lv_obj_t *touch_glow_halo_ = nullptr;
   lv_obj_t *touch_glow_dot_ = nullptr;
   lv_timer_t *motion_timer_ = nullptr;
+  unsigned leaf_pulse_tick_ = 0;
   unsigned touch_glow_ticks_ = 0;
   unsigned touch_sequence_ = 0;
   int touch_glow_x_q4_ = 0;

@@ -8,6 +8,9 @@
 namespace attadipa::ui {
 namespace {
 
+constexpr std::uint32_t kMotionPeriodMs = 50;
+constexpr unsigned kTouchMotionTicks = 32;
+
 lv_color_t resolved(ColorRole role, Theme theme, PixelCost pixel_cost) {
   const auto value = color(role, theme, pixel_cost);
   return value ? lv_color_hex(value->packed()) : lv_color_black();
@@ -27,12 +30,7 @@ void circle(lv_obj_t *object, int size, lv_color_t colour, lv_opa_t opacity) {
   lv_obj_set_style_bg_opa(object, opacity, LV_PART_MAIN);
 }
 
-void pulse_firefly(void *object, int32_t opacity) {
-  auto *dot = static_cast<lv_obj_t *>(object);
-  lv_obj_set_style_bg_opa(dot, static_cast<lv_opa_t>(opacity), LV_PART_MAIN);
-  lv_obj_set_style_shadow_opa(dot, static_cast<lv_opa_t>(opacity / 2),
-                              LV_PART_MAIN);
-}
+void track_transient(void *, int32_t) {}
 
 } // namespace
 
@@ -43,12 +41,17 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
     lv_timer_delete(motion_timer_);
     motion_timer_ = nullptr;
   }
+  lv_anim_delete(this, track_transient);
   if (screen_ == screen) {
     lv_obj_remove_event_cb_with_user_data(screen, touch_event, this);
   }
   screen_ = screen;
   config_ = config;
   touch_glow_ticks_ = 0;
+  leaf_pulse_tick_ = 0;
+  for (lv_obj_t *&dot : leaf_fireflies_) {
+    dot = nullptr;
+  }
   lv_obj_clean(screen);
   lv_obj_remove_style_all(screen);
   lv_obj_set_size(screen, config.width_px, config.height_px);
@@ -89,25 +92,14 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
 
     const int firefly_x[] = {13, 28, 77, 88};
     const int firefly_y[] = {77, 84, 78, 86};
-    const int duration[] = {1250, 1780, 2130, 1570};
-    const int delay[] = {0, 430, 900, 1300};
     for (unsigned i = 0; i < 4; ++i) {
-      lv_obj_t *dot = lv_obj_create(screen);
+      lv_obj_t *&dot = leaf_fireflies_[i];
+      dot = lv_obj_create(screen);
       circle(dot, large ? 5 : 4, glow, LV_OPA_20);
       lv_obj_set_pos(dot, config.width_px * firefly_x[i] / 100,
                      config.height_px * firefly_y[i] / 100);
       lv_obj_set_style_shadow_color(dot, glow, LV_PART_MAIN);
       lv_obj_set_style_shadow_width(dot, large ? 10 : 7, LV_PART_MAIN);
-      lv_anim_t pulse;
-      lv_anim_init(&pulse);
-      lv_anim_set_var(&pulse, dot);
-      lv_anim_set_exec_cb(&pulse, pulse_firefly);
-      lv_anim_set_values(&pulse, LV_OPA_20, LV_OPA_COVER);
-      lv_anim_set_duration(&pulse, duration[i]);
-      lv_anim_set_playback_duration(&pulse, duration[i]);
-      lv_anim_set_repeat_count(&pulse, LV_ANIM_REPEAT_INFINITE);
-      lv_anim_set_delay(&pulse, delay[i]);
-      lv_anim_start(&pulse);
     }
   }
 
@@ -219,8 +211,10 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
 
   built_ = true;
   update(text);
-  motion_timer_ = lv_timer_create(motion_tick, 50, this);
-  lv_timer_pause(motion_timer_);
+  motion_timer_ = lv_timer_create(motion_tick, kMotionPeriodMs, this);
+  if (config.theme != Theme::Night) {
+    lv_timer_pause(motion_timer_);
+  }
 }
 
 void ClockFace::update(const apps::ClockText &text) {
@@ -269,7 +263,14 @@ void ClockFace::touch(lv_event_t *event) {
   touch_glow_y_q4_ = point.y * 16;
   touch_glow_dx_q4_ = kDxQ4[direction];
   touch_glow_dy_q4_ = kDyQ4[direction];
-  touch_glow_ticks_ = 32;
+  touch_glow_ticks_ = kTouchMotionTicks;
+  lv_anim_t transient;
+  lv_anim_init(&transient);
+  lv_anim_set_var(&transient, this);
+  lv_anim_set_exec_cb(&transient, track_transient);
+  lv_anim_set_values(&transient, 0, 1);
+  lv_anim_set_duration(&transient, kMotionPeriodMs * kTouchMotionTicks);
+  lv_anim_start(&transient);
   lv_obj_move_foreground(touch_glow_halo_);
   lv_obj_move_foreground(touch_glow_dot_);
   lv_obj_remove_flag(touch_glow_halo_, LV_OBJ_FLAG_HIDDEN);
@@ -281,8 +282,25 @@ void ClockFace::animate() {
   if (!built_) {
     return;
   }
+  if (leaf_fireflies_[0] != nullptr) {
+    static constexpr unsigned kHalfPeriod[] = {25, 36, 43, 31};
+    static constexpr unsigned kPhase[] = {0, 9, 18, 26};
+    ++leaf_pulse_tick_;
+    for (unsigned i = 0; i < 4; ++i) {
+      const unsigned cycle = kHalfPeriod[i] * 2U;
+      const unsigned phase = (leaf_pulse_tick_ + kPhase[i]) % cycle;
+      const unsigned level = phase <= kHalfPeriod[i] ? phase : cycle - phase;
+      const lv_opa_t opacity = static_cast<lv_opa_t>(
+          LV_OPA_20 + (LV_OPA_COVER - LV_OPA_20) * level / kHalfPeriod[i]);
+      lv_obj_set_style_bg_opa(leaf_fireflies_[i], opacity, LV_PART_MAIN);
+      lv_obj_set_style_shadow_opa(leaf_fireflies_[i], opacity / 2,
+                                  LV_PART_MAIN);
+    }
+  }
   if (touch_glow_ticks_ == 0) {
-    lv_timer_pause(motion_timer_);
+    if (leaf_fireflies_[0] == nullptr) {
+      lv_timer_pause(motion_timer_);
+    }
     return;
   }
 
@@ -320,7 +338,9 @@ void ClockFace::animate() {
   if (--touch_glow_ticks_ == 0) {
     lv_obj_add_flag(touch_glow_halo_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(touch_glow_dot_, LV_OBJ_FLAG_HIDDEN);
-    lv_timer_pause(motion_timer_);
+    if (leaf_fireflies_[0] == nullptr) {
+      lv_timer_pause(motion_timer_);
+    }
   }
 }
 
