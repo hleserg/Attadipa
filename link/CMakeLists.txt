@@ -14,6 +14,7 @@
 add_library(attadipa_link
     src/frame_codec.cpp
     src/link_state.cpp
+    src/meshcore_companion.cpp
 )
 add_library(attadipa::link ALIAS attadipa_link)
 

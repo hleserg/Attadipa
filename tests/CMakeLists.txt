@@ -380,6 +380,11 @@ target_link_libraries(test_link PRIVATE attadipa_link)
 add_test(NAME link COMMAND test_link)
 set_tests_properties(link PROPERTIES LABELS transport)
 
+add_executable(test_meshcore_companion test_meshcore_companion.cpp)
+target_link_libraries(test_meshcore_companion PRIVATE attadipa_link)
+add_test(NAME meshcore_companion COMMAND test_meshcore_companion)
+set_tests_properties(meshcore_companion PROPERTIES LABELS "mesh;transport")
+
 # ---------------------------------------------------------------------------
 # The input layer, and the debug channel above it.
 #
