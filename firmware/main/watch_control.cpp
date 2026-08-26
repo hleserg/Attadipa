@@ -1,5 +1,7 @@
 #include "watch_control.h"
 
+#include "power_button_edges.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -42,10 +44,6 @@ constexpr std::uint64_t kPmuSleepPollUs = 100'000;
 constexpr std::uint64_t kDebugWakeDelayUs = 750'000;
 constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;
 constexpr std::uint8_t kAxpInterruptStatus2 = 0x49;
-constexpr std::uint8_t kAxpPowerPositiveEdge = 1U << 0;
-constexpr std::uint8_t kAxpPowerNegativeEdge = 1U << 1;
-constexpr std::uint8_t kAxpPowerEdges =
-    kAxpPowerPositiveEdge | kAxpPowerNegativeEdge;
 
 class FirmwareScreenSource final : public attadipa::debug::ScreenSource {
 public:
@@ -179,11 +177,13 @@ public:
     if (result != ESP_OK) {
       return result;
     }
-    result = write_pmu(kAxpInterruptStatus2, kAxpPowerEdges);
+    result = write_pmu(kAxpInterruptStatus2,
+                       attadipa::firmware::kAxpPowerEdges);
     if (result != ESP_OK) {
       return result;
     }
-    result = write_pmu(kAxpInterruptEnable2, enabled | kAxpPowerEdges);
+    result = write_pmu(kAxpInterruptEnable2,
+                       enabled | attadipa::firmware::kAxpPowerEdges);
     if (result != ESP_OK) {
       return result;
     }
@@ -234,13 +234,15 @@ private:
       ESP_LOGW(kTag, "read PMU while asleep: %s", esp_err_to_name(read_result));
       return false;
     }
-    const std::uint8_t edges = status & kAxpPowerEdges;
+    const std::uint8_t edges =
+        status & attadipa::firmware::kAxpPowerEdges;
     if (edges == 0) {
       return false;
     }
     const esp_err_t clear_result = write_pmu(kAxpInterruptStatus2, edges);
     if (clear_result != ESP_OK) {
       ESP_LOGW(kTag, "clear PMU power edge: %s", esp_err_to_name(clear_result));
+      return false;
     }
     return true;
   }
@@ -592,22 +594,21 @@ private:
     if (read_pmu(kAxpInterruptStatus2, status) != ESP_OK) {
       return;
     }
-    const std::uint8_t edges = status & kAxpPowerEdges;
-    const std::size_t needed =
-        ((edges & kAxpPowerNegativeEdge) != 0 ? 1U : 0U) +
-        ((edges & kAxpPowerPositiveEdge) != 0 ? 1U : 0U);
-    if (needed == 0 ||
-        input_queue_.size() + needed > attadipa::core::InputQueue::kCapacity) {
-      return;
-    }
-
-    if ((edges & kAxpPowerNegativeEdge) != 0) {
-      (void)queue_physical_button(0, true);
-    }
-    if ((edges & kAxpPowerPositiveEdge) != 0) {
-      (void)queue_physical_button(0, false);
-    }
-    (void)write_pmu(kAxpInterruptStatus2, edges);
+    esp_err_t clear_result = ESP_OK;
+    (void)attadipa::firmware::deliver_power_edges(
+        status,
+        attadipa::core::InputQueue::kCapacity - input_queue_.size(),
+        [this, &clear_result](std::uint8_t edges) {
+          clear_result = write_pmu(kAxpInterruptStatus2, edges);
+          return clear_result == ESP_OK;
+        },
+        [this](bool pressed) {
+          (void)queue_physical_button(0, pressed);
+        },
+        [&clear_result]() {
+          ESP_LOGW(kTag, "clear awake PMU power edge: %s",
+                   esp_err_to_name(clear_result));
+        });
   }
 
   void poll_physical_buttons() {

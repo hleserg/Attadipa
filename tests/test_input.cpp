@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include "attadipa/core/input.h"
+#include "power_button_edges.h"
 
 // Host tests for the input layer.
 //
@@ -221,6 +222,89 @@ void releasing_a_button_nobody_held_is_refused()
     CHECK(!s.apply(button(InputEventType::ButtonUp, 0), 2));
 }
 
+void a_button_release_cannot_cross_origins()
+{
+    InputState s;
+    CHECK(s.apply(button(InputEventType::ButtonDown, 0, InputOrigin::Remote), 2));
+    CHECK(!s.apply(button(InputEventType::ButtonDown, 0, InputOrigin::Physical), 2));
+    CHECK(!s.apply(button(InputEventType::ButtonUp, 0, InputOrigin::Physical), 2));
+    CHECK(s.button_down(0));
+    CHECK(s.apply(button(InputEventType::ButtonUp, 0, InputOrigin::Remote), 2));
+
+    CHECK(s.apply(button(InputEventType::ButtonDown, 0, InputOrigin::Physical), 2));
+    CHECK(s.apply(button(InputEventType::ButtonUp, 0, InputOrigin::Physical), 2));
+}
+
+void latched_power_edges_clear_before_delivery()
+{
+    using attadipa::firmware::PowerEdgeDelivery;
+    using attadipa::firmware::deliver_power_edges;
+    using attadipa::firmware::kAxpPowerEdges;
+    using attadipa::firmware::kAxpPowerPositiveEdge;
+
+    bool clear_called = false;
+    bool clear_failure_reported = false;
+    unsigned published = 0;
+    auto result = deliver_power_edges(
+        kAxpPowerEdges, 1,
+        [&](std::uint8_t) {
+            clear_called = true;
+            return true;
+        },
+        [&](bool) { ++published; },
+        [&] { clear_failure_reported = true; });
+    CHECK(result == PowerEdgeDelivery::Deferred);
+    CHECK(!clear_called);
+    CHECK(!clear_failure_reported);
+    CHECK(published == 0);
+
+    result = deliver_power_edges(
+        kAxpPowerEdges, 2,
+        [&](std::uint8_t edges) {
+            clear_called = true;
+            CHECK(edges == kAxpPowerEdges);
+            return false;
+        },
+        [&](bool) { ++published; },
+        [&] { clear_failure_reported = true; });
+    CHECK(result == PowerEdgeDelivery::ClearFailed);
+    CHECK(clear_called);
+    CHECK(clear_failure_reported);
+    CHECK(published == 0);
+
+    clear_failure_reported = false;
+    char order[5]{};
+    unsigned order_size = 0;
+    result = deliver_power_edges(
+        kAxpPowerEdges, 2,
+        [&](std::uint8_t) {
+            order[order_size++] = 'c';
+            return true;
+        },
+        [&](bool pressed) { order[order_size++] = pressed ? 'd' : 'u'; },
+        [&] { clear_failure_reported = true; });
+    CHECK(result == PowerEdgeDelivery::Delivered);
+    CHECK(!clear_failure_reported);
+    CHECK(order_size == 3);
+    CHECK(order[0] == 'c');
+    CHECK(order[1] == 'd');
+    CHECK(order[2] == 'u');
+
+    result = deliver_power_edges(
+        kAxpPowerPositiveEdge, 1,
+        [&](std::uint8_t) {
+            order[order_size++] = 'c';
+            return true;
+        },
+        [&](bool pressed) { order[order_size++] = pressed ? 'd' : 'u'; },
+        [&] { clear_failure_reported = true; });
+    CHECK(result == PowerEdgeDelivery::Delivered);
+    CHECK(!clear_failure_reported);
+    CHECK(order_size == 5);
+    CHECK(order[3] == 'c');
+    CHECK(order[4] == 'u');
+}
+
 // --- the pointer ----------------------------------------------------------
 
 void a_tap_is_down_then_up()
@@ -345,6 +429,8 @@ int main()
     a_button_past_the_profile_is_refused();
     a_repeated_press_without_a_release_is_refused();
     releasing_a_button_nobody_held_is_refused();
+    a_button_release_cannot_cross_origins();
+    latched_power_edges_clear_before_delivery();
 
     a_tap_is_down_then_up();
     a_swipe_is_down_moves_up_and_the_moves_track();

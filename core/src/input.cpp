@@ -75,6 +75,9 @@ bool InputState::apply(const InputEvent& event, std::uint8_t button_count)
         if (!button_held_[event.button]) {
             return false;
         }
+        if (button_origin_[event.button] != event.origin) {
+            return false;
+        }
         button_held_[event.button] = false;
         return true;
 

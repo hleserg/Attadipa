@@ -450,18 +450,9 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
         }
     }
 
-    // The remote may only lift what the remote is holding. `InputOrigin` is
-    // the mechanism the disconnect story rests on -- "never lifts a finger a
-    // person is holding" -- and it was enforced on disconnect but not here, so
-    // a stray injected release could still take a physical hold with it.
-    // `core::InputState::apply` is deliberately origin-agnostic (it serves the
-    // physical path too), so the ownership rule belongs on this side of it.
-    if (event.type == core::InputEventType::ButtonUp && state_.button_down(event.button) &&
-        state_.button_origin(event.button) != core::InputOrigin::Remote) {
-        ++stats_.events_refused;
-        send_error(req_id, ErrorCode::BadInput, emit, ctx);
-        return;
-    }
+    // Button ownership is enforced by `InputState` for every producer. Pointer
+    // ownership remains here because physical touch separately remembers
+    // whether its own down was accepted before it can send a move or release.
     if ((event.type == core::InputEventType::PointerUp ||
          event.type == core::InputEventType::PointerMove) &&
         state_.pointer_down() && state_.pointer_origin() != core::InputOrigin::Remote) {
