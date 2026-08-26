@@ -595,7 +595,7 @@ private:
       return;
     }
     esp_err_t clear_result = ESP_OK;
-    const auto delivery = attadipa::firmware::deliver_power_edges(
+    (void)attadipa::firmware::deliver_power_edges(
         status,
         attadipa::core::InputQueue::kCapacity - input_queue_.size(),
         [this, &clear_result](std::uint8_t edges) {
@@ -604,11 +604,11 @@ private:
         },
         [this](bool pressed) {
           (void)queue_physical_button(0, pressed);
+        },
+        [&clear_result]() {
+          ESP_LOGW(kTag, "clear awake PMU power edge: %s",
+                   esp_err_to_name(clear_result));
         });
-    if (delivery == attadipa::firmware::PowerEdgeDelivery::ClearFailed) {
-      ESP_LOGW(kTag, "clear awake PMU power edge: %s",
-               esp_err_to_name(clear_result));
-    }
   }
 
   void poll_physical_buttons() {

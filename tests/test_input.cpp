@@ -243,6 +243,7 @@ void latched_power_edges_clear_before_delivery()
     using attadipa::firmware::kAxpPowerPositiveEdge;
 
     bool clear_called = false;
+    bool clear_failure_reported = false;
     unsigned published = 0;
     auto result = deliver_power_edges(
         kAxpPowerEdges, 1,
@@ -250,9 +251,11 @@ void latched_power_edges_clear_before_delivery()
             clear_called = true;
             return true;
         },
-        [&](bool) { ++published; });
+        [&](bool) { ++published; },
+        [&] { clear_failure_reported = true; });
     CHECK(result == PowerEdgeDelivery::Deferred);
     CHECK(!clear_called);
+    CHECK(!clear_failure_reported);
     CHECK(published == 0);
 
     result = deliver_power_edges(
@@ -262,11 +265,14 @@ void latched_power_edges_clear_before_delivery()
             CHECK(edges == kAxpPowerEdges);
             return false;
         },
-        [&](bool) { ++published; });
+        [&](bool) { ++published; },
+        [&] { clear_failure_reported = true; });
     CHECK(result == PowerEdgeDelivery::ClearFailed);
     CHECK(clear_called);
+    CHECK(clear_failure_reported);
     CHECK(published == 0);
 
+    clear_failure_reported = false;
     char order[5]{};
     unsigned order_size = 0;
     result = deliver_power_edges(
@@ -275,8 +281,10 @@ void latched_power_edges_clear_before_delivery()
             order[order_size++] = 'c';
             return true;
         },
-        [&](bool pressed) { order[order_size++] = pressed ? 'd' : 'u'; });
+        [&](bool pressed) { order[order_size++] = pressed ? 'd' : 'u'; },
+        [&] { clear_failure_reported = true; });
     CHECK(result == PowerEdgeDelivery::Delivered);
+    CHECK(!clear_failure_reported);
     CHECK(order_size == 3);
     CHECK(order[0] == 'c');
     CHECK(order[1] == 'd');
@@ -288,8 +296,10 @@ void latched_power_edges_clear_before_delivery()
             order[order_size++] = 'c';
             return true;
         },
-        [&](bool pressed) { order[order_size++] = pressed ? 'd' : 'u'; });
+        [&](bool pressed) { order[order_size++] = pressed ? 'd' : 'u'; },
+        [&] { clear_failure_reported = true; });
     CHECK(result == PowerEdgeDelivery::Delivered);
+    CHECK(!clear_failure_reported);
     CHECK(order_size == 5);
     CHECK(order[3] == 'c');
     CHECK(order[4] == 'u');

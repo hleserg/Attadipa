@@ -17,10 +17,11 @@ enum class PowerEdgeDelivery : std::uint8_t {
   Delivered,
 };
 
-template <typename Clear, typename Publish>
+template <typename Clear, typename Publish, typename ReportClearFailure>
 PowerEdgeDelivery deliver_power_edges(std::uint8_t status,
                                       std::size_t free_slots, Clear clear,
-                                      Publish publish) {
+                                      Publish publish,
+                                      ReportClearFailure report_clear_failure) {
   const std::uint8_t edges = status & kAxpPowerEdges;
   const std::size_t needed =
       ((edges & kAxpPowerNegativeEdge) != 0 ? 1U : 0U) +
@@ -32,6 +33,7 @@ PowerEdgeDelivery deliver_power_edges(std::uint8_t status,
     return PowerEdgeDelivery::Deferred;
   }
   if (!clear(edges)) {
+    (void)report_clear_failure();
     return PowerEdgeDelivery::ClearFailed;
   }
   if ((edges & kAxpPowerNegativeEdge) != 0) {
