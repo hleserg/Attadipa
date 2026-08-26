@@ -1,3 +1,4 @@
+// SPDX-FileCopyrightText: 2026 Sergey Khlebnikov and Attadipa contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "attadipa/platform/board_profile.h"

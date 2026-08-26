@@ -106,6 +106,26 @@ Contributors retain copyright and authorship in their work. Submit only work you
 have the right to contribute and that is compatible with the project's license.
 No separate Contributor License Agreement is required.
 
+### Developer Certificate of Origin
+
+Every contribution, including substantive commits authored by a repository
+bot, must carry a human `Signed-off-by` trailer in each commit. Only a purely
+mechanical update from an approved repository bot may use its recorded upstream
+source instead. The trailer certifies the unmodified
+[Developer Certificate of Origin 1.1](DCO):
+
+```text
+Signed-off-by: Your Name <your-email-address@example.com>
+```
+
+Git can add it automatically with `git commit -s`. For the latest commit, a
+missing trailer can be added with `git commit --amend --signoff`. The sign-off
+confirms that you have the right to submit the contribution under its stated
+open-source license. It does not assign your copyright to Attadipa and is not a
+CLA. A bot cannot make a personal certification; a human must review and sign
+off substantive bot-authored work. The bot identity and the upstream source of
+a mechanical update must remain visible in the public contribution record.
+
 ## Лицензирование вклада
 
 Отправляя вклад для включения в Attadipa, вы соглашаетесь с тем, что он может
@@ -113,6 +133,26 @@ No separate Contributor License Agreement is required.
 сохраняет авторские права и авторство на свой вклад. Отправляйте только
 материалы, которые вы вправе передать проекту и лицензия которых совместима с
 лицензией проекта. Отдельное Contributor License Agreement не требуется.
+
+### Developer Certificate of Origin
+
+Каждый вклад, включая содержательные коммиты, созданные ботом репозитория,
+должен содержать человеческую строку `Signed-off-by` в каждом коммите. Только
+полностью механическое обновление от одобренного бота может использовать
+зафиксированный источник upstream. Этой строкой автор подтверждает неизменённый
+[Developer Certificate of Origin 1.1](DCO):
+
+```text
+Signed-off-by: Ваше Имя <ваш-email@example.com>
+```
+
+Git добавляет её командой `git commit -s`. В последний коммит пропущенную строку
+можно добавить командой `git commit --amend --signoff`. Подтверждение означает,
+что вы вправе передать вклад под указанной open-source лицензией. Оно не
+передаёт ваши авторские права Attadipa и не является CLA. Бот не может сделать
+личное подтверждение; содержательный вклад бота должен проверить и подписать
+человек. Идентификатор бота и источник механического обновления должны
+оставаться видны в публичной истории вклада.
 
 ## How the agent queue works
 
