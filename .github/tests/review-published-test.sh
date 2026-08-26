@@ -14,6 +14,14 @@ say 'a run that did not reach the model stays separate' "$(run no success '[]' '
 say 'a bad start time holds rather than guessing' "$(run yes success '[]' '' '')" unknown
 say 'a reviewer comment created this run is publication' "$(run yes success "[$(comment 'claude[bot]' "$NEW" "$NEW" review)]" '' "$START")" published
 say 'editing an old review comment is publication' "$(run yes success "[$(comment 'claude[bot]' "$OLD" "$NEW" review)]" ai-review:pass "$START")" published
+# `anthropics/claude-code-action` can publish its completed answer and only
+# afterwards fail the step because the session exceeded `--max-turns`.  The
+# paid-for verdict is still publication; the action's post-hoc outcome is not
+# evidence that the comment vanished.
+say 'a completed review survives a post-publication step failure' \
+    "$(run yes failure "[$(comment 'claude[bot]' "$NEW" "$NEW" review)]" ai-review:pass "$START")" published
+say 'a failed step with no current reviewer comment is still silent' \
+    "$(run yes failure '[]' ai-review:pass "$START")" silent
 say 'the marker permits the configured token author' "$(run yes success "[$(comment 'attadipa-agent[bot]' "$NEW" "$NEW" '<!-- attadipa-ai-review --> review')]" '' "$START")" published
 # The other half of that sentence, and the half that was missing. This
 # repository is public: if the marker admits any author, a drive-by comment

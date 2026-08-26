@@ -209,7 +209,7 @@ jobs:
 
       - name: Establish whether the review was published
         id: published
-        if: always() && steps.auth.outputs.ok == 'true' && steps.happened.outputs.ran == 'yes' && steps.review.outcome != 'failure'
+        if: always() && steps.auth.outputs.ok == 'true' && steps.happened.outputs.ran == 'yes'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -227,9 +227,12 @@ jobs:
             *) state=unknown ;;
           esac
           echo "state=$state" >> "$GITHUB_OUTPUT"
+          if [ "$state" = published ] && [ "$OUTCOME" = failure ]; then
+            echo "::warning::The review action reported failure after publishing its verdict; the published verdict remains authoritative."
+          fi
 
       - name: Say that the review published nothing
-        if: always() && steps.published.outputs.state == 'silent'
+        if: always() && steps.published.outputs.state == 'silent' && steps.review.outcome != 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -318,7 +321,10 @@ jobs:
 
       - name: Work out why the review did not happen
         id: why
-        if: always() && steps.auth.outputs.ok == 'true' && (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no')
+        if: >-
+          always() && steps.auth.outputs.ok == 'true' &&
+          (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no') &&
+          steps.published.outputs.state != 'published'
         env:
           EXEC_FILE: ${{ steps.review.outputs.execution_file }}
         run: |
@@ -367,7 +373,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Say that the review did not happen
-        if: always() && steps.auth.outputs.ok == 'true' && (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no')
+        if: >-
+          always() && steps.auth.outputs.ok == 'true' &&
+          (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no') &&
+          steps.published.outputs.state != 'published'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
