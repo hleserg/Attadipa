@@ -62,6 +62,12 @@ add_executable(test_clock test_clock.cpp)
 target_link_libraries(test_clock PRIVATE attadipa_apps)
 add_test(NAME clock COMMAND test_clock)
 
+add_executable(test_time_service test_time_service.cpp)
+target_include_directories(test_time_service PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
+target_link_libraries(test_time_service PRIVATE attadipa_core)
+add_test(NAME time_service COMMAND test_time_service)
+set_tests_properties(time_service PROPERTIES LABELS time)
+
 # The other boundary, and it points the opposite way. An application must not
 # learn which chip answered; the core must not learn which language will be
 # read. Same mechanism, same pair of tests: the fixture builds against apps and

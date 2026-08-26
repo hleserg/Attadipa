@@ -1,5 +1,7 @@
 #include "waveshare_board.h"
 
+#include "pcf85063_time.h"
+
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
@@ -13,10 +15,12 @@
 #include "esp_lcd_touch_ft5x06.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "esp_timer.h"
 #include "lvgl.h"
 #include "sdkconfig.h"
 
 #include "attadipa/apps/clock.h"
+#include "attadipa/core/time_service.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/clock_face.h"
 
@@ -82,6 +86,7 @@ struct BoardState {
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
   attadipa::ui::ClockFace clock_face;
+  attadipa::core::TimeService time_service;
 };
 
 BoardState state;
@@ -144,38 +149,8 @@ esp_err_t initialize_pmu() {
   return ESP_OK;
 }
 
-struct RtcDateTime {
-  unsigned year;
-  unsigned month;
-  unsigned day;
-  unsigned hour;
-  unsigned minute;
-  unsigned second;
-};
-
-constexpr bool valid_bcd(std::uint8_t value) {
-  return (value & 0x0F) <= 9 && (value >> 4) <= 9;
-}
-
-constexpr std::uint8_t from_bcd(std::uint8_t value) {
-  return static_cast<std::uint8_t>((value >> 4) * 10 + (value & 0x0F));
-}
-
-constexpr unsigned days_in_month(unsigned year, unsigned month) {
-  constexpr std::uint8_t kDays[] = {31, 28, 31, 30, 31, 30,
-                                    31, 31, 30, 31, 30, 31};
-  if (month == 0 || month > 12) {
-    return 0;
-  }
-  const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-  return month == 2 && leap ? 29 : kDays[month - 1];
-}
-
-static_assert(valid_bcd(0x59) && !valid_bcd(0x5A) && from_bcd(0x59) == 59 &&
-              days_in_month(2024, 2) == 29 && days_in_month(2023, 2) == 28 &&
-              days_in_month(2024, 4) == 30 && days_in_month(2024, 0) == 0);
-
-esp_err_t read_rtc(RtcDateTime *time) {
+esp_err_t read_rtc(attadipa::firmware::RtcDateTime *time,
+                   attadipa::firmware::RtcDecodeStatus *status) {
   constexpr std::uint8_t kSecondsRegister = 0x04;
   std::uint8_t raw[7]{};
   esp_err_t err = i2c_master_transmit_receive(state.rtc, &kSecondsRegister, 1,
@@ -183,60 +158,52 @@ esp_err_t read_rtc(RtcDateTime *time) {
   if (err != ESP_OK) {
     return err;
   }
-
-  const std::uint8_t values[] = {static_cast<std::uint8_t>(raw[0] & 0x7F),
-                                 static_cast<std::uint8_t>(raw[1] & 0x7F),
-                                 static_cast<std::uint8_t>(raw[2] & 0x3F),
-                                 static_cast<std::uint8_t>(raw[3] & 0x3F),
-                                 static_cast<std::uint8_t>(raw[5] & 0x1F),
-                                 raw[6]};
-  for (const std::uint8_t value : values) {
-    if (!valid_bcd(value)) {
-      return ESP_ERR_INVALID_RESPONSE;
-    }
-  }
-
-  *time = {2000U + from_bcd(values[5]), from_bcd(values[4]),
-           from_bcd(values[3]),         from_bcd(values[2]),
-           from_bcd(values[1]),         from_bcd(values[0])};
-  if ((raw[0] & 0x80) != 0 || time->second > 59 || time->minute > 59 ||
-      time->hour > 23 || time->day == 0 ||
-      time->day > days_in_month(time->year, time->month) ||
-      (raw[4] & 0x07) > 6) {
-    return ESP_ERR_INVALID_RESPONSE;
-  }
+  *status = attadipa::firmware::decode_pcf85063(raw, *time);
   return ESP_OK;
 }
 
 attadipa::apps::ClockState read_clock_state() {
   attadipa::apps::ClockState clock;
   clock.locale = attadipa::l10n::Locale::En;
-  RtcDateTime rtc{};
-  const esp_err_t err = read_rtc(&rtc);
+  const attadipa::core::MonotonicTime now{
+      static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
+  attadipa::firmware::RtcDateTime rtc{};
+  attadipa::firmware::RtcDecodeStatus status{};
+  const esp_err_t err = read_rtc(&rtc, &status);
   if (err != ESP_OK) {
-    clock.availability = err == ESP_ERR_INVALID_RESPONSE
-                             ? attadipa::core::Availability::Unprovisioned
-                             : attadipa::core::Availability::Failed;
-    clock.time.validity = err == ESP_ERR_INVALID_RESPONSE
-                              ? attadipa::core::Validity::Unknown
-                              : attadipa::core::Validity::Invalid;
-    return clock;
+    state.time_service.report(attadipa::core::TimeSource::Rtc,
+                              attadipa::core::Availability::Unreachable,
+                              attadipa::core::Validity::Invalid);
+  } else if (status == attadipa::firmware::RtcDecodeStatus::VoltageLow) {
+    state.time_service.report(attadipa::core::TimeSource::Rtc,
+                              attadipa::core::Availability::Unprovisioned,
+                              attadipa::core::Validity::Unknown);
+  } else if (status == attadipa::firmware::RtcDecodeStatus::InvalidData) {
+    state.time_service.report(attadipa::core::TimeSource::Rtc,
+                              attadipa::core::Availability::Failed,
+                              attadipa::core::Validity::Invalid);
+  } else {
+    attadipa::apps::CivilTime civil{static_cast<std::int64_t>(rtc.year),
+                                    rtc.month,
+                                    rtc.day,
+                                    0,
+                                    rtc.hour,
+                                    rtc.minute,
+                                    rtc.second};
+    attadipa::core::WallTime utc;
+    if (!attadipa::apps::wall_time_from_civil(civil, utc)) {
+      state.time_service.report(attadipa::core::TimeSource::Rtc,
+                                attadipa::core::Availability::Failed,
+                                attadipa::core::Validity::Invalid);
+    } else {
+      (void)state.time_service.observe(
+          {utc, now, {}, 0, attadipa::core::TimeSource::Rtc,
+           attadipa::core::TimeQuality::Provisional, false});
+    }
   }
-
-  attadipa::apps::CivilTime civil{static_cast<std::int64_t>(rtc.year),
-                                  rtc.month,
-                                  rtc.day,
-                                  0,
-                                  rtc.hour,
-                                  rtc.minute,
-                                  rtc.second};
-  if (!attadipa::apps::wall_time_from_civil(civil, clock.time.value)) {
-    clock.availability = attadipa::core::Availability::Failed;
-    clock.time.validity = attadipa::core::Validity::Invalid;
-    return clock;
-  }
-  clock.availability = attadipa::core::Availability::Ready;
-  clock.time.validity = attadipa::core::Validity::Valid;
+  const attadipa::core::TimeState time = state.time_service.state(now);
+  clock.availability = time.availability;
+  clock.time = time.local;
   return clock;
 }
 
