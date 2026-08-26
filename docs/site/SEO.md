@@ -76,7 +76,7 @@ making.
 | no `robots` directive | `index, follow, max-image-preview:large, max-snippet:-1` — the image directive is what allows a large thumbnail in results |
 | `og:` had type, title, description, image, url | added `og:site_name`, `og:locale`, `og:locale:alternate`, `og:image:type`, `og:image:width`, `og:image:height`, `og:image:alt` |
 | `twitter:card` alone | added `twitter:title`, `twitter:description`, `twitter:image`, `twitter:image:alt`. Without an image URL the `summary_large_image` card had nothing to render and silently degraded |
-| no structured data | a JSON-LD `@graph`: `WebSite` + `Person` + `SoftwareSourceCode`, with `targetProduct` carrying the feature list, `license` pointing at MIT and `isAccessibleForFree: true` |
+| no structured data | a JSON-LD `@graph`: `WebSite` + `Person` + `SoftwareSourceCode`, with `targetProduct` carrying the feature list, `license` pointing at `GPL-3.0-or-later` and `isAccessibleForFree: true` |
 
 The JSON-LD deliberately uses **`SoftwareSourceCode`** as the primary type rather
 than `SoftwareApplication`. The thing at this URL is a source repository, not an
@@ -305,7 +305,7 @@ The opening sentence is what GitHub's own search indexes and what Google shows
 under the repository result. It read *"A wearable firmware platform for ESP32-S3
 smartwatches — mesh messaging, offline navigation, and a UI…"*, which contains
 almost none of the terms in §1. It now names LoRa, MeshCore, GNSS, LVGL,
-FreeRTOS, ESP-IDF, MIT and **both target boards by their full product names** —
+FreeRTOS, ESP-IDF, `GPL-3.0-or-later` and **both target boards by their full product names** —
 which is what someone who owns one of those boards will actually type.
 
 The second paragraph explains the capability registry, because the two-boards-one-codebase

@@ -2191,7 +2191,8 @@ Where an upstream bug is relevant, turn the lesson into:
 - a bound;
 - a failure mode.
 
-Do not copy GPL/AGPL code into an MIT repository.
+Do not copy code into this repository unless its licence is compatible with
+`GPL-3.0-or-later` and its obligations are recorded.
 
 License analysis must precede dependency/copy decisions.
 

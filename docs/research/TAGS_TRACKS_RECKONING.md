@@ -150,7 +150,8 @@ under another company's SIG-assigned UUID while failing the signature check.
 
 ### 1.5 Licences, checked through the GitHub API rather than README badges
 
-Attadipa is MIT and `CLAUDE.md` says nothing incompatible enters the repository.
+Attadipa is `GPL-3.0-or-later`, and nothing incompatible with that licence enters
+the repository.
 
 | Project | Licence | Verdict |
 |---|---|---|

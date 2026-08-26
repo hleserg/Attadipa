@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "attadipa/platform/board_profile.h"
 
 #include <cstring>

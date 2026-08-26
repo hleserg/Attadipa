@@ -799,7 +799,9 @@ should on the strength of this section: there is nothing yet for it to change.
 ## References
 
 - Upstream: `meshcore-dev/MeshCore`, MIT, pinned `d92964352441e53b93e8667b802e04f6e072b39e`
-- Upstream, read-only: `meshtastic/firmware`, **GPL-3.0**, `ac330e6a` — §8, evidence only, never a source of code
+- Upstream: `meshtastic/firmware`, **GPL-3.0**, `ac330e6a` — licence-compatible,
+  but evidence only in §8 because [OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)
+  rejects Meshtastic integration
 - [`REUSE_LEDGER.md`](REUSE_LEDGER.md) — the pin and the monitored deltas
 - [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — M10–M14 from the first reading; **M20–M23** from this one, M23 being the one that scopes the follow-up. Filed as M15–M18 and renumbered on merge, because the frame-capacity research took those on `main` in the same week
 - [`VERIFIED_FACTS.md`](VERIFIED_FACTS.md) — what is now traced to executed evidence

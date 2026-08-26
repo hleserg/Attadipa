@@ -473,11 +473,11 @@ hardware other people have.
    case those axes exist for, and it must never be presented as the wearer's
    own fix.
 4. **Nothing here relaxes the licence rule.** MeshCore is MIT and Meshtastic's
-   firmware is GPL-3.0 — *read it, learn from it, copy nothing*
-   ([REUSE_LEDGER](REUSE_LEDGER.md)). Whether Meshtastic's **protocol
-   definitions** carry the same licence as the firmware is `UNKNOWN` and is the
-   gate on a Meshtastic client. It is verified from the files or the client is
-   not written.
+   firmware and protocol definitions are GPL-3.0. Both are licence-compatible
+   with Attadipa's current `GPL-3.0-or-later` terms, but
+   [OD-12](#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)
+   separately rejects Meshtastic as a product dependency. No Meshtastic code
+   is imported.
 5. **Nothing here relaxes the honesty rule either.** MeshCore's own security is
    an open upstream issue; a message that crossed a vanilla node gets no lock
    icon and no "encrypted" label.
@@ -742,6 +742,11 @@ than a feature). T-034's asset pipeline is amended before it starts.
 > day. The decision is unaffected — see the annotation at the end of this
 > section. Owner decisions are not rewritten to keep their reasoning tidy.
 
+> **A second premise expired on 2026-08-26.** Attadipa migrated from MIT to
+> `GPL-3.0-or-later`, so GPL-3.0 code is no longer blocked by the project's
+> licence. The owner decision not to support Meshtastic remains in force; the
+> rationale below is retained as the historical record of the 2026-08-22 choice.
+
 **Decided:** 2026-08-22, on [#41](https://github.com/hleserg/Attadipa/issues/41).
 
 **What he decided:** he agreed and accepted the recommendation in that issue —
@@ -753,11 +758,11 @@ companion option *instead of MeshCore, or alongside it, whichever turned out to
 be workable*. T-073 checked the licence first, as that task required, and found
 the blocker:
 `meshtastic/protobufs` is a separate repository with its own `LICENSE`, and that
-file is **GPL-3.0** with no linking exception. Generating code from those
-`.proto` files and linking it into the firmware would make Attadipa's firmware a
-derivative work under GPL-3.0, and Attadipa is MIT. The reuse ledger's rule —
-read it, learn from it, copy nothing — applies to protocol definitions exactly
-as it applies to C++.
+file is **GPL-3.0** with no linking exception. At the time, generating code from
+those `.proto` files and linking it into the firmware would have made Attadipa's
+then-MIT firmware a derivative work under GPL-3.0. The reuse-ledger policy at
+the time prohibited copying protocol definitions just as it prohibited copying
+C++.
 
 Four options were put to the owner: a real clean-room from published
 documentation only; shipping the provider as a separately distributed GPL-3.0
@@ -978,10 +983,10 @@ the owner named no country.
    owner who has not yet replied.
 2. **The `Unknown`-blocks-transmit fail-safe is unchanged, and is not open for
    reinterpretation by a future agent reading this record loosely.** Any
-   firmware built from this repository — the owner's or anyone else's, since it
-   is MIT — still refuses to transmit until an operator has explicitly chosen a
-   `RegulatoryProfile`. That protects users this decision was never about, not
-   only the owner.
+   firmware built from this repository — the owner's or anyone else's, under
+   `GPL-3.0-or-later` — still refuses to transmit until an operator has
+   explicitly chosen a `RegulatoryProfile`. That protects users this decision
+   was never about, not only the owner.
 3. **Choosing and validating the specific profile for his own device is the
    owner's task, done through the settings mechanism ADR-0006 already
    specifies** — the same schema, the same typed bounds, the same three
