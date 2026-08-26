@@ -36,6 +36,15 @@ int main()
           attadipa::firmware::RtcDecodeStatus::Valid);
     CHECK(rtc.year == 2026 && rtc.month == 8 && rtc.day == 25);
     CHECK(rtc.hour == 12 && rtc.minute == 34 && rtc.second == 56);
+    CHECK(rtc.weekday == 2);
+    std::uint8_t encoded_rtc[7]{};
+    CHECK(attadipa::firmware::encode_pcf85063(rtc, encoded_rtc));
+    for (unsigned i = 0; i < 7; ++i) {
+        CHECK(encoded_rtc[i] == raw_rtc[i]);
+    }
+    rtc.year = 2100;
+    CHECK(!attadipa::firmware::encode_pcf85063(rtc, encoded_rtc));
+    rtc.year = 2026;
     raw_rtc[0] |= 0x80;
     CHECK(attadipa::firmware::decode_pcf85063(raw_rtc, rtc) ==
           attadipa::firmware::RtcDecodeStatus::VoltageLow);

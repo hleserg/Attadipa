@@ -88,15 +88,16 @@ MSG_INPUT_EVENT = bytes.fromhex(
 OPCODE_VALUES = {
     "HELLO": 0x0001, "CAPABILITIES": 0x0002, "SCREEN_REQUEST": 0x0010,
     "INPUT_EVENT": 0x0020, "INPUT_RESET": 0x0021, "WAIT_STABLE": 0x0030,
+    "TIME_SYNC": 0x0040,
     "HELLO_OK": 0x8001, "CAPABILITIES_OK": 0x8002, "SCREEN_INFO": 0x8010,
     "SCREEN_DATA": 0x8011, "SCREEN_END": 0x8012, "INPUT_OK": 0x8020,
-    "STABLE_OK": 0x8030, "ERROR": 0x80FF,
+    "STABLE_OK": 0x8030, "TIME_SYNC_OK": 0x8040, "ERROR": 0x80FF,
 }
 ERROR_VALUES = {
     "NONE": 0, "UNKNOWN_OPCODE": 1, "BAD_BODY": 2, "UNSUPPORTED": 3,
     "BAD_INPUT": 4, "TOO_MANY_TOUCHES": 5, "NO_SCREEN": 6, "BUSY": 7,
     "RATE_LIMITED": 8, "VERSION_MISMATCH": 9, "QUEUE_FULL": 10,
-    "CAPTURE_FAILED": 11, "SCREEN_GEOMETRY": 12,
+    "CAPTURE_FAILED": 11, "SCREEN_GEOMETRY": 12, "OPERATION_FAILED": 13,
 }
 
 
@@ -264,6 +265,12 @@ def bodies_round_trip() -> None:
 
     event = p.input_event_encode(p.EventType.POINTER_MOVE, x=-12, y=1000, at_ms=123456)
     check(len(event) == p.INPUT_EVENT_BYTES, "an input event is a fixed size")
+
+    sync = p.time_sync_encode(1787687654, 300, 86400000,
+                              allow_large_correction=True)
+    check(sync == bytes.fromhex("e6f28d6a000000002c01005c260501"),
+          "TimeSync matches the fixed C++ byte vector")
+    check(len(sync) == p.TIME_SYNC_BYTES, "a TimeSync body is a fixed size")
 
 
 # --- pixels ----------------------------------------------------------------
@@ -631,6 +638,27 @@ class ScriptedDevice:
 
 def _reply_to(envelope, op: "p.Op", body: bytes = b"") -> bytes:
     return p.envelope_encode(p.Envelope(op=op, req_id=envelope.req_id, body=body))
+
+
+def a_time_sync_is_validated_and_not_retried() -> None:
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    device = ScriptedDevice(
+        lambda e: [_reply_to(e, p.Op.TIME_SYNC_OK)] if e.op is p.Op.TIME_SYNC else [])
+    watch = Watch(device, timeout=1.0)
+    watch.sync_time(1787687654, 300, 86400, allow_large_correction=True)
+    check(device.asked == [(p.Op.TIME_SYNC,
+                            bytes.fromhex("e6f28d6a000000002c01005c260501"))],
+          "one synchronization writes exactly one fixed body")
+
+    silent_device = ScriptedDevice(lambda e: [])
+    silent = Watch(silent_device, timeout=0.0)
+    check_raises(WatchError, "a lost time-sync acknowledgement is reported",
+                 lambda: silent.sync_time(1787687654, 300, 86400))
+    check(len(silent_device.asked) == 1,
+          "and the non-idempotent RTC write is not retried")
+    check_raises(WatchError, "an impossible timezone offset is refused before the wire",
+                 lambda: watch.sync_time(1787687654, 900, 86400))
 
 
 def a_stability_wait_actually_waits() -> None:
@@ -1253,6 +1281,7 @@ CASES = (
     a_scenario_that_runs_nothing_is_not_a_pass,
     an_unknown_wire_value_is_reported_not_raised,
     every_error_code_has_a_human_sentence,
+    a_time_sync_is_validated_and_not_retried,
     a_stability_wait_actually_waits,
     a_stability_wait_that_never_settles_says_so,
     a_finished_screenshot_blacklists_nothing,

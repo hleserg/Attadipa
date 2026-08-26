@@ -166,6 +166,14 @@ struct BridgeLimits {
     std::uint16_t max_events_per_s = 500;
 };
 
+enum class TimeSinkResult : std::uint8_t { Accepted, Rejected, Failed };
+
+class TimeSink {
+public:
+    virtual ~TimeSink() = default;
+    virtual TimeSinkResult synchronize(const TimeSyncBody& request) = 0;
+};
+
 class Bridge {
 public:
     // Where responses go. A raw callback rather than std::function: this
@@ -174,7 +182,8 @@ public:
     using Emit = void (*)(void* ctx, const std::uint8_t* payload, std::size_t length);
 
     Bridge(core::InputQueue& queue, core::InputState& state, ScreenSource& source,
-           std::uint8_t* frame_buffer, std::size_t frame_capacity, BridgeLimits limits = BridgeLimits{});
+           std::uint8_t* frame_buffer, std::size_t frame_capacity,
+           TimeSink* time_sink = nullptr, BridgeLimits limits = BridgeLimits{});
 
     // Handles one de-framed message. Every request produces at least one
     // response, including a typed error -- ADR-0005 section 4: never ignored.
@@ -241,6 +250,7 @@ private:
     core::InputQueue& queue_;
     core::InputState& state_;
     ScreenSource&     source_;
+    TimeSink*         time_sink_ = nullptr;
 
     std::uint8_t* frame_buffer_   = nullptr;
     std::size_t   frame_capacity_ = 0;

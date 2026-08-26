@@ -20,8 +20,10 @@ void put_u32(std::uint8_t* p, std::uint32_t v)
 }  // namespace
 
 Bridge::Bridge(core::InputQueue& queue, core::InputState& state, ScreenSource& source,
-               std::uint8_t* frame_buffer, std::size_t frame_capacity, BridgeLimits limits)
-    : queue_(queue), state_(state), source_(source), frame_buffer_(frame_buffer),
+               std::uint8_t* frame_buffer, std::size_t frame_capacity,
+               TimeSink* time_sink, BridgeLimits limits)
+    : queue_(queue), state_(state), source_(source), time_sink_(time_sink),
+      frame_buffer_(frame_buffer),
       frame_capacity_(frame_capacity), limits_(limits)
 {
 }
@@ -149,6 +151,31 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         const bool         queued = queue_.size() != 0;
         const std::uint8_t ready  = (!queued && source_.stable_since(quiet_ms)) ? 1u : 0u;
         send(reply, &ready, 1, emit, ctx);
+        return;
+    }
+    case Opcode::TimeSync: {
+        if (time_sink_ == nullptr) {
+            send_error(envelope.req_id, ErrorCode::Unsupported, emit, ctx);
+            return;
+        }
+        TimeSyncBody request;
+        if (!decode_time_sync(body, envelope.body_len, request)) {
+            send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
+            return;
+        }
+        const TimeSinkResult result = time_sink_->synchronize(request);
+        if (result != TimeSinkResult::Accepted) {
+            send_error(envelope.req_id,
+                       result == TimeSinkResult::Rejected
+                           ? ErrorCode::BadInput
+                           : ErrorCode::OperationFailed,
+                       emit, ctx);
+            return;
+        }
+        Envelope reply;
+        reply.req_id = envelope.req_id;
+        reply.op = Opcode::TimeSyncOk;
+        send(reply, nullptr, 0, emit, ctx);
         return;
     }
     default:

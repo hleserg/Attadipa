@@ -166,6 +166,7 @@ class Op(IntEnum):
     INPUT_EVENT = 0x0020
     INPUT_RESET = 0x0021
     WAIT_STABLE = 0x0030
+    TIME_SYNC = 0x0040
 
     HELLO_OK = 0x8001
     CAPABILITIES_OK = 0x8002
@@ -174,6 +175,7 @@ class Op(IntEnum):
     SCREEN_END = 0x8012
     INPUT_OK = 0x8020
     STABLE_OK = 0x8030
+    TIME_SYNC_OK = 0x8040
     ERROR = 0x80FF
 
 
@@ -191,6 +193,7 @@ class ErrorCode(IntEnum):
     QUEUE_FULL = 10
     CAPTURE_FAILED = 11
     SCREEN_GEOMETRY = 12
+    OPERATION_FAILED = 13
 
 
 
@@ -230,6 +233,7 @@ ERROR_TEXT = {
     ErrorCode.SCREEN_GEOMETRY: "the screen the device is showing is not the panel's size, "
                                "so the pixels and the reported dimensions disagree -- "
                                "look at what built that screen, not at the transport",
+    ErrorCode.OPERATION_FAILED: "the device accepted the command but the hardware operation failed",
 }
 
 
@@ -282,11 +286,13 @@ def envelope_decode(payload: bytes) -> Envelope:
 HELLO_BYTES = 1 + 24 + 24
 SCREEN_INFO_BYTES = 4 + 2 + 2 + 1 + 1 + 4 + 4 + 4
 INPUT_EVENT_BYTES = 1 + 1 + 2 + 2 + 1 + 4
+TIME_SYNC_BYTES = 8 + 2 + 4 + 1
 BUTTON_BYTES = 17
 CAPABILITIES_BYTES = 2 + 2 + 1 + 1 + 1 + 1 + 4 * BUTTON_BYTES + 2 + 4 + 2
 
 BUTTON_INJECTABLE = 0x01
 BUTTON_ROLE_UNKNOWN = 0x02
+TIME_SYNC_ALLOW_LARGE_CORRECTION = 0x01
 
 
 class PixelFormat(IntEnum):
@@ -417,6 +423,18 @@ class ScreenInfo:
 def input_event_encode(event_type: EventType, *, button: int = 0, x: int = 0, y: int = 0,
                        touch_id: int = 0, at_ms: int = 0) -> bytes:
     return struct.pack("<BBhhBI", int(event_type), button, x, y, touch_id, at_ms)
+
+
+def time_sync_encode(utc_seconds: int, timezone_offset_minutes: int,
+                     valid_for_ms: int, *, allow_large_correction: bool = False) -> bytes:
+    if not -(1 << 63) <= utc_seconds < (1 << 63):
+        raise ValueError("utc_seconds must fit in a signed 64-bit integer")
+    if not -(1 << 15) <= timezone_offset_minutes < (1 << 15):
+        raise ValueError("timezone_offset_minutes must fit in a signed 16-bit integer")
+    if not 0 <= valid_for_ms <= 0xFFFFFFFF:
+        raise ValueError("valid_for_ms must fit in an unsigned 32-bit integer")
+    flags = TIME_SYNC_ALLOW_LARGE_CORRECTION if allow_large_correction else 0
+    return struct.pack("<qhIB", utc_seconds, timezone_offset_minutes, valid_for_ms, flags)
 
 
 # --- pixels ---------------------------------------------------------------

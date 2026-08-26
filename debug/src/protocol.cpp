@@ -25,6 +25,13 @@ void put_u32(std::uint8_t* p, std::uint32_t v)
     p[3] = static_cast<std::uint8_t>((v >> 24) & 0xFFu);
 }
 
+void put_u64(std::uint8_t* p, std::uint64_t v)
+{
+    for (unsigned i = 0; i < 8; ++i) {
+        p[i] = static_cast<std::uint8_t>((v >> (i * 8)) & 0xFFu);
+    }
+}
+
 std::uint16_t get_u16(const std::uint8_t* p)
 {
     return static_cast<std::uint16_t>(p[0] | (p[1] << 8));
@@ -34,6 +41,15 @@ std::uint32_t get_u32(const std::uint8_t* p)
 {
     return static_cast<std::uint32_t>(p[0]) | (static_cast<std::uint32_t>(p[1]) << 8) |
            (static_cast<std::uint32_t>(p[2]) << 16) | (static_cast<std::uint32_t>(p[3]) << 24);
+}
+
+std::uint64_t get_u64(const std::uint8_t* p)
+{
+    std::uint64_t value = 0;
+    for (unsigned i = 0; i < 8; ++i) {
+        value |= static_cast<std::uint64_t>(p[i]) << (i * 8);
+    }
+    return value;
 }
 
 // The envelope CRC covers the eight header bytes before it and then the body.
@@ -275,6 +291,39 @@ bool decode_input_event(const std::uint8_t* body, std::size_t len, InputEventBod
     out.touch_id = body[6];
     out.at_ms    = get_u32(body + 7);
     return true;
+}
+
+// --- TimeSync -------------------------------------------------------------
+
+std::size_t encode_time_sync(const TimeSyncBody& in, std::uint8_t* out,
+                             std::size_t capacity)
+{
+    if (out == nullptr || capacity < kTimeSyncBodyBytes) {
+        return 0;
+    }
+    put_u64(out, static_cast<std::uint64_t>(in.utc_seconds));
+    put_u16(out + 8, static_cast<std::uint16_t>(in.timezone_offset_minutes));
+    put_u32(out + 10, in.valid_for_ms);
+    out[14] = in.flags;
+    return kTimeSyncBodyBytes;
+}
+
+bool decode_time_sync(const std::uint8_t* body, std::size_t len,
+                      TimeSyncBody& out)
+{
+    if (body == nullptr || len != kTimeSyncBodyBytes) {
+        return false;
+    }
+    const std::uint64_t utc_bits = get_u64(body);
+    const std::uint16_t offset_bits = get_u16(body + 8);
+    static_assert(sizeof(utc_bits) == sizeof(out.utc_seconds));
+    static_assert(sizeof(offset_bits) == sizeof(out.timezone_offset_minutes));
+    std::memcpy(&out.utc_seconds, &utc_bits, sizeof(out.utc_seconds));
+    std::memcpy(&out.timezone_offset_minutes, &offset_bits,
+                sizeof(out.timezone_offset_minutes));
+    out.valid_for_ms = get_u32(body + 10);
+    out.flags = body[14];
+    return (out.flags & ~kTimeSyncAllowLargeCorrection) == 0;
 }
 
 // --- CRC-32 ---------------------------------------------------------------

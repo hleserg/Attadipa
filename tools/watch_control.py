@@ -22,6 +22,7 @@ count and the button list all come from the device's `capabilities` reply --
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
 import os
 import sys
@@ -177,6 +178,23 @@ def cmd_info(watch: Watch, args) -> int:
 
 def cmd_screenshot(watch: Watch, args) -> int:
     print_shots(args, take_screenshots(watch, args))
+    return 0
+
+
+def cmd_sync_time(watch: Watch, args) -> int:
+    utc_seconds = args.utc_seconds if args.utc_seconds is not None else int(time.time())
+    if args.offset_minutes is None:
+        offset = datetime.now().astimezone().utcoffset()
+        offset_minutes = int(offset.total_seconds() // 60) if offset is not None else 0
+    else:
+        offset_minutes = args.offset_minutes
+    watch.sync_time(utc_seconds, offset_minutes, args.valid_for,
+                    allow_large_correction=args.allow_large)
+    emit(args,
+         {"utc_seconds": utc_seconds, "offset_minutes": offset_minutes,
+          "valid_for_seconds": args.valid_for, "allow_large_correction": args.allow_large},
+         f"time synchronized: UTC {utc_seconds}, offset {offset_minutes:+d} min, "
+         f"trusted for {args.valid_for}s")
     return 0
 
 
@@ -469,6 +487,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     info = subparsers.add_parser("info", help="what the device says it is")
     info.set_defaults(func=cmd_info)
+
+    sync = subparsers.add_parser("sync-time", help="set UTC and local offset from this host")
+    sync.add_argument("--utc-seconds", type=int,
+                      help="Unix UTC seconds (default: this host's current time)")
+    sync.add_argument("--offset-minutes", type=int,
+                      help="local UTC offset (default: this host's current offset)")
+    sync.add_argument("--valid-for", type=int, default=86400,
+                      help="seconds before the synchronization becomes stale (default: 86400)")
+    sync.add_argument("--allow-large", action="store_true",
+                      help="allow a correction larger than five minutes")
+    sync.set_defaults(func=cmd_sync_time)
 
     shot = subparsers.add_parser("screenshot", help="one image, or a series")
     shot.add_argument("--output", "-o", help="path for the PNG")

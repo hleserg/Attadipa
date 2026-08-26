@@ -149,12 +149,14 @@ public:
   WatchControl(const attadipa::platform::BoardProfile &board,
                esp_lcd_touch_handle_t touch, i2c_master_dev_handle_t pmu,
                esp_lcd_panel_handle_t panel, std::uint8_t awake_brightness,
-               void (*refresh_ui)(), std::uint8_t *frame,
+               void (*refresh_ui)(), attadipa::debug::TimeSink *time_sink,
+               std::uint8_t *frame,
                std::size_t frame_capacity)
       : board_(board), touch_(touch), pmu_(pmu), panel_(panel),
         awake_brightness_(awake_brightness), refresh_ui_(refresh_ui),
         source_(board_, input_queue_),
-        bridge_(input_queue_, input_state_, source_, frame, frame_capacity) {}
+        bridge_(input_queue_, input_state_, source_, frame, frame_capacity,
+                time_sink) {}
 
   esp_err_t attach() {
     gpio_config_t buttons{};
@@ -727,14 +729,16 @@ esp_err_t start_watch_control(esp_lcd_touch_handle_t touch,
                               i2c_master_dev_handle_t pmu,
                               esp_lcd_panel_handle_t panel,
                               std::uint8_t awake_brightness,
-                              void (*refresh_ui)()) {
+                              void (*refresh_ui)(),
+                              attadipa::debug::TimeSink *time_sink) {
   if (service != nullptr) {
     return ESP_ERR_INVALID_STATE;
   }
   const attadipa::platform::BoardProfile *board =
       attadipa::platform::find_board_profile(kBoardProfileId);
   if (board == nullptr || touch == nullptr || pmu == nullptr ||
-      panel == nullptr || awake_brightness > 100 || refresh_ui == nullptr) {
+      panel == nullptr || awake_brightness > 100 || refresh_ui == nullptr ||
+      time_sink == nullptr) {
     return ESP_ERR_INVALID_ARG;
   }
 
@@ -757,7 +761,7 @@ esp_err_t start_watch_control(esp_lcd_touch_handle_t touch,
   }
   WatchControl *candidate = new (std::nothrow)
       WatchControl(*board, touch, pmu, panel, awake_brightness, refresh_ui,
-                   frame, frame_bytes);
+                   time_sink, frame, frame_bytes);
   if (candidate == nullptr) {
     usb_serial_jtag_driver_uninstall();
     heap_caps_free(frame);
