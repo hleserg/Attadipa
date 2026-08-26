@@ -39,6 +39,9 @@
 #include "attadipa/platform/hardware_feature.h"
 
 #include "waveshare_board.h"
+#if CONFIG_BT_NIMBLE_ENABLED
+#include "meshcore_ble.h"
+#endif
 
 namespace {
 
@@ -303,6 +306,13 @@ extern "C" void app_main(void)
     if (ui_err != ESP_OK) {
         ESP_LOGE(kTag, "Waveshare UI failed safely: %s", esp_err_to_name(ui_err));
     }
+#if CONFIG_BT_NIMBLE_ENABLED
+    const esp_err_t mesh_err = start_meshcore_ble();
+    if (mesh_err != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore BLE failed safely: %s",
+                 esp_err_to_name(mesh_err));
+    }
+#endif
 #else
     ESP_LOGI(kTag, "Waveshare UI skipped in PURE_RAM mode");
 #endif

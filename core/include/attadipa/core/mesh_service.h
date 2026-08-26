@@ -44,6 +44,7 @@ struct MeshStatus {
     std::array<char, kMeshPeerNameBytes + 1> last_sender{};
     std::array<char, kMeshTextBytes + 1> last_message{};
     MeshDelivery delivery = MeshDelivery::None;
+    std::uint16_t mtu = 0;
     std::uint16_t peers_reported = 0;
     std::uint16_t peers_retained = 0;
     std::int8_t snr_quarter_db = 0;

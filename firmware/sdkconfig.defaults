@@ -69,6 +69,28 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ATTADIPA_WATCH_CONTROL=y
 CONFIG_LV_USE_SNAPSHOT=y
 
+# T-168 talks to a stock MeshCore Companion as a BLE central. Only the central,
+# observer and GATT-client roles are built; the watch does not advertise a
+# service of its own. Bond keys persist because the node requires MITM pairing
+# and forcing a new pairing after every reboot is neither useful nor testable.
+# The Companion frame budget is 176 bytes, while a BLE operation is bounded by
+# negotiated MTU minus three; firmware checks that measured value before every
+# write instead of treating this preferred value as a fact about the peer.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
+CONFIG_BT_NIMBLE_GATT_CLIENT=y
+CONFIG_BT_NIMBLE_SECURITY_ENABLE=y
+CONFIG_BT_NIMBLE_SM_SC=y
+CONFIG_BT_NIMBLE_STATIC_PASSKEY=y
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BT_NIMBLE_MAX_BONDS=1
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=256
+
 # A development table, and partitions.csv says so in its own header.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

@@ -167,6 +167,10 @@ class Op(IntEnum):
     INPUT_RESET = 0x0021
     WAIT_STABLE = 0x0030
     TIME_SYNC = 0x0040
+    MESH_CONFIGURE = 0x0050
+    MESH_SEND = 0x0051
+    MESH_ROOM_SEND = 0x0052
+    MESH_DISCONNECT = 0x0053
 
     HELLO_OK = 0x8001
     CAPABILITIES_OK = 0x8002
@@ -176,6 +180,7 @@ class Op(IntEnum):
     INPUT_OK = 0x8020
     STABLE_OK = 0x8030
     TIME_SYNC_OK = 0x8040
+    MESH_OK = 0x8050
     ERROR = 0x80FF
 
 
@@ -435,6 +440,39 @@ def time_sync_encode(utc_seconds: int, timezone_offset_minutes: int,
         raise ValueError("valid_for_ms must fit in an unsigned 32-bit integer")
     flags = TIME_SYNC_ALLOW_LARGE_CORRECTION if allow_large_correction else 0
     return struct.pack("<qhIB", utc_seconds, timezone_offset_minutes, valid_for_ms, flags)
+
+
+def mesh_configure_encode(passkey: int) -> bytes:
+    if not 0 <= passkey <= 999999:
+        raise ValueError("MeshCore passkey must be between 000000 and 999999")
+    return struct.pack("<I", passkey)
+
+
+def mesh_send_encode(peer_prefix: bytes, text: str, utc_seconds: int) -> bytes:
+    encoded = text.encode("utf-8")
+    if len(peer_prefix) != 6:
+        raise ValueError("MeshCore peer prefix must be exactly 6 bytes")
+    if not encoded or len(encoded) > 160:
+        raise ValueError("MeshCore message must be 1..160 UTF-8 bytes")
+    if not -(1 << 63) <= utc_seconds < (1 << 63):
+        raise ValueError("utc_seconds must fit in a signed 64-bit integer")
+    return peer_prefix + struct.pack("<q", utc_seconds) + encoded
+
+
+def mesh_room_send_encode(room: bytes, password: str, text: str,
+                          utc_seconds: int) -> bytes:
+    encoded_password = password.encode("utf-8")
+    encoded_text = text.encode("utf-8")
+    if len(room) != 32:
+        raise ValueError("MeshCore Room Server public key must be exactly 32 bytes")
+    if not 1 <= len(encoded_password) <= 15:
+        raise ValueError("MeshCore Room Server password must be 1..15 UTF-8 bytes")
+    if not encoded_text or len(encoded_text) > 126:
+        raise ValueError("MeshCore Room Server message must be 1..126 UTF-8 bytes")
+    if not -(1 << 63) <= utc_seconds < (1 << 63):
+        raise ValueError("utc_seconds must fit in a signed 64-bit integer")
+    return (room + bytes([len(encoded_password)]) + encoded_password +
+            struct.pack("<q", utc_seconds) + encoded_text)
 
 
 # --- pixels ---------------------------------------------------------------

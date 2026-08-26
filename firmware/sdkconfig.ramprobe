@@ -32,6 +32,10 @@ CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y
 # RAM probe. The normal flash build enables it explicitly.
 CONFIG_ATTADIPA_WATCH_CONTROL=n
 
+# Pairing persists bonds in NVS, so the Companion transport is deliberately not
+# part of an image whose defining promise is that it never touches flash.
+CONFIG_BT_ENABLED=n
+
 # A RAM app has no partition table to read, and asking for one is a boot-time
 # failure rather than an empty answer.
 CONFIG_PARTITION_TABLE_CUSTOM=n

@@ -89,9 +89,12 @@ OPCODE_VALUES = {
     "HELLO": 0x0001, "CAPABILITIES": 0x0002, "SCREEN_REQUEST": 0x0010,
     "INPUT_EVENT": 0x0020, "INPUT_RESET": 0x0021, "WAIT_STABLE": 0x0030,
     "TIME_SYNC": 0x0040,
+    "MESH_CONFIGURE": 0x0050, "MESH_SEND": 0x0051, "MESH_ROOM_SEND": 0x0052,
+    "MESH_DISCONNECT": 0x0053,
     "HELLO_OK": 0x8001, "CAPABILITIES_OK": 0x8002, "SCREEN_INFO": 0x8010,
     "SCREEN_DATA": 0x8011, "SCREEN_END": 0x8012, "INPUT_OK": 0x8020,
-    "STABLE_OK": 0x8030, "TIME_SYNC_OK": 0x8040, "ERROR": 0x80FF,
+    "STABLE_OK": 0x8030, "TIME_SYNC_OK": 0x8040, "MESH_OK": 0x8050,
+    "ERROR": 0x80FF,
 }
 ERROR_VALUES = {
     "NONE": 0, "UNKNOWN_OPCODE": 1, "BAD_BODY": 2, "UNSUPPORTED": 3,
@@ -659,6 +662,39 @@ def a_time_sync_is_validated_and_not_retried() -> None:
           "and the non-idempotent RTC write is not retried")
     check_raises(WatchError, "an impossible timezone offset is refused before the wire",
                  lambda: watch.sync_time(1787687654, 900, 86400))
+
+
+def mesh_commands_are_validated_and_a_send_is_not_retried() -> None:
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    device = ScriptedDevice(lambda e: [_reply_to(e, p.Op.MESH_OK)])
+    watch = Watch(device, timeout=1.0)
+    watch.mesh_configure(123456)
+    watch.mesh_disconnect()
+    watch.mesh_send(bytes.fromhex("010203040506"), "Hello", 1234567890)
+    watch.mesh_room_send(bytes.fromhex("00" * 32), "pass", "Hello", 1234567890)
+    check(device.asked == [
+        (p.Op.MESH_CONFIGURE, bytes.fromhex("40e20100")),
+        (p.Op.MESH_DISCONNECT, b""),
+        (p.Op.MESH_SEND,
+         bytes.fromhex("010203040506d202964900000000") + b"Hello"),
+        (p.Op.MESH_ROOM_SEND,
+         bytes.fromhex("00" * 32) + b"\x04pass" +
+         bytes.fromhex("d202964900000000") + b"Hello"),
+    ], "MeshCore commands use the fixed bounded wire bodies")
+
+    silent_device = ScriptedDevice(lambda e: [])
+    silent = Watch(silent_device, timeout=0.0)
+    check_raises(WatchError, "a lost send acknowledgement is reported",
+                 lambda: silent.mesh_send(bytes.fromhex("010203040506"),
+                                          "Hello", 1234567890))
+    check(len(silent_device.asked) == 1,
+          "and the non-idempotent MeshCore send is not retried")
+    check_raises(WatchError, "a short peer prefix is refused before the wire",
+                 lambda: watch.mesh_send(b"short", "Hello", 1234567890))
+    check_raises(WatchError, "a Room Server password over 15 bytes is refused before the wire",
+                 lambda: watch.mesh_room_send(bytes(32), "0123456789abcdef",
+                                               "Hello", 1234567890))
 
 
 def a_stability_wait_actually_waits() -> None:
@@ -1282,6 +1318,7 @@ CASES = (
     an_unknown_wire_value_is_reported_not_raised,
     every_error_code_has_a_human_sentence,
     a_time_sync_is_validated_and_not_retried,
+    mesh_commands_are_validated_and_a_send_is_not_retried,
     a_stability_wait_actually_waits,
     a_stability_wait_that_never_settles_says_so,
     a_finished_screenshot_blacklists_nothing,

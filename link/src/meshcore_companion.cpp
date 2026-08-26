@@ -12,6 +12,7 @@ constexpr std::uint8_t kSendText = 2;
 constexpr std::uint8_t kGetContacts = 4;
 constexpr std::uint8_t kSyncNextMessage = 10;
 constexpr std::uint8_t kDeviceQuery = 22;
+constexpr std::uint8_t kSendLogin = 26;
 constexpr std::uint8_t kAppProtocolVersion = 3;
 
 constexpr std::uint8_t kResponseError = 1;
@@ -24,8 +25,11 @@ constexpr std::uint8_t kResponseContactMessage = 7;
 constexpr std::uint8_t kResponseNoMoreMessages = 10;
 constexpr std::uint8_t kResponseDeviceInfo = 13;
 constexpr std::uint8_t kResponseContactMessageV3 = 16;
+constexpr std::uint8_t kResponseChannelMessageV3 = 17;
 constexpr std::uint8_t kPushSendConfirmed = 0x82;
 constexpr std::uint8_t kPushMessageWaiting = 0x83;
+constexpr std::uint8_t kPushLoginSuccess = 0x85;
+constexpr std::uint8_t kPushLoginFail = 0x86;
 constexpr std::uint8_t kAdvertTypeChat = 1;
 
 std::uint32_t little_u32(const std::uint8_t* data)
@@ -57,6 +61,7 @@ bool copy_text(std::array<char, N>& out, const std::uint8_t* data,
 }  // namespace
 
 MeshCoreCompanion::MeshCoreCompanion()
+    : link_(LinkState::Config{TransportKind::Bluetooth, core::Millis{0}, true})
 {
     status_.availability = core::Availability::Unreachable;
     status_.transport = link_.phase();
@@ -82,6 +87,10 @@ void MeshCoreCompanion::reset_session()
     self_info_seen_ = false;
     contacts_complete_ = false;
     awaiting_send_ = false;
+    awaiting_login_ = false;
+    room_peer_ = {};
+    room_text_.fill('\0');
+    room_timestamp_ = {};
 }
 
 void MeshCoreCompanion::begin(core::MonotonicTime now)
@@ -108,13 +117,9 @@ void MeshCoreCompanion::connected(core::MonotonicTime now)
         return;
     }
     reset_session();
-    const std::uint8_t query[] = {kDeviceQuery, kAppProtocolVersion};
     const std::uint8_t start[] = {kAppStart, 0, 0, 0, 0, 0, 0, 0,
                                   'A', 't', 't', 'a', 'd', 'i', 'p', 'a'};
-    const std::uint8_t contacts[] = {kGetContacts};
-    (void)enqueue(query, sizeof(query));
     (void)enqueue(start, sizeof(start));
-    (void)enqueue(contacts, sizeof(contacts));
     update_availability();
 }
 
@@ -246,6 +251,24 @@ void MeshCoreCompanion::accept_message(const std::uint8_t* data,
         copy_text(status_.last_message, &data[text], size - text);
 }
 
+void MeshCoreCompanion::accept_channel_message_v3(const std::uint8_t* data,
+                                                   std::size_t size)
+{
+    // RESP_CODE_CHANNEL_MSG_RECV_V3: code, SNR, two reserved bytes, channel,
+    // path, text type, timestamp, then text. A Room Server reply has no
+    // contact-key prefix to resolve to a sender name.
+    constexpr std::size_t kTextOffset = 11;
+    if (size < kTextOffset || data[6] != 0) {
+        ++malformed_frames_;
+        return;
+    }
+    status_.has_snr = true;
+    status_.snr_quarter_db = static_cast<std::int8_t>(data[1]);
+    status_.last_sender.fill('\0');
+    status_.message_truncated =
+        copy_text(status_.last_message, &data[kTextOffset], size - kTextOffset);
+}
+
 bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
                                 core::MonotonicTime now)
 {
@@ -259,12 +282,28 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     case kResponseDeviceInfo:
         if (size < 82) { ++malformed_frames_; return false; }
         firmware_version_code_ = data[1];
+        if (device_info_seen_) break;
         device_info_seen_ = true;
+        {
+            const std::uint8_t contacts[] = {kGetContacts};
+            if (!enqueue(contacts, sizeof(contacts))) {
+                ++malformed_frames_;
+                return false;
+            }
+        }
         break;
     case kResponseSelfInfo:
         if (size < 58) { ++malformed_frames_; return false; }
         (void)copy_text(status_.node_name, &data[58], size - 58);
+        if (self_info_seen_) break;
         self_info_seen_ = true;
+        {
+            const std::uint8_t query[] = {kDeviceQuery, kAppProtocolVersion};
+            if (!enqueue(query, sizeof(query))) {
+                ++malformed_frames_;
+                return false;
+            }
+        }
         break;
     case kResponseContactsStart:
         if (size < 5) { ++malformed_frames_; return false; }
@@ -283,15 +322,24 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     case kResponseContactsEnd:
         if (size < 5) { ++malformed_frames_; return false; }
         contacts_complete_ = true;
+        {
+            const std::uint8_t sync[] = {kSyncNextMessage};
+            if (!enqueue(sync, sizeof(sync))) {
+                ++malformed_frames_;
+                return false;
+            }
+        }
         break;
     case kResponseSent:
-        if (size < 10 || !awaiting_send_) {
+        if (size < 10 || (!awaiting_send_ && !awaiting_login_)) {
             ++malformed_frames_;
             return false;
         }
-        std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());
-        status_.delivery = core::MeshDelivery::Accepted;
-        awaiting_send_ = false;
+        if (awaiting_send_) {
+            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());
+            status_.delivery = core::MeshDelivery::Accepted;
+            awaiting_send_ = false;
+        }
         break;
     case kPushSendConfirmed:
         if (size >= 5 &&
@@ -307,11 +355,41 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         break;
     }
+    case kPushLoginSuccess:
+        if (size < 8 || !awaiting_login_ ||
+            std::memcmp(&data[2], room_peer_.public_key.data(), 6) != 0) {
+            ++malformed_frames_;
+            return false;
+        }
+        awaiting_login_ = false;
+        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),
+                             room_timestamp_)) {
+            status_.delivery = core::MeshDelivery::Failed;
+        }
+        room_peer_ = {};
+        room_text_.fill('\0');
+        room_timestamp_ = {};
+        break;
+    case kPushLoginFail:
+        if (size < 7 || !awaiting_login_ ||
+            std::memcmp(&data[1], room_peer_.public_key.data(), 6) != 0) {
+            ++malformed_frames_;
+            return false;
+        }
+        awaiting_login_ = false;
+        room_peer_ = {};
+        room_text_.fill('\0');
+        room_timestamp_ = {};
+        status_.delivery = core::MeshDelivery::Failed;
+        break;
     case kResponseContactMessage:
         accept_message(data, size, false);
         break;
     case kResponseContactMessageV3:
         accept_message(data, size, true);
+        break;
+    case kResponseChannelMessageV3:
+        accept_channel_message_v3(data, size);
         break;
     case kResponseNoMoreMessages:
         if (size != 1) { ++malformed_frames_; return false; }
@@ -343,7 +421,17 @@ bool MeshCoreCompanion::send_private(const core::MeshPeerId& peer,
                                      std::string_view text,
                                      core::WallTime timestamp)
 {
-    constexpr std::size_t header = 7 + core::kMeshPublicKeyBytes;
+    return enqueue_private(peer, text, timestamp);
+}
+
+bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
+                                        std::string_view text,
+                                        core::WallTime timestamp)
+{
+    // MeshCore private-message frames address the destination by its six-byte
+    // public-key prefix; the full key is only used by commands such as login.
+    constexpr std::size_t kPeerPrefixBytes = 6;
+    constexpr std::size_t header = 7 + kPeerPrefixBytes;
     if (status_.availability != core::Availability::Ready || text.empty() ||
         text.size() > core::kMeshTextBytes ||
         timestamp.unix_seconds < 0 ||
@@ -356,12 +444,41 @@ bool MeshCoreCompanion::send_private(const core::MeshPeerId& peer,
     frame[1] = 0;  // plain private text
     frame[2] = 0;  // first attempt
     write_u32(&frame[3], static_cast<std::uint32_t>(timestamp.unix_seconds));
-    std::memcpy(&frame[7], peer.public_key.data(), peer.public_key.size());
+    std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);
     std::memcpy(&frame[header], text.data(), text.size());
     if (!enqueue(frame.data(), header + text.size())) {
         return false;
     }
     awaiting_send_ = true;
+    status_.delivery = core::MeshDelivery::Queued;
+    return true;
+}
+
+bool MeshCoreCompanion::send_room(
+    const std::array<std::uint8_t, core::kMeshPublicKeyBytes>& room,
+    std::string_view password, std::string_view text, core::WallTime timestamp)
+{
+    constexpr std::size_t kMaxRoomPasswordBytes = 15;
+    if (!link_.ready() || !device_info_seen_ || !self_info_seen_ || awaiting_login_ ||
+        awaiting_send_ || password.empty() || password.size() > kMaxRoomPasswordBytes ||
+        text.empty() || text.size() > core::kMeshTextBytes ||
+        timestamp.unix_seconds < 0 ||
+        static_cast<std::uint64_t>(timestamp.unix_seconds) >
+            std::numeric_limits<std::uint32_t>::max()) {
+        return false;
+    }
+    std::array<std::uint8_t, 1 + core::kMeshPublicKeyBytes + kMaxRoomPasswordBytes> frame{};
+    frame[0] = kSendLogin;
+    std::memcpy(&frame[1], room.data(), room.size());
+    std::memcpy(&frame[1 + room.size()], password.data(), password.size());
+    if (!enqueue(frame.data(), 1 + room.size() + password.size())) {
+        return false;
+    }
+    room_peer_.public_key = room;
+    std::memcpy(room_text_.data(), text.data(), text.size());
+    room_text_[text.size()] = '\0';
+    room_timestamp_ = timestamp;
+    awaiting_login_ = true;
     status_.delivery = core::MeshDelivery::Queued;
     return true;
 }

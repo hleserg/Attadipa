@@ -579,6 +579,35 @@ class Watch:
         # one requested wall-clock correction into two hardware writes.
         self.request(p.Op.TIME_SYNC, body, (p.Op.TIME_SYNC_OK,), retries=0)
 
+    def mesh_configure(self, passkey: int) -> None:
+        try:
+            body = p.mesh_configure_encode(passkey)
+        except (TypeError, ValueError, struct.error) as exc:
+            raise WatchError(str(exc)) from exc
+        self.request(p.Op.MESH_CONFIGURE, body, (p.Op.MESH_OK,))
+
+    def mesh_disconnect(self) -> None:
+        self.request(p.Op.MESH_DISCONNECT, b"", (p.Op.MESH_OK,))
+
+    def mesh_send(self, peer_prefix: bytes, text: str, utc_seconds: int) -> None:
+        try:
+            body = p.mesh_send_encode(peer_prefix, text, utc_seconds)
+        except (TypeError, ValueError, UnicodeError, struct.error) as exc:
+            raise WatchError(str(exc)) from exc
+        # A private message is not idempotent. A lost acknowledgement is an
+        # unknown result, never permission to send it twice.
+        self.request(p.Op.MESH_SEND, body, (p.Op.MESH_OK,), retries=0)
+
+    def mesh_room_send(self, room: bytes, password: str, text: str,
+                       utc_seconds: int) -> None:
+        try:
+            body = p.mesh_room_send_encode(room, password, text, utc_seconds)
+        except (TypeError, ValueError, UnicodeError, struct.error) as exc:
+            raise WatchError(str(exc)) from exc
+        # Login plus send is non-idempotent: acknowledgement loss leaves an
+        # unknown result, never permission to repeat the password-bearing frame.
+        self.request(p.Op.MESH_ROOM_SEND, body, (p.Op.MESH_OK,), retries=0)
+
     # --- input ------------------------------------------------------------
 
     def button_index(self, name: str) -> int:

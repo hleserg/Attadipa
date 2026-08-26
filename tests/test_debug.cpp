@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -441,6 +442,11 @@ void the_two_numbering_tables_are_spelled_out()
     CHECK(static_cast<std::uint16_t>(Opcode::InputEvent) == 0x0020);
     CHECK(static_cast<std::uint16_t>(Opcode::InputReset) == 0x0021);
     CHECK(static_cast<std::uint16_t>(Opcode::WaitStable) == 0x0030);
+    CHECK(static_cast<std::uint16_t>(Opcode::TimeSync) == 0x0040);
+    CHECK(static_cast<std::uint16_t>(Opcode::MeshConfigure) == 0x0050);
+    CHECK(static_cast<std::uint16_t>(Opcode::MeshSend) == 0x0051);
+    CHECK(static_cast<std::uint16_t>(Opcode::MeshRoomSend) == 0x0052);
+    CHECK(static_cast<std::uint16_t>(Opcode::MeshDisconnect) == 0x0053);
     CHECK(static_cast<std::uint16_t>(Opcode::HelloOk) == 0x8001);
     CHECK(static_cast<std::uint16_t>(Opcode::CapabilitiesOk) == 0x8002);
     CHECK(static_cast<std::uint16_t>(Opcode::ScreenInfo) == 0x8010);
@@ -448,6 +454,8 @@ void the_two_numbering_tables_are_spelled_out()
     CHECK(static_cast<std::uint16_t>(Opcode::ScreenEnd) == 0x8012);
     CHECK(static_cast<std::uint16_t>(Opcode::InputOk) == 0x8020);
     CHECK(static_cast<std::uint16_t>(Opcode::StableOk) == 0x8030);
+    CHECK(static_cast<std::uint16_t>(Opcode::TimeSyncOk) == 0x8040);
+    CHECK(static_cast<std::uint16_t>(Opcode::MeshOk) == 0x8050);
     CHECK(static_cast<std::uint16_t>(Opcode::Error) == 0x80FF);
 
     CHECK(static_cast<std::uint16_t>(ErrorCode::None) == 0);
@@ -572,6 +580,58 @@ public:
     unsigned calls = 0;
 };
 
+class FakeMeshSink : public MeshSink {
+public:
+    MeshSinkResult configure(std::uint32_t incoming) override
+    {
+        passkey = incoming;
+        ++configure_calls;
+        return result;
+    }
+
+    MeshSinkResult disconnect() override
+    {
+        ++disconnect_calls;
+        return result;
+    }
+
+    MeshSinkResult send(const std::uint8_t incoming_prefix[6],
+                        const char* incoming_text, std::size_t length,
+                        std::int64_t incoming_utc) override
+    {
+        std::memcpy(prefix, incoming_prefix, sizeof(prefix));
+        text.assign(incoming_text, length);
+        utc_seconds = incoming_utc;
+        ++send_calls;
+        return result;
+    }
+
+    MeshSinkResult send_room(const std::uint8_t incoming_room[32],
+                             const char* incoming_password, std::size_t password_length,
+                             const char* incoming_text, std::size_t text_length,
+                             std::int64_t incoming_utc) override
+    {
+        std::memcpy(room, incoming_room, sizeof(room));
+        password.assign(incoming_password, password_length);
+        text.assign(incoming_text, text_length);
+        utc_seconds = incoming_utc;
+        ++room_calls;
+        return result;
+    }
+
+    MeshSinkResult result = MeshSinkResult::Accepted;
+    std::uint32_t passkey = 0;
+    unsigned configure_calls = 0;
+    unsigned disconnect_calls = 0;
+    unsigned send_calls = 0;
+    unsigned room_calls = 0;
+    std::uint8_t prefix[6]{};
+    std::uint8_t room[32]{};
+    std::string password;
+    std::string text;
+    std::int64_t utc_seconds = 0;
+};
+
 struct Rig {
     FakeScreen                screen;
     core::InputQueue          queue;
@@ -582,10 +642,10 @@ struct Rig {
 
     Rig(std::uint16_t w = 40, std::uint16_t h = 30,
         PixelFormat f = PixelFormat::Rgb888, bool with_buffer = true,
-        TimeSink* time_sink = nullptr)
+        TimeSink* time_sink = nullptr, MeshSink* mesh_sink = nullptr)
         : screen(w, h, f), frame(with_buffer ? screen.image().size() : 0),
           bridge(queue, state, screen, with_buffer ? frame.data() : nullptr,
-                 frame.size(), time_sink)
+                 frame.size(), time_sink, mesh_sink)
     {
     }
 
@@ -629,6 +689,63 @@ void time_sync_is_typed_and_requires_a_sink()
     rig.sink.clear();
     rig.send(request(Opcode::TimeSync, 5, body, sizeof(body) - 1));
     CHECK(rig.sink.last_error() == ErrorCode::BadBody);
+}
+
+void mesh_commands_are_typed_and_require_a_sink()
+{
+    const std::uint8_t configure[] = {0x40, 0xE2, 0x01, 0x00};
+    Rig unsupported;
+    unsupported.send(request(Opcode::MeshConfigure, 1, configure,
+                             sizeof(configure)));
+    CHECK(unsupported.sink.last_error() == ErrorCode::Unsupported);
+
+    FakeMeshSink mesh;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+    rig.send(request(Opcode::MeshConfigure, 2, configure, sizeof(configure)));
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(mesh.configure_calls == 1);
+    CHECK(mesh.passkey == 123456);
+
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshDisconnect, 3));
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(mesh.disconnect_calls == 1);
+
+    const std::uint8_t send[] = {
+        1, 2, 3, 4, 5, 6,
+        0xD2, 0x02, 0x96, 0x49, 0, 0, 0, 0,
+        'H', 'e', 'l', 'l', 'o'};
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshSend, 4, send, sizeof(send)));
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(mesh.send_calls == 1);
+    CHECK(std::memcmp(mesh.prefix, send, 6) == 0);
+    CHECK(mesh.utc_seconds == 1'234'567'890);
+    CHECK(mesh.text == "Hello");
+
+    std::uint8_t room_send[32 + 1 + 4 + 8 + 5]{};
+    for (std::size_t i = 0; i < 32; ++i) room_send[i] = static_cast<std::uint8_t>(i);
+    room_send[32] = 4;
+    std::memcpy(room_send + 33, "pass", 4);
+    std::memcpy(room_send + 37, send + 6, 8);
+    std::memcpy(room_send + 45, "Hello", 5);
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshRoomSend, 5, room_send, sizeof(room_send)));
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(mesh.room_calls == 1);
+    CHECK(std::memcmp(mesh.room, room_send, 32) == 0);
+    CHECK(mesh.password == "pass");
+    CHECK(mesh.utc_seconds == 1'234'567'890);
+    CHECK(mesh.text == "Hello");
+
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshSend, 6, send, 14));
+    CHECK(rig.sink.last_error() == ErrorCode::BadBody);
+
+    mesh.result = MeshSinkResult::Rejected;
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshConfigure, 7, configure, sizeof(configure)));
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
 }
 
 void an_unknown_opcode_is_answered_with_a_typed_error()
@@ -1665,6 +1782,7 @@ int main()
     bytes_per_pixel_is_defined_for_every_format();
 
     time_sync_is_typed_and_requires_a_sink();
+    mesh_commands_are_typed_and_require_a_sink();
     an_unknown_opcode_is_answered_with_a_typed_error();
     a_wrong_version_is_answered_rather_than_ignored();
     a_handshake_at_the_wrong_version_still_says_what_this_device_is();

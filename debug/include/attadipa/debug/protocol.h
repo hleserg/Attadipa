@@ -76,6 +76,10 @@ enum class Opcode : std::uint16_t {
     InputReset    = 0x0021,
     WaitStable    = 0x0030,
     TimeSync      = 0x0040,
+    MeshConfigure = 0x0050,
+    MeshSend      = 0x0051,
+    MeshRoomSend  = 0x0052,
+    MeshDisconnect= 0x0053,
 
     // Responses
     HelloOk       = 0x8001,
@@ -86,6 +90,7 @@ enum class Opcode : std::uint16_t {
     InputOk       = 0x8020,
     StableOk      = 0x8030,
     TimeSyncOk    = 0x8040,
+    MeshOk        = 0x8050,
     Error         = 0x80FF,
 };
 

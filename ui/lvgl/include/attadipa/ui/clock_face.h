@@ -20,6 +20,7 @@ public:
   void build(lv_obj_t *screen, const ClockFaceConfig &config,
              const apps::ClockText &text);
   void update(const apps::ClockText &text);
+  void clear();
 
 private:
   static void motion_tick(lv_timer_t *timer);

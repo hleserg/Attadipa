@@ -1617,3 +1617,26 @@ constants.
 - **Source:** [TIME_SYNC_2026-08-26](../hardware/TIME_SYNC_2026-08-26.md),
   measured 2026-08-26 on USB serial `28:84:85:B2:18:A4` at source commit
   `1e51897`.
+
+### MeshCore Companion discovery and connected status run on the physical Waveshare
+
+- **Claim:** the Waveshare watch at USB serial `28:84:85:B2:18:A4` discovered
+  a connected MeshCore Companion node over BLE and rendered `CONNECTED`, node
+  name, 350 reported peers and ATT MTU 247 on its AMOLED status screen.
+- **Source:** [MESHCORE_COMPANION_2026-08-26](../hardware/MESHCORE_COMPANION_2026-08-26.md)
+  §§1–2, measured 2026-08-26 on that unit and its separately identified node.
+- **Boundary:** this does not establish an RSSI reading, an inbound Room Server
+  message, or a result on any other watch or node. Those outcomes remain
+  explicitly classified in the report rather than inferred from connection.
+
+### T114 MeshCore Companion fault evidence is separated from Attadipa defects
+
+- **Claim:** an unpaired GATT session reached T114 TX-CCCD subscription and the
+  node advertised after the deliberate disconnect. Earlier node unavailability
+  is not attributed to T114 firmware because it was confounded by Attadipa's
+  reconnect storm and incorrect initialization order, both corrected locally.
+- **Source:** [T114 BLE Companion defect evidence](T114_BLE_COMPANION_DEFECTS_2026-08-26.md),
+  measured 2026-08-26 on the physical Waveshare and operator-reported T114.
+- **Boundary:** T114 firmware version, revision, node serial log and a clean
+  single-attempt pairing reproduction remain `UNKNOWN`; this is not an upstream
+  defect verdict.

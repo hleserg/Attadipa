@@ -37,6 +37,11 @@ public:
     bool peer(std::size_t index, core::MeshPeer& out) const override;
     bool send_private(const core::MeshPeerId& peer, std::string_view text,
                       core::WallTime timestamp) override;
+    // Debug-only Room Server seam: the password is serialized directly into
+    // CMD_SEND_LOGIN and never retained in provider state.
+    bool send_room(const std::array<std::uint8_t, core::kMeshPublicKeyBytes>& room,
+                   std::string_view password, std::string_view text,
+                   core::WallTime timestamp);
 
     std::uint32_t malformed_frames() const { return malformed_frames_; }
     std::uint8_t firmware_version_code() const { return firmware_version_code_; }
@@ -46,10 +51,13 @@ private:
     static constexpr std::size_t kTxDepth = 4;
 
     bool enqueue(const std::uint8_t* data, std::size_t size);
+    bool enqueue_private(const core::MeshPeerId& peer, std::string_view text,
+                         core::WallTime timestamp);
     void reset_session();
     void update_availability();
     void accept_contact(const std::uint8_t* data, std::size_t size);
     void accept_message(const std::uint8_t* data, std::size_t size, bool v3);
+    void accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
     const core::MeshPeer* find_peer_prefix(const std::uint8_t* prefix) const;
 
     LinkState link_{{core::TransportKind::Bluetooth, core::Millis{15000}, true}};
@@ -66,6 +74,10 @@ private:
     bool self_info_seen_ = false;
     bool contacts_complete_ = false;
     bool awaiting_send_ = false;
+    bool awaiting_login_ = false;
+    core::MeshPeerId room_peer_{};
+    std::array<char, core::kMeshTextBytes + 1> room_text_{};
+    core::WallTime room_timestamp_{};
 };
 
 }  // namespace attadipa::link
