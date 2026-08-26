@@ -652,15 +652,30 @@ class Watch:
                 f"in the frame of the picture the tool returns")
         return x, y
 
+    def _pointer_duration(self, duration, what: str) -> float:
+        """Validate a requested pointer hold before anything reaches the wire."""
+        seconds = _duration_seconds(duration, what)
+        caps = self._caps()
+        requested_ms = seconds * 1000
+        # Zero means the host was given no usable bound. It is not an
+        # unbounded-hold promise: the bridge itself expires zero immediately.
+        if caps.max_hold_ms and requested_ms > caps.max_hold_ms:
+            raise WatchError(
+                f"the device releases anything held longer than {caps.max_hold_ms} ms; "
+                f"{what} requested {requested_ms:g} ms and holds the pointer until its "
+                f"release, so it would be cut short")
+        return seconds
+
     def tap(self, x: int, y: int) -> None:
         x, y = self._check_point(x, y)
         self._event(p.EventType.POINTER_DOWN, x=x, y=y)
         self._event(p.EventType.POINTER_UP, x=x, y=y)
 
     def long_tap(self, x: int, y: int, duration: float = 1.0) -> None:
+        seconds = self._pointer_duration(duration, "a long tap")
         x, y = self._check_point(x, y)
         self._event(p.EventType.POINTER_DOWN, x=x, y=y)
-        time.sleep(duration)
+        time.sleep(seconds)
         self._event(p.EventType.POINTER_UP, x=x, y=y)
 
     def double_tap(self, x: int, y: int, gap: float = 0.12) -> None:
@@ -687,19 +702,21 @@ class Watch:
 
         **Approximately, and this sentence used to say it without the
         qualifier.** There are `steps` intervals between the points below and
-        only `steps - 1` sleeps, the first of them of length zero, so a swipe
+        only `steps - 1` sleeps. The first segment has zero length: the
+        `PointerDown` and first `PointerMove` are sent back to back, so a swipe
         runs `1/steps` short of `duration` -- 4% at the default. `gesture()`
         had the same shape of error and it was not proportional there: see its
         docstring and issue #117 for the firmware endpoint contract.
         Left as it is on purpose rather than by omission; changing it moves
         the timing of every swipe in the repository and wants its own test.
         """
+        seconds = self._pointer_duration(duration, "a swipe")
         x0, y0 = self._check_point(*start)
         x1, y1 = self._check_point(*end)
         if steps <= 0:
             # About 60 Hz, which is the rate a real touch controller reports at,
             # bounded so a long slow drag does not become thousands of events.
-            steps = max(2, min(64, int(duration * 60)))
+            steps = max(2, min(64, int(seconds * 60)))
 
         self._event(p.EventType.POINTER_DOWN, x=x0, y=y0)
         for step in range(1, steps):
@@ -707,7 +724,7 @@ class Watch:
             self._event(p.EventType.POINTER_MOVE,
                         x=int(round(x0 + (x1 - x0) * fraction)),
                         y=int(round(y0 + (y1 - y0) * fraction)))
-            time.sleep(duration / steps)
+            time.sleep(seconds / steps)
         self._event(p.EventType.POINTER_UP, x=x1, y=y1)
 
     def drag(self, start, end, duration: float = 1.0, steps: int = 0) -> None:
@@ -748,33 +765,7 @@ class Watch:
         # cleanup to `watch_control.py`'s `finally` -- which does run, but a
         # `live` session or a scenario step recovering from the exception
         # would be holding an input nobody asked for in the meantime.
-        seconds = _duration_seconds(duration, "a gesture")
-        caps = self._caps()
-        # The device expires a hold it has been given for too long, and this
-        # became reachable the moment the pointer started staying down for the
-        # whole duration: the bridge pushes its own `PointerUp` at
-        # `max_hold_ms`, the interface takes a click nobody asked for, and the
-        # host's real release then arrives at a state machine holding nothing
-        # and is refused as "impossible from the current state" -- a message
-        # about the wrong subsystem entirely. `button_hold` refuses in a
-        # sentence rather than let that happen and so does this. The bound is
-        # the *device's*, read from its capabilities: a firmware with a
-        # tighter one than the simulator's 30 s is exactly the case a
-        # hardcoded number here would get wrong. Found in review of #187.
-        #
-        # The falsy test is this tool declining to enforce a bound it was
-        # not given -- NOT a reading of what the device means by 0. The
-        # bridge treats 0 as expire-immediately (bridge.cpp:597 compares
-        # with `>`), so a firmware wanting an unbounded hold must raise
-        # the limit rather than zero it. Refusing every gesture against a
-        # device that answered 0 would be worse and would not make the
-        # device's behaviour any different. Found in review of #192.
-        if caps.max_hold_ms and seconds * 1000 > caps.max_hold_ms:
-            raise WatchError(
-                f"the device releases anything held longer than {caps.max_hold_ms} ms, "
-                f"and a gesture holds the pointer down for its whole duration -- so a "
-                f"{seconds:.1f}s path would be cut short, and the release at the end of "
-                f"it refused")
+        seconds = self._pointer_duration(duration, "a gesture")
         checked = [self._check_point(int(x), int(y)) for x, y in points]
         gap = seconds / (len(checked) - 1)
 

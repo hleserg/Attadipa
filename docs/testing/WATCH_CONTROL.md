@@ -124,19 +124,21 @@ a serial device.
 **The whole path, from the `PointerDown` to the `PointerUp`.** A gesture of `N`
 points has `N - 1` intervals between adjacent points; each is `duration / (N-1)`
 and every one of them is waited out, the interval before the release included.
-So a two-point gesture — which has nothing in the middle at all — holds the
-pointer down for the whole `duration` before lifting it, and a `duration` of
-`0.6` means the device sees 0.6 s of gesture whatever the shape.
+So a two-point gesture — which has nothing in the middle at all — schedules
+its release one whole `duration` after the press. On a connection fast enough
+to meet every deadline, `0.6` therefore means the device sees 0.6 s whatever
+the shape. A slow transport can stretch that span; the distinction below is
+part of the contract rather than hidden latency.
 
-**Up to the device's own hold limit, which `info` prints** — 30 s on the
-simulator, and a real firmware may choose less. A gesture holds the pointer
-down for its whole duration, so a longer one would have the device expire the
-hold, push a `PointerUp` nobody asked for, hand the interface a click on
-whatever is underneath, and then refuse the real release as *impossible from
-the current state* — a message about the wrong subsystem, after the fact. It
-is refused up front instead, in a sentence naming the limit, the same way
-`hold --duration` has always been. The number is read from the capabilities
-rather than assumed here.
+**The requested duration is bounded by the device's own hold limit, which
+`info` prints** — 30 s on the simulator, and a real firmware may choose less.
+`long-tap`, `swipe`, `drag` and `gesture` all refuse an over-limit request
+before `PointerDown`, in a sentence naming the request in milliseconds. The
+number is read from capabilities rather than assumed. This check cannot prove
+the achieved device-side span on a slow serial transport: acknowledgement
+round trips can delay the host release beyond the request. T-114 must report
+requested beside achieved time and establish any serial safety margin on the
+real transport; this host-only change deliberately invents neither.
 
 **`0` is a host convention and not a device declaration, and the two do not
 agree.** A device that advertises `0` has given the tool no bound to enforce,
@@ -168,9 +170,8 @@ negative interval.
 
 `duration: 0` is legal and means *as fast as the connection manages* — the
 shape without a claim about its speed. A negative, infinite or NaN duration is
-refused **before** the `PointerDown` goes out, so a mistyped gesture file
-cannot leave a finger down on the device. The same rule reaches a scenario step
-and a `gesture --file`, because both go through the one client method.
+refused **before** the `PointerDown` goes out for every pointer-hold verb, so a
+mistyped command, scenario or gesture file cannot leave a finger down.
 
 `swipe` and `drag` are a hair short of this today — they take `steps` intervals
 between their points and sleep for `steps - 1` of them, so a swipe runs `1/steps`
