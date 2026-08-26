@@ -20,7 +20,7 @@ ATTADIPA_REVIEW_MARKER_AUTHORS='["attadipa-agent[bot]"]'
 
 attadipa_review_published() {
   local ran="${1-}" outcome="${2-}" comments="${3-}" labels="${4-}" started="${5-}"
-  if [ "$ran" != yes ] || [ "$outcome" = failure ]; then
+  if [ "$ran" != yes ]; then
     echo 'not-run the model was not reached'
     return 0
   fi

@@ -118,6 +118,12 @@ It finishes by setting exactly one of `ai-review:pass` or `ai-review:blocking`,
 and it is asked to say plainly when it found nothing. A reviewer that always
 finds something is noise, and noise is how a review stops being read.
 
+The action's step outcome is not the publication record. `--max-turns` is
+checked after a session can already have posted its sticky comment, so a fresh
+trusted reviewer comment remains authoritative even if the action subsequently
+reports `failure`. The workflow emits a warning and keeps that verdict. Only a
+failure with no fresh reviewer comment enters the no-review diagnostic path.
+
 **When it cannot run, neither label is set and it says so on the pull request.**
 That note is the only signal that `main`'s second protection is absent for a
 commit, so it reads the action's own execution log and quotes the result record —
