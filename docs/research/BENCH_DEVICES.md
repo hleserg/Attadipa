@@ -105,7 +105,13 @@ esptool reset strategy is built on; the T-Watch refuses all of them with
 the Waveshare can be driven unattended and **the T-Watch cannot be put into
 download mode by the host's flashing tools** — every load on it needs a hand
 holding BOOT while pressing RESET, and both buttons sit on its GNSS
-daughterboard.
+daughterboard. Once a hand has put it there, `ramhold.py --connect-mode
+no_reset` is the mode to reach for: it is the only strategy that got as far as
+transmitting on this unit, because every other one toggles the lines before it
+sends a byte. Whether the ROM in download mode refuses those lines too is
+`UNKNOWN` — the refusal was only ever measured with the factory application
+running, and this unit's USB behaviour is stateful. That the load then succeeds
+is `NOT EXECUTED — HARDWARE REQUIRED`.
 Measured with a same-host control on 2026-08-28:
 [TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md)
 §2. Why it refuses is `UNKNOWN`.
