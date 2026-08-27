@@ -116,6 +116,27 @@ Measured with a same-host control on 2026-08-28:
 [TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md)
 §2. Why it refuses is `UNKNOWN`.
 
+## What answers on the Waveshare's PMU bus — MEASURED 2026-08-28
+
+Read with the `CONFIG_ATTADIPA_I2C_PROBE` build on SDA 15 / SCL 14 at 100 kHz,
+loaded over the RAM route, writing nothing:
+
+| Address | What it is |
+| --- | --- |
+| `0x18` | `UNKNOWN` |
+| `0x34` | AXP2101 — the address the board driver already uses |
+| `0x40` | `UNKNOWN` |
+| `0x51` | PCF85063 — likewise `kPcf85063Address` in the board driver |
+| `0x6b` | `UNKNOWN` |
+
+`REG 0x64` on `0x34` read back `0x03`. That is **this** board's AXP2101, not the
+T-Watch's, and it settles nothing about D22; it is recorded because the same
+byte on the other unit is the thing D22 asks for, and a reader deserves to know
+what the instrument returns on a bus that is already understood.
+
+The three `UNKNOWN` rows are addresses, not identifications. Naming them needs a
+schematic for this board revision, and none has been read.
+
 ## What this does not say
 
 The USB serial of an ESP32-S3's USB-Serial/JTAG peripheral is derived from the

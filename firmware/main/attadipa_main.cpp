@@ -28,6 +28,10 @@
 #include "freertos/task.h"
 #include "sdkconfig.h"
 
+#if CONFIG_ATTADIPA_I2C_PROBE
+#include "i2c_probe.h"
+#endif
+
 #if CONFIG_SPIRAM
 #include "esp_psram.h"
 #endif
@@ -297,6 +301,12 @@ extern "C" void app_main(void)
                  *snapshot.memory.psram_largest_block_bytes);
     }
     ESP_LOGI(kTag, "-------------------------------------------------------------");
+
+#if CONFIG_ATTADIPA_I2C_PROBE
+    // Before the UI, because on an unknown board the UI is the part most likely
+    // to hang, and the scan is the reason the image was loaded at all.
+    attadipa::firmware::run_i2c_probe();
+#endif
 
 #if !CONFIG_APP_BUILD_TYPE_PURE_RAM_APP
     const esp_err_t ui_err = start_waveshare_ui();

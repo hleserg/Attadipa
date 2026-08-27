@@ -2,6 +2,9 @@ set(ATTADIPA_MAIN_SOURCES "attadipa_main.cpp" "waveshare_board.cpp")
 if(CONFIG_ATTADIPA_WATCH_CONTROL)
     list(APPEND ATTADIPA_MAIN_SOURCES "watch_control.cpp")
 endif()
+if(CONFIG_ATTADIPA_I2C_PROBE)
+    list(APPEND ATTADIPA_MAIN_SOURCES "i2c_probe.cpp")
+endif()
 idf_component_register(SRCS ${ATTADIPA_MAIN_SOURCES} INCLUDE_DIRS ".")
 
 # The host libraries are *linked*, not copied. These are the same CMakeLists the
