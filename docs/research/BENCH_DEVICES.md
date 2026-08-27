@@ -1,30 +1,44 @@
 # Which device is which on the bench
 
-> **Status:** read off the hardware, 2026-08-25, on the development host.
+> **Status:** read off the hardware, 2026-08-25 and 2026-08-27, on the
+> development host.
 > Every value below came from `esptool flash-id` and `udevadm`; nothing here is
 > inferred from a product name.
 
 This document exists because of one sentence in
 [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §2 that was true and
-had nowhere durable to live: **two ESP32-S3 boards on this bench both enumerate
+had nowhere durable to live: **three ESP32-S3 boards on this bench all enumerate
 as `303a:1001`, `USB JTAG/serial debug unit`, and the USB descriptor does not
 say which is which.** `/dev/ttyACM0` and `/dev/ttyACM1` are assigned in
 enumeration order, so they swap on a replug. Anything that picks a port by
 number will eventually pick the wrong board.
 
-## The two units
+## The three units
 
-| | Watch | The other board |
-|---|---|---|
-| USB serial | **`28:84:85:B2:18:A4`** | `F8:5B:1B:A1:98:24` |
-| `by-id` link | `usb-Espressif_USB_JTAG_serial_debug_unit_28:84:85:B2:18:A4-if00` | `…_F8:5B:1B:A1:98:24-if00` |
-| Chip | ESP32-S3 (QFN56) rev **v0.2** | ESP32-S3 (QFN56) rev v0.2 |
-| PSRAM | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
-| Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | `0x68 0x4018` — 16 MB |
-| Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
-| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | unchanged; do not write |
+| | Waveshare watch | T-Watch S3 Plus | The other board |
+|---|---|---|---|
+| USB serial | **`28:84:85:B2:18:A4`** | **`DC:B4:D9:18:49:40`** | `F8:5B:1B:A1:98:24` |
+| `by-id` link | `usb-Espressif_USB_JTAG_serial_debug_unit_28:84:85:B2:18:A4-if00` | `…_DC:B4:D9:18:49:40-if00` | `…_F8:5B:1B:A1:98:24-if00` |
+| Chip | ESP32-S3 (QFN56) rev **v0.2** | ESP32-S3 (QFN56) rev **v0.2** | ESP32-S3 (QFN56) rev v0.2 |
+| PSRAM | **8 MB, `AP_3v3`** | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
+| Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | **`0xEF 0x4018` — Winbond, 16 MB** | `0x68 0x4018` — 16 MB |
+| Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | LilyGO T-Watch S3 Plus; the shipped firmware's own FQBN is `esp32:esp32:twatchs3:Revision=Radio_SX1262` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
+| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **factory, untouched** — nothing has ever been written to this unit | unchanged; do not write |
 
-The watch row matches [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1–1.3
+The **T-Watch column is the only one of the three whose flash is still exactly
+as the factory shipped it.** A complete 16 777 216-byte image was read off it on
+2026-08-27 and proved three independent ways — on-chip MD5, a second byte-identical
+read, and a structural parse — before anything else was attempted. Its SHA-256 is
+`e28f5cdd79552950d7f73fc2776023e297bfcd5dcc320d667ee065b0ebd37202`; the evidence and
+the reproduction notes are
+[TWATCH_S3_PLUS_BRINGUP_2026-08-27](TWATCH_S3_PLUS_BRINGUP_2026-08-27.md), and as with
+the Waveshare image the binary's local path is deliberately not a repository artefact.
+That report also carries two host-side facts specific to this unit — no software
+reset works on it in either direction, and its first USB control
+transfer after every `open()` fails with `EPROTO` — either of which reads as a dead
+board to a session that has not met them.
+
+The Waveshare row matches [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md) §1.1–1.3
 on all three of revision, PSRAM capacity and flash JEDEC id, which is what
 identifies it — not the port it happened to appear on. `PSRAM_CAP = 8M` and
 `PSRAM_VENDOR = AP_3v3` were read from the die's own fuses on 2026-08-23 by a
@@ -52,10 +66,20 @@ subsequent replug, the owner installed a FAT32-formatted microSD/TF card. The
 card's physical presence and format are owner-reported bench state; mounting,
 reading and writing it from Attadipa are `NOT EXECUTED — HARDWARE REQUIRED`.
 
-**The second board is not ours to write to.** It is nothing like the watch — a
-quarter of the PSRAM and half the flash — so a mis-addressed load fails rather
-than half-working, but it is a MeshCore node someone is using and the correct
-handling is to leave it alone.
+**`F8:5B:1B:A1:98:24` is not ours to write to.** It is a MeshCore node somebody
+is using, and the correct handling is to leave it alone. Name it by serial, not
+by position: it used to be *the other one* of two, and it is now one of three.
+
+**No single silicon property separates all three units any more**, and that is
+worth stating plainly because the old text leaned on one. The chip reads
+`ESP32-S3 (QFN56) rev v0.2` on all three. PSRAM ties the Waveshare to the
+T-Watch at 8 MB `AP_3v3` and singles out only the node's 2 MB. Flash *capacity*
+ties the T-Watch to the node at 16 MB and singles out only the Waveshare's
+32 MB. What still splits all three is the **full JEDEC id including the vendor
+byte** — `0xC8 0x4019`, `0xEF 0x4018`, `0x68 0x4018` — so a `flash_id`
+cross-check retains its value, but only when the vendor byte is read and not
+the capacity alone. The USB serial stays the identifier; the JEDEC id is a
+post-hoc confirmation, never a substitute.
 
 ## How tools resolve it
 
@@ -65,9 +89,9 @@ non-zero when the unit is absent, rather than falling back to a port number.
 use the first ESP32 you find" path.
 
 ```
-$ ls /dev/serial/by-id/
+$ ls /dev/serial/by-id/          # 2026-08-27, the MeshCore node unplugged
 usb-Espressif_USB_JTAG_serial_debug_unit_28:84:85:B2:18:A4-if00 -> ../../ttyACM1
-usb-Espressif_USB_JTAG_serial_debug_unit_F8:5B:1B:A1:98:24-if00 -> ../../ttyACM0
+usb-Espressif_USB_JTAG_serial_debug_unit_DC:B4:D9:18:49:40-if00 -> ../../ttyACM0
 ```
 
 That listing is from one moment on one host. **The serials are the durable
