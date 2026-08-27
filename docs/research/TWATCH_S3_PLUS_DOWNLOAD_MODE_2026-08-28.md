@@ -52,6 +52,15 @@ Opening the port with pyserial's `rtscts` and `dsrdtr` set — which suppresses
 those two ioctls inside `open()` — succeeds. The port is reachable. Only the
 control-line request is refused.
 
+**One thing in the same log does not fit, and is recorded rather than
+explained.** During the *first* invocation the unit reset and re-enumerated
+three times — `134342`, `134375`, `134381` — so something did reach it then.
+The measured claim above is scoped to the later window, in which the six
+retries ran against an enumeration that produced no USB events at all. Why the
+earlier attempts moved the chip and the later ones did not is `UNKNOWN`, and it
+is a second sign that this unit's USB behaviour is stateful rather than a fixed
+property.
+
 **The control.** The same script, same host, same kernel, same `cdc_acm`, same
 `303a:1001`, run against each unit in turn:
 
@@ -67,9 +76,15 @@ Four out of four against zero out of four. The difference is the device.
 **The consequence.** Every esptool reset strategy is built on those two lines,
 and `usb_reset` is not an escape hatch: esptool's `loader.py` routes that mode
 to the same `USBJTAGSerialReset`, which toggles DTR and RTS like the others. So
-there is no host-side route into download mode on this unit. Connecting with
-`no_reset` opens the port, transmits, and receives no SLIP answer, which says
-the chip was not sitting in download mode either.
+**none of the host's flashing tools can reach download mode on this unit.**
+Connecting with `no_reset` opens the port, transmits, and receives no SLIP
+answer, which says the chip was not sitting in download mode either.
+
+That is narrower than "no route exists", and deliberately. What was tested is
+the control-line path every esptool strategy takes. Whether the factory
+application offers its own way in over the CDC *data* channel — a console
+command that sets the force-download boot bit, say — was **not tested** and is
+`UNKNOWN`.
 
 **What this means for the bench.** The Waveshare can be driven unattended and
 the T-Watch cannot. Every RAM load on this unit needs a human holding BOOT while
@@ -118,7 +133,7 @@ retry, `error -22`, `attempt power cycle`, two further addresses refused, then
 | Started | `128605.224010` | `143562.761490` |
 | Gave up | `128609.821867` | `143567.339260` |
 | Preceded by our `USBDEVFS_RESET` | **no** | yes, by 126 ms |
-| Came back | **yes, at `129331.656898` — 722 s (12.0 min) later** | see below |
+| Came back | **yes, at `129331.656898` — 722 s (12.0 min) later** | not as of this report |
 
 Episode A predates every action of this session, and it too was preceded by
 `reset full-speed USB device … using xhci-hcd`, which nothing of ours issued. So

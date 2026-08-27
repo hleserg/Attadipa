@@ -103,8 +103,9 @@ units differ here.** The Waveshare accepts the CDC control-line requests every
 esptool reset strategy is built on; the T-Watch refuses all of them with
 `errno 71`, on a stable enumeration, with the same script on the same host. So
 the Waveshare can be driven unattended and **the T-Watch cannot be put into
-download mode from the host at all** — every load on it needs a hand holding
-BOOT while pressing RESET, and both buttons sit on its GNSS daughterboard.
+download mode by the host's flashing tools** — every load on it needs a hand
+holding BOOT while pressing RESET, and both buttons sit on its GNSS
+daughterboard.
 Measured with a same-host control on 2026-08-28:
 [TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md)
 §2. Why it refuses is `UNKNOWN`.
