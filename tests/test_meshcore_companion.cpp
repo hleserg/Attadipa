@@ -206,6 +206,117 @@ void test_bad_frames_and_disconnect_fail_closed()
     CHECK(!client.receive(&frame, 1, at(10)));
 }
 
+// The frames a hostile or broken node can put on the wire, at the seam the BLE
+// transport actually hands over.
+//
+// MESHCORE_COMPANION_PROTOCOL.md:169-173 is the reason this is one test rather
+// than a reassembly test: "No length prefix, no delimiter, no checksum, no
+// chunking and no reassembly code anywhere in the repository. One GATT
+// operation carries one whole companion frame." So a frame that arrives split
+// is not a frame to be rebuilt -- every piece is its own malformed frame, and
+// the client must never accumulate across notifications. Every case below is
+// counted and refused, and none of them may end the session:
+// MESHCORE_PARSER_BOUNDS.md §5 puts the node on the far side of a trust
+// boundary that a third party on the air can provoke.
+void test_hostile_frames_are_bounded_and_the_session_survives()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    std::uint32_t expected = client.malformed_frames();
+
+    // Over size. kMeshCoreFrameBytes is MeshCore's own MAX_FRAME_SIZE 176
+    // (MESHCORE_BLE_FRAME_CAPACITY.md:31); on nRF52 the buffer binds and not
+    // the link, so 176 is the ceiling whatever MTU was negotiated (:58-60).
+    // One byte past it is refused before a payload byte is read.
+    std::uint8_t oversize[attadipa::link::kMeshCoreFrameBytes + 1]{};
+    oversize[0] = 16;
+    CHECK(!client.receive(oversize, sizeof(oversize), at(20)));
+    CHECK(client.malformed_frames() == ++expected);
+
+    // The transport cannot copy an over-size notification into a 176-byte
+    // frame at all, so it drops it before the copy and records it here. The
+    // session must survive: tearing the link down on one malformed frame is
+    // how a peer we do not trust ends mesh for the whole boot.
+    client.drop_oversize_frame();
+    CHECK(client.malformed_frames() == ++expected);
+    CHECK(client.status().availability == Availability::Ready);
+
+    // A garbage first byte. The payload's own first byte is the response code
+    // (MESHCORE_COMPANION_PROTOCOL.md:171). One this build does not know is
+    // counted and refused, never accepted by silence.
+    for (const std::uint8_t code : {std::uint8_t{0x00}, std::uint8_t{0x7f},
+                                    std::uint8_t{0xa5}, std::uint8_t{0xff}}) {
+        const std::uint8_t garbage[] = {code, 1, 2, 3};
+        CHECK(!client.receive(garbage, sizeof(garbage), at(21)));
+        CHECK(client.malformed_frames() == ++expected);
+    }
+
+    // No frame at all.
+    CHECK(!client.receive(oversize, 0, at(22)));
+    CHECK(client.malformed_frames() == ++expected);
+    CHECK(!client.receive(nullptr, 4, at(23)));
+    CHECK(client.malformed_frames() == ++expected);
+
+    // Truncated: every response this client parses, one byte short of the
+    // length its own reader requires. Each is refused before the read.
+    const struct { std::uint8_t code; std::size_t minimum; } truncated[] = {
+        {13, 82},   // device info
+        {5, 58},    // self info
+        {2, 5},     // contacts start
+        {3, 148},   // contact
+        {4, 5},     // contacts end
+        {16, 13},   // contact message
+        {0x84, 16}, // contact message v3
+    };
+    for (const auto& shape : truncated) {
+        std::uint8_t frame[176]{};
+        frame[0] = shape.code;
+        CHECK(!client.receive(frame, shape.minimum - 1, at(24)) ||
+              client.malformed_frames() > expected);
+        expected = client.malformed_frames();
+    }
+    CHECK(client.status().availability == Availability::Ready);
+
+    // Fragmentation at every boundary. This is the frame test_send_and_receive
+    // delivers whole and sees rendered; here the same bytes are split at each
+    // internal offset and delivered as two notifications, which is what a
+    // stack that did not preserve message boundaries would produce. Neither
+    // half may be accumulated, and the message must never appear.
+    std::uint8_t whole[21]{};
+    whole[0] = 16;
+    whole[1] = static_cast<std::uint8_t>(-8);
+    std::memcpy(&whole[4], peer.id.public_key.data(), 6);
+    whole[10] = 0xff;
+    std::memcpy(&whole[16], "Split", 5);
+
+    for (std::size_t cut = 1; cut < sizeof(whole); ++cut) {
+        MeshCoreCompanion fragmented;
+        connect_and_handshake(fragmented);
+        const std::uint32_t before = fragmented.malformed_frames();
+
+        (void)fragmented.receive(whole, cut, at(30));
+        (void)fragmented.receive(&whole[cut], sizeof(whole) - cut, at(31));
+
+        // The only way "Split" can be in the status is reassembly across two
+        // notifications, and there is no such thing in this protocol.
+        CHECK(std::strcmp(fragmented.status().last_message.data(), "Split") != 0);
+        CHECK(fragmented.malformed_frames() > before);
+        // And the session is still usable: the whole frame still lands.
+        CHECK(fragmented.receive(whole, sizeof(whole), at(32)));
+        CHECK(std::strcmp(fragmented.status().last_message.data(), "Split") == 0);
+        // Not `== Ready`, and the reason is a property of the protocol rather
+        // than a weaker test. With no framing, a byte from the middle of one
+        // frame is indistinguishable from the first byte of another: at
+        // cut == 5 the tail begins with 0x02, which *is* CONTACTS_START, and a
+        // node legitimately restarting contact sync leaves availability
+        // Unreachable until CONTACTS_END. What must never happen is the link
+        // being torn down by a frame we could not parse.
+        CHECK(fragmented.status().availability != Availability::Failed);
+    }
+}
+
 void test_signed_message_does_not_render_signature_as_text()
 {
     MeshCoreCompanion client;
@@ -254,6 +365,7 @@ int main()
     test_connected_ble_does_not_expire_while_idle();
     test_room_login_then_private_message();
     test_bad_frames_and_disconnect_fail_closed();
+    test_hostile_frames_are_bounded_and_the_session_survives();
     test_signed_message_does_not_render_signature_as_text();
     test_channel_message_is_rendered_without_a_contact_prefix();
     if (failures != 0) {

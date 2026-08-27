@@ -33,7 +33,6 @@
 #endif
 
 #include "attadipa/core/diagnostics.h"
-#include "attadipa/link/link_state.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/platform/hardware_feature.h"
@@ -46,11 +45,6 @@
 namespace {
 
 constexpr char kTag[] = "attadipa";
-
-// The composition root owns link lifecycle state even before a concrete
-// transport adapter exists. Keeping the state here makes the diagnostic honest:
-// the model is alive, while the log below still says that no adapter is wired.
-attadipa::link::LinkState g_link_state;
 
 // Which board this build believes it is on. It is a build-time answer today
 // because there is exactly one board on the desk; when the T-Watch arrives this
@@ -277,13 +271,9 @@ extern "C" void app_main(void)
     snapshot.reset_reason   = translate_reset_reason(esp_reset_reason());
     fill_memory(snapshot.memory);
 
-    g_link_state.reset();
-
     ESP_LOGI(kTag, "Reset      : %s (ESP-IDF code %d)",
              attadipa::core::to_string(snapshot.reset_reason),
              static_cast<int>(esp_reset_reason()));
-    ESP_LOGI(kTag, "Link model : %s (no transport adapter)",
-             attadipa::core::to_string(g_link_state.phase()));
 
     report_silicon();
     report_board_profile();
@@ -311,6 +301,11 @@ extern "C" void app_main(void)
     if (mesh_err != ESP_OK) {
         ESP_LOGE(kTag, "MeshCore BLE failed safely: %s",
                  esp_err_to_name(mesh_err));
+    } else {
+        // The link model is now the transport's own, and it moves at runtime.
+        // This is the boot value, not a standing claim.
+        ESP_LOGI(kTag, "Link model : %s (MeshCore companion over BLE)",
+                 attadipa::core::to_string(meshcore_ble_status().transport));
     }
 #endif
 #else

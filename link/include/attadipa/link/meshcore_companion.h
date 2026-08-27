@@ -43,6 +43,13 @@ public:
                    std::string_view password, std::string_view text,
                    core::WallTime timestamp);
 
+    // A notification longer than kMeshCoreFrameBytes has no buffer to arrive
+    // in, so the transport drops it before a copy and records it here instead
+    // of through receive(). Dropping and counting -- rather than tearing the
+    // link down -- is what keeps one malformed frame from a peer we do not
+    // trust (MESHCORE_PARSER_BOUNDS.md §5) out of the recovery path.
+    void drop_oversize_frame() { ++malformed_frames_; }
+
     std::uint32_t malformed_frames() const { return malformed_frames_; }
     std::uint8_t firmware_version_code() const { return firmware_version_code_; }
 

@@ -402,7 +402,14 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         break;
     default:
-        break;
+        // A response code this build does not know is a frame we did not
+        // understand, not a frame we accepted. The node's output is a peer's
+        // output (MESHCORE_PARSER_BOUNDS.md §5), so it is counted and refused
+        // rather than promoted to valid by silence. The link is deliberately
+        // left alone: LinkEvent::PeerData is already applied above, so a node
+        // that grows a new opcode stays reachable instead of being torn down.
+        ++malformed_frames_;
+        return false;
     }
     update_availability();
     return true;

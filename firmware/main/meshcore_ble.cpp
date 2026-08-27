@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cinttypes>
 #include <cstring>
 
 #include "attadipa/link/meshcore_companion.h"
@@ -57,6 +58,7 @@ enum class EventKind : std::uint8_t {
     Disconnected,
     Fault,
     Frame,
+    OversizeFrame,
     WriteDone,
     Send,
     SendRoom,
@@ -358,7 +360,13 @@ int gap_event(ble_gap_event* event, void*)
         }
         const std::uint16_t length = OS_MBUF_PKTLEN(event->notify_rx.om);
         if (length > attadipa::link::kMeshCoreFrameBytes) {
-            disconnect_fault("notification bounds", BLE_HS_EMSGSIZE);
+            // The node is a peer, not a trusted source, and a third party on
+            // the air can provoke what it sends (MESHCORE_PARSER_BOUNDS.md §5).
+            // Drop the frame before any copy and count it; tearing the link
+            // down here would let one malformed notification end the session --
+            // and disconnect_fault() also clears reconnect_allowed, so it would
+            // end mesh for the whole boot.
+            (void)post(Event{EventKind::OversizeFrame});
             return 0;
         }
         Event incoming{EventKind::Frame};
@@ -495,6 +503,13 @@ void mesh_task(void*)
                                  attadipa::core::to_string(provider.status().delivery));
                     }
                 }
+                break;
+            case EventKind::OversizeFrame:
+                provider.drop_oversize_frame();
+                ESP_LOGW(kTag, "MeshCore frame over %u bytes dropped (%" PRIu32
+                               " malformed so far); session kept",
+                         static_cast<unsigned>(attadipa::link::kMeshCoreFrameBytes),
+                         provider.malformed_frames());
                 break;
             case EventKind::WriteDone:
                 write_in_flight = false;
