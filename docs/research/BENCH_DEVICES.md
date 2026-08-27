@@ -98,6 +98,17 @@ That listing is from one moment on one host. **The serials are the durable
 fact; the `ttyACM` numbers in it are not**, and are reproduced only to show what
 the mapping looked like when it was recorded.
 
+**Resolving the port is not the same as being able to drive it, and the two
+units differ here.** The Waveshare accepts the CDC control-line requests every
+esptool reset strategy is built on; the T-Watch refuses all of them with
+`errno 71`, on a stable enumeration, with the same script on the same host. So
+the Waveshare can be driven unattended and **the T-Watch cannot be put into
+download mode from the host at all** — every load on it needs a hand holding
+BOOT while pressing RESET, and both buttons sit on its GNSS daughterboard.
+Measured with a same-host control on 2026-08-28:
+[TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md)
+§2. Why it refuses is `UNKNOWN`.
+
 ## What this does not say
 
 The USB serial of an ESP32-S3's USB-Serial/JTAG peripheral is derived from the

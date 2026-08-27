@@ -19,13 +19,6 @@
 
 The owner authorised flashing the unit
 ([#100](https://github.com/hleserg/Attadipa/issues/100)) so that the bench
-sequence in [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §5 could run: scan the
-main I2C bus, read the AXP2101 rail state, identify the touch controller. That
-sequence **did not run**, and the reasons it did not are worth more than the
-sequence would have been.
-
-The owner authorised flashing the unit
-([#100](https://github.com/hleserg/Attadipa/issues/100)) so that the bench
 sequence in [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §5 could run: scan the main
 I2C bus, read the AXP2101 rail state, identify the touch controller. **That
 sequence has now run, and it wrote nothing to flash at all.**
