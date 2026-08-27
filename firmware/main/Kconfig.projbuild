@@ -7,4 +7,23 @@ config ATTADIPA_WATCH_CONTROL
         Enable screenshots and physical/remote input over USB-Serial/JTAG.
         The feature owns one full RGB565 frame in PSRAM while running.
 
+config ATTADIPA_I2C_PROBE
+    bool "I2C bring-up probe"
+    default n
+    help
+        Scan the I2C bus on the pins below and log every address that
+        acknowledges, then read the AXP2101 charge-voltage register if one
+        answered. A bring-up instrument for a board this firmware has no
+        driver for; it writes no register and asserts no board identity.
+
+config ATTADIPA_I2C_PROBE_SDA
+    int "I2C probe SDA GPIO"
+    depends on ATTADIPA_I2C_PROBE
+    default 10
+
+config ATTADIPA_I2C_PROBE_SCL
+    int "I2C probe SCL GPIO"
+    depends on ATTADIPA_I2C_PROBE
+    default 11
+
 endmenu

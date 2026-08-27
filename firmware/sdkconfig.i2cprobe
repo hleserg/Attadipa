@@ -1,0 +1,15 @@
+# Overlay: turn the bring-up I2C scan on. Stack it after the RAM overlay, which
+# is the route that writes nothing and therefore the one a board with no driver
+# should be met with:
+#
+#   idf.py -B build-probe -DSDKCONFIG=build-probe/sdkconfig \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe;sdkconfig.i2cprobe" build
+#
+# The pins below are the T-Watch S3 Plus PMU bus, from issue #300. They are the
+# only board-specific thing here, and they are configuration rather than code
+# precisely so that pointing the probe at a different bus needs no new source.
+# The touch controller sits on a second bus on that board (SDA 39 / SCL 40) and
+# is a separate run of the same image with these two numbers changed.
+CONFIG_ATTADIPA_I2C_PROBE=y
+CONFIG_ATTADIPA_I2C_PROBE_SDA=10
+CONFIG_ATTADIPA_I2C_PROBE_SCL=11
