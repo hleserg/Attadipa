@@ -42,8 +42,8 @@ The smallest credible path is:
 2. make one owner arbitrate power transitions and rails;
 3. add Location and sensor service seams together with their first real
    providers, reusing the existing domain types;
-4. finish the existing Time and Mesh provider work rather than creating second
-   abstractions;
+4. finish the in-flight Time (#264) and Mesh provider (draft #282) work rather
+   than creating second abstractions;
 5. extract a second BSP only when a second firmware board is being integrated.
 
 This preserves working code while making every future board-specific decision
@@ -58,7 +58,7 @@ land below the OS/application boundary.
 | What is already platform-ready? | The build layers, two-level capability model, availability/source semantics, normalized time/position/motion data, board descriptions, app manifests, bounded input queue, host tests, simulator geometries, and accepted transport/provider ADRs. |
 | Where is hardware coupling concentrated? | Primarily in [`firmware/main/attadipa_main.cpp`](../../firmware/main/attadipa_main.cpp) and [`firmware/main/waveshare_board.cpp`](../../firmware/main/waveshare_board.cpp): board selection, pins, buses, AXP2101, PCF85063, CO5300/FT3168, NVS, UI, and sleep orchestration. |
 | What will block multiple devices? | The shipping runtime does not instantiate the capability registry; no runtime power owner exists; Location and typed sensor services have no provider path; settings are used directly through NVS; app lifecycle and bounded cross-service delivery are not yet defined. |
-| Where are new interfaces justified? | At provider/resource ownership seams with at least one real caller: Location provider, Mesh providers already in #282, typed settings backend, and eventually a board power backend when the second BSP lands. A generic wrapper around every display, input, storage, or radio API is not justified. |
+| Where are new interfaces justified? | At provider/resource ownership seams with at least one real caller: Location provider, the Mesh providers proposed in draft #282, typed settings backend, and eventually a board power backend when the second BSP lands. A generic wrapper around every display, input, storage, or radio API is not justified. |
 | What must be preserved? | `platform -> core -> apps`, board-neutral applications, `HardwareFeature` versus product `Capability`, `Availability` and provenance, `Timed<T>`, `TimeService`, `GnssObservation`/trust models, `InputQueue`, LVGL as the UI portability boundary, and the accepted ADRs listed below. |
 
 ### Enforced layers and real composition
@@ -86,8 +86,17 @@ important platform invariant and should not be traded for convenient
 
 The current firmware entry point is more concrete: it looks up one constant
 profile and starts the Waveshare slice. The board file is roughly a vertical
-prototype: it proves the physical display, touch, RTC, PMU, light sleep, Clock,
-and recent Mesh status work, but it is not yet the reusable device runtime.
+prototype: it proves the physical display, touch, RTC, PMU, light sleep, and
+Clock, but it is not yet the reusable device runtime.
+
+The prototype proves nothing about Mesh, and this audit does not claim it does.
+[`firmware/main/CMakeLists.txt`](../../firmware/main/CMakeLists.txt) builds only
+`attadipa_main.cpp`, `waveshare_board.cpp`, and the optional
+`watch_control.cpp`; `app_main` logs the transport-independent `LinkState` phase
+followed by `(no transport adapter)`; and no `MeshService` or `MeshProvider`
+implementation exists anywhere on this baseline outside documentation. That code
+lives on the branch of draft [#282](https://github.com/hleserg/Attadipa/pull/282)
+and is read here as concurrent work, never as shipping evidence.
 
 ### Component assessment
 
@@ -105,7 +114,7 @@ and recent Mesh status work, but it is not yet the reusable device runtime.
 | Input | [`input.h`](../../core/include/attadipa/core/input.h), firmware polling in WatchControl | Implemented bounded seam, integration concrete | Keep `InputQueue`; factor producers only when another board/input path exists. |
 | Display/UI | [`display_info.h`](../../platform/include/attadipa/platform/display_info.h), [`ui/`](../../ui/), simulator | Geometry portable, firmware backend concrete | Keep LVGL as the application-facing seam; do not wrap it in an empty Display Service. |
 | Storage/settings | Persistent capability and ADR [0006](../adr/0006-settings-and-bounded-values.md); direct NVS use in board code | Target only | Implement typed SettingsService for a real migration; wait for a second storage consumer before a universal StorageService. |
-| Mesh/radio | ADR [0003](../adr/0003-radio-not-lora.md), [0008](../adr/0008-mesh-service-providers.md), draft #282 | Provider/service slice in flight | Complete one `MeshService`; keep raw radio below the local provider. |
+| Mesh/radio | ADR [0003](../adr/0003-radio-not-lora.md), [0008](../adr/0008-mesh-service-providers.md), [`radio_info.h`](../../platform/include/attadipa/platform/radio_info.h); no `MeshService`/`MeshProvider` code on the baseline | Target; the provider/service slice is in flight in draft #282 and is not merged | Complete one `MeshService`; keep raw radio below the local provider. |
 | Applications | [`AppManifest`](../../apps/include/attadipa/apps/app_manifest.h), Clock | Manifest implemented; lifecycle partial | Add lifecycle/navigation only with the second real app. |
 | Events/concurrency | `CapabilityChanged` type, `InputQueue`, subsystem-specific queues | Partial | Define bounded delivery and ownership before several services get independent tasks; do not add a generic bus pre-emptively. |
 
@@ -135,7 +144,7 @@ existing seams rather than force one class per box.
 | Time Service | Real `TimeService`; Waveshare RTC/NVS adapter is embedded in board code | Keep the service as sole wall-clock owner; feed `TimeObservation` from RTC, GNSS, optional phone, manual entry, and later network/mesh providers. |
 | Location Service | Normalized observation, validity, trust, motion and power policy exist; no owner/provider | Add one owner when the first local or node provider is integrated. Applications consume normalized state only. |
 | Sensor Service | Motion evidence/types, no shipping sensor driver/service | Prefer typed `MotionService` and later typed environmental streams. Add a facade only if several apps need discovery across sensor families. |
-| Radio Service | Radio facts and `MeshService` provider design; draft #282 implements the node path | Applications use protocol services (`MeshService`), not a raw radio API. A local provider may privately own a `RadioBackend`. |
+| Radio Service | Radio facts and the ADR-0008 provider design; the `MeshService` node path exists only on the branch of draft #282 | Applications use protocol services (`MeshService`), not a raw radio API. A local provider may privately own a `RadioBackend`. |
 | Power Manager | State vocabulary and transition legality; concrete control in WatchControl/board file | One runtime owner accepts bounded intents, applies a product power profile, and alone executes device transitions/rails. |
 | Storage Service | Persistent/removable capabilities; direct NVS metadata | First implement ADR-0006 `SettingsService`; introduce a broader storage owner only with a second durable data consumer. |
 | Display Service | `DisplayInfo`, LVGL, simulator geometries; board-specific panel init | Treat LVGL plus a BSP display port as the seam. A service is needed only if power/lifecycle arbitration adds behavior beyond LVGL. |
@@ -366,9 +375,14 @@ The accepted architecture is already protocol-first:
 - ADR-0003 separates radio chip, modulation, band, and protocol support.
 - ADR-0008 gives applications one `MeshService` and hides local/node provider
   selection.
-- draft PR #282 adds a bounded, transport-independent MeshCore Companion client
-  behind `MeshProvider`, with executable simulated protocol frames; its NimBLE
-  runtime and physical validation remain in progress.
+- draft PR #282 proposes a bounded, transport-independent MeshCore Companion
+  client behind `MeshProvider`, with executable simulated protocol frames. It is
+  unmerged: its `core/mesh_service.*` and `link/meshcore_companion.*` files exist
+  only on its own branch, the shipping composition does not construct them even
+  there, and its NimBLE runtime and physical validation remain in progress.
+
+The rest of this section therefore describes the target seam, not behavior the
+baseline has.
 
 Applications should continue to call `MeshService`, not `SX1262`, LoRa, BLE, or
 UART. A public generic Radio Service would either expose radio-specific details
@@ -502,8 +516,9 @@ issue per accepted item; existing issue #264 and PR #282 remain canonical.
   answers and provider state therefore do not govern the shipping UI.
 - **Minimal solution:** create the inventory from the selected existing profile
   in the composition root, instantiate the existing registry, and update it
-  from real board/provider lifecycle state. Make Clock/Mesh diagnostics consume
-  those answers. Do not add a container or dependency-injection framework.
+  from real board/provider lifecycle state. Make Clock consume those answers, and
+  any Mesh diagnostics that arrive with #282. Do not add a container or
+  dependency-injection framework.
 - **Likely files:** `firmware/main/attadipa_main.cpp`,
   `firmware/main/waveshare_board.cpp`, `core/src/capability_registry.cpp`,
   `platform/src/profile_inventory.cpp`, shipping-seam and boundary tests.
@@ -564,8 +579,9 @@ issue per accepted item; existing issue #264 and PR #282 remain canonical.
 
 #### P1.1 — Complete Mesh provider arbitration after #282
 
-- **Problem:** the node provider slice is in flight; local versus node
-  selection/failover is not yet exercised by the shipping runtime.
+- **Problem:** the node provider slice is in flight in draft #282 and absent
+  from the baseline; local versus node selection/failover is therefore not
+  exercised by the shipping runtime, or by anything else.
 - **Minimal solution:** finish #282, then add only the arbitration needed by a
   measured second provider. Keep `MeshService` as the sole app API and raw radio
   control private to the local provider.
@@ -602,9 +618,10 @@ issue per accepted item; existing issue #264 and PR #282 remain canonical.
 
 #### P1.4 — Define bounded event and application lifecycle delivery
 
-- **Problem:** `CapabilityChanged` has no consumer path; Input and Mesh own
-  separate queues; a second app will need activation/suspension and service
-  updates without polling every subsystem.
+- **Problem:** `CapabilityChanged` has no consumer path; `InputQueue` and the
+  bounded provider queue proposed by draft #282 are separate designs that have
+  never met; a second app will need activation/suspension and service updates
+  without polling every subsystem.
 - **Minimal solution:** when the second real app lands, define one bounded
   delivery rule (ownership, capacity, backpressure, ordering, shutdown) and a
   minimal manifest-driven lifecycle. Reuse existing queues where possible.
@@ -669,6 +686,12 @@ issue per accepted item; existing issue #264 and PR #282 remain canonical.
 
 ## 13. Visual architecture documentation
 
+The four evidence states above govern these diagrams too. Only a box the diagram
+marks as implemented refers to merged code on the baseline; §13.2 and §13.3 draw
+the target ownership graphs in full, so most of their boxes are recommendations
+rather than existing code paths. Work that is only in an open pull request is
+labelled with its number and drawn as target.
+
 ### 13.1 Main Attadipa platform map
 
 ```mermaid
@@ -683,7 +706,7 @@ flowchart TB
   subgraph APPS["Application layer — board-neutral"]
     direction LR
     CLOCK["Clock<br/>implemented"]
-    MESHAPP["Mesh status / messaging<br/>partial"]
+    MESHAPP["Mesh status / messaging<br/>target; no such app on the baseline"]
     NAV["Navigator / tracking<br/>target"]
     EMERG["Emergency workflow<br/>target"]
     HEADLESS["Beacon / headless app<br/>target"]
@@ -694,7 +717,8 @@ flowchart TB
   subgraph CORE["Attadipa OS — core ownership"]
     direction LR
     TIMELOC["TimeService — implemented<br/>LocationService — target; models exist"]
-    SENSORMESH["Typed Sensor services — target; types exist<br/>MeshService / MeshCore — draft #282"]
+    SENSORS["Typed Sensor services — target<br/>motion types exist"]
+    MESHSVC["MeshService / MeshCore — target<br/>draft #282, not merged"]
     POWERSTORE["Power Manager — target; state policy exists<br/>Settings / Storage — target ADR-0006"]
     CAPUI["CapabilityRegistry — model implemented<br/>InputQueue + LVGL Display — implemented"]
     EVENTS["Bounded lifecycle / service events<br/>target"]
@@ -703,7 +727,8 @@ flowchart TB
   subgraph PROVIDERS["Providers, ports, and protocol adapters"]
     direction LR
     TIMEPOS["RTC / manual / GNSS / phone time sources<br/>PositionProvider: local GNSS or node"]
-    MOTIONMESH["Typed sensor drivers<br/>MeshProvider: node now; local future"]
+    MOTIONDRV["Typed sensor drivers — target<br/>no sensor driver on the baseline"]
+    MESHPROV["MeshProvider — target<br/>node path in draft #282, local future"]
     POWERDATA["Board power implementation: rails, wake, sleep<br/>NVS settings backend"]
     HUMANPORTS["Buttons / touch / remote input producers<br/>LVGL display + touch ports"]
   end
@@ -742,17 +767,20 @@ flowchart TB
   HEADLESS --> LIFECYCLE
   LIFECYCLE --> EVENTS
   LIFECYCLE --> TIMELOC
-  LIFECYCLE --> SENSORMESH
+  LIFECYCLE --> SENSORS
+  LIFECYCLE --> MESHSVC
   LIFECYCLE --> POWERSTORE
   LIFECYCLE --> CAPUI
 
   TIMELOC --> TIMEPOS
-  SENSORMESH --> MOTIONMESH
+  SENSORS --> MOTIONDRV
+  MESHSVC --> MESHPROV
   POWERSTORE --> POWERDATA
   CAPUI --> HUMANPORTS
 
   TIMEPOS --> COMPOSE
-  MOTIONMESH --> COMPOSE
+  MOTIONDRV --> COMPOSE
+  MESHPROV --> COMPOSE
   POWERDATA --> COMPOSE
   HUMANPORTS --> COMPOSE
   COMPOSE --> PROFILE
@@ -774,8 +802,8 @@ flowchart TB
   NODE --> PEERS
 
   class CLOCK,CAPUI,PROFILE implemented
-  class MESHAPP,LIFECYCLE,TIMELOC,SENSORMESH,POWERSTORE,EVENTS,TIMEPOS,MOTIONMESH,POWERDATA,TWATCH partial
-  class NAV,EMERG,HEADLESS,FUTUREBSP target
+  class LIFECYCLE,TIMELOC,SENSORS,POWERSTORE,EVENTS,TIMEPOS,POWERDATA,TWATCH partial
+  class MESHAPP,MESHSVC,MESHPROV,MOTIONDRV,NAV,EMERG,HEADLESS,FUTUREBSP target
   class WAVE,COMPOSE risk
   class SAT,PHONE,NODE,PEERS,USER external
   class HUMANPORTS,COMPUTE,HUMANHW,NAVRADIO,SENSORHW,POWERHW neutral
@@ -784,7 +812,10 @@ flowchart TB
 **Legend:** green = implemented reusable behavior; amber = partial seam or
 planned owner with existing foundations; blue = future product composition;
 rose = current concentration of board-specific coupling; purple = outside the
-device. Hardware boxes name possible roles, not an unverified BOM.
+device. Hardware boxes name possible roles, not an unverified BOM. The Mesh
+application, `MeshService` and `MeshProvider` boxes are blue because no part of
+that path is merged: they are drawn as the target seam that draft #282 is
+working towards, not as behavior this baseline has.
 
 ### 13.2 Data-flow map
 
