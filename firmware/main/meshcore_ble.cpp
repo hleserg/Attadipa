@@ -396,6 +396,21 @@ int gap_event(ble_gap_event* event, void*)
     }
 }
 
+// The frame transcript this task's evidence rests on: every Companion frame
+// that crosses the link, by direction, opcode and length, with its bytes.
+// There is no BLE sniffer on this bench and the host is not a party to this
+// link, so the firmware is the only place a transcript can come from.
+// Bounded by construction -- a frame is at most kMeshCoreFrameBytes
+// (MESHCORE_BLE_FRAME_CAPACITY.md section 3) and an over-size notification is
+// dropped in the callback and never reaches either call site.
+void log_frame(const char* direction, const std::uint8_t* data, std::size_t size)
+{
+    if (data == nullptr || size == 0) return;
+    ESP_LOGI(kTag, "%s op=0x%02X len=%u", direction,
+             static_cast<unsigned>(data[0]), static_cast<unsigned>(size));
+    ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, size, ESP_LOG_INFO);
+}
+
 void pump_tx()
 {
     if (!gatt_ready || write_in_flight || connection == kNoConnection) return;
@@ -415,6 +430,7 @@ void pump_tx()
         disconnect_fault("write Companion frame", rc);
     } else {
         write_in_flight = true;
+        log_frame("TX", frame.bytes.data(), frame.size);
     }
 }
 
@@ -490,12 +506,24 @@ void mesh_task(void*)
                 break;
             case EventKind::Disconnected:
                 provider.disconnected(now());
+                // disconnected() can only apply PeerGone to a live link, so a
+                // fault recorded while the peer was still there leaves the
+                // phase Faulted -- and Faulted refuses both PeerArriving and
+                // PeerEstablished. MEASURED on the bench 2026-08-27: the link
+                // came back with MTU 247 and not one Companion frame was sent
+                // again for the rest of the boot. begin() is the only call
+                // that resets the link model, and it is made only where a
+                // reconnect will actually be attempted: disconnect_fault()
+                // clears reconnect_allowed precisely so a broken subsystem is
+                // not retried forever, and start_scan() honours it.
+                if (reconnect_allowed.load()) provider.begin(now());
                 break;
             case EventKind::Fault:
                 provider.fault(now());
                 break;
             case EventKind::Frame:
                 {
+                    log_frame("RX", event.bytes.data(), event.size);
                     const auto before = provider.status().delivery;
                     if (provider.receive(event.bytes.data(), event.size, now()) &&
                         provider.status().delivery != before) {
@@ -514,7 +542,23 @@ void mesh_task(void*)
             case EventKind::WriteDone:
                 write_in_flight = false;
                 if (event.result != 0) {
-                    provider.fault(now());
+                    // A write that failed is the peer not answering, not a
+                    // broken subsystem, and calling fault() here is what
+                    // wedged the session on the bench. ATT allows a
+                    // write-with-response 30 s before the host must tear the
+                    // link down, so this callback arrives immediately before
+                    // BLE_GAP_EVENT_DISCONNECT -- and Faulted refuses
+                    // PeerArriving and PeerEstablished alike, so the
+                    // reconnect that follows could never re-establish the
+                    // session. Terminating routes the failure into the
+                    // disconnect path below, which is the single place that
+                    // recovers; when the link is already gone that path is
+                    // running anyway.
+                    ESP_LOGW(kTag, "Companion write failed: %d; recycling the session",
+                             event.result);
+                    if (connection != kNoConnection) {
+                        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+                    }
                 } else {
                     vTaskDelay(kMeshCoreWriteDelay);
                 }

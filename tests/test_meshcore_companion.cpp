@@ -190,6 +190,45 @@ void test_room_login_then_private_message()
     CHECK(client.status().delivery == MeshDelivery::Confirmed);
 }
 
+void test_a_fault_survives_reconnect_until_begin_restarts_the_session()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+
+    // A write that never completes faults the link while the peer is still
+    // attached, so the phase is Faulted rather than Attached.
+    client.fault(at(20));
+    CHECK(client.status().availability == Availability::Failed);
+
+    // Faulted refuses PeerGone, PeerArriving and PeerEstablished alike, so
+    // replaying the arrival sequence is not enough on its own: no CMD_APP_START
+    // is queued and the session stays dead. MEASURED on the bench 2026-08-27 --
+    // the link came back at MTU 247 and not one Companion frame was sent again
+    // for the rest of the boot.
+    client.disconnected(at(21));
+    client.peer_arriving(at(22));
+    client.connected(at(23));
+
+    MeshCoreFrame frame{};
+    CHECK(!client.next_tx(frame));
+    CHECK(client.status().availability == Availability::Failed);
+    const std::uint8_t push[] = {0x88, 0, 0, 0};
+    CHECK(!client.receive(push, sizeof(push), at(24)));
+
+    // begin() is the one call that resets the link model, and it is what the
+    // transport now makes on every disconnect it intends to reconnect after.
+    client.begin(at(25));
+    client.peer_arriving(at(26));
+    client.connected(at(27));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(28)));
+}
+
 void test_bad_frames_and_disconnect_fail_closed()
 {
     MeshCoreCompanion client;
@@ -364,6 +403,7 @@ int main()
     test_send_and_receive();
     test_connected_ble_does_not_expire_while_idle();
     test_room_login_then_private_message();
+    test_a_fault_survives_reconnect_until_begin_restarts_the_session();
     test_bad_frames_and_disconnect_fail_closed();
     test_hostile_frames_are_bounded_and_the_session_survives();
     test_signed_message_does_not_render_signature_as_text();
