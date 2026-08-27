@@ -20,7 +20,7 @@ against no board at all.
 | SoC | ESP32-S3 (QFN56) revision **v0.2** |
 | PSRAM | 8 MB, vendor `AP_3v3`, `PSRAM_TEMP` 85 °C |
 | Flash | **`0xEF 0x4018` — Winbond, 16 MB**, quad (4 data lines) per eFuse, 3.3 V |
-| In-package flash | **none** — `FLASH_CAP` and `FLASH_VENDOR` are unset, so the part is `ESP32-S3R8` and the 16 MB is the external `W25Q128JW` the schematic shows |
+| In-package flash | **none** — `FLASH_CAP` and `FLASH_VENDOR` are unset, so the part is `ESP32-S3R8` and the 16 MB is external — Winbond `0xEF 0x4018`, consistent with the schematic's `W25Q128JW`; the ordering code itself is `UNKNOWN` (§5) |
 | Secure Boot | **Disabled** |
 | Flash Encryption | **Disabled**, `SPI_BOOT_CRYPT_CNT = 0x0` |
 | eFuse write/read protection | none — `WR_DIS = 0`, `RD_DIS = 0`, JTAG enabled, no key blocks burned |
