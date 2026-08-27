@@ -494,10 +494,17 @@ void refresh_mesh() {
   lv_label_set_text_fmt(state.mesh_node, "Node:\n%s",
                         status.node_name[0] != '\0' ? status.node_name.data()
                                                      : "—");
-  lv_label_set_text_fmt(state.mesh_message, "Last message:\n%s",
+  // Sender, text and delivery state are the three things a screenshot has to
+  // carry to be evidence of a message going out or coming in, so they share one
+  // label rather than one each.
+  lv_label_set_text_fmt(state.mesh_message, "Last message:\n%s%s%s\nSent: %s",
+                        status.last_sender[0] != '\0' ? status.last_sender.data()
+                                                      : "",
+                        status.last_sender[0] != '\0' ? ": " : "",
                         status.last_message[0] != '\0'
                             ? status.last_message.data()
-                            : "—");
+                            : "—",
+                        attadipa::core::to_string(status.delivery));
   if (status.has_snr) {
     const int magnitude = status.snr_quarter_db < 0
                               ? -static_cast<int>(status.snr_quarter_db)

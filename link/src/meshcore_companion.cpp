@@ -439,7 +439,14 @@ bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
     // public-key prefix; the full key is only used by commands such as login.
     constexpr std::size_t kPeerPrefixBytes = 6;
     constexpr std::size_t header = 7 + kPeerPrefixBytes;
-    if (status_.availability != core::Availability::Ready || text.empty() ||
+    // The link being up is what makes a text frame sendable; a contact sync
+    // still running is not. Availability::Ready also demands contacts_complete_,
+    // and gating here on that dropped a room message whose login succeeded while
+    // the burst was still arriving -- send_room() accepted the send under one
+    // condition and its own continuation was refused under a stricter one.
+    // MEASURED on the bench 2026-08-28: LOGIN_SUCCESS at 131698, END_OF_CONTACTS
+    // at 134228, no CMD_SEND_TXT_MSG ever sent.
+    if (!link_.ready() || !device_info_seen_ || !self_info_seen_ || text.empty() ||
         text.size() > core::kMeshTextBytes ||
         timestamp.unix_seconds < 0 ||
         static_cast<std::uint64_t>(timestamp.unix_seconds) >

@@ -190,6 +190,55 @@ void test_room_login_then_private_message()
     CHECK(client.status().delivery == MeshDelivery::Confirmed);
 }
 
+void test_room_login_success_during_a_contact_burst_still_sends()
+{
+    // The bench produced exactly this order: send_room() accepted while the
+    // contact burst was in flight, LOGIN_SUCCESS arrived before
+    // END_OF_CONTACTS, and the message was silently dropped because
+    // availability was still Unreachable.
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    CHECK(client.next_tx(frame));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+    CHECK(client.next_tx(frame));
+
+    std::array<std::uint8_t, 32> room{};
+    for (std::size_t i = 0; i < room.size(); ++i) room[i] = static_cast<std::uint8_t>(0x40 + i);
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 41 && frame.bytes[0] == 26);
+
+    const std::uint8_t start[] = {2, 9, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(5)));
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(6)));
+    CHECK(client.status().availability == Availability::Unreachable);
+
+    std::uint8_t login_ok[] = {0x85, 0, 0, 0, 0, 0, 0, 0};
+    std::memcpy(&login_ok[2], room.data(), 6);
+    CHECK(client.receive(login_ok, sizeof(login_ok), at(7)));
+
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 18 && frame.bytes[0] == 2);
+    CHECK(std::memcmp(&frame.bytes[7], room.data(), 6) == 0);
+    CHECK(std::memcmp(&frame.bytes[13], "Hello", 5) == 0);
+    CHECK(client.status().delivery == MeshDelivery::Queued);
+}
+
 void test_a_fault_survives_reconnect_until_begin_restarts_the_session()
 {
     MeshCoreCompanion client;
@@ -403,6 +452,7 @@ int main()
     test_send_and_receive();
     test_connected_ble_does_not_expire_while_idle();
     test_room_login_then_private_message();
+    test_room_login_success_during_a_contact_burst_still_sends();
     test_a_fault_survives_reconnect_until_begin_restarts_the_session();
     test_bad_frames_and_disconnect_fail_closed();
     test_hostile_frames_are_bounded_and_the_session_survives();
