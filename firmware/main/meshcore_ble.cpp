@@ -27,7 +27,12 @@
 namespace {
 
 constexpr char kTag[] = "attadipa_mesh_ble";
-constexpr std::size_t kEventDepth = 16;
+// A contact list arrives as an unpaced burst: the node answered CMD_GET_CONTACTS
+// with 148-byte RESP_CODE_CONTACT records ten milliseconds apart, and a
+// sixteen-deep queue overran before the worker had run once. MEASURED on the
+// bench 2026-08-28. Each event is one whole frame, so the depth is bounded
+// heap, not a buffer that can grow.
+constexpr std::size_t kEventDepth = 48;
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(500);
 constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
 constexpr std::uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
@@ -373,7 +378,18 @@ int gap_event(ble_gap_event* event, void*)
         incoming.size = length;
         if (os_mbuf_copydata(event->notify_rx.om, 0, length,
                              incoming.bytes.data()) != 0 || !post(incoming)) {
-            disconnect_fault("queue notification", BLE_HS_ENOMEM);
+            // Same reasoning as the over-size case above, and it was learned the
+            // hard way: this used to call disconnect_fault(), so one burst that
+            // outran the worker cleared reconnect_allowed and ended mesh for the
+            // whole boot. MEASURED on the bench 2026-08-28 -- two dropped
+            // contact records took the link down at 8.3 s and nothing rescanned
+            // for the remaining four minutes. A full queue is backpressure, not
+            // a broken subsystem. The Companion protocol tolerates a lost frame:
+            // a contact record is re-sent by the next CMD_GET_CONTACTS and the
+            // sync boundary still arrives, and a lost push is one message.
+            ESP_LOGW(kTag, "dropped a Companion frame: op=0x%02X len=%u",
+                     static_cast<unsigned>(incoming.bytes[0]),
+                     static_cast<unsigned>(length));
         }
         return 0;
     }
