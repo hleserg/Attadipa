@@ -103,15 +103,23 @@ units differ here.** The Waveshare accepts the CDC control-line requests every
 esptool reset strategy is built on; the T-Watch refuses all of them with
 `errno 71`, on a stable enumeration, with the same script on the same host. So
 the Waveshare can be driven unattended and **the T-Watch cannot be put into
-download mode by the host's flashing tools** — every load on it needs a hand
-holding BOOT while pressing RESET, and both buttons sit on its GNSS
-daughterboard. Once a hand has put it there, `ramhold.py --connect-mode
-no_reset` is the mode to reach for: it is the only strategy that got as far as
-transmitting on this unit, because every other one toggles the lines before it
-sends a byte. Whether the ROM in download mode refuses those lines too is
-`UNKNOWN` — the refusal was only ever measured with the factory application
-running, and this unit's USB behaviour is stateful. That the load then succeeds
-is `NOT EXECUTED — HARDWARE REQUIRED`.
+download mode by the host's flashing tools** — every load on it needs a hand on
+the BOOT button, which sits on its GNSS daughterboard.
+
+**The hand sequence that worked — MEASURED 2026-08-28:** unplug the micro-USB
+cable, press and hold BOOT, plug the cable back in while still holding it, then
+release BOOT. The screen stays dark. The vendor and Meshtastic recipe — hold
+BOOT and click RESET — was tried repeatedly on this unit that day and never
+produced an enumeration, although a RESET-based entry did work once on
+2026-08-27. That is CONFLICTING and unexplained.
+
+Once a hand has put it there, use `ramhold.py --connect-mode no_reset`, which
+also opens the port with `rtscts`/`dsrdtr` so pyserial does not assert DTR/RTS
+inside `open()`. The option alone is not enough: the refusal happens at the
+open, before esptool sees the port. **That path loaded a RAM image and ran it —
+MEASURED.** Whether the ROM in download mode refuses control lines too is still
+`UNKNOWN`; the refusal was only ever measured with the factory application
+running.
 Measured with a same-host control on 2026-08-28:
 [TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md)
 §2. Why it refuses is `UNKNOWN`.
@@ -130,12 +138,17 @@ loaded over the RAM route, writing nothing:
 | `0x6b` | `UNKNOWN` |
 
 `REG 0x64` on `0x34` read back `0x03`. That is **this** board's AXP2101, not the
-T-Watch's, and it settles nothing about D22; it is recorded because the same
+T-Watch's — **D22 was closed separately, on the T-Watch itself, where the same
+byte reads `0x04` = 4.35 V** ([TWATCH_S3_PLUS_DOWNLOAD_MODE](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md) §8). This reading settles nothing
+about D22; it is recorded because the same
 byte on the other unit is the thing D22 asks for, and a reader deserves to know
 what the instrument returns on a bus that is already understood.
 
-The three `UNKNOWN` rows are addresses, not identifications. Naming them needs a
-schematic for this board revision, and none has been read.
+The three `UNKNOWN` rows are addresses, not identifications: this scan read no
+chip-ID register. [HARDWARE_MATRIX](HARDWARE_MATRIX.md) does name all three from
+this board's schematic and from register reads made elsewhere — `0x18` ES8311,
+`0x40` ES7210, `0x6b` QMI8658 — so `UNKNOWN` here means "not established *by
+this instrument*", and the matrix is the canonical source.
 
 ## What this does not say
 

@@ -9,5 +9,22 @@
 # ESP-IDF version is pinned — docs/research/DEPENDENCIES.md, "ESP-IDF" row.
 cmake_minimum_required(VERSION 3.16)
 
+# ESP-IDF derives PROJECT_VER from `git describe --always --tags --dirty`, which
+# picks up the writer gate's claim tags (refs/tags/attadipa-claims/*, pointing at
+# main's head). Every build made while any claim is held then carries that
+# claimant's token as its version. On 2026-08-28 that stamped one agent's claim
+# name onto another agent's board and nearly caused a needless reflash, and it
+# signed a bench log with a name that had nothing to do with the image. The
+# fallback keeps the build working outside a git checkout.
+execute_process(
+  COMMAND git describe --always --tags --dirty --exclude "attadipa-claim*"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+  OUTPUT_VARIABLE PROJECT_VER
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET)
+if(NOT PROJECT_VER)
+  set(PROJECT_VER "unknown")
+endif()
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(attadipa)

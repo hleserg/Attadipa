@@ -104,7 +104,20 @@ def main() -> int:
     port = args.port or resolve_port(args.serial)
     print(f"# port {port}  image {args.image}", flush=True)
 
-    esp = esptool.detect_chip(port=port, baud=args.baud,
+    # no_reset stops esptool toggling DTR/RTS, but pyserial still asserts them
+    # inside Serial.open(), and the T-Watch S3 Plus refuses that request with
+    # errno 71 before esptool sees the port at all. rtscts/dsrdtr suppress those
+    # ioctls, and ESPLoader takes a pre-opened port as-is — its __init__ guards
+    # construction with `isinstance(port, str)`. This is the only route measured
+    # to reach that unit; the default_reset path is untouched.
+    # docs/research/TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md §7.
+    target: object = port
+    if args.connect_mode == "no_reset":
+        import serial
+        target = serial.Serial(port, baudrate=args.baud, rtscts=True,
+                               dsrdtr=True, timeout=0.1)
+
+    esp = esptool.detect_chip(port=target, baud=args.baud,
                               connect_mode=args.connect_mode)
     print(f"# chip {esp.CHIP_NAME}", flush=True)
 
