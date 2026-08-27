@@ -3,8 +3,13 @@
 Issue [#296](https://github.com/hleserg/Attadipa/issues/296) (T-169). This is
 the bench record for the first time an Attadipa device exchanged Companion
 protocol frames with a real MeshCore node over the path it will use in the
-field: a Waveshare ESP32-S3 Touch AMOLED acting as BLE central against a
-Heltec T114 running vanilla MeshCore.
+field: a Waveshare ESP32-S3 Touch AMOLED acting as BLE central against Heltec
+boards running vanilla MeshCore.
+
+Two MeshCore nodes turned out to be in range and the firmware has no way to
+choose between them (section 1a), so each section names the node it measured.
+Handshake, Receive and the send path to `Accepted` are on the Heltec T114; the
+`Confirmed` ack round trip is on a Heltec V4.3 OLED.
 
 It is an evidence report. Every physical claim carries a label, and the
 transcripts are the ones the firmware printed, not a reconstruction.
@@ -41,10 +46,41 @@ they occurred in a frame.
 | Watch firmware | this branch, `board_id=waveshare-amoled-206`, ESP-IDF v5.5.5, NimBLE central | `MEASURED` |
 | Node (BLE peripheral) | Heltec T114, BLE address `f7:f3:33:6b:9b:61` (random, `peer_addr_type=1`) | `MEASURED` |
 | Node firmware | `v1.17.1-d929643`, built `14-Aug-2026` | `MEASURED` — read from `RESP_CODE_DEVICE_INFO` |
-| Node self name | `Beta test comp` | `MEASURED` — read from `RESP_CODE_SELF_INFO` |
-| Node BLE advertised name | previously `MeshCore-🤘Beta Serega`, now `MeshCore-Beta test comp` | `MEASURED`, renamed by the operator between sessions |
+| Node self name | `Beta test comp`, then `Beta test companion` after the 2026-08-28 factory reset | `MEASURED` — read from `RESP_CODE_SELF_INFO` |
+| Node public key | `5c62d9bc82e530fc…` after the reset | `MEASURED` — a factory reset regenerates it, so it does not identify the unit across the reset |
 | Node board revision | `UNKNOWN` | the Companion protocol does not carry it |
 | Pairing | static passkey, supplied by the operator at run time and injected by the watch (section 8) | `MEASURED` |
+
+### 1a. There are two MeshCore nodes in range, and the transport picks either
+
+`MEASURED`, 2026-08-28, and it governs how every run below must be read.
+
+| | node A | node B |
+| --- | --- | --- |
+| `RESP_CODE_DEVICE_INFO` model | `Heltec T114` | `Heltec V4.3 OLED` |
+| firmware | `v1.17.1-d929643`, `14-Aug-2026` | `v1.17.dev`, `9 Aug dt267` |
+| `RESP_CODE_SELF_INFO` name | `Beta test companion` | `✂️Beta Serega` |
+| public key | `5c62d9bc82e530fc…` | `044e2de8068447d3…` |
+| contacts announced | 4–5 | 90 |
+| negotiated ATT MTU | 247 | 176 |
+| answers for the Beta Room | login yes, ack no (§6b) | login and ack (§6a) |
+
+Both advertise the Companion service and both pair with the same operator
+passkey. `advertises_meshcore()` matches the service UUID or the name substring
+`MeshCore` and connects to whichever advertisement arrives first, so **the node
+a run talked to is not a choice this firmware makes**. Across nine runs the
+watch reached node A five times and node B four, and after 03:56 it reached node
+B on eight consecutive attempts. Node selection is out of scope for T-169 and is
+filed separately as
+[#304](https://github.com/hleserg/Attadipa/issues/304).
+
+Every claim below therefore names its node. The identity is read from
+`RESP_CODE_SELF_INFO` and `RESP_CODE_DEVICE_INFO` in that run's own log, never
+assumed from the previous run.
+
+The earlier revision of this report recorded `MeshCore-🤘Beta Serega` as a former
+advertised name of the same unit. That reading is withdrawn: the two names
+belong to two different boards, seen in the same run 108 s apart.
 
 `v1.17.1-d929643` is the same upstream revision
 [`MESHCORE_BLE_FRAME_CAPACITY.md`](MESHCORE_BLE_FRAME_CAPACITY.md) pinned its
@@ -82,6 +118,15 @@ I (1307) attadipa: Link model : Absent (MeshCore companion over BLE)
 
 `MEASURED`. That line is the whole point of the task: mesh availability now
 follows the live BLE link phase (ADR-0004) instead of a placeholder.
+
+The mesh status screen also gained the last sender and the delivery state. It
+had been rendering the message alone, which cannot evidence a send — the screen
+now reads `Sent: confirmed` in [`t169-ui-2.png`](meshcore-t114-first-contact/t169-ui-2.png)
+and that is the screenshot section 6a rests on. The node name is rendered from
+`RESP_CODE_SELF_INFO` verbatim; where a node's name begins with an emoji the
+watch's font has no glyph and draws two boxes, which is a font limitation and
+not a parse error — the bytes `e2 9c 8c ef b8 8f` are U+2704 plus a variation
+selector, checked against the frame.
 
 ---
 
@@ -218,52 +263,108 @@ is out of scope for T-169.
 
 ---
 
-## 6. Evidence 3 — Send · `NOT ACHIEVED`, cause `MEASURED`
+## 6. Evidence 3 — Send · `MEASURED` through `Confirmed`
 
-The stated criterion was a message from the watch reaching the T114 and
-reporting `Confirmed` through the ack path. **It did not.** The cause is now
-established, and it is not a defect in either firmware.
+The criterion was a message from the watch reaching a real MeshCore node and
+reporting `Confirmed` through the ack path. **It does.** Read the node identity
+in this section carefully: two MeshCore Companion nodes are in BLE range of this
+bench and the transport connects to whichever advertises first (§1a), so which
+node carried a given run is a fact to be read off `RESP_CODE_SELF_INFO`, never
+assumed.
 
-Target: the "Beta Room" Room Server, public key
+Target in every attempt: the "Beta Room" Room Server, public key
 `ba4c1ca4d6463a23e99b5440b6206723116bf78713a1b45b266f837bcde3149e`. A Room
-Server requires `CMD_SEND_LOGIN` before a message, so the watch sent that first.
+Server requires `CMD_SEND_LOGIN` before a message, so the watch sends that first
+and continues on `PUSH_CODE_LOGIN_SUCCESS`.
+
+### 6a. The full path, `Confirmed` · `MEASURED`
+
+Node `044e2de8…`, the one MeshCore Companion node of the two that reports the
+room as reachable. Run `ui2`, 2026-08-28, on the build at
+[`51a210a`](https://github.com/hleserg/Attadipa/commit/51a210a).
 
 ```
-### mesh-room-send room=ba4c1ca4... text='Attadipa T-169 first contact'
-I (44847) NimBLE: GATT procedure initiated: write; att_handle=20 len=42
-I (44847) attadipa_mesh_ble: TX op=0x1A len=42          CMD_SEND_LOGIN
+I (24927) TX op=0x1A len=42     CMD_SEND_LOGIN
 1a ba 4c 1c a4 d6 46 3a 23 e9 9b 54 40 b6 20 67
 23 11 6b f7 87 13 a1 b4 5b 26 6f 83 7b cd e3 14
-9e ** ** ** ** ** ** ** ** **                    ← guest password, REDACTED
+9e ** ** ** ** ** ** ** ** **                     ← guest password, REDACTED
+I (25287) RX op=0x06 len=10     RESP_CODE_SENT   06 00 ba 4c 1c a4 72 0c 00 00
+I (27177) RX op=0x85 len=14     PUSH_CODE_LOGIN_SUCCESS
+85 00 ba 4c 1c a4 d6 46 77 c6 90 6a 02 01
+I (27177) TX op=0x02 len=29     CMD_SEND_TXT_MSG
+02 00 00 79 c6 90 6a ba 4c 1c a4 d6 46 "T-169 acceptance"
+I (27757) RX op=0x06 len=10     RESP_CODE_SENT   06 00 38 66 6c b8 66 09 00 00
+I (28477) RX op=0x88 len=10     PUSH_CODE_LOG_RX_DATA  88 31 b5 2a 40 13 38 66 6c b8
+I (28477) RX op=0x82 len=9      PUSH_CODE_SEND_CONFIRMED  82 38 66 6c b8 1b 03 00 00
 ```
 
-The frame is well formed: opcode `0x1A` = `CMD_SEND_LOGIN`, the 32-byte room
-public key, then the password, matching
-[`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) §5. The write
-completed at the ATT layer and the link stayed up for the following 130 s.
+Opcodes and error codes read from
+[`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) §9: `6`
+`SENT`, `0x82` `SEND_CONFIRMED`, `0x85` `LOGIN_SUCCESS`, `0x88` `LOG_RX_DATA`.
 
-**The node returned nothing at all** — no response frame, no error frame. The
-provider stayed in `awaiting_login_`, the queued text was never transmitted, and
-delivery never advanced past `Sending`.
+The chain closes on itself, which is why it is worth reading rather than
+summarising. `RESP_CODE_SENT` for the text carries the expected ack
+`38 66 6c b8` and an estimated round trip of `0x0966` = 2406 ms. The same four
+bytes then appear as the tail of a raw LoRa packet the node logged off the air,
+and again as the body of `PUSH_CODE_SEND_CONFIRMED`. The provider compares them
+(`meshcore_companion.cpp` `kPushSendConfirmed`) and only then sets
+`MeshDelivery::Confirmed`. Measured round trip **720 ms** (27757 → 28477),
+inside the node's own estimate.
 
-**Cause, `MEASURED`:** the node has no contact for that room. In the run of
-2026-08-28 the node reported `RESP_CODE_CONTACTS_START` with **37** contacts and
-streamed 37 `RESP_CODE_CONTACT` records. The room's public key appears exactly
-once in the whole capture — in the watch's own `CMD_SEND_LOGIN` frame above. The
-node therefore has neither a contact record nor a path for the Beta Room server,
-and `CMD_SEND_LOGIN` has nowhere to go.
+The watch's mesh screen reads `Sent: confirmed` —
+[`t169-ui-2.png`](meshcore-t114-first-contact/t169-ui-2.png).
 
-That the node answers with silence rather than an error frame is a node-side
-behaviour. It is `UNKNOWN` whether MeshCore intends that, and it is not reported
-here as a defect.
+### 6b. The same path on the T114, `Accepted` · `MEASURED`; `Confirmed` `NOT OBSERVED`
 
-**What completing this needs:** the Beta Room contact present in the T114's own
-contact list, added by the operator from a client that has it. That is an
-operator action on their node and their mesh, not something this bench should do
-on its own initiative — and the alternative, sending an unsolicited test message
-to one of the 37 third-party contacts, is real traffic to real strangers and is
-not this task's to send. **Send therefore remains the open acceptance item for
-[#296](https://github.com/hleserg/Attadipa/issues/296) alongside 7a.**
+Node `5c62d9bc…`, name `Beta test companion` — the Heltec T114 this report is
+named for. Run `send7`, same evening, on the build carrying the §6c fix.
+
+```
+I (26927) TX op=0x1A len=42     CMD_SEND_LOGIN
+I (27587) RX op=0x06 len=10     RESP_CODE_SENT
+I (28517) RX op=0x85 len=14     PUSH_CODE_LOGIN_SUCCESS
+I (28517) TX op=0x02 len=29     CMD_SEND_TXT_MSG
+I (28667) RX op=0x06 len=10     RESP_CODE_SENT  → MeshDelivery::Accepted
+```
+
+Everything up to `Accepted` is identical and `MEASURED`. No
+`PUSH_CODE_SEND_CONFIRMED` arrived in the following **120 s**, against a node
+estimate of ~2 s — `NOT OBSERVED`, not "failed": the room server acked the
+login, so the path exists in one direction at least. Whether the T114's radio
+placement, its route to the room server, or something else accounts for the
+missing ack is `UNKNOWN` from this bench and is not attributed to either
+firmware.
+
+An earlier run (`send3`, before the operator added the room to the T114's
+contact list) is the control for the cause: the node answered `CMD_SEND_LOGIN`
+with `RX op=0x01 len=2` — `01 02`, `ERR` / `NOT_FOUND` — 240 ms later. With the
+contact present the same command is answered by the room. The contact record is
+visible in the sync as `03 ba 4c 1c a4 …` with contact type `3`.
+
+### 6c. A room login that landed mid-sync dropped its message · `MEASURED`, fixed
+
+Found by this acceptance run, in code this task wrote.
+
+`send_room()` deliberately does not wait for the contact sync — there is a test
+named for it. Its continuation went through `enqueue_private()`, which required
+`Availability::Ready`, and `update_availability()` grants `Ready` only when
+`contacts_complete_` is also set. So a room login that succeeded while a burst
+was still arriving was answered by silently dropping the message.
+
+```
+I (130258) TX op=0x1A len=42      CMD_SEND_LOGIN
+I (130668) RX op=0x06 len=10      RESP_CODE_SENT
+I (131698) RX op=0x85 len=14      PUSH_CODE_LOGIN_SUCCESS
+I (134228) RX op=0x04 len=5       RESP_CODE_END_OF_CONTACTS
+                                  -- no CMD_SEND_TXT_MSG, ever
+```
+
+`MEASURED`, run `send5`. The two halves each had a passing test and the
+combination had none. `enqueue_private()` now requires exactly what
+`send_room()` requires — the link up, `SELF_INFO` and `DEVICE_INFO` seen — and
+not a completed contact sync, which has nothing to do with whether a text frame
+can be written. `test_room_login_success_during_a_contact_burst_still_sends()`
+fails without the change: verified by reverting the source alone and re-running.
 
 ---
 
@@ -512,16 +613,25 @@ upstream allegation.
 
 ## 11. What this does not establish
 
-- **Send does not work.** Section 6. No message from the watch has reached any
-  MeshCore destination. The cause is measured and the remaining step is an
-  operator action on the node.
+- **`Confirmed` was measured through one node, not through the T114.** Section
+  6. The end-to-end ack path is `MEASURED` on a `Heltec V4.3 OLED` running
+  `v1.17.dev`; on the `Heltec T114` running `v1.17.1-d929643` the same sequence
+  reaches `Accepted` and its ack was `NOT OBSERVED` in 120 s. Why the two differ
+  is `UNKNOWN` and is attributed to neither firmware.
+- **Nobody has confirmed the message appeared in the room.** The evidence is the
+  node's own ack path, which establishes that a destination acknowledged the
+  packet — not that a human read it in the Beta Room. That check is
+  `NOT EXECUTED — OPERATOR REQUIRED`.
+- **Which physical board is which is read per run, not assumed.** Section 1a.
 - **Power-cycle recovery is not tested.** Section 7a.
 - **The reconnect fix in 7c is not bench-verified.** Section 7c. It is
   host-tested against the provider contract, and the failure it repairs stopped
   reproducing on its own, before 7b was fixed.
 - **No BLE air capture exists.** Everything is the ESP32-S3 host stack's view.
-- **One node, one board, one firmware revision.** Nothing here generalises to
-  another MeshCore build or another peripheral.
+- **Two nodes, two boards, two firmware revisions, and no way to choose.**
+  Section 1a and [#304](https://github.com/hleserg/Attadipa/issues/304). Nothing
+  here generalises to a third MeshCore build or peripheral, and no run below
+  chose the node it talked to.
 - **The 176-byte frame bound was approached but never crossed in traffic**
   (section 3): the largest real frame was 174 bytes, and no over-size frame was
   ever observed, so the drop-and-count path is `SIMULATED` only. Whether a
