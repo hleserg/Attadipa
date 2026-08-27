@@ -550,7 +550,7 @@ jobs:
           # calls it a RAM build. Prove the option actually took.
           grep -q "^CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y$" build-ram/sdkconfig
           python3 ../tools/flash/pure_ram_elf_check.py build-ram/attadipa.elf
-          python3 ../tools/flash/firmware_elf_check.py build-ram/attadipa.elf
+          python3 ../tools/flash/firmware_elf_check.py --variant pure-ram build-ram/attadipa.elf
 
   required-ci:
     name: Required CI
