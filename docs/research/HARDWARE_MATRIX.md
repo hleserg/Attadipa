@@ -83,9 +83,9 @@ marked ANSWERED, and the revision half of it was carved out into D20.)
 | Item | Value | Status |
 |---|---|---|
 | SoC | ESP32-S3 | VERIFIED |
-| Flash | 16 MB QSPI | VERIFIED |
-| PSRAM | 8 MB. **QSPI per the LilyGO vendor document; the `ESP32-S3R8` marking says octal** by ESP32-S3 Series Datasheet v2.2 Table 1-1, which contains no 8 MB quad in-package part. Nobody has read the vendor document against the table — D12b | CONFLICTING |
-| Battery | 940 mAh, 3.7 V | VERIFIED |
+| Flash | 16 MB QSPI — **`0xEF 0x4018`, Winbond, read off the unit** 2026-08-27; external, not in-package (`FLASH_CAP`/`FLASH_VENDOR` unset) | VERIFIED — the document, now also MEASURED on a physical unit |
+| PSRAM | 8 MB, **octal**, vendor `AP_3v3`. The die's own fuses were read on a physical unit 2026-08-27 and agree with the `ESP32-S3R8` marking and with ESP32-S3 Series Datasheet v2.2 Table 1-1; the LilyGO vendor document calling it QSPI is simply wrong. Closes D12b | VERIFIED — MEASURED, [TWATCH_S3_PLUS_BRINGUP_2026-08-27](TWATCH_S3_PLUS_BRINGUP_2026-08-27.md) §5 |
+| Battery | **940 mAh — confirmed off the cell's own label** on a physical unit, 2026-08-27 (`TERKDELL`, date code `20250922`). **The nominal voltage is not confirmed and the sources disagree: the label reads 3.8 V, the vendor document says 3.7 V.** It decides charge termination — 4.35 V against 4.2 V — and no code sets an AXP2101 charge target today — the repository's only prescription for that register is [BATTERY_UPGRADE](BATTERY_UPGRADE.md) §8, written for the other board's cell — so nothing is wrong yet and the first change to set it here must resolve **D22** first | Capacity VERIFIED (MEASURED); voltage **CONFLICTING** — [TWATCH_S3_PLUS_BRINGUP_2026-08-27](TWATCH_S3_PLUS_BRINGUP_2026-08-27.md) §5a |
 | Charge current | 0–1024 mA programmable; vendor recommends ≤300–400 mA; vendor header default 125 mA | VERIFIED |
 | USB | Micro-USB, charge + programming only, no external supply function | VERIFIED |
 
