@@ -65,7 +65,7 @@ write down which kind of session it was so this paragraph can stop hedging.
 Three open questions, each with an issue, none of them answerable from here:
 
 - **Which band?** [#89](https://github.com/hleserg/Attadipa/issues/89). If
-  neither companion is 868 MHz there is no mesh for the T-Watch's SX1262 to
+  neither companion is 868 MHz there is no mesh for the T-Watch's radio to
   join, and every LoRa interoperability plan is untestable rather than merely
   unstarted. This is the one that gates the others.
 - **Which firmware?** [#90](https://github.com/hleserg/Attadipa/issues/90).
