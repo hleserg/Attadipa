@@ -38,6 +38,7 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 # The received Waveshare ESP32-S3-Touch-AMOLED-2.06, by the USB serial its
 # USB-Serial/JTAG peripheral reports — see docs/research/BENCH_DEVICES.md.
@@ -79,6 +80,15 @@ def main() -> int:
     parser.add_argument("--serial", default=DEFAULT_SERIAL,
                         help=f"USB serial of the unit to load (default {DEFAULT_SERIAL})")
     parser.add_argument("--baud", type=int, default=115200)
+    # The T-Watch S3 Plus refuses every CDC SET_CONTROL_LINE_STATE request, so
+    # every esptool reset strategy fails on it even when the unit is already
+    # sitting in download mode. no_reset skips the toggling and talks to the
+    # ROM loader that a hand-held BOOT+RESET already left running. See
+    # docs/research/TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md.
+    parser.add_argument("--connect-mode", default="default_reset",
+                        choices=("default_reset", "no_reset", "usb_reset"),
+                        help="esptool connect strategy; use no_reset on a unit "
+                             "already in download mode (default default_reset)")
     parser.add_argument("--log", type=Path, default=None,
                         help="write the transcript here as well as to stdout")
     args = parser.parse_args()
@@ -94,10 +104,17 @@ def main() -> int:
     port = args.port or resolve_port(args.serial)
     print(f"# port {port}  image {args.image}", flush=True)
 
-    esp = esptool.detect_chip(port=port, baud=args.baud)
+    esp = esptool.detect_chip(port=port, baud=args.baud,
+                              connect_mode=args.connect_mode)
     print(f"# chip {esp.CHIP_NAME}", flush=True)
 
-    esptool.cmds.load_ram(esp, str(args.image))
+    # esptool 4.x takes an args namespace with .filename here; 5.x takes the
+    # path as a string. ESP-IDF v5.5.5 ships 4.12.0, on which the string form
+    # raises AttributeError before a single byte is sent.
+    image_arg: object = str(args.image)
+    if int(esptool.__version__.split(".")[0]) < 5:
+        image_arg = SimpleNamespace(filename=str(args.image))
+    esptool.cmds.load_ram(esp, image_arg)
     print("# load_ram returned; port still open, watching", flush=True)
 
     ser = esp._port  # deliberate: the whole point is not to reopen it
