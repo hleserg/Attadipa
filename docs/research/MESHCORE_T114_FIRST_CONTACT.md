@@ -1,0 +1,484 @@
+# First physical contact with a MeshCore node
+
+Issue [#296](https://github.com/hleserg/Attadipa/issues/296) (T-169). This is
+the bench record for the first time an Attadipa device exchanged Companion
+protocol frames with a real MeshCore node over the path it will use in the
+field: a Waveshare ESP32-S3 Touch AMOLED acting as BLE central against a
+Heltec T114 running vanilla MeshCore.
+
+It is an evidence report. Every physical claim carries a label, and the
+transcripts are the ones the firmware printed, not a reconstruction.
+
+**This document does not claim the link or MeshCore is secure.** Section 8
+records the authentication and cryptography state exactly as observed.
+
+---
+
+## 0. Provenance
+
+| What | How it was established |
+| --- | --- |
+| every frame in section 4 | printed by `firmware/main/meshcore_ble.cpp` `log_frame()` on the watch, byte for byte |
+| node model, firmware build, node identity | read out of `RESP_CODE_DEVICE_INFO` and `RESP_CODE_SELF_INFO` on the wire, not from the operator |
+| opcode names and frame layouts | [`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) §§2.2, 3 and the command set at §5 |
+| frame size bound | [`MESHCORE_BLE_FRAME_CAPACITY.md`](MESHCORE_BLE_FRAME_CAPACITY.md) §1 and the matrix at §3 |
+| drop-and-count rule for over-size frames | [`MESHCORE_PARSER_BOUNDS.md`](MESHCORE_PARSER_BOUNDS.md) §5 |
+| watch screenshots | captured over the USB debug channel (ADR-0005) into `tools/ui/out/`, framebuffer as rendered |
+| **BLE air traffic** | **`NOT CAPTURED`.** There is no BLE sniffer on this bench and the host is not a party to the link. The firmware transcript is the only view of the wire, and it therefore shows what the ESP32-S3 host stack accepted, not what was radiated |
+| **T114 serial log** | **`NOT CAPTURED`.** The node's USB is not attached to this host |
+
+No credentials appear in this document. The BLE passkey and the Room Server
+guest password were supplied by the operator at run time and are redacted where
+they occurred in a frame.
+
+---
+
+## 1. Bench configuration
+
+| Role | Identity | Label |
+| --- | --- | --- |
+| Watch (BLE central) | Waveshare ESP32-S3 Touch AMOLED 2.06", USB serial `28:84:85:B2:18:A4`, BLE MAC `28:84:85:B2:18:A6` | `MEASURED` |
+| Watch firmware | this branch, `board_id=waveshare-amoled-206`, ESP-IDF v5.5.5, NimBLE central | `MEASURED` |
+| Node (BLE peripheral) | Heltec T114, BLE address `f7:f3:33:6b:9b:61` (random, `peer_addr_type=1`) | `MEASURED` |
+| Node firmware | `v1.17.1-d929643`, built `14-Aug-2026` | `MEASURED` — read from `RESP_CODE_DEVICE_INFO` |
+| Node self name | `Beta test comp` | `MEASURED` — read from `RESP_CODE_SELF_INFO` |
+| Node BLE advertised name | previously `MeshCore-🤘Beta Serega`, now `MeshCore-Beta test comp` | `MEASURED`, renamed by the operator between sessions |
+| Node board revision | `UNKNOWN` | the Companion protocol does not carry it |
+| Pairing | static passkey, injected by the watch | `MEASURED` |
+
+`v1.17.1-d929643` is the same upstream revision
+[`MESHCORE_BLE_FRAME_CAPACITY.md`](MESHCORE_BLE_FRAME_CAPACITY.md) pinned its
+source reading to. The bench node runs the code that research was written
+against; the frame-capacity numbers below are being checked against their own
+source revision, not a neighbouring one.
+
+**Anonymisation.** The node's contact list and the mesh traffic it forwards
+belong to third parties. Contact records are reported as counts and sync
+boundaries only, and the payloads of forwarded-packet pushes are elided. The
+node's own public key and the Beta Room's public key are public by design and
+are kept.
+
+The screenshots in section 5 do show one broadcast message each, with its
+sender's mesh name. They are the Receive evidence and cannot be redacted without
+destroying it. These are unencrypted broadcasts on an open radio network,
+readable by anyone in range, and no contact record, key or private message is
+shown.
+
+---
+
+## 2. What changed in the firmware for this
+
+Before this task the composition root logged
+
+```
+Link model : Absent (no transport adapter)
+```
+
+because `MeshCoreCompanion` had no transport. It now logs
+
+```
+I (1307) attadipa: Link model : Absent (MeshCore companion over BLE)
+```
+
+`MEASURED`. That line is the whole point of the task: mesh availability now
+follows the live BLE link phase (ADR-0004) instead of a placeholder.
+
+---
+
+## 3. Frame bounds, as implemented
+
+| Rule | Source | Where it lives |
+| --- | --- | --- |
+| one GATT operation is one whole Companion frame; there is no length prefix and no fragmentation layer | [`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) §2.2 | the notification callback copies one frame per callback and never concatenates |
+| first byte is the opcode | ibid. §2.2 | `log_frame()` prints it; `receive()` dispatches on it |
+| a frame is at most 176 bytes (`kMeshCoreFrameBytes`) | [`MESHCORE_BLE_FRAME_CAPACITY.md`](MESHCORE_BLE_FRAME_CAPACITY.md) §3 | `MeshCoreFrame::bytes` is exactly that array |
+| an over-size notification is dropped and counted, never buffered | [`MESHCORE_PARSER_BOUNDS.md`](MESHCORE_PARSER_BOUNDS.md) §5 | `drop_oversize_frame()`; the frame never reaches `receive()` |
+| a frame larger than the negotiated ATT payload is refused on the TX side | ibid. | `disconnect_fault("frame exceeds negotiated ATT payload", …)` |
+| a disconnect resets the session fail-closed | ADR-0002 | `reset_session()` via `begin()` — see section 7 |
+
+Negotiated ATT MTU on this bench: **247** (`MEASURED`, every run). The largest
+frame actually observed was 96 bytes. The 176-byte bound was therefore never
+reached in traffic; it is enforced structurally, and the hostile-frame cases
+that exercise it are host tests, not bench observations —
+`tests/test_meshcore_companion.cpp`, `SIMULATED`.
+
+---
+
+## 4. Evidence 1 — Handshake · `MEASURED`
+
+Session of 2026-08-27, watch uptime in milliseconds as printed.
+
+```
+I (4767) attadipa_mesh_ble: scanning for MeshCore Companion service
+I (4797) attadipa_mesh_ble: received BLE advertising report
+I (4817) attadipa_mesh_ble: matched MeshCore advertisement
+I (4827) NimBLE: GAP procedure initiated: connect; peer_addr_type=1
+I (4827) NimBLE: f7:f3:33:6b:9b:61
+I (5187) attadipa_mesh_ble: MeshCore connected; starting BLE security
+I (5337) NimBLE: static passkey injected
+I (5987) NimBLE: GATT procedure initiated: exchange mtu
+I (7357) attadipa_mesh_ble: Companion GATT ready, MTU 247
+```
+
+Then the Companion exchange. `TX` is watch → node, `RX` is node → watch.
+
+```
+TX op=0x01 len=16                       CMD_APP_START
+01 00 00 00 00 00 00 00 41 74 74 61 64 69 70 61      "....Attadipa"
+
+RX op=0x05 len=72                       RESP_CODE_SELF_INFO
+05 01 16 16 f7 c7 dc ef 09 31 54 f5 ce 58 7d 3d
+15 5d 1b 41 99 00 77 7c b4 8b 5d ca d8 f6 b8 55
+a0 69 5e bf 00 00 00 00 00 00 00 00 00 01 00 00
+7b 41 0d 00 24 f4 00 00 07 07 42 65 74 61 20 74
+65 73 74 20 63 6f 6d 70                              "Beta test comp"
+
+TX op=0x16 len=2                        CMD_DEVICE_QUERY, app protocol 3
+16 03
+
+RX op=0x0D len=82                       RESP_CODE_DEVICE_INFO
+0d 0d af 28 47 39 08 00 31 34 2d 41 75 67 2d 32      "14-Aug-2"
+30 32 36 00 48 65 6c 74 65 63 20 54 31 31 34 00      "026.Heltec T114."
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 00 00 00 00 00 00 00 00 76 31 2e 31      "v1.1"
+37 2e 31 2d 64 39 32 39 36 34 33 00 00 00 00 00      "7.1-d929643"
+00 01
+
+TX op=0x04 len=1                        CMD_GET_CONTACTS
+04
+
+RX op=0x02 len=5                        RESP_CODE_CONTACTS_START, count 0
+02 00 00 00 00
+
+RX op=0x04 len=5                        RESP_CODE_END_OF_CONTACTS
+04 00 00 00 00
+
+TX op=0x0A len=1                        CMD_SYNC_NEXT_MESSAGE
+0a
+
+RX op=0x0A len=1                        (offline queue empty)
+0a
+```
+
+What this establishes:
+
+- The initialisation order required by
+  [`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) §3.2 is
+  respected on the wire: `CMD_APP_START` first, `CMD_DEVICE_QUERY` only after
+  `RESP_CODE_SELF_INFO`, `CMD_GET_CONTACTS` only after
+  `RESP_CODE_DEVICE_INFO`, one command outstanding at a time.
+- `RESP_CODE_DEVICE_INFO` is **82 bytes**, exactly the length that document
+  records at §3. The layout matched: build date, model string, firmware version
+  string at their documented offsets.
+- The node reported **0 contacts** in this run. That is genuine, not an
+  anonymisation artefact. It did not stay that way: on 2026-08-28 the same node
+  reported **37**, and that change is what exposed the defect in section 7b.
+- Handshake to `Ready` took **2.6 s** from advertisement match, of which 1.4 s
+  was pairing and MTU exchange.
+
+Full raw capture: not committed. It contains third-party mesh traffic; the
+frames above are the complete Companion exchange with nothing elided.
+
+---
+
+## 5. Evidence 2 — Receive · `MEASURED`
+
+Two independent captures, both spontaneous — the messages are real traffic on
+the operator's mesh, not injected for the test.
+
+| Screenshot | Watch shows | Peers | SNR |
+| --- | --- | --- | --- |
+| [`t169-mesh-status.png`](meshcore-t114-first-contact/t169-mesh-status.png) | `CONNECTED`, node `Beta test comp`, last message `КЕРЫ4: @[Vault13] У меня тоже)` | 6 | 12.00 dB |
+| [`t169-ctl-60.png`](meshcore-t114-first-contact/t169-ctl-60.png) | `CONNECTED`, node `Beta test comp`, last message `Spawn: Да` | 8 | 12.75 dB |
+
+The sender name is rendered from the frame, not from a contact record — the
+node has no contacts. Both messages arrived as `PUSH_CODE_LOG_RX_DATA` (`0x88`)
+pushes, [`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) §5.
+
+Alongside them the watch received a continuous stream of `0x88` and
+`PUSH_CODE_ADVERT` (`0x80`) pushes carrying advertisements from real regional
+nodes. Payloads elided; the observation is that the watch stayed synchronised
+with a live mesh for the whole session without a malformed-frame drop
+(`malformed_frames() == 0` in every run).
+
+**Observed limitation, not fixed here:** a tofu glyph renders in place of one
+character of one sender's name. The font has no coverage for that codepoint.
+This is a font-coverage issue in the UI layer, unrelated to the transport, and
+is out of scope for T-169.
+
+---
+
+## 6. Evidence 3 — Send · `NOT ACHIEVED`, cause `MEASURED`
+
+The stated criterion was a message from the watch reaching the T114 and
+reporting `Confirmed` through the ack path. **It did not.** The cause is now
+established, and it is not a defect in either firmware.
+
+Target: the "Beta Room" Room Server, public key
+`ba4c1ca4d6463a23e99b5440b6206723116bf78713a1b45b266f837bcde3149e`. A Room
+Server requires `CMD_SEND_LOGIN` before a message, so the watch sent that first.
+
+```
+### mesh-room-send room=ba4c1ca4... text='Attadipa T-169 first contact'
+I (44847) NimBLE: GATT procedure initiated: write; att_handle=20 len=42
+I (44847) attadipa_mesh_ble: TX op=0x1A len=42          CMD_SEND_LOGIN
+1a ba 4c 1c a4 d6 46 3a 23 e9 9b 54 40 b6 20 67
+23 11 6b f7 87 13 a1 b4 5b 26 6f 83 7b cd e3 14
+9e ** ** ** ** ** ** ** ** **                    ← guest password, REDACTED
+```
+
+The frame is well formed: opcode `0x1A` = `CMD_SEND_LOGIN`, the 32-byte room
+public key, then the password, matching
+[`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) §5. The write
+completed at the ATT layer and the link stayed up for the following 130 s.
+
+**The node returned nothing at all** — no response frame, no error frame. The
+provider stayed in `awaiting_login_`, the queued text was never transmitted, and
+delivery never advanced past `Sending`.
+
+**Cause, `MEASURED`:** the node has no contact for that room. In the run of
+2026-08-28 the node reported `RESP_CODE_CONTACTS_START` with **37** contacts and
+streamed 37 `RESP_CODE_CONTACT` records. The room's public key appears exactly
+once in the whole capture — in the watch's own `CMD_SEND_LOGIN` frame above. The
+node therefore has neither a contact record nor a path for the Beta Room server,
+and `CMD_SEND_LOGIN` has nowhere to go.
+
+That the node answers with silence rather than an error frame is a node-side
+behaviour. It is `UNKNOWN` whether MeshCore intends that, and it is not reported
+here as a defect.
+
+**What completing this needs:** the Beta Room contact present in the T114's own
+contact list, added by the operator from a client that has it. That is an
+operator action on their node and their mesh, not something this bench should do
+on its own initiative — and the alternative, sending an unsolicited test message
+to one of the 37 third-party contacts, is real traffic to real strangers and is
+not this task's to send. **Send therefore remains the open acceptance item for
+[#296](https://github.com/hleserg/Attadipa/issues/296) alongside 7a.**
+
+---
+
+## 7. Evidence 4 — Recovery
+
+Three distinct things live under this heading. They are separated because they
+have different labels, and only two of them were run.
+
+### 7a. Power-cycle recovery · `NOT EXECUTED — HARDWARE REQUIRED`
+
+Powering the T114 down mid-session and back up needs physical access to the
+node. The operator declined this step for this session. It is not claimed, not
+inferred from 7b or 7c, and remains an open acceptance item for #296.
+
+### 7b. A contact-list burst killed mesh for the whole boot · `MEASURED`, fixed
+
+This is the most consequential finding of the session, and it only appeared
+because the node's contact list changed between runs: empty on 2026-08-27,
+37 contacts on 2026-08-28.
+
+`CMD_GET_CONTACTS` is answered with an unpaced burst of 148-byte
+`RESP_CODE_CONTACT` records, ten milliseconds apart. The transport's FreeRTOS
+event queue was 16 deep, the burst outran the worker task, and:
+
+```
+I (7827) attadipa_mesh_ble: TX op=0x04 len=1          CMD_GET_CONTACTS
+I (8037) attadipa_mesh_ble: RX op=0x02 len=5          37 contacts follow
+I (8169) attadipa_mesh_ble: RX op=0x03 len=148        contact record
+I (8179) attadipa_mesh_ble: RX op=0x03 len=148        contact record
+I (8189) attadipa_mesh_ble: RX op=0x03 len=148        contact record
+E (7999) attadipa_mesh_ble: queue notification failed: 6
+E (8009) attadipa_mesh_ble: queue notification failed: 6
+W (8289) attadipa_mesh_ble: MeshCore disconnected: 534
+```
+
+Two dropped frames took the link down at 8.3 s, and **nothing rescanned for the
+remaining four minutes of that boot** — no advertisement match, no GAP
+procedure, nothing. The room-send issued 30 s later was refused locally:
+
+```
+W (39929) attadipa_mesh_ble: Room Server message rejected by provider
+```
+
+The queue-full path called `disconnect_fault()`, which clears
+`reconnect_allowed` — by design, so a genuinely broken subsystem is not retried
+forever. A transient burst is not a broken subsystem, and the code one branch
+above already said so, for the over-size case: *"tearing the link down here
+would let one malformed notification end the session — and `disconnect_fault()`
+also clears `reconnect_allowed`, so it would end mesh for the whole boot."* The
+same reasoning had simply not been applied to a full queue.
+
+**Fix, two parts:** the queue is 48 deep rather than 16, sized for a contact
+burst; and a frame that cannot be queued is logged and dropped, never faulted.
+The Companion protocol tolerates that — a contact record is re-sent by the next
+`CMD_GET_CONTACTS` and the sync boundary still arrives; a lost push is one
+message.
+
+**MEASURED before and after, same node, same 37-contact list, 40 minutes
+apart:**
+
+| | before | after |
+| --- | --- | --- |
+| contact records delivered | 3 of 37 | 37 of 37 |
+| `queue notification failed` | 2 | 0 |
+| link at 8.3 s | terminated | up |
+| Companion frames after 8.3 s | none, for the rest of the boot | continuous for 170 s |
+| watch display | never left `Attached`, no node, 0 peers | `CONNECTED`, `Beta test comp`, 37 peers |
+
+[`t169-send3-170.png`](meshcore-t114-first-contact/t169-send3-170.png) is the after: `MESH / CONNECTED / Node Beta
+test comp / SNR 12.75 dB / Peers 37`.
+
+### 7c. A faulted session could not survive a reconnect · fix `SIMULATED`
+
+Observed three times on 2026-08-27, before 7b was understood. Roughly 30 s after
+a Companion write the link dropped:
+
+```
+W (75008) attadipa_mesh_ble: MeshCore disconnected: 534
+I (77648) attadipa_mesh_ble: Companion GATT ready, MTU 247
+```
+
+`534` is `0x216`: HCI reason `0x16`, *connection terminated by local host*. The
+transport rescanned, reconnected, re-paired, re-subscribed and reported MTU 247 —
+**and then sent nothing, ever again.** `MEASURED`, control run: after the
+disconnect at 111168 and the reconnect at 113628 there were zero further TX
+frames, while `0x88` pushes kept arriving and were all rejected because
+`receive()` refuses frames when the link is not ready.
+[`t169-ctl-130.png`](meshcore-t114-first-contact/t169-ctl-130.png) shows `MESH / Faulted / Node — / Peers 0 / MTU
+247`; `t169-ctl-60.png` from earlier in that same boot shows `CONNECTED / Beta
+test comp / Peers 8`.
+
+**Root cause**, from `link/src/link_state.cpp`: the provider was already
+`Faulted` when the disconnect arrived. From `Faulted`, `LinkEvent::PeerGone` is
+`Ignored`, so `disconnected()` was a no-op; `PeerArriving` requires `Attached`
+and `PeerEstablished` requires `Connecting` or `Attached`, so both were
+`Ignored` too, and `connected()` returned early without enqueueing
+`CMD_APP_START`. `begin()` is the only call that invokes `link_.reset()`, and
+nothing on the reconnect path called it. The reconnect machinery worked
+perfectly; the session model was dead behind it.
+
+**The 30 seconds is a diagnosis, not a coincidence.** Companion writes are
+write-with-response, and ATT mandates a 30 s transaction timeout after which the
+host must terminate the link. The measured intervals — 30090 ms in the send run,
+30170 ms in the control run — are that timeout to within 0.3%. In the handshake
+run the `0x0A` at 8287 got its response at 8497 and that session ran 180 s
+without a disconnect. So: the node stopped acknowledging a write at the ATT
+layer, the 30 s timeout fired, the host terminated, the write callback faulted
+the provider, and the reconnect that followed could never re-establish the
+session.
+
+**Fix, two parts:** the disconnect path calls `provider.begin()` whenever a
+reconnect is actually going to be attempted — `reconnect_allowed` is the
+existing interlock and `start_scan()` already honours it, so a hard fault is
+still reported as failed. And a failed write no longer faults the provider by
+itself: it logs the error code, which was silent before, and terminates the
+link, routing every write failure through that single recovery path.
+
+**Label discipline.** The fix is `SIMULATED`, not `MEASURED`. Host coverage is
+`test_a_fault_survives_reconnect_until_begin_restarts_the_session` in
+`tests/test_meshcore_companion.cpp`, which pins the provider contract the
+transport now depends on — a fault survives the whole reconnect sequence, and
+only `begin()` re-arms the handshake. It proves the contract, not the wiring.
+The wiring could not be bench-verified, because the ATT stall did not recur
+after 7b was fixed: a 660 s soak and a 170 s send run both completed without a
+single disconnect. **A defect that stops reproducing is not a defect that is
+proven fixed**, and it is recorded that way here.
+
+Whether the ATT stall was ever independent of 7b is `UNKNOWN`. The two are
+plausibly the same failure — a worker starved by a burst also stops draining
+write results — but the 2026-08-27 runs show no `queue notification failed`
+line, so on the evidence they are distinct.
+
+### 7d. Stability, incidentally · `MEASURED`
+
+With both fixes in, one 660 s session and one 170 s session ran with zero
+disconnects, zero dropped frames, zero malformed frames, and a live message feed
+throughout. [`t169-soak-240.png`](meshcore-t114-first-contact/t169-soak-240.png) is mid-soak: `CONNECTED`, 22 peers,
+SNR 12.50 dB. Peer count rose from 6 to 37 across the sessions as advertisements
+accumulated.
+
+## 8. Authentication and cryptography, as observed
+
+**Nothing in this section says the link or MeshCore is secure.** It records
+state.
+
+| Layer | Observed state | Label |
+| --- | --- | --- |
+| BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
+| BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch |  |
+| Passkey strength | a 6-digit static passkey, compiled into the watch build via `CONFIG_BT_NIMBLE_STATIC_PASSKEY`. It is not per-device, not rotated, and identical across watch builds | `MEASURED` |
+| Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
+| Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
+| Room Server login | the guest password is sent **in the clear inside the Companion frame** (section 6). It is protected only by BLE link encryption between watch and node, and by whatever MeshCore does beyond the node | `MEASURED` |
+| Trust model | the watch trusts the node completely. A node — or anything that can present itself as one and satisfy the passkey — chooses every sender name and message body the watch displays | structural, from the protocol |
+
+See [`docs/upstream/meshcore-1.17-review.md`](../upstream/meshcore-1.17-review.md)
+for the upstream review of what MeshCore does and does not guarantee at this
+revision. Nothing observed on this bench contradicts it, and nothing observed
+here upgrades any of its findings.
+
+The practical consequence for Attadipa: **treat every mesh-sourced string as
+hostile input.** That is why the parser bounds
+([`MESHCORE_PARSER_BOUNDS.md`](MESHCORE_PARSER_BOUNDS.md)) exist and why a
+malformed frame is dropped and counted rather than allowed to reach the
+recovery path.
+
+---
+
+## 9. Power · `ESTIMATED`
+
+A full power budget is out of scope for T-169 and was not measured — no
+inline current measurement was taken, so every number here is an estimate, not
+a bench figure.
+
+What is `MEASURED` is the duty cycle, which is the input a budget would need.
+In a steady 660 s session the watch's BLE central sent 4 frames in the first
+900 ms and then one `CMD_SYNC_NEXT_MESSAGE` roughly every 160 s. Everything
+else was receive. The connection interval NimBLE negotiated was
+`itvl_min=24 itvl_max=40` (30–50 ms) with `latency=0` and a 2.56 s supervision
+timeout — a connection kept continuously awake at a 30–50 ms interval with no
+slave latency.
+
+`ESTIMATED`: a continuously connected BLE central at that interval is the
+dominant term over an almost entirely idle Companion protocol, and the
+protocol's own traffic is negligible against it. Raising slave latency is the
+obvious lever, and it is a separate task with its own measurement.
+`UNKNOWN`: the actual figure, in mA and in hours.
+
+---
+
+## 10. What this closes in the earlier defect report
+
+[`T114_BLE_COMPANION_DEFECTS_2026-08-26.md`](T114_BLE_COMPANION_DEFECTS_2026-08-26.md)
+set a filing threshold before any upstream MeshCore issue could be raised, and
+left four items `UNKNOWN`. This session ran that clean reproduction. **It
+succeeded**, so the threshold is not met and no upstream issue should be filed
+on that evidence.
+
+| That report said | Now |
+| --- | --- |
+| node model `OPERATOR REPORTED`, revision and build `UNKNOWN` | model and build `MEASURED` off the wire: Heltec T114, `v1.17.1-d929643`, built `14-Aug-2026`. Board revision still `UNKNOWN` |
+| current BLE PIN configuration `UNKNOWN` | `MEASURED`: the operator-supplied static passkey pairs successfully and repeatably |
+| pairing correlated with the node becoming unavailable; causation `UNKNOWN` | not reproduced. Pairing succeeded in every run of this session. The earlier absence of advertisements has a simpler explanation observed directly this session: the node accepts one BLE connection, and while the operator's phone held it, the node did not advertise and no scan could match it |
+| status `261` (`0x105`) on the CCCD write, mapping `UNKNOWN` | not reproduced; the CCCD write succeeded in every run. The mapping remains `UNKNOWN` |
+| `NOT CAPTURED`: T114 serial log | still `NOT CAPTURED` |
+
+The one open node-side question this session *adds* is the ATT write stall in
+section 7c, and its cause is `UNKNOWN`. The two Attadipa defects this session
+found — sections 7b and 7c — are both fixed on this branch; neither is an
+upstream allegation.
+
+---
+
+## 11. What this does not establish
+
+- **Send does not work.** Section 6. No message from the watch has reached any
+  MeshCore destination. The cause is measured and the remaining step is an
+  operator action on the node.
+- **Power-cycle recovery is not tested.** Section 7a.
+- **The reconnect fix in 7c is not bench-verified.** Section 7c. It is
+  host-tested against the provider contract, and the failure it repairs stopped
+  reproducing once 7b was fixed.
+- **No BLE air capture exists.** Everything is the ESP32-S3 host stack's view.
+- **One node, one board, one firmware revision.** Nothing here generalises to
+  another MeshCore build or another peripheral.
+- **The 176-byte frame bound was never exercised in traffic** (section 3); the
+  largest real frame was 96 bytes. The hostile-frame cases are `SIMULATED`.
+- **Nothing here is a security claim.** Section 8.

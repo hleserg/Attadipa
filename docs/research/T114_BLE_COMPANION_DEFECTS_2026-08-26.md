@@ -1,8 +1,18 @@
 # Heltec T114 MeshCore BLE Companion — defect evidence
 
-**Status:** active bench report, not an upstream issue yet. The MeshCore build,
-T114 board revision, current BLE PIN and a clean single-client reproduction are
-not yet captured together. No credentials are recorded here.
+**Status: superseded on 2026-08-27 by
+[MESHCORE_T114_FIRST_CONTACT](MESHCORE_T114_FIRST_CONTACT.md).** The clean
+reproduction this report set as its filing threshold was run, and it succeeded:
+pairing, service discovery, subscription and the full Companion handshake all
+completed against the same node. The filing threshold is therefore **not met**
+and no upstream MeshCore issue should be raised on this evidence. That report
+also measures the MeshCore build and the working PIN configuration, and gives
+the observed explanation for the disappearing advertisements — the node accepts
+one BLE connection, and did not advertise while the operator's phone held it.
+The board revision and the T114 serial log remain `UNKNOWN`/`NOT CAPTURED`.
+
+Kept as the record of how those defects were found and corrected. No
+credentials are recorded here.
 
 This report separates Attadipa defects from the candidate T114 firmware defect
 seen while bringing up the MeshCore Companion client.
