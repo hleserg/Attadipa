@@ -44,7 +44,7 @@ they occurred in a frame.
 | Node self name | `Beta test comp` | `MEASURED` — read from `RESP_CODE_SELF_INFO` |
 | Node BLE advertised name | previously `MeshCore-🤘Beta Serega`, now `MeshCore-Beta test comp` | `MEASURED`, renamed by the operator between sessions |
 | Node board revision | `UNKNOWN` | the Companion protocol does not carry it |
-| Pairing | static passkey, injected by the watch | `MEASURED` |
+| Pairing | static passkey, supplied by the operator at run time and injected by the watch (section 8) | `MEASURED` |
 
 `v1.17.1-d929643` is the same upstream revision
 [`MESHCORE_BLE_FRAME_CAPACITY.md`](MESHCORE_BLE_FRAME_CAPACITY.md) pinned its
@@ -96,11 +96,20 @@ follows the live BLE link phase (ADR-0004) instead of a placeholder.
 | a frame larger than the negotiated ATT payload is refused on the TX side | ibid. | `disconnect_fault("frame exceeds negotiated ATT payload", …)` |
 | a disconnect resets the session fail-closed | ADR-0002 | `reset_session()` via `begin()` — see section 7 |
 
-Negotiated ATT MTU on this bench: **247** (`MEASURED`, every run). The largest
-frame actually observed was 96 bytes. The 176-byte bound was therefore never
-reached in traffic; it is enforced structurally, and the hostile-frame cases
-that exercise it are host tests, not bench observations —
-`tests/test_meshcore_companion.cpp`, `SIMULATED`.
+Negotiated ATT MTU on this bench: **247** (`MEASURED`, every run), so the
+176-byte buffer, not the MTU, is the binding limit — as
+[`MESHCORE_BLE_FRAME_CAPACITY.md`](MESHCORE_BLE_FRAME_CAPACITY.md) §3 says it
+would be.
+
+**The bound came within 2 bytes of being exercised in real traffic.** The
+largest frame observed across every run is a 174-byte `PUSH_CODE_LOG_RX_DATA`
+(`I (229929) RX op=0x88 len=174`, soak run) — `MEASURED`. Contact records are a
+fixed 148, and pushes were seen at 153, 157, 160, 164, 168 and 174 bytes.
+Nothing over 176 arrived: `malformed_frames` is 0 in every run and
+`drop_oversize_frame()` was never called, so the drop path itself is still
+`SIMULATED` — `tests/test_meshcore_companion.cpp`. That a real forwarded-packet
+push reaches 174 bytes is worth stating plainly: the margin on this bound is two
+bytes of somebody else's mesh traffic, not a comfortable one.
 
 ---
 
@@ -271,23 +280,30 @@ inferred from 7b or 7c, and remains an open acceptance item for #296.
 ### 7b. A contact-list burst killed mesh for the whole boot · `MEASURED`, fixed
 
 This is the most consequential finding of the session, and it only appeared
-because the node's contact list changed between runs: empty on 2026-08-27,
-37 contacts on 2026-08-28.
+because the node's contact list grew over the evening as advertisements
+accumulated: empty on 2026-08-27, then 6, 19, 22, 33 and 37 across the
+2026-08-28 runs. It is size-dependent, and that is `MEASURED`, not inferred: on
+the *same* binary a 22-record burst (the 672 s soak) came through with zero
+queue failures, and the 33-record burst 5 minutes later did not.
 
 `CMD_GET_CONTACTS` is answered with an unpaced burst of 148-byte
 `RESP_CODE_CONTACT` records, ten milliseconds apart. The transport's FreeRTOS
 event queue was 16 deep, the burst outran the worker task, and:
 
 ```
-I (7827) attadipa_mesh_ble: TX op=0x04 len=1          CMD_GET_CONTACTS
-I (8037) attadipa_mesh_ble: RX op=0x02 len=5          37 contacts follow
-I (8169) attadipa_mesh_ble: RX op=0x03 len=148        contact record
-I (8179) attadipa_mesh_ble: RX op=0x03 len=148        contact record
-I (8189) attadipa_mesh_ble: RX op=0x03 len=148        contact record
+I (7719) attadipa_mesh_ble: TX op=0x04 len=1          CMD_GET_CONTACTS
+I (7959) attadipa_mesh_ble: RX op=0x02 len=5          02 21 00 00 00 -- 33 contacts follow
+I (7959) attadipa_mesh_ble: RX op=0x03 len=148        contact record
+I (7969) attadipa_mesh_ble: RX op=0x03 len=148        contact record
 E (7999) attadipa_mesh_ble: queue notification failed: 6
 E (8009) attadipa_mesh_ble: queue notification failed: 6
+I (8189) attadipa_mesh_ble: RX op=0x03 len=148        20th and last record
 W (8289) attadipa_mesh_ble: MeshCore disconnected: 534
 ```
+
+`6` is `errQUEUE_FULL`. Twenty of the announced thirty-three records reached the
+worker; the burst ran from 7959 to 8189 ms, so thirty-three 148-byte records
+were offered in 230 ms against a queue sixteen deep.
 
 Two dropped frames took the link down at 8.3 s, and **nothing rescanned for the
 remaining four minutes of that boot** — no advertisement match, no GAP
@@ -314,13 +330,22 @@ message.
 **MEASURED before and after, same node, same 37-contact list, 40 minutes
 apart:**
 
-| | before | after |
+| | before (`send2`, 00:29) | after (`send3`, 00:35) |
 | --- | --- | --- |
-| contact records delivered | 3 of 37 | 37 of 37 |
+| contacts announced by the node | 33 | 37 |
+| contact records delivered | 20 | 37 |
 | `queue notification failed` | 2 | 0 |
 | link at 8.3 s | terminated | up |
 | Companion frames after 8.3 s | none, for the rest of the boot | continuous for 170 s |
-| watch display | never left `Attached`, no node, 0 peers | `CONNECTED`, `Beta test comp`, 37 peers |
+| watch display at 245 s / 170 s | `Attached`, no node, 0 peers, MTU 0 | `CONNECTED`, `Beta test comp`, 37 peers |
+
+The list grew by four contacts between the two runs, so this is not a controlled
+A/B on identical input; the burst got *larger* and still succeeded.
+[`t169-send2-245.png`](meshcore-t114-first-contact/t169-send2-245.png) is the before, 245 s into a boot whose
+link died at 8.3 s: `MESH / Attached / Node — / Peers 0 / MTU 0`. It reads
+`Attached` rather than `Faulted` because `provider.begin()` had already re-armed
+the link model (7c); it is `reconnect_allowed`, cleared by `disconnect_fault()`,
+that stopped the scan from ever restarting.
 
 [`t169-send3-170.png`](meshcore-t114-first-contact/t169-send3-170.png) is the after: `MESH / CONNECTED / Node Beta
 test comp / SNR 12.75 dB / Peers 37`.
@@ -337,10 +362,12 @@ I (77648) attadipa_mesh_ble: Companion GATT ready, MTU 247
 
 `534` is `0x216`: HCI reason `0x16`, *connection terminated by local host*. The
 transport rescanned, reconnected, re-paired, re-subscribed and reported MTU 247 —
-**and then sent nothing, ever again.** `MEASURED`, control run: after the
-disconnect at 111168 and the reconnect at 113628 there were zero further TX
-frames, while `0x88` pushes kept arriving and were all rejected because
-`receive()` refuses frames when the link is not ready.
+**and then sent nothing, ever again.** `MEASURED`, control run, on a build that
+predates the fix: the link dropped at 111168, the scan restarted in the same
+millisecond, the connection came back at 111388, and GATT was ready with MTU 247
+at 113628 — and the last `TX` line in the whole log is at 80998. `0x88` pushes
+kept arriving and the display showed no node and zero peers, which is
+`receive()` refusing frames while the link is not ready.
 [`t169-ctl-130.png`](meshcore-t114-first-contact/t169-ctl-130.png) shows `MESH / Faulted / Node — / Peers 0 / MTU
 247`; `t169-ctl-60.png` from earlier in that same boot shows `CONNECTED / Beta
 test comp / Peers 8`.
@@ -376,9 +403,9 @@ link, routing every write failure through that single recovery path.
 `tests/test_meshcore_companion.cpp`, which pins the provider contract the
 transport now depends on — a fault survives the whole reconnect sequence, and
 only `begin()` re-arms the handshake. It proves the contract, not the wiring.
-The wiring could not be bench-verified, because the ATT stall did not recur
-after 7b was fixed: a 660 s soak and a 170 s send run both completed without a
-single disconnect. **A defect that stops reproducing is not a defect that is
+The wiring could not be bench-verified, because the ATT stall stopped recurring
+on its own: the 672 s soak, which ran on a build carrying this fix and not 7b,
+completed without a single disconnect, and so did the 170 s run after 7b. **A defect that stops reproducing is not a defect that is
 proven fixed**, and it is recorded that way here.
 
 Whether the ATT stall was ever independent of 7b is `UNKNOWN`. The two are
@@ -388,11 +415,23 @@ line, so on the evidence they are distinct.
 
 ### 7d. Stability, incidentally · `MEASURED`
 
-With both fixes in, one 660 s session and one 170 s session ran with zero
-disconnects, zero dropped frames, zero malformed frames, and a live message feed
-throughout. [`t169-soak-240.png`](meshcore-t114-first-contact/t169-soak-240.png) is mid-soak: `CONNECTED`, 22 peers,
-SNR 12.50 dB. Peer count rose from 6 to 37 across the sessions as advertisements
-accumulated.
+Two clean sessions, on two different builds — and the distinction matters,
+because only the second one carries both fixes.
+
+| run | build | duration | contacts | disconnects | dropped | malformed |
+| --- | --- | --- | --- | --- | --- | --- |
+| `soak`, 00:12–00:24 | 7c fix only | 672 s | 22 of 22 | 0 | 0 | 0 |
+| `send3`, 00:32–00:35 | 7c + 7b | 170 s | 37 of 37 | 0 | 0 | 0 |
+
+The soak binary predates the 7b fix by construction: the soak ended at 00:23:56
+and the queue fix was not built until 00:31:08. Its 22-record burst simply never
+reached the queue bound — which is the point of 7b, and the reason the soak is
+not evidence for it. Only the 170 s `send3` run exercises both fixes together.
+
+Both ran with a live message feed throughout.
+[`t169-soak-240.png`](meshcore-t114-first-contact/t169-soak-240.png) is mid-soak: `CONNECTED`, 22 peers, SNR
+12.50 dB. Peer count rose from 6 to 37 across the evening's sessions as
+advertisements accumulated.
 
 ## 8. Authentication and cryptography, as observed
 
@@ -403,7 +442,8 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch |  |
-| Passkey strength | a 6-digit static passkey, compiled into the watch build via `CONFIG_BT_NIMBLE_STATIC_PASSKEY`. It is not per-device, not rotated, and identical across watch builds | `MEASURED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:647`](../../firmware/main/meshcore_ble.cpp), [`:496`](../../firmware/main/meshcore_ble.cpp)), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
+| Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
 | Room Server login | the guest password is sent **in the clear inside the Companion frame** (section 6). It is protected only by BLE link encryption between watch and node, and by whatever MeshCore does beyond the node | `MEASURED` |
@@ -429,7 +469,7 @@ inline current measurement was taken, so every number here is an estimate, not
 a bench figure.
 
 What is `MEASURED` is the duty cycle, which is the input a budget would need.
-In a steady 660 s session the watch's BLE central sent 4 frames in the first
+In the steady 672 s soak the watch's BLE central sent 4 frames in the first
 900 ms and then one `CMD_SYNC_NEXT_MESSAGE` roughly every 160 s. Everything
 else was receive. The connection interval NimBLE negotiated was
 `itvl_min=24 itvl_max=40` (30–50 ms) with `latency=0` and a 2.56 s supervision
@@ -475,10 +515,13 @@ upstream allegation.
 - **Power-cycle recovery is not tested.** Section 7a.
 - **The reconnect fix in 7c is not bench-verified.** Section 7c. It is
   host-tested against the provider contract, and the failure it repairs stopped
-  reproducing once 7b was fixed.
+  reproducing on its own, before 7b was fixed.
 - **No BLE air capture exists.** Everything is the ESP32-S3 host stack's view.
 - **One node, one board, one firmware revision.** Nothing here generalises to
   another MeshCore build or another peripheral.
-- **The 176-byte frame bound was never exercised in traffic** (section 3); the
-  largest real frame was 96 bytes. The hostile-frame cases are `SIMULATED`.
+- **The 176-byte frame bound was approached but never crossed in traffic**
+  (section 3): the largest real frame was 174 bytes, and no over-size frame was
+  ever observed, so the drop-and-count path is `SIMULATED` only. Whether a
+  MeshCore push can exceed 176 bytes on this revision is `UNKNOWN` from this
+  bench.
 - **Nothing here is a security claim.** Section 8.
