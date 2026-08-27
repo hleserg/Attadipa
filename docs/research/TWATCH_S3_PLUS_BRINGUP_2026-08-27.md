@@ -69,9 +69,15 @@ Arduino's stock `default_16MB` scheme. Everything lives **below the `0x1000000`
 addressing ceiling** that `tools/flash/partition_check.py` enforces, because the
 part is 16 MB — the Waveshare's 32 MB problem does not arise here.
 
-- `app1` is `0xFF` throughout: **the unit has never taken an OTA.**
-- `coredump` is `0xFF` throughout: **no crash has ever been recorded.**
+- `app1` is `0xFF` throughout — **empty when read, 2026-08-27.**
+- `coredump` is `0xFF` throughout — **empty when read, 2026-08-27.**
 - `otadata` is initialised (12 non-`0xFF` bytes).
+
+An earlier draft read those two as *"never taken an OTA"* and *"no crash has
+ever been recorded"*, and neither follows. A blank partition is the state at
+the moment of the dump, not a history: a reprovisioned unit has an erased OTA
+slot too, and a crash that happened while coredump capture was disabled leaves
+`coredump` blank as well. What is MEASURED is that both were empty when read.
 
 ## 4. The factory firmware
 
@@ -111,9 +117,14 @@ firmware build, so they are written at factory provisioning, not at link time:
 `notification.mp3`, `receive-phone-calls.mp3`, `van-life.mp3`,
 `vintage-phone-ringing.mp3`.
 
-The FAT12 boot sector is at **`0x811000`, not at the partition start** — ESP-IDF's
-wear-levelling layer reserves the first 4 KB. Anything reading this partition as a
-filesystem has to skip it.
+The FAT12 boot sector was found at **`0x811000`, not at the partition start** —
+4 KB into it, because ESP-IDF's wear-levelling layer sits underneath. **That
+offset is where logical sector zero happened to be in this dump, and it is not
+a constant.** The wear-levelling layer rotates its logical-to-physical mapping
+as the partition is written, so a later dump of this same unit may put sector
+zero somewhere else. An extractor must read the wear-level metadata, or mount
+through ESP-IDF's `wear_levelling` layer; one that always skips 4 KB will
+eventually decode the wrong bytes.
 
 ### `nvs` holds no user data
 
@@ -144,9 +155,16 @@ conflating the two is exactly the trap that made the row conflicting.
 
 ### Flash: 16 MB confirmed on the unit
 
-`0xEF 0x4018` is Winbond, 128 Mbit. The `W25Q128JW` in the schematic is the
-fitted part. `HARDWARE_MATRIX` said 16 MB from the vendor document; it is now
-read off the chip.
+`0xEF 0x4018` is Winbond, 128 Mbit — read off the chip, so the **vendor and the
+capacity** are MEASURED. `HARDWARE_MATRIX` had 16 MB from the vendor document;
+that half is now confirmed on the unit.
+
+**The exact ordering code stays `UNKNOWN.`** A JEDEC id names a family, not a
+part number: it does not pin supply voltage, timing grade or the command set,
+which is what a future BOM or a QSPI-timing decision would actually need. The
+schematic's `W25Q128JW` is *consistent* with this reading and nothing more —
+the package marking has not been read and the board revision is still open
+(**D20**).
 
 ### Micro-USB confirmed, and the two buttons are where the schematic says
 
