@@ -104,7 +104,8 @@ would be.
 **The bound came within 2 bytes of being exercised in real traffic.** The
 largest frame observed across every run is a 174-byte `PUSH_CODE_LOG_RX_DATA`
 (`I (229929) RX op=0x88 len=174`, soak run) — `MEASURED`. Contact records are a
-fixed 148, and pushes were seen at 153, 157, 160, 164, 168 and 174 bytes.
+fixed 148; `PUSH_CODE_LOG_RX_DATA` was seen at 152, 153, 160, 164, 168 and 174
+bytes, and one `op=0x11` frame at 157.
 Nothing over 176 arrived: `malformed_frames` is 0 in every run and
 `drop_oversize_frame()` was never called, so the drop path itself is still
 `SIMULATED` — `tests/test_meshcore_companion.cpp`. That a real forwarded-packet
@@ -301,9 +302,11 @@ I (8189) attadipa_mesh_ble: RX op=0x03 len=148        20th and last record
 W (8289) attadipa_mesh_ble: MeshCore disconnected: 534
 ```
 
-`6` is `errQUEUE_FULL`. Twenty of the announced thirty-three records reached the
-worker; the burst ran from 7959 to 8189 ms, so thirty-three 148-byte records
-were offered in 230 ms against a queue sixteen deep.
+`6` is `errQUEUE_FULL`. The node announced 33 records. Twenty-two notifications
+reached the callback between 7959 ms and the teardown at 8289 ms: twenty were
+queued and logged, two were refused by a queue sixteen deep. The remaining
+eleven have no evidence of arriving at all — the link went down first, and
+whether the node had sent them is `UNKNOWN` from this side.
 
 Two dropped frames took the link down at 8.3 s, and **nothing rescanned for the
 remaining four minutes of that boot** — no advertisement match, no GAP
