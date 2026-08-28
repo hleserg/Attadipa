@@ -248,7 +248,7 @@ module; none of them appear on the main-board schematic.
 ### Display diagonal — RESOLVED 1.54"
 
 240 × 240 was never in doubt; the physical size was. It is now measured:
-**27.72 mm across the active area, +0.1 to +0.7 mm one-directional — a 1.544"
+**27.72 mm across the active area, −0.2 to +0.7 mm two-sided — a 1.544"
 diagonal, 220 ppi. MEASURED 2026-08-28.** Photograph, script and every
 intermediate: [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.md).
 
@@ -262,9 +262,9 @@ glass, which removes parallax rather than bounding it: an earlier attempt with
 the rule on the desk beside the watch could yield only an upper bound, and was
 reported as one. Standard and subject are therefore in one frame at one scale.
 Repeating the fit over four graduation bands and four row windows moves the
-answer by 0.03 mm — but the rule sits on the case while the emitters sit under
-the glass, and that offset is a systematic with one sign: it makes the true
-width *larger*, never smaller. Only three of the four edges are in frame.
+answer by 0.03 mm — but two systematics of comparable size pull opposite ways:
+rule-on-case against emitters-under-glass raises the true width, and the frame's
+perspective gradient lowers it. Only three of the four edges are in frame.
 
 **Why 1.3" is excluded rather than merely disfavoured.** Predicted active width
 is 27.66 mm at 1.54" and 23.35 mm at 1.3"; the result sits 0.2 % from the first

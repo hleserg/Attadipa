@@ -623,12 +623,12 @@ to every unit of the same model.
   schematic's own LCD sheet (S3): part `QT154C2408`, symbol `LCD_1.54-TOUCH`.
 - **Checked:** 2026-08-28, on the T-Watch recorded in
   [BENCH_DEVICES](BENCH_DEVICES.md).
-- **Evidence level: MEASURED.** The band is one-directional rather than
-  symmetric: the rule rested on the case while the emitters sit behind the
-  glass, so the true width is +0.1 to +0.7 mm larger and never smaller —
-  which moves the panel further from 1.3", not towards it. Only three of the
-  four edges are in the surviving frame; the panel is square because its
-  raster is 240 × 240.
+- **Evidence level: MEASURED.** The band is **two-sided**, −0.2 to +0.7 mm.
+  The rule rested on the case while the emitters sit behind the glass, which
+  puts the true width up to 0.7 mm higher; the frame's own perspective
+  gradient puts it about 0.23 mm lower. Neither term is tightly bounded, and
+  they do not cancel by construction. Only three of the four edges are in the
+  surviving frame; the panel is square because its raster is 240 × 240.
 - **Impact:** every `Metrics::px` conversion at 261 dpi emits about 19 % more
   pixels than this panel wants, so the board renders oversized until
   [#323](https://github.com/hleserg/Attadipa/issues/323) lands. Supporting

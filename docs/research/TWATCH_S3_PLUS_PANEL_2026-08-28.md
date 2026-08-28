@@ -143,12 +143,13 @@ graduation fit rms     0.287 px = 0.019 mm
 edge fit rms           0.195 px = 0.013 mm
 ```
 
-**Systematic, and one-directional.** The rule rests on the case rim; the
+**Systematic, and two-sided.** Two terms of comparable size point in opposite
+directions. Neither is bounded tightly, and they do not cancel by construction.
+
+**(a) Depth — raises the true width.** The rule rests on the case rim; the
 emitting layer sits behind the cover glass, further from the lens. The
 calibration is therefore taken in a plane *nearer* the camera than the plane
 being measured, px/mm comes out too large, and the width comes out too **small**.
-This error has one sign only: **the true width is larger than 27.72 mm, never
-smaller**, so it moves the panel further from 1.3" rather than towards it.
 
 Its size needs the working distance, which this crop does not carry, so it is
 bounded across a plausible range instead — `ESTIMATED`, from the geometry
@@ -161,13 +162,37 @@ bounded across a plausible range instead — `ESTIMATED`, from the geometry
 | 3 mm | +0.71 mm | +0.42 mm |
 
 The glass reduces the effective depth: an emitter under `t` of glass images at
-an apparent depth of about `t/n`, n ≈ 1.5. The largest entry in that table is
-still an order below the **4.3 mm** that separates the two candidate diagonals,
-so the systematic changes the uncertainty band and changes nothing about which
-panel this is.
+an apparent depth of about `t/n`, n ≈ 1.5.
+
+**(b) Perspective — lowers it, and §4 named this without sizing it.** The two
+side edges do not share a tilt, `+3.04°` against `+1.67°`, so the camera was not
+square to the case and the frame carries a vertical magnification gradient. The
+fitted edges size it, because apparent width is a function of image row:
+
+```
+x_L(y) = -0.05309·y + 159.180
+x_R(y) = -0.02913·y + 581.635
+W(y)   =  0.02396·y + 422.456
+```
+
+The scale is read from the rule at row **162** (`FINE_BAND`), where `W` is
+426.34 px. The panel is measured at row **308.5** (`PANEL_ROWS`), where `W` is
+429.85 px — §4's own figure, so the model is this report's rather than an
+outside one. The local scale where the *standard* is read is therefore
+**0.82 % smaller** than where the *subject* is measured, px/mm comes out too
+small, and the width comes out too **large** — by **0.23 mm**, giving 27.50 mm.
+
+`ESTIMATED`, and of the same class as (a): it extrapolates the panel plane's
+gradient up to the rule's rows, assuming both planes share the perspective law
+and that it is linear across the span.
+
+**Neither term decides which panel this is.** Both stay an order below the
+**4.3 mm** that separates the two candidate diagonals. Even at 27.50 mm the
+result is **+17.8 %** from 1.3" and 221.7 ppi, so 1.3" stays excluded and
+"220 ppi" stays true whichever way the band is read.
 
 Quoting `27.72 ± 0.03` alone would therefore be tighter than the method
-supports. The honest statement is **27.72 mm, +0.1 to +0.7 mm one-directional,
+supports. The honest statement is **27.72 mm, −0.2 to +0.7 mm two-sided,
 1.54"**.
 
 ## 6. What this changes, and what it does not

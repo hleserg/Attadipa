@@ -306,20 +306,48 @@ def main():
     print(f"   graduation fit rms     {rms:.3f} px = {rms / scale:.3f} mm")
     print(f"   edge fit rms           {max(lr, rr):.3f} px = {max(lr, rr) / scale:.3f} mm")
     print()
-    print("   The rule lies on the case rim; the pixels are under the cover")
-    print("   glass, further from the lens.  The calibration is therefore taken")
+    print("   Two systematics of comparable size, pointing OPPOSITE ways.")
+    print()
+    print("   (a) DEPTH.  The rule lies on the case rim; the pixels are under")
+    print("   the cover glass, further from the lens.  The calibration is taken")
     print("   in a plane nearer the camera than the plane being measured, px/mm")
-    print("   comes out too large, and the width too SMALL.  This error has one")
-    print("   direction only -- the true width is larger than printed above,")
-    print("   never smaller -- and it therefore moves the panel further from")
-    print("   1.3 in rather than towards it.")
+    print("   comes out too large, and the width too SMALL -- so this term puts")
+    print("   the true width ABOVE the figure printed in section 4.")
     for depth in (1.0, 2.0, 3.0):
         row = "     ".join(
             f"{dist:3.0f} mm lens -> +{width_mm * (depth / (dist - depth)):.2f} mm"
             for dist in (120.0, 200.0))
         print(f"     rim-to-pixel {depth:.0f} mm:  {row}   ESTIMATED")
-    print("   The largest of those is still an order below the 4.3 mm that")
-    print("   separates the two candidate diagonals.")
+    print()
+    print("   (b) PERSPECTIVE.  The two side edges do not share a tilt")
+    print(f"   ({tl:.2f} vs {tr:.2f} deg), so the frame carries a vertical")
+    print("   magnification gradient -- and the scale is NOT read in the rows")
+    print("   the panel is measured in.  The fitted edges size it:")
+    ls_ = -math.tan(math.radians(tl))
+    rs_ = -math.tan(math.radians(tr))
+    span = lambda y: (rs_ * y + ri) - (ls_ * y + li)
+    y_cal = (FINE_BAND[0] + FINE_BAND[1]) / 2.0
+    y_panel = (PANEL_ROWS[0] + PANEL_ROWS[-1]) / 2.0
+    print(f"     W(y) = {rs_ - ls_:+.5f}*y + {ri - li:.3f}")
+    print(f"     scale read   at y={y_cal:5.1f} (FINE_BAND):  W = {span(y_cal):.2f} px")
+    print(f"     panel measured at y={y_panel:5.1f} (PANEL_ROWS): W = {span(y_panel):.2f} px")
+    ratio = span(y_cal) / span(y_panel)
+    corrected = width_mm * ratio
+    print(f"     local scale differs by {(ratio - 1) * 100:+.2f} %, so px/mm is read too")
+    print(f"     SMALL and the width comes out too LARGE, by "
+          f"{width_mm - corrected:.2f} mm -> {corrected:.2f} mm   ESTIMATED")
+    print("     This extrapolates the panel plane's gradient up to the rule's")
+    print("     rows, assuming both planes share the perspective law and that it")
+    print("     is linear across the span -- the same class of estimate as (a).")
+    print()
+    print("   Neither term is tightly bounded and they do not cancel by")
+    print("   construction, so the band is TWO-SIDED: about -0.2 to +0.7 mm.")
+    narrow = 1.30 * 25.4 / math.sqrt(2.0)
+    print(f"   Both stay an order below the 4.3 mm separating the candidates:")
+    print(f"   even at {corrected:.2f} mm the result is "
+          f"{(corrected - narrow) / narrow * 100:+.1f} % from 1.3 in and "
+          f"{240.0 / (corrected / 25.4):.1f} ppi,")
+    print("   so which panel this is does not depend on either term.")
 
 
 if __name__ == "__main__":
