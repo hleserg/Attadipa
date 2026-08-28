@@ -1,7 +1,7 @@
 # QMI8658 pedometer, bench 2026-08-28
 
-**The engine was offered motion far above its configured thresholds and counted
-nothing.** That is a MEASURED negative, and it is not the twenty-step walk
+**The watch was moved vigorously for many seconds and the step register never
+moved.** That is a MEASURED negative, and it is not the twenty-step walk
 [#116](https://github.com/hleserg/Attadipa/issues/116) asks for — which could
 not be logged at all, for a reason worth recording.
 
@@ -12,6 +12,7 @@ not be logged at all, for a reason worth recording.
 | Part | QMI8658, I2C `0x6B`, `REVISION_ID = 0x7C` (Rev A — chapter 11 pedometer) |
 | Board | Waveshare ESP32-S3 AMOLED 2.06 |
 | Operator | the owner, watch in hand, attached over USB |
+| Source key | **S15** ([HARDWARE_MATRIX](HARDWARE_MATRIX.md)) |
 
 ## What was measured
 
@@ -20,15 +21,21 @@ One run, 159 one-second windows, the watch shaken by hand while attached.
 | Quantity | Value |
 | --- | --- |
 | configured `ped_fix_peak2peak` | 80 in u6.10 ≈ **78 mg** |
-| maximum peak-to-peak on one axis | **2242 mg** — about **29×** the bar |
-| seconds whose amplitude cleared the bar | **18**, across a 158 s run |
+| probe's maximum peak-to-peak, per axis over a one-second window | **2242 mg** |
+| seconds of the 158 exceeding 78 mg by that measure | **18** |
 | step count during those seconds | **0**, `+0` on every one |
 | `STATUS1` | `0x00` throughout |
 
-The probe reports peak-to-peak per axis per second in the same mg the engine's
-threshold is written in, precisely so that a zero count can be told apart from a
-threshold never reached. Here the bar was cleared eighteen times over and the
-register never moved.
+The probe exists so that a zero count can be told apart from a threshold never
+reached, and on that question it answers clearly: the watch was moved hard, for
+many seconds, and nothing counted.
+
+**But the two numbers are not the same quantity, and an earlier draft of this
+report divided them.** 78 mg is the configured `ped_fix_peak2peak`; 2242 mg is
+the probe's own per-axis maximum over a one-second window. **UNKNOWN:** chapter
+11 does not state the window length or the axis combination the engine's own
+peak-to-peak uses. Until that is sourced, "29× the threshold" is not a claim this
+run supports — only "far more motion than 78 mg, sustained, and no count".
 
 ## Both known-good configurations were tried
 
@@ -41,8 +48,16 @@ register never moved.
    and `sig_count = 1` so the register moves on the *first* step rather than
    holding nine back. That library ships on this board.
 
+**SensorLib is not among this repository's pinned upstreams**, so its profile is
+an unpinned read and is cited here as a lead rather than as a source. Reproducing
+this needs the revision recorded.
+
 `CTRL7 = 0x03` — both sensors enabled — is also the state the probe **found** on
-the board, so the vendor firmware runs 6DOF too.
+the board at start-up. An earlier draft read that as the vendor firmware running
+6DOF. **It is not evidence of that.** T-166 replaced this unit's factory image on
+2026-08-25 ([BENCH_DEVICES](BENCH_DEVICES.md)), three days before this session, so
+the residue is Attadipa's own firmware. What the vendor configured is **UNKNOWN**
+and would now have to come from the S12 flash image.
 
 The CTRL9 handshake was confirmed on every run: both `0x0D` calls acknowledged
 with CmdDone set and cleared, so the parameters reached the engine. The probe
@@ -81,8 +96,12 @@ IMU, not a stream. So the run does not need to be observed live:
 1. configure the engine while attached, and read the count;
 2. unplug and walk a counted twenty steps;
 3. re-attach and read the count again, **without reconfiguring** — the `0→1`
-   edge on `CTRL8` bit 4 clears the count (§11.6), so a probe that reconfigures
-   on boot destroys the very number it was sent to fetch.
+   edge on `CTRL8` bit 4 clears the count, so a probe that reconfigures on boot
+   destroys the very number it was sent to fetch. That is §11.6 of
+   `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` (© 2022 QST), the document
+   `REVISION_ID = 0x7C` identifies — catalogued in
+   [PEDOMETER_PARTS](PEDOMETER_PARTS.md), and **uncorroborated here by any second
+   source**, so step 3 should be verified before it is relied on.
 
 The one thing to establish first is **UNKNOWN**: whether the board stays powered
 from its battery while unplugged, and whether the IMU keeps its configuration
