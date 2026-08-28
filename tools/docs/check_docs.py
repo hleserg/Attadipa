@@ -220,6 +220,14 @@ CITATION = re.compile(
 # `[HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md)`, and the citation match ends
 # inside it, so a fingerprint written after the link would otherwise be seen by
 # nothing -- a promise silently not kept, which is worse than no promise.
+# The path a citation links to, immediately after it. These documents write
+# `[`core/clock.h:86`](../../core/include/attadipa/core/clock.h)`: a SHORT LABEL
+# for the reader and the real path in the href. The label is not a stale path
+# and must not be reported as one -- but it is also the only place a line number
+# appears, so resolving through the href is what makes `:86` checkable at all.
+# Anchored, so a later link on the same line cannot be mistaken for this one.
+CITATION_HREF = re.compile(r"\A`?\]\(([^)#]+)")
+
 FINGERPRINT = re.compile(
     r'\A`?(?:\]\([^)]*\))?`?\s*[\u2014-]?\s*"([^"]{3,80})"'
 )
@@ -352,14 +360,61 @@ def check_citation_lines(root: str) -> list[str]:
                 else:
                     # Then anywhere in the tree, if exactly one file carries
                     # that basename -- see basename_index().
+                    # The label may be shorthand for a path the href spells
+                    # out in full. Prefer the href: it is what a reader clicks,
+                    # and check_links already proves it resolves.
+                    href = CITATION_HREF.match(line[match.end():])
+                    if href:
+                        via = os.path.normpath(
+                            os.path.join(here, href.group(1).lstrip("/"))
+                        )
+                        if os.path.isfile(via):
+                            body = lines_of(via)
+                            if body is not None:
+                                _report(problems, rel_self, lineno, cited,
+                                        match, body, line)
+                            continue
                     resolved = by_basename.get(os.path.basename(cited), "")
                     if not resolved or "/" in cited.strip("./"):
-                        # Not a file in this repository: an upstream source, a
-                        # renamed path, or a false positive. check_links covers
-                        # the ones written as links; a line number in somebody
-                        # else's tree is not ours to verify. A citation that
-                        # names a DIRECTORY is not resolved by basename either:
+                        # Three cases used to end here alike, and one of them is
+                        # ours. An upstream source and a false positive are not
+                        # ours to verify -- a line number in somebody else's
+                        # tree means nothing here, and a citation naming a
+                        # DIRECTORY is not resolved by basename either:
                         # `upstream/foo/ci.yml:12` means their ci.yml, not ours.
+                        #
+                        # A RENAMED path is different, and skipping it silently
+                        # is how eleven citations naming files this repository
+                        # no longer has stayed green. `core/clock.h:31` is not
+                        # somebody else's tree: `core/` is ours, the file moved
+                        # to `core/include/attadipa/core/`, and the citation
+                        # now sends a reader nowhere. No fingerprint can catch
+                        # it, because resolution fails before there is anything
+                        # to compare.
+                        #
+                        # What separates them is whether we can PROVE the
+                        # file is ours. "the first segment is a directory we
+                        # track" is not proof: `docs/` is ours and it is also
+                        # LilyGoLib's, and HARDWARE_MATRIX cites
+                        # `docs/hardware/lilygo-t-watch-s3-plus.md:68` in THEIR
+                        # tree. That heuristic reddened a correct citation.
+                        #
+                        # A unique basename elsewhere in our tree is proof: the
+                        # file exists here, at another path, so the citation is
+                        # a rename we did and can name the fix for. A basename
+                        # we do not have at all stays silent -- upstream, or
+                        # deleted, and neither is decidable from here.
+                        # `resolved` is the basename lookup above: non-empty
+                        # means our tree carries this file at a different path.
+                        moved = resolved
+                        if moved and "/" in cited.strip("./"):
+                            problems.append(
+                                f"{rel_self}:{lineno} cites {cited}, which "
+                                f"this repository no longer has at that path. "
+                                f"It moved to {os.path.relpath(moved, root)} -- "
+                                f"repoint the citation, or link the file so the "
+                                f"line number can be checked."
+                            )
                         continue
                 body = lines_of(resolved)
                 if body is None:
@@ -672,7 +727,8 @@ CHECKS = (
     ("Duplicate owner-decision numbers", "check_decision_ids"),
     ("Unexpected files tracked at the repository root", "check_root_files"),
     (
-        "Citations pointing at a blank line or past the end of a file",
+        "Citations pointing at a blank line, past the end of a file, "
+        "or at a path this repository no longer has",
         "check_citation_lines",
     ),
     ("Duplicate open-question IDs", "check_question_ids"),

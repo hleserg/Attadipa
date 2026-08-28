@@ -80,7 +80,7 @@ false before the advice arrived.** [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md)
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
-([HARDWARE_MATRIX.md:330](HARDWARE_MATRIX.md)). The only true reading of "not
+([HARDWARE_MATRIX.md:370](HARDWARE_MATRIX.md) — "**not present**"). The only true reading of "not
 declared" was that this repository then contained no ESP-IDF build configuration
 for any target, which made the statement vacuous rather than informative. T-165
 has since added and exercised `sdkconfig.defaults` and a partition CSV. What
@@ -822,11 +822,11 @@ twice. **Two are still live.**
    ~10 µA light-sleep floor on the reasoning that the workaround "must not be
    deselected on a module rather than a bare chip". That contradicts
    [HARDWARE_MATRIX.md:301](HARDWARE_MATRIX.md), which records a bare chip, and
-   the figure is carried forward into [HIL_PLANS.md:64-67](../testing/HIL_PLANS.md)
+   the figure is carried forward into [HIL_PLANS.md:68-72](../testing/HIL_PLANS.md) — "VENDOR-STATED"
    as VENDOR-STATED. One of the two is wrong and the sleep-current plan depends
    on which.
 7. The part-ownership table at
-   [ARCHITECTURE.md:396-414](../architecture/ARCHITECTURE.md) has two problems in
+   [ARCHITECTURE.md:405-425](../architecture/ARCHITECTURE.md) has two problems in
    one table. It has no flash or PSRAM row for this board, where the T-Watch
    table has both — an omission rather than a claim of absence, but a defect
    against the scoped [firmware rules](../../firmware/AGENTS.md), since every

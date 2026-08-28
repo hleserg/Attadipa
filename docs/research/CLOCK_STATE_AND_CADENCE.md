@@ -34,17 +34,17 @@ this repository, and most of them are not obviously about a clock.
 | a wall clock | `core::WallTime` — UNIX seconds, **no arithmetic** | [`core/clock.h:86`](../../core/include/attadipa/core/clock.h) |
 | elapsed time, for anything timed | `core::MonotonicTime` / `Millis` / `elapsed()` | `core/clock.h:45`, `:62` |
 | "the time is not usable" | `core::Availability` — seven values, seven *remedies* | [`core/availability.h:16`](../../core/include/attadipa/core/availability.h) |
-| "the time is old / not trustworthy" | `core::Validity{Unknown, Valid, Stale, Invalid}` | `core/availability.h:39` |
-| a datum plus its two ages | `core::Timed<T>` | `core/availability.h:46` |
-| "who is supplying the time" | `core::Capability::Time` — *"a wall clock worth displaying"* | [`core/capability.h:18`](../../core/include/attadipa/core/capability.h) |
+| "the time is old / not trustworthy" | `core::Validity{Unknown, Valid, Stale, Invalid}` | [`core/availability.h:63`](../../core/include/attadipa/core/availability.h) — "enum class Validity" |
+| a datum plus its two ages | `core::Timed<T>` | [`core/availability.h:70`](../../core/include/attadipa/core/availability.h) — "struct Timed {" |
+| "who is supplying the time" | `core::Capability::Time` — *"a wall clock worth displaying"* | [`core/capability.h:21`](../../core/include/attadipa/core/capability.h) — "a wall clock worth displaying" |
 | whether a number was measured or guessed | `core::Provenance{Unknown, Estimated, Measured}` | [`core/power_state.h`](../../core/include/attadipa/core/power_state.h) |
-| screen on / screen off / asleep | `core::PowerState`, `core::WakeSource` | `core/power_state.h:29`, `:43` |
+| screen on / screen off / asleep | `core::PowerState`, `core::WakeSource` | [`core/power_state.h:29`](../../core/include/attadipa/core/power_state.h) — "enum class PowerState" and [`core/power_state.h:43`](../../core/include/attadipa/core/power_state.h) — "enum class WakeSource" |
 | a colour, a spacing, a type role | `ui::ColorRole`, `Space`, `ui::TypeRole::Display` | [`ui/tokens.h:152`](../../ui/include/attadipa/ui/tokens.h) |
 | a translated string | `l10n::tr()`, `StringId`, runtime `set_locale()` | [ADR-0010](../adr/0010-localization.md) |
 | which panel, at what density | `platform::BoardProfile`, resolved through `Dp` | `ui/metrics.h` |
 
 **So `Capability::Time` is the clock's source, and it is not local by
-definition.** `sim/main.cpp:88` already lists `Capability::Time` among what an
+definition.** `sim/main.cpp:122` already lists `Capability::Time` among what an
 attached Attadipa node provides. A watch whose own RTC has never been set and
 which has a node attached has a *Ready* time from `Origin::Node`; the same watch
 with the node gone has the same time going `Stale` and then `Unreachable`. The
@@ -57,7 +57,7 @@ two answered.
 |---|---|
 | any calendar arithmetic at all — no `localtime`, no civil-from-days, no month or weekday table anywhere in `core/`, `ui/`, `apps/` or `l10n/` | a `WallTime` cannot become "30 сентября" by any route that exists today |
 | any date, weekday, month or clock string in the catalogue — 63 `StringId`s, none of them temporal | [`l10n/string_id.h`](../../l10n/include/attadipa/l10n/string_id.h) |
-| a tick period on `AppManifest` | [`apps/app_manifest.h:22`](../../apps/include/attadipa/apps/app_manifest.h) declares `id`, `required`, `enhanced_by` and nothing else — see §5 |
+| a tick period on `AppManifest` | [`apps/app_manifest.h:23`](../../apps/include/attadipa/apps/app_manifest.h) declares `id`, `required`, `enhanced_by` and nothing else — see §5 |
 | an Adult/Child switch anywhere | final §57 requires one in the simulator; `sim/options.h` has none |
 | any way to inject a time into the simulator | so 00:00, 23:59 and a rollover cannot be photographed — see §8 |
 | a font above 28 px | see §7 |
@@ -294,7 +294,7 @@ either is a use-after-free. Final §59 says the same in one line: *"Applications
 do not freely create FreeRTOS tasks and LVGL timers."*
 
 **But `AppManifest` has no tick period.**
-[`apps/app_manifest.h:22`](../../apps/include/attadipa/apps/app_manifest.h)
+[`apps/app_manifest.h:23`](../../apps/include/attadipa/apps/app_manifest.h) — "struct AppManifest {"
 declares `id`, `required`/`required_count` and `enhanced_by`/`enhanced_by_count`
 — that is all. So the contract exists as a recorded decision and a specification
 line, and **not as anything a compiler enforces**. The first Clock application
@@ -587,14 +587,14 @@ that the Clock is one of the six minimum screens.
 
 | Axis | Today | Evidence |
 |---|---|---|
-| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:112` |
-| theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:156` |
-| locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:141` |
+| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:198-210` — "out.board = *found;" |
+| theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:242-256` — "out.theme = ui::Theme::Day;" |
+| locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:227-240` — "out.locale = l10n::Locale::En;" |
 | **Adult/Child** | **no flag exists** | `sim/options.h` — and final §57 lists *"Adult/Child switching"* as a simulator requirement |
 | **a specific time** | **no injection of any kind** | so 00:00, 09:05, 12:00, 23:59 and a rollover cannot be photographed |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
-| node attached / detached | **yes** — `--node` | `sim/options.cpp:128` |
-| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:215-223` takes the snapshot, then the frame loop runs |
+| node attached / detached | **yes** — `--node` | `sim/options.cpp:128-131` — "out.node_attached = true;" |
+| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:335-343` takes the snapshot, then the frame loop runs |
 
 And the tests that exist are two:
 
