@@ -459,6 +459,12 @@ jobs:
       - name: The site remains readable without JavaScript
         run: python3 tools/site/check_reveal_contract.py .
 
+      # A named watch must stay named. The bench has a unit still carrying its
+      # factory image, so a command aimed at one device and silently served by
+      # another is not a tidiness problem.
+      - name: An explicitly named watch stays named
+        run: python3 tools/test_watch_control.py
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest

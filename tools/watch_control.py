@@ -508,9 +508,13 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="With no --port and no --socket the tool first resolves the bench watch "
                "by USB serial, then falls back to the simulator sockets.")
     parser.add_argument("--port", help="a serial device; overrides USB-serial lookup")
-    parser.add_argument("--serial", default=os.environ.get("ATTADIPA_WATCH_SERIAL",
-                                                           DEFAULT_SERIAL),
-                        help=f"USB serial of the watch (default {DEFAULT_SERIAL})")
+    # No default here on purpose. A default is indistinguishable from a value
+    # the operator typed, and the fallback below has to tell them apart: a
+    # named device that is not present is an error, an unnamed one is the
+    # documented simulator fallback. Issue #267.
+    parser.add_argument("--serial",
+                        help="USB serial of the watch (default: $ATTADIPA_WATCH_SERIAL, "
+                             f"else {DEFAULT_SERIAL})")
     parser.add_argument("--socket", dest="socket_path", help="a Unix socket, for the simulator")
     parser.add_argument("--timeout", type=float, default=10.0, help="seconds to wait for a reply")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
@@ -632,10 +636,20 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not args.port and not args.socket_path:
+        # Naming a device and getting a different one is the failure this
+        # guards. `resolve_port` raises SystemExit with the precise reason --
+        # no by-id directory, no such serial, an ambiguous match -- and
+        # swallowing it dropped the operator onto whatever simulator happened
+        # to be listening, silently and with an exit code of 0.
+        named = args.serial or os.environ.get("ATTADIPA_WATCH_SERIAL")
         try:
-            args.port = resolve_port(args.serial)
-        except SystemExit:
-            pass
+            args.port = resolve_port(named or DEFAULT_SERIAL)
+        except SystemExit as exc:
+            if named is not None:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            # Nobody named a device, so the bench watch was a guess. Falling
+            # back to the simulator is what the epilog promises.
     try:
         watch = connect(port=args.port, socket_path=args.socket_path, timeout=args.timeout)
     except (WatchError, p.ProtocolError) as exc:

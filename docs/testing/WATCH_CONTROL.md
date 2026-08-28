@@ -416,6 +416,14 @@ python3 tools/watch_control.py tap --x 205 --y 285 --screenshot-after
 
 The default is resolved from USB serial `28:84:85:B2:18:A4`, never from a
 `ttyACM` number. Use `--serial` or `ATTADIPA_WATCH_SERIAL` for another unit and
-`--port` only as an explicit override. `SerialTransport`, screenshots and
+`--port` only as an explicit override.
+
+**Naming a unit is binding.** With `--serial` or `ATTADIPA_WATCH_SERIAL` set,
+a device that is absent, or a serial that matches two, is an error and the tool
+exits 2 -- it does not fall back to a simulator. The fallback belongs to the
+case where nobody named anything, because there the bench serial was itself a
+guess. This matters on a bench with more than one unit: the T-Watch still
+carries its factory image, and a scenario aimed at one board and served by
+another is the accident with no undo. `SerialTransport`, screenshots and
 remote taps were executed against this physical unit on 2026-08-25; see
 [`WATCH_CONTROL_2026-08-25.md`](../hardware/WATCH_CONTROL_2026-08-25.md).
