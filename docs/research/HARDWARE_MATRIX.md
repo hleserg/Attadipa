@@ -248,9 +248,9 @@ module; none of them appear on the main-board schematic.
 ### Display diagonal — RESOLVED 1.54"
 
 240 × 240 was never in doubt; the physical size was. It is now measured:
-**27.76 mm ± 0.15 across the active area — a 1.546" diagonal, 220 ppi.
-MEASURED 2026-08-28** from photographs of the running watch with a steel rule
-resting on the case — [#311](https://github.com/hleserg/Attadipa/issues/311).
+**27.72 mm across the active area, +0.1 to +0.7 mm one-directional — a 1.544"
+diagonal, 220 ppi. MEASURED 2026-08-28.** Photograph, script and every
+intermediate: [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.md).
 
 | Says | Source | Verdict |
 |---|---|---|
@@ -259,19 +259,19 @@ resting on the case — [#311](https://github.com/hleserg/Attadipa/issues/311).
 
 **How it was measured.** The rule lay on the watch case, coplanar with the
 glass, which removes parallax rather than bounding it: an earlier attempt with
-the rule on the desk beside the watch could yield only an upper bound of
-27.02 mm, and was reported as one. The lit panel's four edges were fitted by
-least squares and the frame's 2.3° rotation corrected — a rotated square's
-bounding box over-reads by `s(cos φ + sin φ)`, so the measurement is the
-perpendicular edge distance and not the box. Active area **433.5 × 432.5 px**
-against a rule calibration of **15.60 ± 0.06 px/mm** from 20 tick-pair estimates.
+the rule on the desk beside the watch could yield only an upper bound, and was
+reported as one. Standard and subject are therefore in one frame at one scale.
+Repeating the fit over four graduation bands and four row windows moves the
+answer by 0.03 mm — but the rule sits on the case while the emitters sit under
+the glass, and that offset is a systematic with one sign: it makes the true
+width *larger*, never smaller. Only three of the four edges are in frame.
 
 **Why 1.3" is excluded rather than merely disfavoured.** Predicted active width
-is 27.66 mm at 1.54" and 23.35 mm at 1.3"; the result sits 0.4 % from the first
-and 19 % from the second. Reaching 1.3" needs the image scale to be wrong by
-19 %, which at the 63 mm working distance implies roughly an 85° horizontal
-field — ruled out by the rule's own graduations, uniform to better than 1 %
-across 55 mm of frame. A second, more distant photograph gives 27.9 mm.
+is 27.66 mm at 1.54" and 23.35 mm at 1.3"; the result sits 0.2 % from the first
+and 18.7 % from the second. Reaching 1.3" needs the image scale to be wrong by
+19 %, which would have to show as 19 % non-uniformity in the rule's own
+graduations — the marks the scale is read from, uniform here to about 1 % of one
+graduation, on two independent sets of marks that agree to 0.35 %.
 
 **What this changes.** Density is **220 ppi, not 261**, so every `Metrics::px`
 conversion yields fewer pixels than the current build emits: this panel renders

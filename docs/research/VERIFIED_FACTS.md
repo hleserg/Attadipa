@@ -608,6 +608,33 @@ to every unit of the same model.
 - **Impact:** both sets are **vendor typicals, not measurements on our boards**.
   They are the budget to design against and the target to reproduce, never a
   figure to report as Attadipa's. A 6-axis IMU is not a cheaper accelerometer.
+### The T-Watch panel is 1.54" across the active area, not the vendor's 1.3"
+
+- **Claim:** the LilyGO T-Watch S3 Plus panel measures **27.72 mm across its
+  240 × 240 active area** — a **1.544" diagonal at 220 ppi**, and not the 1.3"
+  and 261 ppi that LilyGoLib's specification tables state for this product by
+  name. 1.3" is **excluded**, not merely disfavoured: reaching it needs the
+  image scale to be wrong by 19 %, which would have to appear as 19 %
+  non-uniformity in the rule's own graduations, and does not.
+- **Source:** measured on the physical unit, 2026-08-28, with a steel rule
+  laid on the case coplanar with the glass. The photograph is committed and
+  [`twatch-s3-plus-panel/measure_panel.py`](twatch-s3-plus-panel/measure_panel.py)
+  re-derives every number above from it. Corroborated independently by the
+  schematic's own LCD sheet (S3): part `QT154C2408`, symbol `LCD_1.54-TOUCH`.
+- **Checked:** 2026-08-28, on the T-Watch recorded in
+  [BENCH_DEVICES](BENCH_DEVICES.md).
+- **Evidence level: MEASURED.** The band is one-directional rather than
+  symmetric: the rule rested on the case while the emitters sit behind the
+  glass, so the true width is +0.1 to +0.7 mm larger and never smaller —
+  which moves the panel further from 1.3", not towards it. Only three of the
+  four edges are in the surviving frame; the panel is square because its
+  raster is 240 × 240.
+- **Impact:** every `Metrics::px` conversion at 261 dpi emits about 19 % more
+  pixels than this panel wants, so the board renders oversized until
+  [#323](https://github.com/hleserg/Attadipa/issues/323) lands. Supporting
+  detail, including the uncertainty budget:
+  [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.md).
+
 
 ---
 

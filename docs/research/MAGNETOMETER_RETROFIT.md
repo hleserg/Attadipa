@@ -1669,7 +1669,7 @@ not "fixed" by mistake.
 | File:line | Verdict | Anchor |
 |---|---|---|
 | `docs/research/VERIFIED_FACTS.md`:357 | **FALSE** | *"### Neither board has a magnetometer"* — the record everything else cites |
-| `docs/research/VERIFIED_FACTS.md`:620 | **TRUE** | *"The T-Watch has no magnetometer — now from the schematic"*. Exhaustive part-family search of six sheets. T-Watch only |
+| `docs/research/VERIFIED_FACTS.md`:647 | **TRUE** | *"The T-Watch has no magnetometer — now from the schematic"*. Exhaustive part-family search of six sheets. T-Watch only |
 | `docs/research/VERIFIED_FACTS.md`:348-355 | **TRUE**, and it is the precedent | *"a fact about a board and a fact about a device are different claims, and this line turned one into the other without noticing"* |
 | `docs/research/HARDWARE_MATRIX.md`:31 | **UNIT** | `\| Magnetometer \| absent \| absent \|` — needs a retrofit column, not a correction |
 | `docs/research/HARDWARE_MATRIX.md`:46 | **UNIT** | *"Neither board has a magnetometer. The magnetometer work ... is therefore architectural only"* |

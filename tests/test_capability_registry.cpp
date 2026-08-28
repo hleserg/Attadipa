@@ -120,11 +120,11 @@ void test_board_profiles()
 
     // 240x240 across 1.3 inches, 410x502 across 2.06 inches.
     //
-    // 261 is not a measurement. The T-Watch diagonal is CONFLICTING between
-    // 1.3" and 1.54" (OPEN_QUESTIONS D15) and 1.3" is held as the conservative
-    // reading. This assertion therefore locks the *arithmetic* and the current
-    // choice, not the panel: when D15 resolves to 1.54" this line becomes 220
-    // and that is a correct change, not a regression.
+    // 261 is not a measurement, and it is no longer the conservative reading
+    // either: D15 is RESOLVED — the panel is 1.54" at 220 ppi, MEASURED
+    // 2026-08-28. This assertion locks the *arithmetic* against the stale
+    // 1300 the profile still carries, so it fails the moment #323 corrects
+    // that value. Becoming 220 there is the fix, not a regression.
     CHECK(twatch(platform::RadioChip::Unknown).display.dpi() == 261);
     CHECK(waveshare().display.dpi() == 315);
 
