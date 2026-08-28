@@ -81,6 +81,44 @@ cross-check retains its value, but only when the vendor byte is read and not
 the capacity alone. The USB serial stays the identifier; the JEDEC id is a
 post-hoc confirmation, never a substitute.
 
+## The MeshCore nodes, over BLE rather than USB
+
+The table above names one MeshCore node, and it names it by **USB serial**.
+That is the right identifier for a board you might flash. It is not the
+identifier a companion application sees, and over BLE this bench has **two**
+MeshCore nodes, not one — `MEASURED` on 2026-08-28 during T-169 and recorded in
+[MESHCORE_T114_FIRST_CONTACT](MESHCORE_T114_FIRST_CONTACT.md) §1a.
+
+| | node A | node B |
+| --- | --- | --- |
+| model, from `RESP_CODE_DEVICE_INFO` | `Heltec T114` | `Heltec V4.3 OLED` |
+| MeshCore firmware | `v1.17.1-d929643` | `v1.17.dev` |
+| advertised name | `Beta test companion` | `✂️Beta Serega` |
+| **public key** | **`5c62d9bc82e530fc…`** | **`044e2de8068447d3…`** |
+| negotiated ATT MTU | 247 | 176 |
+
+**Neither has been tied to `F8:5B:1B:A1:98:24`.** A USB serial and a MeshCore
+public key are different identifiers of different layers, and nothing measured
+connects them: during every T-169 run only the Waveshare and the T-Watch
+enumerated on USB, so the node in the table above was not attached and could not
+be compared. Whether one of these two *is* that unit is `UNKNOWN`. Do not close
+that gap by inference — read it off the hardware when the node is next on USB.
+
+**"Do not write" still means what it says, and BLE does not reach it.** The
+prohibition on `F8:5B:1B:A1:98:24` is about writing its flash. T-169 used both
+nodes over BLE as a companion application — pair, read device and contact info,
+send a text — with passkeys the owner set for that purpose, and wrote nothing to
+either board's flash. Those are different operations on different transports and
+should not be read as one permitting the other.
+
+**The firmware cannot yet tell you which node a log came from by address.** The
+adapter connects to whichever Companion advertisement arrives first and does not
+log the peer's BLE address, so identity is recovered from `RESP_CODE_SELF_INFO`
+in that run's own transcript. That works, and it is application-layer evidence
+rather than a link-layer one — but it means a run that fails before `SELF_INFO`
+cannot say who it was talking to. Both halves are
+[#304](https://github.com/hleserg/Attadipa/issues/304).
+
 ## How tools resolve it
 
 `tools/flash/ramhold.py` looks up `/dev/serial/by-id` by USB serial and exits
