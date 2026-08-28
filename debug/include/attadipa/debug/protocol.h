@@ -151,7 +151,10 @@ std::size_t encode_message(const Envelope& envelope, const std::uint8_t* body,
 
 // Reads one message out of a frame payload. Returns false on a short payload,
 // a body length that disagrees with the payload, or a failed envelope CRC.
-// `body_out` points into `payload`; it is not copied and not owned.
+// `body_out` points into `payload`; it is not copied and not owned, so it is
+// valid exactly as long as `payload` is. Storing it past the lifetime of the
+// buffer it came from is the caller's bug, not a defect here -- CodeQL's
+// cpp/stack-address-escape reads the assignment as an escape for this reason.
 bool decode_message(const std::uint8_t* payload, std::size_t payload_len, Envelope& envelope_out,
                     const std::uint8_t*& body_out);
 

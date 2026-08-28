@@ -176,6 +176,13 @@ public:
 
 enum class MeshSinkResult : std::uint8_t { Accepted, Rejected, Failed };
 
+// The array extents below are a contract, not a constraint: an array parameter
+// decays to a pointer, so nothing makes the compiler check that 6 or 32 bytes
+// are really there. What does check it is the caller -- bridge.cpp refuses
+// MeshSend under 15 body bytes and MeshRoomSend under 42 before either call,
+// so the prefix and the room key are whole by the time they arrive. A sized
+// type here would not add a check; the body is a pointer into the wire buffer,
+// so it would only move a reinterpret_cast to the call site.
 class MeshSink {
 public:
     virtual ~MeshSink() = default;
