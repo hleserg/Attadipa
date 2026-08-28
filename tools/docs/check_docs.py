@@ -414,7 +414,23 @@ def check_citation_lines(root: str) -> list[str]:
                         # deleted, and neither is decidable from here.
                         # `resolved` is the basename lookup above: non-empty
                         # means our tree carries this file at a different path.
+                        # ...and a unique basename is NOT enough on its own.
+                        # `upstream/meshcore/main.cpp` has a basename this tree
+                        # carries exactly once, at `sim/main.cpp`, so the
+                        # report would announce a rename between two unrelated
+                        # files in two different projects. What makes it proof
+                        # is the basename being unique AND the file still
+                        # living under the same top directory the citation
+                        # names: `core/clock.h` -> `core/include/.../clock.h`
+                        # stays inside `core/`, while nothing upstream does.
+                        # Stronger than the "first segment is a directory we
+                        # track" heuristic rejected above, which asked only
+                        # whether `docs/` exists and not where the file went.
                         moved = resolved
+                        if moved and cited.strip("./").split("/")[0] != (
+                            os.path.relpath(moved, root).split(os.sep)[0]
+                        ):
+                            moved = ""
                         if moved and "/" in cited.strip("./"):
                             problems.append(
                                 f"{rel_self}:{lineno} cites {cited}, which "

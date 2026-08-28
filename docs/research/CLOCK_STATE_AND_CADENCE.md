@@ -21,6 +21,21 @@ display-sized font, no calendar, no temporal strings, no way to photograph the
 eight Child-Mode configurations or to put the clock into any particular state,
 and no tick period on `AppManifest`. They are itemised in §10.
 
+**All five have since been built (2026-08-28).** The display faces are declared
+at [`assets/fonts/attadipa_fonts.h:25`](../../assets/fonts/attadipa_fonts.h) —
+"LV_FONT_DECLARE(attadipa_nunito_sans_96)"; the calendar at
+[`apps/src/clock.cpp:22`](../../apps/src/clock.cpp) — "days_from_civil"; the
+temporal strings at
+[`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) —
+"ClockMonthJan"; the simulator's state injection at
+[`sim/options.cpp:146`](../../sim/options.cpp) — "out.child_mode = true;" and
+[`sim/options.cpp:157`](../../sim/options.cpp) — "out.clock_time_set = true;"; and the tick period
+at [`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) —
+"core::Millis tick_period". Two things §8.1 asks for are still missing —
+battery injection, and a screenshot taken after a chosen event rather than on
+frame one. The paragraph above is left as written because §5, §7, §8 and §10
+argue from it.
+
 ---
 
 ## 1. What already exists here, and must not be reinvented
@@ -207,7 +222,7 @@ spelling.
 | locale | `l10n::locale()` | presentation | already runtime-switchable with a change handler |
 | theme | `ui::Theme` | presentation | already runtime-switchable |
 | geometry / density | `BoardProfile` | presentation | fixed for the life of the process; a change is a different device |
-| Adult/Child | **does not exist yet** | domain (a setting) | final §49; T-038 owns the setting, T-037 must render both |
+| Adult/Child | the mode exists and the Clock renders both — [`apps/clock.h:12`](../../apps/include/attadipa/apps/clock.h) — "enum class ClockMode"; the **setting** that chooses it outside `--child` does not | domain (a setting) | final §49; T-038 owns the setting, T-037 must render both |
 | battery percent | `Timed<uint8_t>` or an explicit optional | domain | "unknown" must be representable — `GnssCapabilities` already demonstrated the failure of a `bool` that cannot say *nobody has checked* (issue #166) |
 | charging | domain | domain | a PMU fact, event-driven |
 | power state | `core::PowerState` | domain | decides whether the Clock should be ticking at all (§4) |
@@ -612,8 +627,8 @@ that the Clock is one of the six minimum screens.
 | geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:198-210` — "out.board = *found;" |
 | theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:242-256` — "out.theme = ui::Theme::Day;" |
 | locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:227-240` — "out.locale = l10n::Locale::En;" |
-| **Adult/Child** | **no flag exists** | `sim/options.h` — and final §57 lists *"Adult/Child switching"* as a simulator requirement |
-| **a specific time** | **no injection of any kind** | so 00:00, 09:05, 12:00, 23:59 and a rollover cannot be photographed |
+| Adult/Child | **yes** — `--child` | [`sim/options.cpp:146`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:251`](../../sim/main.cpp) — "apps::ClockMode::Child" |
+| a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:157`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:230`](../../sim/main.cpp) — "g_clock_live = !options.clock_time_set" |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
 | node attached / detached | **yes** — `--node` | `sim/options.cpp:128-131` — "out.node_attached = true;" |
 | screenshot | **yes**, but the **first frame only** | `sim/main.cpp:335-343` takes the snapshot, then the frame loop runs |
@@ -632,10 +647,11 @@ Day, Adult, the boot screen, and the assertion is that the PNG exists and is not
 empty. **That is 2 of 16 configurations, of a screen that is not the Clock, with
 no comparison against anything.**
 
-So the matrix the issue asks for is not merely unwritten — four of the things it
-needs do not exist. They are small, and they are implementation work: an
-Adult/Child flag, a time injection, a battery injection, and a screenshot taken
-*after* a chosen event rather than on frame one.
+So the matrix the issue asks for is not merely unwritten — some of the things
+it needs do not exist. They are small, and they are implementation work. Of the
+four originally listed, the Adult/Child flag and the time injection have since
+been built (see the table above); a **battery injection** and a **screenshot
+taken *after* a chosen event** rather than on frame one are still missing.
 
 ### 8.2 What should be asserted, and how
 
@@ -789,8 +805,9 @@ is in the plan rather than discovered:
 2. **a calendar** — `WallTime` → civil fields, without undoing `clock.h`'s
    missing subtraction (§1);
 3. **temporal strings in the catalogue**, months in the genitive (§7.2);
-4. **simulator injection** — Adult/Child, a chosen instant, a battery state, and
-   a screenshot after an event rather than on frame one (§8.1);
+4. **simulator injection** — Adult/Child and a chosen instant now exist
+   (§8.1); a battery state and a screenshot after an event rather than on
+   frame one do not;
 5. **a tick contract on `AppManifest`**, which belongs to T-018/T-024 (§5).
 
 None of the five is large. All five are in front of T-037 rather than inside it,

@@ -172,6 +172,16 @@ def main() -> int:
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
         )
+        # An upstream path whose basename we happen to carry ONCE stays silent
+        # too. `upstream/other/thing.h` is not our `core/include/thing.h`, and
+        # a unique basename alone would have announced a rename between two
+        # unrelated files in two different projects.
+        write(root, "docs/research/CITER.md", "See `upstream/other/thing.h:1`.\n")
+        case(
+            "an upstream path with a basename unique here is not called a rename",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
         os.remove(os.path.join(root, "core/include/thing.h"))
         write(root, "docs/research/CITER.md", "See `TARGET.md:2`.\n")
 
