@@ -4,9 +4,11 @@
 #include <array>
 #include <atomic>
 #include <cinttypes>
+#include <cstdint>
 #include <cstring>
 
 #include "attadipa/link/meshcore_companion.h"
+#include "attadipa/link/session_owner.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -26,16 +28,29 @@
 
 namespace {
 
+using attadipa::link::SessionCatchUp;
+using attadipa::link::SessionMark;
+using attadipa::link::SessionPhase;
+using attadipa::link::SessionSnapshot;
+using attadipa::link::SessionStep;
+
 constexpr char kTag[] = "attadipa_mesh_ble";
 // A contact list arrives as an unpaced burst: the node answered CMD_GET_CONTACTS
 // with 148-byte RESP_CODE_CONTACT records ten milliseconds apart, and a
 // sixteen-deep queue overran before the worker had run once. MEASURED on the
 // bench 2026-08-28. Each event is one whole frame, so the depth is bounded
 // heap, not a buffer that can grow.
+//
+// Since #317 this queue carries *only* data. The session lifecycle is not a
+// message here at all — see session_owner.h — so a burst that fills this can
+// cost frames, which the Companion protocol tolerates, and can no longer cost a
+// disconnect, which it does not.
 constexpr std::size_t kEventDepth = 48;
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(500);
 constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
-constexpr std::uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
+
+static_assert(BLE_HS_CONN_HANDLE_NONE == attadipa::link::kNoSessionHandle,
+              "the session record's no-connection value must be NimBLE's");
 
 const ble_uuid128_t kServiceUuidValue = BLE_UUID128_INIT(
     0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
@@ -54,25 +69,23 @@ const ble_uuid_t* kRxUuid = &kRxUuidValue.u;
 const ble_uuid_t* kTxUuid = &kTxUuidValue.u;
 const ble_uuid_t* kCccdUuid = &kCccdUuidValue.u;
 
+// What still travels through the queue: data, and the two requests the
+// application makes of the transport. Everything the *radio* does is state, and
+// state lives in the session record.
 enum class EventKind : std::uint8_t {
-    StackReady,
+    Wake,
     Configure,
     Deconfigure,
-    PeerArriving,
-    Ready,
-    Disconnected,
-    Fault,
     Frame,
     OversizeFrame,
-    WriteDone,
     Send,
     SendRoom,
 };
 
 struct Event {
-    EventKind kind = EventKind::Fault;
+    EventKind kind = EventKind::Wake;
+    std::uint32_t generation = 0;
     std::uint16_t size = 0;
-    std::int32_t result = 0;
     std::uint32_t passkey = 0;
     attadipa::core::WallTime timestamp{};
     std::array<std::uint8_t, attadipa::link::kMeshCoreFrameBytes> bytes{};
@@ -86,27 +99,66 @@ struct Event {
 QueueHandle_t event_queue = nullptr;
 attadipa::link::MeshCoreCompanion provider;
 attadipa::core::MeshService service(provider);
+
+// Two locks, and they are never nested. `snapshot_lock` guards the status any
+// task may read; `session_lock` guards the BLE session that the NimBLE host
+// task and the worker share. Nothing under `session_lock` calls into NimBLE and
+// nothing under it takes the other lock, which is the whole of the locking
+// discipline in this file.
 portMUX_TYPE snapshot_lock = portMUX_INITIALIZER_UNLOCKED;
 attadipa::core::MeshStatus snapshot{};
-std::uint16_t connection = kNoConnection;
-std::uint16_t service_start = 0;
-std::uint16_t service_end = 0;
-std::uint16_t rx_handle = 0;
-std::uint16_t tx_handle = 0;
-std::uint16_t cccd_handle = 0;
-std::uint16_t negotiated_mtu = 0;
-std::uint8_t own_address_type = BLE_OWN_ADDR_RANDOM;
-bool stack_ready = false;
+
+portMUX_TYPE session_lock = portMUX_INITIALIZER_UNLOCKED;
+attadipa::link::SessionOwner owner;
+
+// Held only across a handful of stores or one struct copy. A NimBLE call under
+// this lock would be a re-entrant deadlock waiting to happen, because NimBLE
+// can run a callback before the call that caused it has returned — so the
+// sequence everywhere below is snapshot, call, conditional commit.
+class SessionGuard {
+public:
+    SessionGuard() { taskENTER_CRITICAL(&session_lock); }
+    ~SessionGuard() { taskEXIT_CRITICAL(&session_lock); }
+    SessionGuard(const SessionGuard&) = delete;
+    SessionGuard& operator=(const SessionGuard&) = delete;
+};
+
+std::atomic<std::uint8_t> own_address_type{BLE_OWN_ADDR_RANDOM};
 std::atomic_bool configured{false};
 std::atomic_bool secure_pairing{false};
 std::atomic_bool reconnect_allowed{false};
 std::atomic_bool scan_report_seen{false};
-bool gatt_ready = false;
-bool write_in_flight = false;
 
 attadipa::core::MonotonicTime now()
 {
     return {static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
+}
+
+// NimBLE hands `cb_arg` back to the callback unchanged, so the generation that
+// asked for an operation rides along with its answer. That is why a completion
+// can tell whether it belongs to the connection that is live now without a
+// lookup that would itself have to be raced for. A null argument reads as
+// generation 0, which is never live.
+void* generation_arg(std::uint32_t generation)
+{
+    return reinterpret_cast<void*>(static_cast<std::uintptr_t>(generation));
+}
+
+std::uint32_t generation_of(void* arg)
+{
+    return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(arg));
+}
+
+SessionSnapshot session_snapshot()
+{
+    SessionGuard guard;
+    return owner.snapshot();
+}
+
+bool session_owns(std::uint32_t generation)
+{
+    SessionGuard guard;
+    return owner.live(generation);
 }
 
 bool post(const Event& event)
@@ -114,10 +166,22 @@ bool post(const Event& event)
     return event_queue != nullptr && xQueueSend(event_queue, &event, 0) == pdTRUE;
 }
 
-void publish()
+// A doorbell, not a message. The record is authoritative; this only shortens
+// the wait. Its failure is ignored deliberately: the one condition that makes
+// it fail is a full queue, which is also the one condition under which the
+// worker already has work and is about to read the record anyway. Losing it
+// costs at most kPollTicks of latency and can never cost a transition.
+void wake_worker()
+{
+    (void)post(Event{EventKind::Wake});
+}
+
+void publish(const SessionSnapshot& session)
 {
     attadipa::core::MeshStatus next = provider.status();
-    next.mtu = negotiated_mtu;
+    // From the same coherent read as everything else about this session, so a
+    // published MTU always belongs to the connection it is published with.
+    next.mtu = session.mtu;
     if (!configured.load()) {
         next.availability = attadipa::core::Availability::Unprovisioned;
     }
@@ -126,25 +190,12 @@ void publish()
     taskEXIT_CRITICAL(&snapshot_lock);
 }
 
-void clear_gatt()
-{
-    connection = kNoConnection;
-    service_start = 0;
-    service_end = 0;
-    rx_handle = 0;
-    tx_handle = 0;
-    cccd_handle = 0;
-    negotiated_mtu = 0;
-    gatt_ready = false;
-    write_in_flight = false;
-}
-
-int gap_event(ble_gap_event* event, void*);
+int gap_event(ble_gap_event* event, void* arg);
 
 void start_scan()
 {
-    if (!stack_ready || !configured.load() || !reconnect_allowed.load() ||
-        ble_gap_disc_active()) {
+    if (session_snapshot().stack_readies == 0 || !configured.load() ||
+        !reconnect_allowed.load() || ble_gap_disc_active()) {
         return;
     }
     ble_gap_disc_params params{};
@@ -152,11 +203,15 @@ void start_scan()
     // An active scan may receive the MeshCore name or service UUID only in the
     // scan response. Do not discard it after the preceding advertisement.
     params.filter_duplicates = 0;
-    const int rc = ble_gap_disc(own_address_type, BLE_HS_FOREVER, &params,
+    const int rc = ble_gap_disc(own_address_type.load(), BLE_HS_FOREVER, &params,
                                 gap_event, nullptr);
     if (rc != 0) {
         ESP_LOGE(kTag, "start scan failed: %d", rc);
-        (void)post(Event{EventKind::Fault});
+        {
+            SessionGuard guard;
+            owner.fault();
+        }
+        wake_worker();
     } else {
         scan_report_seen.store(false);
         ESP_LOGI(kTag, "scanning for MeshCore Companion service");
@@ -181,138 +236,215 @@ bool advertises_meshcore(const ble_gap_disc_desc& disc)
                fields.name + fields.name_len;
 }
 
-void disconnect_fault(const char* step, int rc)
+// The stack itself failed rather than a session — a host reset, an address it
+// would not configure, a scan it would not start. Recorded rather than queued,
+// so the worker learns of it even if every queue slot is holding a frame.
+void stack_fault(const char* what, int rc)
 {
+    ESP_LOGE(kTag, "%s: %d", what, rc);
+    {
+        SessionGuard guard;
+        owner.fault();
+    }
+    wake_worker();
+}
+
+// A failure that ends the session it names. A generation that is no longer live
+// records nothing at all: a callback belonging to a connection that has already
+// been replaced must not fault, or terminate, its replacement. That is the
+// whole reason the generation is carried through NimBLE's own callback
+// argument.
+void disconnect_fault(std::uint32_t generation, const char* step, int rc)
+{
+    std::uint16_t connection = attadipa::link::kNoSessionHandle;
+    bool ours = false;
+    {
+        SessionGuard guard;
+        ours = owner.live(generation);
+        if (ours) {
+            owner.fault();
+            connection = owner.connection();
+        }
+    }
+    if (!ours) {
+        ESP_LOGD(kTag, "%s failed for a session that is already over: %d", step, rc);
+        return;
+    }
     ESP_LOGE(kTag, "%s failed: %d", step, rc);
     reconnect_allowed.store(false);
-    (void)post(Event{EventKind::Fault});
-    if (connection != kNoConnection) {
+    wake_worker();
+    if (connection != attadipa::link::kNoSessionHandle) {
         (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
     }
 }
 
 int subscribe_done(std::uint16_t, const ble_gatt_error* error,
-                   ble_gatt_attr*, void*)
+                   ble_gatt_attr*, void* arg)
 {
+    const std::uint32_t generation = generation_of(arg);
     if (error->status != 0) {
-        disconnect_fault("subscribe", error->status);
-    } else {
-        gatt_ready = true;
-        ESP_LOGI(kTag, "Companion GATT ready, MTU %u",
-                 static_cast<unsigned>(negotiated_mtu));
-        (void)post(Event{EventKind::Ready});
+        disconnect_fault(generation, "subscribe", error->status);
+        return 0;
     }
+    bool established = false;
+    std::uint16_t mtu = 0;
+    {
+        SessionGuard guard;
+        established = owner.ready(generation);
+        mtu = owner.snapshot().mtu;
+    }
+    if (!established) return 0;
+    ESP_LOGI(kTag, "Companion GATT ready, MTU %u", static_cast<unsigned>(mtu));
+    wake_worker();
     return 0;
 }
 
 int descriptor_discovered(std::uint16_t conn, const ble_gatt_error* error,
                           std::uint16_t, const ble_gatt_dsc* descriptor,
-                          void*)
+                          void* arg)
 {
+    const std::uint32_t generation = generation_of(arg);
     if (error->status == 0 && descriptor != nullptr) {
         if (ble_uuid_cmp(&descriptor->uuid.u, kCccdUuid) == 0) {
-            cccd_handle = descriptor->handle;
+            SessionGuard guard;
+            (void)owner.set_cccd_handle(generation, descriptor->handle);
         }
         return 0;
     }
-    if (error->status != BLE_HS_EDONE || cccd_handle == 0) {
-        disconnect_fault("discover CCCD", error->status);
+    const SessionSnapshot session = session_snapshot();
+    if (session.generation != generation || session.phase == SessionPhase::Ended) {
+        return 0;
+    }
+    if (error->status != BLE_HS_EDONE || session.cccd_handle == 0) {
+        disconnect_fault(generation, "discover CCCD", error->status);
         return 0;
     }
     const std::uint8_t enable[] = {1, 0};
-    const int rc = ble_gattc_write_flat(conn, cccd_handle, enable,
-                                        sizeof(enable), subscribe_done, nullptr);
-    if (rc != 0) disconnect_fault("write CCCD", rc);
+    const int rc = ble_gattc_write_flat(conn, session.cccd_handle, enable,
+                                        sizeof(enable), subscribe_done, arg);
+    if (rc != 0) disconnect_fault(generation, "write CCCD", rc);
     return 0;
 }
 
 int tx_discovered(std::uint16_t conn, const ble_gatt_error* error,
-                  const ble_gatt_chr* characteristic, void*)
+                  const ble_gatt_chr* characteristic, void* arg)
 {
+    const std::uint32_t generation = generation_of(arg);
     if (error->status == 0 && characteristic != nullptr) {
-        tx_handle = characteristic->val_handle;
+        SessionGuard guard;
+        (void)owner.set_tx_handle(generation, characteristic->val_handle);
         return 0;
     }
-    if (error->status != BLE_HS_EDONE || tx_handle == 0) {
-        disconnect_fault("discover TX characteristic", error->status);
+    const SessionSnapshot session = session_snapshot();
+    if (session.generation != generation || session.phase == SessionPhase::Ended) {
         return 0;
     }
-    const int rc = ble_gattc_disc_all_dscs(conn, tx_handle,
-                                            service_end, descriptor_discovered,
-                                            nullptr);
-    if (rc != 0) disconnect_fault("start CCCD discovery", rc);
+    if (error->status != BLE_HS_EDONE || session.tx_handle == 0) {
+        disconnect_fault(generation, "discover TX characteristic", error->status);
+        return 0;
+    }
+    const int rc = ble_gattc_disc_all_dscs(conn, session.tx_handle,
+                                            session.service_end,
+                                            descriptor_discovered, arg);
+    if (rc != 0) disconnect_fault(generation, "start CCCD discovery", rc);
     return 0;
 }
 
 int rx_discovered(std::uint16_t conn, const ble_gatt_error* error,
-                  const ble_gatt_chr* characteristic, void*)
+                  const ble_gatt_chr* characteristic, void* arg)
 {
+    const std::uint32_t generation = generation_of(arg);
     if (error->status == 0 && characteristic != nullptr) {
-        rx_handle = characteristic->val_handle;
+        SessionGuard guard;
+        (void)owner.set_rx_handle(generation, characteristic->val_handle);
         return 0;
     }
-    if (error->status != BLE_HS_EDONE || rx_handle == 0) {
-        disconnect_fault("discover RX characteristic", error->status);
+    const SessionSnapshot session = session_snapshot();
+    if (session.generation != generation || session.phase == SessionPhase::Ended) {
         return 0;
     }
-    const int rc = ble_gattc_disc_chrs_by_uuid(conn, service_start,
-                                                service_end, kTxUuid,
-                                                tx_discovered, nullptr);
-    if (rc != 0) disconnect_fault("start TX discovery", rc);
+    if (error->status != BLE_HS_EDONE || session.rx_handle == 0) {
+        disconnect_fault(generation, "discover RX characteristic", error->status);
+        return 0;
+    }
+    const int rc = ble_gattc_disc_chrs_by_uuid(conn, session.service_start,
+                                                session.service_end, kTxUuid,
+                                                tx_discovered, arg);
+    if (rc != 0) disconnect_fault(generation, "start TX discovery", rc);
     return 0;
 }
 
 int service_discovered(std::uint16_t conn, const ble_gatt_error* error,
-                       const ble_gatt_svc* discovered, void*)
+                       const ble_gatt_svc* discovered, void* arg)
 {
+    const std::uint32_t generation = generation_of(arg);
     if (error->status == 0 && discovered != nullptr) {
-        service_start = discovered->start_handle;
-        service_end = discovered->end_handle;
+        SessionGuard guard;
+        (void)owner.set_service_range(generation, discovered->start_handle,
+                                      discovered->end_handle);
         return 0;
     }
-    if (error->status != BLE_HS_EDONE || service_start == 0) {
-        disconnect_fault("discover Companion service", error->status);
+    const SessionSnapshot session = session_snapshot();
+    if (session.generation != generation || session.phase == SessionPhase::Ended) {
         return 0;
     }
-    const int rc = ble_gattc_disc_chrs_by_uuid(conn, service_start,
-                                                service_end, kRxUuid,
-                                                rx_discovered, nullptr);
-    if (rc != 0) disconnect_fault("start RX discovery", rc);
+    if (error->status != BLE_HS_EDONE || session.service_start == 0) {
+        disconnect_fault(generation, "discover Companion service", error->status);
+        return 0;
+    }
+    const int rc = ble_gattc_disc_chrs_by_uuid(conn, session.service_start,
+                                                session.service_end, kRxUuid,
+                                                rx_discovered, arg);
+    if (rc != 0) disconnect_fault(generation, "start RX discovery", rc);
     return 0;
 }
 
-void discover_service(std::uint16_t conn)
-{
-    const int rc = ble_gattc_disc_svc_by_uuid(conn, kServiceUuid,
-                                               service_discovered, nullptr);
-    if (rc != 0) disconnect_fault("start service discovery", rc);
-}
-
 int mtu_done(std::uint16_t conn, const ble_gatt_error* error,
-             std::uint16_t mtu, void*)
+             std::uint16_t mtu, void* arg)
 {
+    const std::uint32_t generation = generation_of(arg);
     if (error->status != 0) {
-        disconnect_fault("MTU exchange", error->status);
-    } else {
-        negotiated_mtu = mtu;
-        discover_service(conn);
+        disconnect_fault(generation, "MTU exchange", error->status);
+        return 0;
     }
+    bool ours = false;
+    {
+        SessionGuard guard;
+        ours = owner.set_mtu(generation, mtu);
+    }
+    if (!ours) return 0;
+    const int rc = ble_gattc_disc_svc_by_uuid(conn, kServiceUuid,
+                                               service_discovered, arg);
+    if (rc != 0) disconnect_fault(generation, "start service discovery", rc);
     return 0;
 }
 
 int write_done(std::uint16_t, const ble_gatt_error* error,
-               ble_gatt_attr*, void*)
+               ble_gatt_attr*, void* arg)
 {
-    Event event{EventKind::WriteDone};
-    event.result = error->status;
-    if (!post(event)) disconnect_fault("queue write result", BLE_HS_ENOMEM);
+    const std::uint32_t generation = generation_of(arg);
+    bool accepted = false;
+    {
+        SessionGuard guard;
+        accepted = owner.write_completed(generation, error->status);
+    }
+    if (!accepted) {
+        // A completion from a connection that has already been torn down. It
+        // used to clear a flag that by then belonged to a live session — and,
+        // when the queue was full, to fault the whole subsystem rather than
+        // report a lost result. Neither is this session's business.
+        ESP_LOGD(kTag, "write completion from a session that is over: %d",
+                 error->status);
+        return 0;
+    }
+    wake_worker();
     return 0;
 }
 
-int gap_event(ble_gap_event* event, void*)
+int gap_event(ble_gap_event* event, void* arg)
 {
     switch (event->type) {
-    case BLE_GAP_EVENT_DISC:
+    case BLE_GAP_EVENT_DISC: {
         if (!scan_report_seen.exchange(true)) {
             ESP_LOGI(kTag, "received BLE advertising report");
         }
@@ -320,47 +452,90 @@ int gap_event(ble_gap_event* event, void*)
         if (!advertises_meshcore(event->disc)) return 0;
         ESP_LOGI(kTag, "matched MeshCore advertisement");
         if (ble_gap_disc_cancel() != 0) return 0;
-        (void)post(Event{EventKind::PeerArriving});
-        if (ble_gap_connect(own_address_type, &event->disc.addr, 30000,
-                            nullptr, gap_event, nullptr) != 0) {
+        std::uint32_t generation = 0;
+        {
+            SessionGuard guard;
+            generation = owner.peer_arriving();
+        }
+        wake_worker();
+        // From here on every callback for this connection carries its
+        // generation, because that is what NimBLE was handed as `cb_arg`.
+        if (ble_gap_connect(own_address_type.load(), &event->disc.addr, 30000,
+                            nullptr, gap_event, generation_arg(generation)) != 0) {
+            {
+                SessionGuard guard;
+                (void)owner.ended(generation);
+            }
+            wake_worker();
             start_scan();
         }
         return 0;
-    case BLE_GAP_EVENT_CONNECT:
+    }
+    case BLE_GAP_EVENT_CONNECT: {
+        const std::uint32_t generation = generation_of(arg);
+        const std::uint16_t conn = event->connect.conn_handle;
         if (event->connect.status != 0) {
+            {
+                SessionGuard guard;
+                (void)owner.ended(generation);
+            }
+            wake_worker();
             start_scan();
             return 0;
         }
-        connection = event->connect.conn_handle;
+        bool ours = false;
+        {
+            SessionGuard guard;
+            ours = owner.connected(generation, conn);
+        }
+        if (!ours) {
+            // Nobody is waiting for this connection: the session it belongs to
+            // was ended while it was being made. Close it rather than leave a
+            // link nothing owns.
+            ESP_LOGW(kTag, "closing a connection whose session is already over");
+            (void)ble_gap_terminate(conn, BLE_ERR_REM_USER_CONN_TERM);
+            return 0;
+        }
         if (!configured.load()) {
             ESP_LOGI(kTag, "closing connection after local stop");
-            (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+            (void)ble_gap_terminate(conn, BLE_ERR_REM_USER_CONN_TERM);
             return 0;
         }
         if (secure_pairing.load()) {
             ESP_LOGI(kTag, "MeshCore connected; starting BLE security");
-            if (ble_gap_security_initiate(connection) != 0) {
-                disconnect_fault("start pairing", BLE_HS_EAUTHEN);
+            if (ble_gap_security_initiate(conn) != 0) {
+                disconnect_fault(generation, "start pairing", BLE_HS_EAUTHEN);
             }
-        } else if (ble_gattc_exchange_mtu(connection, mtu_done, nullptr) != 0) {
-            disconnect_fault("start MTU exchange", BLE_HS_EAPP);
+        } else if (ble_gattc_exchange_mtu(conn, mtu_done,
+                                          generation_arg(generation)) != 0) {
+            disconnect_fault(generation, "start MTU exchange", BLE_HS_EAPP);
         }
         return 0;
-    case BLE_GAP_EVENT_ENC_CHANGE:
+    }
+    case BLE_GAP_EVENT_ENC_CHANGE: {
+        const std::uint32_t generation = generation_of(arg);
         if (event->enc_change.status != 0) {
-            disconnect_fault("pairing", event->enc_change.status);
+            disconnect_fault(generation, "pairing", event->enc_change.status);
             return 0;
         }
-        if (ble_gattc_exchange_mtu(event->enc_change.conn_handle,
-                                   mtu_done, nullptr) != 0) {
-            disconnect_fault("start MTU exchange", BLE_HS_EAPP);
+        if (ble_gattc_exchange_mtu(event->enc_change.conn_handle, mtu_done,
+                                   generation_arg(generation)) != 0) {
+            disconnect_fault(generation, "start MTU exchange", BLE_HS_EAPP);
         }
         return 0;
+    }
     case BLE_GAP_EVENT_NOTIFY_RX: {
-        // A notification queued during the previous connection can be delivered
-        // before this connection has rediscovered and subscribed to TX.
-        if (event->notify_rx.conn_handle != connection || !gatt_ready ||
-            event->notify_rx.attr_handle != tx_handle) {
+        const std::uint32_t generation = generation_of(arg);
+        // One coherent read of the session. The three facts that have to agree
+        // — this is the live session, it is subscribed, and this is its TX
+        // handle — used to be three plain globals a disconnect could clear
+        // between, which is the torn read #317 is about. A notification queued
+        // during a previous connection is dropped here rather than parsed.
+        const SessionSnapshot session = session_snapshot();
+        if (session.generation != generation ||
+            session.phase != SessionPhase::Ready ||
+            event->notify_rx.conn_handle != session.connection ||
+            event->notify_rx.attr_handle != session.tx_handle) {
             return 0;
         }
         const std::uint16_t length = OS_MBUF_PKTLEN(event->notify_rx.om);
@@ -375,6 +550,7 @@ int gap_event(ble_gap_event* event, void*)
             return 0;
         }
         Event incoming{EventKind::Frame};
+        incoming.generation = generation;
         incoming.size = length;
         if (os_mbuf_copydata(event->notify_rx.om, 0, length,
                              incoming.bytes.data()) != 0 || !post(incoming)) {
@@ -387,21 +563,34 @@ int gap_event(ble_gap_event* event, void*)
             // a broken subsystem. The Companion protocol tolerates a lost frame:
             // a contact record is re-sent by the next CMD_GET_CONTACTS and the
             // sync boundary still arrives, and a lost push is one message.
+            {
+                SessionGuard guard;
+                owner.frame_dropped();
+            }
             ESP_LOGW(kTag, "dropped a Companion frame: op=0x%02X len=%u",
                      static_cast<unsigned>(incoming.bytes[0]),
                      static_cast<unsigned>(length));
         }
         return 0;
     }
-    case BLE_GAP_EVENT_MTU:
-        negotiated_mtu = event->mtu.value;
+    case BLE_GAP_EVENT_MTU: {
+        SessionGuard guard;
+        (void)owner.set_mtu(generation_of(arg), event->mtu.value);
         return 0;
-    case BLE_GAP_EVENT_DISCONNECT:
+    }
+    case BLE_GAP_EVENT_DISCONNECT: {
         ESP_LOGW(kTag, "MeshCore disconnected: %d", event->disconnect.reason);
-        clear_gatt();
-        (void)post(Event{EventKind::Disconnected});
+        {
+            SessionGuard guard;
+            (void)owner.ended(generation_of(arg));
+        }
+        // The worker learns this from the record, not from this doorbell, which
+        // is precisely the loss #317's second comment reported: this event used
+        // to be a queue entry whose failure was discarded.
+        wake_worker();
         start_scan();
         return 0;
+    }
     case BLE_GAP_EVENT_DISC_COMPLETE:
         start_scan();
         return 0;
@@ -427,27 +616,158 @@ void log_frame(const char* direction, const std::uint8_t* data, std::size_t size
     ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, size, ESP_LOG_INFO);
 }
 
-void pump_tx()
+void pump_tx(const SessionSnapshot& session)
 {
-    if (!gatt_ready || write_in_flight || connection == kNoConnection) return;
-    attadipa::link::MeshCoreFrame frame{};
-    if (!provider.next_tx(frame)) return;
-    const std::uint16_t payload_limit = negotiated_mtu > 3
-                                            ? negotiated_mtu - 3
-                                            : 0;
-    if (frame.size > payload_limit) {
-        disconnect_fault("frame exceeds negotiated ATT payload", BLE_HS_EMSGSIZE);
+    if (session.phase != SessionPhase::Ready || session.write_in_flight ||
+        session.connection == attadipa::link::kNoSessionHandle ||
+        session.rx_handle == 0) {
         return;
     }
-    const int rc = ble_gattc_write_flat(connection, rx_handle,
+    attadipa::link::MeshCoreFrame frame{};
+    if (!provider.next_tx(frame)) return;
+    const std::uint16_t payload_limit = session.mtu > 3
+                                            ? session.mtu - 3
+                                            : 0;
+    if (frame.size > payload_limit) {
+        disconnect_fault(session.generation,
+                         "frame exceeds negotiated ATT payload", BLE_HS_EMSGSIZE);
+        return;
+    }
+    // Claim the slot before the call, and only if the generation the snapshot
+    // was taken from still owns the transport. This is the conditional commit:
+    // between the snapshot above and here the peer may have gone, and a write
+    // to the handle it left behind is the defect. Claiming first also survives
+    // NimBLE running the completion before the call that caused it returns.
+    //
+    // What this does *not* close, said plainly rather than left for a reviewer
+    // to find: the peer can still go away between the claim and the call below,
+    // because the call is made outside the lock — which ADR-0015 requires, since
+    // NimBLE can re-enter. The write then goes to a handle NimBLE has already
+    // invalidated, and NimBLE rejects it (`BLE_HS_ENOTCONN`), which lands in the
+    // rc != 0 path. The only way it could reach a *different* session is if a
+    // disconnect, a scan, a connect and a rediscovery all completed within these
+    // few instructions and the stack reissued the same connection handle. That
+    // is not a race a lock could close without holding one across a stack call.
+    bool claimed = false;
+    {
+        SessionGuard guard;
+        claimed = owner.write_submitted(session.generation);
+    }
+    if (!claimed) {
+        // The session ended under us. The frame is lost with it, which is
+        // correct: the reconnect path calls provider.begin() and the Companion
+        // handshake starts again from CMD_APP_START.
+        ESP_LOGW(kTag, "dropped an outgoing frame: the session ended first");
+        return;
+    }
+    const int rc = ble_gattc_write_flat(session.connection, session.rx_handle,
                                          frame.bytes.data(), frame.size,
-                                         write_done, nullptr);
+                                         write_done,
+                                         generation_arg(session.generation));
     if (rc != 0) {
-        disconnect_fault("write Companion frame", rc);
+        {
+            SessionGuard guard;
+            (void)owner.write_completed(session.generation, rc);
+        }
+        disconnect_fault(session.generation, "write Companion frame", rc);
     } else {
-        write_in_flight = true;
         log_frame("TX", frame.bytes.data(), frame.size);
     }
+}
+
+void handle_write_result(std::int32_t result, std::uint32_t generation)
+{
+    // A completion outlives the session that submitted it: the worker may not
+    // run again until the connection is gone, and `write_completions` is a
+    // count the worker owes rather than a message it can miss. Neither half of
+    // what follows means anything for a session that has been replaced -- the
+    // delay paces a transmitter that no longer exists, and the terminate below
+    // would tear down whichever connection inherited the handle rather than the
+    // one whose write failed, which is the bug generations exist to prevent.
+    const SessionSnapshot session = session_snapshot();
+    if (session.generation != generation || session.phase == SessionPhase::Ended) {
+        return;
+    }
+    if (result == 0) {
+        vTaskDelay(kMeshCoreWriteDelay);
+        return;
+    }
+    // A write that failed is the peer not answering, not a broken subsystem,
+    // and calling fault() here is what wedged the session on the bench. ATT
+    // allows a write-with-response 30 s before the host must tear the link
+    // down, so this arrives immediately before BLE_GAP_EVENT_DISCONNECT -- and
+    // Faulted refuses PeerArriving and PeerEstablished alike, so the reconnect
+    // that follows could never re-establish the session. Terminating routes the
+    // failure into the disconnect path, which is the single place that
+    // recovers; when the link is already gone that path is running anyway.
+    ESP_LOGW(kTag, "Companion write failed: %" PRId32 "; recycling the session",
+             result);
+    if (session.connection != attadipa::link::kNoSessionHandle) {
+        (void)ble_gap_terminate(session.connection, BLE_ERR_REM_USER_CONN_TERM);
+    }
+}
+
+// Everything the worker still owes the link model, taken from the record rather
+// than from the queue. This runs first on every pass, so a frame is never
+// handed to a provider whose session state is one disconnect behind.
+//
+// The write result it found is returned rather than acted on, because acting on
+// it means pausing 60 ms and that pause belongs after the queued frame, where
+// the WriteDone queue entry used to sit. A contact burst arrives faster than the
+// worker drains it; a pacing delay that jumped the queue would make that worse.
+SessionCatchUp apply_lifecycle(SessionMark& applied)
+{
+    SessionSnapshot session{};
+    SessionCatchUp catch_up{};
+    {
+        SessionGuard guard;
+        session = owner.snapshot();
+        catch_up = attadipa::link::reconcile(applied, session);
+        owner.note_coalesced(catch_up.coalesced);
+    }
+    applied = attadipa::link::mark_of(session);
+
+    if (catch_up.coalesced != 0) {
+        ESP_LOGW(kTag, "%" PRIu32 " lifecycle transitions coalesced (%" PRIu32
+                       " total), %" PRIu32 " Companion frames dropped so far",
+                 catch_up.coalesced,
+                 session.coalesced_lifecycle + catch_up.coalesced,
+                 session.dropped_frames);
+    }
+
+    for (std::uint8_t i = 0; i < catch_up.count; ++i) {
+        switch (catch_up.steps[i]) {
+        case SessionStep::StackReady:
+            provider.begin(now());
+            if (configured.load()) start_scan();
+            break;
+        case SessionStep::Fault:
+            provider.fault(now());
+            break;
+        case SessionStep::PeerArriving:
+            provider.peer_arriving(now());
+            break;
+        case SessionStep::Ready:
+            provider.connected(now());
+            break;
+        case SessionStep::Disconnected:
+            provider.disconnected(now());
+            // disconnected() can only apply PeerGone to a live link, so a
+            // fault recorded while the peer was still there leaves the
+            // phase Faulted -- and Faulted refuses both PeerArriving and
+            // PeerEstablished. MEASURED on the bench 2026-08-27: the link
+            // came back with MTU 247 and not one Companion frame was sent
+            // again for the rest of the boot. begin() is the only call
+            // that resets the link model, and it is made only where a
+            // reconnect will actually be attempted: disconnect_fault()
+            // clears reconnect_allowed precisely so a broken subsystem is
+            // not retried forever, and start_scan() honours it.
+            if (reconnect_allowed.load()) provider.begin(now());
+            break;
+        }
+    }
+
+    return catch_up;
 }
 
 void handle_send(const Event& event)
@@ -481,16 +801,38 @@ void handle_send_room(Event& event)
     if (!accepted) ESP_LOGW(kTag, "Room Server message rejected by provider");
 }
 
+void handle_frame(const Event& event)
+{
+    if (!session_owns(event.generation)) {
+        // It was captured on a connection that has since ended. Feeding it to
+        // the provider now would mix a dead session's bytes into a live one's
+        // handshake, so it is dropped and counted with the rest.
+        SessionGuard guard;
+        owner.frame_dropped();
+        return;
+    }
+    log_frame("RX", event.bytes.data(), event.size);
+    const auto before = provider.status().delivery;
+    if (provider.receive(event.bytes.data(), event.size, now()) &&
+        provider.status().delivery != before) {
+        ESP_LOGI(kTag, "MeshCore delivery %s",
+                 attadipa::core::to_string(provider.status().delivery));
+    }
+}
+
 void mesh_task(void*)
 {
     Event event{};
+    SessionMark applied{};
     for (;;) {
-        if (xQueueReceive(event_queue, &event, kPollTicks) == pdTRUE) {
+        const bool received =
+            xQueueReceive(event_queue, &event, kPollTicks) == pdTRUE;
+        const SessionCatchUp catch_up = apply_lifecycle(applied);
+        if (received) {
             switch (event.kind) {
-            case EventKind::StackReady:
-                stack_ready = true;
-                provider.begin(now());
-                if (configured.load()) start_scan();
+            case EventKind::Wake:
+                // Nothing to do. apply_lifecycle() above is what this event
+                // exists to bring forward.
                 break;
             case EventKind::Configure:
                 secure_pairing.store(event.passkey != 0);
@@ -501,52 +843,23 @@ void mesh_task(void*)
                     configured.store(true);
                     reconnect_allowed.store(true);
                     provider.begin(now());
-                    if (stack_ready) start_scan();
+                    if (session_snapshot().stack_readies != 0) start_scan();
                 }
                 break;
-            case EventKind::Deconfigure:
+            case EventKind::Deconfigure: {
                 configured.store(false);
                 reconnect_allowed.store(false);
                 if (ble_gap_disc_active()) (void)ble_gap_disc_cancel();
-                if (connection != kNoConnection) {
+                const std::uint16_t connection = session_snapshot().connection;
+                if (connection != attadipa::link::kNoSessionHandle) {
                     (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
                 } else {
                     provider.begin(now());
                 }
                 break;
-            case EventKind::PeerArriving:
-                provider.peer_arriving(now());
-                break;
-            case EventKind::Ready:
-                provider.connected(now());
-                break;
-            case EventKind::Disconnected:
-                provider.disconnected(now());
-                // disconnected() can only apply PeerGone to a live link, so a
-                // fault recorded while the peer was still there leaves the
-                // phase Faulted -- and Faulted refuses both PeerArriving and
-                // PeerEstablished. MEASURED on the bench 2026-08-27: the link
-                // came back with MTU 247 and not one Companion frame was sent
-                // again for the rest of the boot. begin() is the only call
-                // that resets the link model, and it is made only where a
-                // reconnect will actually be attempted: disconnect_fault()
-                // clears reconnect_allowed precisely so a broken subsystem is
-                // not retried forever, and start_scan() honours it.
-                if (reconnect_allowed.load()) provider.begin(now());
-                break;
-            case EventKind::Fault:
-                provider.fault(now());
-                break;
+            }
             case EventKind::Frame:
-                {
-                    log_frame("RX", event.bytes.data(), event.size);
-                    const auto before = provider.status().delivery;
-                    if (provider.receive(event.bytes.data(), event.size, now()) &&
-                        provider.status().delivery != before) {
-                        ESP_LOGI(kTag, "MeshCore delivery %s",
-                                 attadipa::core::to_string(provider.status().delivery));
-                    }
-                }
+                handle_frame(event);
                 break;
             case EventKind::OversizeFrame:
                 provider.drop_oversize_frame();
@@ -554,30 +867,6 @@ void mesh_task(void*)
                                " malformed so far); session kept",
                          static_cast<unsigned>(attadipa::link::kMeshCoreFrameBytes),
                          provider.malformed_frames());
-                break;
-            case EventKind::WriteDone:
-                write_in_flight = false;
-                if (event.result != 0) {
-                    // A write that failed is the peer not answering, not a
-                    // broken subsystem, and calling fault() here is what
-                    // wedged the session on the bench. ATT allows a
-                    // write-with-response 30 s before the host must tear the
-                    // link down, so this callback arrives immediately before
-                    // BLE_GAP_EVENT_DISCONNECT -- and Faulted refuses
-                    // PeerArriving and PeerEstablished alike, so the
-                    // reconnect that follows could never re-establish the
-                    // session. Terminating routes the failure into the
-                    // disconnect path below, which is the single place that
-                    // recovers; when the link is already gone that path is
-                    // running anyway.
-                    ESP_LOGW(kTag, "Companion write failed: %d; recycling the session",
-                             event.result);
-                    if (connection != kNoConnection) {
-                        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
-                    }
-                } else {
-                    vTaskDelay(kMeshCoreWriteDelay);
-                }
                 break;
             case EventKind::Send:
                 handle_send(event);
@@ -589,25 +878,47 @@ void mesh_task(void*)
         } else {
             provider.tick(now());
         }
-        publish();
-        pump_tx();
+        if (catch_up.write_completed) {
+            handle_write_result(catch_up.write_result, catch_up.write_generation);
+        }
+        // One read, used by both. A published MTU and the connection a frame is
+        // written to therefore describe the same session or neither.
+        const SessionSnapshot session = session_snapshot();
+        publish(session);
+        pump_tx(session);
     }
 }
 
 void on_reset(int reason)
 {
-    ESP_LOGE(kTag, "NimBLE reset: %d", reason);
-    (void)post(Event{EventKind::Fault});
+    {
+        // The host reset took every connection with it, and NimBLE delivers no
+        // disconnect for one -- `reset_cb` *is* the notification. A session
+        // left `Ready` here is a link model holding a handle that names
+        // nothing. Ending it first also decides where the fault below lands:
+        // raised after the session is over, it is replayed after the disconnect
+        // and survives the reconnect that step performs, which is right,
+        // because the stack stays down until `on_sync` says otherwise.
+        SessionGuard guard;
+        owner.ended();
+    }
+    stack_fault("NimBLE reset", reason);
 }
 
 void on_sync()
 {
+    std::uint8_t address_type = BLE_OWN_ADDR_RANDOM;
     if (ble_hs_util_ensure_addr(0) != 0 ||
-        ble_hs_id_infer_auto(0, &own_address_type) != 0) {
-        (void)post(Event{EventKind::Fault});
+        ble_hs_id_infer_auto(0, &address_type) != 0) {
+        stack_fault("BLE address configuration failed", BLE_HS_EAPP);
         return;
     }
-    (void)post(Event{EventKind::StackReady});
+    own_address_type.store(address_type);
+    {
+        SessionGuard guard;
+        owner.stack_ready();
+    }
+    wake_worker();
 }
 
 void host_task(void*)
