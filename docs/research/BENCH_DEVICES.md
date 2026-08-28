@@ -99,10 +99,15 @@ MeshCore nodes, not one — `MEASURED` on 2026-08-28 during T-169 and recorded i
 
 **Neither has been tied to `F8:5B:1B:A1:98:24`.** A USB serial and a MeshCore
 public key are different identifiers of different layers, and nothing measured
-connects them: during every T-169 run only the Waveshare and the T-Watch
-enumerated on USB, so the node in the table above was not attached and could not
-be compared. Whether one of these two *is* that unit is `UNKNOWN`. Do not close
-that gap by inference — read it off the hardware when the node is next on USB.
+connects them. `MEASURED` from this host's kernel log: that serial last
+enumerated on **2026-08-26 16:33:24** and disconnected 29 s later; no attachment
+of it appears afterwards, and the log runs continuously across both T-169 bench
+days, so it was not on this host's USB during any of the runs and could not be
+compared against them. What that does *not* establish is where the board was
+instead — the kernel log sees this host's USB and nothing else, so the unit may
+have been powered elsewhere, on battery, or off. Whether either BLE node *is*
+that unit is `UNKNOWN`. Do not close that gap by inference — read it off the
+hardware when the node is next on USB.
 
 **"Do not write" still means what it says, and BLE does not reach it.** The
 prohibition on `F8:5B:1B:A1:98:24` is about writing its flash. T-169 used both
