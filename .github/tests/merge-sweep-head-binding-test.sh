@@ -125,6 +125,7 @@ esac
 # wrong reason.
 mkdir -p "$work/mut" || exit 1
 cp "$here/../scripts/"* "$work/mut/" || exit 1
+# shellcheck disable=SC2016  # `$HEAD_OID` is the literal being removed, not a value.
 sed -i 's/ --match-head-commit "\$HEAD_OID"//' "$work/mut/pr-merge-sweep.sh" || exit 1
 if cmp -s "$SWEEP" "$work/mut/pr-merge-sweep.sh"; then
   no "the mutation changed nothing; this test is no longer reading the merge command"
