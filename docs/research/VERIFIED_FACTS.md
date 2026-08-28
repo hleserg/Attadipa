@@ -1483,7 +1483,12 @@ constants.
   `0x79` in the `QMI8658C` Rev 0.6 ADVANCE INFORMATION document, which marks
   `CTRL8` *"Reserved: Not Used"* and has no step counter.
 - **Corroborated by writing, not only by reading.** With the accelerometer
-  configured per Rev A Table 22 — `CTRL2 = 0x26` (±8 g, 125 Hz), `CTRL7 = 0x01`
+  configured per Rev A Table 22 — `CTRL2 = 0x26` (±8 g, 125 Hz; that is the
+  *"ODR Rate (Hz) (Accel only)"* column, which is the one that applies because
+  `CTRL7 = 0x01` leaves the gyro off — the same `aODR = 0110` row reads **112.1
+  Hz** in the adjacent *"(6DOF)"* column, which is what
+  [PEDOMETER_BENCH_2026-08-28](PEDOMETER_BENCH_2026-08-28.md) records for its
+  gyro-enabled run), `CTRL7 = 0x01`
   (`aEN`), `CTRL8 = 0x90` (`Pedo_EN` + `STATUSINT` handshake) — all three
   registers acknowledged and **read back exactly as written, `CTRL8` included**.
   The accelerometer then reported a stationary board at
@@ -1537,12 +1542,17 @@ constants.
   run, so the parameters reached the engine.
 - **A claim this run does NOT support.** The three desk runs found `CTRL7 = 0x03`
   on the board at start-up, and an earlier draft read that as the vendor firmware
-  running 6DOF. It is not evidence of that: T-166 replaced this unit's factory
-  image on 2026-08-25 ([BENCH_DEVICES](BENCH_DEVICES.md)), three days before this
-  session, so the residue is Attadipa's own. The shake run makes the point
-  concrete — it found `CTRL2 = 0x27, CTRL7 = 0x01, CTRL8 = 0x90`, the *walk
-  probe's* armed state from 29 minutes earlier. Found state is the last program's
-  leavings and it varies by run.
+  running 6DOF. It is not evidence of that — not because the residue is known to
+  be Attadipa's, which a second draft asserted and cannot be supported, but
+  because **its writer cannot be identified at all**. `0x24 / 0x03 / 0x00` is
+  exactly the state the 2026-08-23 session left, and an SoC restart does not
+  reset the parts on the I2C bus
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:620-623`](WAVESHARE_RUNNING_OUR_CODE.md)
+  "does not reset the peripherals"), so a five-day-old vendor write surviving is
+  as consistent with it as any later one. An unattributable value corroborates
+  nothing. The shake run is the one case where the writer *is* known: it found
+  `CTRL2 = 0x27, CTRL7 = 0x01, CTRL8 = 0x90`, the *walk probe's* armed state from
+  29 minutes earlier.
 - **What the vendor firmware configured is separately known.** S13 measured it on
   2026-08-23 with the factory image still present: booting it wrote `CTRL2` to
   `0x24` and `CTRL7` to `0x03` over what a probe had left, and never touched
@@ -1566,11 +1576,11 @@ constants.
   amplitude it applies a cadence window and a peak-pattern test this probe cannot
   see, and SensorLib's own example says the engine *"is for periodic gait, not
   random shaking"*. Note also that re-reading the count later depends on **not**
-  reconfiguring: the `0→1` edge on `CTRL8` bit 4 clears it, per §11.6 of
-  `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` (© 2022 QST) — the document
-  `REVISION_ID = 0x7C` identifies, catalogued in
-  [PEDOMETER_PARTS](PEDOMETER_PARTS.md). Uncorroborated in this repository by any
-  second source. **That hazard has already cost one result:** the walk attempt
+  reconfiguring: the `0→1` edge on `CTRL8` bit 4 clears it, per §11.6 of `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`
+  (© 2022 QST, 20 June 2022), which spells out the very sequence the probe uses —
+  *"Host can simply clear the CTRL8.bit4 and then set it to restart the Pedometer
+  engine and reset the Step Count registers."* That document reports
+  `REVISION_ID = 0x7C`, which is what this silicon reads. **That hazard has already cost one result:** the walk attempt
   left the engine armed, and the next run configured before reading, clearing
   whatever the walk had accumulated. The walk also could not be logged: walking
   means unplugging, and the probe reports over the USB serial console, so the act
