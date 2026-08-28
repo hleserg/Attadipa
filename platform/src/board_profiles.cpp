@@ -23,7 +23,7 @@ using HF = HardwareFeature;
 // Not present, and each absence is load-bearing: no gyroscope (BMA423 is an
 // accelerometer), no magnetometer, no SD card.
 constexpr std::uint32_t kTWatchFeatures =
-    feature_bit(HF::Display) |          // ST7789V3, 240x240 IPS 1.3"
+    feature_bit(HF::Display) |          // ST7789V3, 240x240 IPS, 1.54" MEASURED
     feature_bit(HF::Touch) |            // FT6336U, on its own I2C bus
     feature_bit(HF::Buttons) |          // BOOT on the GNSS daughterboard; PWR via the PMU
     feature_bit(HF::Pmu) |              // AXP2101

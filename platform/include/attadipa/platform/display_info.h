@@ -13,7 +13,7 @@ enum class PanelTechnology : std::uint8_t { Unknown, Ips, Amoled };
 struct DisplayInfo {
     std::uint16_t   width_px            = 0;
     std::uint16_t   height_px           = 0;
-    // Thousandths of an inch, so that 1.3" is 1300 and no float appears in a
+    // Thousandths of an inch, so that 2.06" is 2060 and no float appears in a
     // header that embedded code includes. Diagonal, as panels are specified.
     std::uint16_t   diagonal_milli_inch = 0;
     PanelTechnology technology          = PanelTechnology::Unknown;
@@ -24,7 +24,7 @@ struct DisplayInfo {
     //
     // DERIVED, not measured: computed from the pixel count and the vendor's
     // quoted diagonal. It is good enough to make 8 px mean roughly the same
-    // physical distance on a 1.3" and a 2.06" panel, which is what the spacing
+    // physical distance on a 1.54" and a 2.06" panel, which is what the spacing
     // tokens need (T-009). It is not good enough to be quoted as a spec.
     std::uint16_t dpi() const;
 };

@@ -20,8 +20,8 @@ what is verified, what is open, and what only the board itself can settle.
 The Waveshare panel is AMOLED. An AMOLED has no backlight — every lit pixel is a
 diode drawing its own current, so a bright page costs power in proportion to how
 much of it is bright, and the diodes age in proportion to how hard they are
-driven. An LCD does not work this way, and the T-Watch's panel is an
-IPS LCD ([`platform/src/board_profiles.cpp:84`](../../platform/src/board_profiles.cpp)).
+driven. An LCD does not work this way, and the T-Watch's panel is an IPS LCD
+([`platform/src/board_profiles.cpp:89`](../../platform/src/board_profiles.cpp) "PanelTechnology::Ips").
 So this is the first design question in the project whose answer is different on
 the two boards.
 

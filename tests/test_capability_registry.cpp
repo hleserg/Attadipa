@@ -118,7 +118,7 @@ void test_board_profiles()
     CHECK(platform::find_board_profile("nonsense") == nullptr);
     CHECK(platform::find_board_profile(nullptr) == nullptr);
 
-    // 240x240 across 1.3 inches, 410x502 across 2.06 inches.
+    // 240x240 over the profile's stale 1.3 inches, 410x502 across 2.06 inches.
     //
     // 261 is not a measurement, and it is no longer the conservative reading
     // either: D15 is RESOLVED — the panel is 1.54" at 220 ppi, MEASURED
