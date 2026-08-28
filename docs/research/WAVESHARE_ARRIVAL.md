@@ -20,8 +20,8 @@ what is verified, what is open, and what only the board itself can settle.
 The Waveshare panel is AMOLED. An AMOLED has no backlight — every lit pixel is a
 diode drawing its own current, so a bright page costs power in proportion to how
 much of it is bright, and the diodes age in proportion to how hard they are
-driven. An LCD does not work this way, and the T-Watch's panel is an
-IPS LCD ([`platform/src/board_profiles.cpp:84`](../../platform/src/board_profiles.cpp)).
+driven. An LCD does not work this way, and the T-Watch's panel is an IPS LCD
+([`platform/src/board_profiles.cpp:89`](../../platform/src/board_profiles.cpp) "PanelTechnology::Ips").
 So this is the first design question in the project whose answer is different on
 the two boards.
 
@@ -76,7 +76,7 @@ flatly contradicts.
 **The claim that the board's PSRAM is absent or undeclared is false, and was
 false before the advice arrived.** [HARDWARE_MATRIX.md:341](HARDWARE_MATRIX.md)
 "8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
-[VERIFIED_FACTS.md:808](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
+[VERIFIED_FACTS.md:835](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
@@ -720,7 +720,7 @@ does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
    [HARDWARE_MATRIX.md:341](HARDWARE_MATRIX.md) "8 MB **octal**" and
-   [VERIFIED_FACTS.md:808](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
+   [VERIFIED_FACTS.md:835](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
    Only the build-configuration reading was true at the time; T-165 has since
    added and exercised that configuration.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
