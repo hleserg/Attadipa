@@ -1506,38 +1506,56 @@ constants.
   and not by a walk** — see the entry below and
   [PEDOMETER_BENCH_2026-08-28](PEDOMETER_BENCH_2026-08-28.md).
 
-### The QMI8658 pedometer did not count under motion 29× its own threshold
+### The QMI8658 pedometer counted nothing through sixteen unbroken seconds above its threshold
 
-- **Claim:** with the engine configured and the CTRL9 handshake confirmed, the
-  watch was shaken by hand for 158 s. The probe computes peak-to-peak **per axis
-  over a one-second window** and reports it in mg: the maximum observed was
-  **2242 mg**, and **18** of the 158 seconds exceeded **78 mg**. The step count
-  stayed **0 (`+0`)** throughout and `STATUS1` stayed `0x00`.
+- **Claim:** with the engine configured and the CTRL9 handshake confirmed, one
+  159-second run recorded **17** one-second windows whose per-axis peak-to-peak
+  exceeded the configured `ped_fix_peak2peak` of **78 mg** — one at pick-up and
+  then a contiguous burst from `t=34s` to `t=49s`. The smallest of the 17 is
+  **322 mg** and the largest **2242 mg**. The step count stayed **0 (`+0`)**
+  throughout and `STATUS1` stayed `0x00`.
+- **The motion is a burst, not the whole run.** An earlier draft said the watch
+  was shaken for 158 s. It was not: the other 142 windows read 0–2 mg — a board
+  lying still. Sixteen consecutive seconds is what this run establishes.
 - **The comparison is indicative, not a like-for-like multiple.** 78 mg is the
   configured `ped_fix_peak2peak` (80 in u6.10), but **UNKNOWN**: chapter 11 does
   not state the window length or the axis combination its own peak-to-peak is
   computed over, so the engine's domain and the probe's one-second per-axis
-  window are not known to be the same quantity. What the run establishes is that
-  the watch was moved vigorously for many seconds and the register did not move —
-  not a numeric ratio against the engine's own bar.
-- **Both known-good configurations were tried:** chapter 11's own (accelerometer
-  alone, §11.1's example scaled from its stated 50 Hz to the 62.5 Hz the part
-  offers), and SensorLib's shipping profile from
-  `examples/sensor/qmi8658_pedometer` — 6DOF with both sensors, `entry_count = 1`
-  and `sig_count = 1` so the register moves on the first step. **SensorLib is not
-  among this repository's pinned upstreams**, so that profile is an unpinned read
-  and is cited as a lead, not as a source. Both `0x0D` calls acknowledged with
-  CmdDone set and cleared on every run, so the parameters reached the engine.
-- **A claim this run does NOT support.** The probe finds `CTRL7 = 0x03` on the
-  board at start-up, and an earlier draft read that as the vendor firmware
+  window are not known to be the same quantity. An earlier draft divided the two
+  and published the ratio; it is withdrawn. What the run establishes is sustained
+  motion far above the configured bar with no count — not a numeric multiple.
+- **One profile was measured, the other only configured.** The run above used
+  SensorLib's bring-up profile — 6DOF with both sensors,
+  `configPedometer(50, 80, 60, 400, 8, 1, 0, 1)` with `entry_count = 1` and
+  `sig_count = 1` so the register moves on the first step — from
+  `examples/sensor/qmi8658_pedometer` at `lewisxhe/SensorLib`
+  `2b9e591f245e447d3d00ec8798c3f49b897882d9` (`v0.4.1-123-g2b9e591`).
+  **SensorLib is not among this repository's pinned upstreams**, so that is a
+  lead at a recorded revision, not a source. Chapter 11's own profile was armed
+  and acknowledged for the abandoned walk but never exercised under recorded
+  motion. Both `0x0D` calls acknowledged with CmdDone set and cleared on every
+  run, so the parameters reached the engine.
+- **A claim this run does NOT support.** The three desk runs found `CTRL7 = 0x03`
+  on the board at start-up, and an earlier draft read that as the vendor firmware
   running 6DOF. It is not evidence of that: T-166 replaced this unit's factory
   image on 2026-08-25 ([BENCH_DEVICES](BENCH_DEVICES.md)), three days before this
-  session, so the residue is Attadipa's own. What the vendor firmware configured
-  is **UNKNOWN** and would now need the S12 flash image to answer.
-- **Source:** **S15** — the unit itself on 2026-08-28, `pedo` probe from flash,
-  operator the owner, watch attached and hand-moved.
-  [PEDOMETER_BENCH_2026-08-28](PEDOMETER_BENCH_2026-08-28.md) carries the run and
-  a caveat about two stale labels in the archived log headers. (An earlier draft
+  session, so the residue is Attadipa's own. The shake run makes the point
+  concrete — it found `CTRL2 = 0x27, CTRL7 = 0x01, CTRL8 = 0x90`, the *walk
+  probe's* armed state from 29 minutes earlier. Found state is the last program's
+  leavings and it varies by run.
+- **What the vendor firmware configured is separately known.** S13 measured it on
+  2026-08-23 with the factory image still present: booting it wrote `CTRL2` to
+  `0x24` and `CTRL7` to `0x03` over what a probe had left, and never touched
+  `CTRL8` — so the vendor runs the IMU in 6DOF and does not use the pedometer
+  engine
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:608-610`](WAVESHARE_RUNNING_OUR_CODE.md)
+  "Booting the vendor firmware restored"). An earlier draft called that
+  **UNKNOWN**, over-correcting: it is the 2026-08-28 residue that is not evidence,
+  not the vendor configuration itself.
+- **Source:** **S15** — the unit itself on 2026-08-28, the `pedo` probe **RAM-booted**
+  (nothing written to flash), operator the owner, watch attached and hand-moved.
+  [PEDOMETER_BENCH_2026-08-28](PEDOMETER_BENCH_2026-08-28.md) carries the run, the
+  raw excerpt and the caveats about the archived log headers. (An earlier draft
   cited S14, which is *four upstream repositories read at pinned revisions* and
   says of itself **"this is software, not silicon"** — the wrong kind of source
   for a measurement.)
@@ -1546,15 +1564,18 @@ constants.
 - **NOT EXECUTED — HARDWARE REQUIRED:** the twenty-step walk T-112 asks for.
   **A shake is not a walk and the engine is entitled to reject one** — besides
   amplitude it applies a cadence window and a peak-pattern test this probe cannot
-  see. Note also that re-reading the count later depends on **not** reconfiguring:
-  the `0→1` edge on `CTRL8` bit 4 clears it, per §11.6 of
+  see, and SensorLib's own example says the engine *"is for periodic gait, not
+  random shaking"*. Note also that re-reading the count later depends on **not**
+  reconfiguring: the `0→1` edge on `CTRL8` bit 4 clears it, per §11.6 of
   `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` (© 2022 QST) — the document
   `REVISION_ID = 0x7C` identifies, catalogued in
   [PEDOMETER_PARTS](PEDOMETER_PARTS.md). Uncorroborated in this repository by any
-  second source. The walk also could not be logged: walking means unplugging, and the probe
-  reports over the USB serial console, so the act of running the experiment
-  destroys the channel that records it. The attempt ends in a
-  `SerialException`. Three earlier runs totalling 1380 samples at zero were a
+  second source. **That hazard has already cost one result:** the walk attempt
+  left the engine armed, and the next run configured before reading, clearing
+  whatever the walk had accumulated. The walk also could not be logged: walking
+  means unplugging, and the probe reports over the USB serial console, so the act
+  of running the experiment destroys the channel that records it. The attempt ends
+  in a `SerialException`. Three earlier runs totalling 1380 samples at zero were a
   board lying still on a desk and are **not** evidence.
 
 ### The touch controller is held in reset until GPIO 9 is pulsed low then high
