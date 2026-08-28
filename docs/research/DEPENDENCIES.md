@@ -20,7 +20,7 @@ Required for every entry:
 
 | Dependency | Pinned at | Licence | Upgrade strategy |
 |---|---|---|---|
-| **ESP-IDF** | **v5.5.5** — `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013`, 2026-07-16 | Apache-2.0 | tagged releases only, and **never below v5.5.5** while this pin is in force: that release adds a useful refusal for `spi_flash_mmap` above `0x1000000`, but it is defence-in-depth for one path, not the safety boundary — read, write and erase remain unguarded, so the binding rule is still that Attadipa places and accesses nothing above the ceiling ([FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) §§4–5). A bump retests `firmware/` for both boards, re-reads the `sdkconfig.defaults` symbols (Kconfig names move between minor releases) and re-runs the RAM-load route, because that path is the one with no fallback |
+| **ESP-IDF** | **v5.5.5** — `b774170ff46c393eeb5e495ea37936038d3f4f4f`, 2026-07-16. *(`ff1bac0aeecdd2b797b9c3a558c6bd03629bc013` stood here and is the **annotated tag object**, not a commit: `git/ref/tags/v5.5.5` answers `.object.type == "tag"`, and reaching the commit needs a second call to `git/tags/<sha>`. Nothing checks that SHA out.)* | Apache-2.0 | tagged releases only, and **never below v5.5.5** while this pin is in force: that release adds a useful refusal for `spi_flash_mmap` above `0x1000000`, but it is defence-in-depth for one path, not the safety boundary — read, write and erase remain unguarded, so the binding rule is still that Attadipa places and accesses nothing above the ceiling ([FLASH_ADDRESSING_LIMITS](FLASH_ADDRESSING_LIMITS.md) §§4–5). A bump retests `firmware/` for both boards, re-reads the `sdkconfig.defaults` symbols (Kconfig names move between minor releases) and re-runs the RAM-load route, because that path is the one with no fallback |
 | **`espressif/esp_lcd_co5300`** | **2.1.0**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild the display path and re-check the licence file |
 | **`espressif/esp_lcd_touch_ft5x06`** | **1.1.1**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild the touch path and re-check the licence file |
 | **`esp_lvgl_port`** | **2.8.0~1**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild both display geometries and re-check the licence file |
@@ -36,6 +36,36 @@ Required for every entry:
 | **Pillow** | whatever the environment has — `python3-pil` on the CI runners | HPND (GPL-compatible) | tool-time only, for `tools/assets/` — authoring the source masks, the dimension cap, and the contact sheet. Deliberately **not** needed by `generate_images.py --check`, so the primary staleness gate never depends on a package being installed; the two checks that do need it are replaced by a failing test when it is absent |
 | **Inter** | `Inter[opsz,wght].ttf`, `google/fonts`, SHA-256 `29160a80…c559031` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; used **unmodified**, because instancing it costs its kerning |
 | **Nunito Sans** | `NunitoSans[YTLC,opsz,wdth,wght].ttf`, `google/fonts`, SHA-256 `f934d714…ae2491d` | **OFL 1.1**, read from the `OFL.txt` beside the file | variable font; must be instanced to `wght=400`, because its default is 200 |
+
+## GitHub Actions
+
+Privileged workflows execute third-party code. `anthropics/claude-code-action`
+in particular receives the Anthropic credential, a GitHub token context, OIDC
+and repository write permissions, so *"which bytes run"* is a security question
+and not a convenience one. Every ref below is a commit; a tag is a name its
+owner can move, and moving it would change what executes here with no change to
+any workflow, pull request, review or required check. **No upstream compromise
+is claimed or observed** — the exposure is the execution path.
+
+Resolved 2026-08-28. `anthropics/claude-code-action@v1` and
+`github/codeql-action@v4` are **annotated** tags: `git/ref/tags/<tag>` returns a
+tag object whose SHA is not a commit SHA, and pinning to it pins to something
+GitHub will not check out. `.github/tests/action-pin-test.sh` asserts every pin
+resolves as a commit, which is the only check that tells the two apart.
+
+| Action | Pinned at | Tag it came from | Licence | Upgrade strategy |
+|---|---|---|---|---|
+| **`actions/checkout`** ×24 | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |
+| **`anthropics/claude-code-action`** ×3 | `a60f3e1db3edbceed2b1e6c6a9d34c36b8a15eba`, 2026-08-28 | `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
+| **`actions/upload-artifact`** ×2 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, 2026-04-10 | `v7`, lightweight | MIT | as `checkout` |
+| **`github/codeql-action/init`**, **`/analyze`** | `cdf488f595d80d6e07e03d4674febd5ab45fa938`, 2026-08-26 | `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle |
+| **`actions/cache`** | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`, 2026-06-23 | `v6`, lightweight | MIT | as `checkout` |
+
+`v1` moved twice while this pin was being prepared — the tag resolved to a
+different commit on 2026-08-27 and again on 2026-08-28. That is ordinary
+maintainer behaviour and it is also the whole argument: a resolution recorded
+yesterday is not a fact about today, so every SHA above was re-resolved
+immediately before the commit that introduced it.
 
 ### GPL-3.0-or-later compatibility audit — 2026-08-26
 

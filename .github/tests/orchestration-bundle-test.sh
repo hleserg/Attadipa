@@ -72,10 +72,10 @@ line_of() { grep -n -- "$2" "$1" | head -n 1 | cut -d: -f1; }
 echo "The bundle is fetched from the default branch, and before the model runs"
 
 for wf in "$AGENT" "$REVIEW"; do
-  model=$(line_of "$wf" 'uses: anthropics/claude-code-action@v1')
+  model=$(line_of "$wf" 'uses: anthropics/claude-code-action@')
   if [ -z "$model" ]; then
     no "$wf still invokes claude-code-action" \
-       "no 'uses: anthropics/claude-code-action@v1' found -- if the step moved, point this test at it rather than deleting it"
+       "no 'uses: anthropics/claude-code-action@' found -- if the step moved, point this test at it rather than deleting it"
     continue
   fi
 
@@ -132,7 +132,7 @@ echo "...and nothing after the model session runs a script out of the workspace"
 # privileged step there referenced .github/scripts/ by a workspace-relative
 # path.
 for wf in "$AGENT" "$REVIEW"; do
-  model=$(line_of "$wf" 'uses: anthropics/claude-code-action@v1')
+  model=$(line_of "$wf" 'uses: anthropics/claude-code-action@')
   [ -n "$model" ] || continue
   offenders=$(workspace_script_calls "$wf" "$model")
   if [ -z "$offenders" ]; then

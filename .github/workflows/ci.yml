@@ -20,7 +20,7 @@ jobs:
     name: Host build and tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Pillow, for the two asset-pipeline checks that have to draw something to
       # know whether the drawing changed. The apt package rather than pip,
@@ -46,7 +46,7 @@ jobs:
     name: Strict warnings (GCC, -Werror)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # -Werror is only defensible because the debt is zero, and that was
       # measured rather than assumed: this set — including -Wshadow and
@@ -87,7 +87,7 @@ jobs:
     name: Clang build and tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # A second front end catches what one does not: different template
       # diagnostics, different UB detection, different opinions about what is
@@ -116,7 +116,7 @@ jobs:
     name: AddressSanitizer and UndefinedBehaviorSanitizer
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # The host tests are where the logic lives, so this is where memory and
       # UB bugs are cheapest to find. On the device there is no sanitizer and a
@@ -154,7 +154,7 @@ jobs:
     name: Host coverage report
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install gcovr
         run: pipx install gcovr
@@ -192,7 +192,7 @@ jobs:
                 --txt build-cov/coverage.txt --print-summary
           cat build-cov/coverage.txt >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: host-coverage
@@ -206,7 +206,7 @@ jobs:
     name: Workflow lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # The automation in .github/workflows/ is now load-bearing: it decides who
       # may drive a write-capable agent. A typo in an `if:` there fails open, and
@@ -349,6 +349,15 @@ jobs:
       - name: Writer admission and exclusive claims are fail-closed
         run: bash .github/tests/admission-claim-test.sh
 
+      # Static, and it says so: it proves nothing about the code AT those
+      # commits. What it proves is that the set of things which can change
+      # under us without a commit here is empty.
+      - name: Privileged actions run at a commit, not at a movable name
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTADIPA_PIN_CHECK_NETWORK: "1"
+        run: bash .github/tests/action-pin-test.sh
+
       - name: The stable merge gate fails closed
         run: bash .github/tests/required-ci-test.sh
 
@@ -416,7 +425,7 @@ jobs:
     name: Documentation consistency
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Mutation-test the checker before trusting its result.
       - name: The checker actually checks
@@ -469,7 +478,7 @@ jobs:
     name: Simulator build and headless run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # LVGL is fetched by CMake at the commit pinned in
       # docs/research/DEPENDENCIES.md. SDL2 is the only system package this
@@ -490,7 +499,7 @@ jobs:
       # paths in FetchContent's sub-build cache, so a repository rename must
       # never restore a tree configured under the former checkout path.
       - name: Cache LVGL
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: build-sim/_deps
           key: lvgl-v2-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('cmake/AttadipaLvgl.cmake') }}
@@ -511,7 +520,7 @@ jobs:
 
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: simulator-screenshots
           path: build-sim/screenshots/*.png
@@ -529,7 +538,7 @@ jobs:
     # pinned in docs/research/DEPENDENCIES.md and the two move together.
     container: espressif/idf:v5.5.5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Host-side and independent of ESP-IDF. The firmware build also validates
       # its generated table against the declared 16 MB size; this check covers
