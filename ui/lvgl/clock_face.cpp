@@ -161,35 +161,6 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
   lv_obj_set_style_pad_top(seconds_, large ? 7 : 4, LV_PART_MAIN);
   lv_obj_align(seconds_, LV_ALIGN_CENTER, large ? 155 : 91, large ? 46 : 34);
 
-  steps_ = lv_obj_create(screen);
-  bare(steps_);
-  lv_obj_set_size(steps_, large ? 84 : 62, large ? 30 : 20);
-  lv_obj_align(steps_, LV_ALIGN_CENTER, 0, large ? 20 : 34);
-
-  lv_obj_t *paw = lv_obj_create(steps_);
-  bare(paw);
-  lv_obj_set_size(paw, large ? 28 : 19, large ? 25 : 17);
-  lv_obj_set_pos(paw, 0, large ? 2 : 1);
-  const int toe_size = large ? 5 : 4;
-  const int toe_x[] = {0, large ? 7 : 5, large ? 14 : 10, large ? 21 : 15};
-  const int toe_y[] = {large ? 4 : 3, 0, 0, large ? 4 : 3};
-  for (unsigned i = 0; i < 4; ++i) {
-    lv_obj_t *toe = lv_obj_create(paw);
-    circle(toe, toe_size, glow, LV_OPA_COVER);
-    lv_obj_set_pos(toe, toe_x[i], toe_y[i]);
-  }
-  lv_obj_t *pad = lv_obj_create(paw);
-  circle(pad, large ? 14 : 10, glow, LV_OPA_COVER);
-  lv_obj_set_height(pad, large ? 10 : 7);
-  lv_obj_set_pos(pad, large ? 7 : 5, large ? 13 : 9);
-
-  lv_obj_t *steps_value = lv_label_create(steps_);
-  bare(steps_value);
-  lv_label_set_text(steps_value, "7777");
-  lv_obj_set_style_text_font(steps_value, status_font, LV_PART_MAIN);
-  lv_obj_set_style_text_color(steps_value, muted, LV_PART_MAIN);
-  lv_obj_align(steps_value, LV_ALIGN_RIGHT_MID, 0, 0);
-
   status_ = lv_label_create(screen);
   bare(status_);
   lv_obj_set_width(status_, row_width);
@@ -236,9 +207,6 @@ void ClockFace::update(const apps::ClockText &text) {
                        : lv_obj_remove_flag(date_, LV_OBJ_FLAG_HIDDEN);
   text.status[0] == '\0' ? lv_obj_add_flag(status_, LV_OBJ_FLAG_HIDDEN)
                          : lv_obj_remove_flag(status_, LV_OBJ_FLAG_HIDDEN);
-  text.ready && text.status[0] == '\0'
-      ? lv_obj_remove_flag(steps_, LV_OBJ_FLAG_HIDDEN)
-      : lv_obj_add_flag(steps_, LV_OBJ_FLAG_HIDDEN);
   text.ready ? lv_obj_remove_flag(seconds_, LV_OBJ_FLAG_HIDDEN)
              : lv_obj_add_flag(seconds_, LV_OBJ_FLAG_HIDDEN);
 }

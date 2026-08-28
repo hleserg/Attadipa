@@ -34,7 +34,6 @@ private:
   lv_obj_t *date_ = nullptr;
   lv_obj_t *seconds_ = nullptr;
   lv_obj_t *status_ = nullptr;
-  lv_obj_t *steps_ = nullptr;
   lv_obj_t *leaf_fireflies_[4]{};
   lv_obj_t *touch_glow_halo_ = nullptr;
   lv_obj_t *touch_glow_dot_ = nullptr;
