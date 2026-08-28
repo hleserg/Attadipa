@@ -32,7 +32,7 @@ this repository, and most of them are not obviously about a clock.
 | The Clock needs | It already exists as | Where |
 |---|---|---|
 | a wall clock | `core::WallTime` — UNIX seconds, **no arithmetic** | [`core/clock.h:86`](../../core/include/attadipa/core/clock.h) |
-| elapsed time, for anything timed | `core::MonotonicTime` / `Millis` / `elapsed()` | `core/clock.h:45`, `:62` |
+| elapsed time, for anything timed | `core::MonotonicTime` / `Millis` / `elapsed()` | [`core/clock.h:45`](../../core/include/attadipa/core/clock.h) — "struct MonotonicTime {", [`core/clock.h:62`](../../core/include/attadipa/core/clock.h) — "constexpr Millis elapsed" |
 | "the time is not usable" | `core::Availability` — seven values, seven *remedies* | [`core/availability.h:16`](../../core/include/attadipa/core/availability.h) |
 | "the time is old / not trustworthy" | `core::Validity{Unknown, Valid, Stale, Invalid}` | [`core/availability.h:63`](../../core/include/attadipa/core/availability.h) — "enum class Validity" |
 | a datum plus its two ages | `core::Timed<T>` | [`core/availability.h:70`](../../core/include/attadipa/core/availability.h) — "struct Timed {" |
@@ -62,8 +62,28 @@ two answered.
 | any way to inject a time into the simulator | so 00:00, 23:59 and a rollover cannot be photographed — see §8 |
 | a font above 28 px | see §7 |
 
+> **Overtaken, 2026-08-28. Every row of the table above is now false.**
+> The table recorded the gap this report was written to scope, and T-037
+> has since been built; it is kept rather than deleted because §5, §7 and
+> §8 still reason from it, and a reader needs to know which of those
+> premises have expired. Checked row by row, in order:
+> calendar arithmetic exists —
+> [`apps/src/clock.cpp:22`](../../apps/src/clock.cpp) — "days_from_civil";
+> the catalogue is temporal —
+> [`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) — "ClockMonthJan";
+> the manifest carries a tick period —
+> [`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) — "core::Millis tick_period";
+> the simulator has the Adult/Child switch —
+> [`sim/options.h:62`](../../sim/options.h) — "bool child_mode";
+> it can be handed a time —
+> [`sim/options.h:58`](../../sim/options.h) — "bool clock_time_set";
+> and the ladder goes past 28 px —
+> [`tools/font/generate_ui_fonts.py:50`](../../tools/font/generate_ui_fonts.py) — "SIZES = (14, 16, 20, 28, 64, 84, 96)".
+> Only these six claims were rechecked. The conclusions the later
+> sections draw from them have **not** been re-derived.
+
 `core::WallTime` having no subtraction is deliberate and load-bearing
-(`core/clock.h:80-93`), and a calendar must not quietly undo it. Converting
+([`core/clock.h:80-93`](../../core/include/attadipa/core/clock.h) — "Deliberately has no arithmetic"), and a calendar must not quietly undo it. Converting
 UNIX seconds to a civil date is a *pure function of one absolute instant* and
 does not derive a duration, so it is compatible with the rule — but only if it
 is written as one, and not as `now - midnight`.
@@ -293,12 +313,14 @@ it in the destructor, so the timer's lifetime is the screen's and a mistake in
 either is a use-after-free. Final §59 says the same in one line: *"Applications
 do not freely create FreeRTOS tasks and LVGL timers."*
 
-**But `AppManifest` has no tick period.**
-[`apps/app_manifest.h:23`](../../apps/include/attadipa/apps/app_manifest.h) — "struct AppManifest {"
-declares `id`, `required`/`required_count` and `enhanced_by`/`enhanced_by_count`
-— that is all. So the contract exists as a recorded decision and a specification
-line, and **not as anything a compiler enforces**. The first Clock application
-will make the gap concrete.
+**`AppManifest` now carries that tick period** — it did not when this section
+was written, and closing that gap is what the first Clock application did.
+[`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) — "core::Millis tick_period"
+sits beside `id`, `required`/`required_count` and
+`enhanced_by`/`enhanced_by_count`, carrying the contract in the type: *"Applications declare cadence; the composition root owns the timer."*,
+and zero means event-driven only. So the requirement below is no longer only a
+recorded decision and a specification line; the declaration half of it is now
+something a compiler enforces. Who owns the timer still is not.
 
 This document does **not** decide it, and that is deliberate: the application
 framework and the event-bus/concurrency ADR must explicitly cover *"who owns

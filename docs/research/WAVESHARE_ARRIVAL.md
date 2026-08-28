@@ -74,7 +74,7 @@ Most of the advice was already answered here, and one part of it this repository
 flatly contradicts.
 
 **The claim that the board's PSRAM is absent or undeclared is false, and was
-false before the advice arrived.** [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md)
+false before the advice arrived.** [HARDWARE_MATRIX.md:341](HARDWARE_MATRIX.md)
 "8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
 [VERIFIED_FACTS.md:808](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the

@@ -228,8 +228,13 @@ CITATION = re.compile(
 # Anchored, so a later link on the same line cannot be mistaken for this one.
 CITATION_HREF = re.compile(r"\A`?\]\(([^)#]+)")
 
+# What may sit between a citation and its fingerprint: the closing half of a
+# link, and backticks. Shared with the wrapped-fingerprint rule in _report so
+# the two cannot disagree about where a citation ends.
+FINGERPRINT_LEAD = re.compile(r'\A`?(?:\]\([^)]*\))?`?')
+
 FINGERPRINT = re.compile(
-    r'\A`?(?:\]\([^)]*\))?`?\s*[\u2014-]?\s*"([^"]{3,80})"'
+    FINGERPRINT_LEAD.pattern + r'\s*[\u2014-]?\s*"([^"]{3,80})"'
 )
 
 # HOW TO WRITE AN EXAMPLE THAT IS NOT A CITATION. A fingerprint is an
@@ -337,7 +342,9 @@ def check_citation_lines(root: str) -> list[str]:
         # TASKS.md keeps its `BLOCKED:` records in fenced blocks, and the
         # citation that sent a reader to a blank line -- on the GNSS rail, the
         # fact CLAUDE.md holds up as the cost of guessing -- was inside one.
+        following = text.splitlines()[1:] + [""]
         for lineno, line, _fenced in scan_lines(text):
+            nxt = following[lineno - 1]
             for match in list(CITATION.finditer(line)) + list(
                 BARE_CITATION.finditer(line)
             ):
@@ -347,7 +354,8 @@ def check_citation_lines(root: str) -> list[str]:
                     body = lines_of(resolved)
                     if body is not None:
                         _report(
-                            problems, rel_self, lineno, cited, match, body, line
+                            problems, rel_self, lineno, cited, match, body,
+                            line, nxt
                         )
                     continue
                 # Resolve beside the citing file first, then from the root. A
@@ -372,7 +380,7 @@ def check_citation_lines(root: str) -> list[str]:
                             body = lines_of(via)
                             if body is not None:
                                 _report(problems, rel_self, lineno, cited,
-                                        match, body, line)
+                                        match, body, line, nxt)
                             continue
                     resolved = by_basename.get(os.path.basename(cited), "")
                     if not resolved or "/" in cited.strip("./"):
@@ -419,11 +427,13 @@ def check_citation_lines(root: str) -> list[str]:
                 body = lines_of(resolved)
                 if body is None:
                     continue
-                _report(problems, rel_self, lineno, cited, match, body, line)
+                _report(problems, rel_self, lineno, cited, match, body, line,
+                        nxt)
     return problems
 
 
-def _report(problems, rel_self, lineno, cited, match, body, line="") -> None:
+def _report(problems, rel_self, lineno, cited, match, body, line="",
+            next_line="") -> None:
     first = int(match.group(2))
     last = match.group(3)
     span = match.group(0).split(":", 1)[1]
@@ -456,6 +466,22 @@ def _report(problems, rel_self, lineno, cited, match, body, line="") -> None:
     # And the half a blank-line test cannot see: the cited lines are real, and
     # about something else entirely.
     stamp = FINGERPRINT.match(line[match.end() :])
+    if not stamp and next_line:
+        # A fingerprint that WRAPPED. Markdown reflows prose, so the quote can
+        # sit at the start of the next line while the citation stays on this
+        # one -- and end-of-line used to read as "no fingerprint given", which
+        # is silence. WAVESHARE_ARRIVAL wrote its citation and its
+        # "8 MB **octal**" that way, the citation then drifted ten lines, and
+        # the check watched it happen. A promise nothing keeps is worse than no
+        # promise: that is the whole thesis of the issue this check comes from,
+        # and the check had the defect in itself.
+        #
+        # Only when the citation line ends there. Anything else after the
+        # citation means the author wrote prose, and a quotation further down
+        # that prose is not this citation's fingerprint.
+        tail = FINGERPRINT_LEAD.sub("", line[match.end() :]).strip()
+        if tail in ("", "\u2014", "-"):
+            stamp = FINGERPRINT.match(next_line.strip())
     if not stamp:
         return
     snippet = stamp.group(1)
