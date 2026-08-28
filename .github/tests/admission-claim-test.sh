@@ -159,6 +159,40 @@ printf 'issue\n' > "$work/state/kind"; ATTADIPA_STUB_MODE=issuefail run_admissio
 grep -q '^allow=false$' "$work/output" && grep -q '^state=unknown$' "$work/output" \
   && ok 'an unreadable target fails closed' || bad 'an unreadable target fails closed' "$(cat "$work/log")"
 
+echo 'The holder id is published, so a credential can never become one'
+long_holder=$(printf 'x%.0s' $(seq 1 65))
+for unsafe in ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA \
+              github_pat_11AAAAAAA0aaaaaaaaaaaa_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+              0123456789abcdef0123456789abcdef01234567 \
+              'has space' "$long_holder"; do
+  reset_state
+  PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 "$unsafe" >/dev/null 2>&1
+  rc=$?
+  shape=$(printf '%.14s' "$unsafe")
+  if [ "$rc" -eq 64 ]; then ok "a credential-shaped holder ($shape) is refused"; else bad "a credential-shaped holder ($shape) is refused" "rc=$rc"; fi
+  # The tag object outlives the deletion of its ref, so refusing after the POST
+  # would not be refusing at all: assert nothing was ever sent.
+  if [ -z "$(find "$work/state" -maxdepth 1 -name 'tag.*' -print -quit)" ] && [ ! -d "$work/state/ref.lock" ]; then
+    ok "no tag is created for ($shape)"
+  else
+    bad "no tag is created for ($shape)" 'a tag object reached the API'
+  fi
+done
+
+reset_state
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-32863426318-1 >/dev/null 2>&1
+[ -d "$work/state/ref.lock" ] && ok 'the shape the workflows actually pass is still accepted' || bad 'the shape the workflows actually pass is still accepted' 'refused a valid agent id'
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-32863426318-1 >/dev/null 2>&1
+
+reset_state
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  bash "$START" start o/r 7 ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA >/dev/null 2>&1
+rc=$?
+[ "$rc" -ne 0 ] && [ ! -d "$work/state/writer.lock" ] \
+  && ok 'the documented entrypoint refuses a credential too' || bad 'the documented entrypoint refuses a credential too' "rc=$rc"
+grep -q 'AGENT_ID' AGENTS.md && ! grep -q 'writer-start.sh start REPO ISSUE TOKEN' AGENTS.md \
+  && ok 'AGENTS.md no longer calls the holder a token' || bad 'AGENTS.md no longer calls the holder a token' 'the misleading name survives'
+
 echo 'The GitHub ref is the atomic claim'
 reset_state
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_BARRIER=1 \
@@ -242,7 +276,7 @@ grep -q 'wip-limit.sh --admit' "$WATCHDOG" && ok 'the watchdog checks admission 
 
 mutant="$work/check-then-set.sh"
 sed -e 's/attadipa_claim_create_ref "$repo" "$number" "$tag_sha"/true/' \
-    -e 's/winner="$(attadipa_claim_owner "$repo" "$number")"/winner="$token"/' "$CLAIM" > "$mutant"
+    -e 's/winner="$(attadipa_claim_owner "$repo" "$number")"/winner="$holder"/' "$CLAIM" > "$mutant"
 reset_state
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$mutant" acquire o/r 7 mutant-a >/dev/null 2>&1 & ma=$!
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$mutant" acquire o/r 7 mutant-b >/dev/null 2>&1 & mb=$!

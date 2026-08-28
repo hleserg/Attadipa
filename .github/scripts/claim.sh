@@ -35,8 +35,33 @@ delete_ref() {
   gh api --method DELETE "repos/$1/git/refs/tags/attadipa-claims/$2" >/dev/null 2>&1
 }
 
+# The holder id is published: claim.sh puts it in the tag message and in the tag
+# name, and this repository is public. Refuse anything credential-shaped, and
+# refuse it before the first network call -- a tag object outlives the deletion
+# of its ref, so not sending the POST is the only protection that holds.
+reject_unsafe_holder() {
+  case "$1" in
+    ghp_* | gho_* | ghu_* | ghs_* | ghr_* | github_pat_*)
+      printf 'holder looks like a GitHub credential, not an agent id\n' >&2; return 1 ;;
+  esac
+  case "$1" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+      printf 'holder looks like a GitHub credential, not an agent id\n' >&2; return 1 ;;
+  esac
+  if ! printf '%s' "$1" | grep -Eq '^[A-Za-z0-9._-]{1,64}$'; then
+    printf 'holder must match ^[A-Za-z0-9._-]{1,64}$\n' >&2; return 1
+  fi
+}
+
 acquire() {
-  local repo="$1" number="$2" token="$3" branch head tag_json tag_sha winner existing now
+  local repo="$1" number="$2" holder="$3" branch head tag_json tag_sha winner existing now
+  reject_unsafe_holder "$holder" || {
+    printf 'pass an agent id such as agent-<run>-<attempt>; see AGENTS.md\n' >&2
+    return 64
+  }
   if existing="$(attadipa_claim_owner "$repo" "$number")"; then
     printf 'held by %s\n' "$existing" >&2
     return 3
@@ -46,8 +71,8 @@ acquire() {
   head="$(gh api "repos/$repo/git/ref/heads/$branch" | jq -er '.object.sha')" || return 2
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   tag_json="$(gh api --method POST "repos/$repo/git/tags" \
-    -f "tag=attadipa-claim-$number-${token//[^A-Za-z0-9._-]/-}" \
-    -f "message=$token" -f "object=$head" -f type=commit \
+    -f "tag=attadipa-claim-$number-${holder//[^A-Za-z0-9._-]/-}" \
+    -f "message=$holder" -f "object=$head" -f type=commit \
     -f 'tagger[name]=Attadipa automation' -f 'tagger[email]=actions@users.noreply.github.com' \
     -f "tagger[date]=$now")" || return 2
   tag_sha="$(printf '%s' "$tag_json" | jq -er '.sha')" || return 2
@@ -63,7 +88,7 @@ acquire() {
   fi
 
   winner="$(attadipa_claim_owner "$repo" "$number")"
-  if [ "$winner" != "$token" ]; then
+  if [ "$winner" != "$holder" ]; then
     printf 'claim verification failed\n' >&2
     return 2
   fi
@@ -71,13 +96,13 @@ acquire() {
     delete_ref "$repo" "$number" || true
     return 2
   fi
-  printf 'acquired by %s\n' "$token"
+  printf 'acquired by %s\n' "$holder"
 }
 
 release() {
-  local repo="$1" number="$2" token="$3" winner
+  local repo="$1" number="$2" holder="$3" winner
   winner="$(attadipa_claim_owner "$repo" "$number")" || return 3
-  if [ "$winner" != "$token" ]; then
+  if [ "$winner" != "$holder" ]; then
     printf 'held by %s\n' "$winner" >&2
     return 3
   fi
@@ -88,7 +113,7 @@ release() {
     [ "$number" = writer ] || edit_label "$repo" "$number" --add-label agent:working || true
     return 2
   fi
-  printf 'released by %s\n' "$token"
+  printf 'released by %s\n' "$holder"
 }
 
 break_claim() {
@@ -119,8 +144,8 @@ reap() {
 }
 
 case "${1-}" in
-  acquire) [ "$#" -eq 4 ] || { echo 'usage: claim.sh acquire REPO NUMBER TOKEN' >&2; exit 64; }; acquire "$2" "$3" "$4" ;;
-  release) [ "$#" -eq 4 ] || { echo 'usage: claim.sh release REPO NUMBER TOKEN' >&2; exit 64; }; release "$2" "$3" "$4" ;;
+  acquire) [ "$#" -eq 4 ] || { echo 'usage: claim.sh acquire REPO NUMBER AGENT_ID' >&2; exit 64; }; acquire "$2" "$3" "$4" ;;
+  release) [ "$#" -eq 4 ] || { echo 'usage: claim.sh release REPO NUMBER AGENT_ID' >&2; exit 64; }; release "$2" "$3" "$4" ;;
   reap) [ "$#" -eq 4 ] || { echo 'usage: claim.sh reap REPO NUMBER SECONDS' >&2; exit 64; }; reap "$2" "$3" "$4" ;;
   break) [ "$#" -eq 3 ] || { echo 'usage: claim.sh break REPO NUMBER' >&2; exit 64; }; break_claim "$2" "$3" ;;
   owner) [ "$#" -eq 3 ] || { echo 'usage: claim.sh owner REPO NUMBER' >&2; exit 64; }; attadipa_claim_owner "$2" "$3" ;;

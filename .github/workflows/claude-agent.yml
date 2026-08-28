@@ -540,7 +540,7 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          CLAIM_TOKEN: agent-${{ github.run_id }}-${{ github.run_attempt }}
+          CLAIM_HOLDER: agent-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           for script in claim.sh writer-admission.sh wip-limit.sh; do
@@ -548,7 +548,7 @@ jobs:
               | base64 --decode > "/tmp/$script"
           done
           set +e
-          bash /tmp/claim.sh acquire "$REPO" writer "$CLAIM_TOKEN"
+          bash /tmp/claim.sh acquire "$REPO" writer "$CLAIM_HOLDER"
           rc=$?
           set -e
           case "$rc" in
@@ -560,20 +560,20 @@ jobs:
           : > /tmp/admission-output
           GITHUB_OUTPUT=/tmp/admission-output bash /tmp/writer-admission.sh "$REPO" "$ISSUE"
           if [ "$(sed -n 's/^allow=//p' /tmp/admission-output)" != true ]; then
-            bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true
+            bash /tmp/claim.sh release "$REPO" writer "$CLAIM_HOLDER" || true
             echo "acquired=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Writer held by $(sed -n 's/^state=//p' /tmp/admission-output) admission"
             exit 0
           fi
 
           set +e
-          bash /tmp/claim.sh acquire "$REPO" "$ISSUE" "$CLAIM_TOKEN"
+          bash /tmp/claim.sh acquire "$REPO" "$ISSUE" "$CLAIM_HOLDER"
           rc=$?
           set -e
           case "$rc" in
             0) echo "acquired=true" >> "$GITHUB_OUTPUT" ;;
-            3) bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true; echo "acquired=false" >> "$GITHUB_OUTPUT"; echo "::notice::#$ISSUE already claimed; writer held" ;;
-            *) bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || true; echo "::error::Could not establish exclusive claim for #$ISSUE"; exit "$rc" ;;
+            3) bash /tmp/claim.sh release "$REPO" writer "$CLAIM_HOLDER" || true; echo "acquired=false" >> "$GITHUB_OUTPUT"; echo "::notice::#$ISSUE already claimed; writer held" ;;
+            *) bash /tmp/claim.sh release "$REPO" writer "$CLAIM_HOLDER" || true; echo "::error::Could not establish exclusive claim for #$ISSUE"; exit "$rc" ;;
           esac
 
       - name: Normalise labels
@@ -1606,9 +1606,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
-          CLAIM_TOKEN: agent-${{ github.run_id }}-${{ github.run_attempt }}
+          CLAIM_HOLDER: agent-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           rc=0
-          bash /tmp/claim.sh release "$REPO" "$ISSUE" "$CLAIM_TOKEN" || rc=$?
-          bash /tmp/claim.sh release "$REPO" writer "$CLAIM_TOKEN" || rc=$?
+          bash /tmp/claim.sh release "$REPO" "$ISSUE" "$CLAIM_HOLDER" || rc=$?
+          bash /tmp/claim.sh release "$REPO" writer "$CLAIM_HOLDER" || rc=$?
           exit "$rc"

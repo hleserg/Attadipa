@@ -79,13 +79,16 @@ At most three progress comments precede the outcome. Messages are rendered by
 
 1. Read the issue/comments, `AGENTS.md`, nearest scoped rules and open PRs.
 2. Before creating a branch or editing, run
-   `.github/scripts/writer-start.sh start REPO ISSUE TOKEN` from current `main`.
+   `.github/scripts/writer-start.sh start REPO ISSUE AGENT_ID` from current `main`.
+   `AGENT_ID` labels the holder — `agent-<run>-<attempt>`, matching
+   `^[A-Za-z0-9._-]{1,64}$`. It is **not** a credential: the lease publishes it
+   in a public tag, so `claim.sh` refuses credential-shaped values outright.
    `held`, `full`, `incident` or `unknown` means stop. Workflows use the same
    repository lease, admission check and atomic claim.
 3. Verify stale findings and relevant hardware/upstream facts.
 4. Open one draft PR with `Fixes #<issue>`, risks and actual test evidence.
 5. Put live status in the issue/PR, never in `STATUS.md` or `TASKS.md`.
-6. On hand-off, run `writer-start.sh finish REPO ISSUE TOKEN`.
+6. On hand-off, run `writer-start.sh finish REPO ISSUE AGENT_ID` with the same id.
 
 A blocked comment states reason, evidence, impact, what can happen
 automatically, one owner/hardware action and how to resume. Public owner-facing

@@ -60,7 +60,10 @@ not enter the queue automatically.
 ## Delivery
 
 - Before creating a branch or editing, run
-  `.github/scripts/writer-start.sh start REPO ISSUE TOKEN` from current `main`;
+  `.github/scripts/writer-start.sh start REPO ISSUE AGENT_ID` from current `main`;
+  `AGENT_ID` is an opaque label for the holder, such as `agent-<run>-<attempt>` —
+  **never a credential**: it is published in a tag anyone can read, and the tag
+  object survives deleting the tag;
   its repository lease and atomic claim are the machine-enforced writer gate.
   Run `writer-start.sh finish ...` on hand-off. Keep commits logical and never
   push directly to `main`.
