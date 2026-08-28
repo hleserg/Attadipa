@@ -124,6 +124,16 @@ In order of likelihood:
    `@claude` to override deliberately.
 5. **The marker is missing.** An issue needs `attadipa-agent-task` *and*
    `@claude` in the body, or the `agent:ready` label.
+6. **The queue was full.** The request was accepted and no writer started.
+   This is the one case that is not a refusal: look for a comment headed
+   *"Accepted, and not started yet"*, which names the admission state and
+   the open pull request count. `agent:ready` is on the issue and the hourly
+   watchdog starts it once a pull request merges or closes — **do not comment
+   again**, a second comment buys a second billed run against the same
+   admission answer. On an issue already carrying `agent:working`,
+   `agent:review` or `agent:blocked` the label is not added, because the
+   watchdog and the intake gate both refuse a dispatch carrying one; there,
+   commenting `@claude` once the state label no longer applies is the restart.
 
 **Look at the issue first.** If it carries a task marker and was refused anyway,
 the gate has already commented on it saying which guard rejected it and which

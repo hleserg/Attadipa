@@ -92,6 +92,79 @@ attadipa_receipt() {
   echo "silently stuck."
 }
 
+# attadipa_deferred RUN_URL TASK_TYPE PRIORITY TRIGGER ACTOR STATE COUNT REQUEUED
+#
+# THE FOURTH FIXED POINT, and it exists because there was a fifth outcome the
+# three above could not express: accepted, and not started.
+#
+# `writer-admission.sh` refuses a third concurrent writer, which is correct and
+# stays. Until #293 the gate ran that refusal BEFORE intake, so `Decide` was
+# skipped, no output said either "accepted" or "refused", and every downstream
+# job was skipped with it. The run went green in ten seconds having said
+# nothing at all -- run 33048001621 lost the owner's verified NVS/RTC finding on
+# #264 exactly that way, and nobody could tell it apart from a pipeline that was
+# still thinking.
+#
+# So refusing to START is now said out loud, separately from refusing the
+# REQUEST. This renderer is the difference between the two.
+#
+# REQUEUED is `true` when `agent:ready` was actually added, and it is not a
+# formality: `queue-scan.jq` skips `agent:review` and `agent:blocked`, and
+# `intake-decision.sh` rejects a `workflow_dispatch` carrying either. On those
+# two the label would be inert, so the text has to name the path that does
+# work instead of promising one that does not.
+attadipa_deferred() {
+  local run_url="$1" task_type="$2" priority="$3" trigger="$4" actor="$5"
+  local state="$6" count="$7" requeued="$8"
+
+  local why
+  case "$state" in
+    full)
+      why="the repository is already at its open pull request limit ($count open)" ;;
+    incident)
+      why="the open pull request count is **past** the limit ($count open), which the queue treats as an incident rather than as pressure" ;;
+    unknown)
+      why="the pull request count could not be read, and admission fails closed" ;;
+    *)
+      why="writer admission answered \`$state\`" ;;
+  esac
+
+  echo "<!-- attadipa-deferred -->"
+  echo "### Accepted, and not started yet"
+  echo
+  echo "| | |"
+  echo "|---|---|"
+  echo "| asked by | \`$actor\` via \`$trigger\` |"
+  echo "| kind | \`$task_type\` |"
+  echo "| priority | \`$priority\` |"
+  echo "| admission | \`$state\` |"
+  echo "| run | [live log]($run_url) |"
+  echo
+  echo "**This request was understood and no agent was started**, because $why."
+  echo "Nothing was claimed and no label says work is in progress, because none is."
+  echo
+  if [ "$requeued" = true ]; then
+    echo "**What brings it back:** \`agent:ready\` is now on this issue, so the hourly"
+    echo "watchdog picks it up on its next tick once a pull request merges or closes"
+    echo "and capacity returns. You do not need to comment again, and commenting"
+    echo "again does not make it sooner — a second comment starts a second billed"
+    echo "run against the same admission answer."
+  else
+    echo "**What brings it back is not the watchdog, and that is worth knowing.**"
+    echo "This issue carries a state label (\`agent:working\`, \`agent:review\` or"
+    echo "\`agent:blocked\`), and both \`queue-scan.jq\` and the intake gate refuse a"
+    echo "dispatch carrying one — deliberately, so a task under review is not picked"
+    echo "up twice. \`agent:ready\` was therefore **not** added: it would have been an"
+    echo "inert label promising a pickup that cannot happen."
+    echo
+    echo "A comment is the only start that does not need label surgery. When the"
+    echo "state label no longer applies, comment \`@claude\` here."
+  fi
+  echo
+  echo "The refusal is about writer capacity and nothing else. It is not a verdict"
+  echo "on the request, and the request is not lost."
+}
+
 # attadipa_outcome KIND RUN_URL DETAIL
 #
 # Posted by the `Hand over` step, always, on every exit path.
@@ -351,8 +424,9 @@ attadipa_outcome() {
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   what="${1:-}"; shift || true
   case "$what" in
-    receipt) attadipa_receipt "$@" ;;
-    outcome) attadipa_outcome "$@" ;;
-    *) echo "usage: agent-say.sh receipt|outcome ..." >&2; exit 2 ;;
+    receipt)  attadipa_receipt "$@" ;;
+    deferred) attadipa_deferred "$@" ;;
+    outcome)  attadipa_outcome "$@" ;;
+    *) echo "usage: agent-say.sh receipt|deferred|outcome ..." >&2; exit 2 ;;
   esac
 fi

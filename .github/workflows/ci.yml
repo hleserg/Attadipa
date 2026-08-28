@@ -349,6 +349,13 @@ jobs:
       - name: Writer admission and exclusive claims are fail-closed
         run: bash .github/tests/admission-claim-test.sh
 
+      # The step above proves admission refuses correctly. This one proves the
+      # refusal is heard: the workflow's own condition graph, driven and then
+      # mutated, because #293 was an ordering defect between two scripts that
+      # were each right on their own.
+      - name: A refused start is not a lost request
+        run: bash .github/tests/deferred-admission-test.sh
+
       - name: The stable merge gate fails closed
         run: bash .github/tests/required-ci-test.sh
 
