@@ -388,7 +388,8 @@ public:
   attadipa::debug::MeshSinkResult
   send(const std::uint8_t peer_prefix[6], const char *text,
        std::size_t text_length, std::int64_t utc_seconds) override {
-    if (text == nullptr || text_length == 0 || text_length > 160 ||
+    if (peer_prefix == nullptr || text == nullptr || text_length == 0 ||
+        text_length > 160 ||
         std::memchr(text, '\0', text_length) != nullptr || utc_seconds < 0 ||
         utc_seconds > std::numeric_limits<std::uint32_t>::max()) {
       return attadipa::debug::MeshSinkResult::Rejected;
