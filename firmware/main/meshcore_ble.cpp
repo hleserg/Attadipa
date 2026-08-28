@@ -194,7 +194,7 @@ int gap_event(ble_gap_event* event, void* arg);
 
 void start_scan()
 {
-    if (!session_snapshot().stack_ready || !configured.load() ||
+    if (session_snapshot().stack_readies == 0 || !configured.load() ||
         !reconnect_allowed.load() || ble_gap_disc_active()) {
         return;
     }
@@ -207,8 +207,11 @@ void start_scan()
                                 gap_event, nullptr);
     if (rc != 0) {
         ESP_LOGE(kTag, "start scan failed: %d", rc);
-        SessionGuard guard;
-        owner.fault();
+        {
+            SessionGuard guard;
+            owner.fault();
+        }
+        wake_worker();
     } else {
         scan_report_seen.store(false);
         ESP_LOGI(kTag, "scanning for MeshCore Companion service");
@@ -672,8 +675,19 @@ void pump_tx(const SessionSnapshot& session)
     }
 }
 
-void handle_write_result(std::int32_t result)
+void handle_write_result(std::int32_t result, std::uint32_t generation)
 {
+    // A completion outlives the session that submitted it: the worker may not
+    // run again until the connection is gone, and `write_completions` is a
+    // count the worker owes rather than a message it can miss. Neither half of
+    // what follows means anything for a session that has been replaced -- the
+    // delay paces a transmitter that no longer exists, and the terminate below
+    // would tear down whichever connection inherited the handle rather than the
+    // one whose write failed, which is the bug generations exist to prevent.
+    const SessionSnapshot session = session_snapshot();
+    if (session.generation != generation || session.phase == SessionPhase::Ended) {
+        return;
+    }
     if (result == 0) {
         vTaskDelay(kMeshCoreWriteDelay);
         return;
@@ -688,9 +702,8 @@ void handle_write_result(std::int32_t result)
     // recovers; when the link is already gone that path is running anyway.
     ESP_LOGW(kTag, "Companion write failed: %" PRId32 "; recycling the session",
              result);
-    const std::uint16_t connection = session_snapshot().connection;
-    if (connection != attadipa::link::kNoSessionHandle) {
-        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+    if (session.connection != attadipa::link::kNoSessionHandle) {
+        (void)ble_gap_terminate(session.connection, BLE_ERR_REM_USER_CONN_TERM);
     }
 }
 
@@ -830,7 +843,7 @@ void mesh_task(void*)
                     configured.store(true);
                     reconnect_allowed.store(true);
                     provider.begin(now());
-                    if (session_snapshot().stack_ready) start_scan();
+                    if (session_snapshot().stack_readies != 0) start_scan();
                 }
                 break;
             case EventKind::Deconfigure: {
@@ -865,7 +878,9 @@ void mesh_task(void*)
         } else {
             provider.tick(now());
         }
-        if (catch_up.write_completed) handle_write_result(catch_up.write_result);
+        if (catch_up.write_completed) {
+            handle_write_result(catch_up.write_result, catch_up.write_generation);
+        }
         // One read, used by both. A published MTU and the connection a frame is
         // written to therefore describe the same session or neither.
         const SessionSnapshot session = session_snapshot();

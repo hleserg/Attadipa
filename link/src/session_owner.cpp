@@ -38,13 +38,13 @@ bool SessionOwner::live(std::uint32_t generation) const
 
 void SessionOwner::stack_ready()
 {
-    if (state_.stack_ready) return;
-    state_.stack_ready = true;
+    state_.stack_readies += 1;
     state_.transitions += 1;
 }
 
 void SessionOwner::fault()
 {
+    state_.fault_phase = state_.phase;
     state_.faults += 1;
     state_.transitions += 1;
 }
@@ -144,6 +144,7 @@ bool SessionOwner::write_completed(std::uint32_t generation,
     if (!live(generation) || !state_.write_in_flight) return false;
     state_.write_in_flight = false;
     state_.write_result = result;
+    state_.write_generation = generation;
     state_.write_completions += 1;
     return true;
 }
@@ -161,7 +162,7 @@ SessionMark mark_of(const SessionSnapshot& current)
     mark.faults = current.faults;
     mark.write_completions = current.write_completions;
     mark.phase = current.phase;
-    mark.stack_ready = current.stack_ready;
+    mark.stack_readies = current.stack_readies;
     return mark;
 }
 
@@ -176,12 +177,23 @@ SessionCatchUp reconcile(const SessionMark& applied,
         }
     };
 
-    if (current.stack_ready && !applied.stack_ready) emit(SessionStep::StackReady);
+    if (current.stack_readies != applied.stack_readies) emit(SessionStep::StackReady);
 
     // Faults coalesce to one. A second fault before the worker has run adds
     // nothing the link model can act on — it is already faulted — and the count
     // that would be lost is reported as `coalesced` rather than silently.
-    if (current.faults != applied.faults) emit(SessionStep::Fault);
+    //
+    // Where the one fault goes is decided by the phase it was raised in, and it
+    // is not a detail: the `Disconnected` step ends by re-beginning the link so
+    // a reconnect can establish, and that is what clears `Faulted`. A fault
+    // raised while the session was live happened *before* that end and is meant
+    // to be cleared by it. A fault raised once the session had already ended —
+    // a scan that would not start, an address that would not configure —
+    // happened after, and replaying it first lets the same catch-up erase it.
+    const bool faulted = current.faults != applied.faults;
+    const bool fault_outlives_session =
+        faulted && current.fault_phase == SessionPhase::Ended;
+    if (faulted && !fault_outlives_session) emit(SessionStep::Fault);
 
     // Where in the current generation the worker already is. A generation it
     // has never heard of starts before `Arriving`, which is what -1 means.
@@ -205,12 +217,15 @@ SessionCatchUp reconcile(const SessionMark& applied,
     if (from < 1 && to >= 1 && current.reached_ready) emit(SessionStep::Ready);
     if (from < 2 && to >= 2) emit(SessionStep::Disconnected);
 
+    if (fault_outlives_session) emit(SessionStep::Fault);
+
     if (current.write_completions != applied.write_completions) {
         // Only the worker submits, and it submits one at a time, so there is at
         // most one completion outstanding and no result can be overwritten
         // before it is read.
         out.write_completed = true;
         out.write_result = current.write_result;
+        out.write_generation = current.write_generation;
     }
 
     const std::uint32_t happened = current.transitions - applied.transitions;

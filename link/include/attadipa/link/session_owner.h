@@ -82,14 +82,37 @@ struct SessionSnapshot {
     std::uint32_t transitions = 0;
 
     std::uint32_t faults = 0;
+
+    // How many times the radio stack has synchronised, not whether it ever
+    // did. A stack that resets and re-syncs raises a second edge here and the
+    // worker is owed a second `StackReady` for it; a bool made the resync
+    // invisible and nothing started scanning again. `stack_readies != 0` is
+    // the "is the stack up" predicate it replaces.
+    std::uint32_t stack_readies = 0;
+
     std::uint32_t write_completions = 0;
     std::int32_t  write_result = 0;
+
+    // The generation whose write produced `write_result`. A completion outlives
+    // its session -- the worker may not run again until the connection is gone
+    // -- and acting on a stale one paces a transmitter that no longer exists,
+    // or tears down whichever connection inherited the handle since.
+    std::uint32_t write_generation = 0;
 
     // Diagnostics, carried here so one locked read answers every question.
     std::uint32_t dropped_frames = 0;
     std::uint32_t coalesced_lifecycle = 0;
 
     SessionPhase  phase = SessionPhase::Ended;
+
+    // The phase the session was in when the last fault was raised, which is
+    // what orders `Fault` against the session steps in `reconcile()`. The
+    // reconnect that the `Disconnected` step performs is what clears a fault,
+    // so a fault raised while a session was live is replayed before that
+    // session's end and is meant to be cleared, and one raised after the
+    // session had already ended is replayed after it and must survive.
+    SessionPhase  fault_phase = SessionPhase::Ended;
+
     std::uint16_t connection = kNoSessionHandle;
     std::uint16_t mtu = 0;
     std::uint16_t service_start = 0;
@@ -98,7 +121,6 @@ struct SessionSnapshot {
     std::uint16_t tx_handle = 0;
     std::uint16_t cccd_handle = 0;
     bool write_in_flight = false;
-    bool stack_ready = false;
 
     // Whether *this* generation ever reached `Ready`. A session that came and
     // went while the worker was starved is replayed faithfully because of this
@@ -115,8 +137,8 @@ struct SessionMark {
     std::uint32_t transitions = 0;
     std::uint32_t faults = 0;
     std::uint32_t write_completions = 0;
+    std::uint32_t stack_readies = 0;
     SessionPhase  phase = SessionPhase::Ended;
-    bool stack_ready = false;
 };
 
 // What the worker still owes the link model, in the order it must be said.
@@ -142,6 +164,7 @@ struct SessionCatchUp {
     // link model, it releases the transmit slot and reports a status.
     bool write_completed = false;
     std::int32_t write_result = 0;
+    std::uint32_t write_generation = 0;
 
     // Transitions that happened but are not individually replayable — the
     // second of two faults, a session the worker never learned had begun. Zero
@@ -159,8 +182,9 @@ class SessionOwner {
 public:
     // ---- lifecycle, recorded by whichever context notices it first --------
 
-    // The radio stack synchronised. Sticky and idempotent: a worker that never
-    // received the notification still finds it here.
+    // The radio stack synchronised. Counted, not latched: a worker that never
+    // received the notification still finds it here, and a stack that reset and
+    // synchronised again is a second edge rather than a no-op.
     void stack_ready();
 
     // The transport itself failed. Not stamped with a generation, because the

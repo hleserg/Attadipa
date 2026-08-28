@@ -77,6 +77,89 @@ std::uint32_t establish(SessionOwner& owner, std::uint16_t connection,
 
 // ---------------------------------------------------------------------------
 
+// The stack coming up is the one lifecycle fact that legitimately repeats: the
+// ESP32 host resets, re-syncs, and everything the worker did for the first sync
+// -- begin the link, start scanning -- has to happen again. While this was a
+// latched bool the second sync produced no step at all, so nothing ever
+// rescanned and the transport stayed dark until a reboot.
+void a_stack_that_resyncs_is_replayed_a_second_time()
+{
+    SessionOwner owner;
+    SessionMark applied{};
+
+    owner.stack_ready();
+    CHECK(steps_of(reconcile(applied, owner.snapshot())) ==
+          std::vector<SessionStep>{SessionStep::StackReady});
+    applied = mark_of(owner.snapshot());
+    CHECK(steps_of(reconcile(applied, owner.snapshot())).empty());
+
+    owner.stack_ready();
+    const auto again = reconcile(applied, owner.snapshot());
+    CHECK(steps_of(again) == std::vector<SessionStep>{SessionStep::StackReady});
+    CHECK(again.coalesced == 0);
+}
+
+// Where the fault goes in the replay decides whether it survives it. The
+// `Disconnected` step re-begins the link so a reconnect can establish, and that
+// is what clears `Faulted` -- so a fault raised after the session had already
+// ended has to be replayed after the disconnect, or the same catch-up erases
+// it and the link model reports a health it does not have.
+void a_fault_raised_after_the_session_ended_is_replayed_after_it()
+{
+    SessionOwner owner;
+    owner.stack_ready();
+    const std::uint32_t generation = establish(owner, 7);
+    SessionMark applied = mark_of(owner.snapshot());
+
+    // The bench case: the write fails, the peer is still there, the disconnect
+    // follows. That fault belongs before the end it preceded, and being cleared
+    // by the reconnect is the point -- it is the 2026-08-27 fix.
+    owner.fault();
+    CHECK(owner.ended(generation));
+    CHECK(steps_of(reconcile(applied, owner.snapshot())) ==
+          (std::vector<SessionStep>{SessionStep::Fault, SessionStep::Disconnected}));
+
+    // Finding 2: the session ends first, and only then does something fail with
+    // no session to belong to -- a scan that would not start. Replaying that
+    // fault first would let the disconnect's reconnect wipe it.
+    SessionOwner second_owner;
+    second_owner.stack_ready();
+    const std::uint32_t second = establish(second_owner, 8);
+    applied = mark_of(second_owner.snapshot());
+    CHECK(second_owner.ended(second));
+    second_owner.fault();
+    CHECK(steps_of(reconcile(applied, second_owner.snapshot())) ==
+          (std::vector<SessionStep>{SessionStep::Disconnected, SessionStep::Fault}));
+}
+
+// A completion the worker reads after the session that submitted it is gone
+// says nothing about the session that is live now. It has to carry the
+// generation it belongs to, or the caller pauses a transmitter that no longer
+// exists and terminates a connection whose write never failed.
+void a_write_result_carries_the_generation_that_produced_it()
+{
+    SessionOwner owner;
+    const std::uint32_t first = establish(owner, 7);
+    SessionMark applied = mark_of(owner.snapshot());
+
+    CHECK(owner.write_submitted(first));
+    CHECK(owner.write_completed(first, -1));
+
+    // The worker did not run. The session ended and the next one established.
+    CHECK(owner.ended(first));
+    const std::uint32_t second = establish(owner, 8);
+    CHECK(second != first);
+
+    const auto catch_up = reconcile(applied, owner.snapshot());
+    CHECK(catch_up.write_completed);
+    CHECK(catch_up.write_result == -1);
+    CHECK(catch_up.write_generation == first);
+    CHECK(catch_up.write_generation != second);
+    // Which is what the caller checks against: this result is not the live
+    // session's, so nothing about the live session may be done on its account.
+    CHECK(!owner.live(catch_up.write_generation));
+}
+
 void generations_are_allocated_once_and_are_never_zero()
 {
     SessionOwner owner;
@@ -336,7 +419,7 @@ void the_longest_possible_catch_up_still_fits()
     SessionMark applied = mark_of(owner.snapshot());
     // The worker knew about a live, established session and nothing else: it
     // has not seen the stack come up, because it has not run since before sync.
-    applied.stack_ready = false;
+    applied.stack_readies = 0;
     applied.transitions = 0;
 
     owner.stack_ready();
@@ -551,6 +634,9 @@ int main()
     a_completed_session_is_replayed_in_full();
     faults_coalesce_and_are_counted();
     the_longest_possible_catch_up_still_fits();
+    a_stack_that_resyncs_is_replayed_a_second_time();
+    a_fault_raised_after_the_session_ended_is_replayed_after_it();
+    a_write_result_carries_the_generation_that_produced_it();
     a_write_result_reaches_the_worker_without_a_queue();
     two_tasks_cannot_tear_a_session_or_lose_a_transition();
 
