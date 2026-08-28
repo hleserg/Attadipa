@@ -119,9 +119,10 @@ void a_fault_raised_after_the_session_ended_is_replayed_after_it()
     CHECK(steps_of(reconcile(applied, owner.snapshot())) ==
           (std::vector<SessionStep>{SessionStep::Fault, SessionStep::Disconnected}));
 
-    // Finding 2: the session ends first, and only then does something fail with
-    // no session to belong to -- a scan that would not start. Replaying that
-    // fault first would let the disconnect's reconnect wipe it.
+    // The other way round: the session ends first, and only then does
+    // something fail with no session left to belong to -- a scan that would not
+    // start, or the NimBLE host resetting under a live connection. Replaying
+    // that fault first would let the disconnect's reconnect wipe it.
     SessionOwner second_owner;
     second_owner.stack_ready();
     const std::uint32_t second = establish(second_owner, 8);

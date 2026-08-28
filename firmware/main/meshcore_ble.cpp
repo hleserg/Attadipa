@@ -891,6 +891,17 @@ void mesh_task(void*)
 
 void on_reset(int reason)
 {
+    {
+        // The host reset took every connection with it, and NimBLE delivers no
+        // disconnect for one -- `reset_cb` *is* the notification. A session
+        // left `Ready` here is a link model holding a handle that names
+        // nothing. Ending it first also decides where the fault below lands:
+        // raised after the session is over, it is replayed after the disconnect
+        // and survives the reconnect that step performs, which is right,
+        // because the stack stays down until `on_sync` says otherwise.
+        SessionGuard guard;
+        owner.ended();
+    }
     stack_fault("NimBLE reset", reason);
 }
 
