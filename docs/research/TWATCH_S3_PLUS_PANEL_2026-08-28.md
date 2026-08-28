@@ -34,7 +34,7 @@ with a 2.3° rotation and a 63 mm working distance. **Those intermediates are
 not repeated as facts anywhere in this repository**, because the frames they
 came from are gone and nobody can check them. This report keeps the numbers the
 committed image reproduces — 27.72 mm from 429.5 px at 15.49 px/mm, both
-corrected for tilt in §3; the raw pair is 429.85 px at 15.53 px/mm — and the
+corrected for tilt in §4; the raw pair is 429.85 px at 15.53 px/mm — and the
 0.04 mm between the two passes is the honest size of the difference that
 different crops and different edge criteria make.
 
@@ -205,10 +205,10 @@ independently, and that agreement was already in
 [HARDWARE_MATRIX](HARDWARE_MATRIX.md) before this measurement existed.
 
 Density is **220 ppi, not 261**. Every `Metrics::px` conversion at 261 dpi
-yields about 19 % more pixels than the panel wants, so this board renders
-oversized today. `platform/src/board_profiles.cpp` and the asset pipeline still
-carry the placeholder; [#323](https://github.com/hleserg/Attadipa/issues/323)
-corrects them.
+yielded about 19 % more pixels than the panel wants, so this board rendered
+oversized until `platform/src/board_profiles.cpp` and the asset pipeline stopped
+carrying the placeholder in
+[#323](https://github.com/hleserg/Attadipa/issues/323).
 
 **Not established here:**
 

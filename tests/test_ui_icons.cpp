@@ -185,20 +185,28 @@ int main()
     // The thesis of the whole pipeline: the lookup is keyed on a **pixel
     // size**, never on a board.
     //
-    // This block used to prove that by pointing at a collision — at the
-    // placeholder 261 dpi, `icon.size.lg` on the T-Watch and `icon.size.md` on
-    // the Waveshare were both 39 px and resolved to one file. At the measured
-    // 220 dpi (D15) the two size sets are **disjoint** and that collision is
-    // gone. The claim is unchanged; the evidence for it must not rest on an
-    // accident of arithmetic, so it now goes through the pixel API instead:
-    // asking by token and asking by pixel land on the same descriptor, and
-    // neither call is told which board it is on.
+    // This used to be proved by a collision between the two shipping boards: at
+    // the placeholder 261 dpi, `icon.size.lg` on the T-Watch and `icon.size.md`
+    // on the Waveshare were both 39 px and resolved to one file. At the
+    // measured 220 dpi (D15) the two size sets are **disjoint**, so that pair
+    // is gone.
+    //
+    // The claim is unchanged, and proving it still needs two *different*
+    // (token, density) inputs landing on one pixel count. Comparing `icon()`
+    // against `icon_px()` would not do it: `icon()` resolves the token to
+    // pixels and calls `icon_px()`, so that assertion says only that a function
+    // equals itself and would hold even if the lookup were keyed on the board.
+    //
+    // 24 dp at 220 dpi and 20 dp at 264 dpi both scale to 5280/160 and so both
+    // resolve to 33 px. Different token, different density, one descriptor.
+    // 264 is deliberately not a board this project has — the lookup must not be
+    // able to tell, and a density nothing ships is the cleanest way to ask.
+    const Metrics synthetic = Metrics::for_dpi(264);
     CHECK(t_watch.px(dp_of(IconSize::Lg)) == 33);
-    CHECK(waveshare.px(dp_of(IconSize::Md)) == 39);
+    CHECK(synthetic.px(dp_of(IconSize::Md)) == 33);
     CHECK(assets::icon(assets::Icon::Mesh, IconSize::Lg, t_watch) ==
-          assets::icon_px(assets::Icon::Mesh, 33));
-    CHECK(assets::icon(assets::Icon::Mesh, IconSize::Md, waveshare) ==
-          assets::icon_px(assets::Icon::Mesh, 39));
+          assets::icon(assets::Icon::Mesh, IconSize::Md, synthetic));
+    CHECK(waveshare.px(dp_of(IconSize::Md)) == 39);
     CHECK(assets::icon(assets::Icon::Mesh, IconSize::Lg, t_watch) != nullptr);
 
     // Every icon resolves at every size the manifest generates, on whichever

@@ -247,12 +247,12 @@ a committed photograph — [TWATCH_S3_PLUS_PANEL_2026-08-28](../research/TWATCH_
 
 | Token | T-Watch | Waveshare | physical |
 |---|---|---|---|
-| `space.sm` (8) | 13 px | 16 px | 1.27 mm both |
-| `space.lg` (16) | 26 px | 31 px | 2.51 mm / 2.49 mm |
-| `touch.min` adult (44) | 72 px | 87 px | 7.01 mm / 7.02 mm |
-| `touch.min` child (56) | 91 px | 110 px | 8.86 mm / 8.86 mm |
+| `space.sm` (8) | 11 px | 16 px | 1.27 mm / 1.29 mm |
+| `space.lg` (16) | 22 px | 32 px | 2.54 mm / 2.58 mm |
+| `touch.min` adult (44) | 61 px | 87 px | 7.04 mm / 7.01 mm |
+| `touch.min` child (56) | 77 px | 110 px | 8.89 mm / 8.87 mm |
 
-Written as pixels instead, a 44 would be 4.3 mm on the Waveshare and 5.1 mm on
+Written as pixels instead, a 44 would be 3.6 mm on the Waveshare and 5.1 mm on
 the T-Watch — under the guidance on both boards, by different amounts, from one
 source line. That is the failure the `Dp` type exists to make unwritable.
 
@@ -383,9 +383,11 @@ whenever it recurred, and would teach firmware which board it is on.
 | `icon.size.lg` — 24 dp | **33 px** | **47 px** |
 | `icon.size.xl` — 32 dp | 44 px | 63 px |
 
-The four sizes in bold are the ones that exist; `sm` and `xl` are not generated,
-because nothing draws them yet and a mask costs its pixel count in flash. Asking
-for one returns nothing, which is the honest answer and not an oversight.
+The **three** sizes in bold are the ones that exist. `sm` and `xl` are not
+generated on either board, and at the measured 220 dpi the T-Watch's `md` — 28 px
+— is not generated either: nothing draws it yet and a mask costs its pixel count
+in flash. Asking for any of the five returns nothing, which is the honest answer
+and not an oversight.
 
 ### 7.2 The first three icons
 
