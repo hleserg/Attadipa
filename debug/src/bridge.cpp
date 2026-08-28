@@ -21,8 +21,9 @@ void put_u32(std::uint8_t* p, std::uint32_t v)
 
 Bridge::Bridge(core::InputQueue& queue, core::InputState& state, ScreenSource& source,
                std::uint8_t* frame_buffer, std::size_t frame_capacity,
-               TimeSink* time_sink, BridgeLimits limits)
+               TimeSink* time_sink, MeshSink* mesh_sink, BridgeLimits limits)
     : queue_(queue), state_(state), source_(source), time_sink_(time_sink),
+      mesh_sink_(mesh_sink),
       frame_buffer_(frame_buffer),
       frame_capacity_(frame_capacity), limits_(limits)
 {
@@ -175,6 +176,127 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         Envelope reply;
         reply.req_id = envelope.req_id;
         reply.op = Opcode::TimeSyncOk;
+        send(reply, nullptr, 0, emit, ctx);
+        return;
+    }
+    case Opcode::MeshConfigure: {
+        if (mesh_sink_ == nullptr) {
+            send_error(envelope.req_id, ErrorCode::Unsupported, emit, ctx);
+            return;
+        }
+        if (envelope.body_len != 4) {
+            send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
+            return;
+        }
+        const std::uint32_t passkey =
+            static_cast<std::uint32_t>(body[0]) |
+            (static_cast<std::uint32_t>(body[1]) << 8) |
+            (static_cast<std::uint32_t>(body[2]) << 16) |
+            (static_cast<std::uint32_t>(body[3]) << 24);
+        const MeshSinkResult result = mesh_sink_->configure(passkey);
+        if (result != MeshSinkResult::Accepted) {
+            send_error(envelope.req_id,
+                       result == MeshSinkResult::Rejected
+                           ? ErrorCode::BadInput
+                           : ErrorCode::OperationFailed,
+                       emit, ctx);
+            return;
+        }
+        Envelope reply;
+        reply.req_id = envelope.req_id;
+        reply.op = Opcode::MeshOk;
+        send(reply, nullptr, 0, emit, ctx);
+        return;
+    }
+    case Opcode::MeshDisconnect: {
+        if (mesh_sink_ == nullptr) {
+            send_error(envelope.req_id, ErrorCode::Unsupported, emit, ctx);
+            return;
+        }
+        if (envelope.body_len != 0) {
+            send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
+            return;
+        }
+        const MeshSinkResult result = mesh_sink_->disconnect();
+        if (result != MeshSinkResult::Accepted) {
+            send_error(envelope.req_id, ErrorCode::OperationFailed, emit, ctx);
+            return;
+        }
+        Envelope reply;
+        reply.req_id = envelope.req_id;
+        reply.op = Opcode::MeshOk;
+        send(reply, nullptr, 0, emit, ctx);
+        return;
+    }
+    case Opcode::MeshSend: {
+        constexpr std::size_t kHeader = 6 + 8;
+        if (mesh_sink_ == nullptr) {
+            send_error(envelope.req_id, ErrorCode::Unsupported, emit, ctx);
+            return;
+        }
+        if (body == nullptr || envelope.body_len <= kHeader) {
+            send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
+            return;
+        }
+        std::uint64_t raw_timestamp = 0;
+        for (std::size_t i = 0; i < 8; ++i) {
+            raw_timestamp |= static_cast<std::uint64_t>(body[6 + i]) << (8 * i);
+        }
+        const MeshSinkResult result = mesh_sink_->send(
+            body, reinterpret_cast<const char*>(body + kHeader),
+            envelope.body_len - kHeader,
+            static_cast<std::int64_t>(raw_timestamp));
+        if (result != MeshSinkResult::Accepted) {
+            send_error(envelope.req_id,
+                       result == MeshSinkResult::Rejected
+                           ? ErrorCode::BadInput
+                           : ErrorCode::OperationFailed,
+                       emit, ctx);
+            return;
+        }
+        Envelope reply;
+        reply.req_id = envelope.req_id;
+        reply.op = Opcode::MeshOk;
+        send(reply, nullptr, 0, emit, ctx);
+        return;
+    }
+    case Opcode::MeshRoomSend: {
+        constexpr std::size_t kRoomBytes = 32;
+        constexpr std::size_t kFixedBytes = kRoomBytes + 1 + 8;
+        if (mesh_sink_ == nullptr) {
+            send_error(envelope.req_id, ErrorCode::Unsupported, emit, ctx);
+            return;
+        }
+        if (body == nullptr || envelope.body_len <= kFixedBytes) {
+            send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
+            return;
+        }
+        const std::size_t password_length = body[kRoomBytes];
+        const std::size_t header = kFixedBytes + password_length;
+        if (password_length == 0 || password_length > 15 ||
+            envelope.body_len <= header) {
+            send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
+            return;
+        }
+        std::uint64_t raw_timestamp = 0;
+        for (std::size_t i = 0; i < 8; ++i) {
+            raw_timestamp |= static_cast<std::uint64_t>(body[kRoomBytes + 1 + password_length + i]) << (8 * i);
+        }
+        const MeshSinkResult result = mesh_sink_->send_room(
+            body, reinterpret_cast<const char*>(body + kRoomBytes + 1), password_length,
+            reinterpret_cast<const char*>(body + header), envelope.body_len - header,
+            static_cast<std::int64_t>(raw_timestamp));
+        if (result != MeshSinkResult::Accepted) {
+            send_error(envelope.req_id,
+                       result == MeshSinkResult::Rejected
+                           ? ErrorCode::BadInput
+                           : ErrorCode::OperationFailed,
+                       emit, ctx);
+            return;
+        }
+        Envelope reply;
+        reply.req_id = envelope.req_id;
+        reply.op = Opcode::MeshOk;
         send(reply, nullptr, 0, emit, ctx);
         return;
     }

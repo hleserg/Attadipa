@@ -174,6 +174,22 @@ public:
     virtual TimeSinkResult synchronize(const TimeSyncBody& request) = 0;
 };
 
+enum class MeshSinkResult : std::uint8_t { Accepted, Rejected, Failed };
+
+class MeshSink {
+public:
+    virtual ~MeshSink() = default;
+    virtual MeshSinkResult configure(std::uint32_t passkey) = 0;
+    virtual MeshSinkResult disconnect() = 0;
+    virtual MeshSinkResult send(const std::uint8_t peer_prefix[6],
+                                const char* text, std::size_t text_length,
+                                std::int64_t utc_seconds) = 0;
+    virtual MeshSinkResult send_room(const std::uint8_t room[32],
+                                     const char* password, std::size_t password_length,
+                                     const char* text, std::size_t text_length,
+                                     std::int64_t utc_seconds) = 0;
+};
+
 class Bridge {
 public:
     // Where responses go. A raw callback rather than std::function: this
@@ -183,7 +199,8 @@ public:
 
     Bridge(core::InputQueue& queue, core::InputState& state, ScreenSource& source,
            std::uint8_t* frame_buffer, std::size_t frame_capacity,
-           TimeSink* time_sink = nullptr, BridgeLimits limits = BridgeLimits{});
+           TimeSink* time_sink = nullptr, MeshSink* mesh_sink = nullptr,
+           BridgeLimits limits = BridgeLimits{});
 
     // Handles one de-framed message. Every request produces at least one
     // response, including a typed error -- ADR-0005 section 4: never ignored.
@@ -251,6 +268,7 @@ private:
     core::InputState& state_;
     ScreenSource&     source_;
     TimeSink*         time_sink_ = nullptr;
+    MeshSink*         mesh_sink_ = nullptr;
 
     std::uint8_t* frame_buffer_   = nullptr;
     std::size_t   frame_capacity_ = 0;

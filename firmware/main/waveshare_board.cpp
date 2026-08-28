@@ -5,10 +5,14 @@
 
 #include "pcf85063_time.h"
 
+#include <array>
 #include <cinttypes>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <limits>
+#include <string_view>
 
 #include "driver/i2c_master.h"
 #include "driver/spi_master.h"
@@ -29,6 +33,11 @@
 #include "attadipa/core/time_service.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa_fonts.h"
+
+#if CONFIG_BT_NIMBLE_ENABLED
+#include "meshcore_ble.h"
+#endif
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
 #include "attadipa/debug/bridge.h"
@@ -97,9 +106,17 @@ struct BoardState {
   lv_display_t *display = nullptr;
   attadipa::ui::ClockFace clock_face;
   attadipa::core::TimeService time_service;
+  lv_obj_t *mesh_state = nullptr;
+  lv_obj_t *mesh_node = nullptr;
+  lv_obj_t *mesh_message = nullptr;
+  lv_obj_t *mesh_signal = nullptr;
+  bool mesh_screen = false;
 };
 
 BoardState state;
+#if CONFIG_BT_NIMBLE_ENABLED
+std::atomic_bool mesh_screen_requested{false};
+#endif
 
 esp_err_t add_i2c_device(std::uint8_t address, i2c_master_dev_handle_t *out) {
   i2c_device_config_t config{};
@@ -348,6 +365,66 @@ public:
 };
 
 BoardTimeSink time_sink;
+
+#if CONFIG_BT_NIMBLE_ENABLED
+class BoardMeshSink final : public attadipa::debug::MeshSink {
+public:
+  attadipa::debug::MeshSinkResult configure(std::uint32_t passkey) override {
+    if (passkey > 999999) {
+      return attadipa::debug::MeshSinkResult::Rejected;
+    }
+    if (!configure_meshcore_ble(passkey)) {
+      return attadipa::debug::MeshSinkResult::Failed;
+    }
+    mesh_screen_requested.store(true);
+    return attadipa::debug::MeshSinkResult::Accepted;
+  }
+
+  attadipa::debug::MeshSinkResult disconnect() override {
+    return stop_meshcore_ble() ? attadipa::debug::MeshSinkResult::Accepted
+                               : attadipa::debug::MeshSinkResult::Failed;
+  }
+
+  attadipa::debug::MeshSinkResult
+  send(const std::uint8_t peer_prefix[6], const char *text,
+       std::size_t text_length, std::int64_t utc_seconds) override {
+    if (text == nullptr || text_length == 0 || text_length > 160 ||
+        std::memchr(text, '\0', text_length) != nullptr || utc_seconds < 0 ||
+        utc_seconds > std::numeric_limits<std::uint32_t>::max()) {
+      return attadipa::debug::MeshSinkResult::Rejected;
+    }
+    std::array<std::uint8_t, 6> prefix{};
+    std::memcpy(prefix.data(), peer_prefix, prefix.size());
+    return meshcore_ble_send(prefix, std::string_view(text, text_length),
+                             attadipa::core::WallTime{utc_seconds})
+               ? attadipa::debug::MeshSinkResult::Accepted
+               : attadipa::debug::MeshSinkResult::Failed;
+  }
+
+  attadipa::debug::MeshSinkResult
+  send_room(const std::uint8_t room[32], const char *password,
+            std::size_t password_length, const char *text,
+            std::size_t text_length, std::int64_t utc_seconds) override {
+    if (room == nullptr || password == nullptr || text == nullptr ||
+        password_length == 0 || password_length > 15 || text_length == 0 ||
+        text_length > attadipa::core::kMeshTextBytes ||
+        std::memchr(password, '\0', password_length) != nullptr ||
+        std::memchr(text, '\0', text_length) != nullptr || utc_seconds < 0 ||
+        utc_seconds > std::numeric_limits<std::uint32_t>::max()) {
+      return attadipa::debug::MeshSinkResult::Rejected;
+    }
+    std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes> key{};
+    std::memcpy(key.data(), room, key.size());
+    return meshcore_ble_send_room(key, std::string_view(password, password_length),
+                                  std::string_view(text, text_length),
+                                  attadipa::core::WallTime{utc_seconds})
+               ? attadipa::debug::MeshSinkResult::Accepted
+               : attadipa::debug::MeshSinkResult::Failed;
+  }
+};
+
+BoardMeshSink mesh_sink;
+#endif
 #endif
 
 void round_flush_area(lv_area_t *area) {
@@ -362,6 +439,99 @@ void refresh_clock(lv_timer_t *timer) {
     lv_timer_set_period(timer,
                         attadipa::apps::clock_manifest().tick_period.value);
   }
+}
+
+#if CONFIG_BT_NIMBLE_ENABLED
+void build_mesh_screen() {
+  lv_obj_t *screen = lv_screen_active();
+  state.clock_face.clear();
+  lv_obj_clean(screen);
+  lv_obj_set_style_bg_color(screen, lv_color_hex(0x05080B), 0);
+  lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+  lv_obj_set_style_text_font(screen, &attadipa_nunito_sans_20, 0);
+  lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *title = lv_label_create(screen);
+  lv_label_set_text(title, "MESH");
+  lv_obj_set_style_text_font(title, &attadipa_nunito_sans_28, 0);
+  lv_obj_set_style_text_color(title, lv_color_hex(0x8CE8C2), 0);
+  lv_obj_align(title, LV_ALIGN_TOP_LEFT, 28, 26);
+
+  state.mesh_state = lv_label_create(screen);
+  lv_obj_set_style_text_font(state.mesh_state, &attadipa_nunito_sans_28, 0);
+  lv_obj_set_style_text_color(state.mesh_state, lv_color_hex(0xF4F7F5), 0);
+  lv_obj_align(state.mesh_state, LV_ALIGN_TOP_LEFT, 28, 70);
+
+  state.mesh_node = lv_label_create(screen);
+  lv_obj_set_width(state.mesh_node, kWidth - 56);
+  lv_label_set_long_mode(state.mesh_node, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_color(state.mesh_node, lv_color_hex(0xBBC6C1), 0);
+  lv_obj_align(state.mesh_node, LV_ALIGN_TOP_LEFT, 28, 135);
+
+  state.mesh_message = lv_label_create(screen);
+  lv_obj_set_width(state.mesh_message, kWidth - 56);
+  lv_label_set_long_mode(state.mesh_message, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_color(state.mesh_message, lv_color_hex(0xF4F7F5), 0);
+  lv_obj_align(state.mesh_message, LV_ALIGN_TOP_LEFT, 28, 225);
+
+  state.mesh_signal = lv_label_create(screen);
+  lv_obj_set_style_text_color(state.mesh_signal, lv_color_hex(0x8CE8C2), 0);
+  lv_obj_align(state.mesh_signal, LV_ALIGN_BOTTOM_LEFT, 28, -28);
+  state.mesh_screen = true;
+}
+
+void refresh_mesh() {
+  if (!state.mesh_screen) {
+    build_mesh_screen();
+  }
+  const attadipa::core::MeshStatus status = meshcore_ble_status();
+  lv_label_set_text(state.mesh_state,
+                    status.availability == attadipa::core::Availability::Unprovisioned
+                        ? "STOPPED"
+                        : status.transport == attadipa::core::TransportPhase::Ready
+                              ? "CONNECTED"
+                              : attadipa::core::to_string(status.transport));
+  lv_label_set_text_fmt(state.mesh_node, "Node:\n%s",
+                        status.node_name[0] != '\0' ? status.node_name.data()
+                                                     : "—");
+  // Sender, text and delivery state are the three things a screenshot has to
+  // carry to be evidence of a message going out or coming in, so they share one
+  // label rather than one each.
+  lv_label_set_text_fmt(state.mesh_message, "Last message:\n%s%s%s\nSent: %s",
+                        status.last_sender[0] != '\0' ? status.last_sender.data()
+                                                      : "",
+                        status.last_sender[0] != '\0' ? ": " : "",
+                        status.last_message[0] != '\0'
+                            ? status.last_message.data()
+                            : "—",
+                        attadipa::core::to_string(status.delivery));
+  if (status.has_snr) {
+    const int magnitude = status.snr_quarter_db < 0
+                              ? -static_cast<int>(status.snr_quarter_db)
+                              : static_cast<int>(status.snr_quarter_db);
+    lv_label_set_text_fmt(state.mesh_signal, "SNR: %s%d.%02d dB   Peers: %u",
+                          status.snr_quarter_db < 0 ? "-" : "",
+                          magnitude / 4, (magnitude % 4) * 25,
+                          static_cast<unsigned>(status.peers_reported));
+  } else {
+    lv_label_set_text_fmt(state.mesh_signal, "SNR: —   Peers: %u   MTU: %u",
+                          static_cast<unsigned>(status.peers_reported),
+                          static_cast<unsigned>(status.mtu));
+  }
+}
+#endif
+
+void refresh_ui(lv_timer_t *timer) {
+#if CONFIG_BT_NIMBLE_ENABLED
+  if (mesh_screen_requested.load()) {
+    refresh_mesh();
+    if (timer != nullptr) {
+      lv_timer_set_period(timer, 500);
+    }
+    return;
+  }
+#endif
+  refresh_clock(timer);
 }
 
 esp_err_t initialize_display() {
@@ -485,7 +655,7 @@ void create_ui() {
                           attadipa::ui::Metrics::for_dpi(
                               profile != nullptr ? profile->display.dpi() : 0)},
                          attadipa::apps::format_clock(clock, false));
-  lv_timer_create(refresh_clock,
+  lv_timer_create(refresh_ui,
                   attadipa::apps::clock_manifest().tick_period.value, nullptr);
 }
 
@@ -514,8 +684,14 @@ esp_err_t start_waveshare_ui() {
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   const esp_err_t watch_control_result =
       start_watch_control(state.touch, state.pmu, state.panel,
-                          kBrightnessPercent, [] { refresh_clock(nullptr); },
-                          &time_sink);
+                          kBrightnessPercent, [] { refresh_ui(nullptr); },
+                          &time_sink,
+#if CONFIG_BT_NIMBLE_ENABLED
+                          &mesh_sink
+#else
+                          nullptr
+#endif
+      );
 #endif
   lvgl_port_unlock();
 #if CONFIG_ATTADIPA_WATCH_CONTROL

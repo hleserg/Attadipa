@@ -1,4 +1,7 @@
 set(ATTADIPA_MAIN_SOURCES "attadipa_main.cpp" "waveshare_board.cpp")
+if(CONFIG_BT_NIMBLE_ENABLED)
+    list(APPEND ATTADIPA_MAIN_SOURCES "meshcore_ble.cpp")
+endif()
 if(CONFIG_ATTADIPA_WATCH_CONTROL)
     list(APPEND ATTADIPA_MAIN_SOURCES "watch_control.cpp")
 endif()
@@ -52,6 +55,9 @@ if(CONFIG_ATTADIPA_WATCH_CONTROL)
 endif()
 target_link_libraries(${COMPONENT_LIB} PRIVATE ${ATTADIPA_DIRECT_LIBRARIES})
 target_link_libraries(${COMPONENT_LIB} PRIVATE idf::nvs_flash)
+if(CONFIG_BT_NIMBLE_ENABLED)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE idf::bt)
+endif()
 
 # Transitive dependencies can make a removed direct link look healthy (link,
 # for example, also brings core). Keep the composition-root contract explicit;

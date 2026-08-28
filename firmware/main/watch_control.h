@@ -9,6 +9,7 @@
 
 namespace attadipa::debug {
 class TimeSink;
+class MeshSink;
 }
 
 // Starts the physical/remote input path and the existing watch-control
@@ -18,4 +19,5 @@ esp_err_t start_watch_control(esp_lcd_touch_handle_t touch,
                               esp_lcd_panel_handle_t panel,
                               std::uint8_t awake_brightness,
                               void (*refresh_ui)(),
-                              attadipa::debug::TimeSink *time_sink);
+                              attadipa::debug::TimeSink *time_sink,
+                              attadipa::debug::MeshSink *mesh_sink);

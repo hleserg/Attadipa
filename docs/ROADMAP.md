@@ -12,6 +12,13 @@ Written 2026-08-24, after an independent cold read of the repository.
 > sleep/wake lifecycle. The diagnosis below records the earlier state; GitHub
 > Issues and pull requests hold live status and select the next device work.
 
+> **Next physical seam after T-168:** repeat the MeshCore Companion bench only
+> when the current node is observably advertising the published Companion
+> service. Prove one corrected Room Server delivery and a causally corresponding
+> reply rendered on the watch. The existing report records these as
+> `NOT OBSERVED`/`UNKNOWN`; it is not permission to change node firmware, add a
+> local radio provider, or grow a messenger UI.
+
 ## Where the project actually is
 
 The engineering base is genuinely strong: a capability model with two layers and

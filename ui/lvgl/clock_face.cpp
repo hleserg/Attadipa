@@ -36,15 +36,7 @@ void track_transient(void *, int32_t) {}
 
 void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
                       const apps::ClockText &text) {
-  built_ = false;
-  if (motion_timer_ != nullptr) {
-    lv_timer_delete(motion_timer_);
-    motion_timer_ = nullptr;
-  }
-  lv_anim_delete(this, track_transient);
-  if (screen_ == screen) {
-    lv_obj_remove_event_cb_with_user_data(screen, touch_event, this);
-  }
+  clear();
   screen_ = screen;
   config_ = config;
   touch_glow_ticks_ = 0;
@@ -215,6 +207,19 @@ void ClockFace::build(lv_obj_t *screen, const ClockFaceConfig &config,
   if (config.theme != Theme::Night) {
     lv_timer_pause(motion_timer_);
   }
+}
+
+void ClockFace::clear() {
+  built_ = false;
+  if (motion_timer_ != nullptr) {
+    lv_timer_delete(motion_timer_);
+    motion_timer_ = nullptr;
+  }
+  lv_anim_delete(this, track_transient);
+  if (screen_ != nullptr) {
+    lv_obj_remove_event_cb_with_user_data(screen_, touch_event, this);
+  }
+  screen_ = nullptr;
 }
 
 void ClockFace::update(const apps::ClockText &text) {

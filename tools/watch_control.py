@@ -198,6 +198,47 @@ def cmd_sync_time(watch: Watch, args) -> int:
     return 0
 
 
+def cmd_mesh_configure(watch: Watch, args) -> int:
+    watch.mesh_configure(args.passkey)
+    emit(args, {"configured": True}, "MeshCore BLE configured; engineering screen enabled")
+    return 0
+
+
+def cmd_mesh_disconnect(watch: Watch, args) -> int:
+    watch.mesh_disconnect()
+    emit(args, {"disconnected": True}, "MeshCore BLE stopped")
+    return 0
+
+
+def cmd_mesh_send(watch: Watch, args) -> int:
+    try:
+        prefix = bytes.fromhex(args.peer)
+    except ValueError as exc:
+        raise WatchError("peer must be a 12-digit hexadecimal prefix") from exc
+    if len(prefix) != 6:
+        raise WatchError("peer must be a 12-digit hexadecimal prefix")
+    utc_seconds = args.utc_seconds if args.utc_seconds is not None else int(time.time())
+    watch.mesh_send(prefix, args.text, utc_seconds)
+    emit(args, {"peer": prefix.hex(), "text": args.text,
+                "utc_seconds": utc_seconds},
+         f"MeshCore message queued for {prefix.hex()}")
+    return 0
+
+
+def cmd_mesh_room_send(watch: Watch, args) -> int:
+    try:
+        room = bytes.fromhex(args.room)
+    except ValueError as exc:
+        raise WatchError("room must be a 64-digit hexadecimal public key") from exc
+    if len(room) != 32:
+        raise WatchError("room must be a 64-digit hexadecimal public key")
+    utc_seconds = args.utc_seconds if args.utc_seconds is not None else int(time.time())
+    watch.mesh_room_send(room, args.password, args.text, utc_seconds)
+    emit(args, {"room": room.hex(), "text": args.text, "utc_seconds": utc_seconds},
+         f"MeshCore Room Server message queued for {room.hex()}")
+    return 0
+
+
 def cmd_button(watch: Watch, args) -> int:
     if args.event == "press":
         watch.button_press(args.name)
@@ -498,6 +539,36 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--allow-large", action="store_true",
                       help="allow a correction larger than five minutes")
     sync.set_defaults(func=cmd_sync_time)
+
+    mesh_configure = subparsers.add_parser(
+        "mesh-configure", help="configure the watch's MeshCore BLE companion link")
+    mesh_configure.add_argument(
+        "--passkey", type=int, required=True,
+        help="the node's six-digit BLE passkey; 0 runs an unpaired diagnostic probe")
+    mesh_configure.set_defaults(func=cmd_mesh_configure)
+
+    mesh_disconnect = subparsers.add_parser(
+        "mesh-disconnect", help="stop the watch's MeshCore BLE scan and link")
+    mesh_disconnect.set_defaults(func=cmd_mesh_disconnect)
+
+    mesh_send = subparsers.add_parser(
+        "mesh-send", help="send one private MeshCore message")
+    mesh_send.add_argument("--peer", required=True,
+                           help="the target contact's 12-digit public-key prefix")
+    mesh_send.add_argument("--text", required=True)
+    mesh_send.add_argument("--utc-seconds", type=int,
+                           help="Unix UTC seconds (default: this host's current time)")
+    mesh_send.set_defaults(func=cmd_mesh_send)
+
+    mesh_room_send = subparsers.add_parser(
+        "mesh-room-send", help="log in to one MeshCore Room Server and send one message")
+    mesh_room_send.add_argument("--room", required=True,
+                                help="the Room Server's 64-digit public key")
+    mesh_room_send.add_argument("--password", required=True)
+    mesh_room_send.add_argument("--text", required=True)
+    mesh_room_send.add_argument("--utc-seconds", type=int,
+                                help="Unix UTC seconds (default: this host's current time)")
+    mesh_room_send.set_defaults(func=cmd_mesh_room_send)
 
     shot = subparsers.add_parser("screenshot", help="one image, or a series")
     shot.add_argument("--output", "-o", help="path for the PNG")
