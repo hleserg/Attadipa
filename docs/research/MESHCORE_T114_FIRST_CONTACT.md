@@ -314,6 +314,13 @@ inside the node's own estimate.
 The watch's mesh screen reads `Sent: confirmed` —
 [`t169-ui-2.png`](meshcore-t114-first-contact/t169-ui-2.png).
 
+**Independently confirmed by a human reading the room.** The operator's MeshCore
+client shows three `T-169 acceptance` messages in Beta Room, all from
+`<044e2de8…>`, at the times these runs sent them —
+[`beta-room-received.jpg`](meshcore-t114-first-contact/beta-room-received.jpg).
+The node's ack path establishes that some destination acknowledged the packet;
+this establishes that the room server stored it and a person read it.
+
 ### 6b. The same path on the T114, `Accepted` · `MEASURED`; `Confirmed` `NOT OBSERVED`
 
 Node `5c62d9bc…`, name `Beta test companion` — the Heltec T114 this report is
@@ -327,13 +334,25 @@ I (28517) TX op=0x02 len=29     CMD_SEND_TXT_MSG
 I (28667) RX op=0x06 len=10     RESP_CODE_SENT  → MeshDelivery::Accepted
 ```
 
+Reproduced on run `t114s1` after the second node was switched off, so it is not
+an artefact of node contention: `LOGIN_SUCCESS` at 31107, `CMD_SEND_TXT_MSG` at
+31117, `RESP_CODE_SENT` at 31227. The watch reads `Sent: accepted`,
+`Node: Beta test companion`, 5 peers, MTU 247 —
+[`t169-t114-sent.png`](meshcore-t114-first-contact/t169-t114-sent.png).
+
 Everything up to `Accepted` is identical and `MEASURED`. No
 `PUSH_CODE_SEND_CONFIRMED` arrived in the following **120 s**, against a node
-estimate of ~2 s — `NOT OBSERVED`, not "failed": the room server acked the
-login, so the path exists in one direction at least. Whether the T114's radio
-placement, its route to the room server, or something else accounts for the
-missing ack is `UNKNOWN` from this bench and is not attributed to either
-firmware.
+estimate of ~2 s.
+
+**And the message is absent from the room.** The operator's screenshot above
+carries three messages from node B and none from `<5c62d9bc…>`. So this is not
+an ack that went missing on the way back: nothing the T114 sent reached the Beta
+Room. `MEASURED` on the receiving end, by a human, which is a stronger negative
+than the watch could produce on its own. The room server did ack the *login*
+from the T114, so the two reached each other at least once in at least one
+direction. Whether the T114's radio placement, its route to the room server, or
+something else accounts for the missing message is `UNKNOWN` from this bench and
+is not attributed to either firmware.
 
 An earlier run (`send3`, before the operator added the room to the T114's
 contact list) is the control for the cause: the node answered `CMD_SEND_LOGIN`
@@ -373,11 +392,45 @@ fails without the change: verified by reverting the source alone and re-running.
 Three distinct things live under this heading. They are separated because they
 have different labels, and only two of them were run.
 
-### 7a. Power-cycle recovery · `NOT EXECUTED — HARDWARE REQUIRED`
+### 7a. Recovery from losing the peer · `MEASURED`; power-cycle `NOT EXECUTED`
 
-Powering the T114 down mid-session and back up needs physical access to the
-node. The operator declined this step for this session. It is not claimed, not
-inferred from 7b or 7c, and remains an open acceptance item for #296.
+Two different things live under "recovery" and only one of them was executed.
+
+**Losing the peer mid-session and coming back · `MEASURED`, three times in one
+boot.** Run `recovery`, 2026-08-28, on the T114. Every drop reported reason
+`520` — a supervision timeout, i.e. the node stopped answering — and every one
+was followed by a complete new session, not merely a reconnect:
+
+| link lost | advert matched | connected | GATT ready, MTU 247 | `CMD_APP_START` … `END_OF_CONTACTS` |
+| --- | --- | --- | --- | --- |
+| 175402 | 177392 | 177862 | 183802 | 183802 … 185582 |
+| 227332 | 229322 | 230262 | 236692 | 236692 … 238202 |
+| 303862 | 305762 | 306262 | 311972 | 311972 … 313712 |
+
+Four full Companion sessions in one boot, three of them recovered without
+intervention, 8–9 s from loss to a synced session. The scan restarts in the same
+millisecond as the disconnect.
+[`t169-rec-post.png`](meshcore-t114-first-contact/t169-rec-post.png) is the watch
+after the second recovery: `CONNECTED`, `Beta test companion`, 6 peers, MTU 247.
+
+This is the behaviour 7b and 7c were fixed to produce, now observed against a
+peer that genuinely went away rather than a simulated fault.
+
+**Power-cycle recovery · `NOT EXECUTED — HARDWARE REQUIRED`.** Cutting power to
+the T114 mid-session is a different stimulus and was not performed. The node is
+on battery inside its case on a short charging lead; the operator was unwilling
+to open it, and confirmed afterwards that no reset was pressed during the
+`recovery` run — so none of the three drops above may be attributed to an
+operator action. It is not claimed, not inferred from the drops above, and
+remains an open acceptance item for
+[#296](https://github.com/hleserg/Attadipa/issues/296).
+
+**Why the link was fragile that evening.** Three of five connection attempts to
+the T114 collapsed with `520` before discovery finished, a rate not seen earlier
+in the session. `OPERATOR REPORTED`: the node had been moved further away and
+lower down, limited by the length of its charging lead. That is a plausible
+cause and is not measured here — no RSSI was recorded on the watch side and
+`SNR` reads `—` on every screenshot.
 
 ### 7b. A contact-list burst killed mesh for the whole boot · `MEASURED`, fixed
 
