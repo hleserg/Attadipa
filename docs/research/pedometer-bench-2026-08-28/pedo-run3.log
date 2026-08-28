@@ -1,0 +1,951 @@
+I (833) boot: ESP-IDF v5.5.5-dirty 2nd stage bootloader
+I (833) boot: compile time Aug 28 2026 12:53:17
+I (834) boot: Multicore bootloader
+I (834) boot: Enabling RNG early entropy source...
+I (835) cpu_start: Multicore app
+I (843) cpu_start: Pro cpu start user code
+I (843) cpu_start: cpu freq: 160000000 Hz
+I (844) app_init: Application information:
+I (844) app_init: Project name:     pedo
+I (845) app_init: App version:      1
+I (845) app_init: Compile time:     Aug 28 2026 12:53:17
+I (845) app_init: ELF file SHA256:  000000000...
+I (846) app_init: ESP-IDF:          v5.5.5-dirty
+I (846) efuse_init: Min chip rev:     v0.0
+I (847) efuse_init: Max chip rev:     v0.99 
+I (847) efuse_init: Chip rev:         v0.2
+I (847) heap_init: Initializing. RAM available for dynamic allocation:
+I (848) heap_init: At 3FCABCD0 len 0003DA40 (246 KiB): RAM
+I (848) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (849) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (849) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (850) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (851) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (852) main_task: Started on CPU0
+I (852) main_task: Calling app_main()
+
+######## ATTADIPA PEDOMETER PROBE ########
+Writes CTRL2/CTRL7/CTRL8 on the IMU at 0x6B. Nothing else, on any
+device. No PMU write, no rail change, no display.
+
+WHO_AM_I  = 0x05   (0x05 in both candidate datasheets)
+REVISION  = 0x7C   (0x7C = QMI8658A 13-52-25 Rev A; 0x79 = QMI8658C Rev 0.6)
+
+--- before ---   CTRL2=0x24 CTRL7=0x03 CTRL8=0x00
+writing CTRL2 = 0x26  (+/-8 g, 125 Hz accel-only)  -> ACK
+writing CTRL7 = 0x01  (aEN)                        -> ACK
+writing CTRL8 = 0x90  (Pedo_EN + STATUSINT handshake) -> ACK
+--- after  ---   CTRL2=0x26 CTRL7=0x01 CTRL8=0x90
+
+CTRL8 readback: accepted -- the register is writable, which the C Rev 0.6
+  document does not describe (it calls CTRL8 Reserved: Not Used)
+
+Accelerometer and step count, once a second. +/-8 g full scale means
+4096 LSB/g, so a board lying still should show ~4096 on one axis.
+Pick the watch up and walk with it to move the step counter.
+
+t=  0s  ax=  5492 ay=  -109 az= -4132  (1.34 -0.03 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  1s  ax=   539 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  2s  ax=   538 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=  3s  ax=   538 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  4s  ax=   538 ay=   161 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  5s  ax=   539 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=  6s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  7s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  8s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  9s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 10s  ax=   538 ay=   160 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 11s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 12s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 13s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 14s  ax=   538 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 15s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 16s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 17s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 18s  ax=   538 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 19s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 20s  ax=   537 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 21s  ax=   537 ay=   160 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 22s  ax=   539 ay=   160 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 23s  ax=   539 ay=   155 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 24s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 25s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 26s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 27s  ax=   538 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 28s  ax=   537 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 29s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 30s  ax=   538 ay=   160 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 31s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 32s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 33s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 34s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 35s  ax=   538 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 36s  ax=   538 ay=   160 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 37s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 38s  ax=   539 ay=   160 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 39s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 40s  ax=   538 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 41s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 42s  ax=   539 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 43s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 44s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 45s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 46s  ax=   538 ay=   159 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 47s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 48s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 49s  ax=   537 ay=   160 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 50s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 51s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 52s  ax=   539 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 53s  ax=   538 ay=   160 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 54s  ax=   538 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 55s  ax=   537 ay=   159 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 56s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 57s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 58s  ax=   538 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 59s  ax=   537 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 60s  ax=   539 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 61s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 62s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 63s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 64s  ax=   537 ay=   160 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 65s  ax=   538 ay=   159 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 66s  ax=   537 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 67s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 68s  ax=   539 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 69s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 70s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 71s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 72s  ax=   540 ay=   160 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 73s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 74s  ax=   539 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 75s  ax=   539 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 76s  ax=   538 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 77s  ax=   538 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 78s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 79s  ax=   536 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 80s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 81s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 82s  ax=   536 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 83s  ax=   537 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 84s  ax=   537 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 85s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 86s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 87s  ax=   539 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 88s  ax=   537 ay=   160 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 89s  ax=   538 ay=   160 az= -4150  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 90s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 91s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 92s  ax=   537 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 93s  ax=   538 ay=   160 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 94s  ax=   539 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 95s  ax=   537 ay=   160 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 96s  ax=   538 ay=   157 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 97s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t= 98s  ax=   537 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t= 99s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=100s  ax=   538 ay=   160 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=101s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=102s  ax=   538 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=103s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=104s  ax=   539 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=105s  ax=   539 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=106s  ax=   539 ay=   160 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=107s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=108s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=109s  ax=   539 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=110s  ax=   539 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=111s  ax=   538 ay=   160 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=112s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=113s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=114s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=115s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=116s  ax=   540 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=117s  ax=   539 ay=   159 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=118s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=119s  ax=   537 ay=   160 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=120s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=121s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=122s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=123s  ax=   537 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=124s  ax=   537 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=125s  ax=   537 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=126s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=127s  ax=   537 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=128s  ax=   538 ay=   155 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=129s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=130s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=131s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=132s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=133s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=134s  ax=   538 ay=   160 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=135s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=136s  ax=   537 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=137s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=138s  ax=   537 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=139s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=140s  ax=   537 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=141s  ax=   539 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=142s  ax=   537 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=143s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=144s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=145s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=146s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=147s  ax=   539 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=148s  ax=   538 ay=   158 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=149s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=150s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=151s  ax=   539 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=152s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=153s  ax=   538 ay=   160 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=154s  ax=   536 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=155s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=156s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=157s  ax=   537 ay=   159 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=158s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=159s  ax=   537 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=160s  ax=   539 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=161s  ax=   539 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=162s  ax=   536 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=163s  ax=   537 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=164s  ax=   538 ay=   160 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=165s  ax=   539 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=166s  ax=   539 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=167s  ax=   539 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=168s  ax=   537 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=169s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=170s  ax=   538 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=171s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=172s  ax=   539 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=173s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=174s  ax=   538 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=175s  ax=   536 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=176s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=177s  ax=   536 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=178s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=179s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=180s  ax=   539 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=181s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=182s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=183s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=184s  ax=   537 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=185s  ax=   538 ay=   159 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=186s  ax=   538 ay=   158 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=187s  ax=   538 ay=   161 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=188s  ax=   537 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=189s  ax=   539 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=190s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=191s  ax=   538 ay=   160 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=192s  ax=   538 ay=   159 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=193s  ax=   537 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=194s  ax=   537 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=195s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=196s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=197s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=198s  ax=   539 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=199s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=200s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=201s  ax=   539 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=202s  ax=   539 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=203s  ax=   539 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=204s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=205s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=206s  ax=   537 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=207s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=208s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=209s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=210s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=211s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=212s  ax=   538 ay=   156 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=213s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=214s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=215s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=216s  ax=   538 ay=   158 az= -4161  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=217s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=218s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=219s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=220s  ax=   539 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=221s  ax=   538 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=222s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=223s  ax=   537 ay=   159 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=224s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=225s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=226s  ax=   538 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=227s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=228s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=229s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=230s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=231s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=232s  ax=   537 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=233s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=234s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=235s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=236s  ax=   539 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=237s  ax=   536 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=238s  ax=   538 ay=   158 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=239s  ax=   537 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=240s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=241s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=242s  ax=   537 ay=   157 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=243s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=244s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=245s  ax=   537 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=246s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=247s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=248s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=249s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=250s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=251s  ax=   539 ay=   160 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=252s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=253s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=254s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=255s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=256s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=257s  ax=   537 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=258s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=259s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=260s  ax=   537 ay=   156 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=261s  ax=   534 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=262s  ax=   536 ay=   157 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=263s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=264s  ax=   536 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=265s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=266s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=267s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=268s  ax=   537 ay=   158 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=269s  ax=   538 ay=   155 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=270s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=271s  ax=   537 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=272s  ax=   539 ay=   158 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=273s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=274s  ax=   537 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=275s  ax=   539 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=276s  ax=   536 ay=   160 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=277s  ax=   536 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=278s  ax=   537 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=279s  ax=   538 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=280s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=281s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=282s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=283s  ax=   537 ay=   160 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=284s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=285s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=286s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=287s  ax=   538 ay=   157 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=288s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=289s  ax=   538 ay=   160 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=290s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=291s  ax=   537 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=292s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=293s  ax=   537 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=294s  ax=   537 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=295s  ax=   537 ay=   155 az= -4162  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=296s  ax=   537 ay=   155 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=297s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=298s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=299s  ax=   537 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=300s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=301s  ax=   539 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=302s  ax=   537 ay=   159 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=303s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=304s  ax=   536 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=305s  ax=   537 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=306s  ax=   537 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=307s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=308s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=309s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=310s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=311s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=312s  ax=   537 ay=   156 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=313s  ax=   537 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=314s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=315s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=316s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=317s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=318s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=319s  ax=   536 ay=   161 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=320s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=321s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=322s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=323s  ax=   537 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=324s  ax=   537 ay=   154 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=325s  ax=   536 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=326s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=327s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=328s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=329s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=330s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=331s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=332s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=333s  ax=   537 ay=   157 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=334s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=335s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=336s  ax=   536 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=337s  ax=   537 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=338s  ax=   538 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=339s  ax=   537 ay=   157 az= -4161  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=340s  ax=   537 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=341s  ax=   535 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=342s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=343s  ax=   535 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=344s  ax=   536 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=345s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=346s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=347s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=348s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=349s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=350s  ax=   539 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=351s  ax=   537 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=352s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=353s  ax=   538 ay=   159 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=354s  ax=   536 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=355s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=356s  ax=   538 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=357s  ax=   536 ay=   160 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=358s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=359s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=360s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=361s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=362s  ax=   540 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=363s  ax=   539 ay=   157 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=364s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=365s  ax=   536 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=366s  ax=   538 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=367s  ax=   536 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=368s  ax=   536 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=369s  ax=   536 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=370s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=371s  ax=   538 ay=   160 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=372s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=373s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=374s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=375s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=376s  ax=   539 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=377s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=378s  ax=   536 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=379s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=380s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=381s  ax=   539 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=382s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=383s  ax=   538 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=384s  ax=   539 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=385s  ax=   538 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=386s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=387s  ax=   537 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=388s  ax=   539 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=389s  ax=   539 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=390s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=391s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=392s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=393s  ax=   539 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=394s  ax=   537 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=395s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=396s  ax=   539 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=397s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=398s  ax=   539 ay=   159 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=399s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=400s  ax=   539 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=401s  ax=   537 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=402s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=403s  ax=   538 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=404s  ax=   539 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=405s  ax=   539 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=406s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=407s  ax=   538 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=408s  ax=   538 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=409s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=410s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=411s  ax=   540 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=412s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=413s  ax=   539 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=414s  ax=   538 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=415s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=416s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=417s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=418s  ax=   538 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=419s  ax=   539 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=420s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=421s  ax=   540 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=422s  ax=   538 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=423s  ax=   538 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=424s  ax=   537 ay=   156 az= -4161  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=425s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=426s  ax=   538 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=427s  ax=   537 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=428s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=429s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=430s  ax=   539 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=431s  ax=   537 ay=   160 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=432s  ax=   539 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=433s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=434s  ax=   537 ay=   160 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=435s  ax=   539 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=436s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=437s  ax=   539 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=438s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=439s  ax=   539 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=440s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=441s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=442s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=443s  ax=   537 ay=   159 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=444s  ax=   539 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=445s  ax=   538 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=446s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=447s  ax=   537 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=448s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=449s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=450s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=451s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=452s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=453s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=454s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=455s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=456s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=457s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=458s  ax=   538 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=459s  ax=   539 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=460s  ax=   538 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=461s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=462s  ax=   537 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=463s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=464s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=465s  ax=   539 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=466s  ax=   538 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=467s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=468s  ax=   537 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=469s  ax=   538 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=470s  ax=   537 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=471s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=472s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=473s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=474s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=475s  ax=   538 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=476s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=477s  ax=   536 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=478s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=479s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=480s  ax=   538 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=481s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=482s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=483s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=484s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=485s  ax=   536 ay=   160 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=486s  ax=   538 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=487s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=488s  ax=   537 ay=   155 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=489s  ax=   539 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=490s  ax=   539 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=491s  ax=   536 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=492s  ax=   538 ay=   158 az= -4161  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=493s  ax=   537 ay=   156 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=494s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=495s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=496s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=497s  ax=   538 ay=   156 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=498s  ax=   539 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=499s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=500s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=501s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=502s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=503s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=504s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=505s  ax=   537 ay=   154 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=506s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=507s  ax=   538 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=508s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=509s  ax=   536 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=510s  ax=   538 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=511s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=512s  ax=   536 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=513s  ax=   538 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=514s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=515s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=516s  ax=   537 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=517s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=518s  ax=   538 ay=   158 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=519s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=520s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=521s  ax=   536 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=522s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=523s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=524s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=525s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=526s  ax=   537 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=527s  ax=   538 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=528s  ax=   539 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=529s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=530s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=531s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=532s  ax=   538 ay=   158 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=533s  ax=   537 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=534s  ax=   538 ay=   155 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=535s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=536s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=537s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=538s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=539s  ax=   536 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=540s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=541s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=542s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=543s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=544s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=545s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=546s  ax=   537 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=547s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=548s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=549s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=550s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=551s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=552s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=553s  ax=   537 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=554s  ax=   536 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=555s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=556s  ax=   537 ay=   156 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=557s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=558s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=559s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=560s  ax=   536 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=561s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=562s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=563s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=564s  ax=   538 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=565s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=566s  ax=   536 ay=   159 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=567s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=568s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=569s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=570s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=571s  ax=   537 ay=   155 az= -4161  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=572s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=573s  ax=   536 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=574s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=575s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=576s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=577s  ax=   537 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=578s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=579s  ax=   536 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=580s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=581s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=582s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=583s  ax=   538 ay=   159 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=584s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=585s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=586s  ax=   537 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=587s  ax=   536 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=588s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=589s  ax=   536 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=590s  ax=   538 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=591s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=592s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=593s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=594s  ax=   536 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=595s  ax=   537 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=596s  ax=   537 ay=   160 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=597s  ax=   537 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=598s  ax=   535 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=599s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=600s  ax=   538 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=601s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=602s  ax=   538 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=603s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=604s  ax=   537 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=605s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=606s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=607s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=608s  ax=   536 ay=   155 az= -4161  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=609s  ax=   536 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=610s  ax=   538 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=611s  ax=   536 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=612s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=613s  ax=   536 ay=   158 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=614s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=615s  ax=   535 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=616s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=617s  ax=   536 ay=   160 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=618s  ax=   534 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=619s  ax=   535 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=620s  ax=   536 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=621s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=622s  ax=   537 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=623s  ax=   535 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=624s  ax=   535 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=625s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=626s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=627s  ax=   534 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=628s  ax=   536 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=629s  ax=   535 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=630s  ax=   535 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=631s  ax=   535 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=632s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=633s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=634s  ax=   535 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=635s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=636s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=637s  ax=   536 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=638s  ax=   537 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=639s  ax=   535 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=640s  ax=   535 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=641s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=642s  ax=   535 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=643s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=644s  ax=   535 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=645s  ax=   536 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=646s  ax=   535 ay=   155 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=647s  ax=   536 ay=   158 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=648s  ax=   536 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=649s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=650s  ax=   535 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=651s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=652s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=653s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=654s  ax=   536 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=655s  ax=   534 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=656s  ax=   535 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=657s  ax=   536 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=658s  ax=   535 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=659s  ax=   535 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=660s  ax=   535 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=661s  ax=   536 ay=   156 az= -4162  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=662s  ax=   536 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=663s  ax=   538 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=664s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=665s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=666s  ax=   538 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=667s  ax=   537 ay=   156 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=668s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=669s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=670s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=671s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=672s  ax=   535 ay=   155 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=673s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=674s  ax=   535 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=675s  ax=   537 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=676s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=677s  ax=   536 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=678s  ax=   536 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=679s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=680s  ax=   537 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=681s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=682s  ax=   536 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=683s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=684s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=685s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=686s  ax=   535 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=687s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=688s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=689s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=690s  ax=   535 ay=   159 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=691s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=692s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=693s  ax=   537 ay=   157 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=694s  ax=   536 ay=   155 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=695s  ax=   535 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=696s  ax=   536 ay=   159 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=697s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=698s  ax=   537 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=699s  ax=   536 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=700s  ax=   537 ay=   155 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=701s  ax=   536 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=702s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=703s  ax=   535 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=704s  ax=   537 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=705s  ax=   538 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=706s  ax=   534 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=707s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=708s  ax=   536 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=709s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=710s  ax=   535 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=711s  ax=   536 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=712s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=713s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=714s  ax=   536 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=715s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=716s  ax=   536 ay=   154 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=717s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=718s  ax=   537 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=719s  ax=   538 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=720s  ax=   535 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=721s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=722s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=723s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=724s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=725s  ax=   535 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=726s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=727s  ax=   536 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=728s  ax=   537 ay=   158 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=729s  ax=   536 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=730s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=731s  ax=   535 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=732s  ax=   538 ay=   156 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=733s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=734s  ax=   538 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=735s  ax=   536 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=736s  ax=   537 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=737s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=738s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=739s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=740s  ax=   536 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=741s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=742s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=743s  ax=   538 ay=   159 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=744s  ax=   537 ay=   155 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=745s  ax=   537 ay=   158 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=746s  ax=   535 ay=   155 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=747s  ax=   536 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=748s  ax=   536 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=749s  ax=   536 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=750s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=751s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=752s  ax=   537 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=753s  ax=   536 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=754s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=755s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=756s  ax=   537 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=757s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=758s  ax=   536 ay=   158 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=759s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=760s  ax=   538 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=761s  ax=   536 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=762s  ax=   535 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=763s  ax=   537 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=764s  ax=   535 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=765s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=766s  ax=   538 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=767s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=768s  ax=   535 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=769s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=770s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=771s  ax=   535 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=772s  ax=   534 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=773s  ax=   536 ay=   155 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=774s  ax=   537 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=775s  ax=   537 ay=   156 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=776s  ax=   537 ay=   155 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=777s  ax=   536 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=778s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=779s  ax=   536 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=780s  ax=   535 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=781s  ax=   536 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=782s  ax=   536 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=783s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=784s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=785s  ax=   537 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=786s  ax=   536 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=787s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=788s  ax=   537 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=789s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=790s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=791s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=792s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=793s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=794s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=795s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=796s  ax=   537 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=797s  ax=   537 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=798s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=799s  ax=   539 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=800s  ax=   537 ay=   157 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=801s  ax=   538 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=802s  ax=   537 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=803s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=804s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=805s  ax=   538 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=806s  ax=   535 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=807s  ax=   535 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=808s  ax=   536 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=809s  ax=   538 ay=   159 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=810s  ax=   536 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=811s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=812s  ax=   536 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=813s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=814s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=815s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=816s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=817s  ax=   536 ay=   156 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=818s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=819s  ax=   536 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=820s  ax=   535 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=821s  ax=   537 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=822s  ax=   535 ay=   159 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=823s  ax=   535 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=824s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=825s  ax=   535 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=826s  ax=   536 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=827s  ax=   536 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=828s  ax=   536 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=829s  ax=   539 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=830s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=831s  ax=   537 ay=   154 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=832s  ax=   539 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=833s  ax=   540 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=834s  ax=   537 ay=   155 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=835s  ax=   537 ay=   155 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=836s  ax=   538 ay=   157 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=837s  ax=   539 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=838s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=839s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=840s  ax=   537 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=841s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=842s  ax=   538 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=843s  ax=   538 ay=   159 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=844s  ax=   538 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=845s  ax=   536 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=846s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=847s  ax=   538 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=848s  ax=   536 ay=   155 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=849s  ax=   539 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=850s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=851s  ax=   538 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=852s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=853s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=854s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=855s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=856s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=857s  ax=   538 ay=   158 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=858s  ax=   538 ay=   156 az= -4160  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=859s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=860s  ax=   536 ay=   157 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=861s  ax=   540 ay=   158 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=862s  ax=   537 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=863s  ax=   539 ay=   158 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=864s  ax=   537 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=865s  ax=   539 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=866s  ax=   538 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=867s  ax=   537 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=868s  ax=   539 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=869s  ax=   538 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=870s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=871s  ax=   537 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=872s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=873s  ax=   539 ay=   159 az= -4152  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=874s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=875s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=876s  ax=   539 ay=   159 az= -4153  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=877s  ax=   538 ay=   158 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=878s  ax=   537 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=879s  ax=   538 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=880s  ax=   536 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=881s  ax=   538 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=882s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=883s  ax=   539 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=884s  ax=   538 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=885s  ax=   539 ay=   157 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=886s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=887s  ax=   537 ay=   157 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=888s  ax=   537 ay=   157 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=889s  ax=   537 ay=   154 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=890s  ax=   536 ay=   158 az= -4151  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=891s  ax=   536 ay=   158 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=892s  ax=   535 ay=   158 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=893s  ax=   536 ay=   158 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=894s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=895s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=896s  ax=   538 ay=   157 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=897s  ax=   537 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=898s  ax=   538 ay=   156 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=899s  ax=   536 ay=   156 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+
+restoring what was found: CTRL8=0x00 CTRL7=0x03 CTRL2=0x24
+--- restored --- CTRL2=0x24 CTRL7=0x03 CTRL8=0x00  verified: identical to the state this probe found
+######## END ########
+I (900972) main_task: Returned from app_main()

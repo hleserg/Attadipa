@@ -45,7 +45,9 @@ the window length or the axis combination the engine's own peak-to-peak uses, so
 "29× the threshold" is not a claim this run supports — only "far more motion than
 78 mg, sustained, and no count".
 
-Raw, from the run:
+Raw, from the run — the whole capture is committed at
+[`pedometer-bench-2026-08-28/shake.log`](pedometer-bench-2026-08-28/shake.log),
+with the other four runs beside it, so every line number below resolves:
 
 ```
 --- before ---   CTRL2=0x27 CTRL7=0x01 CTRL8=0x90
@@ -247,20 +249,28 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 *Security Level: 3*.
 
 **This repository names that document two ways, and this report does not settle
-which is right.** `WAVESHARE_RUNNING_OUR_CODE.md:326` and the tail of H14 state
-that the Rev A number is *"`13-52-25`, not 13-52-27"*, while
-`VERIFIED_FACTS.md:574` and `:578` list `13-52-27` (QMI8658**C**) and `13-52-25`
-(QMI8658**A**) as two documents that both exist. A document numbered `13-52-27`,
-titled *QMI8658C Datasheet*, marked `Rev: A`, demonstrably does exist — it is the
-one quoted here. What is in `13-52-25` is **UNKNOWN** to this repository: no
-record shows anyone opening it. This report therefore cites only the paper it
-read, and the tree-wide reconciliation is
+which is right.** Four sites, and they do not agree:
+
+| Site | What it says |
+| --- | --- |
+| [`WAVESHARE_RUNNING_OUR_CODE.md:325-327`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
+| [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
+| [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
+| [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
+| [`VERIFIED_FACTS.md:1479-1481`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+
+A document numbered `13-52-27`, titled *QMI8658C Datasheet*, marked `Rev: A`,
+demonstrably does exist — it is the one quoted here, and it reports `0x7C` on its
+own register-description page. What is in `13-52-25` is **UNKNOWN** to this
+repository: no record shows anyone opening it. This report therefore cites only
+the paper it read, and the tree-wide reconciliation — including which document
+the `0x7C` attribution at `VERIFIED_FACTS.md:1481` actually came from — is
 [#341](https://github.com/hleserg/Attadipa/issues/341), not this pull request.
 
 ## A caveat about the raw logs
 
-The archived logs misdescribe their own configuration. Two `printf` labels had
-gone stale against the constants they printed:
+The archived logs misdescribe their own configuration. **Three** `printf` labels
+had gone stale against the constants they printed:
 
 - the header prints `CTRL2 = 0x16 (+/-8 g, 62.5 Hz accel-only)`. `0x16` is
   **±4 g at 112.1 Hz in 6DOF** — wrong on both counts, though the register value
@@ -275,6 +285,15 @@ gone stale against the constants they printed:
   2026-08-23 — that run was accelerometer-only — and this one records 112.1 Hz.
   Both are Table 22, one row, two columns; a firmware author sizing the pedometer
   ODR needs the mode before the number.
+- the header prints `CTRL3 = 0x36 (+/-1000 dps, 112.1 Hz -- 6DOF needs the gyro
+  up)`. The rate is right; **the full scale is not, and no such rung exists.**
+  Table 22's `CTRL3` entry gives `gFS<2:0>` as ±16 / ±32 / ±64 / ±128 / ±256 /
+  ±512 / ±1024 dps for `000`–`110`, with `111` marked N/A — so `0x36`'s
+  `gFS = 011` is **±128 dps**, and 1000 dps is not on the ladder at all. It comes
+  from a different IMU family. Nothing in this report depends on it: the gyro is
+  enabled only to put the accelerometer into 6DOF mode, and no gyro sample is
+  read, printed or used. `gODR = 0110` → 112.1 Hz is correct, from the same
+  register's own ODR table.
 - the p2p header prints `ped_fix_peak2peak = 200 mg; ped_fix_peak = 100 mg`,
   which are the **datasheet's** numbers, while the engine had been configured
   with SensorLib's loosened 80/60 (≈78/59 mg). The header agreed with the `OVER`

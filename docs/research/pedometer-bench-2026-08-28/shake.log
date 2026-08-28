@@ -1,0 +1,239 @@
+# port /dev/ttyACM1  image pedo/build/pedo.bin
+Connecting...
+Detecting chip type... ESP32-S3
+# chip ESP32-S3
+RAM boot...
+Downloading 48112 bytes at 3fca0000... done!
+Downloading 460 bytes at 3fcac480... done!
+Downloading 114560 bytes at 40374000... done!
+Downloading 32 bytes at 50000000... done!
+All segments done, executing at 40375a80
+# load_ram returned; port still open, watching
+I (843) boot: ESP-IDF v5.5.5-dirty 2nd stage bootloader
+I (843) boot: compile time Aug 28 2026 12:53:17
+I (844) boot: Multicore bootloader
+I (844) boot: Enabling RNG early entropy source...
+I (845) cpu_start: Multicore app
+I (853) cpu_start: Pro cpu start user code
+I (853) cpu_start: cpu freq: 160000000 Hz
+I (854) app_init: Application information:
+I (854) app_init: Project name:     pedo
+I (855) app_init: App version:      1
+I (855) app_init: Compile time:     Aug 28 2026 12:53:17
+I (855) app_init: ELF file SHA256:  000000000...
+I (856) app_init: ESP-IDF:          v5.5.5-dirty
+I (856) efuse_init: Min chip rev:     v0.0
+I (857) efuse_init: Max chip rev:     v0.99 
+I (857) efuse_init: Chip rev:         v0.2
+I (857) heap_init: Initializing. RAM available for dynamic allocation:
+I (858) heap_init: At 3FCAC650 len 0003D0C0 (244 KiB): RAM
+I (859) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (859) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (859) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (860) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (861) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (862) main_task: Started on CPU0
+I (862) main_task: Calling app_main()
+
+######## ATTADIPA PEDOMETER PROBE ########
+Writes CTRL2/CTRL7/CTRL8/CTRL9 and CAL1..CAL4 on the IMU at 0x6B.
+Nothing else, on any device. No PMU write, no rail change, no display.
+
+WHO_AM_I  = 0x05   (0x05 in both candidate datasheets)
+REVISION  = 0x7C   (0x7C = QMI8658A 13-52-25 Rev A; 0x79 = QMI8658C Rev 0.6)
+
+--- before ---   CTRL2=0x27 CTRL7=0x01 CTRL8=0x90
+
+CTRL7 = 0x00 (aEN=gEN=0, required by 11.2 before configuring) -> ACK
+CTRL8 = 0x80 (CTRL9 handshake on STATUSINT, Pedo_EN still 0)  -> ACK
+CTRL2 = 0x16 (+/-8 g, 62.5 Hz accel-only)                     -> ACK
+CTRL3 = 0x36 (+/-1000 dps, 112.1 Hz -- 6DOF needs the gyro up)  -> ACK
+
+two CTRL9 0x0D calls (Table 38): both acknowledged -- CmdDone set and cleared each time
+  sample_cnt=50  peak2peak=0x0050  peak=0x003C  time_up=400
+  time_low=8  cnt_entry=1  precision=0  sig_count=1
+
+CTRL8 = 0x90 (Pedo_EN; the 0->1 edge clears the count, 11.6) -> ACK
+CTRL7 = 0x03 (aEN; the engine starts counting here, 11.3)     -> ACK
+CTRL9 0x0F (reset step count): acknowledged
+--- armed  ---   CTRL2=0x16 CTRL7=0x03 CTRL8=0x90  step count = 0
+
+CTRL8 readback: accepted -- the register is writable, which the C Rev 0.6
+  document does not describe (it calls CTRL8 Reserved: Not Used)
+
+WHAT TO EXPECT, written down before the run so it cannot be fitted
+afterwards. This is SensorLib's bring-up profile, not the datasheet's:
+entry_count=1 and sig_count=1, so the register moves on the FIRST step
+and on every step after it. No nine held back, no counting in fours.
+Shaking the board in a walking rhythm should therefore make the count
+climb roughly one per shake, visibly, within a few seconds. A count
+that climbs at all -- by any amount, at any rate -- is the engine
+working. A steady 0 while the p2p column reads OVER for many seconds
+in a row is the engine not counting, and this time that is not
+ambiguous, because the threshold it is being held to is printed next
+to the motion it was given.
+STATUS1 bit 4 is the pedometer event (11.4); it should stop being 0.
+
+p2p is peak-to-peak per axis over each second, in mg. The engine's
+threshold is ped_fix_peak2peak = 200 mg; ped_fix_peak = 100 mg is
+measured against the running average, which this cannot see.
+
+t=   0s  ax=   350 ay=    24 az= -8257  p2p mg: x= 436 y= 723 z= 387  OVER   steps=0 (+0)  STATUS1=0x00
+t=   1s  ax=   353 ay=    27 az= -8254  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=   2s  ax=   351 ay=    23 az= -8255  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=   3s  ax=   349 ay=    26 az= -8250  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=   4s  ax=   350 ay=    26 az= -8254  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=   5s  ax=   350 ay=    25 az= -8255  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=   6s  ax=   351 ay=    25 az= -8257  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=   7s  ax=   352 ay=    27 az= -8256  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=   8s  ax=   350 ay=    24 az= -8258  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=   9s  ax=   355 ay=    26 az= -8256  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  10s  ax=   354 ay=    24 az= -8257  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  11s  ax=   354 ay=    29 az= -8254  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  12s  ax=   352 ay=    24 az= -8261  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  13s  ax=   355 ay=    24 az= -8253  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  14s  ax=   354 ay=    26 az= -8259  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  15s  ax=   356 ay=    26 az= -8254  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  16s  ax=   355 ay=    26 az= -8255  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  17s  ax=   355 ay=    30 az= -8252  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  18s  ax=   352 ay=    28 az= -8254  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  19s  ax=   351 ay=    28 az= -8254  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  20s  ax=   351 ay=    27 az= -8257  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  21s  ax=   353 ay=    27 az= -8258  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  22s  ax=   353 ay=    26 az= -8255  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  23s  ax=   352 ay=    29 az= -8256  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  24s  ax=   345 ay=    27 az= -8253  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  25s  ax=   352 ay=    23 az= -8253  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  26s  ax=   353 ay=    27 az= -8258  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  27s  ax=   351 ay=    29 az= -8254  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  28s  ax=   356 ay=    24 az= -8253  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  29s  ax=   350 ay=    26 az= -8253  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  30s  ax=   348 ay=    29 az= -8254  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  31s  ax=   354 ay=    28 az= -8255  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  32s  ax=   354 ay=    29 az= -8255  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  33s  ax=   354 ay=    26 az= -8251  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  34s  ax= -1120 ay=   -43 az= -8149  p2p mg: x= 356 y=  95 z= 300  OVER   steps=0 (+0)  STATUS1=0x00
+t=  35s  ax= -2540 ay= -2469 az=  1505  p2p mg: x= 820 y= 573 z=1228  OVER   steps=0 (+0)  STATUS1=0x00
+t=  36s  ax= -1337 ay= -2555 az=  -295  p2p mg: x= 989 y= 929 z=2027  OVER   steps=0 (+0)  STATUS1=0x00
+t=  37s  ax=   246 ay= -3175 az=  7461  p2p mg: x=1795 y=1376 z=1874  OVER   steps=0 (+0)  STATUS1=0x00
+t=  38s  ax= -3886 ay= -1654 az= 13178  p2p mg: x= 509 y= 264 z=1203  OVER   steps=0 (+0)  STATUS1=0x00
+t=  39s  ax= -5337 ay= -1335 az=  6961  p2p mg: x=2091 y=1959 z=1208  OVER   steps=0 (+0)  STATUS1=0x00
+t=  40s  ax= -5820 ay=  1342 az=  8003  p2p mg: x=1070 y=1223 z=1567  OVER   steps=0 (+0)  STATUS1=0x00
+t=  41s  ax= 11989 ay= -2017 az= -3224  p2p mg: x=2179 y=1274 z=1141  OVER   steps=0 (+0)  STATUS1=0x00
+t=  42s  ax= 12253 ay= -4278 az=   484  p2p mg: x=2242 y=1393 z= 963  OVER   steps=0 (+0)  STATUS1=0x00
+t=  43s  ax= -3336 ay= -8581 az=   875  p2p mg: x=1604 y=1505 z=1157  OVER   steps=0 (+0)  STATUS1=0x00
+t=  44s  ax=  2055 ay= -5117 az=  2879  p2p mg: x=2085 y= 757 z=1220  OVER   steps=0 (+0)  STATUS1=0x00
+t=  45s  ax= -1716 ay= -1931 az= -8539  p2p mg: x= 992 y= 236 z=1480  OVER   steps=0 (+0)  STATUS1=0x00
+t=  46s  ax=  -810 ay= -1023 az=-12941  p2p mg: x= 756 y=1336 z=1513  OVER   steps=0 (+0)  STATUS1=0x00
+t=  47s  ax= -1584 ay= -2416 az= -9036  p2p mg: x= 688 y=1294 z=1285  OVER   steps=0 (+0)  STATUS1=0x00
+t=  48s  ax= -4000 ay= -1994 az= -7335  p2p mg: x= 549 y= 582 z= 561  OVER   steps=0 (+0)  STATUS1=0x00
+t=  49s  ax= -1267 ay=   862 az= -8122  p2p mg: x= 254 y= 322 z= 151  OVER   steps=0 (+0)  STATUS1=0x00
+t=  50s  ax= -1263 ay=   863 az= -8122  p2p mg: x=   0 y=   1 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  51s  ax= -1266 ay=   864 az= -8123  p2p mg: x=   0 y=   1 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  52s  ax= -1268 ay=   858 az= -8121  p2p mg: x=   0 y=   1 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  53s  ax= -1265 ay=   858 az= -8118  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  54s  ax= -1267 ay=   860 az= -8120  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  55s  ax= -1270 ay=   861 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  56s  ax= -1268 ay=   864 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  57s  ax= -1263 ay=   863 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  58s  ax= -1264 ay=   862 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  59s  ax= -1264 ay=   861 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  60s  ax= -1262 ay=   863 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  61s  ax= -1267 ay=   862 az= -8117  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  62s  ax= -1260 ay=   862 az= -8123  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  63s  ax= -1264 ay=   860 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  64s  ax= -1260 ay=   865 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  65s  ax= -1265 ay=   860 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  66s  ax= -1260 ay=   863 az= -8122  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  67s  ax= -1263 ay=   863 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  68s  ax= -1258 ay=   864 az= -8122  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  69s  ax= -1265 ay=   863 az= -8120  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  70s  ax= -1261 ay=   860 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  71s  ax= -1265 ay=   862 az= -8126  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  72s  ax= -1263 ay=   863 az= -8123  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  73s  ax= -1258 ay=   863 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  74s  ax= -1263 ay=   860 az= -8122  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  75s  ax= -1261 ay=   861 az= -8121  p2p mg: x=   0 y=   1 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  76s  ax= -1263 ay=   858 az= -8123  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  77s  ax= -1260 ay=   863 az= -8122  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  78s  ax= -1262 ay=   860 az= -8124  p2p mg: x=   0 y=   1 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  79s  ax= -1259 ay=   864 az= -8117  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  80s  ax= -1255 ay=   860 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  81s  ax= -1261 ay=   864 az= -8122  p2p mg: x=   0 y=   1 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  82s  ax= -1261 ay=   862 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  83s  ax= -1259 ay=   863 az= -8119  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  84s  ax= -1262 ay=   860 az= -8125  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  85s  ax= -1261 ay=   860 az= -8123  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  86s  ax= -1258 ay=   859 az= -8120  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  87s  ax= -1259 ay=   861 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  88s  ax= -1257 ay=   860 az= -8120  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  89s  ax= -1257 ay=   861 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  90s  ax= -1259 ay=   860 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  91s  ax= -1262 ay=   862 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  92s  ax= -1260 ay=   861 az= -8125  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  93s  ax= -1263 ay=   861 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  94s  ax= -1257 ay=   860 az= -8120  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  95s  ax= -1261 ay=   861 az= -8126  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  96s  ax= -1259 ay=   859 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  97s  ax= -1260 ay=   863 az= -8127  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t=  98s  ax= -1263 ay=   864 az= -8122  p2p mg: x=   0 y=   1 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t=  99s  ax= -1258 ay=   862 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 100s  ax= -1263 ay=   860 az= -8120  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 101s  ax= -1261 ay=   861 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 102s  ax= -1257 ay=   861 az= -8127  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 103s  ax= -1257 ay=   864 az= -8126  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 104s  ax= -1251 ay=   864 az= -8126  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 105s  ax= -1256 ay=   860 az= -8119  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 106s  ax= -1256 ay=   862 az= -8125  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 107s  ax= -1256 ay=   862 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 108s  ax= -1256 ay=   863 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 109s  ax= -1256 ay=   858 az= -8120  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 110s  ax= -1258 ay=   863 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 111s  ax= -1257 ay=   862 az= -8121  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 112s  ax= -1258 ay=   862 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 113s  ax= -1259 ay=   863 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 114s  ax= -1259 ay=   862 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 115s  ax= -1261 ay=   864 az= -8123  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 116s  ax= -1258 ay=   863 az= -8118  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 117s  ax= -1263 ay=   863 az= -8125  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 118s  ax= -1260 ay=   861 az= -8125  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 119s  ax= -1261 ay=   862 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 120s  ax= -1259 ay=   862 az= -8120  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 121s  ax= -1263 ay=   861 az= -8125  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 122s  ax= -1258 ay=   863 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 123s  ax= -1258 ay=   864 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 124s  ax= -1256 ay=   864 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 125s  ax= -1260 ay=   865 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 126s  ax= -1260 ay=   863 az= -8120  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 127s  ax= -1258 ay=   865 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 128s  ax= -1258 ay=   864 az= -8121  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 129s  ax= -1260 ay=   861 az= -8125  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 130s  ax= -1263 ay=   862 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 131s  ax= -1262 ay=   862 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 132s  ax= -1258 ay=   861 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 133s  ax= -1260 ay=   865 az= -8126  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 134s  ax= -1258 ay=   863 az= -8122  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 135s  ax= -1262 ay=   866 az= -8119  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 136s  ax= -1262 ay=   862 az= -8124  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 137s  ax= -1258 ay=   862 az= -8119  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 138s  ax= -1261 ay=   862 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 139s  ax= -1254 ay=   864 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 140s  ax= -1251 ay=   865 az= -8124  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 141s  ax= -1259 ay=   865 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 142s  ax= -1264 ay=   862 az= -8124  p2p mg: x=   1 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 143s  ax= -1258 ay=   867 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 144s  ax= -1260 ay=   861 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 145s  ax= -1258 ay=   860 az= -8125  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 146s  ax= -1258 ay=   859 az= -8120  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 147s  ax= -1255 ay=   861 az= -8121  p2p mg: x=   1 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 148s  ax= -1258 ay=   861 az= -8122  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 149s  ax= -1259 ay=   861 az= -8123  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 150s  ax= -1256 ay=   863 az= -8119  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 151s  ax= -1260 ay=   862 az= -8128  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00
+t= 152s  ax= -1253 ay=   865 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 153s  ax= -1260 ay=   865 az= -8123  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 154s  ax= -1255 ay=   864 az= -8124  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 155s  ax= -1255 ay=   864 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 156s  ax= -1256 ay=   863 az= -8121  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 157s  ax= -1259 ay=   863 az= -8122  p2p mg: x=   0 y=   0 z=   0  under  steps=0 (+0)  STATUS1=0x00
+t= 158s  ax= -1258 ay=   862 az= -8127  p2p mg: x=   0 y=   0 z=   1  under  steps=0 (+0)  STATUS1=0x00

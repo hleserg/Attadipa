@@ -1,0 +1,121 @@
+# port /dev/ttyACM1  image pedo/build/pedo.bin
+Connecting...
+Detecting chip type... ESP32-S3
+# chip ESP32-S3
+RAM boot...
+Downloading 47712 bytes at 3fc9ff00... done!
+Downloading 460 bytes at 3fcac1f0... done!
+Downloading 114340 bytes at 40374000... done!
+Downloading 32 bytes at 50000000... done!
+All segments done, executing at 40375a74
+# load_ram returned; port still open, watching
+I (843) boot: ESP-IDF v5.5.5-dirty 2nd stage bootloader
+I (844) boot: compile time Aug 28 2026 12:53:17
+I (844) boot: Multicore bootloader
+I (845) boot: Enabling RNG early entropy source...
+I (845) cpu_start: Multicore app
+I (854) cpu_start: Pro cpu start user code
+I (854) cpu_start: cpu freq: 160000000 Hz
+I (854) app_init: Application information:
+I (855) app_init: Project name:     pedo
+I (855) app_init: App version:      1
+I (856) app_init: Compile time:     Aug 28 2026 12:53:17
+I (856) app_init: ELF file SHA256:  000000000...
+I (856) app_init: ESP-IDF:          v5.5.5-dirty
+I (857) efuse_init: Min chip rev:     v0.0
+I (857) efuse_init: Max chip rev:     v0.99 
+I (857) efuse_init: Chip rev:         v0.2
+I (858) heap_init: Initializing. RAM available for dynamic allocation:
+I (859) heap_init: At 3FCAC3C0 len 0003D350 (244 KiB): RAM
+I (859) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (860) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (860) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (861) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (862) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (863) main_task: Started on CPU0
+I (863) main_task: Calling app_main()
+
+######## ATTADIPA PEDOMETER PROBE ########
+Writes CTRL2/CTRL7/CTRL8/CTRL9 and CAL1..CAL4 on the IMU at 0x6B.
+Nothing else, on any device. No PMU write, no rail change, no display.
+
+WHO_AM_I  = 0x05   (0x05 in both candidate datasheets)
+REVISION  = 0x7C   (0x7C = QMI8658A 13-52-25 Rev A; 0x79 = QMI8658C Rev 0.6)
+
+--- before ---   CTRL2=0x24 CTRL7=0x03 CTRL8=0x00
+
+CTRL7 = 0x00 (aEN=gEN=0, required by 11.2 before configuring) -> ACK
+CTRL8 = 0x80 (CTRL9 handshake on STATUSINT, Pedo_EN still 0)  -> ACK
+CTRL2 = 0x27 (+/-8 g, 62.5 Hz accel-only)                     -> ACK
+
+two CTRL9 0x0D calls (Table 38): both acknowledged -- CmdDone set and cleared each time
+  sample_cnt=62  peak2peak=0x00CC  peak=0x0066  time_up=250
+  time_low=25  cnt_entry=10  precision=0  sig_count=4
+
+CTRL8 = 0x90 (Pedo_EN; the 0->1 edge clears the count, 11.6) -> ACK
+CTRL7 = 0x01 (aEN; the engine starts counting here, 11.3)     -> ACK
+CTRL9 0x0F (reset step count): acknowledged
+--- armed  ---   CTRL2=0x27 CTRL7=0x01 CTRL8=0x90  step count = 0
+
+CTRL8 readback: accepted -- the register is writable, which the C Rev 0.6
+  document does not describe (it calls CTRL8 Reserved: Not Used)
+
+WHAT TO EXPECT, written down before the walk so it cannot be fitted
+afterwards. cnt_entry=10 means the first nine steps are held back and
+then counted retroactively; sig_count=4 means the registers move in
+fours. Twenty steps at a normal pace should therefore end at 20, having
+gone 12, 16, 20 -- and any final value of 16 or 20 is the engine
+working. A steady 0 across a real walk is the engine not counting.
+STATUS1 bit 4 is the pedometer event (11.4); it should stop being 0x00.
+
+The board may be unplugged from USB now -- a RAM image is not reset by
+losing the host, the IMU keeps counting on battery, and this loop picks
+up again when the cable comes back. Restore runs at the end either way.
+
+t=   0s  ax=  2339 ay=  1414 az= -5473  (0.57 0.35 -1.34 g)  steps=0 (+0)  STATUS1=0x00
+t=   1s  ax=   381 ay=    51 az= -4075  (0.09 0.01 -0.99 g)  steps=0 (+0)  STATUS1=0x00
+t=   2s  ax=   537 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=   3s  ax=   538 ay=   156 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=   4s  ax=   537 ay=   154 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=   5s  ax=   537 ay=   155 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=   6s  ax=   538 ay=   155 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=   7s  ax=   537 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=   8s  ax=   538 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=   9s  ax=   539 ay=   154 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  10s  ax=   538 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  11s  ax=   537 ay=   156 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  12s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  13s  ax=   538 ay=   155 az= -4158  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=  14s  ax=   537 ay=   157 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  15s  ax=   538 ay=   155 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  16s  ax=   537 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  17s  ax=   537 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  18s  ax=   538 ay=   155 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  19s  ax=   537 ay=   154 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  20s  ax=   539 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  21s  ax=   538 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  22s  ax=   537 ay=   154 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  23s  ax=   537 ay=   153 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  24s  ax=   537 ay=   154 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  25s  ax=   538 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  26s  ax=   539 ay=   155 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  27s  ax=   538 ay=   154 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  28s  ax=   538 ay=   154 az= -4159  (0.13 0.04 -1.02 g)  steps=0 (+0)  STATUS1=0x00
+t=  29s  ax=   537 ay=   156 az= -4154  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  30s  ax=   536 ay=   155 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  31s  ax=   537 ay=   153 az= -4156  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  32s  ax=   537 ay=   154 az= -4155  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  33s  ax=   537 ay=   156 az= -4157  (0.13 0.04 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  34s  ax=   557 ay=   137 az= -4154  (0.14 0.03 -1.01 g)  steps=0 (+0)  STATUS1=0x00
+t=  35s  ax=  -942 ay= -1274 az= -3304  (-0.23 -0.31 -0.81 g)  steps=0 (+0)  STATUS1=0x00
+Traceback (most recent call last):
+  File "/home/hleserg/Attadipa/tools/flash/ramhold.py", line 159, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/hleserg/Attadipa/tools/flash/ramhold.py", line 138, in main
+    data = ser.read(8192)
+  File "/home/hleserg/.espressif/python_env/idf5.5_py3.13_env/lib/python3.13/site-packages/serial/serialposix.py", line 595, in read
+    raise SerialException(
+        'device reports readiness to read but returned no data '
+        '(device disconnected or multiple access on port?)')
+serial.serialutil.SerialException: device reports readiness to read but returned no data (device disconnected or multiple access on port?)
