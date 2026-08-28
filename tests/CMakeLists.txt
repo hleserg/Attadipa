@@ -385,6 +385,24 @@ target_link_libraries(test_meshcore_companion PRIVATE attadipa_link)
 add_test(NAME meshcore_companion COMMAND test_meshcore_companion)
 set_tests_properties(meshcore_companion PROPERTIES LABELS "mesh;transport")
 
+# Who is allowed to say the link is up (issue #317). The BLE session used to be
+# ten plain globals written by a NimBLE host task and a worker task at once, and
+# its lifecycle used to travel through the same bounded queue that deliberately
+# drops bulk frames — so a contact burst could drop a disconnect and leave the
+# transport unable to send until a reboot.
+#
+# It is the only test here that starts a thread. That is deliberate: the last
+# case runs the two roles concurrently behind one lock, which is the discipline
+# firmware/main/meshcore_ble.cpp applies with a portMUX, and every assertion in
+# it holds under any interleaving so it cannot be flaky. It is also the case
+# worth running under `-fsanitize=thread`, which is the only way an
+# unsynchronised read hiding inside the class would be seen on a host.
+find_package(Threads REQUIRED)
+add_executable(test_session_owner test_session_owner.cpp)
+target_link_libraries(test_session_owner PRIVATE attadipa_link Threads::Threads)
+add_test(NAME session_owner COMMAND test_session_owner)
+set_tests_properties(session_owner PROPERTIES LABELS "mesh;transport")
+
 # ---------------------------------------------------------------------------
 # The input layer, and the debug channel above it.
 #
