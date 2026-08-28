@@ -24,19 +24,39 @@ One run: **159** one-second windows, `t=0` to `t=158`.
 | --- | --- |
 | configured `ped_fix_peak2peak` | 80 in u6.10 ≈ **78 mg** |
 | maximum peak-to-peak, per axis over a one-second window | **2242 mg**, at `t=42s` |
-| seconds of the 159 above 78 mg | **17** |
-| smallest of those 17 | **322 mg** |
-| when they fall | one at `t=0`, then a contiguous burst `t=34`–`t=49` |
-| the other 142 seconds | 0–2 mg — the watch lying still |
+| seconds of the 159 above 78 mg | **16**, all of them contiguous: `t=34`–`t=49` |
+| smallest of those 16 | **322 mg** |
+| one further window above the bar | `t=0` — a start-up artefact, not motion |
+| the other 142 seconds | 0–1 mg — the watch lying still |
 | step count | **0**, `+0` on every window |
 | `STATUS1` | `0x00` throughout |
 
-**The shape of the run matters and an earlier draft of this report got it
-wrong.** It said the watch was shaken for 158 s. It was not: the motion is one
-16-second burst plus a single second at pick-up, inside a run that was otherwise
-a board on a desk. What the run establishes is not 158 seconds of motion but
-**sixteen consecutive seconds** of it, every one of them far above the bar, with
-the count pinned at zero.
+**The shape of the run matters and two earlier drafts of this report got it
+wrong.** The first said the watch was shaken for 158 s. It was not: the motion is
+one 16-second burst inside a run that was otherwise a board on a desk. The second
+counted 17 windows over the bar and called the seventeenth *"a single second at
+pick-up"*. **Nothing was picked up.** The `t=0` window is a start-up artefact of
+the probe, and every capture in this session carries it:
+
+| capture | `t=0` | `t=1` |
+| --- | --- | --- |
+| `shake.log:81-82` | p2p 436 / 723 / 387 mg | 1 / 0 / 0 mg |
+| `pedo-run.log:47-48` | `ay = -1.15 g` | `0.04 g` |
+| `pedo-run2.log:47-48` | `ay = -0.46 g` | `0.04 g` |
+| `pedo-run3.log:47-48` | `ax = 1.34 g` | `0.13 g` |
+| `walk.log:75-76` | `az = -1.34 g` | `-0.99 g` |
+
+Four of those five are the report's own *"desk, board stationary"* runs, so the
+first window is wrong on a board that demonstrably never moved. In `shake.log`
+the giveaway is that the **attitude** does not move with it: `t=0` is
+`(350, 24, -8257)` and `t=1` is `(353, 27, -8254)` — and `t=33`, half a minute
+later, is `(354, 26, -8251)`. A watch is not lifted and replaced inside one
+second to within 3 LSB on three axes. When it genuinely was handled, from `t=49`
+on, the board settles somewhere else entirely.
+
+So the run establishes **sixteen consecutive seconds** of motion, `t=34`–`t=49`,
+every one far above the bar with the count pinned at zero. The headline is
+unchanged; the count is 16, not 17.
 
 **The two numbers are still not the same quantity, and an earlier draft divided
 them.** 78 mg is the configured `ped_fix_peak2peak`; 2242 mg is the probe's own
@@ -47,7 +67,10 @@ the window length or the axis combination the engine's own peak-to-peak uses, so
 
 Raw, from the run — the whole capture is committed at
 [`pedometer-bench-2026-08-28/shake.log`](pedometer-bench-2026-08-28/shake.log),
-with the other four runs beside it, so every line number below resolves:
+with the other four runs and the probe's source beside it
+([`probe/pedo.c`](pedometer-bench-2026-08-28/probe/pedo.c)), so every line
+number below resolves and every constant can be checked against the register
+values the log itself echoes:
 
 ```
 --- before ---   CTRL2=0x27 CTRL7=0x01 CTRL8=0x90
@@ -96,7 +119,7 @@ which left its own headline hazard unverifiable from the evidence it printed.
 than the log.** The column's bar was a hard-coded **200 mg** — the *datasheet's*
 `ped_fix_peak2peak`, not the 80 (≈78 mg) the engine was configured with. And an
 earlier draft of this report asserted the opposite, that the marks were computed
-against 80/60. They were not. It changes nothing here: the same 17 seconds clear
+against 80/60. They were not. It changes nothing here: the same 16 seconds clear
 both bars, because the smallest of them is 322 mg. The probe now derives the
 column's bar and its printed threshold from one constant so they cannot drift
 apart again.
@@ -118,9 +141,14 @@ apart again.
    (`sample_cnt=62 peak2peak=0x00CC peak=0x0066 time_up=250 time_low=25
    cnt_entry=10 sig_count=4`, accelerometer alone at `CTRL2=0x27`, `CTRL7=0x01`),
    and 36 seconds of samples were recorded at zero before the serial link died.
-   That binary printed no amplitude column and nothing records whether the watch
-   was moving, so those 36 seconds are **not evidence**. Saying "both known-good
-   configurations were tried" would overstate it: both were *configured*, one was
+   That binary printed no amplitude column, but the capture does record whether
+   the watch was moving, and it says it was **not**: `walk.log:76-109` holds the
+   triad at `(0.13, 0.04, -1.01 g)` for thirty-four unbroken seconds — the same
+   attitude as the desk runs — and the first real movement is `t=35`, which is
+   the unplug, one line before the link dies. So the walk never began. Those 36
+   seconds are a stationary board reading zero correctly, which is **not
+   evidence** about the engine either way. Saying "both known-good configurations
+   were tried" would still overstate it: both were *configured*, one was
    *measured*.
 
 The CTRL9 handshake was confirmed on every run — both `0x0D` calls acknowledged
@@ -249,7 +277,7 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 *Security Level: 3*.
 
 **This repository names that document two ways, and this report does not settle
-which is right.** Four sites, and they do not agree:
+which is right.** Five sites, and they do not agree:
 
 | Site | What it says |
 | --- | --- |
@@ -257,7 +285,7 @@ which is right.** Four sites, and they do not agree:
 | [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
 | [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
-| [`VERIFIED_FACTS.md:1479-1481`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+| [`VERIFIED_FACTS.md:1506-1508`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
 
 A document numbered `13-52-27`, titled *QMI8658C Datasheet*, marked `Rev: A`,
 demonstrably does exist — it is the one quoted here, and it reports `0x7C` on its
@@ -269,8 +297,9 @@ the `0x7C` attribution at `VERIFIED_FACTS.md:1481` actually came from — is
 
 ## A caveat about the raw logs
 
-The archived logs misdescribe their own configuration. **Three** `printf` labels
-had gone stale against the constants they printed:
+The archived logs misdescribe their own configuration. **Four** `printf` labels
+had gone stale — three in `shake.log` against the constants they printed, and one
+in `walk.log` that asserts hardware behaviour this report will not:
 
 - the header prints `CTRL2 = 0x16 (+/-8 g, 62.5 Hz accel-only)`. `0x16` is
   **±4 g at 112.1 Hz in 6DOF** — wrong on both counts, though the register value
@@ -294,12 +323,23 @@ had gone stale against the constants they printed:
   enabled only to put the accelerometer into 6DOF mode, and no gyro sample is
   read, printed or used. `gODR = 0110` → 112.1 Hz is correct, from the same
   register's own ODR table.
+- `walk.log:71-73` prints, as settled fact, *"a RAM image is not reset by losing
+  the host, **the IMU keeps counting on battery**, and this loop picks up again
+  when the cable comes back. **Restore runs at the end either way.**"* Both bold
+  clauses are wrong to state that way. The first is **UNKNOWN** — this report
+  says so itself, above: whether the unit stays powered off USB is the open
+  precondition of the whole read-after-walk experiment. The second is falsified
+  38 lines further down the same file: `walk.log:111-121` is the
+  `SerialException`, no restore block was printed, and the engine was left armed
+  — which is how the next run came to clear the walk's count. That header was
+  written before the run as an expectation and never corrected afterwards.
 - the p2p header prints `ped_fix_peak2peak = 200 mg; ped_fix_peak = 100 mg`,
   which are the **datasheet's** numbers, while the engine had been configured
   with SensorLib's loosened 80/60 (≈78/59 mg). The header agreed with the `OVER`
   column's hard-coded bar and disagreed with the engine.
 
-Both are fixed in the probe, and the threshold and the `OVER` bar now come from
-the same constant. **No register or parameter value changed**, so the run above
+The three `shake.log` labels are fixed in the probe, and the threshold and the
+`OVER` bar now come from the same constant; `walk.log`'s pre-run expectation is
+corrected here rather than in the probe, because the probe no longer prints it. **No register or parameter value changed**, so the run above
 stands exactly as recorded; where the log headers and this report disagree, this
 report is correct.

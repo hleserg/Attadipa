@@ -1541,14 +1541,18 @@ constants.
 ### The QMI8658 pedometer counted nothing through sixteen unbroken seconds above its threshold
 
 - **Claim:** with the engine configured and the CTRL9 handshake confirmed, one
-  159-second run recorded **17** one-second windows whose per-axis peak-to-peak
-  exceeded the configured `ped_fix_peak2peak` of **78 mg** — one at pick-up and
-  then a contiguous burst from `t=34s` to `t=49s`. The smallest of the 17 is
-  **322 mg** and the largest **2242 mg**. The step count stayed **0 (`+0`)**
-  throughout and `STATUS1` stayed `0x00`.
+  159-second run recorded **16** one-second windows whose per-axis peak-to-peak
+  exceeded the configured `ped_fix_peak2peak` of **78 mg**, contiguous from
+  `t=34s` to `t=49s`. The smallest is **322 mg** and the largest **2242 mg**. The
+  step count stayed **0 (`+0`)** throughout and `STATUS1` stayed `0x00`.
 - **The motion is a burst, not the whole run.** An earlier draft said the watch
-  was shaken for 158 s. It was not: the other 142 windows read 0–2 mg — a board
+  was shaken for 158 s. It was not: the other 142 windows read 0–1 mg — a board
   lying still. Sixteen consecutive seconds is what this run establishes.
+- **A seventeenth window is not motion.** `t=0` also reads above the bar, and a
+  second draft called it a pick-up. It is a start-up artefact: the attitude at
+  `t=0` matches `t=1` and `t=33` to within 3 LSB on every axis, and all four of
+  the session's *stationary* captures open with the same bad first sample. It is
+  excluded from the count.
 - **The comparison is indicative, not a like-for-like multiple.** 78 mg is the
   configured `ped_fix_peak2peak` (80 in u6.10), but **UNKNOWN**: chapter 11 does
   not state the window length or the axis combination its own peak-to-peak is
