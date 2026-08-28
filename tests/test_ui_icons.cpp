@@ -35,7 +35,7 @@ void check(bool condition, const char* what, int line)
 // The two panels, by density. Same reasoning as `test_ui_tokens.cpp`: a test
 // that named a board would be a test that could not notice the two boards
 // landing on the same pixel size, which is the property this file exists for.
-constexpr std::uint16_t kTWatchDpi = 261;
+constexpr std::uint16_t kTWatchDpi = 220;
 constexpr std::uint16_t kWaveshareDpi = 315;
 
 struct Listed {
@@ -182,23 +182,31 @@ int main()
     const Metrics t_watch = Metrics::for_dpi(kTWatchDpi);
     const Metrics waveshare = Metrics::for_dpi(kWaveshareDpi);
 
-    // The thesis of the whole pipeline, in one assertion: a pixel size is a
-    // pixel size. `icon.size.lg` on the smaller, denser-per-token panel and
-    // `icon.size.md` on the larger one are both 39 px, so they are the same
-    // file — not two files with different names, and certainly not a lookup
-    // that had to be told which board it was on.
-    CHECK(t_watch.px(dp_of(IconSize::Lg)) == 39);
+    // The thesis of the whole pipeline: the lookup is keyed on a **pixel
+    // size**, never on a board.
+    //
+    // This block used to prove that by pointing at a collision — at the
+    // placeholder 261 dpi, `icon.size.lg` on the T-Watch and `icon.size.md` on
+    // the Waveshare were both 39 px and resolved to one file. At the measured
+    // 220 dpi (D15) the two size sets are **disjoint** and that collision is
+    // gone. The claim is unchanged; the evidence for it must not rest on an
+    // accident of arithmetic, so it now goes through the pixel API instead:
+    // asking by token and asking by pixel land on the same descriptor, and
+    // neither call is told which board it is on.
+    CHECK(t_watch.px(dp_of(IconSize::Lg)) == 33);
     CHECK(waveshare.px(dp_of(IconSize::Md)) == 39);
     CHECK(assets::icon(assets::Icon::Mesh, IconSize::Lg, t_watch) ==
-          assets::icon(assets::Icon::Mesh, IconSize::Md, waveshare));
+          assets::icon_px(assets::Icon::Mesh, 33));
+    CHECK(assets::icon(assets::Icon::Mesh, IconSize::Md, waveshare) ==
+          assets::icon_px(assets::Icon::Mesh, 39));
     CHECK(assets::icon(assets::Icon::Mesh, IconSize::Lg, t_watch) != nullptr);
 
     // Every icon resolves at every size the manifest generates, on whichever
-    // panel asks for it.
+    // panel asks for it. Three sizes, and the T-Watch now asks for exactly one
+    // of them.
     for (const assets::Icon which :
          {assets::Icon::Mesh, assets::Icon::Position, assets::Icon::Warning}) {
-        CHECK(assets::icon(which, IconSize::Md, t_watch) != nullptr);       // 33
-        CHECK(assets::icon(which, IconSize::Lg, t_watch) != nullptr);       // 39
+        CHECK(assets::icon(which, IconSize::Lg, t_watch) != nullptr);       // 33
         CHECK(assets::icon(which, IconSize::Md, waveshare) != nullptr);     // 39
         CHECK(assets::icon(which, IconSize::Lg, waveshare) != nullptr);     // 47
         CHECK(assets::name_of(which) != nullptr);
@@ -208,16 +216,24 @@ int main()
     // A size with no asset is `nullptr` and never a substitute.
     //
     // This is final §86 arriving at the layer that could most easily break it.
-    // `icon.size.sm` is 26 px on the T-Watch and 32 on the Waveshare, and
-    // `icon.size.xl` is 52 and 63 — none of the four is generated, and the
-    // tempting thing for a lookup to do is hand back the nearest one it has.
-    // A caller drawing that would be showing a picture nobody drew for that
-    // panel, which is the exact failure the rule exists to prevent, one layer
-    // later.
-    CHECK(t_watch.px(dp_of(IconSize::Sm)) == 26);
+    // `icon.size.sm` is 22 px on the T-Watch and 32 on the Waveshare,
+    // `icon.size.xl` is 44 and 63, and — new at 220 dpi — **`icon.size.md` is
+    // 28 on the T-Watch**. None of those five is generated, and the tempting
+    // thing for a lookup to do is hand back the nearest one it has. A caller
+    // drawing that would be showing a picture nobody drew for that panel,
+    // which is the exact failure the rule exists to prevent, one layer later.
+    //
+    // The T-Watch `md` case is the one that changed and the one worth watching:
+    // it resolved at the placeholder density and does not resolve now, so the
+    // omission has to fail loudly rather than silently draw the 33.
+    CHECK(t_watch.px(dp_of(IconSize::Sm)) == 22);
+    CHECK(t_watch.px(dp_of(IconSize::Md)) == 28);
+    CHECK(t_watch.px(dp_of(IconSize::Xl)) == 44);
+    CHECK(waveshare.px(dp_of(IconSize::Sm)) == 32);
     CHECK(waveshare.px(dp_of(IconSize::Xl)) == 63);
     for (const assets::Icon which :
          {assets::Icon::Mesh, assets::Icon::Position, assets::Icon::Warning}) {
+        CHECK(assets::icon(which, IconSize::Md, t_watch) == nullptr);
         CHECK(assets::icon(which, IconSize::Sm, t_watch) == nullptr);
         CHECK(assets::icon(which, IconSize::Sm, waveshare) == nullptr);
         CHECK(assets::icon(which, IconSize::Xl, t_watch) == nullptr);

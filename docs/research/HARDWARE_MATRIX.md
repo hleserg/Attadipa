@@ -258,9 +258,9 @@ intermediate: [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.
 | **1.3"** | LilyGoLib `docs/hardware/lilygo-t-watch-s3-plus.md:68` and `lilygo-t-watch-s3.md:62`, both `\| Display Size \| 1.3 Inch \|` | **wrong.** First-party documentation naming this product explicitly, and wrong about it — which is why the working value stayed 1.3" as long as it did |
 
 **How it was measured.** The rule lay on the watch case, coplanar with the
-glass, which removes parallax rather than bounding it: an earlier attempt with
-the rule on the desk beside the watch could yield only an upper bound, and was
-reported as one. Standard and subject are therefore in one frame at one scale.
+glass, which collapses the standard-to-subject offset to the rim-to-emitter
+millimetres priced below: an earlier attempt with the rule on the desk beside
+the watch left the whole case height and could yield only an upper bound. Standard and subject are therefore in one frame at one scale.
 Repeating the fit over four graduation bands and four row windows moves the
 answer by 0.03 mm — but two systematics of comparable size pull opposite ways:
 rule-on-case against emitters-under-glass raises the true width, and the frame's
@@ -274,11 +274,11 @@ graduations — the marks the scale is read from, uniform here to about 1 % of o
 graduation, on two independent sets of marks that agree to 0.35 %.
 
 **What this changes.** Density is **220 ppi, not 261**, so every `Metrics::px`
-conversion yields fewer pixels than the current build emits: this panel renders
-19 % oversized today. `platform/src/board_profiles.cpp` and the asset pipeline
-still carry the placeholder;
-[#323](https://github.com/hleserg/Attadipa/issues/323) corrects them. The stale
-`T_WATCH-2020&GPS_V08` title block misled: its LCD symbol was inherited *and* right.
+conversion yields fewer pixels than the 261 build emitted, which rendered this
+panel 19 % oversized. `platform/src/board_profiles.cpp` and the asset pipeline
+carried that placeholder until [#323](https://github.com/hleserg/Attadipa/issues/323)
+corrected them. The stale `T_WATCH-2020&GPS_V08` title block misled: its LCD
+symbol was inherited *and* right.
 
 ### Display detail worth budgeting
 

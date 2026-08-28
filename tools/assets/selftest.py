@@ -119,9 +119,15 @@ def main() -> int:
     # makes an asset's pixel size the same number the layout will ask for.
     check("px(0) is 0", manifest.px(0, 315) == 0)
     check("px never rounds a positive dp to zero", manifest.px(1, 1) == 1)
-    check("px rounds to nearest", manifest.px(20, 261) == 33 and manifest.px(24, 261) == 39)
-    check("the 39 px collision is real",
-          manifest.px(24, 261) == manifest.px(20, 315) == 39)
+    check("px rounds to nearest", manifest.px(20, 220) == 28 and manifest.px(24, 220) == 33)
+    # At 220 and 315 dpi the two boards no longer share a single icon size --
+    # {22,28,33,44} against {32,39,47,63}. The pipeline is keyed on the pixel
+    # anyway: a collision is a thing it must handle, not a thing it needs.
+    check("the two boards' icon sizes are disjoint",
+          not ({manifest.px(dp, 220) for dp in manifest.ICON_DP.values()} &
+               {manifest.px(dp, 315) for dp in manifest.ICON_DP.values()}))
+    check("every generated size is one some (token, board) asks for",
+          set(manifest.SIZES) <= set(manifest.SIZE_REASONS))
 
     # The contact sheet's inks are the ones color.cpp defines. A sheet drawn in
     # the wrong ink would be a review of a screen nobody ships.

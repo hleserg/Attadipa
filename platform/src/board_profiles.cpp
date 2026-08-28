@@ -73,19 +73,22 @@ BoardProfile make_twatch()
     p.name                        = "LilyGO T-Watch S3 Plus";
     p.display.width_px            = 240;
     p.display.height_px           = 240;
-    // STALE, and knowingly so: the value below says 1.3" and the panel is
-    // 1.54". D15 was RESOLVED on 2026-08-28 by measuring the running watch —
-    // 27.72 mm across the active area, a 1.544" diagonal at 220 ppi — and
-    // the derivation re-runs from a committed photograph, so this is not a
-    // recollection: docs/research/TWATCH_S3_PLUS_PANEL_2026-08-28.md. The
-    // schematic's QT154C2408 / LCD_1.54-TOUCH was right, and LilyGoLib's spec
-    // tables, which name the S3 Plus explicitly, are wrong.
+    // MEASURED, not inherited — OPEN_QUESTIONS D15, closed 2026-08-28. The
+    // active area is 27.72 mm across, −0.2 to +0.7 mm two-sided, a 1.544"
+    // diagonal, measured off the running unit from a committed photograph
+    // (issue #311). That settles a conflict between LilyGoLib's spec
+    // tables, which say 1.3" for the S3 Plus by name, and the schematic's LCD
+    // sheet, which says QT154C2408 / LCD_1.54-TOUCH: the schematic was right,
+    // and the vendor's own documentation is wrong about the vendor's own product.
     //
-    // 1300 is therefore no longer the conservative half of an open question.
-    // It is a placeholder that renders this panel 19 % oversized, and it
-    // survives only until #323 — which resizes every token and regenerates
-    // every asset — lands. Do not read it as a defended choice.
-    p.display.diagonal_milli_inch = 1300;
+    // This replaces a deliberately conservative 1300. That placeholder yielded
+    // 261 dpi against the true 220, so every physical minimum converted to
+    // about 19 % more pixels than it should have — erring, on purpose, towards
+    // touch targets physically larger than designed rather than smaller, since
+    // a too-small touch target is the failure that reaches a wrist. The error
+    // is now zero rather than signed, and this is the first build that renders
+    // this panel at its designed physical size.
+    p.display.diagonal_milli_inch = 1540;
     p.display.technology          = PanelTechnology::Ips;
     p.present_mask                = kTWatchFeatures;
     // Unknown, and deliberately so -- but no longer because nobody has said.

@@ -240,18 +240,10 @@ raw pixels, against a 160 dpi reference — the density the touch-target guidanc
 is already written in, so that "44" means the ~7 mm it is meant to mean rather
 than a number this project invented.
 
-What that buys, at the two densities the board profiles compute **today** — 261
-dpi for the T-Watch, 315 dpi for the Waveshare:
-
-**261 is not this panel's density, and the diagonal is no longer CONFLICTING.**
-D15 was resolved by measuring the running watch on 2026-08-28: 27.72 mm across
-the active area, a 1.544" diagonal at 220 ppi, re-derivable from a committed
-photograph — [TWATCH_S3_PLUS_PANEL_2026-08-28](../research/TWATCH_S3_PLUS_PANEL_2026-08-28.md).
-261 is what `platform/src/board_profiles.cpp` still computes from a placeholder
-1300, and it renders this panel 19 % oversized. Every T-Watch pixel count in
-this document is therefore the current build's arithmetic rather than a property
-of the hardware; [#323](https://github.com/hleserg/Attadipa/issues/323) corrects
-the profile and regenerates all of them.
+What that buys, at the two densities the board profiles compute (220 dpi for the
+T-Watch, from the 1.54-inch diagonal MEASURED on the unit and re-derivable from
+a committed photograph — [TWATCH_S3_PLUS_PANEL_2026-08-28](../research/TWATCH_S3_PLUS_PANEL_2026-08-28.md);
+315 dpi for the Waveshare):
 
 | Token | T-Watch | Waveshare | physical |
 |---|---|---|---|
@@ -265,7 +257,7 @@ the T-Watch — under the guidance on both boards, by different amounts, from on
 source line. That is the failure the `Dp` type exists to make unwritable.
 
 **`radius.pill` is not a length.** 999 is the CSS idiom for "round the ends
-completely"; resolved as a measurement at 261 dpi it is 1630 px, larger than
+completely"; resolved as a measurement at 220 dpi it is 1374 px, larger than
 either panel. In code it is a *rule* — half the shorter side of the thing being
 drawn — and `is_pill()` says so in the type system rather than leaving a magic
 number to be multiplied by accident.
@@ -378,18 +370,18 @@ destroys. The pipeline refuses a size it has no drawing for, and the lookup
 returns nothing rather than the nearest one it has.
 
 **A size is a pixel count, never a board.** The four `icon.size.*` tokens across
-the two panel densities land on **seven** distinct pixel sizes, and two of them
-collide: `icon.size.lg` at 261 dpi and `icon.size.md` at 315 dpi are both 39 px
-and share one file. Naming assets by board would ship the same picture twice.
-The 261 column below is the placeholder arithmetic described above, not the
-measured 220 ppi; the collision is a property of the sizes, not of that value.
+the two panel densities land on **eight** distinct pixel sizes and none of them
+collide. At the old 261 dpi placeholder `icon.size.lg` and the Waveshare's
+`icon.size.md` were both 39 px and shared one file; that coincidence went with
+the placeholder. Naming assets by board would ship the same picture twice
+whenever it recurred, and would teach firmware which board it is on.
 
-| Token | T-Watch, 261 dpi | Waveshare, 315 dpi |
+| Token | T-Watch, 220 dpi | Waveshare, 315 dpi |
 |---|---|---|
-| `icon.size.sm` — 16 dp | 26 px | 32 px |
-| `icon.size.md` — 20 dp | **33 px** | **39 px** |
-| `icon.size.lg` — 24 dp | **39 px** | **47 px** |
-| `icon.size.xl` — 32 dp | 52 px | 63 px |
+| `icon.size.sm` — 16 dp | 22 px | 32 px |
+| `icon.size.md` — 20 dp | 28 px | **39 px** |
+| `icon.size.lg` — 24 dp | **33 px** | **47 px** |
+| `icon.size.xl` — 32 dp | 44 px | 63 px |
 
 The four sizes in bold are the ones that exist; `sm` and `xl` are not generated,
 because nothing draws them yet and a mask costs its pixel count in flash. Asking

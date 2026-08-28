@@ -29,10 +29,10 @@ void check(bool condition, const char* what, int line)
 
 // The two panels, by density rather than by name — which is the whole point of
 // the ui library not linking platform. These numbers are what
-// DisplayInfo::dpi() computes from the profiles: 240x240 over the stale 1.3"
-// the T-Watch profile still carries — D15 is RESOLVED at 1.54", 220 ppi, and
-// #323 corrects the profile — and 410x502 over 2.06".
-constexpr std::uint16_t kTWatchDpi    = 261;
+// DisplayInfo::dpi() computes from the profiles: 240x240 over a MEASURED 1.54"
+// (D15, closed 2026-08-28 against a coplanar rule -- issue #311) and
+// 410x502 over 2.06".
+constexpr std::uint16_t kTWatchDpi    = 220;
 constexpr std::uint16_t kWaveshareDpi = 315;
 
 const ColorRole kAllRoles[] = {
@@ -79,7 +79,7 @@ void test_one_token_is_one_physical_size_on_both_panels()
     // And the pixel counts really do differ, or the test above is passing
     // because nothing is being scaled at all.
     CHECK(watch.px(dp_of(Space::Sm)) != wave.px(dp_of(Space::Sm)));
-    CHECK(watch.px(dp_of(Space::Sm)) == 13);
+    CHECK(watch.px(dp_of(Space::Sm)) == 11);
     CHECK(wave.px(dp_of(Space::Sm)) == 16);
 }
 
@@ -146,7 +146,7 @@ void test_a_touch_target_is_physical_and_clears_the_minimum()
     CHECK(44 * 25400 / static_cast<std::int32_t>(wave.dpi()) < 6900);
 }
 
-// `Pill` is a rule, not a length. Resolving it as one gives 1630 px at 261 dpi,
+// `Pill` is a rule, not a length. Resolving it as one gives 1374 px at 220 dpi,
 // which is larger than either panel.
 void test_pill_is_a_rule_and_not_a_length()
 {

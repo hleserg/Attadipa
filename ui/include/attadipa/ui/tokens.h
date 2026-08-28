@@ -37,7 +37,7 @@ constexpr Dp dp_of(Space s)
 //
 // `Pill` is the odd one out and it is not a length. DESIGN_SYSTEM writes it as
 // 999, which is the CSS idiom for "round the ends completely" — but 999 dp
-// resolved at 261 dpi is 1630 px, larger than either panel, so treating it as a
+// resolved at 220 dpi is 1374 px, larger than either panel, so treating it as a
 // measurement produces nonsense rather than a pill. It is a *rule* — half the
 // shorter side of whatever is being drawn — and it says so in the type system
 // instead of hiding in a magic number.

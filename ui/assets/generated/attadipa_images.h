@@ -4,8 +4,8 @@
 // background is an authored RGB565 raster for the 410x502 face.
 //
 // The number in each name is a **pixel** size, not a token and not a board.
-// 39 px is icon.size.lg on the T-Watch's 261 dpi panel and icon.size.md on
-// the Waveshare's 315 dpi one — the same file, because it is the same icon.
+// 33 px is icon.size.lg on the T-Watch's measured 220 dpi panel; 39 and 47
+// are icon.size.md and icon.size.lg on the Waveshare's 315 dpi one.
 #pragma once
 
 #include "lvgl.h"

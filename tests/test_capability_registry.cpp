@@ -118,14 +118,14 @@ void test_board_profiles()
     CHECK(platform::find_board_profile("nonsense") == nullptr);
     CHECK(platform::find_board_profile(nullptr) == nullptr);
 
-    // 240x240 over the profile's stale 1.3 inches, 410x502 across 2.06 inches.
+    // 240x240 across 1.54 inches, 410x502 across 2.06 inches.
     //
-    // 261 is not a measurement, and it is no longer the conservative reading
-    // either: D15 is RESOLVED — the panel is 1.54" at 220 ppi, MEASURED
-    // 2026-08-28. This assertion locks the *arithmetic* against the stale
-    // 1300 the profile still carries, so it fails the moment #323 corrects
-    // that value. Becoming 220 there is the fix, not a regression.
-    CHECK(twatch(platform::RadioChip::Unknown).display.dpi() == 261);
+    // 220 *is* a measurement, and this line predicted its own change. D15
+    // resolved on 2026-08-28: 27.72 mm across the active area, -0.2 to +0.7
+    // two-sided, a 1.544" diagonal -- issue #311, from a committed photograph.
+    // The conservative 1.3" placeholder is gone and this assertion now locks a
+    // panel as well as the arithmetic.
+    CHECK(twatch(platform::RadioChip::Unknown).display.dpi() == 220);
     CHECK(waveshare().display.dpi() == 315);
 
     // The absences that make the two boards different devices rather than two
