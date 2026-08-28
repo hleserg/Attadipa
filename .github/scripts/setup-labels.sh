@@ -72,6 +72,7 @@ priority:P2|fbca04|Normal. The default when the marker does not say.
 priority:P3|0e8a16|When there is room.
 needs-owner|fbca04|Needs a human decision, a credential, or a settings change.
 needs-hardware|fbca04|Needs a physical board, an instrument or a measurement.
+needs-rebase|fbca04|The branch conflicts with the base and only hands can fix it. Set and cleared by pr-branch-update.sh.
 ci:repairing|fef2c0|Automatic CI repair is in flight.
 ci:failed|b60205|CI is red and automatic repair has stopped.
 ai-review:pass|0e8a16|The independent reviewer found nothing blocking.

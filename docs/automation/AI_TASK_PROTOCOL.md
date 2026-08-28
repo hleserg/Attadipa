@@ -62,6 +62,9 @@ The issue/PR is the record. Lifecycle labels are mutually exclusive:
 
 Queue-width labels apply only to pull requests. `queue:parked` and
 `queue:emergency` are human-set exemptions; `queue:over-limit` is a diagnostic.
+`needs-rebase` is a pull-request diagnostic too: `pr-branch-update.sh` sets it
+when the branch conflicts with its base and removes it when the branch merges
+cleanly again, so a human never has to clear it.
 A human retry resets the failure budget; automation re-adding `agent:ready`
 does not. Exact counters and recovery live only in tested scripts.
 
