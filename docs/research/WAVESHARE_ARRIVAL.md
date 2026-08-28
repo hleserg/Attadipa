@@ -719,7 +719,7 @@ The advice was useful and most of it holds. What follows is only the part that
 does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
-   [HARDWARE_MATRIX.md:331](HARDWARE_MATRIX.md) "8 MB **octal**" and
+   [HARDWARE_MATRIX.md:341](HARDWARE_MATRIX.md) "8 MB **octal**" and
    [VERIFIED_FACTS.md:808](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
    Only the build-configuration reading was true at the time; T-165 has since
    added and exercised that configuration.
@@ -760,7 +760,7 @@ does not, kept because an uncorrected claim propagates.
     display and touch rows, where the bus row was line 326; and the CI status
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
-    [HARDWARE_MATRIX.md:355](HARDWARE_MATRIX.md) "Main I2C bus" and
+    [HARDWARE_MATRIX.md:365](HARDWARE_MATRIX.md) "Main I2C bus" and
     [`.github/workflows/ci.yml:619`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
@@ -778,7 +778,7 @@ twice. **Two are still live.**
 1. HARDWARE_MATRIX called J3 an "Expansion connector … at least 29 pins", and D3
    asked for its pinout. J3 is the 34-pin AMOLED display FPC and there is no
    expansion header. Now a Display FPC row at
-   [HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md) "Display FPC", with D3 struck
+   [HARDWARE_MATRIX.md:367](HARDWARE_MATRIX.md) "Display FPC", with D3 struck
    as mis-stated rather than answered at
    [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md).
 2. REUSE_LEDGER recorded the Waveshare BSP as coming from
@@ -798,7 +798,7 @@ twice. **Two are still live.**
    read `—` until it is answered.
 
 5. **Splitting D12 left three places behind, and all three are now closed.**
-   `HARDWARE_MATRIX.md:331` "8 MB **octal**" reads VERIFIED/octal;
+   `HARDWARE_MATRIX.md:341` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
    open-question row in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) is struck and

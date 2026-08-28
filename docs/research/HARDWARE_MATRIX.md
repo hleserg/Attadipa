@@ -216,9 +216,16 @@ board. What matters is what else rides that connector.
 | 1 | `GPIO41 / MTDI` | GNSS UART |
 | 2 | `IO0` | **BOOT button** |
 | 3 | `GPS_LDO` | GNSS supply / enable |
+| 5 | `IO2` | main-board net, unconnected on the daughterboard |
 | 6 | `RST / EN` | **RESET button** |
 | 7 | `IO10` | **main I2C `SDA`** |
 | 8 | `GPIO42 / MTMS` | GNSS UART |
+| 9 | `IO11` | **main I2C `SCL`** |
+
+Pins 5 and 9 were missing from this table until 2026-08-28, which left it
+describing a bus with a data line and no clock — a half-connection that could
+never have worked. The numbers are the main board's `U20`, which is drawn with
+**15** pins despite its `13PIN` name.
 
 Two consequences, both structural:
 
@@ -226,11 +233,14 @@ Two consequences, both structural:
    without the daughterboard has no reset button and no way into download mode
    except over USB. Any bring-up instruction that says "hold BOOT" is wrong for
    that configuration.
-2. **The main I2C `SDA` reaches the connector.** The `MIA-M10Q` exposes `SDA` and
-   `SCL` (u-blox DDC, address 0x42). Whether the daughterboard actually connects
-   them is not established from the dump — but if it does, the GNSS is a *sixth*
-   device on the shared bus and a bus scan will find it. Until that is settled,
-   an unexpected 0x42 is a discovery, not a fault — OPEN_QUESTIONS D9.
+2. **The main I2C bus reaches the connector and stops there.** The main board
+   brings out both `SDA` (pin 7) and `SCL` (pin 9); the daughterboard picks up
+   neither. On its `J1` those pins are unlabelled stubs, and the `MIA-M10Q`'s own
+   `SDA` ball is a free stub while `SCL` ties only into a local bracket with two
+   `RESERVED` balls. **The GNSS is not a device on the shared bus** — so a `0x42`
+   that answers a scan would be a fault to investigate, not a discovery to
+   celebrate. Settled 2026-08-28 by reading the daughterboard net list as a
+   drawing — OPEN_QUESTIONS D9, evidence in [#312](https://github.com/hleserg/Attadipa/issues/312).
 
 The daughterboard also carries `LNA_EN`, `SAFEBOOT_N` and `RESET_N` on the
 module; none of them appear on the main-board schematic.
