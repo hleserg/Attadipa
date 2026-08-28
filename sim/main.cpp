@@ -196,9 +196,9 @@ int main(int argc, char **argv) {
 
   // Resolution comes from the board and so does density. LV_DPX() and the
   // spacing tokens that will sit on top of it (T-009) need the second one:
-  // 8 px is not the same physical distance on a 1.3-inch panel and a
-  // 2.06-inch one, and a token system that ignores that produces a design
-  // that only looks right on whichever board it was drawn on.
+  // 8 px is not the same physical distance on the T-Watch's 1.54-inch panel
+  // and a 2.06-inch one, and a token system that ignores that produces a
+  // design that only looks right on whichever board it was drawn on.
   lv_display_set_dpi(display, options.board.display.dpi());
   lv_sdl_window_set_title(display, options.board.name);
   if (options.zoom != 1.0F) {

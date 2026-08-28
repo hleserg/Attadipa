@@ -29,9 +29,9 @@ void check(bool condition, const char* what, int line)
 
 // The two panels, by density rather than by name — which is the whole point of
 // the ui library not linking platform. These numbers are what
-// DisplayInfo::dpi() computes from the profiles: 240x240 over a working 1.3"
-// (the conservative reading of a CONFLICTING diagonal, HARDWARE_MATRIX) and
-// 410x502 over 2.06".
+// DisplayInfo::dpi() computes from the profiles: 240x240 over the stale 1.3"
+// the T-Watch profile still carries — D15 is RESOLVED at 1.54", 220 ppi, and
+// #323 corrects the profile — and 410x502 over 2.06".
 constexpr std::uint16_t kTWatchDpi    = 261;
 constexpr std::uint16_t kWaveshareDpi = 315;
 

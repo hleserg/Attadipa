@@ -23,7 +23,7 @@ using HF = HardwareFeature;
 // Not present, and each absence is load-bearing: no gyroscope (BMA423 is an
 // accelerometer), no magnetometer, no SD card.
 constexpr std::uint32_t kTWatchFeatures =
-    feature_bit(HF::Display) |          // ST7789V3, 240x240 IPS 1.3"
+    feature_bit(HF::Display) |          // ST7789V3, 240x240 IPS, 1.54" MEASURED
     feature_bit(HF::Touch) |            // FT6336U, on its own I2C bus
     feature_bit(HF::Buttons) |          // BOOT on the GNSS daughterboard; PWR via the PMU
     feature_bit(HF::Pmu) |              // AXP2101
@@ -73,18 +73,18 @@ BoardProfile make_twatch()
     p.name                        = "LilyGO T-Watch S3 Plus";
     p.display.width_px            = 240;
     p.display.height_px           = 240;
-    // CONFLICTING, and this is the conservative half of the conflict rather
-    // than the confident one — OPEN_QUESTIONS D15. LilyGoLib's spec tables say
-    // 1.3" for the S3 and the S3 Plus by name; the schematic's LCD sheet says
-    // QT154C2408 / LCD_1.54-TOUCH, and that vendor's sibling part QT154H2201 is
-    // published as 1.54", 240x240, ST7789V, so the "154" field decodes. No
-    // document both names the Plus and shows the panel.
+    // STALE, and knowingly so: the value below says 1.3" and the panel is
+    // 1.54". D15 was RESOLVED on 2026-08-28 by measuring the running watch —
+    // 27.72 mm across the active area, a 1.544" diagonal at 220 ppi — and
+    // the derivation re-runs from a committed photograph, so this is not a
+    // recollection: docs/research/TWATCH_S3_PLUS_PANEL_2026-08-28.md. The
+    // schematic's QT154C2408 / LCD_1.54-TOUCH was right, and LilyGoLib's spec
+    // tables, which name the S3 Plus explicitly, are wrong.
     //
-    // 1300 is kept because it yields the *higher* dpi (261 against 220), and a
-    // physical minimum converted at the higher dpi produces more pixels. If the
-    // panel turns out to be 1.54", every touch target is physically larger than
-    // designed. The other way round it would be smaller, and a too-small touch
-    // target is the failure that reaches a wrist.
+    // 1300 is therefore no longer the conservative half of an open question.
+    // It is a placeholder that renders this panel 19 % oversized, and it
+    // survives only until #323 — which resizes every token and regenerates
+    // every asset — lands. Do not read it as a defended choice.
     p.display.diagonal_milli_inch = 1300;
     p.display.technology          = PanelTechnology::Ips;
     p.present_mask                = kTWatchFeatures;

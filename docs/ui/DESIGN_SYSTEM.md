@@ -240,10 +240,18 @@ raw pixels, against a 160 dpi reference — the density the touch-target guidanc
 is already written in, so that "44" means the ~7 mm it is meant to mean rather
 than a number this project invented.
 
-What that buys, at the two densities the board profiles compute (261 dpi for the
-T-Watch, taking the conservative 1.3-inch reading of a diagonal
-[HARDWARE_MATRIX](../research/HARDWARE_MATRIX.md) records as CONFLICTING; 315 dpi
-for the Waveshare):
+What that buys, at the two densities the board profiles compute **today** — 261
+dpi for the T-Watch, 315 dpi for the Waveshare:
+
+**261 is not this panel's density, and the diagonal is no longer CONFLICTING.**
+D15 was resolved by measuring the running watch on 2026-08-28: 27.72 mm across
+the active area, a 1.544" diagonal at 220 ppi, re-derivable from a committed
+photograph — [TWATCH_S3_PLUS_PANEL_2026-08-28](../research/TWATCH_S3_PLUS_PANEL_2026-08-28.md).
+261 is what `platform/src/board_profiles.cpp` still computes from a placeholder
+1300, and it renders this panel 19 % oversized. Every T-Watch pixel count in
+this document is therefore the current build's arithmetic rather than a property
+of the hardware; [#323](https://github.com/hleserg/Attadipa/issues/323) corrects
+the profile and regenerates all of them.
 
 | Token | T-Watch | Waveshare | physical |
 |---|---|---|---|
@@ -373,6 +381,8 @@ returns nothing rather than the nearest one it has.
 the two panel densities land on **seven** distinct pixel sizes, and two of them
 collide: `icon.size.lg` at 261 dpi and `icon.size.md` at 315 dpi are both 39 px
 and share one file. Naming assets by board would ship the same picture twice.
+The 261 column below is the placeholder arithmetic described above, not the
+measured 220 ppi; the collision is a property of the sizes, not of that value.
 
 | Token | T-Watch, 261 dpi | Waveshare, 315 dpi |
 |---|---|---|
