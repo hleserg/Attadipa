@@ -600,6 +600,8 @@ codes 5 through 9 decode identically in both parts:
   (`REG 0x63[4]`). The 125 mA POR default stops the charge early and leaves the
   cell part-full while the gauge reads 100 %.
 - **`REG 0x64` (CV target): write `011b` = 4.2 V explicitly and read it back.**
+  (**For this board's cell.** The same register on the T-Watch S3 Plus is
+  `100b` = 4.35 V from the factory — see §8 and [TWATCH_S3_PLUS_DOWNLOAD_MODE](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md) §8.)
   The draft said "leave it at the POR default", which is indefensible next to its
   own doctrine for `REG 0x62`. **The PMU never sees a POR while the cell is
   connected** — it is powered continuously from `VBAT1`, which has no disconnect
@@ -695,12 +697,20 @@ the vendor's own reading already sits above it.
 
 ## 8. Non-negotiable
 
-- **4.2 V chemistry only.** Nothing marked "HV", "high voltage", 4.35 V or
+- **4.2 V chemistry only — for *this* board's cell.** Nothing marked "HV", "high voltage", 4.35 V or
   4.4 V. Their advertised capacity assumes a termination this board will never
   apply, so the energy is unreachable — and a mismarked HV cell in a system whose
   firmware someone later "optimises" upward is a fire path with a plausible
   commit behind it. **Never write `REG 0x64 = 100b` or `101b`; write `011b` and
   read it back (§6); never write `000b`.**
+
+  **This is a rule about the Waveshare's cell, not a global rule about the
+  AXP2101, and it must not be carried to another board.** The T-Watch S3 Plus
+  ships a high-voltage cell and its *factory* firmware sets `REG 0x64` to
+  `100b` = 4.35 V — MEASURED on the physical unit, 2026-08-28, [TWATCH_S3_PLUS_DOWNLOAD_MODE](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md)
+  §8. There, `011b` would undercharge a cell the manufacturer charges to
+  4.35 V; here, `100b` is the fire path this bullet names. The register is
+  per-board, and nothing in Attadipa writes it on either board today.
 - **PCM mandatory, integrated in the pack**, with over-charge (~4.28 V),
   over-discharge (~2.9 V) and over-current trip points printed on the datasheet.
   This board has **no protection FET, no fuel-gauge IC, no load switch and no
