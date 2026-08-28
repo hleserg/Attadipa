@@ -137,6 +137,32 @@ void a_fault_raised_after_the_session_ended_is_replayed_after_it()
 // says nothing about the session that is live now. It has to carry the
 // generation it belongs to, or the caller pauses a transmitter that no longer
 // exists and terminates a connection whose write never failed.
+// `StackReady` is dispatched as begin-and-rescan, so it supersedes any fault
+// raised before it. Replaying the older fault behind it faults the transport
+// the same catch-up just re-armed, and only `begin()` clears `Faulted` -- so a
+// scan that then finds the node connects, subscribes and carries nothing,
+// with no local way out while the peer stays idle.
+void a_fault_the_stack_resync_supersedes_is_not_replayed()
+{
+    SessionOwner owner;
+    owner.stack_ready();
+    const std::uint32_t generation = establish(owner, 7);
+    const SessionMark applied = mark_of(owner.snapshot());
+
+    // The host reset under a live session and NimBLE synchronised again before
+    // the worker ran: both fit inside one write-pacing delay.
+    CHECK(owner.ended(generation));
+    owner.fault();
+    owner.stack_ready();
+
+    const auto catch_up = reconcile(applied, owner.snapshot());
+    CHECK(steps_of(catch_up) ==
+          (std::vector<SessionStep>{SessionStep::StackReady, SessionStep::Disconnected}));
+    // Superseded, not silently dropped: three transitions happened and two were
+    // replayed, and the difference is published rather than lost.
+    CHECK(catch_up.coalesced == 1);
+}
+
 void a_write_result_carries_the_generation_that_produced_it()
 {
     SessionOwner owner;
@@ -637,6 +663,7 @@ int main()
     the_longest_possible_catch_up_still_fits();
     a_stack_that_resyncs_is_replayed_a_second_time();
     a_fault_raised_after_the_session_ended_is_replayed_after_it();
+    a_fault_the_stack_resync_supersedes_is_not_replayed();
     a_write_result_carries_the_generation_that_produced_it();
     a_write_result_reaches_the_worker_without_a_queue();
     two_tasks_cannot_tear_a_session_or_lose_a_transition();

@@ -113,6 +113,14 @@ struct SessionSnapshot {
     // session had already ended is replayed after it and must survive.
     SessionPhase  fault_phase = SessionPhase::Ended;
 
+    // `stack_readies` as it stood when that fault was raised. A sync that
+    // happened after it supersedes it: `StackReady` re-begins the link and
+    // rescans, so replaying an older fault behind that would fault the
+    // transport the same catch-up has just re-armed. Comparing the two counts
+    // is the only thing that orders a fault against a sync, because `fault()`
+    // carries neither a generation nor a timestamp.
+    std::uint32_t fault_stack_readies = 0;
+
     std::uint16_t connection = kNoSessionHandle;
     std::uint16_t mtu = 0;
     std::uint16_t service_start = 0;

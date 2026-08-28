@@ -45,6 +45,7 @@ void SessionOwner::stack_ready()
 void SessionOwner::fault()
 {
     state_.fault_phase = state_.phase;
+    state_.fault_stack_readies = state_.stack_readies;
     state_.faults += 1;
     state_.transitions += 1;
 }
@@ -190,7 +191,16 @@ SessionCatchUp reconcile(const SessionMark& applied,
     // to be cleared by it. A fault raised once the session had already ended —
     // a scan that would not start, an address that would not configure —
     // happened after, and replaying it first lets the same catch-up erase it.
-    const bool faulted = current.faults != applied.faults;
+    //
+    // A sync that came after the fault supersedes it outright. `StackReady` is
+    // dispatched as begin-and-rescan, so a fault replayed behind one faults the
+    // transport this same catch-up has just re-armed -- and with a session in
+    // the window it would land after a live generation's `Ready` and discard
+    // work that generation had already enqueued. The dropped transition is not
+    // lost: it falls out of `count` and is reported as `coalesced` below.
+    const bool fault_superseded =
+        current.stack_readies != current.fault_stack_readies;
+    const bool faulted = current.faults != applied.faults && !fault_superseded;
     const bool fault_outlives_session =
         faulted && current.fault_phase == SessionPhase::Ended;
     if (faulted && !fault_outlives_session) emit(SessionStep::Fault);
