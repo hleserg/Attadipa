@@ -328,7 +328,7 @@ Consequences only. Designs go in ADRs and tasks.
    specified, *then* an ADR decides whether capacity is an interface method, a
    state, or both. **No live bug today:** `link/` has no transport, its CRC makes
    truncation detectable rather than silent, and `FrameQueue::push` refuses an
-   over-long frame (`link/include/attadipa/link/frame_queue.h:59-75`).
+   over-long frame (`link/include/attadipa/link/frame_queue.h:82-100` — "bool push(const std::uint8_t* data, std::size_t length)").
 4. **Truncation must be detectable, not inferred.** Every upstream report here
    was diagnosed from arithmetic on a byte count — 147 = 3 × 49 — because
    nothing on the wire said the frame was short. A companion client cannot fix

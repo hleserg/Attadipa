@@ -220,8 +220,21 @@ CITATION = re.compile(
 # `[HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md)`, and the citation match ends
 # inside it, so a fingerprint written after the link would otherwise be seen by
 # nothing -- a promise silently not kept, which is worse than no promise.
+# The path a citation links to, immediately after it. These documents write
+# `[`core/clock.h:86`](../../core/include/attadipa/core/clock.h)`: a SHORT LABEL
+# for the reader and the real path in the href. The label is not a stale path
+# and must not be reported as one -- but it is also the only place a line number
+# appears, so resolving through the href is what makes `:86` checkable at all.
+# Anchored, so a later link on the same line cannot be mistaken for this one.
+CITATION_HREF = re.compile(r"\A`?\]\(([^)#]+)")
+
+# What may sit between a citation and its fingerprint: the closing half of a
+# link, and backticks. Shared with the wrapped-fingerprint rule in _report so
+# the two cannot disagree about where a citation ends.
+FINGERPRINT_LEAD = re.compile(r'\A`?(?:\]\([^)]*\))?`?')
+
 FINGERPRINT = re.compile(
-    r'\A`?(?:\]\([^)]*\))?`?\s*[\u2014-]?\s*"([^"]{3,80})"'
+    FINGERPRINT_LEAD.pattern + r'\s*[\u2014-]?\s*"([^"]{3,80})"'
 )
 
 # HOW TO WRITE AN EXAMPLE THAT IS NOT A CITATION. A fingerprint is an
@@ -329,7 +342,9 @@ def check_citation_lines(root: str) -> list[str]:
         # TASKS.md keeps its `BLOCKED:` records in fenced blocks, and the
         # citation that sent a reader to a blank line -- on the GNSS rail, the
         # fact CLAUDE.md holds up as the cost of guessing -- was inside one.
+        following = text.splitlines()[1:] + [""]
         for lineno, line, _fenced in scan_lines(text):
+            nxt = following[lineno - 1]
             for match in list(CITATION.finditer(line)) + list(
                 BARE_CITATION.finditer(line)
             ):
@@ -339,7 +354,8 @@ def check_citation_lines(root: str) -> list[str]:
                     body = lines_of(resolved)
                     if body is not None:
                         _report(
-                            problems, rel_self, lineno, cited, match, body, line
+                            problems, rel_self, lineno, cited, match, body,
+                            line, nxt
                         )
                     continue
                 # Resolve beside the citing file first, then from the root. A
@@ -352,23 +368,88 @@ def check_citation_lines(root: str) -> list[str]:
                 else:
                     # Then anywhere in the tree, if exactly one file carries
                     # that basename -- see basename_index().
+                    # The label may be shorthand for a path the href spells
+                    # out in full. Prefer the href: it is what a reader clicks,
+                    # and check_links already proves it resolves.
+                    href = CITATION_HREF.match(line[match.end():])
+                    if href:
+                        via = os.path.normpath(
+                            os.path.join(here, href.group(1).lstrip("/"))
+                        )
+                        if os.path.isfile(via):
+                            body = lines_of(via)
+                            if body is not None:
+                                _report(problems, rel_self, lineno, cited,
+                                        match, body, line, nxt)
+                            continue
                     resolved = by_basename.get(os.path.basename(cited), "")
                     if not resolved or "/" in cited.strip("./"):
-                        # Not a file in this repository: an upstream source, a
-                        # renamed path, or a false positive. check_links covers
-                        # the ones written as links; a line number in somebody
-                        # else's tree is not ours to verify. A citation that
-                        # names a DIRECTORY is not resolved by basename either:
+                        # Three cases used to end here alike, and one of them is
+                        # ours. An upstream source and a false positive are not
+                        # ours to verify -- a line number in somebody else's
+                        # tree means nothing here, and a citation naming a
+                        # DIRECTORY is not resolved by basename either:
                         # `upstream/foo/ci.yml:12` means their ci.yml, not ours.
+                        #
+                        # A RENAMED path is different, and skipping it silently
+                        # is how eleven citations naming files this repository
+                        # no longer has stayed green. `core/clock.h:31` is not
+                        # somebody else's tree: `core/` is ours, the file moved
+                        # to `core/include/attadipa/core/`, and the citation
+                        # now sends a reader nowhere. No fingerprint can catch
+                        # it, because resolution fails before there is anything
+                        # to compare.
+                        #
+                        # What separates them is whether we can PROVE the
+                        # file is ours. "the first segment is a directory we
+                        # track" is not proof: `docs/` is ours and it is also
+                        # LilyGoLib's, and HARDWARE_MATRIX cites
+                        # `docs/hardware/lilygo-t-watch-s3-plus.md:68` in THEIR
+                        # tree. That heuristic reddened a correct citation.
+                        #
+                        # A unique basename elsewhere in our tree is proof: the
+                        # file exists here, at another path, so the citation is
+                        # a rename we did and can name the fix for. A basename
+                        # we do not have at all stays silent -- upstream, or
+                        # deleted, and neither is decidable from here.
+                        # `resolved` is the basename lookup above: non-empty
+                        # means our tree carries this file at a different path.
+                        # ...and a unique basename is NOT enough on its own.
+                        # `upstream/meshcore/main.cpp` has a basename this tree
+                        # carries exactly once, at `sim/main.cpp`, so the
+                        # report would announce a rename between two unrelated
+                        # files in two different projects. What makes it proof
+                        # is the basename being unique AND the file still
+                        # living under the same top directory the citation
+                        # names: `core/clock.h` -> `core/include/.../clock.h`
+                        # stays inside `core/`, while nothing upstream does.
+                        # Stronger than the "first segment is a directory we
+                        # track" heuristic rejected above, which asked only
+                        # whether `docs/` exists and not where the file went.
+                        moved = resolved
+                        if moved and cited.strip("./").split("/")[0] != (
+                            os.path.relpath(moved, root).split(os.sep)[0]
+                        ):
+                            moved = ""
+                        if moved and "/" in cited.strip("./"):
+                            problems.append(
+                                f"{rel_self}:{lineno} cites {cited}, which "
+                                f"this repository no longer has at that path. "
+                                f"It moved to {os.path.relpath(moved, root)} -- "
+                                f"repoint the citation, or link the file so the "
+                                f"line number can be checked."
+                            )
                         continue
                 body = lines_of(resolved)
                 if body is None:
                     continue
-                _report(problems, rel_self, lineno, cited, match, body, line)
+                _report(problems, rel_self, lineno, cited, match, body, line,
+                        nxt)
     return problems
 
 
-def _report(problems, rel_self, lineno, cited, match, body, line="") -> None:
+def _report(problems, rel_self, lineno, cited, match, body, line="",
+            next_line="") -> None:
     first = int(match.group(2))
     last = match.group(3)
     span = match.group(0).split(":", 1)[1]
@@ -401,6 +482,22 @@ def _report(problems, rel_self, lineno, cited, match, body, line="") -> None:
     # And the half a blank-line test cannot see: the cited lines are real, and
     # about something else entirely.
     stamp = FINGERPRINT.match(line[match.end() :])
+    if not stamp and next_line:
+        # A fingerprint that WRAPPED. Markdown reflows prose, so the quote can
+        # sit at the start of the next line while the citation stays on this
+        # one -- and end-of-line used to read as "no fingerprint given", which
+        # is silence. WAVESHARE_ARRIVAL wrote its citation and its
+        # "8 MB **octal**" that way, the citation then drifted ten lines, and
+        # the check watched it happen. A promise nothing keeps is worse than no
+        # promise: that is the whole thesis of the issue this check comes from,
+        # and the check had the defect in itself.
+        #
+        # Only when the citation line ends there. Anything else after the
+        # citation means the author wrote prose, and a quotation further down
+        # that prose is not this citation's fingerprint.
+        tail = FINGERPRINT_LEAD.sub("", line[match.end() :]).strip()
+        if tail in ("", "\u2014", "-"):
+            stamp = FINGERPRINT.match(next_line.strip())
     if not stamp:
         return
     snippet = stamp.group(1)
@@ -672,7 +769,8 @@ CHECKS = (
     ("Duplicate owner-decision numbers", "check_decision_ids"),
     ("Unexpected files tracked at the repository root", "check_root_files"),
     (
-        "Citations pointing at a blank line or past the end of a file",
+        "Citations pointing at a blank line, past the end of a file, "
+        "or at a path this repository no longer has",
         "check_citation_lines",
     ),
     ("Duplicate open-question IDs", "check_question_ids"),

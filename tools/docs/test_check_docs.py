@@ -102,6 +102,89 @@ def main() -> int:
             bool(check_docs.check_citation_lines(root)),
         )
 
+        # A fingerprint that WRAPPED onto the next line. This is the shape that
+        # hid a real drift: WAVESHARE_ARRIVAL cited HARDWARE_MATRIX for
+        # "8 MB **octal**" with the quote on the following line, the citation
+        # drifted ten lines, and the checker read end-of-line as "no
+        # fingerprint given" and said nothing.
+        write(root, "docs/research/CITER.md", 'See [`TARGET.md:2`](TARGET.md)\n"two" is the claim.\n')
+        case(
+            "a wrapped fingerprint that still holds passes",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(root, "docs/research/CITER.md", 'See [`TARGET.md:1`](TARGET.md)\n"two" is the claim.\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a wrapped fingerprint that drifted is reported, and says where the text went",
+            "check_citation_lines",
+            any("which is now at :2" in problem for problem in problems),
+        )
+        # Prose after the citation is prose, not a fingerprint: a quotation
+        # further down it belongs to the sentence, not to this citation.
+        write(root, "docs/research/CITER.md", 'See [`TARGET.md:1`](TARGET.md) and note\n"two" elsewhere.\n')
+        case(
+            "a quote below unrelated prose is not read as a fingerprint",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+
+        # A SHORT LABEL resolved through its own href. `core/thing.h` is not a
+        # path this tree has; the link the reader clicks is. Before the href
+        # was consulted a fingerprint here ran against nothing at all and was
+        # green while asserting nothing.
+        write(root, "core/include/thing.h", "alpha\nbeta\n")
+        write(
+            root,
+            "docs/research/CITER.md",
+            'See [`core/thing.h:2`](../../core/include/thing.h) — "beta".\n',
+        )
+        case(
+            "a short label resolved through its href passes",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(
+            root,
+            "docs/research/CITER.md",
+            'See [`core/thing.h:1`](../../core/include/thing.h) — "beta".\n',
+        )
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a short label with a drifted fingerprint is reported",
+            "check_citation_lines",
+            any("which is now at :2" in problem for problem in problems),
+        )
+        # No href, so nothing proves which line to read -- but the basename is
+        # unique in this tree, which proves the FILE is ours and moved.
+        write(root, "docs/research/CITER.md", "See `core/thing.h:1`.\n")
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a path this repository moved is reported as a rename",
+            "check_citation_lines",
+            any("no longer has at that path" in problem for problem in problems),
+        )
+        # An upstream path stays silent: the basename is not ours, so whether
+        # the citation is right is not decidable from here.
+        write(root, "docs/research/CITER.md", "See `upstream/other/absent.h:1`.\n")
+        case(
+            "an upstream path this tree does not carry stays silent",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # An upstream path whose basename we happen to carry ONCE stays silent
+        # too. `upstream/other/thing.h` is not our `core/include/thing.h`, and
+        # a unique basename alone would have announced a rename between two
+        # unrelated files in two different projects.
+        write(root, "docs/research/CITER.md", "See `upstream/other/thing.h:1`.\n")
+        case(
+            "an upstream path with a basename unique here is not called a rename",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        os.remove(os.path.join(root, "core/include/thing.h"))
+        write(root, "docs/research/CITER.md", "See `TARGET.md:2`.\n")
+
     with tempfile.TemporaryDirectory() as root:
         subprocess.run(["git", "init", "-q", root], check=True)
         write(root, "README.md", "# Attadipa\n")

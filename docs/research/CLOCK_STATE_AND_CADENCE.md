@@ -21,6 +21,21 @@ display-sized font, no calendar, no temporal strings, no way to photograph the
 eight Child-Mode configurations or to put the clock into any particular state,
 and no tick period on `AppManifest`. They are itemised in §10.
 
+**All five have since been built (2026-08-28).** The display faces are declared
+at [`assets/fonts/attadipa_fonts.h:25`](../../assets/fonts/attadipa_fonts.h) —
+"LV_FONT_DECLARE(attadipa_nunito_sans_96)"; the calendar at
+[`apps/src/clock.cpp:22`](../../apps/src/clock.cpp) — "days_from_civil"; the
+temporal strings at
+[`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) —
+"ClockMonthJan"; the simulator's state injection at
+[`sim/options.cpp:146`](../../sim/options.cpp) — "out.child_mode = true;" and
+[`sim/options.cpp:157`](../../sim/options.cpp) — "out.clock_time_set = true;"; and the tick period
+at [`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) —
+"core::Millis tick_period". Two things §8.1 asks for are still missing —
+battery injection, and a screenshot taken after a chosen event rather than on
+frame one. The paragraph above is left as written because §5, §7, §8 and §10
+argue from it.
+
 ---
 
 ## 1. What already exists here, and must not be reinvented
@@ -32,19 +47,19 @@ this repository, and most of them are not obviously about a clock.
 | The Clock needs | It already exists as | Where |
 |---|---|---|
 | a wall clock | `core::WallTime` — UNIX seconds, **no arithmetic** | [`core/clock.h:86`](../../core/include/attadipa/core/clock.h) |
-| elapsed time, for anything timed | `core::MonotonicTime` / `Millis` / `elapsed()` | `core/clock.h:45`, `:62` |
+| elapsed time, for anything timed | `core::MonotonicTime` / `Millis` / `elapsed()` | [`core/clock.h:45`](../../core/include/attadipa/core/clock.h) — "struct MonotonicTime {", [`core/clock.h:62`](../../core/include/attadipa/core/clock.h) — "constexpr Millis elapsed" |
 | "the time is not usable" | `core::Availability` — seven values, seven *remedies* | [`core/availability.h:16`](../../core/include/attadipa/core/availability.h) |
-| "the time is old / not trustworthy" | `core::Validity{Unknown, Valid, Stale, Invalid}` | `core/availability.h:39` |
-| a datum plus its two ages | `core::Timed<T>` | `core/availability.h:46` |
-| "who is supplying the time" | `core::Capability::Time` — *"a wall clock worth displaying"* | [`core/capability.h:18`](../../core/include/attadipa/core/capability.h) |
+| "the time is old / not trustworthy" | `core::Validity{Unknown, Valid, Stale, Invalid}` | [`core/availability.h:63`](../../core/include/attadipa/core/availability.h) — "enum class Validity" |
+| a datum plus its two ages | `core::Timed<T>` | [`core/availability.h:70`](../../core/include/attadipa/core/availability.h) — "struct Timed {" |
+| "who is supplying the time" | `core::Capability::Time` — *"a wall clock worth displaying"* | [`core/capability.h:21`](../../core/include/attadipa/core/capability.h) — "a wall clock worth displaying" |
 | whether a number was measured or guessed | `core::Provenance{Unknown, Estimated, Measured}` | [`core/power_state.h`](../../core/include/attadipa/core/power_state.h) |
-| screen on / screen off / asleep | `core::PowerState`, `core::WakeSource` | `core/power_state.h:29`, `:43` |
+| screen on / screen off / asleep | `core::PowerState`, `core::WakeSource` | [`core/power_state.h:29`](../../core/include/attadipa/core/power_state.h) — "enum class PowerState" and [`core/power_state.h:43`](../../core/include/attadipa/core/power_state.h) — "enum class WakeSource" |
 | a colour, a spacing, a type role | `ui::ColorRole`, `Space`, `ui::TypeRole::Display` | [`ui/tokens.h:152`](../../ui/include/attadipa/ui/tokens.h) |
 | a translated string | `l10n::tr()`, `StringId`, runtime `set_locale()` | [ADR-0010](../adr/0010-localization.md) |
 | which panel, at what density | `platform::BoardProfile`, resolved through `Dp` | `ui/metrics.h` |
 
 **So `Capability::Time` is the clock's source, and it is not local by
-definition.** `sim/main.cpp:88` already lists `Capability::Time` among what an
+definition.** `sim/main.cpp:122` already lists `Capability::Time` among what an
 attached Attadipa node provides. A watch whose own RTC has never been set and
 which has a node attached has a *Ready* time from `Origin::Node`; the same watch
 with the node gone has the same time going `Stale` and then `Unreachable`. The
@@ -57,13 +72,33 @@ two answered.
 |---|---|
 | any calendar arithmetic at all — no `localtime`, no civil-from-days, no month or weekday table anywhere in `core/`, `ui/`, `apps/` or `l10n/` | a `WallTime` cannot become "30 сентября" by any route that exists today |
 | any date, weekday, month or clock string in the catalogue — 63 `StringId`s, none of them temporal | [`l10n/string_id.h`](../../l10n/include/attadipa/l10n/string_id.h) |
-| a tick period on `AppManifest` | [`apps/app_manifest.h:22`](../../apps/include/attadipa/apps/app_manifest.h) declares `id`, `required`, `enhanced_by` and nothing else — see §5 |
+| a tick period on `AppManifest` | [`apps/app_manifest.h:23`](../../apps/include/attadipa/apps/app_manifest.h) declares `id`, `required`, `enhanced_by` and nothing else — see §5 |
 | an Adult/Child switch anywhere | final §57 requires one in the simulator; `sim/options.h` has none |
 | any way to inject a time into the simulator | so 00:00, 23:59 and a rollover cannot be photographed — see §8 |
 | a font above 28 px | see §7 |
 
+> **Overtaken, 2026-08-28. Every row of the table above is now false.**
+> The table recorded the gap this report was written to scope, and T-037
+> has since been built; it is kept rather than deleted because §5, §7 and
+> §8 still reason from it, and a reader needs to know which of those
+> premises have expired. Checked row by row, in order:
+> calendar arithmetic exists —
+> [`apps/src/clock.cpp:22`](../../apps/src/clock.cpp) — "days_from_civil";
+> the catalogue is temporal —
+> [`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) — "ClockMonthJan";
+> the manifest carries a tick period —
+> [`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) — "core::Millis tick_period";
+> the simulator has the Adult/Child switch —
+> [`sim/options.h:62`](../../sim/options.h) — "bool child_mode";
+> it can be handed a time —
+> [`sim/options.h:58`](../../sim/options.h) — "bool clock_time_set";
+> and the ladder goes past 28 px —
+> [`tools/font/generate_ui_fonts.py:50`](../../tools/font/generate_ui_fonts.py) — "SIZES = (14, 16, 20, 28, 64, 84, 96)".
+> Only these six claims were rechecked. The conclusions the later
+> sections draw from them have **not** been re-derived.
+
 `core::WallTime` having no subtraction is deliberate and load-bearing
-(`core/clock.h:80-93`), and a calendar must not quietly undo it. Converting
+([`core/clock.h:80-93`](../../core/include/attadipa/core/clock.h) — "Deliberately has no arithmetic"), and a calendar must not quietly undo it. Converting
 UNIX seconds to a civil date is a *pure function of one absolute instant* and
 does not derive a duration, so it is compatible with the rule — but only if it
 is written as one, and not as `now - midnight`.
@@ -187,7 +222,7 @@ spelling.
 | locale | `l10n::locale()` | presentation | already runtime-switchable with a change handler |
 | theme | `ui::Theme` | presentation | already runtime-switchable |
 | geometry / density | `BoardProfile` | presentation | fixed for the life of the process; a change is a different device |
-| Adult/Child | **does not exist yet** | domain (a setting) | final §49; T-038 owns the setting, T-037 must render both |
+| Adult/Child | the mode exists and the Clock renders both — [`apps/clock.h:12`](../../apps/include/attadipa/apps/clock.h) — "enum class ClockMode"; the **setting** that chooses it outside `--child` does not | domain (a setting) | final §49; T-038 owns the setting, T-037 must render both |
 | battery percent | `Timed<uint8_t>` or an explicit optional | domain | "unknown" must be representable — `GnssCapabilities` already demonstrated the failure of a `bool` that cannot say *nobody has checked* (issue #166) |
 | charging | domain | domain | a PMU fact, event-driven |
 | power state | `core::PowerState` | domain | decides whether the Clock should be ticking at all (§4) |
@@ -293,12 +328,14 @@ it in the destructor, so the timer's lifetime is the screen's and a mistake in
 either is a use-after-free. Final §59 says the same in one line: *"Applications
 do not freely create FreeRTOS tasks and LVGL timers."*
 
-**But `AppManifest` has no tick period.**
-[`apps/app_manifest.h:22`](../../apps/include/attadipa/apps/app_manifest.h)
-declares `id`, `required`/`required_count` and `enhanced_by`/`enhanced_by_count`
-— that is all. So the contract exists as a recorded decision and a specification
-line, and **not as anything a compiler enforces**. The first Clock application
-will make the gap concrete.
+**`AppManifest` now carries that tick period** — it did not when this section
+was written, and closing that gap is what the first Clock application did.
+[`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) — "core::Millis tick_period"
+sits beside `id`, `required`/`required_count` and
+`enhanced_by`/`enhanced_by_count`, carrying the contract in the type: *"Applications declare cadence; the composition root owns the timer."*,
+and zero means event-driven only. So the requirement below is no longer only a
+recorded decision and a specification line; the declaration half of it is now
+something a compiler enforces. Who owns the timer still is not.
 
 This document does **not** decide it, and that is deliberate: the application
 framework and the event-bus/concurrency ADR must explicitly cover *"who owns
@@ -587,14 +624,14 @@ that the Clock is one of the six minimum screens.
 
 | Axis | Today | Evidence |
 |---|---|---|
-| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:112` |
-| theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:156` |
-| locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:141` |
-| **Adult/Child** | **no flag exists** | `sim/options.h` — and final §57 lists *"Adult/Child switching"* as a simulator requirement |
-| **a specific time** | **no injection of any kind** | so 00:00, 09:05, 12:00, 23:59 and a rollover cannot be photographed |
+| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:198-210` — "out.board = *found;" |
+| theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:242-256` — "out.theme = ui::Theme::Day;" |
+| locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:227-240` — "out.locale = l10n::Locale::En;" |
+| Adult/Child | **yes** — `--child` | [`sim/options.cpp:146`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:251`](../../sim/main.cpp) — "apps::ClockMode::Child" |
+| a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:157`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:230`](../../sim/main.cpp) — "g_clock_live = !options.clock_time_set" |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
-| node attached / detached | **yes** — `--node` | `sim/options.cpp:128` |
-| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:215-223` takes the snapshot, then the frame loop runs |
+| node attached / detached | **yes** — `--node` | `sim/options.cpp:128-131` — "out.node_attached = true;" |
+| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:335-343` takes the snapshot, then the frame loop runs |
 
 And the tests that exist are two:
 
@@ -610,10 +647,11 @@ Day, Adult, the boot screen, and the assertion is that the PNG exists and is not
 empty. **That is 2 of 16 configurations, of a screen that is not the Clock, with
 no comparison against anything.**
 
-So the matrix the issue asks for is not merely unwritten — four of the things it
-needs do not exist. They are small, and they are implementation work: an
-Adult/Child flag, a time injection, a battery injection, and a screenshot taken
-*after* a chosen event rather than on frame one.
+So the matrix the issue asks for is not merely unwritten — some of the things
+it needs do not exist. They are small, and they are implementation work. Of the
+four originally listed, the Adult/Child flag and the time injection have since
+been built (see the table above); a **battery injection** and a **screenshot
+taken *after* a chosen event** rather than on frame one are still missing.
 
 ### 8.2 What should be asserted, and how
 
@@ -767,8 +805,9 @@ is in the plan rather than discovered:
 2. **a calendar** — `WallTime` → civil fields, without undoing `clock.h`'s
    missing subtraction (§1);
 3. **temporal strings in the catalogue**, months in the genitive (§7.2);
-4. **simulator injection** — Adult/Child, a chosen instant, a battery state, and
-   a screenshot after an event rather than on frame one (§8.1);
+4. **simulator injection** — Adult/Child and a chosen instant now exist
+   (§8.1); a battery state and a screenshot after an event rather than on
+   frame one do not;
 5. **a tick contract on `AppManifest`**, which belongs to T-018/T-024 (§5).
 
 None of the five is large. All five are in front of T-037 rather than inside it,
