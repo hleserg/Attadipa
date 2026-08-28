@@ -1502,7 +1502,40 @@ constants.
 - **NOT EXECUTED — HARDWARE REQUIRED:** that the pedometer *counts*. Step count
   stayed 0 and `STATUS1` stayed `0x00` throughout, on a board lying on a desk —
   which is the correct reading for a stationary board and no evidence either way.
-  Chapter 11's engine has to be walked. T-112.
+  Chapter 11's engine has to be walked. T-112. **Partly answered on 2026-08-28,
+  and not by a walk** — see the entry below and
+  [PEDOMETER_BENCH_2026-08-28](PEDOMETER_BENCH_2026-08-28.md).
+
+### The QMI8658 pedometer did not count under motion 29× its own threshold
+
+- **Claim:** with the engine configured and the CTRL9 handshake confirmed, the
+  watch was shaken by hand for 158 s. The probe reports peak-to-peak per axis per
+  second in the same mg the engine's threshold is written in. Maximum observed
+  peak-to-peak: **2242 mg**, against a configured `ped_fix_peak2peak` of 80 in
+  u6.10 — **≈78 mg**, so about **29×**. **Eighteen** separate seconds cleared the
+  bar. The step count stayed **0 (`+0`)** on every one of them and `STATUS1`
+  stayed `0x00`.
+- **Both known-good configurations were tried:** chapter 11's own (accelerometer
+  alone, §11.1's example scaled from its stated 50 Hz to the 62.5 Hz the part
+  offers), and SensorLib's shipping profile from
+  `examples/sensor/qmi8658_pedometer` — 6DOF with both sensors, `entry_count = 1`
+  and `sig_count = 1` so the register moves on the first step. `CTRL7 = 0x03` is
+  also the state the probe **found** on the board, so the vendor firmware runs
+  6DOF too. Both `0x0D` calls acknowledged with CmdDone set and cleared on every
+  run, so the parameters reached the engine.
+- **Source:** S14, `pedo` probe from flash, operator the owner, watch attached.
+  [PEDOMETER_BENCH_2026-08-28](PEDOMETER_BENCH_2026-08-28.md) carries the run and
+  a caveat about two stale labels in the archived log headers.
+- **Impact:** OD-6's mandatory pedometer has a documented engine that, so far,
+  does not count. This is evidence to plan around, not yet a verdict.
+- **NOT EXECUTED — HARDWARE REQUIRED:** the twenty-step walk T-112 asks for.
+  **A shake is not a walk and the engine is entitled to reject one** — besides
+  amplitude it applies a cadence window and a peak-pattern test this probe cannot
+  see. The walk also could not be logged: walking means unplugging, and the probe
+  reports over the USB serial console, so the act of running the experiment
+  destroys the channel that records it. The attempt ends in a
+  `SerialException`. Three earlier runs totalling 1380 samples at zero were a
+  board lying still on a desk and are **not** evidence.
 
 ### The touch controller is held in reset until GPIO 9 is pulsed low then high
 
