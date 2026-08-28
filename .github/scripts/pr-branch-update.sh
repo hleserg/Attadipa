@@ -28,11 +28,15 @@
 #   -- GitHub documentation, quoted on issue #171
 #
 # Either way the branch ends up clean and unbuilt. So the update-branch write is
-# made with UPDATE_TOKEN, which the workflow sets to the credential this
-# repository already documents as the one that does start runs
-# (ATTADIPA_AGENT_TOKEN, or the Claude App installation token it falls back to).
-# Reads, labels and comments keep using GH_TOKEN, because -- in the words of the
-# same document -- "a label change is not supposed to start a workflow".
+# made with UPDATE_TOKEN, which the workflow sets to `ATTADIPA_AGENT_TOKEN` and
+# to nothing else. There is NO fallback: the App-installation-token path in
+# CLAUDE_AUTOMATION.md's table belongs to `anthropics/claude-code-action`, which
+# mints one over OIDC, and a plain workflow step has no such thing. That secret
+# is documented as unset, so on a repository that has not set it this job does
+# the label half and says so on every run -- which is the intended shape, not a
+# degraded one. Reads, labels and comments keep using GH_TOKEN, because -- in
+# the words of the same document -- "a label change is not supposed to start a
+# workflow".
 #
 # WHEN UPDATE_TOKEN IS EMPTY THIS JOB UPDATES NOTHING. It still does the half
 # that needs no CI: labelling what conflicts and unlabelling what no longer
@@ -264,11 +268,18 @@ for PR in $PRS; do
         || echo "::warning::#$PR: could not add needs-rebase (does the label exist? .github/scripts/setup-labels.sh creates it)" ;;
   esac
 
-  # Keyed on the head commit, not on the pull request: a branch left conflicted
-  # for a week gets one comment, and this job does not speak again until its
-  # author pushes. #119's watchdog owns the "a conflict means no CI at all"
-  # sentence and says it once per head too; this one names a label and the
-  # paths, and the marker is what keeps the two from becoming an hourly duet.
+  # ONE COMMENT PER CONFLICT, and two guards for it rather than one. The
+  # decision already answers `quiet / still-conflicted` while the label is on,
+  # so a branch left conflicted for a week is commented on once and a push that
+  # is still conflicted adds nothing -- deliberately, because #119's watchdog
+  # owns the "a conflicted head got no CI" sentence and already says it once per
+  # head. Two voices on one event is how a channel stops being read.
+  #
+  # The marker is the second guard, for the case the label does not cover:
+  # somebody removes `needs-rebase` by hand while the conflict stands. The label
+  # goes back on -- it is a view of GitHub state, not an opinion -- and keying
+  # the marker on the head commit is what stops that costing a second comment
+  # about the same commit.
   MARKER="<!-- attadipa-needs-rebase:$HEAD_SHA -->"
   SAID="$(gh api --paginate --slurp "repos/$REPO/issues/$PR/comments?per_page=100" 2>/dev/null \
           | jq -r --arg m "$MARKER" \
@@ -287,8 +298,16 @@ for PR in $PRS; do
   if [ -n "$COMPARE" ] && [ -n "$MERGE_BASE" ]; then
     BASE_MOVED="$(gh api "repos/$REPO/compare/$MERGE_BASE...$BASE" 2>/dev/null)" || BASE_MOVED=""
     if [ -n "$BASE_MOVED" ]; then
-      PATHS="$(jq -n --argjson pr "$COMPARE" --argjson base "$BASE_MOVED" \
-                 '{pr: $pr, base: $base}' 2>/dev/null \
+      # Down a PIPE, never through argv. A compare response carries a `patch`
+      # per file, so its body scales with the diff, and Linux refuses any single
+      # argv string over MAX_ARG_STRLEN (PAGE_SIZE * 32, 128 KiB) with E2BIG --
+      # so `--argjson` would stop naming paths at exactly the size where a
+      # conflict gets interesting, and the failure would arrive as this run's
+      # "one of the comparisons did not answer", which would be a lie: both
+      # answered and the script could not hand them on. Naming the paths is the
+      # only thing this comment adds over #119's, so it fails where it is read.
+      PATHS="$( { printf '%s\n' "$COMPARE"; printf '%s\n' "$BASE_MOVED"; } \
+               | jq -s '{pr: .[0], base: .[1]}' 2>/dev/null \
                | jq -r -f "$here/pr-conflict-paths.jq" 2>/dev/null)" || PATHS=""
     fi
   fi
@@ -302,7 +321,7 @@ for PR in $PRS; do
     printf '%s\n\n' "### This branch conflicts with \`$BASE\` and cannot be updated automatically"
     printf '%s\n\n' "$BASE has moved on — this run is looking at $BASE_AT — and merging it into this branch fails. An automatic update would be refused, so none was attempted."
     printf '%s\n\n' "$PATHS"
-    printf '%s\n' "Labelled \`needs-rebase\`. Rebase, or merge \`$BASE\` in by hand; the label comes off automatically on the first run after the branch merges cleanly again, and this comment is not repeated until you push."
+    printf '%s\n' "Labelled \`needs-rebase\`. Rebase, or merge \`$BASE\` in by hand: the label comes off by itself on the first run after the branch merges cleanly again. This is said once per conflict, not once per run and not again on a push that is still conflicted — #119's watchdog is what tells you a conflicted head got no CI."
   } > "$BODY"
 
   if gh pr comment "$PR" --repo "$REPO" --body-file "$BODY" >/dev/null </dev/null; then

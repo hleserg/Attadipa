@@ -126,6 +126,27 @@ says "an empty label list is not a match" \
      "$(decide true 0 yes "")" "quiet|up-to-date"
 
 echo
+echo "  An update costs the merge queue six hours, so a held branch does not pay it"
+# `update-branch` gives the pull request a new head commit, and both of the
+# unattended sweep's head-keyed gates reset on it: merge-candidate.sh's
+# MIN_HEAD_AGE_SECONDS=21600, and merge-head-trust.jq's binding of
+# `ai-review:pass` to a labelling no older than the head. That is accepted for a
+# branch on its way in -- it really is a different branch now. It is not
+# accepted for one nobody is merging.
+says "a parked pull request is not pushed into" \
+     "$(decide true 4 yes queue:parked)" "quiet|held"
+says "nor is a blocked one" \
+     "$(decide true 4 yes agent:blocked)" "quiet|held"
+says "the hold suppresses the update and nothing else: a parked conflict is still named" \
+     "$(decide false 4 yes queue:parked)" "flag|conflicted"
+says "and a parked branch that merges cleanly again still loses its label" \
+     "$(decide true 0 yes "queue:parked,needs-rebase")" "clear|up-to-date"
+says "queue:parked-later is not queue:parked" \
+     "$(decide true 4 yes queue:parked-later)" "update|behind"
+says "an ordinary review label is not a hold" \
+     "$(decide true 4 yes "agent:review,ai-review:pass")" "update|behind"
+
+echo
 echo "  A fork is nobody's branch to push"
 says "a fork that is behind is left alone" \
      "$(decide true 9 no "")" "quiet|fork"
@@ -293,9 +314,14 @@ pull() {
 }
 # compare HEAD BEHIND [FILES]
 compare() {
+  # `patch` is present because production always has it: a fixture shaped like
+  # the JSON GitHub really returns is the only kind that can catch a size or a
+  # field the script mishandles.
   jq -nc --argjson b "$2" --arg names "${3:-core/a.c,ui/b.c}" \
     '{behind_by: $b, merge_base_commit: {sha: "mergebase00000000"},
-      files: ($names | split(",") | map({filename: .}))}' > "$FIX/compare-$1.json"
+      files: ($names | split(",")
+              | map({filename: ., patch: "@@ -1 +1 @@\n-old\n+new"}))}' \
+    > "$FIX/compare-$1.json"
 }
 # base_moved FILES -- what the base changed since the merge base
 base_moved() {
@@ -376,7 +402,9 @@ contains "the comment names the path both sides changed" "$body" "- \`core/a.c\`
 lacks "and not the one only the branch changed" "$body" 'ui/b.c'
 contains "it carries a marker keyed to the head commit" "$body" \
          "<!-- attadipa-needs-rebase:headbbbb0000 -->"
-contains "and says how the label comes off" "$body" "comes off automatically"
+contains "and says how the label comes off" "$body" "comes off by itself"
+contains "and does not promise a repeat it will not deliver" "$body" \
+         "said once per conflict"
 
 echo
 echo "  ...and it is not said twice for the same head commit"
@@ -501,6 +529,46 @@ says "ten updates, not twelve" "$(grep -c 'update-branch' "$FIX/calls.log")" "10
 contains "and the eleventh is told to wait rather than dropped silently" "$out" \
          "reached the cap of 10 updates"
 contains "the summary counts what it did" "$out" "10 updated"
+
+echo
+echo "  A parked branch is enumerated, left unpushed, and still told it conflicts"
+scenario parked
+printf '[[{"number":1},{"number":2}]]\n' > "$FIX/pulls-list.json"
+pull 1 true headaaaa0000 yes queue:parked
+compare headaaaa0000 4
+pull 2 false headbbbb0000 yes queue:parked
+compare headbbbb0000 4
+out=$(run_sweep)
+lacks "no push into a branch nobody is merging" "$(calls)" "update-branch"
+contains "the conflict half still runs on it" "$(calls)" \
+         "pr edit 2 --repo o/r --add-label needs-rebase"
+contains "and the log says which of the two it was" "$out" "held"
+
+echo
+echo "  A real-sized compare body still names paths"
+# A compare response carries a `patch` per file, so its body scales with the
+# diff. Passing either body through argv fails at MAX_ARG_STRLEN -- PAGE_SIZE *
+# 32, 128 KiB -- with E2BIG, and the paths would stop being named at exactly the
+# size where a conflict gets interesting. Worse, the failure would arrive as
+# "one of the comparisons did not answer", which would be false: both answered.
+# So the fixtures here are production-shaped, and this one is over the limit.
+scenario bigcompare
+printf '[[{"number":2}]]\n' > "$FIX/pulls-list.json"
+pull 2 false headbbbb0000 yes ""
+jq -nc --arg blob "$(head -c 120000 /dev/zero | tr '\0' 'x')" \
+  '{behind_by: 3, merge_base_commit: {sha: "mergebase00000000"},
+    files: [{filename: "core/a.c", patch: $blob},
+            {filename: "ui/b.c", patch: $blob}]}' > "$FIX/compare-headbbbb0000.json"
+jq -nc --arg blob "$(head -c 120000 /dev/zero | tr '\0' 'x')" \
+  '{files: [{filename: "core/a.c", patch: $blob},
+            {filename: "firmware/x.c", patch: $blob}]}' > "$FIX/basemoved.json"
+says "the fixture really is past the argv limit" \
+     "$(if [ "$(wc -c < "$FIX/basemoved.json")" -gt 131072 ]; then echo yes; else echo no; fi)" \
+     "yes"
+out=$(run_sweep)
+contains "the path is still named" "$(body_of 2)" "- \`core/a.c\`"
+lacks "and the comment does not blame a comparison that answered" "$(body_of 2)" \
+      "did not answer"
 
 echo
 echo "  An empty queue and an unreadable one are different answers"

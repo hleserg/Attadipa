@@ -75,7 +75,32 @@
 #
 # LABELS is the comma-separated label list of the PULL REQUEST -- not of the
 # issue it closes, which is what pr-conflict-decision.sh reads. `needs-rebase`
-# is a property of the branch, so it lives where the branch does.
+# is a property of the branch, so it lives where the branch does. Two other
+# labels are read here, and the reason is in the next paragraph.
+#
+# WHAT AN UPDATE COSTS THE MERGE QUEUE, because it is not free and the number is
+# six hours. `PUT .../update-branch` gives the pull request a NEW HEAD COMMIT,
+# and two gates of the unattended merge sweep are keyed on that object:
+# merge-candidate.sh's `MIN_HEAD_AGE_SECONDS=21600` measures the head's own age
+# from its check suites (#199), and merge-head-trust.jq binds `ai-review:pass`
+# to a labelling no older than the head's arrival. A new head sets the first to
+# zero and makes the second `false`. So every merge to `main` puts each other
+# open pull request back behind a six-hour settling window and a fresh review.
+#
+# THAT IS ACCEPTED, NOT OVERLOOKED. A branch that has just had `main` merged
+# into it really is a different branch, and re-settling is those gates working
+# rather than misfiring -- the alternative is merging content that was never
+# built against the base it is going into, which is the whole of #171. What is
+# NOT accepted is paying it for a pull request that was never going to merge:
+# `queue:parked` and `agent:blocked` are deliberate holds, so they suppress the
+# update and nothing else. The conflict half still runs on them, because knowing
+# a parked branch has gone dirty is information and costs no push.
+#
+# The cost is bounded by the queue's own width -- two active pull requests
+# (.github/scripts/wip-limit.sh) -- so an ordinary merge re-settles about one
+# other branch. If the queue is ever wide and this serialises it, the number to
+# revisit is `MIN_HEAD_AGE_SECONDS`, and that is an owner decision, not this
+# file's to take.
 #
 # Prints two lines: the action, then a one-word reason for the run log. The
 # reason is always printed, so a caller can read a fixed number of lines.
@@ -91,9 +116,12 @@ attadipa_branch_update_decision() {
   # the reason pr-conflict-decision.sh gives: wrapping the list in its own
   # separators is what makes the glob exact at both ends, so a future
   # `needs-rebase-soon` cannot read as `needs-rebase`.
-  local padded=",$labels," flagged=no
+  local padded=",$labels," flagged=no held=no
   case "$padded" in
     *",needs-rebase,"*) flagged=yes ;;
+  esac
+  case "$padded" in
+    *",queue:parked,"*|*",agent:blocked,"*) held=yes ;;
   esac
 
   # Before anything else, and before the `mergeable` triage, because none of the
@@ -137,6 +165,14 @@ attadipa_branch_update_decision() {
   esac
 
   if [ "$behind" -gt 0 ]; then
+    # A deliberate hold. Pushing into it would reset a settling window and a
+    # review verdict for a branch nobody is merging, which is spend without a
+    # question it answers. It stays behind until the hold comes off, and the
+    # run after that updates it like any other.
+    if [ "$held" = yes ]; then
+      printf 'quiet\nheld\n'
+      return
+    fi
     # Behind and mergeable. This is the case the job exists for. Whether the
     # label comes off is decided by the update SUCCEEDING, not here -- the
     # caller removes it after a 202, because that 202 is the evidence that the
