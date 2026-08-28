@@ -164,6 +164,12 @@ Open every image. Look for:
 - **double firing** — one tap that navigated two screens deep;
 - **the UI still alive** after a series of actions, not wedged.
 
+**What counts as right is written down.** Contrast, colour, type size, spacing
+and icon legibility are not a matter of taste in this repository:
+[`docs/ui/DESIGN_SYSTEM.md`](../../../docs/ui/DESIGN_SYSTEM.md) holds the tokens
+and the measured contrast ratios. Check the picture against that, not against
+your own eye.
+
 ## 7. A whole journey
 
 ```bash
