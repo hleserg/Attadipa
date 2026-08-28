@@ -352,6 +352,13 @@ jobs:
       - name: The stable merge gate fails closed
         run: bash .github/tests/required-ci-test.sh
 
+      # The gate above decides about one commit; this one asks whether the
+      # merge that follows is bound to it. Drives pr-merge-sweep.sh itself
+      # against a recording `gh`, because what the caller passes to `gh` is
+      # the whole of #256 and a re-implementation cannot show it.
+      - name: The unattended merge names the commit it inspected
+        run: bash .github/tests/merge-sweep-head-binding-test.sh
+
       # Taking a pull request out of draft is not a sentence in a comment: a
       # draft can never read `mergeable_state: clean`, so undrafting is the step
       # that makes a branch eligible for an unattended merge. The number it is

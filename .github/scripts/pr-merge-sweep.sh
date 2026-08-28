@@ -164,7 +164,12 @@ for PR in $PRS; do
       continue ;;
   esac
 
-  if gh pr merge "$PR" --repo "$REPO" --squash --delete-branch; then
+  # Bind the merge to the commit every fact above was gathered for. A push
+  # landing since the GraphQL round trip -- the window is this whole loop
+  # body, permission lookups included -- would otherwise be merged under a
+  # verdict earned by the head it replaced. GitHub refuses on mismatch.
+  if gh pr merge "$PR" --repo "$REPO" --squash --delete-branch \
+     --match-head-commit "$HEAD_OID"; then
     MERGED=$((MERGED + 1))
     echo "::notice::#$PR: merged at ${HEAD_OID:0:8}"
   else
