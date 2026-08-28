@@ -122,7 +122,7 @@ constexpr Dp dp_of(ImageSize s)
 }
 
 // The minimum a finger can be asked to hit. Physical, which is the whole reason
-// these are Dp: 44 dp is about 7 mm on any panel, and 44 *pixels* is 4.3 mm on
+// these are Dp: 44 dp is about 7 mm on any panel, and 44 *pixels* is 3.5 mm on
 // the Waveshare and 5.1 mm on the T-Watch — both under the guidance, on
 // different sides of it, for the same source line.
 enum class TouchTarget : std::uint8_t { Adult, ChildMode };

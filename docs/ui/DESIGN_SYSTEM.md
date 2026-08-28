@@ -252,7 +252,7 @@ a committed photograph — [TWATCH_S3_PLUS_PANEL_2026-08-28](../research/TWATCH_
 | `touch.min` adult (44) | 61 px | 87 px | 7.04 mm / 7.01 mm |
 | `touch.min` child (56) | 77 px | 110 px | 8.89 mm / 8.87 mm |
 
-Written as pixels instead, a 44 would be 3.6 mm on the Waveshare and 5.1 mm on
+Written as pixels instead, a 44 would be 3.5 mm on the Waveshare and 5.1 mm on
 the T-Watch — under the guidance on both boards, by different amounts, from one
 source line. That is the failure the `Dp` type exists to make unwritable.
 

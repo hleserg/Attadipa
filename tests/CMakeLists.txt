@@ -567,7 +567,7 @@ add_test(NAME diagnostics COMMAND test_diagnostics)
 #
 # Every value in the token tables is *proposed* — none has been shown on a
 # panel — so these tests deliberately pin properties rather than numbers: that
-# one token is one physical size on two panels whose densities differ by 21 %,
+# one token is one physical size on two panels whose densities differ by 43 %,
 # that no spacing rounds away to nothing, that a night theme with a hole in it
 # does not paint a bright card on a dark page. The three numbers they do pin
 # are contrast ratios, which are arithmetic and not taste.

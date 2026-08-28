@@ -55,7 +55,7 @@ const TouchTarget kAllTouch[]  = {TouchTarget::Adult, TouchTarget::ChildMode};
 // The property the tokens exist for, and the one a pixel count cannot express.
 //
 // The same token must come out the same *physical* size on two panels whose
-// densities differ by 21 %. Asserting the pixel counts would prove nothing —
+// densities differ by 43 %. Asserting the pixel counts would prove nothing —
 // they differ on purpose — so this asserts the millimetres.
 void test_one_token_is_one_physical_size_on_both_panels()
 {
@@ -139,7 +139,7 @@ void test_a_touch_target_is_physical_and_clears_the_minimum()
         CHECK(m.px(dp_of(TouchTarget::ChildMode)) > m.px(dp_of(TouchTarget::Adult)) + 4);
     }
 
-    // Written in raw pixels instead, 44 would be 4.3 mm on the Waveshare — well
+    // Written in raw pixels instead, 44 would be 3.5 mm on the Waveshare — well
     // under the minimum, on one board, from the same source line. That is the
     // bug the Dp type exists to make unwritable.
     const Metrics wave = Metrics::for_dpi(kWaveshareDpi);
