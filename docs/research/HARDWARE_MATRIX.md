@@ -93,7 +93,7 @@ marked ANSWERED, and the revision half of it was carved out into D20.)
 
 | Peripheral | Part | Bus / pins | I2C addr | Power rail | Status |
 |---|---|---|---|---|---|
-| Display | ST7789V3, 240×240 IPS, 450 cd/m², 262K, **1.54" — 220 ppi, MEASURED 2026-08-28**; see below and OPEN_QUESTIONS D15 | SPI: CS 12, MOSI 13, SCK 18, DC 38, BL 45; MISO and RESET not connected | — | ALDO3 (panel), ALDO2 (backlight) | VERIFIED |
+| Display | ST7789V3, 240×240 IPS, 450 cd/m², 262K, **1.54" — 220 ppi, MEASURED 2026-08-28**; the photograph, the script and every intermediate are in [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.md); see below and OPEN_QUESTIONS D15 | SPI: CS 12, MOSI 13, SCK 18, DC 38, BL 45; MISO and RESET not connected | — | ALDO3 (panel), ALDO2 (backlight) | VERIFIED |
 | Touch | FT6336U | **separate I2C**: SDA 39, SCL 40, INT 16; **RESET not connected** | 0x38 | ALDO3 | VERIFIED |
 | PMU | AXP2101 | main I2C, INT 21 | 0x34 | — | VERIFIED |
 | RTC | PCF8563 | main I2C, INT 17 | 0x51 | VBACKUP (coin cell) | VERIFIED |
