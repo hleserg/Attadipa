@@ -1,10 +1,18 @@
 # ESP-IDF
 build/
 build-*/
+# `build.flash/` — `idf.py -B build.flash` is a real thing people type, and
+# `build-*` does not match it. 2218 generated files reached a pull request
+# through that gap once; the dot is why.
+build.*/
 sdkconfig
 sdkconfig.old
 managed_components/
 dependencies.lock
+
+# Rendered UI frames — `watch-ui-testing` writes them per run and they are
+# evidence for one review, not a durable artefact.
+tools/ui/out/
 
 # CMake / native
 cmake-build-*/

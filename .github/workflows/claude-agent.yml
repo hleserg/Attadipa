@@ -77,7 +77,17 @@ jobs:
       contents: read
     outputs:
       run: ${{ steps.decide.outputs.run }}
+      # Writer capacity, carried out of the gate rather than consulted again.
+      # `run` now means ACCEPTED and these two mean MAY START NOW; before #293
+      # one output tried to mean both, and the case where they disagree --
+      # accepted, no capacity -- had nowhere to be said.
+      admission: ${{ steps.admission.outputs.state }}
+      admission_allow: ${{ steps.admission.outputs.allow }}
+      admission_count: ${{ steps.admission.outputs.count }}
       issue: ${{ steps.decide.outputs.issue }}
+      # "pr" or "issue". Empty only on the paths that refuse before the issue is
+      # fetched, and those start none of the jobs that read it.
+      target_kind: ${{ steps.decide.outputs.target_kind }}
       task_type: ${{ steps.decide.outputs.task_type }}
       priority: ${{ steps.decide.outputs.priority }}
       producer: ${{ steps.decide.outputs.producer }}
@@ -137,9 +147,22 @@ jobs:
           set -euo pipefail
           bash ".github/scripts/writer-admission.sh" "$REPO" "$ISSUE"
 
+      # DECIDE BEFORE ADMIT, AND THE ORDER IS THE FIX FOR #293.
+      #
+      # This step used to carry `&& steps.admission.outputs.allow == 'true'`.
+      # When the queue was full it was skipped, so it wrote no outputs at all --
+      # not `run=true`, not `run=false`, not a refusal. Every downstream job is
+      # conditional on one of those, so the whole workflow finished green and
+      # silent. Run 33048001621 lost the owner's verified NVS/RTC finding on
+      # #264 that way: ten seconds, success, no reaction, no comment, no label,
+      # nothing for the watchdog to rediscover.
+      #
+      # Admission still decides whether a writer STARTS -- on the `agent` job's
+      # own `if`, and again under the lease inside it. What it no longer decides
+      # is whether the request is answered at all.
       - name: Decide
         id: decide
-        if: steps.switch.outputs.enabled == 'true' && steps.admission.outputs.allow == 'true'
+        if: steps.switch.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -180,6 +203,18 @@ jobs:
           # Read the task from the API rather than from the event payload, which
           # is a snapshot of whatever the issue said when the event fired.
           gh api "repos/$REPO/issues/$ISSUE_NUMBER" > /tmp/issue.json
+
+          # WHICH OBJECT THIS IS, decided once and carried out of the gate.
+          # Three of the five triggers fire on pull requests, so `issue` is a
+          # pull request number roughly whenever an agent starts from one, and
+          # `gh issue edit` does not resolve those -- .github/scripts/gh-label.sh
+          # has the whole argument in its header. Every later step that touches
+          # a label used to re-derive this or, worse, not ask; the JSON is
+          # already here, so it is answered here and read from the gate output.
+          TARGET_KIND=$(jq -r 'if .pull_request then "pr" else "issue" end' /tmp/issue.json)
+          case "$TARGET_KIND" in pr|issue) ;; *) TARGET_KIND=issue ;; esac
+          echo "target_kind=$TARGET_KIND" >> "$GITHUB_OUTPUT"
+
           BODY=$(jq -r '.body // ""' /tmp/issue.json)
           LABELS=$(jq -r '[.labels[].name] | join(",")' /tmp/issue.json)
           STATE=$(jq -r '.state' /tmp/issue.json)
@@ -345,6 +380,8 @@ jobs:
     name: Say it was accepted
     needs: gate
     if: needs.gate.outputs.run == 'true'
+    # Two outcomes now reach this job, and the reaction below is common to both:
+    # somebody asked and was heard. Which comment follows is decided per step.
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -389,6 +426,7 @@ jobs:
           echo "::notice::reacted to comment $COMMENT_ID"
 
       - name: Say what was understood
+        if: needs.gate.outputs.admission_allow == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -416,6 +454,90 @@ jobs:
             "$RUN_URL" "$TASK_TYPE" "$PRIORITY" "$RESEARCH_ONLY" \
             "$TRIGGER" "$ACTOR" "$STALENESS" > /tmp/receipt.md
           gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/receipt.md
+
+      # ACCEPTED, AND NOT STARTED. The other half of #293: one visible receipt
+      # naming the admission reason, plus the durable signal that brings the
+      # task back without anybody retyping it.
+      - name: Say it is deferred
+        if: needs.gate.outputs.admission_allow != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          TARGET_KIND: ${{ needs.gate.outputs.target_kind }}
+          TASK_TYPE: ${{ needs.gate.outputs.task_type }}
+          PRIORITY: ${{ needs.gate.outputs.priority }}
+          STATE: ${{ needs.gate.outputs.admission }}
+          COUNT: ${{ needs.gate.outputs.admission_count }}
+          TRIGGER: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          # `agent:ready` is the queue's own durable signal and the watchdog
+          # already reads it -- no new label, no new mechanism. But the label is
+          # only worth adding where the watchdog can act on it, and there are
+          # THREE ways it cannot. Asking one of the three and adding the label
+          # anyway is an inert label promising a pickup that will not happen,
+          # which is the failure this step exists to avoid, not to commit.
+          #
+          #   1. The target is a pull request. `queue-scan.jq` is
+          #      `select(.pull_request == null)`: the watchdog never picks one
+          #      up, at any priority, ever.
+          #   2. The target carries a state label. queue-scan.jq drops
+          #      agent:review and agent:blocked outright, and
+          #      intake-decision.sh rejects a workflow_dispatch carrying either.
+          #   3. The deferral was not about capacity. `parked` is an owner hold
+          #      and wip-limit.sh exempts a parked pull request from the count
+          #      entirely, so nothing about draining the queue lifts it; the
+          #      owner does, by removing the label.
+          #
+          # REQUEUED is a reason, not a flag, because the receipt has to say
+          # WHICH of the three applies -- a reader told only "not requeued"
+          # cannot tell an owner hold from a task under review.
+          # shellcheck source=.github/scripts/gh-label.sh
+          # shellcheck disable=SC1091
+          . .github/scripts/gh-label.sh
+
+          LABELS=$(gh api "repos/$REPO/issues/$ISSUE" --jq '[.labels[].name] | join(",")')
+          REQUEUED=true
+          case ",$LABELS," in
+            *,agent:working,*|*,agent:review,*|*,agent:blocked,*) REQUEUED=state-label ;;
+          esac
+          if [ "$REQUEUED" = true ] && [ "$TARGET_KIND" = pr ]; then
+            REQUEUED=pull-request
+          fi
+          if [ "$REQUEUED" = true ]; then
+            case "$STATE" in
+              full|incident|unknown) ;;
+              *) REQUEUED=not-capacity ;;
+            esac
+          fi
+          # `|| true`, like every other label edit in this workflow, and for the
+          # reason `wip-limit.sh` writes down: under `set -euo pipefail` a failed
+          # label write kills the step before the comment ten lines below -- the
+          # same silence #293 is about, in the step that exists to end it. The
+          # label is the cheaper half of the receipt; the comment is the receipt.
+          if [ "$REQUEUED" = true ]; then
+            attadipa_label_edit "$TARGET_KIND" "$ISSUE" "$REPO" --add-label agent:ready \
+              || echo "::warning::could not add agent:ready to #$ISSUE; the comment below is the receipt"
+          fi
+
+          # No agent:working and no claim: this task was never started, and a
+          # label saying otherwise is what the two-hour watchdog would have to
+          # clean up. Written with GITHUB_TOKEN, whose events GitHub does not
+          # use to start workflow runs, so neither the label nor the comment
+          # can loop back into this gate.
+          bash .github/scripts/agent-say.sh deferred \
+            "$RUN_URL" "$TASK_TYPE" "$PRIORITY" "$TRIGGER" "$ACTOR" \
+            "$STATE" "$COUNT" "$REQUEUED" > /tmp/deferred.md
+          # `gh issue comment` does resolve a pull request today. Relying on that
+          # is relying on the accident gh-label.sh's header says not to rely on,
+          # and this step is now three lines away from a call that does not
+          # share it.
+          attadipa_label_comment "$TARGET_KIND" "$ISSUE" "$REPO" --body-file /tmp/deferred.md
+          echo "::notice::deferred #$ISSUE ($TARGET_KIND) admission=$STATE requeued=$REQUEUED"
 
   refused:
     name: Say why it was refused
@@ -508,7 +630,12 @@ jobs:
   agent:
     name: Claude
     needs: gate
-    if: needs.gate.outputs.run == 'true'
+    # Both halves, and the second one is not redundant with the recheck inside
+    # this job. The writer concurrency group below keeps at most one PENDING
+    # run and cancels the older one when a newer arrives, so a run that enters
+    # the group only to discover it has no capacity spends the single pending
+    # slot on a no-op and can evict a task that did have one.
+    if: needs.gate.outputs.run == 'true' && needs.gate.outputs.admission_allow == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # One writer. Two agents editing one checkout is a merge conflict with a
@@ -547,6 +674,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
+          TARGET_KIND: ${{ needs.gate.outputs.target_kind }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           CLAIM_HOLDER: agent-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -571,6 +699,26 @@ jobs:
             bash /tmp/claim.sh release "$REPO" writer "$CLAIM_HOLDER" || true
             echo "acquired=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Writer held by $(sed -n 's/^state=//p' /tmp/admission-output) admission"
+            # THE RACE THE GATE'S OWN CHECK CANNOT COVER: capacity was there
+            # when the gate looked and is gone now, so the receipt above
+            # already said an agent was working. Leaving only a run-log notice
+            # here is the same silent drop #293 is about, one step later. The
+            # issue was never claimed at this point -- the issue-level claim is
+            # the next statement -- so agent:ready is true rather than
+            # decorative, and it is what the watchdog rediscovers.
+            #
+            # ON AN ISSUE. `queue-scan.jq` is `select(.pull_request == null)`,
+            # so on a pull request the watchdog never comes and the label is
+            # decorative; and a bare `gh issue edit ... || true` would not even
+            # have applied it, silently, which is the outcome the paragraph
+            # above claims to remove. The split is written out rather than
+            # sourced because this step runs before the checkout, exactly as
+            # `Normalise labels` does and for the same reason.
+            if [ "${TARGET_KIND:-issue}" = issue ]; then
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:ready || true
+            else
+              echo "::notice::#$ISSUE is a pull request; queue-scan.jq never picks one up, so agent:ready is not added"
+            fi
             exit 0
           fi
 
