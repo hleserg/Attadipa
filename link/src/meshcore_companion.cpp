@@ -7,6 +7,19 @@
 namespace attadipa::link {
 namespace {
 
+// Zeroing a local the compiler can prove is never read again is a dead store it
+// may legally delete (CWE-14), and this tree has no explicit_bzero. Writing
+// through a volatile pointer is the portable way to make the writes happen. The
+// fills on member storage do not need this — that storage outlives the call and
+// is read again, so those stores are observable.
+void secure_zero(void* data, std::size_t size)
+{
+    volatile std::uint8_t* byte = static_cast<volatile std::uint8_t*>(data);
+    while (size-- != 0) {
+        *byte++ = 0;
+    }
+}
+
 constexpr std::uint8_t kAppStart = 1;
 constexpr std::uint8_t kSendText = 2;
 constexpr std::uint8_t kGetContacts = 4;
@@ -516,8 +529,10 @@ bool MeshCoreCompanion::send_room(
     const bool queued = enqueue(frame.data(), 1 + room.size() + password.size());
     // This stack copy dies here on both paths. The queue slot enqueue() wrote is
     // cleared by next_tx() when it is handed to the transport, and by
-    // reset_session() if the link drops before that.
-    std::fill(frame.begin(), frame.end(), std::uint8_t{0});
+    // reset_session() if the link drops before that. secure_zero() rather than
+    // std::fill: frame is a local whose address escapes only into enqueue(), so
+    // once that inlines a plain fill is a dead store and may be dropped.
+    secure_zero(frame.data(), frame.size());
     if (!queued) {
         return false;
     }

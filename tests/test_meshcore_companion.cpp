@@ -195,8 +195,10 @@ void test_a_room_password_never_reaches_the_transcript()
         if (std::memcmp(&frame.bytes[i], canary, canary_len) == 0) leaked = true;
     }
     CHECK(!leaked);
-    // Byte-for-byte: nothing after the public prefix is offered to the logger.
-    CHECK(std::memchr(frame.bytes.data(), canary[0], printable) == nullptr);
+    // The boundary is exactly where the credential starts. memchr for canary[0]
+    // over the prefix would pass on the room key's byte values alone; this fails
+    // if the prefix grows by one byte or shrinks by one.
+    CHECK(std::memcmp(&frame.bytes[printable], canary, canary_len) == 0);
 }
 
 // The other half of the same rule. #316 asks for redaction of the credential

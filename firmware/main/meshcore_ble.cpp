@@ -161,6 +161,15 @@ bool session_owns(std::uint32_t generation)
     return owner.live(generation);
 }
 
+// Residual, named rather than engineered around (#316): xQueueSend byte-copies
+// the whole Event into the queue's own storage, and a SendRoom Event carries the
+// Room Server password by value. Both copies either side of the queue are
+// cleared — the producer's here, the worker's in handle_send_room() — but the
+// slot inside it is overwritten only when kEventDepth further events wrap to its
+// index, which on a link that drops right after the login is never. That is RAM,
+// reachable only by a memory dump or a disclosure bug, and outside the three
+// exposures this issue closes; removing it means not carrying the secret through
+// a by-value queue message at all.
 bool post(const Event& event)
 {
     return event_queue != nullptr && xQueueSend(event_queue, &event, 0) == pdTRUE;
