@@ -401,12 +401,20 @@ fi
 # THE MUTATION. Strip the variable out of a copy of a real gate workflow; the
 # scan has to name it. Without this the case above passes on a scan that looks
 # at nothing.
-mutant="$work/$(basename "${gate_files[0]}")"
-grep -v 'ATTADIPA_WIP_LIMIT' "${gate_files[0]}" > "$mutant"
-if [ "$(width_missing "$mutant")" = "$mutant" ]; then
-  ok "removing the variable from a gate workflow is caught, which is what makes the case above mean something"
+#
+# Guarded, because `${gate_files[0]}` on an empty array is an unbound variable
+# under `set -u`: the run would die here and never print the summary, exactly
+# when a clean count is worth having.
+if [ "${#gate_files[@]}" -gt 0 ]; then
+  mutant="$work/$(basename "${gate_files[0]}")"
+  grep -v 'ATTADIPA_WIP_LIMIT' "${gate_files[0]}" > "$mutant"
+  if [ "$(width_missing "$mutant")" = "$mutant" ]; then
+    ok "removing the variable from a gate workflow is caught, which is what makes the case above mean something"
+  else
+    bad "a gate workflow with the variable deleted passed the scan"
+  fi
 else
-  bad "a gate workflow with the variable deleted passed the scan"
+  bad "no gate workflow to mutate, so the scan above is unproven"
 fi
 
 echo

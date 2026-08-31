@@ -81,7 +81,7 @@ two**, so unset means `full` at two and `incident` at three. Read it, lift it,
 and put it back with:
 
 ```bash
-gh variable get ATTADIPA_WIP_LIMIT        # empty output means the default, 2
+gh variable get ATTADIPA_WIP_LIMIT        # "was not found", exit 1: the default, 2
 gh variable set ATTADIPA_WIP_LIMIT --body 4
 gh variable delete ATTADIPA_WIP_LIMIT     # back to the designed width
 ```

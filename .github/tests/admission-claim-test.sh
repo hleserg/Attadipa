@@ -61,6 +61,16 @@ if { [ "${1-}" = issue ] || [ "${1-}" = pr ]; } && [ "${2-}" = edit ]; then
   label_edit "$@"; exit 0
 fi
 
+# The repository variable the local entrypoint reads for the queue width.
+# ATTADIPA_STUB_WIDTH unset reproduces what gh really does for a variable
+# nobody set, checked on the machine 2026-08-31: nothing on stdout, "variable
+# ... was not found" on stderr, exit 1. Answering with empty output and exit 0
+# would let writer-start.sh pass a test its production caller fails.
+if [ "${1-}" = variable ] && [ "${2-}" = get ]; then
+  if [ -n "${ATTADIPA_STUB_WIDTH-}" ]; then printf '%s\n' "$ATTADIPA_STUB_WIDTH"; exit 0; fi
+  echo "variable ${3-} was not found" >&2; exit 1
+fi
+
 [ "${1-}" = api ] || { echo "unexpected gh call: $*" >&2; exit 64; }
 shift
 method=GET; path=""; fields=()
@@ -241,6 +251,66 @@ local_full_rc=$?
 set -e
 [ "$local_full_rc" -eq 3 ] && [ ! -d "$work/state/writer.lock" ] && [ ! -d "$work/state/ref.lock" ] \
   && ok 'full admission leaves no local writer or claim' || bad 'full admission leaves no local writer or claim' "rc=$local_full_rc"
+
+# THE WIDTH THE OWNER LIFTED HAS TO REACH THE COMMAND A PERSON RUNS.
+# In a workflow the gate gets ATTADIPA_WIP_LIMIT from `vars`; writer-start.sh has
+# no `vars` context and reads the repository variable itself. Same two pull
+# requests as the case above -- the only difference is what the repository
+# answers -- so this is the by-hand comparison from #354 made repeatable.
+reset_state
+printf '[%s,%s]\n' "$(pr 1)" "$(pr 2)" > "$work/state/prs"
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  ATTADIPA_STUB_WIDTH=4 bash "$START" start o/r 7 local-lifted >/dev/null 2>&1
+local_lifted_rc=$?
+set -e
+[ "$local_lifted_rc" -eq 0 ] && [ -d "$work/state/writer.lock" ] && [ -d "$work/state/ref.lock" ] \
+  && ok 'the local writer admits at the width the repository carries' \
+  || bad 'the local writer admits at the width the repository carries' "rc=$local_lifted_rc"
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  bash "$START" finish o/r 7 local-lifted >/dev/null 2>&1
+
+# An explicit value still wins, so a bench run can pin a width -- and the header
+# says not to export one for any other reason, because this is what it does.
+reset_state
+printf '[%s,%s]\n' "$(pr 1)" "$(pr 2)" > "$work/state/prs"
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  ATTADIPA_STUB_WIDTH=4 ATTADIPA_WIP_LIMIT=2 bash "$START" start o/r 7 local-pinned >/dev/null 2>&1
+local_pinned_rc=$?
+set -e
+[ "$local_pinned_rc" -eq 3 ] \
+  && ok 'an explicit width in the environment still wins over the repository' \
+  || bad 'an explicit width in the environment still wins over the repository' "rc=$local_pinned_rc"
+
+# The mutation the finding named: delete the lookup and everything else stays
+# green while the local writer is back at the designed width.
+#
+# writer-start.sh resolves its siblings from `dirname "$0"`, so a mutant dropped
+# in a scratch directory dies with 127 rather than exercising anything. Mirror
+# the whole script directory by symlink and override the one file, so the mutant
+# reaches the same claim.sh and writer-admission.sh production reaches.
+mkdir -p "$work/scripts"
+for f in "$(dirname "$START")"/*; do ln -sf "$(cd "$(dirname "$f")" && pwd)/$(basename "$f")" "$work/scripts/"; done
+rm -f "$work/scripts/$(basename "$START")"
+sed 's#ATTADIPA_WIP_LIMIT="$(gh variable get ATTADIPA_WIP_LIMIT --repo "$repo" 2>/dev/null || true)"#:#' \
+  "$START" > "$work/scripts/$(basename "$START")"
+if grep -q 'gh variable get ATTADIPA_WIP_LIMIT' "$work/scripts/$(basename "$START")"; then
+  bad 'deleting the width lookup makes the mutation red' \
+      'the mutation did not remove the lookup -- the line moved, repoint this sed'
+else
+  reset_state
+  printf '[%s,%s]\n' "$(pr 1)" "$(pr 2)" > "$work/state/prs"
+  set +e
+  PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+    ATTADIPA_STUB_WIDTH=4 bash "$work/scripts/$(basename "$START")" start o/r 7 local-mutant >/dev/null 2>&1
+  local_mutant_rc=$?
+  set -e
+  [ "$local_mutant_rc" -eq 3 ] \
+    && ok 'deleting the width lookup makes the mutation red' \
+    || bad 'deleting the width lookup makes the mutation red' \
+          "expected 3 (held: full) from a writer that cannot see the lifted width, got rc=$local_mutant_rc"
+fi
 
 step_script() {
   awk -v wanted="$2" '
