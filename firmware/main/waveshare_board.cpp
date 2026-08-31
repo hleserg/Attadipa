@@ -677,6 +677,17 @@ esp_err_t start_waveshare_ui() {
 
   ESP_RETURN_ON_FALSE(lvgl_port_lock(1000), ESP_ERR_TIMEOUT, kTag, "lock LVGL");
   create_ui();
+  // Which of the two images this is, said out loud once per boot. The endpoint
+  // is unauthenticated by construction, so an operator holding a board needs to
+  // be able to tell from the log alone whether the thing in their hand will
+  // answer a stranger's cable (#346).
+#if CONFIG_ATTADIPA_WATCH_CONTROL
+  ESP_LOGW(kTag, "HIL image: USB watch-control endpoint ENABLED and "
+                 "unauthenticated -- bench use only, not a product image");
+#else
+  ESP_LOGI(kTag, "production image: no USB watch-control endpoint");
+#endif
+
   // Physical first, and unconditionally: it owns the input queue the optional
   // transport below writes into, and it is what makes touch, the buttons and
   // sleep work in a production image that has no transport at all (#346).

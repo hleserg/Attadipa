@@ -91,8 +91,8 @@ Clock, but it is not yet the reusable device runtime.
 
 The prototype proves nothing about Mesh, and this audit does not claim it does.
 [`firmware/main/CMakeLists.txt`](../../firmware/main/CMakeLists.txt) builds only
-`attadipa_main.cpp`, `waveshare_board.cpp`, and the optional
-`watch_control.cpp`; `app_main` logs the transport-independent `LinkState` phase
+`attadipa_main.cpp`, `waveshare_board.cpp`, `physical_input.cpp`, and the
+optional `watch_control.cpp`; `app_main` logs the transport-independent `LinkState` phase
 followed by `(no transport adapter)`; and no `MeshService` or `MeshProvider`
 implementation exists anywhere on this baseline outside documentation. That code
 lives on the branch of draft [#282](https://github.com/hleserg/Attadipa/pull/282)
@@ -110,8 +110,8 @@ and is read here as concurrent work, never as shipping evidence.
 | Time | [`TimeService`](../../core/include/attadipa/core/time_service.h), [`time_service.cpp`](../../core/src/time_service.cpp), ADR [0014](../adr/0014-time-source-and-synchronization.md) | Implemented, integration partial | Keep one service; finish #264 and extract RTC adapters only with a second backend. |
 | Position/GNSS | [`position.h`](../../core/include/attadipa/core/position.h), [`trust.h`](../../core/include/attadipa/core/trust.h), ADR [0011](../adr/0011-gnss-integrity.md) | Rich model, no service/provider | Add a small Location owner with the first provider; no duplicate location types. |
 | Motion/sensors | [`motion.h`](../../core/include/attadipa/core/motion.h), [`gnss_power.h`](../../core/include/attadipa/core/gnss_power.h) | Policy/types only | Add typed vertical slices with real sensors; avoid an untyped sensor bag. |
-| Power | [`power_state.h`](../../core/include/attadipa/core/power_state.h), [`watch_control.cpp`](../../firmware/main/watch_control.cpp) | State policy implemented, runtime owner missing | Preserve states; centralize current orchestration, then add a board backend with the second BSP. |
-| Input | [`input.h`](../../core/include/attadipa/core/input.h), firmware polling in WatchControl | Implemented bounded seam, integration concrete | Keep `InputQueue`; factor producers only when another board/input path exists. |
+| Power | [`power_state.h`](../../core/include/attadipa/core/power_state.h), [`physical_input.cpp`](../../firmware/main/physical_input.cpp) | State policy implemented, runtime owner missing | Preserve states; centralize current orchestration, then add a board backend with the second BSP. |
+| Input | [`input.h`](../../core/include/attadipa/core/input.h), firmware polling in `PhysicalInput` | Implemented bounded seam, integration concrete | Keep `InputQueue`; factor producers only when another board/input path exists. |
 | Display/UI | [`display_info.h`](../../platform/include/attadipa/platform/display_info.h), [`ui/`](../../ui/), simulator | Geometry portable, firmware backend concrete | Keep LVGL as the application-facing seam; do not wrap it in an empty Display Service. |
 | Storage/settings | Persistent capability and ADR [0006](../adr/0006-settings-and-bounded-values.md); direct NVS use in board code | Target only | Implement typed SettingsService for a real migration; wait for a second storage consumer before a universal StorageService. |
 | Mesh/radio | ADR [0003](../adr/0003-radio-not-lora.md), [0008](../adr/0008-mesh-service-providers.md), [`radio_info.h`](../../platform/include/attadipa/platform/radio_info.h); no `MeshService`/`MeshProvider` code on the baseline | Target; the provider/service slice is in flight in draft #282 and is not merged | Complete one `MeshService`; keep raw radio below the local provider. |
@@ -538,7 +538,7 @@ issue per accepted item; existing issue #264 and PR #282 remain canonical.
   board implementation concrete; add a backend interface when the second BSP
   demonstrates variation.
 - **Likely files:** new ADR, `core/include/attadipa/core/power_state.h`,
-  `core/src/power_state.cpp`, `firmware/main/watch_control.*`,
+  `core/src/power_state.cpp`, `firmware/main/physical_input.*`,
   `firmware/main/waveshare_board.cpp`, host tests.
 - **Risk:** high; wrong rail order or rollback can corrupt state or strand the
   device. Unverified rail dependencies remain `UNKNOWN`.

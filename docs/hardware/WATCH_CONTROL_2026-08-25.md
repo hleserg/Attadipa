@@ -84,9 +84,13 @@ device path.
 The enabled endpoint owns one caller-supplied RGB565 frame in PSRAM:
 410 × 502 × 2 = 411,640 bytes. LVGL snapshots directly into it. The output
 queue is a fixed 16 KiB and pumping is bounded to 64 bridge frames and eight USB
-writes per 5 ms poll. `CONFIG_ATTADIPA_WATCH_CONTROL` gates the endpoint;
-Kconfig defaults it off, development defaults enable it, and PURE_RAM disables
-it.
+writes per 5 ms poll. `CONFIG_ATTADIPA_WATCH_CONTROL` gates the endpoint. It is
+off in the Kconfig default and off in `sdkconfig.defaults`; the measurements on
+this page were taken on a build with it on, which is now `sdkconfig.hil` and is
+a bench image rather than the product (#346, and
+[the trust boundary](../testing/WATCH_CONTROL.md#the-trust-boundary)). The
+physical-input results below are not affected: that path moved to
+`firmware/main/physical_input.cpp` and is in every image.
 
 ## Physical input
 

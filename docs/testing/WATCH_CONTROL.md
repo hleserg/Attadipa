@@ -317,7 +317,7 @@ screen.
 
 | | |
 |---|---|
-| **Off by default** | The simulator listens only with `--debug-socket`. Firmware uses `CONFIG_ATTADIPA_WATCH_CONTROL` (Kconfig default `n`; development defaults enable it and PURE_RAM disables it). |
+| **Off in every product image** | The simulator listens only with `--debug-socket`. Firmware uses `CONFIG_ATTADIPA_WATCH_CONTROL`, `n` in the Kconfig default *and* in `firmware/sdkconfig.defaults`. Turning it on is `sdkconfig.hil`, stacked by name; see [the trust boundary](#the-trust-boundary) below. |
 | **RAM, when on** | One caller-owned 410 × 502 × 2 RGB565 frame in PSRAM: **411,640 bytes**. `lv_snapshot_take_to_draw_buf` renders into it directly. Firmware TX is a fixed **16 KiB** queue and cannot grow to a second frame. |
 | **RAM, always** | the input queue: 64 events × 16 bytes ≈ **1 kB**, and it is the ordinary input path rather than a debug cost. |
 | **Flash** | the protocol and bridge are a few kB. ESP32-S3 uses the ROM CRC-32 table; the host keeps the small bitwise implementation. |
@@ -328,6 +328,47 @@ screen.
 
 The device figures above are from the physical Waveshare unit identified by USB
 serial `28:84:85:B2:18:A4`; simulator figures are labelled separately.
+
+---
+
+## The trust boundary
+
+**This protocol has no authentication, and it is not going to grow one here.**
+CRC-32 and the version byte establish that a frame is well formed and that the
+peer speaks this revision. Neither establishes *who* the peer is. `Hello` is
+deliberately exempt from the version gate and carries no nonce, no proof and no
+host identity, so every privileged opcode below it — screenshot, input
+injection, `TimeSync` writing host time as `Manual`/`Trusted`, and the MeshCore
+operations that reach a live BLE session — is available to whatever process the
+host OS lets open the CDC device. Host-side file permissions constrain
+processes *after* the watch has already trusted the host; they are not
+device-side owner authentication. A USB port with data lines is a host, whoever
+owns the wall it is in.
+
+The answer is therefore configuration, not cryptography: **the endpoint is not
+in a product image at all.**
+
+| | production | development / HIL |
+|---|---|---|
+| built from | `sdkconfig.defaults` alone | `sdkconfig.defaults;sdkconfig.hil` |
+| `CONFIG_ATTADIPA_WATCH_CONTROL` | `n` | `y` |
+| `attadipa_debug`, `Bridge`, the 411,640-byte snapshot buffer | not linked | linked |
+| `Hello`, `Screen`, `Input`, `TimeSync`, mesh opcodes | no code to reach | reachable |
+| boot log | `production image: no USB watch-control endpoint` | `HIL image: USB watch-control endpoint ENABLED and unauthenticated` |
+| `tools/flash/firmware_elf_check.py` | `--variant flash` requires the dispatcher **absent** | `--variant hil` requires it **present** |
+
+Physical touch, the GPIO0/BOOT and AXP2101 buttons, and the whole sleep and
+wake path are in both, because they live in `firmware/main/physical_input.cpp`,
+which no Kconfig symbol gates. That separation is what made `n` affordable: it
+used to be that turning the endpoint off also turned the buttons off, which is
+why the shipping defaults had it on (#346).
+
+There is no runtime switch, by design. A flag an unauthenticated host could
+set itself would be the same control plane wearing a hat.
+
+If the endpoint is ever wanted in a product image, that is a different design —
+an authenticated session or a physical-consent gesture — and a different issue.
+It is not this document's to invent.
 
 ---
 
