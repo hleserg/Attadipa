@@ -22,6 +22,12 @@ cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=../scripts/wip-limit.sh
 . .github/scripts/wip-limit.sh
 
+# THE AMBIENT ENVIRONMENT DOES NOT GET TO DECIDE WHAT THIS SUITE PROVES. Every
+# case below states the width it runs under; a developer or a runner that
+# happens to export ATTADIPA_WIP_LIMIT must not be able to turn the original
+# twelve green on a queue width they were never written for.
+unset ATTADIPA_WIP_LIMIT
+
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf 'ok %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
@@ -42,6 +48,61 @@ check 'emergency recovery does not consume a normal slot' "[$(pr '[{"name":"queu
 check 'fork PRs do not consume repository capacity' "[$(foreign),$(pr '[]')]" 'ok 1'
 check 'an unreadable response is not a healthy queue' '{"message":"no"}' 'unknown unknown'
 check 'malformed JSON is not a healthy queue' '[' 'unknown unknown'
+
+echo
+echo "The width"
+
+# Each case runs the reader in a `$(...)` subshell, so a value set for one case
+# cannot survive into the next -- a bare assignment prefix on a function call
+# does survive in some shells, and that is exactly how a suite starts proving
+# the previous case twice.
+# SC2030/SC2031 say the assignment is local to the `$(...)` subshell and might
+# be lost. That is not an accident here, it is the containment: the value must
+# not outlive the one case that set it.
+# shellcheck disable=SC2030,SC2031
+width() {  # $1 = description, $2 = value, or the word `unset`, $3 = expected limit
+  local got
+  if [ "$2" = unset ]; then
+    got="$(unset ATTADIPA_WIP_LIMIT; attadipa_wip_limit)"
+  else
+    got="$(export ATTADIPA_WIP_LIMIT="$2"; attadipa_wip_limit)"
+  fi
+  if [ "$got" = "$3" ]; then ok "$1"; else bad "$1: got '$got', wanted '$3'"; fi
+}
+# shellcheck disable=SC2030,SC2031
+check_at() {  # $1 = description, $2 = limit, $3 = payload, $4 = expected decision
+  local got; got="$(export ATTADIPA_WIP_LIMIT="$2"; attadipa_wip_decide "$3")"
+  if [ "$got" = "$4" ]; then ok "$1"; else bad "$1: got '$got', wanted '$4'"; fi
+}
+
+width 'the designed width survives: an unset variable is still two' unset '2'
+width 'an empty variable is two, not nothing' '' '2'
+width 'the owner can lift it' '4' '4'
+width 'a leading zero is a decimal, not an octal literal' '08' '8'
+width 'zero is honoured -- an explicit freeze is closed, not open' '0' '0'
+# The four that matter. Everything a variable can be set to by accident, by a
+# typo, or on purpose must land on the DESIGNED width and never on a wider one.
+width 'a word does not unbound the queue' 'unlimited' '2'
+width 'a negative number does not unbound the queue' '-1' '2'
+width 'whitespace does not unbound the queue' ' 4' '2'
+width 'a number too long to be a queue width falls back rather than overflows' '99999999999999999999' '2'
+
+check_at 'a lifted limit admits the count that used to close the queue' 4 \
+  "[$(pr '[]'),$(pr '[]')]" 'ok 2'
+check_at 'a lifted limit still closes at its own width' 4 \
+  "[$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'full 4'
+check_at 'and still reports an incident above it' 4 \
+  "[$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'incident 5'
+check_at 'a frozen queue admits nothing at all' 0 '[]' 'full 0'
+# THE ONLY WIDTH-0 CASE USED TO BE THE EMPTY QUEUE, which is the single count at
+# that width that does not enter `incident`. One ordinary pull request open under
+# a freeze exceeds the width, so the decision is `incident` -- correct as a
+# refusal, and the reason --say has to be told the difference below.
+check_at 'a freeze with one pull request in it is above its width' 0 \
+  "[$(pr '[]')]" 'incident 1'
+check_at 'junk in the variable leaves the queue at its designed width' unlimited \
+  "[$(pr '[]'),$(pr '[]')]" 'full 2'
+check_at 'an unreadable queue is unknown whatever the width' 4 '{"message":"no"}' 'unknown unknown'
 
 echo
 echo "The transport, executed"
@@ -113,8 +174,12 @@ run_caller() {  # $1 = script, $2 = payload JSON, $3 = stub mode
   local script=$1 payload=$2 mode=${3:-ok}
   printf '%s' "$payload" > "$work/payload"
   : > "$work/output"
+  # WIP_LIMIT, not ATTADIPA_WIP_LIMIT: the variable reaches the script only
+  # through this line, so the suite states the width for every executed case
+  # instead of inheriting whatever the runner happens to export.
   PATH="$work/bin:$PATH" ATTADIPA_STUB_DIR="$work" ATTADIPA_STUB_MODE="$mode" \
     GITHUB_OUTPUT="$work/output" GITHUB_REPOSITORY=hleserg/Attadipa \
+    ATTADIPA_WIP_LIMIT="${WIP_LIMIT-}" \
     bash "$script" > "$work/log" 2>&1
   printf '%s %s\n' \
     "$(sed -n 's/^state=//p' "$work/output")" \
@@ -195,6 +260,62 @@ caller 'emergency work does not consume a slot' \
 caller 'an empty queue is ok 0, not unknown' '[]' 'ok 0'
 caller 'malformed JSON is unknown, not capacity' '[' 'unknown unknown'
 
+# 6b. The width, through the transport rather than around it. The rule already
+#     honours a lifted limit; this is the half that broke last time -- a
+#     correct rule the shipping script never reaches.
+got=$(WIP_LIMIT=4 run_caller .github/scripts/wip-limit.sh "[$(ghpr 1),$(ghpr 2)]")
+if [ "$got" = "ok 2" ]; then
+  ok "the shipping script honours a lifted limit end to end"
+else
+  bad "with the limit lifted to 4 the script still returned '$got'
+$(sed 's/^/       /' "$work/log")"
+fi
+got=$(WIP_LIMIT=unlimited run_caller .github/scripts/wip-limit.sh "[$(ghpr 1),$(ghpr 2)]")
+if [ "$got" = "full 2" ]; then
+  ok "and junk in the variable closes the queue at two, end to end"
+else
+  bad "junk in the variable returned '$got' through the shipping script"
+fi
+
+# 6c. The operator-facing sentence names the limit IN FORCE. Reading
+#     "normal limit: 2" under a lifted limit sends an operator looking for a bug
+#     in the count, which is the wrong place and the wrong problem.
+say=$(env -u ATTADIPA_WIP_LIMIT bash .github/scripts/wip-limit.sh --say full 2)
+case "$say" in
+  *"normal limit: 2"*) ok "--say names the designed limit when none is set" ;;
+  *) bad "--say full said: $say" ;;
+esac
+say=$(env ATTADIPA_WIP_LIMIT=4 bash .github/scripts/wip-limit.sh --say full 4)
+case "$say" in
+  *"normal limit: 4"*) ok "--say names the lifted limit rather than the literal two" ;;
+  *) bad "--say full under a lifted limit said: $say" ;;
+esac
+say=$(env ATTADIPA_WIP_LIMIT=4 bash .github/scripts/wip-limit.sh --say incident 5)
+case "$say" in
+  *"threshold of 5"*) ok "--say moves the hard threshold with the limit" ;;
+  *) bad "--say incident under a lifted limit said: $say" ;;
+esac
+
+# A FREEZE IS NOT AN OVERFLOW, and at width 0 the state machine calls it one.
+# RECOVERY.md answers `incident` with drain/recovery mode, so the unfixed line
+# sends an operator -- often an agent -- to drain a queue the owner closed on
+# purpose. Both states at width 0 have to say freeze.
+for freeze_state in full incident; do
+  say=$(env ATTADIPA_WIP_LIMIT=0 bash .github/scripts/wip-limit.sh --say "$freeze_state" 1)
+  case "$say" in
+    *"QUEUE FROZEN"*) ok "--say calls width 0 a freeze, not an overflow ($freeze_state)" ;;
+    *) bad "--say $freeze_state at width 0 said: $say" ;;
+  esac
+done
+
+# And the other direction, which is the one that would break silently: a real
+# overflow at a real width must keep saying overflow.
+say=$(env ATTADIPA_WIP_LIMIT=2 bash .github/scripts/wip-limit.sh --say incident 3)
+case "$say" in
+  *"QUEUE INCIDENT"*) ok "a real overflow still reports an incident" ;;
+  *) bad "--say incident at the designed width said: $say" ;;
+esac
+
 # The operator-facing line is the only way a live run can be confirmed to have
 # counted anything real, so it is asserted rather than assumed.
 run_caller .github/scripts/wip-limit.sh "[$(ghpr 12),$(ghpr 34)]" > /dev/null
@@ -265,6 +386,61 @@ if [ "$(grep -c 'Available fields:' "$work/log")" = 1 ]; then
   ok "and gh's full refusal is in the log, where it belongs, rather than discarded"
 else
   bad "gh's list of the fields it does have reached the log $(grep -c 'Available fields:' "$work/log") times, not once"
+fi
+
+echo
+echo "The width reaches the gate from the workflows"
+
+# 9. A correct reader the workflows never feed is the failure this repository
+#    has already had once, one layer down: the decision rule in this file was
+#    right from #216 to #239 while the transport never reached it. The reader is
+#    now covered end to end above; this is the layer above that, and deleting the
+#    `env:` block from a workflow leaves actionlint, shellcheck and every case so
+#    far green while the gate quietly returns to the designed width.
+#
+#    Which workflows must carry it is COMPUTED, not listed. A file that reaches
+#    the gate -- directly through wip-limit.sh, or indirectly through
+#    writer-admission.sh -- is covered the day it is written rather than the day
+#    somebody remembers to add it here.
+gate_workflows() { grep -lE 'wip-limit\.sh|writer-admission\.sh' "$@" 2>/dev/null; }
+width_missing() {
+  local f
+  for f in "$@"; do
+    grep -q 'ATTADIPA_WIP_LIMIT' "$f" || printf '%s\n' "$f"
+  done
+}
+
+mapfile -t gate_files < <(gate_workflows .github/workflows/*.yml)
+if [ "${#gate_files[@]}" -gt 0 ]; then
+  ok "the scan finds the workflows that reach the gate (${#gate_files[*]})"
+else
+  bad "no workflow appears to reach the gate -- the scan pattern is wrong, and this section proves nothing"
+fi
+missing="$(width_missing "${gate_files[@]}")"
+if [ -z "$missing" ]; then
+  ok "every workflow that reaches the gate passes ATTADIPA_WIP_LIMIT"
+else
+  bad "these reach the gate and never name ATTADIPA_WIP_LIMIT, so they run at the designed width whatever the repository says:
+$(printf '%s\n' "$missing" | sed 's/^/       /')"
+fi
+
+# THE MUTATION. Strip the variable out of a copy of a real gate workflow; the
+# scan has to name it. Without this the case above passes on a scan that looks
+# at nothing.
+#
+# Guarded, because `${gate_files[0]}` on an empty array is an unbound variable
+# under `set -u`: the run would die here and never print the summary, exactly
+# when a clean count is worth having.
+if [ "${#gate_files[@]}" -gt 0 ]; then
+  mutant="$work/$(basename "${gate_files[0]}")"
+  grep -v 'ATTADIPA_WIP_LIMIT' "${gate_files[0]}" > "$mutant"
+  if [ "$(width_missing "$mutant")" = "$mutant" ]; then
+    ok "removing the variable from a gate workflow is caught, which is what makes the case above mean something"
+  else
+    bad "a gate workflow with the variable deleted passed the scan"
+  fi
+else
+  bad "no gate workflow to mutate, so the scan above is unproven"
 fi
 
 echo

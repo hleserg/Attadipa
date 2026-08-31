@@ -23,6 +23,14 @@ concurrency:
 
 permissions: {}
 
+# THE QUEUE WIDTH REACHES THE GATE FROM HERE, and from nowhere else. Every step
+# in this file inherits it, so a step added later that runs `wip-limit.sh` --
+# directly or through `writer-admission.sh` -- cannot silently fall back to the
+# designed width while the repository setting says otherwise. Unset is 2; see
+# `.github/scripts/wip-limit.sh`.
+env:
+  ATTADIPA_WIP_LIMIT: ${{ vars.ATTADIPA_WIP_LIMIT }}
+
 jobs:
   scan:
     name: Anything waiting

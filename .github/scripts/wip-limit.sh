@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Count active repository PRs for the owner WIP limit: two normal, three hard.
+# Count active repository PRs for the owner WIP limit: N normal, N+1 hard,
+# where N is `ATTADIPA_WIP_LIMIT` and defaults to two.
 #
 # TWO VOCABULARIES MEET IN THIS FILE, and confusing them is what broke it. The
 # decision rule below reads the REST shape -- `.head.repo.full_name` against
@@ -37,18 +38,46 @@ attadipa_wip_active_jq='
   map(select(.head.repo.full_name == .base.repo.full_name)
       | select((.labels | map(.name) | index("queue:parked") or index("queue:emergency")) | not))'
 
+# THE WIDTH OF THE QUEUE, and the one place it is decided. It used to be the
+# literals `0|1`, `2` and `*` in the case below, which meant the owner could not
+# lift the limit without editing this file and merging a pull request -- through
+# the gate being lifted, while it was refusing. The width is now a repository
+# variable, so raising it and putting it back are both settings, not commits.
+#
+# ANYTHING THAT IS NOT A ONE- OR TWO-DIGIT NUMBER FALLS BACK TO 2. Unset, empty,
+# misspelt, whitespace, `unlimited`, or twenty digits that would overflow the
+# arithmetic below: all of them are 2. This file's entire history is about
+# failing closed, and a variable nobody set must not be how the queue becomes
+# unbounded. `10#` is not decoration -- without it `08` is an octal literal and
+# `$((08))` is a fatal error, not a limit.
+#
+# Zero is honoured rather than rejected: it means "admit nothing", which is a
+# deliberate freeze and is closed, not open.
+attadipa_wip_limit() {
+  case "${ATTADIPA_WIP_LIMIT-}" in
+    ''|*[!0-9]*) printf '2\n' ;;
+    ?|??) printf '%s\n' "$((10#${ATTADIPA_WIP_LIMIT}))" ;;
+    *) printf '2\n' ;;
+  esac
+}
+
 attadipa_wip_decide() {
-  local payload="${1-}" count
+  local payload="${1-}" count limit
   count="$(printf '%s' "$payload" | jq -r '
     if type != "array" then error("not an array") else . end
     | '"$attadipa_wip_active_jq"'
     | length' 2>/dev/null || true)"
   case "$count" in
-    ''|*[!0-9]*) printf 'unknown unknown\n' ;;
-    0|1) printf 'ok %s\n' "$count" ;;
-    2) printf 'full %s\n' "$count" ;;
-    *) printf 'incident %s\n' "$count" ;;
+    ''|*[!0-9]*) printf 'unknown unknown\n' ; return 0 ;;
   esac
+  limit="$(attadipa_wip_limit)"
+  if [ "$count" -lt "$limit" ]; then
+    printf 'ok %s\n' "$count"
+  elif [ "$count" -eq "$limit" ]; then
+    printf 'full %s\n' "$count"
+  else
+    printf 'incident %s\n' "$count"
+  fi
 }
 
 # The exact `--json` field list this script asks `gh pr list` for, in one place
@@ -72,9 +101,26 @@ attadipa_wip_is_schema_error() {
 }
 
 if [ "${1-}" = --say ]; then
+  # The limit IN FORCE, not the designed one. An operator reading "normal limit:
+  # 2" under a lifted limit would go looking for a bug in the count.
+  say_limit="$(attadipa_wip_limit)"
+  # A FROZEN QUEUE IS NOT AN OVERFLOWING ONE, and they arrive here as the same
+  # state. Width 0 means "admit nothing", so `full` holds only while the queue is
+  # empty and one ordinary pull request is already `incident` -- the word this
+  # repository reserves for the queue having overflowed, and the word RECOVERY.md
+  # answers with drain/recovery mode. Sending an operator to drain a queue the
+  # owner closed on purpose is the same wrong diagnosis as "normal limit: 2"
+  # under a lifted limit, in the other direction.
   case "${2-}" in
-    full) echo "WIP limit reached: ${3-unknown} active pull requests (normal limit: 2). Finish or explicitly park work before opening another." ;;
-    incident) echo "QUEUE INCIDENT: ${3-unknown} active pull requests reached the hard threshold of 3. Drain the queue; do not open more work." ;;
+    full|incident)
+      if [ "$say_limit" -eq 0 ]; then
+        echo "QUEUE FROZEN: ATTADIPA_WIP_LIMIT is 0, so no new writer is admitted and the ${3-unknown} open pull requests are not an overflow. This is a deliberate freeze; it is lifted by setting or deleting the variable, not by draining."
+        exit 0
+      fi ;;
+  esac
+  case "${2-}" in
+    full) echo "WIP limit reached: ${3-unknown} active pull requests (normal limit: $say_limit). Finish or explicitly park work before opening another." ;;
+    incident) echo "QUEUE INCIDENT: ${3-unknown} active pull requests reached the hard threshold of $((say_limit + 1)). Drain the queue; do not open more work." ;;
     *) echo 'Could not determine the active pull-request count; do not assume capacity.' ;;
   esac
   exit 0
