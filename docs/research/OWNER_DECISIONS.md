@@ -1169,9 +1169,32 @@ radio in the room.
 > **The two line ranges cited above no longer land on their subjects.** They
 > were written against `485dddb`. The shared-name claim was at `:29-32`; the
 > pairing PIN is now §1b,
-> [`TEST_FLEET.md:150`](TEST_FLEET.md) "A BLE pairing PIN is required".
+> [`TEST_FLEET.md:159`](TEST_FLEET.md) "A BLE pairing PIN is required".
 > Both citations were bare ranges, which is why they rotted silently —
 > `check_citation_lines` only requires the line to exist.
+>
+> **The flashing instruction is narrowed, and it was never a fleet-wide one.**
+> "Two Heltec T114s to be flashed with the latest official MeshCore" above was
+> written when the fleet was believed to be two. On 2026-08-31 the owner
+> answered [#90](https://github.com/hleserg/Attadipa/issues/90#issuecomment-5482898591):
+> the **free** T114 stays on the pinned `v1.17.1-d929643` and is not reflashed,
+> so ADR-0003 keeps a node to re-verify against. The **Home Assistant** node is
+> still covered. The **Room Server** and the **repeater** were not in the fleet
+> this decision was taken over, are in service, and their firmware has never
+> been read: **no decision covers writing to either of them.** Do not flash a
+> node this paragraph does not name.
+>
+> **"Either unit" at `:1228` is superseded too, and the question it left
+> open for the owner is closed.** The owner answered it on 2026-08-28 in
+> [#124](https://github.com/hleserg/Attadipa/issues/124): exactly one T114
+> carries GNSS, and — correcting the same day — *«приемники есть и у t114 и
+> v4.3 на обеих»*, both nodes actually on the bench carry receivers. So the
+> pair #91's observation was made over is the GNSS-fitted T114 and the Heltec
+> V4.3, not two T114s; the headless node is **not** credited with a receiver,
+> and the disjunction at `:1229-1230` resolves to its second reading. The
+> operational consequence recorded there is unchanged: no indoor fix from
+> anything in this fleet. Whether the Room Server or the repeater carries a
+> receiver is `UNKNOWN` and is not to be inferred from the other two.
 
 
 

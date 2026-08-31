@@ -42,18 +42,27 @@ Beta Room is `UNKNOWN` — nothing has read that node's key. A run that targets
 the room addresses `ba4c1ca4…` and needs it in mesh range; picking a fleet node
 by this table instead gets `ERR`/`NOT_FOUND`.
 
-- The **free T114** is the bench node of T-169. It stays on
-  `v1.17.1-d929643` — owner decision, [#90](https://github.com/hleserg/Attadipa/issues/90),
+- The **free T114** is the bench node of T-169 — `OWNER REPORTED, 2026-08-31`,
+  naming the fleet in [#124](https://github.com/hleserg/Attadipa/issues/124#issuecomment-5482899062):
+  *«Одна прилеплена к HA, одна свободна и ты с ней общался, еще одна — room
+  server, еще одна repeater. Все.»* Nothing measured in T-169 distinguishes the
+  roles — the model, the BLE address (which
+  [`MESHCORE_T114_FIRST_CONTACT.md:47`](MESHCORE_T114_FIRST_CONTACT.md)
+  "random" marks as not an identity), the public key and the
+  `RESP_CODE_SELF_INFO` name are all role-blind — so this line rests on the
+  owner's report and on nothing in this tree.
+  It stays on `v1.17.1-d929643` — owner decision,
+  [#90](https://github.com/hleserg/Attadipa/issues/90#issuecomment-5482898591),
   2026-08-31 — because that is the revision this repository pins for protocol
   work, and reflashing it would leave ADR-0003 with no node to re-check against.
-  It is the only node **known** to match the pin: it was read at that revision on
-  the bench, and the firmware on the Room Server and the repeater has never been
-  read, so "the only one" is a statement about what this repository knows and not
-  about the flat.
+  It is the only node **known** to match the pin: *a* T114 was read at that
+  revision on the bench, the owner reports it is this one, and the firmware on
+  the Room Server and the repeater has never been read — so "the only one" is a
+  statement about what this repository knows and not about the flat.
 - **A reflash decision exists for two nodes, not three.** OD-16 records "two
   Heltec T114s to be flashed with the latest official MeshCore"
-  ([`OWNER_DECISIONS.md:1127`](OWNER_DECISIONS.md) "to be flashed with the latest
-  official"), taken when this repository believed the fleet held two. The Home
+  ([`OWNER_DECISIONS.md:1127`](OWNER_DECISIONS.md)
+  "to be flashed with the latest official"), taken when this repository believed the fleet held two. The Home
   Assistant node is one of them. **The Room Server and the repeater are in
   service, their firmware has never been read, and no decision covers writing to
   them** — treat them the way [`BENCH_DEVICES.md:69`](BENCH_DEVICES.md)
@@ -68,7 +77,7 @@ by this table instead gets `ERR`/`NOT_FOUND`.
   `9 Aug dt267` came off `RESP_CODE_DEVICE_INFO` in a Companion session,
   `MEASURED` 2026-08-28
   ([`MESHCORE_T114_FIRST_CONTACT.md:61`](MESHCORE_T114_FIRST_CONTACT.md)
-  "14-Aug-2026", the same table's T114 column). It is physically connected by USB
+  "9 Aug dt267", the same table's node B column). It is physically connected by USB
   to the owner's machine — see §2 before assuming that means anything from here.
 - **Node selection is by advertisement order, not by name, and that is a real
   problem.** `advertises_meshcore()` matches the Companion service UUID or the
