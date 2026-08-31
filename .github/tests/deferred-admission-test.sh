@@ -171,6 +171,8 @@ stub || exit 1
 # TARGET_KIND defaults to `issue`; pass `pr` for the three triggers that fire on
 # pull requests. RC is kept because the step runs under `set -euo pipefail` and
 # the failure this test exists to catch is one that dies BEFORE the comment.
+# shellcheck disable=SC2030,SC2031  # the subshell is the point: it scopes the
+# step's environment to one case and leaves the next case a clean one.
 run_deferred() {
   : > "$work/state/comments"; : > "$work/state/labels"
   : > "$work/state/commented-as"
@@ -275,6 +277,7 @@ fi
 # The pull-request half needs its own mutation, and it has to be run rather than
 # grepped: the two defects it guards are a step that DIES and a label that lands
 # where it is inert, neither of which is visible in the text.
+# shellcheck disable=SC2030,SC2031  # same subshell isolation as run_deferred.
 run_mutant_deferred() {
   : > "$work/state/comments"; : > "$work/state/labels"
   : > "$work/state/commented-as"
@@ -285,7 +288,6 @@ run_mutant_deferred() {
     export TRIGGER=issue_comment ACTOR=hleserg RUN_URL=http://run/1
     printf '%s\n' "$1" > "$work/mutant.sh"
     bash "$work/mutant.sh" >/dev/null 2>&1 )
-  MRC=$?
   MLABELS=$(cat "$work/state/labels")
 }
 
@@ -293,6 +295,7 @@ run_mutant_deferred() {
 # worth anything if the stub would have noticed -- and the shipping step no
 # longer has a path that calls it on a pull request, so nothing else proves the
 # stub is still able to tell the two commands apart.
+# shellcheck disable=SC2031  # scoped on purpose, like the helpers above.
 if ( export PATH="$work/bin:$PATH" ATTADIPA_STUB_KIND=pr
      gh issue edit 264 --repo x --add-label agent:ready ) >/dev/null 2>&1; then
   no "the stub refuses gh issue edit on a pull request, as the real one does" \
@@ -305,6 +308,7 @@ fi
 # be caught by an exit code -- only by WHICH command was used. That is the
 # point: the receipt must not rest on an accident of gh's implementation that
 # `gh issue edit` does not share.
+# shellcheck disable=SC2016  # the pattern matches the step's literal text.
 M1=$(printf '%s\n' "$DEFERRED_RUN" | sed 's/attadipa_label_comment "$TARGET_KIND"/gh issue comment/')
 if [ "$M1" = "$DEFERRED_RUN" ]; then
   no "the object-kind mutation changed something" "the sed matched nothing"
@@ -319,6 +323,7 @@ else
   fi
 fi
 
+# shellcheck disable=SC2016  # the pattern matches the step's literal text.
 M2=$(printf '%s\n' "$DEFERRED_RUN" | sed 's/\[ "\$TARGET_KIND" = pr \]/false/')
 if [ "$M2" = "$DEFERRED_RUN" ]; then
   no "the inert-label mutation changed something" "the sed matched nothing"
