@@ -608,13 +608,43 @@ int gap_event(ble_gap_event* event, void* arg)
 // Bounded by construction -- a frame is at most kMeshCoreFrameBytes
 // (MESHCORE_BLE_FRAME_CAPACITY.md section 3) and an over-size notification is
 // dropped in the callback and never reaches either call site.
+// A transcript is a debugging aid and is not worth a credential. How much of a
+// frame may be printed is the encoder's decision, not this function's: see
+// attadipa::link::meshcore_loggable_prefix. CMD_SEND_LOGIN stops after the
+// public room key, and the header still records that bytes were withheld, so a
+// redacted capture cannot be mistaken for a short frame.
 void log_frame(const char* direction, const std::uint8_t* data, std::size_t size)
 {
     if (data == nullptr || size == 0) return;
-    ESP_LOGI(kTag, "%s op=0x%02X len=%u", direction,
-             static_cast<unsigned>(data[0]), static_cast<unsigned>(size));
-    ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, size, ESP_LOG_INFO);
+    const std::size_t printable = attadipa::link::meshcore_loggable_prefix(data, size);
+    if (printable < size) {
+        ESP_LOGI(kTag, "%s op=0x%02X len=%u (%u bytes redacted: credential)",
+                 direction, static_cast<unsigned>(data[0]),
+                 static_cast<unsigned>(size),
+                 static_cast<unsigned>(size - printable));
+    } else {
+        ESP_LOGI(kTag, "%s op=0x%02X len=%u", direction,
+                 static_cast<unsigned>(data[0]), static_cast<unsigned>(size));
+    }
+    if (printable != 0) {
+        ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, printable, ESP_LOG_INFO);
+    }
 }
+
+// pump_tx pops a frame onto its stack and returns from four places. One of the
+// frames that passes through is CMD_SEND_LOGIN, so the copy is cleared on every
+// exit rather than at one of them. Clearing after ble_gattc_write_flat() returns
+// is safe for the same reason the frame may be a local at all: it already goes
+// out of scope the instant pump_tx returns, so the transmit path cannot have
+// been reading it afterwards.
+struct FrameScrub {
+    attadipa::link::MeshCoreFrame& frame;
+    ~FrameScrub()
+    {
+        frame.bytes.fill(0);
+        frame.size = 0;
+    }
+};
 
 void pump_tx(const SessionSnapshot& session)
 {
@@ -625,6 +655,7 @@ void pump_tx(const SessionSnapshot& session)
     }
     attadipa::link::MeshCoreFrame frame{};
     if (!provider.next_tx(frame)) return;
+    FrameScrub scrub{frame};
     const std::uint16_t payload_limit = session.mtu > 3
                                             ? session.mtu - 3
                                             : 0;

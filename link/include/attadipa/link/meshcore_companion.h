@@ -17,6 +17,19 @@ struct MeshCoreFrame {
     std::uint16_t size = 0;
 };
 
+// How many leading bytes of a Companion frame may be written to a transcript.
+// CMD_SEND_LOGIN carries the Room Server password immediately after the 32-byte
+// room public key, so a hex dump of the whole frame publishes the credential on
+// whatever console is attached. The rule lives here rather than in the logger
+// because this translation unit is the one that lays the frame out and so is the
+// only place that knows where the secret starts; a logger that hardcoded the
+// opcode would be a second copy of the protocol to keep in step.
+//
+// Everything else prints whole: the transcript is the only record of this link
+// (there is no sniffer on the bench), and #316 asks for source-level redaction
+// of credential opcodes, not for the transcript's removal.
+std::size_t meshcore_loggable_prefix(const std::uint8_t* data, std::size_t size);
+
 class MeshCoreCompanion final : public core::MeshProvider {
 public:
     MeshCoreCompanion();

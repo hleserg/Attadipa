@@ -81,6 +81,14 @@ void MeshCoreCompanion::reset_session()
     peer_count_ = 0;
     tx_head_ = 0;
     tx_size_ = 0;
+    // A dropped link leaves whatever was queued but never transmitted in these
+    // slots -- including a CMD_SEND_LOGIN that never reached the radio. Moving
+    // the indices alone would leave those bytes readable for the life of the
+    // object, so the reset path clears the ring itself.
+    for (MeshCoreFrame& queued : tx_) {
+        queued.bytes.fill(0);
+        queued.size = 0;
+    }
     expected_ack_.fill(0);
     firmware_version_code_ = 0;
     device_info_seen_ = false;
@@ -158,6 +166,21 @@ void MeshCoreCompanion::update_availability()
     }
 }
 
+std::size_t meshcore_loggable_prefix(const std::uint8_t* data, std::size_t size)
+{
+    if (data == nullptr || size == 0) {
+        return 0;
+    }
+    if (data[0] == kSendLogin) {
+        // The opcode and the room's public key are both public; the password
+        // begins at the byte after them and nothing past that point is printed.
+        // A frame shorter than the public prefix carries no password to hide.
+        constexpr std::size_t kPublicPrefix = 1 + core::kMeshPublicKeyBytes;
+        return size < kPublicPrefix ? size : kPublicPrefix;
+    }
+    return size;
+}
+
 bool MeshCoreCompanion::enqueue(const std::uint8_t* data, std::size_t size)
 {
     if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||
@@ -177,6 +200,11 @@ bool MeshCoreCompanion::next_tx(MeshCoreFrame& out)
         return false;
     }
     out = tx_[tx_head_];
+    // A popped slot otherwise keeps a byte-for-byte copy of whatever was sent,
+    // and CMD_SEND_LOGIN passes through here. Clearing on the way out bounds a
+    // password's life in this ring to the one frame that is being transmitted.
+    tx_[tx_head_].bytes.fill(0);
+    tx_[tx_head_].size = 0;
     tx_head_ = (tx_head_ + 1) % tx_.size();
     --tx_size_;
     return true;
@@ -485,7 +513,12 @@ bool MeshCoreCompanion::send_room(
     frame[0] = kSendLogin;
     std::memcpy(&frame[1], room.data(), room.size());
     std::memcpy(&frame[1 + room.size()], password.data(), password.size());
-    if (!enqueue(frame.data(), 1 + room.size() + password.size())) {
+    const bool queued = enqueue(frame.data(), 1 + room.size() + password.size());
+    // This stack copy dies here on both paths. The queue slot enqueue() wrote is
+    // cleared by next_tx() when it is handed to the transport, and by
+    // reset_session() if the link drops before that.
+    std::fill(frame.begin(), frame.end(), std::uint8_t{0});
+    if (!queued) {
         return false;
     }
     room_peer_.public_key = room;

@@ -159,6 +159,64 @@ void test_connected_ble_does_not_expire_while_idle()
     CHECK(client.status().availability == Availability::Ready);
 }
 
+// #316. The bench transcript prints every frame that crosses this link, and
+// CMD_SEND_LOGIN carries the Room Server password on the wire by protocol -- the
+// wire cannot change. What must change is what gets printed. This is the exact
+// composition pump_tx performs (queue a login, pop it, ask how much of it may be
+// written to the console), so what passes here is what the console sees.
+void test_a_room_password_never_reaches_the_transcript()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    std::array<std::uint8_t, 32> room{};
+    for (std::size_t i = 0; i < room.size(); ++i) room[i] = static_cast<std::uint8_t>(0x80 + i);
+    // Not a credential: a canary picked so that a leak is unmistakable in a diff
+    // or a capture. No real password appears anywhere in this tree.
+    const char* const canary = "CANARY-NOTREAL";
+    const std::size_t canary_len = std::strlen(canary);
+    CHECK(client.send_room(room, canary, "Hello", WallTime{1000}));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    // The wire is untouched: the radio still sends the password, as the protocol
+    // requires, and the room key is still public.
+    CHECK(frame.size == 1 + room.size() + canary_len);
+    CHECK(frame.bytes[0] == 26);
+    CHECK(std::memcmp(&frame.bytes[33], canary, canary_len) == 0);
+
+    const std::size_t printable =
+        attadipa::link::meshcore_loggable_prefix(frame.bytes.data(), frame.size);
+    // Opcode and the public room key print; the length is reported by the caller
+    // from frame.size, so a redacted capture is not mistakable for a short frame.
+    CHECK(printable == 1 + room.size());
+    CHECK(printable < frame.size);
+    bool leaked = false;
+    for (std::size_t i = 0; canary_len <= printable && i + canary_len <= printable; ++i) {
+        if (std::memcmp(&frame.bytes[i], canary, canary_len) == 0) leaked = true;
+    }
+    CHECK(!leaked);
+    // Byte-for-byte: nothing after the public prefix is offered to the logger.
+    CHECK(std::memchr(frame.bytes.data(), canary[0], printable) == nullptr);
+}
+
+// The other half of the same rule. #316 asks for redaction of the credential
+// opcodes, not for the transcript's removal -- a frame that carries no secret is
+// still dumped whole, which is what the hardware evidence in docs/research needs.
+void test_a_frame_without_a_credential_still_prints_whole()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.bytes[0] == 2);
+    CHECK(attadipa::link::meshcore_loggable_prefix(frame.bytes.data(), frame.size) ==
+          frame.size);
+}
+
 void test_room_login_then_private_message()
 {
     MeshCoreCompanion client;
@@ -451,6 +509,8 @@ int main()
     test_room_send_does_not_wait_for_contact_sync();
     test_send_and_receive();
     test_connected_ble_does_not_expire_while_idle();
+    test_a_room_password_never_reaches_the_transcript();
+    test_a_frame_without_a_credential_still_prints_whole();
     test_room_login_then_private_message();
     test_room_login_success_during_a_contact_burst_still_sends();
     test_a_fault_survives_reconnect_until_begin_restarts_the_session();
