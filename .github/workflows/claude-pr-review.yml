@@ -45,17 +45,38 @@ jobs:
     # oversight, and pull_request_target — which would grant them — is exactly
     # the pattern that leaks tokens to untrusted code.
     #
-    # claude[bot] is exempted from the bot guard, and the guard would otherwise
-    # defeat this workflow's entire purpose.
+    # The bot condition names what it excludes, and it is one name.
     #
-    # When ATTADIPA_AGENT_TOKEN is unset — the documented default — the
-    # implementation agent opens its pull request through the Claude GitHub App,
-    # so `github.actor` on that pull_request event is `claude[bot]`. A blanket
-    # `!endsWith(actor, '[bot]')` therefore skipped the review on exactly the
-    # pull requests this workflow exists to review: the agent's own. Every other
-    # bot stays excluded, which is what the guard was actually for — Dependabot
-    # opens four pull requests at a time and none of them wants an architecture
-    # review.
+    # `github.actor` on a `pull_request` event is whoever caused it, which for a
+    # `synchronize` is the pusher rather than the author. So the actor set here
+    # is not the set of pull-request authors, and a suffix test on it does not
+    # mean what it reads as. It used to be
+    #
+    #   (!endsWith(github.actor, '[bot]') || github.actor == 'claude[bot]')
+    #
+    # and it excluded `github-actions[bot]` — the actor on every branch our own
+    # update sweep pushes. A swept branch's review was skipped, not pending, so
+    # the pull request kept its round-1 `ai-review:blocking` label forever and
+    # could never converge. #330, the fix for "nothing keeps an open pull
+    # request current", was the pull request it happened to: pushed by the
+    # automation, and unreviewable because it was pushed by the automation.
+    # Somebody closed and reopened it by hand to re-fire the event with a human
+    # actor. That is a crank, and it has to be turned again after every sweep.
+    #
+    # Naming the excluded bot is possible because the set is closed and small.
+    # Every pull request this repository has ever had was opened by `hleserg`,
+    # `app/claude` or `app/dependabot`, and only the third is unwanted: it opens
+    # four dependency bumps at a time and none of them wants an architecture
+    # review. `.github/dependabot.yml` is what puts it there. The
+    # `head.repo.full_name` clause above is what makes one name enough — a fork
+    # actor never reaches this job at all.
+    #
+    # PAIRED WITH `allowed_bots` BELOW, WHICH IS THE HALF THAT BITES IN SILENCE.
+    # The action refuses any Bot actor its list does not name, in about five
+    # seconds, before reading a file — and the Review step carries
+    # `continue-on-error`, so that refusal reports success. Admitting an actor
+    # here without adding it there converts a visible skip into an invisible
+    # one. `.github/tests/bot-actor-test.sh` asserts the pair.
     #
     # This does not create a loop. The review's output is a comment and a label;
     # a comment cannot raise a `pull_request` event, and the intake gate rejects
@@ -66,7 +87,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.CLAUDE_AUTOMATION_ENABLED != 'false' &&
       vars.CLAUDE_PR_REVIEW_ENABLED != 'false' &&
-      (!endsWith(github.actor, '[bot]') || github.actor == 'claude[bot]')
+      github.actor != 'dependabot[bot]'
     steps:
       - name: Record review-run start
         id: started
@@ -145,7 +166,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.ATTADIPA_AGENT_TOKEN }}
           use_sticky_comment: "true"
-          allowed_bots: "claude"
+          allowed_bots: "claude, github-actions"
           allowed_non_write_users: ""
           show_full_output: "false"
           display_report: "true"
