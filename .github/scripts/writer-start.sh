@@ -19,6 +19,21 @@ holder="${4-}"
 
 case "$op" in
   start)
+    # THE LOCAL WRITER RUNS AT THE SAME WIDTH AS ACTIONS, or the knob is only
+    # half a knob. In a workflow the gate reads ATTADIPA_WIP_LIMIT from `vars`;
+    # here there is no `vars` context, so a width the owner lifted in repository
+    # settings would be invisible at exactly the entrypoint AGENTS.md makes
+    # mandatory -- the gate refusing while the setting says admit, which is the
+    # bug the knob exists to remove.
+    #
+    # An explicit value in the environment wins, so a bench run can still pin
+    # one. A lookup that fails, or a variable nobody set, leaves it unset, which
+    # wip-limit.sh reads as the designed 2: an unreachable API must not be a way
+    # to widen the queue.
+    if [ -z "${ATTADIPA_WIP_LIMIT-}" ]; then
+      ATTADIPA_WIP_LIMIT="$(gh variable get ATTADIPA_WIP_LIMIT --repo "$repo" 2>/dev/null || true)"
+      export ATTADIPA_WIP_LIMIT
+    fi
     bash "$dir/claim.sh" acquire "$repo" writer "$holder" || exit $?
     output="$(mktemp)" || { bash "$dir/claim.sh" release "$repo" writer "$holder" || true; exit 2; }
     trap 'rm -f "$output"' EXIT

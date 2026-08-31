@@ -363,5 +363,52 @@ else
 fi
 
 echo
+echo "The width reaches the gate from the workflows"
+
+# 9. A correct reader the workflows never feed is the failure this repository
+#    has already had once, one layer down: the decision rule in this file was
+#    right from #216 to #239 while the transport never reached it. The reader is
+#    now covered end to end above; this is the layer above that, and deleting the
+#    `env:` block from a workflow leaves actionlint, shellcheck and every case so
+#    far green while the gate quietly returns to the designed width.
+#
+#    Which workflows must carry it is COMPUTED, not listed. A file that reaches
+#    the gate -- directly through wip-limit.sh, or indirectly through
+#    writer-admission.sh -- is covered the day it is written rather than the day
+#    somebody remembers to add it here.
+gate_workflows() { grep -lE 'wip-limit\.sh|writer-admission\.sh' "$@" 2>/dev/null; }
+width_missing() {
+  local f
+  for f in "$@"; do
+    grep -q 'ATTADIPA_WIP_LIMIT' "$f" || printf '%s\n' "$f"
+  done
+}
+
+mapfile -t gate_files < <(gate_workflows .github/workflows/*.yml)
+if [ "${#gate_files[@]}" -gt 0 ]; then
+  ok "the scan finds the workflows that reach the gate (${#gate_files[*]})"
+else
+  bad "no workflow appears to reach the gate -- the scan pattern is wrong, and this section proves nothing"
+fi
+missing="$(width_missing "${gate_files[@]}")"
+if [ -z "$missing" ]; then
+  ok "every workflow that reaches the gate passes ATTADIPA_WIP_LIMIT"
+else
+  bad "these reach the gate and never name ATTADIPA_WIP_LIMIT, so they run at the designed width whatever the repository says:
+$(printf '%s\n' "$missing" | sed 's/^/       /')"
+fi
+
+# THE MUTATION. Strip the variable out of a copy of a real gate workflow; the
+# scan has to name it. Without this the case above passes on a scan that looks
+# at nothing.
+mutant="$work/$(basename "${gate_files[0]}")"
+grep -v 'ATTADIPA_WIP_LIMIT' "${gate_files[0]}" > "$mutant"
+if [ "$(width_missing "$mutant")" = "$mutant" ]; then
+  ok "removing the variable from a gate workflow is caught, which is what makes the case above mean something"
+else
+  bad "a gate workflow with the variable deleted passed the scan"
+fi
+
+echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -68,12 +68,30 @@ if it made one, remains — `git branch -r | grep claude/`.
 
 ### The queue is full or in incident mode
 
-At two active ordinary PRs, no new ordinary writer starts. At three or more,
-the watchdog dispatches nothing and automation is in drain/recovery mode.
-Existing PR repair remains admissible; a gate repair may be labelled
-`queue:emergency`. Parked work does not spend a slot and must not be resumed
-until admission returns `ok`. If the count is `unknown`, treat it exactly like
-a closed gate and repair the diagnostic before doing product work.
+The queue has a width. **At the width**, no new ordinary writer starts
+(`full`); **above it**, the watchdog dispatches nothing and automation is in
+drain/recovery mode (`incident`). Existing PR repair remains admissible; a gate
+repair may be labelled `queue:emergency`. Parked work does not spend a slot and
+must not be resumed until admission returns `ok`. If the count is `unknown`,
+treat it exactly like a closed gate and repair the diagnostic before doing
+product work.
+
+The width is the repository variable `ATTADIPA_WIP_LIMIT` and **defaults to
+two**, so unset means `full` at two and `incident` at three. Read it, lift it,
+and put it back with:
+
+```bash
+gh variable get ATTADIPA_WIP_LIMIT        # empty output means the default, 2
+gh variable set ATTADIPA_WIP_LIMIT --body 4
+gh variable delete ATTADIPA_WIP_LIMIT     # back to the designed width
+```
+
+Lifting it is an owner decision and a temporary one: the width is what stops a
+queue nobody is watching from turning into thirteen open pull requests, and the
+number to put back is `2`. `writer-start.sh` reads the same variable, so a local
+run and a workflow run agree. Anything that is not a one- or two-digit number —
+including a value nobody set — is read as two; the variable cannot be used to
+remove the limit, only to move it.
 
 ### The same pull request is being repaired over and over
 
