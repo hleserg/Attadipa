@@ -22,4 +22,3 @@
 # T-114 captures the LVGL object tree into caller-owned PSRAM and streams it
 # through the existing debug protocol. No panel readback or second renderer.
 CONFIG_ATTADIPA_WATCH_CONTROL=y
-CONFIG_LV_USE_SNAPSHOT=y

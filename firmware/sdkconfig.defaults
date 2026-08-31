@@ -83,8 +83,9 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 # boot log, and tools/flash/firmware_elf_check.py is what keeps the two apart:
 # a flash image carrying the endpoint's dispatcher fails that check.
 #
-# CONFIG_LV_USE_SNAPSHOT moved to sdkconfig.hil with it: the screenshot buffer
-# has exactly one caller, and that caller is the endpoint.
+# CONFIG_LV_USE_SNAPSHOT is not repeated here or in sdkconfig.hil: the screenshot
+# buffer has exactly one caller, so ATTADIPA_WATCH_CONTROL selects it and the two
+# symbols cannot drift apart in two files again.
 CONFIG_ATTADIPA_WATCH_CONTROL=n
 
 # T-168 talks to a stock MeshCore Companion as a BLE central. Only the central,

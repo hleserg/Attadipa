@@ -369,35 +369,50 @@ has to be told once. The two are not equally recoverable, and the difference is
 worth stating precisely, because a provisioning procedure that half works is
 worse than one that visibly does not.
 
+EVERY LINE NUMBER BELOW CARRIES A FINGERPRINT, because this paragraph is the
+canonical statement of the change's trust boundary and a bare number rots
+silently — it lands on a real, non-blank, wrong line and nothing notices. An
+earlier round of this document computed these against a branch while `main` grew
+`meshcore_ble.cpp` by forty lines underneath it, and six of thirteen pointed
+elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
+
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:665`) is outside the `#if` — but cannot write the clock or
-persist an offset, because `BoardTimeSink` and `save_time_metadata` are inside
-it. Flashing the HIL image, setting the time, and flashing back therefore works:
-the PCF85063 is battery-backed and the offset is in NVS.
+(`waveshare_board.cpp:665` "restore_time_metadata()") is outside the `#if` — but
+cannot write the clock or persist an offset, because `BoardTimeSink` and
+`save_time_metadata` are inside it. Flashing the HIL image, setting the time, and
+flashing back therefore works: the PCF85063 is battery-backed and the offset is
+in NVS.
 
 *MeshCore has no round trip at all.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:958`) has exactly one caller, `BoardMeshSink::configure`
-(`waveshare_board.cpp:378`), inside the same `#if`, so a production image
-contains no call to it. What that call sets is per-boot RAM rather than storage:
-`configured` and `reconnect_allowed` are `std::atomic_bool{false}`
-(`meshcore_ble.cpp:127`, `:129`), the `Configure` event is the only thing that
-sets either of them **true** (`:843`, `:844` — every other write clears them),
-and `start_scan()` returns unless both are true (`:197`).
-`CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a bond buys nothing without
-a scan. So provisioning over the HIL image does not survive being flashed away —
-it does not survive a power cycle of the HIL image either, which is what shows
-the round trip never existed. A product image stays `Unprovisioned` for its
-whole life and nothing on the watch can change that: `mesh_screen_requested`
-(`waveshare_board.cpp:120`) is set only at `:381`, inside the same `#if`, so the
-mesh screen never appears.
+(`meshcore_ble.cpp:998` "bool configure_meshcore_ble") has exactly one caller,
+`BoardMeshSink::configure` (`waveshare_board.cpp:378`
+"if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
+image contains no call to it. What that call sets is per-boot RAM rather than
+storage: `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
+(`meshcore_ble.cpp:127` "std::atomic_bool configured", `meshcore_ble.cpp:129`
+"std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
+that sets either of them **true** (`meshcore_ble.cpp:883`
+"configured.store(true)", `meshcore_ble.cpp:884`
+"reconnect_allowed.store(true)" — every other write clears them), and
+`start_scan()` returns unless both are true (`meshcore_ble.cpp:204`
+"void start_scan()"). `CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a
+bond buys nothing without a scan. So provisioning over the HIL image does not
+survive being flashed away — it does not survive a power cycle of the HIL image
+either, which is what shows the round trip never existed. A product image stays
+`Unprovisioned` for its whole life and nothing on the watch can change that:
+`mesh_screen_requested` (`waveshare_board.cpp:120`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:381`
+"mesh_screen_requested.store(true)", inside the same `#if`, so the mesh screen
+never appears.
 
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
-(`attadipa_main.cpp:310`, under `CONFIG_BT_NIMBLE_ENABLED` only), so every
-product image runs `nimble_port_init()` (`meshcore_ble.cpp:943`), brings the
-controller up and creates
-the `meshcore` task with a 6,144-byte stack (`meshcore_ble.cpp:938`) for a
-subsystem that can never scan. That cost is real and is recorded against
+(`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
+and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
+`nimble_port_init()` (`meshcore_ble.cpp:983` "nimble_port_init()"), brings the
+controller up and creates the `meshcore` task with a 6,144-byte stack
+(`meshcore_ble.cpp:978` "xTaskCreate(mesh_task") for a subsystem that can never
+scan. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
 gating the BLE start is a change to what the product does, and this change is
 about the USB control plane.

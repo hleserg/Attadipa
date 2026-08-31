@@ -568,6 +568,13 @@ jobs:
           # it a HIL build.
           idf.py -B build-hil -DSDKCONFIG=build-hil/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hil" build
           grep -q "^CONFIG_ATTADIPA_WATCH_CONTROL=y$" build-hil/sdkconfig
+          # This line used to check that sdkconfig.hil had not lost a copy of
+          # the symbol. It now checks that `select LV_USE_SNAPSHOT` on
+          # ATTADIPA_WATCH_CONTROL fires -- sdkconfig.hil no longer names it,
+          # so the only way it can be `y` here is the select. Deleting the
+          # select turns this red, which is the point: LVGL compiles
+          # lv_snapshot_take_to_draw_buf() out under `n` and its own default
+          # is `n`.
           grep -q "^CONFIG_LV_USE_SNAPSHOT=y$" build-hil/sdkconfig
           # The same check in the other direction: the bench image is required
           # to carry the endpoint, so a HIL build that quietly lost it is

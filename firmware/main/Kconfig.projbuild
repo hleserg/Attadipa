@@ -3,6 +3,12 @@ menu "Attadipa firmware"
 config ATTADIPA_WATCH_CONTROL
     bool "USB watch-control endpoint"
     default n
+    # The screenshot opcode calls lv_snapshot_take_to_draw_buf(), which LVGL
+    # compiles out under LV_USE_SNAPSHOT=n -- and n is its own default. Without
+    # this line the two symbols that must move together lived in two files with
+    # nothing joining them, and turning the endpoint on the obvious way (this
+    # menu, then a build) failed at the link rather than at the choice.
+    select LV_USE_SNAPSHOT
     help
         Enable the debug control plane over USB-Serial/JTAG: screenshots,
         remote input, and the time and mesh provisioning opcodes. Any host
@@ -10,7 +16,8 @@ config ATTADIPA_WATCH_CONTROL
         authentication, so this is a bench image rather than a product one.
         Physical touch and the case buttons are NOT gated by this symbol --
         they live in physical_input.cpp and are in every image (#346).
-        The feature owns one full RGB565 frame in PSRAM while running.
+        The feature owns one full RGB565 frame in PSRAM while running, and
+        selects LV_USE_SNAPSHOT, which its screenshot opcode needs.
 
 config ATTADIPA_I2C_PROBE
     bool "I2C bring-up probe"
