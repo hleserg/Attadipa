@@ -22,6 +22,8 @@ secrets.*
 # Measurement output (regenerate, don't version)
 measurements/*.raw
 *.log
+# ...except a bench capture committed as the evidence for a MEASURED result.
+!docs/research/*/*.log
 
 # Editors / OS
 .vscode/
