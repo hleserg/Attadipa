@@ -104,7 +104,7 @@
  * but that says nothing about the vendor, and nothing about Attadipa either:
  * ITS WRITER CANNOT BE IDENTIFIED AT ALL. T-166 replaced this unit's factory
  * image on 2026-08-25, so found state here is whatever the last program left.
- * VERIFIED_FACTS.md:1585-1589 records that attributing it to Attadipa's own
+ * VERIFIED_FACTS.md:1652-1656 records that attributing it to Attadipa's own
  * firmware "cannot be supported". Two earlier versions of this comment drew an
  * attribution -- first to the vendor, then to Attadipa -- and both were wrong;
  * the point is that no attribution is available, not that a different one is. */

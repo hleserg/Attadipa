@@ -332,8 +332,9 @@ separate and still-open question, and the bench says it did not:
 Correspondingly, C figures only: noise density **15 mdps/√Hz** (not the A's 13),
 gyroscope full scale **±1024 °/s** (not the A's ±2048), TCO **±0.05 dps/°C on
 all axes** (not per-axis), ARW ≈ 0.90°/√h (`ESTIMATED` from the noise density).
-Those four are why the variant still matters even though the pedometer no
-longer distinguishes them.
+They are why the variant still matters even though the pedometer no longer
+distinguishes them; the full list of six documented differences is
+[`VERIFIED_FACTS.md:583`](VERIFIED_FACTS.md) "no register tells them apart".
 
 **The power asymmetry is the design constraint.** Accelerometer-only low power:
 30 µA at 3 Hz to 55 µA at 128 Hz. Gyroscope: **651 µA at 28 Hz rising to

@@ -310,9 +310,10 @@ Recorded precisely, because the distinction matters:
 - **Established:** the revision byte on this board matches
   `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` and not the C Rev 0.6 draft, so
   **`13-52-27` is the register map to program against.** Every unqualified
-  "Rev A" below means that document; the other Rev A paper,
-  `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`, has not been read for anything in
-  this section.
+  "Rev A" below means that document. The other Rev A paper,
+  `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`, has since been read too and gives the
+  same byte — see the wrinkle below — so what picks `13-52-27` here is the
+  schematic printing `QMI8658C`, not this register.
 - **Not established:** that the pedometer *works*. A matching revision byte is
   evidence about which document applies, not a functional test. Chapter 11's
   engine has to be enabled and counted against real walking, which needs a person

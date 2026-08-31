@@ -569,8 +569,8 @@ to every unit of the same model.
 
 ### Both Rev A datasheets carry the pedometer; only QMI8658A Rev D deleted it
 
-- **Claim:** the pedometer is a **variant-and-revision** question, not a part
-  question.
+- **Claim:** the pedometer is a **revision** question, not a variant one and not
+  a part one. Both Rev A documents carry it; only QMI8658A Rev D deleted it.
   **QMI8658C** (`13-52-27`, Rev A, 20 June 2022) documents it fully: feature
   list p. 1, chapter 11, a **24-bit** count in `STEP_CNT_LOW/MIDL/HIGH`
   (`0x5A`–`0x5C`), `CTRL8.Pedo_EN`, and CTRL9 commands `0x0D` (configure) and
@@ -595,11 +595,12 @@ to every unit of the same model.
   | Gyroscope full scale, max | ±2048 °/s | ±1024 °/s |
   | Internal I/O pull-up | 200 kΩ | 2 MΩ |
   | Min. supply slew rate, POR → 1.71 V | 40 V/s | 95 V/s |
+  | Gyro temperature coefficient | ±0.05 / ±0.03 / ±0.05 dps/°C, per axis | ±0.05 dps/°C, all axes |
   | `RESV` (pin 10) left floating | permitted | *"there might be leakage current"* |
 
-  Everything in this repository that quotes one of those five numbers must name
+  Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1597`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1598`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1577,7 +1578,7 @@ constants.
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
 - **Corroborated by writing, not only by reading.** With the accelerometer
-  configured per Rev A Table 22 — `CTRL2 = 0x26` (±8 g, 125 Hz; that is the
+  configured per `13-52-27` Table 22 — `CTRL2 = 0x26` (±8 g, 125 Hz; that is the
   *"ODR Rate (Hz) (Accel only)"* column, which is the one that applies because
   `CTRL7 = 0x01` leaves the gyro off — the same `aODR = 0110` row reads **112.1
   Hz** in the adjacent *"(6DOF)"* column, which is what
@@ -1586,14 +1587,14 @@ constants.
   (`aEN`), `CTRL8 = 0x90` (`Pedo_EN` + `STATUSINT` handshake) — all three
   registers acknowledged and **read back exactly as written, `CTRL8` included**.
   The accelerometer then reported a stationary board at
-  `(-0.04, 0.26, -1.00) g`, magnitude **1.03 g**: Rev A's ±8 g / 4096 LSB-per-g
+  `(-0.04, 0.26, -1.00) g`, magnitude **1.03 g**: `13-52-27`'s ±8 g / 4096 LSB-per-g
   scaling produces gravity to within 3.4 %, so the full-scale encoding matches
   the silicon too. The registers read `CTRL2 = 0x24, CTRL7 = 0x03, CTRL8 = 0x00`
   beforehand — the vendor's firmware had the IMU configured and running.
 - **Source:** S13, `pedoram` probe from RAM. It writes those three IMU control
   registers and nothing else on any device; the QMI8658 has no non-volatile
   configuration, and the probe restores the defaults on exit.
-- **Impact:** **H14 resolves — both halves.** Rev A is the register map to
+- **Impact:** **H14 resolves — both halves.** `13-52-27` is the register map to
   program against, and the part name on the schematic (`QMI8658C`, printed twice)
   did not predict it. This is [ADR-0003](../adr/0003-radio-not-lora.md)'s lesson
   in a second subsystem. OD-6's mandatory pedometer has a documented hardware
@@ -1656,7 +1657,7 @@ constants.
   because **its writer cannot be identified at all**. `0x24 / 0x03 / 0x00` is
   exactly the state the 2026-08-23 session left, and an SoC restart does not
   reset the parts on the I2C bus
-  ([`WAVESHARE_RUNNING_OUR_CODE.md:645`](WAVESHARE_RUNNING_OUR_CODE.md)
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:646`](WAVESHARE_RUNNING_OUR_CODE.md)
   "does not reset the peripherals"), so a five-day-old vendor write surviving is
   as consistent with it as any later one. An unattributable value corroborates
   nothing. The shake run is the one case where the writer *is* known: it found
@@ -1667,7 +1668,7 @@ constants.
   `0x24` and `CTRL7` to `0x03` over what a probe had left, and never touched
   `CTRL8` — so the vendor runs the IMU in 6DOF and does not use the pedometer
   engine
-  ([`WAVESHARE_RUNNING_OUR_CODE.md:632`](WAVESHARE_RUNNING_OUR_CODE.md)
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:633`](WAVESHARE_RUNNING_OUR_CODE.md)
   "Booting the vendor firmware restored"). An earlier draft called that
   **UNKNOWN**, over-correcting: it is the 2026-08-28 residue that is not evidence,
   not the vendor configuration itself.
