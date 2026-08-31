@@ -317,7 +317,7 @@ screen.
 
 | | |
 |---|---|
-| **Off by default** | The simulator listens only with `--debug-socket`. Firmware uses `CONFIG_ATTADIPA_WATCH_CONTROL` (Kconfig default `n`; development defaults enable it and PURE_RAM disables it). |
+| **Off in every product image** | The simulator listens only with `--debug-socket`. Firmware uses `CONFIG_ATTADIPA_WATCH_CONTROL`, `n` in the Kconfig default *and* in `firmware/sdkconfig.defaults`. Turning it on is `sdkconfig.hil`, stacked by name; see [the trust boundary](#the-trust-boundary) below. |
 | **RAM, when on** | One caller-owned 410 × 502 × 2 RGB565 frame in PSRAM: **411,640 bytes**. `lv_snapshot_take_to_draw_buf` renders into it directly. Firmware TX is a fixed **16 KiB** queue and cannot grow to a second frame. |
 | **RAM, always** | the input queue: 64 events × 16 bytes ≈ **1 kB**, and it is the ordinary input path rather than a debug cost. |
 | **Flash** | the protocol and bridge are a few kB. ESP32-S3 uses the ROM CRC-32 table; the host keeps the small bitwise implementation. |
@@ -328,6 +328,105 @@ screen.
 
 The device figures above are from the physical Waveshare unit identified by USB
 serial `28:84:85:B2:18:A4`; simulator figures are labelled separately.
+
+---
+
+## The trust boundary
+
+**This protocol has no authentication, and it is not going to grow one here.**
+CRC-32 and the version byte establish that a frame is well formed and that the
+peer speaks this revision. Neither establishes *who* the peer is. `Hello` is
+deliberately exempt from the version gate and carries no nonce, no proof and no
+host identity, so every privileged opcode below it — screenshot, input
+injection, `TimeSync` writing host time as `Manual`/`Trusted`, and the MeshCore
+operations that reach a live BLE session — is available to whatever process the
+host OS lets open the CDC device. Host-side file permissions constrain
+processes *after* the watch has already trusted the host; they are not
+device-side owner authentication. A USB port with data lines is a host, whoever
+owns the wall it is in.
+
+The answer is therefore configuration, not cryptography: **the endpoint is not
+in a product image at all.**
+
+| | production | development / HIL |
+|---|---|---|
+| built from | `sdkconfig.defaults` alone | `sdkconfig.defaults;sdkconfig.hil` |
+| `CONFIG_ATTADIPA_WATCH_CONTROL` | `n` | `y` |
+| `attadipa_debug`, `Bridge`, the 411,640-byte snapshot buffer | not linked | linked |
+| `Hello`, `Screen`, `Input`, `TimeSync`, mesh opcodes | no code to reach | reachable |
+| boot log | `production image: no USB watch-control endpoint` | `HIL image: USB watch-control endpoint ENABLED and unauthenticated` |
+| `tools/flash/firmware_elf_check.py` | `--variant flash` requires the dispatcher **absent** | `--variant hil` requires it **present** |
+
+Physical touch, the GPIO0/BOOT and AXP2101 buttons, and the whole sleep and
+wake path are in both, because they live in `firmware/main/physical_input.cpp`,
+which no Kconfig symbol gates. That separation is what made `n` affordable: it
+used to be that turning the endpoint off also turned the buttons off, which is
+why the shipping defaults had it on (#346).
+
+**What a product image consequently cannot do.** `TimeSync` and `mesh-configure`
+are both debug opcodes, and they were the only way in for the two things a watch
+has to be told once. The two are not equally recoverable, and the difference is
+worth stating precisely, because a provisioning procedure that half works is
+worse than one that visibly does not.
+
+EVERY LINE NUMBER BELOW CARRIES A FINGERPRINT, because this paragraph is the
+canonical statement of the change's trust boundary and a bare number rots
+silently — it lands on a real, non-blank, wrong line and nothing notices. An
+earlier round of this document computed these against a branch while `main` grew
+`meshcore_ble.cpp` by forty lines underneath it, and six of thirteen pointed
+elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
+
+*The clock survives the round trip.* A production image reads the PCF85063 and
+restores a persisted UTC offset — `restore_time_metadata()`
+(`waveshare_board.cpp:665` "restore_time_metadata()") is outside the `#if` — but
+cannot write the clock or persist an offset, because `BoardTimeSink` and
+`save_time_metadata` are inside it. Flashing the HIL image, setting the time, and
+flashing back therefore works: the PCF85063 is battery-backed and the offset is
+in NVS.
+
+*MeshCore has no round trip at all.* `configure_meshcore_ble()`
+(`meshcore_ble.cpp:998` "bool configure_meshcore_ble") has exactly one caller,
+`BoardMeshSink::configure` (`waveshare_board.cpp:378`
+"if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
+image contains no call to it. What that call sets is per-boot RAM rather than
+storage: `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
+(`meshcore_ble.cpp:127` "std::atomic_bool configured", `meshcore_ble.cpp:129`
+"std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
+that sets either of them **true** (`meshcore_ble.cpp:883`
+"configured.store(true)", `meshcore_ble.cpp:884`
+"reconnect_allowed.store(true)" — every other write clears them), and
+`start_scan()` returns unless both are true (`meshcore_ble.cpp:204`
+"void start_scan()"). `CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a
+bond buys nothing without a scan. So provisioning over the HIL image does not
+survive being flashed away — it does not survive a power cycle of the HIL image
+either, which is what shows the round trip never existed. A product image stays
+`Unprovisioned` for its whole life and nothing on the watch can change that:
+`mesh_screen_requested` (`waveshare_board.cpp:120`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:381`
+"mesh_screen_requested.store(true)", inside the same `#if`, so the mesh screen
+never appears.
+
+It still pays for the subsystem. `start_meshcore_ble()` is unconditional
+(`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
+and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
+`nimble_port_init()` (`meshcore_ble.cpp:983` "nimble_port_init()"), brings the
+controller up and creates the `meshcore` task with a 6,144-byte stack
+(`meshcore_ble.cpp:978` "xTaskCreate(mesh_task") for a subsystem that can never
+scan. That cost is real and is recorded against
+[#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
+gating the BLE start is a change to what the product does, and this change is
+about the USB control plane.
+
+All of this is a deliberate consequence of the trust boundary rather than an
+oversight, and giving a product image its own consented provisioning path — the
+only thing that would make mesh reachable on a shipped watch — is #356.
+
+There is no runtime switch, by design. A flag an unauthenticated host could
+set itself would be the same control plane wearing a hat.
+
+If the endpoint is ever wanted in a product image, that is a different design —
+an authenticated session or a physical-consent gesture — and a different issue.
+It is not this document's to invent.
 
 ---
 
