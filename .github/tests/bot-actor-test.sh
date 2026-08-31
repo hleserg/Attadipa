@@ -191,10 +191,18 @@ allowed_bots_of() {
   printf '%s' "$v"
 }
 
+# A workflow's CONTENT, with full-line comments removed. Not cosmetic: the
+# comment above claude-pr-review.yml's guard quotes the condition it replaced,
+# and a scanner that cannot tell a comment from a condition reads the removed
+# defect as still present -- and would go on passing after the condition was
+# deleted for real. Every scan below reads this rather than the raw file.
+yaml_body() { sed 's/^[[:space:]]*#.*//' "$1"; }
+
 admitted_bots_of() {
   # Only equality against github.actor counts. A `!endsWith(actor, '[bot]')`
   # is the guard, not an exemption, and must not be read as one.
-  grep -oE "github\.actor[[:space:]]*==[[:space:]]*'[^']*\[bot\]'" "$1" \
+  yaml_body "$1" \
+    | grep -oE "github\.actor[[:space:]]*==[[:space:]]*'[^']*\[bot\]'" \
     | grep -oE "'[^']*'" | tr -d "'"
 }
 
@@ -230,15 +238,110 @@ for wf in "$AGENT" "$REVIEW" "$REPAIR"; do
   fi
 done
 
-# The reviewer is the one whose exemption is load-bearing rather than
-# incidental: without it the review is skipped on precisely the pull requests
-# it exists to review. Asserted by name so that deleting the exemption is a
-# deliberate act with a red test attached, not a tidy-up.
-if grep -qE "github\.actor[[:space:]]*==[[:space:]]*'claude\[bot\]'" "$REVIEW"; then
-  ok "the reviewer still admits claude[bot], which is what it exists to review"
-else
+echo
+echo "A guard that excludes bots by NAME admits every other bot, ours included"
+
+# THE OTHER HALF OF THE SAME RULE, AND THE ONE #332 NEEDED.
+#
+# `admitted_bots_of` reads `==` exemptions, which is the right question for a
+# guard shaped `!endsWith(actor, '[bot]') || actor == 'x[bot]'`. A guard built
+# the other way round -- exclude one name, admit the rest -- has no `==` to
+# read, so the loop above would go vacuous on it while every bot the deny-list
+# does not name walks into an action that refuses them in five seconds.
+#
+# That is not hypothetical. `github.actor` on a `pull_request` is the pusher,
+# not the author, so an ordinary agent branch updated by our own sweep arrives
+# as `github-actions[bot]`; run 33156056991 on #330 is the skip, and
+# `automation/171-branch-update-sweep` is the branch where the same head passed
+# under `claude[bot]` and was skipped under `github-actions[bot]`.
+#
+# The rule: where a workflow's guard excludes bots by name, every one of this
+# repository's own bot actors that the deny-list does not name is admitted, and
+# `allowed_bots` must cover it. A workflow with no bot condition at all is not
+# this rule's business -- nothing has shown that shape coming apart, and
+# inventing a reachability analysis for it is how a test starts asserting a
+# model rather than the system.
+
+# This repository's own bot actors: the two logins our automation can present
+# as. The same pair queue-scan.jq refuses as producers, which is not a
+# coincidence and is still a different rule.
+OWN_BOTS="claude github-actions"
+
+denied_bots_of() {
+  yaml_body "$1" \
+    | grep -oE "github\.actor[[:space:]]*!=[[:space:]]*'[^']*\[bot\]'" \
+    | grep -oE "'[^']*'" | tr -d "'"
+}
+
+# `grep -E ... >/dev/null` rather than `grep -qE`, and the difference is not
+# style. `set -o pipefail` is on at the top of this file; `-q` exits at the
+# first match, the upstream `sed` takes SIGPIPE, and pipefail then reports the
+# whole pipeline as FAILED -- so the predicate answers "no suffix guard" at
+# exactly the moment there is one. That silently un-failed the mutation that
+# restores the #332 defect while this file was being written.
+suffix_guarded() { yaml_body "$1" | grep -E "endsWith\([[:space:]]*github\.actor" >/dev/null; }
+
+for wf in "$AGENT" "$REVIEW" "$REPAIR"; do
+  [ -f "$wf" ] || continue
+  name="$(basename "$wf")"
+  denied="$(denied_bots_of "$wf" | tr '\n' ',')"
+
+  if [ -z "$denied" ]; then
+    ok "$name has no by-name bot exclusion, so this rule has nothing to say about it"
+    continue
+  fi
+
+  if suffix_guarded "$wf"; then
+    no "$name names what it excludes instead of testing the [bot] suffix" \
+       "it does both: a deny-list AND endsWith(github.actor, ...). Together they are the condition #332 was about, and which one wins is not obvious to a reader"
+  else
+    ok "$name names what it excludes instead of testing the [bot] suffix"
+  fi
+
+  list=$(allowed_bots_of "$wf")
+  for who in $OWN_BOTS; do
+    if covers "$denied" "$who"; then
+      ok "$name deliberately excludes $who, so allowed_bots need not cover it"
+    elif covers "$list" "$who"; then
+      ok "$name admits $who and allowed_bots (\"$list\") covers it"
+    else
+      no "$name admits $who and allowed_bots (\"$list\") covers it" \
+         "the deny-list does not name $who, so $who starts the job and the action then refuses it in about five seconds -- and with continue-on-error the job still reports success. That is #332"
+    fi
+  done
+done
+
+echo
+# The reviewer's admission of claude[bot] is load-bearing rather than
+# incidental: without it the review is skipped on precisely the pull requests it
+# exists to review. It used to be an `==` exemption and is now carried by the
+# guard not naming claude, so assert the property rather than the spelling --
+# the loop above would otherwise report an excluded claude as a deliberate
+# choice and pass.
+if denied_bots_of "$REVIEW" | grep -iE '^claude(\[bot\])?$' >/dev/null; then
   no "the reviewer still admits claude[bot], which is what it exists to review" \
-     "the exemption is gone from $REVIEW; every agent-authored pull request is now unreviewed, and the job will still be green"
+     "$REVIEW's guard now excludes claude by name; every agent-authored pull request is unreviewed, and the job will still be green"
+elif suffix_guarded "$REVIEW"; then
+  no "the reviewer still admits claude[bot], which is what it exists to review" \
+     "$REVIEW is back to a [bot] suffix test, which excludes claude[bot] unless something else re-admits it -- the defect #332 removed"
+else
+  ok "the reviewer still admits claude[bot], which is what it exists to review"
+fi
+
+# And the direction #332's Definition of Done names second: the guard has to go
+# on excluding what it was actually for. Dependabot opens four dependency bumps
+# at a time and none of them wants an architecture review. Tied to
+# dependabot.yml, so removing the source of those pull requests relaxes this
+# rather than leaving a rule about a bot that no longer arrives.
+if [ -f .github/dependabot.yml ]; then
+  if denied_bots_of "$REVIEW" | grep -iE '^dependabot(\[bot\])?$' >/dev/null; then
+    ok "the reviewer still excludes dependabot[bot], and by name"
+  else
+    no "the reviewer still excludes dependabot[bot], and by name" \
+       ".github/dependabot.yml is configured, so the bumps arrive, and nothing in $REVIEW's guard keeps them out of an architecture review"
+  fi
+else
+  ok "no .github/dependabot.yml, so the reviewer has nothing to exclude"
 fi
 
 echo

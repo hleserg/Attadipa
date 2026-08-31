@@ -27,7 +27,7 @@ write-capable agent do something?**
 2. **The action's own check.** `anthropics/claude-code-action@v1` performs the
    same check independently, and `allowed_non_write_users` is left empty so
    there is no bypass list to get onto.
-3. **One named bot, and it is this repository's own dispatcher.** On a public
+3. **Named bots only, and they are this repository's own.** On a public
    repository `'*'` would let any installed GitHub App drive a write-capable
    agent with a prompt it controls, so the list is never a star. It is also not
    empty, and the reason is worth reading before anybody "tightens" it back:
@@ -36,13 +36,14 @@ write-capable agent do something?**
    `GITHUB_TOKEN`, so the dispatching actor is `github-actions[bot]`, and the
    action refused it in about five seconds — before the agent read a file,
    without writing an execution log, so the hand-over could only say `no
-   conclusion`. Four issues were written off as unexplained model deaths. The
-   list therefore names exactly that dispatcher:
+   conclusion`. Four issues were written off as unexplained model deaths. Each
+   list therefore names exactly the actors that workflow's own `if:` lets
+   through, and nothing else:
 
    | Workflow | `allowed_bots` | Why |
    |---|---|---|
    | `claude-agent.yml` | `github-actions` | the watchdog dispatches it as `github-actions[bot]`; nothing else in this repository holds `actions: write` |
-   | `claude-pr-review.yml` | `claude` | its `if:` deliberately admits `claude[bot]`, because a blanket bot guard skipped the review on the agent's own pull requests — the ones it exists for |
+   | `claude-pr-review.yml` | `claude, github-actions` | its `if:` names the one bot it excludes and admits the rest, so both of this repository's own actors reach the action: `claude[bot]` opens the agent's pull requests and `github-actions[bot]` pushes the branch updates onto them (#332) |
    | `claude-ci-repair.yml` | `""` | its trigger is `workflow_run`; the actor is whoever pushed, today a person holding `ATTADIPA_AGENT_TOKEN`. It admits no bot, so it needs to name none — but it is one token change from the same failure |
 
    **The reviewer had the identical defect, and it hid better.** Its `if:`
@@ -307,7 +308,7 @@ as much as the first.
 | **Restarting an escalated task takes two labels, and the comment says so** — `agent:blocked` is refused by both dispatch paths, so adding `agent:ready` beside it does nothing. The escalation comment leads with `@claude` (which needs no label surgery) and spells out `remove agent:blocked` **and** `add agent:ready` for the label route. A comment promising a restart that the labels forbid is the defect #82 was opened about, reproduced in the escalation path; it is asserted rather than reviewed | `agent-queue-watchdog.yml`, `.github/tests/watchdog-filter-test.sh` |
 | **The whole queue is read, not the first page** — `gh api --paginate` alone writes one JSON array *per page* back to back, and `jq -f` then runs once per page: only page one's pick was ever read, so a P0 on page 2 would lose to a P2 on page 1 forever, green all the way. `--paginate --slurp` plus a shape-tolerant `add` flattens it. Latent at 15 open issues, real past 100 | `agent-queue-watchdog.yml` |
 | **Sticky review comment** — one comment edited in place, not a new one per push | `use_sticky_comment` |
-| **Bots named, never starred** — a workflow that admits a bot actor must name it, and nothing may name `'*'`. The writer admits `github-actions`, the actor its own watchdog dispatches as; the reviewer admits `claude`, the actor that opens the pull requests it exists to review; the CI repairer admits none and names none. Empty lists had made the first two refuse silently — the watchdog had never started an agent, and no agent-authored pull request had ever been reviewed. The test asserts the rule rather than the three instances, so a fourth workflow is checked the day it grows an exemption | `allowed_bots`, `.github/tests/bot-actor-test.sh` |
+| **Bots named, never starred, in both directions** — a workflow that admits a bot actor must name it in `allowed_bots`, and nothing may name `'*'`. The writer admits `github-actions`, the actor its own watchdog dispatches as; the reviewer admits `claude` and `github-actions`, the actor that opens agent pull requests and the actor that pushes branch updates onto them; the CI repairer admits none and names none. Empty lists had made the first two refuse silently — the watchdog had never started an agent, and no agent-authored pull request had ever been reviewed. The reviewer's guard names the bot it *excludes* rather than testing the `[bot]` suffix, because `github.actor` on a `pull_request` is the pusher rather than the author, so a suffix test excluded our own sweep and left swept pull requests permanently unreviewable (#332). The test asserts both rules rather than their instances, so a fourth workflow is checked the day it grows either shape | `allowed_bots`, `.github/tests/bot-actor-test.sh` |
 
 The review's limit was 40 until 2026-08-22, and it was the wrong number for the
 wrong reason. On pull request #39 the reviewer read a thirty-file diff, worked
