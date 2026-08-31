@@ -25,7 +25,15 @@ fail=0
 ok() { printf '  ok    %s\n' "$1"; pass=$((pass + 1)); }
 no() { printf '  FAIL  %s\n     %s\n' "$1" "$2"; fail=$((fail + 1)); }
 
-refs=$(grep -rhoP 'uses:\s*\K[^\s#]+' .github/workflows/ | sort)
+# A COMMENT IS NOT A CONDITION, and this pattern could not tell them apart. It
+# is not anchored -- it cannot be, because `- uses:` is the common form -- so a
+# comment containing the word `uses:` produced a phantom reference and reported
+# it as unpinned. That happened the moment a comment in ci.yml explained why the
+# container is pinned "for the same reason every `uses:` here is". The scan reads
+# the workflows with full-line comments removed; trailing `# vX` provenance is
+# already excluded by the character class.
+workflow_body() { grep -rh '' "$@" | sed 's/^[[:space:]]*#.*//'; }
+refs=$(workflow_body .github/workflows/ | grep -oP 'uses:\s*\K[^\s#]+' | sort)
 total=$(printf '%s\n' "$refs" | grep -c .)
 
 if [ "$total" -eq 0 ]; then
@@ -83,6 +91,40 @@ if [ "${ATTADIPA_PIN_CHECK_NETWORK:-}" = "1" ] && command -v gh >/dev/null 2>&1;
   done < <(printf '%s\n' "$external" | sort -u)
 else
   printf '  skip  each pin resolves to a real commit (set ATTADIPA_PIN_CHECK_NETWORK=1 with gh authenticated)\n'
+fi
+
+# A CONTAINER IS AN ACTION BY ANOTHER NAME, and this test did not look at one.
+# `container: espressif/idf:v5.5.5` is an image whose owner can move the tag, and
+# the job it runs builds the firmware that ships -- the same execution path the
+# scan above exists for, reached through a different key. Acceptance item 4 of
+# #294 names it explicitly; the first version of this suite met the other five
+# and left this one, because `uses:` was the whole pattern.
+#
+# The trailing `# vX` is provenance and deliberately NOT the anchor: the digest
+# is, exactly as with an action pin.
+containers=$(workflow_body .github/workflows/ | grep -oP '^\s*container:\s*\K[^\s#]+' | sort -u)
+if [ -z "$containers" ]; then
+  ok "no container image runs in a workflow"
+else
+  ok "the scan finds container images to check ($(printf '%s\n' "$containers" | grep -c .))"
+  loose=$(printf '%s\n' "$containers" | grep -vP '@sha256:[0-9a-f]{64}$' || true)
+  if [ -n "$loose" ]; then
+    no "every container image is pinned to a digest" \
+       "movable image reference: $(printf '%s' "$loose" | tr '\n' ' ')"
+  else
+    ok "every container image is pinned to a digest"
+  fi
+
+  # The digest binds the bytes and says nothing about what is in them. The job
+  # itself asserts the ESP-IDF commit against DEPENDENCIES.md at run time; this
+  # only checks that the assertion is still there to run, because deleting it is
+  # invisible -- the build keeps passing on whatever the image happens to be.
+  if grep -q 'documented=b774170ff46c393eeb5e495ea37936038d3f4f4f' .github/workflows/ci.yml; then
+    ok "the firmware job still checks the image against the documented commit"
+  else
+    no "the firmware job still checks the image against the documented commit" \
+       "no commit assertion found in ci.yml -- a digest proves the image is unchanged, not that it was ever right"
+  fi
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

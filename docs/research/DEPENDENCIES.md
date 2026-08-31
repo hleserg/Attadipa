@@ -53,6 +53,37 @@ tag object whose SHA is not a commit SHA, and pinning to it pins to something
 GitHub will not check out. `.github/tests/action-pin-test.sh` asserts every pin
 resolves as a commit, which is the only check that tells the two apart.
 
+### The container image
+
+`ci.yml`'s firmware job runs inside `espressif/idf`, which is the same execution
+path as an action reached through a different key: an image tag is a name its
+owner can move, and this job builds the firmware that ships. It is pinned by
+digest, with the tag kept beside it as provenance only.
+
+| Image | Pinned at | Tag it came from | Resolved | Licence |
+|---|---|---|---|---|
+| **`espressif/idf`** | `sha256:a9231d0697ab8f7517cc072e93b7c83e04907bfbfba80b6440d7dbbf90665cf2` | `v5.5.5` | 2026-09-01, from `registry-1.docker.io/v2/espressif/idf/manifests/v5.5.5` | Apache-2.0 |
+
+That digest is the **OCI image index**, not a single platform's manifest, so it
+resolves on both architectures the index carries — `linux/amd64`
+(`sha256:6e2800a6…`, which is what a GitHub runner pulls) and `linux/arm64`
+(`sha256:0a952afa…`). Pinning the index rather than the amd64 manifest is
+deliberate: a bench machine and CI then run the same recorded reference.
+
+**A digest binds the bytes, not their contents.** It proves the image has not
+changed since it was resolved; it proves nothing about the image ever having
+been what the ESP-IDF row above says. So `ci.yml`'s first firmware step reads
+`git -C "$IDF_PATH" rev-parse HEAD` out of the running image and fails the job
+unless it equals `b774170ff46c393eeb5e495ea37936038d3f4f4f`, and checks
+`idf.py --version` names `v5.5.5`. That is the same annotated-tag trap as the
+ESP-IDF row: `ff1bac0…` is the tag object and `b774170…` is the commit
+`rev-parse` returns.
+
+Re-resolving the digest is a deliberate edit in two places that must move
+together — `ci.yml` and this table — and `action-pin-test.sh` refuses a
+`container:` that is not digest-pinned, and refuses a `ci.yml` that has dropped
+the commit assertion.
+
 | Action | Pinned at | Tag it came from | Licence | Upgrade strategy |
 |---|---|---|---|---|
 | **`actions/checkout`** ×24 | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |

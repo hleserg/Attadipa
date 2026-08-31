@@ -534,10 +534,50 @@ jobs:
     runs-on: ubuntu-latest
     # The pinned toolchain, as a container rather than as an install script, so
     # that "reproducible from a clean checkout" is something this job proves
-    # rather than something a pull-request body asserts. The tag is the version
-    # pinned in docs/research/DEPENDENCIES.md and the two move together.
-    container: espressif/idf:v5.5.5
+    # rather than something a pull-request body asserts.
+    #
+    # BY DIGEST, FOR THE SAME REASON EVERY `uses:` IN THIS DIRECTORY IS.
+    # `espressif/idf:v5.5.5` is a name its owner can move, and this job builds
+    # the firmware that ships. The tag stays as provenance and is not the trust
+    # anchor: the digest below is the `linux/amd64` + `linux/arm64` OCI index
+    # resolved from that tag on 2026-09-01, recorded with its resolution in
+    # docs/research/DEPENDENCIES.md. Re-resolving it is a deliberate edit here.
+    #
+    # A digest binds the image BYTES, not their contents. What is inside is
+    # asserted by the step below, which reads the commit out of the running
+    # image and compares it with the one DEPENDENCIES.md documents -- so the
+    # claim "this container is ESP-IDF v5.5.5 at ff1bac0" is checked on every
+    # run rather than written down once.
+    container: espressif/idf@sha256:a9231d0697ab8f7517cc072e93b7c83e04907bfbfba80b6440d7dbbf90665cf2  # v5.5.5
     steps:
+      - name: The image is the ESP-IDF commit this repository documents
+        shell: bash
+        run: |
+          # docs/research/DEPENDENCIES.md is the canonical record and this is the
+          # only thing that makes it true of the bytes CI actually runs. A digest
+          # alone proves the image did not change; it does not prove the image
+          # was ever what the table says.
+          #
+          # THIS IS THE COMMIT, NOT THE TAG OBJECT. `git/ref/tags/v5.5.5` answers
+          # `ff1bac0aeecdd2b797b9c3a558c6bd03629bc013` with `.object.type == "tag"`;
+          # dereferencing it through `git/tags/<sha>` gives the commit below, and
+          # `git rev-parse HEAD` inside the image returns the commit. The table
+          # in DEPENDENCIES.md records the same trap for the same reason.
+          documented=b774170ff46c393eeb5e495ea37936038d3f4f4f
+          actual="$(git -C "$IDF_PATH" rev-parse HEAD)"
+          version="$(. "$IDF_PATH/export.sh" >/dev/null 2>&1; idf.py --version)"
+          echo "IDF_PATH=$IDF_PATH"
+          echo "commit   $actual"
+          echo "version  $version"
+          if [ "$actual" != "$documented" ]; then
+            echo "::error title=Container is not the documented ESP-IDF commit::image is at $actual, DEPENDENCIES.md documents $documented. Re-resolve the digest and update the table together, or find out why they disagree."
+            exit 1
+          fi
+          case "$version" in
+            *v5.5.5*) ;;
+            *) echo "::error title=Container is not v5.5.5::idf.py --version said $version"; exit 1 ;;
+          esac
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Host-side and independent of ESP-IDF. The firmware build also validates
