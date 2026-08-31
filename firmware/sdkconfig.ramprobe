@@ -29,7 +29,10 @@ CONFIG_APP_BUILD_TYPE_RAM=y
 CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y
 
 # Keep the debug endpoint and its full-frame PSRAM snapshot out of the minimal
-# RAM probe. The normal flash build enables it explicitly.
+# RAM probe. This is now the same value sdkconfig.defaults carries -- the
+# product image stopped shipping the endpoint in #346 -- and it stays written
+# here anyway: the probe must not acquire a USB control plane by inheriting one,
+# whatever the file above it later says.
 CONFIG_ATTADIPA_WATCH_CONTROL=n
 
 # Pairing persists bonds in NVS, so the Companion transport is deliberately not

@@ -50,7 +50,7 @@ jobs:
       # already runs from the default branch, but saying so here means a future
       # trigger cannot quietly change that.
       - name: Fetch the scan filter from the default branch
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -247,7 +247,7 @@ jobs:
       # not cost the tick its actual dispatch, which is the thing with a turn
       # limit and a bill behind it.
       - name: Fetch the scan filter from the default branch
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -316,7 +316,7 @@ jobs:
       contents: read
     steps:
       - name: Fetch the claim recovery from the default branch
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts/claim.sh
@@ -400,7 +400,7 @@ jobs:
       # Same reason the scan job pins its checkout to the default branch: the
       # rule applied here comes from `main` or from nowhere.
       - name: Fetch the decision script from the default branch
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts

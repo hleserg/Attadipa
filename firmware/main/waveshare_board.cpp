@@ -39,6 +39,8 @@
 #include "meshcore_ble.h"
 #endif
 
+#include "physical_input.h"
+
 #if CONFIG_ATTADIPA_WATCH_CONTROL
 #include "attadipa/debug/bridge.h"
 #include "watch_control.h"
@@ -635,13 +637,6 @@ esp_err_t initialize_touch() {
   ESP_RETURN_ON_ERROR(
       esp_lcd_touch_new_i2c_ft5x06(touch_io, &touch_config, &state.touch), kTag,
       "initialize FT3168 via FT5x06 driver");
-#if !CONFIG_ATTADIPA_WATCH_CONTROL
-  lvgl_port_touch_cfg_t lv_touch{};
-  lv_touch.disp = state.display;
-  lv_touch.handle = state.touch;
-  ESP_RETURN_ON_FALSE(lvgl_port_add_touch(&lv_touch) != nullptr, ESP_ERR_NO_MEM,
-                      kTag, "add LVGL touch");
-#endif
   ESP_LOGI(kTag, "FT3168: I2C 0x38, reset GPIO 9, interrupt GPIO 38");
   return ESP_OK;
 }
@@ -682,19 +677,36 @@ esp_err_t start_waveshare_ui() {
 
   ESP_RETURN_ON_FALSE(lvgl_port_lock(1000), ESP_ERR_TIMEOUT, kTag, "lock LVGL");
   create_ui();
+  // Which of the two images this is, said out loud once per boot. The endpoint
+  // is unauthenticated by construction, so an operator holding a board needs to
+  // be able to tell from the log alone whether the thing in their hand will
+  // answer a stranger's cable (#346).
+#if CONFIG_ATTADIPA_WATCH_CONTROL
+  ESP_LOGW(kTag, "HIL image: USB watch-control endpoint ENABLED and "
+                 "unauthenticated -- bench use only, not a product image");
+#else
+  ESP_LOGI(kTag, "production image: no USB watch-control endpoint");
+#endif
+
+  // Physical first, and unconditionally: it owns the input queue the optional
+  // transport below writes into, and it is what makes touch, the buttons and
+  // sleep work in a production image that has no transport at all (#346).
+  const esp_err_t physical_result =
+      start_physical_input(state.touch, state.pmu, state.panel,
+                           kBrightnessPercent, [] { refresh_ui(nullptr); });
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   const esp_err_t watch_control_result =
-      start_watch_control(state.touch, state.pmu, state.panel,
-                          kBrightnessPercent, [] { refresh_ui(nullptr); },
-                          &time_sink,
+      physical_result != ESP_OK ? ESP_OK
+                                : start_watch_control(&time_sink,
 #if CONFIG_BT_NIMBLE_ENABLED
-                          &mesh_sink
+                                                      &mesh_sink
 #else
-                          nullptr
+                                                      nullptr
 #endif
-      );
+                                  );
 #endif
   lvgl_port_unlock();
+  ESP_RETURN_ON_ERROR(physical_result, kTag, "start physical input");
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   ESP_RETURN_ON_ERROR(watch_control_result, kTag, "start watch control");
 #endif
