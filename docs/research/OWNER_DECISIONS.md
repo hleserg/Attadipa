@@ -1539,6 +1539,36 @@ secrets, or destroying keys still each require an explicit owner request.
 
 ---
 
+## OD-25 — The independent review gets five rounds, then it files rather than holds
+
+**Decided:** 2026-08-31, by the owner, in conversation.
+
+**What he decided:** the independent review may hold a pull request for at most
+**five rounds**. From round six on, no open finding blocks the merge — a `floor`
+finding included. Findings are still published, still recorded in the ledger and
+still filed as the follow-up issue the review already produces; only the "holds
+the merge" column changes. His words: *"поставь максимум 5 кругов, дальше если
+нет риска серьёзных поломок — мержим. Лучше уж накосячим и починим чем всё до
+запятой вычитывать по 15 раз сжигая токены на этот ОКР."*
+
+**What prompted it:** #338 ran **sixteen** rounds. The convergence floor of #169
+(OD is `review-verdict.sh`'s `FLOOR`, set to 4) caps which *categories* may hold
+a pull request late, not how many rounds there can be, and a `floor` finding
+blocks at any round however late. That rule did converge in the sense that each
+round found less, but every round's own fix minted the next round's floor
+finding inside the same document — round 14 fixed five and created three, one of
+them `floor`. Sixteen review cycles at roughly twenty minutes each is over five
+hours of wall clock for a documentation change.
+
+**What this does not change:** what the reviewer is asked to look for, the floor
+list itself, and the rule that a deferred finding never ages into a blocker. The
+ceiling is a ceiling on *holding*, not on reviewing or on recording.
+
+**Where it lives:** `CEILING` in `.github/scripts/review-verdict.sh`, passed as
+`5` from `.github/workflows/claude-pr-review.yml`, asserted in
+`.github/tests/review-verdict-test.sh`. Raising or lowering it is an owner
+decision; edit this entry when it changes.
+
 ## OD-24 — Language follows the reader
 
 **Decided:** 2026-08-22, by the owner; recovered from closed-unmerged PR #126.

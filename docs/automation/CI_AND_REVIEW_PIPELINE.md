@@ -150,6 +150,34 @@ caller patch was applied during the queue recovery and removed. The executable
 workflow test still extracts both shipping steps and proves that notification
 failure cannot preserve the previous head's verdict.
 
+### How many rounds a review may hold a pull request
+
+The review reads the head commit, so answering every finding produces a new head
+and therefore a new review. Left unbounded that does not terminate: each round's
+own fix is the next round's subject. Two rules bound it, both in
+`.github/scripts/review-verdict.sh`, and the ledger comment on the pull request
+states both every round.
+
+**The floor is round 4.** From it on, an open finding holds the merge only if it
+is *floor*-category — a hardware fact with no source, a `PASS` for a test that
+did not run on a board, an application-layer hardware access, or an
+architecture-boundary violation — or if it was first raised before round 4 and
+the pushes since did not fix it. Everything else is published, marked deferred,
+and filed as a follow-up issue instead of held. The round a finding was first
+seen is read from the ledger the script itself wrote, never from what the
+reviewer says this round, so a finding cannot be re-aged into a blocker.
+
+**The ceiling is round 5.** Past it nothing holds at all, *floor* included. The
+finding is still published, still recorded, still filed; only the "holds the
+merge" column changes. The floor caps which categories may hold late; it does not
+cap how many rounds there can be, and #338 ran sixteen because every round's fix
+minted the next round's floor finding in the same document. That is OD-25, and
+the number is an owner decision — `docs/research/OWNER_DECISIONS.md` is where it
+changes, not this file.
+
+Both are asserted offline in `.github/tests/review-verdict-test.sh`: two files
+and two numbers in, `key=value` lines out.
+
 ### When the review publishes no verdict
 
 The pull-request note links here instead of embedding a troubleshooting manual

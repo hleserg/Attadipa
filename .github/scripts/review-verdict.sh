@@ -15,6 +15,12 @@
 #
 #   an open finding holds the pull request iff
 #       it is FLOOR-category, or it was first raised BEFORE the floor round.
+#       PAST THE CEILING round, nothing holds at all: #338 ran sixteen rounds
+#       because each round's own fix minted the next round's floor finding in
+#       the same document, and the owner's rule (OD-25) is that shipping and
+#       fixing beats reading every comma fifteen times. Past the ceiling a
+#       finding is still recorded and still filed as the follow-up issue -- the
+#       only column that changes is `holds the merge`.
 #
 # Floor-category is the list the acceptance in #169 refuses to weaken: a
 # hardware fact with no source, a `PASS` for a test that did not run on a board,
@@ -54,6 +60,7 @@
 # merge-candidate.sh.
 
 # attadipa_review_verdict PREV_LEDGER FINDINGS FLOOR LEDGER_OUT DEFERRED_OUT PR
+#                         [CEILING]
 #
 # PREV_LEDGER   path to the body of the ledger comment this script wrote last
 #               round. Missing or empty means round 1.
@@ -64,6 +71,12 @@
 # DEFERRED_OUT  where to write the follow-up issue body. Empty to skip. Written
 #               only when there is at least one deferred finding.
 # PR            the pull request number, used only in rendered text.
+# CEILING       the convergence ceiling, a round number past which NOTHING
+#               holds the pull request -- floor findings included. Optional;
+#               ATTADIPA_REVIEW_CEILING is the default when it is absent, and
+#               that defaults to 5. A ceiling below the floor is raised to the
+#               floor, because a ceiling that fires before the floor would make
+#               the floor unreachable and silently delete the older rule.
 #
 # Prints `key=value` lines on stdout and nothing else:
 #
@@ -71,9 +84,11 @@
 #   floor=      the floor it was judged against
 #   label=      ai-review:blocking | ai-review:pass | unknown
 #   reason=     one token: floor | pre-floor | floor-and-pre-floor |
-#               nothing-holding | no-findings-block. `pre-floor` rather than
-#               `carry-over` because at round 1 every finding satisfies the same
-#               clause and calling that a carry-over would be false.
+#               nothing-holding | no-findings-block | ceiling. `pre-floor` rather
+#               than `carry-over` because at round 1 every finding satisfies the
+#               same clause and calling that a carry-over would be false.
+#               `ceiling` means findings are open and none of them holds,
+#               because the round is past CEILING.
 #   open=       open findings after reconciliation
 #   blocking=   of those, the ones that hold the pull request
 #   deferred=   of those, the ones that do not
@@ -196,9 +211,18 @@ _attadipa_is_uint() {
 
 attadipa_review_verdict() {
   local prev="${1:-}" findings="${2:-}" floor="${3:-}" \
-        ledger_out="${4:-}" deferred_out="${5:-}" pr="${6:-}"
+        ledger_out="${4:-}" deferred_out="${5:-}" pr="${6:-}" \
+        ceiling="${7:-${ATTADIPA_REVIEW_CEILING:-5}}"
 
   _attadipa_is_uint "$floor" && [ "$floor" -ge 1 ] || floor=1
+  # An unreadable ceiling falls back to the default rather than to "no ceiling":
+  # a typo in the caller must not silently restore the sixteen-round behaviour
+  # this rule exists to stop. And a ceiling at or below the floor would make the
+  # floor unreachable -- the older rule would never get a round to apply in --
+  # so it is raised to the floor, where the two rules coincide instead of one
+  # deleting the other.
+  _attadipa_is_uint "$ceiling" && [ "$ceiling" -ge 1 ] || ceiling=5
+  [ "$ceiling" -ge "$floor" ] || ceiling="$floor"
 
   declare -A first_round=() category=() status=() title=()
   local order=() id fr cat st ti line rest
@@ -300,10 +324,19 @@ attadipa_review_verdict() {
   # ---- the verdict -----------------------------------------------------------
   local open_n=0 blocking_n=0 deferred_n=0 floor_hits=0 pre_hits=0
   local defers=()
+  # Past the ceiling every open finding takes the deferred branch, so the two
+  # counters below stay at zero and the verdict falls through to `nothing-
+  # holding` -- which is renamed `ceiling` when it got there this way, because
+  # "no finding holds" and "findings hold but we are past the ceiling" are
+  # different sentences and the ledger has to say which one it means.
+  local past_ceiling=no
+  [ "$round" -le "$ceiling" ] || past_ceiling=yes
   for id in ${order[@]+"${order[@]}"}; do
     [ "${status[$id]}" = open ] || continue
     open_n=$((open_n + 1))
-    if [ "${category[$id]}" = floor ]; then
+    if [ "$past_ceiling" = yes ]; then
+      deferred_n=$((deferred_n + 1)); defers+=("$id")
+    elif [ "${category[$id]}" = floor ]; then
       blocking_n=$((blocking_n + 1)); floor_hits=$((floor_hits + 1))
     elif [ "${first_round[$id]}" -lt "$floor" ]; then
       blocking_n=$((blocking_n + 1)); pre_hits=$((pre_hits + 1))
@@ -325,6 +358,8 @@ attadipa_review_verdict() {
     # floor finding. `unknown` is the token this file already has for exactly
     # this, and it holds.
     label=unknown; reason='unreadable-findings'
+  elif [ "$blocking_n" -eq 0 ] && [ "$past_ceiling" = yes ] && [ "$open_n" -gt 0 ]; then
+    label=ai-review:pass; reason='ceiling'
   elif [ "$blocking_n" -eq 0 ]; then
     label=ai-review:pass; reason='nothing-holding'
   elif [ "$floor_hits" -gt 0 ] && [ "$pre_hits" -gt 0 ]; then
@@ -337,6 +372,7 @@ attadipa_review_verdict() {
 
   printf 'round=%s\n'     "$round"
   printf 'floor=%s\n'     "$floor"
+  printf 'ceiling=%s\n'   "$ceiling"
   printf 'label=%s\n'     "$label"
   printf 'reason=%s\n'    "$reason"
   printf 'open=%s\n'      "$open_n"
@@ -349,7 +385,7 @@ attadipa_review_verdict() {
 
   [ -n "$ledger_out" ] && _attadipa_render_ledger \
     "$ledger_out" "$round" "$floor" "$label" "$reason" \
-    "$open_n" "$blocking_n" "$deferred_n" "$dropped"
+    "$open_n" "$blocking_n" "$deferred_n" "$dropped" "$ceiling"
   if [ -n "$deferred_out" ] && [ "$deferred_n" -gt 0 ]; then
     _attadipa_render_deferred "$deferred_out" "$pr" "$floor" "${defers[@]}"
   fi
@@ -363,12 +399,17 @@ ATTADIPA_FLOOR_LIST='a hardware fact with no source, a `PASS` for a test that di
 _attadipa_render_ledger() {
   local out="$1" round="$2" floor="$3" label="$4" reason="$5"
   local open_n="$6" blocking_n="$7" deferred_n="$8" dropped="$9"
+  local ceiling="${10}"
   local id holds
   {
     printf '%s\n' "$ATTADIPA_LEDGER_MARK"
     printf '### Independent review — round %s\n\n' "$round"
     printf 'The convergence floor is **round %s**. From that round on, an open finding holds this pull request only if it is *floor* — %s — or if it was first raised **before** round %s and the pushes since have not fixed it. Everything else is published, marked *deferred*, and filed rather than held.\n\n' \
       "$floor" "$ATTADIPA_FLOOR_LIST" "$floor"
+    printf 'The convergence ceiling is **round %s**. Past it nothing holds this pull request at all, *floor* included: every open finding is still recorded in the table below and still filed as the follow-up issue, and only the last column changes. Sixteen rounds on #338 is what that rule exists to stop (OD-25).\n\n' "$ceiling"
+    if [ "$reason" = ceiling ]; then
+      printf 'This round is past the ceiling, so the findings below are filed rather than held.\n\n'
+    fi
     printf 'A deferred finding never becomes blocking by ageing, and the round a finding was first seen comes from this ledger rather than from the review that is running. The rule is `.github/scripts/review-verdict.sh`; what it is for is in `docs/automation/CI_AND_REVIEW_PIPELINE.md`.\n\n'
     if [ "$label" = unknown ]; then
       printf '**This round published no findings block**, so no verdict was computed from it and the label the reviewer set itself stands. The findings below are carried from earlier rounds unchanged.\n\n'
@@ -381,6 +422,8 @@ _attadipa_render_ledger() {
       for id in ${order[@]+"${order[@]}"}; do
         if [ "${status[$id]}" != open ]; then
           holds='no — fixed'
+        elif [ "$round" -gt "$ceiling" ]; then
+          holds='no — past the ceiling'
         elif [ "${category[$id]}" = floor ]; then
           holds='**yes** — floor'
         elif [ "${first_round[$id]}" -lt "$floor" ]; then
@@ -438,5 +481,5 @@ _attadipa_render_deferred() {
 
 # Callable as a script as well as sourceable.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" "${6:-}"
+  attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}"
 fi
