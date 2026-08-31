@@ -4,6 +4,17 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
+# THE AMBIENT ENVIRONMENT DOES NOT GET TO DECIDE WHAT THIS SUITE PROVES,
+# the same reason wip-limit-test.sh:29 says it. This suite is the one that
+# proves the local writer reads the repository width, and every case below
+# states the width it runs under by prefix assignment -- which ADDS to the
+# child environment without clearing it. `ATTADIPA_WIP_LIMIT=4` exported by
+# a runner turns four cases green on a queue width they were never written
+# for, and this repository now has workflows that export exactly that
+# (claude-agent.yml, claude-ci-repair.yml) around the step that runs an
+# agent asked to run these checks.
+unset ATTADIPA_WIP_LIMIT
+
 pass=0; fail=0
 ok() { pass=$((pass + 1)); printf 'ok %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf 'FAIL %s: %s\n' "$1" "$2"; }
@@ -67,6 +78,9 @@ fi
 # ... was not found" on stderr, exit 1. Answering with empty output and exit 0
 # would let writer-start.sh pass a test its production caller fails.
 if [ "${1-}" = variable ] && [ "${2-}" = get ]; then
+  if [ -n "${ATTADIPA_STUB_WIDTH_REFUSED-}" ]; then
+    echo "$ATTADIPA_STUB_WIDTH_REFUSED" >&2; exit 1
+  fi
   if [ -n "${ATTADIPA_STUB_WIDTH-}" ]; then printf '%s\n' "$ATTADIPA_STUB_WIDTH"; exit 0; fi
   echo "variable ${3-} was not found" >&2; exit 1
 fi
@@ -293,7 +307,7 @@ set -e
 mkdir -p "$work/scripts"
 for f in "$(dirname "$START")"/*; do ln -sf "$(cd "$(dirname "$f")" && pwd)/$(basename "$f")" "$work/scripts/"; done
 rm -f "$work/scripts/$(basename "$START")"
-sed 's#ATTADIPA_WIP_LIMIT="$(gh variable get ATTADIPA_WIP_LIMIT --repo "$repo" 2>/dev/null || true)"#:#' \
+sed 's#gh variable get ATTADIPA_WIP_LIMIT --repo "$repo" 2>&1#true#' \
   "$START" > "$work/scripts/$(basename "$START")"
 if grep -q 'gh variable get ATTADIPA_WIP_LIMIT' "$work/scripts/$(basename "$START")"; then
   bad 'deleting the width lookup makes the mutation red' \
@@ -311,6 +325,54 @@ else
     || bad 'deleting the width lookup makes the mutation red' \
           "expected 3 (held: full) from a writer that cannot see the lifted width, got rc=$local_mutant_rc"
 fi
+
+# A REFUSAL AND AN ABSENCE ARRIVE AS THE SAME EMPTY STRING, and only one of them
+# is worth saying. Reading Actions variables is its own permission: a token that
+# can push, comment and list pull requests may still be refused here, and then
+# the writer runs at the designed width while Actions admits at the lifted one.
+reset_state
+printf '[%s,%s]\n' "$(pr 1)" "$(pr 2)" > "$work/state/prs"
+set +e
+refused_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  ATTADIPA_STUB_WIDTH_REFUSED='HTTP 403: Resource not accessible by integration' \
+  bash "$START" start o/r 7 local-refused 2>&1 >/dev/null)"
+set -e
+case "$refused_err" in
+  *'could not read ATTADIPA_WIP_LIMIT'*'403'*)
+    ok 'a width lookup the token may not make is spoken, not swallowed' ;;
+  *) bad 'a width lookup the token may not make is spoken, not swallowed' \
+         "stderr was: $(printf '%s' "$refused_err" | tr '\n' ' ')" ;;
+esac
+
+# The other direction, which is what stops this becoming noise: a width nobody
+# set is the ordinary case and says nothing about itself.
+reset_state
+printf '[%s,%s]\n' "$(pr 1)" "$(pr 2)" > "$work/state/prs"
+set +e
+unset_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  bash "$START" start o/r 7 local-unset 2>&1 >/dev/null)"
+set -e
+case "$unset_err" in
+  *'could not read'*) bad 'a width nobody set is silent' \
+      "stderr was: $(printf '%s' "$unset_err" | tr '\n' ' ')" ;;
+  *) ok 'a width nobody set is silent' ;;
+esac
+
+# `held: full` on its own cannot be compared with what Actions decided, and that
+# comparison is what RECOVERY.md promises the operator. Three open pull requests
+# at a repository width of three is full -- and is `ok` at the designed two, so
+# the number in the line is doing work.
+reset_state
+printf '[%s,%s,%s]\n' "$(pr 1)" "$(pr 2)" "$(pr 3)" > "$work/state/prs"
+set +e
+held_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" GITHUB_REPOSITORY=o/r \
+  ATTADIPA_STUB_WIDTH=3 bash "$START" start o/r 7 local-held 2>&1 >/dev/null)"
+set -e
+case "$held_err" in
+  *'held: full (width 3)'*) ok 'the refusal names the width it refused under' ;;
+  *) bad 'the refusal names the width it refused under' \
+         "stderr was: $(printf '%s' "$held_err" | tr '\n' ' ')" ;;
+esac
 
 step_script() {
   awk -v wanted="$2" '

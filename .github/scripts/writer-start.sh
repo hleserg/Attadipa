@@ -36,7 +36,25 @@ case "$op" in
     # wip-limit.sh reads as the designed 2: an unreachable API must not be a way
     # to widen the queue.
     if [ -z "${ATTADIPA_WIP_LIMIT-}" ]; then
-      ATTADIPA_WIP_LIMIT="$(gh variable get ATTADIPA_WIP_LIMIT --repo "$repo" 2>/dev/null || true)"
+      # NOT `2>/dev/null`, for the reason wip-limit.sh:143 gives about the same
+      # CLI: the refusal is the only evidence of what went wrong. Two answers
+      # arrive here as the same empty string. "Nobody set a width" is correct
+      # and correctly silent; "this token may not read it" is not -- reading
+      # Actions variables is its own permission, which a fine-grained token or
+      # App installation must be granted explicitly and which none of the
+      # contents, issues or pull-requests scopes carrying every other call on
+      # this path imply. Swallowed, it leaves the writer refusing at the
+      # designed width while Actions admits at the lifted one, with nothing to
+      # tell that apart from a queue that is genuinely full.
+      if ! lookup="$(gh variable get ATTADIPA_WIP_LIMIT --repo "$repo" 2>&1)"; then
+        case "$lookup" in
+          *'was not found'*) ;;
+          *) printf 'writer-start: could not read ATTADIPA_WIP_LIMIT: %s\n' \
+               "$(printf '%s' "$lookup" | head -1)" >&2 ;;
+        esac
+        lookup=
+      fi
+      ATTADIPA_WIP_LIMIT="$lookup"
       export ATTADIPA_WIP_LIMIT
     fi
     bash "$dir/claim.sh" acquire "$repo" writer "$holder" || exit $?
@@ -45,7 +63,14 @@ case "$op" in
     GITHUB_OUTPUT="$output" bash "$dir/writer-admission.sh" "$repo" "$number"
     if [ "$(sed -n 's/^allow=//p' "$output")" != true ]; then
       bash "$dir/claim.sh" release "$repo" writer "$holder" || true
-      echo "held: $(sed -n 's/^state=//p' "$output")" >&2
+      # `held: full` alone cannot be compared with what Actions decided, which
+      # is the comparison RECOVERY.md promises the operator. Name the width in
+      # force, resolved by the one function that defines it rather than a
+      # second copy of the rule.
+      # shellcheck source=.github/scripts/wip-limit.sh
+      ( . "$dir/wip-limit.sh"
+        printf 'held: %s (width %s)\n' \
+          "$(sed -n 's/^state=//p' "$output")" "$(attadipa_wip_limit)" ) >&2
       exit 3
     fi
     set +e

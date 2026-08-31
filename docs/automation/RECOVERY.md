@@ -89,9 +89,12 @@ gh variable delete ATTADIPA_WIP_LIMIT     # back to the designed width
 Lifting it is an owner decision and a temporary one: the width is what stops a
 queue nobody is watching from turning into thirteen open pull requests, and the
 number to put back is `2`. `writer-start.sh` reads the same variable, so a local
-run and a workflow run agree. Anything that is not a one- or two-digit number —
-including a value nobody set — is read as two; the variable cannot be used to
-remove the limit, only to move it.
+run and a workflow run agree — and when it refuses it names the width it refused
+under (`held: full (width 4)`), which is what makes that agreement checkable
+rather than promised. A lookup the token is not permitted to make says so on
+stderr; a variable nobody set is the ordinary case and stays quiet. Anything that
+is not a one- or two-digit number — including a value nobody set — is read as
+two; the variable cannot be used to remove the limit, only to move it.
 
 ### The same pull request is being repaired over and over
 
